@@ -205,3 +205,38 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ============================================================================
+# Worship Music System - POC Specific
+# ============================================================================
+
+# POC outputs (generated files)
+poc_output/*
+!poc_output/.gitkeep
+
+# Audio files (too large for git, user-provided)
+poc_audio/*
+!poc_audio/.gitkeep
+
+# Data directories (for future phases)
+data/audio/*
+data/cache/*
+data/exports/*
+!data/.gitkeep
+
+# Poetry lock file (uncomment if using Poetry)
+poetry.lock
+
+# Docker
+.dockerignore
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn

@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worship-music-poc
+    ports:
+      - "8888:8888"
+    volumes:
+      # Mount notebooks directory for live editing
+      - ./notebooks:/workspace/notebooks
+      # Mount POC directories
+      - ./poc_audio:/workspace/poc_audio
+      - ./poc_output:/workspace/poc_output
+      # Mount data directory for future use
+      - ./data:/workspace/data
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - PYTHONUNBUFFERED=1
+    working_dir: /workspace
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --ServerApp.token=''
+      --ServerApp.password=''
+      --ServerApp.allow_origin='*'
+      --ServerApp.disable_check_xsrf=True
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+# For future phases, uncomment and configure:
+#
+# postgres:
+#   image: postgres:15-alpine
+#   container_name: worship-music-db
+#   environment:
+#     POSTGRES_DB: worship_music
+#     POSTGRES_USER: worship_user
+#     POSTGRES_PASSWORD: your_password
+#   ports:
+#     - "5432:5432"
+#   volumes:
+#     - postgres_data:/var/lib/postgresql/data
+#
+# redis:
+#   image: redis:7-alpine
+#   container_name: worship-music-cache
+#   ports:
+#     - "6379:6379"
+#   volumes:
+#     - redis_data:/data
+#
+# volumes:
+#   postgres_data:
+#   redis_data:
