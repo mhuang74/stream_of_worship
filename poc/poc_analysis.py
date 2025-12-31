@@ -119,21 +119,103 @@ def analyze_song(filepath):
     print(f"  Brightness: {centroid_mean:.0f} Hz")
 
     # === STRUCTURE SEGMENTATION ===
-    # Simplified approach: Use spectral clustering for boundary detection
-    # This avoids timelag_filter API compatibility issues
-    chroma_seg = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=512)
+    # Multi-feature approach: Combine harmonic, timbral, and rhythmic features
+    # to detect major structural boundaries (verse, chorus, bridge transitions)
 
-    # Use simple boundary detection based on spectral flux
-    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=512)
-    peaks = librosa.util.peak_pick(
-        onset_env,
-        pre_max=3, post_max=3,
-        pre_avg=3, post_avg=5,
-        delta=0.5, wait=10
+    hop_length_struct = 512
+
+    # 1. Harmonic features (chord/key changes)
+    chroma_cqt = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length_struct)
+
+    # 2. Timbral features (instrument/vocal changes)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, hop_length=hop_length_struct)
+    mfcc = librosa.util.normalize(mfcc, axis=1)
+
+    # 3. Spectral contrast (texture changes)
+    contrast = librosa.feature.spectral_contrast(y=y, sr=sr, hop_length=hop_length_struct)
+    contrast = librosa.util.normalize(contrast, axis=1)
+
+    # Combine features into single matrix
+    features = np.vstack([chroma_cqt, mfcc, contrast])
+
+    # Compute self-similarity matrix on combined features
+    R = librosa.segment.recurrence_matrix(
+        features,
+        mode='affinity',
+        metric='cosine',
+        width=9,  # Compare across ±9 frames (~4 seconds at hop=512)
+        sym=True
     )
 
-    boundary_times = librosa.frames_to_time(peaks, sr=sr, hop_length=512)
+    # Extract novelty (boundary strength) from recurrence
+    # Use checkerboard kernel to detect transitions
+    novelty = librosa.segment.recurrence_to_lag(R, pad=False, axis=1)
+
+    # Compute the degree (row sum) of recurrence matrix
+    # Low degree = different from surroundings = likely boundary
+    deg = np.sum(R, axis=0)
+    deg_smooth = signal.medfilt(deg, kernel_size=9)  # Median filter to remove noise
+
+    # Invert so peaks = boundaries
+    novelty_combined = 1.0 - (deg_smooth / np.max(deg_smooth))
+
+    # Smooth the novelty curve with Gaussian filter
+    from scipy.ndimage import gaussian_filter1d
+    novelty_smooth = gaussian_filter1d(novelty_combined, sigma=20)
+
+    # Adaptive threshold: find prominent peaks only
+    threshold = np.mean(novelty_smooth) + 0.5 * np.std(novelty_smooth)
+
+    # Find peaks above threshold with minimum spacing
+    peaks = librosa.util.peak_pick(
+        novelty_smooth,
+        pre_max=30,   # ~3 seconds
+        post_max=30,
+        pre_avg=30,
+        post_avg=30,
+        delta=threshold * 0.3,
+        wait=60       # Minimum ~6 seconds between boundaries
+    )
+
+    # Convert to time
+    boundary_times = librosa.frames_to_time(peaks, sr=sr, hop_length=hop_length_struct)
     boundaries = [0.0] + boundary_times.tolist() + [duration]
+
+    # Post-process: merge segments that are too short (< 10 seconds)
+    min_segment_duration = 10.0
+    filtered_boundaries = [boundaries[0]]
+
+    for i in range(1, len(boundaries) - 1):
+        if boundaries[i] - filtered_boundaries[-1] >= min_segment_duration:
+            filtered_boundaries.append(boundaries[i])
+
+    # Always include the final boundary
+    filtered_boundaries.append(boundaries[-1])
+    boundaries = filtered_boundaries
+
+    # Safety check: if we have too few sections, try lower threshold
+    if len(boundaries) <= 3:  # Only intro/outro or single section
+        print("  ⚠️  Initial segmentation found too few sections, adjusting...")
+        threshold = np.mean(novelty_smooth) + 0.2 * np.std(novelty_smooth)
+        peaks = librosa.util.peak_pick(
+            novelty_smooth,
+            pre_max=20,
+            post_max=20,
+            pre_avg=20,
+            post_avg=20,
+            delta=threshold * 0.2,
+            wait=40
+        )
+        boundary_times = librosa.frames_to_time(peaks, sr=sr, hop_length=hop_length_struct)
+        boundaries = [0.0] + boundary_times.tolist() + [duration]
+
+        # Re-filter for minimum duration
+        filtered_boundaries = [boundaries[0]]
+        for i in range(1, len(boundaries) - 1):
+            if boundaries[i] - filtered_boundaries[-1] >= min_segment_duration:
+                filtered_boundaries.append(boundaries[i])
+        filtered_boundaries.append(boundaries[-1])
+        boundaries = filtered_boundaries
 
     # Label sections (simplified heuristic)
     sections = []
