@@ -11,6 +11,8 @@ services:
     volumes:
       # Mount notebooks directory for live editing
       - ./notebooks:/workspace/notebooks
+      # Mount POC script directory
+      - ./poc:/workspace/poc
       # Mount POC directories
       - ./poc_audio:/workspace/poc_audio
       - ./poc_output:/workspace/poc_output

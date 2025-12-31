@@ -9,7 +9,8 @@ Seamless Chinese worship music playback system for Stream of Praise (SOP) and si
 
 ### What's Working (POC)
 
-- ✅ Jupyter notebook environment with Docker
+- ✅ Standalone POC analysis script (command-line)
+- ✅ Jupyter notebook environment with Docker (interactive)
 - ✅ Audio analysis (tempo, key, structure, energy)
 - ✅ Compatibility scoring between song pairs
 - ✅ Simple crossfade transition prototype
@@ -41,24 +42,46 @@ cd stream_of_worship
 # 2. Place your test songs in poc_audio/
 cp /path/to/your/songs/*.mp3 poc_audio/
 
-# 3. Build and start Docker container
-docker-compose up --build
-
-# 4. Open Jupyter Lab
-# Look for the URL in console output (usually http://127.0.0.1:8888)
-# Or open: http://localhost:8888
-
-# 5. In Jupyter Lab:
-#    - Navigate to notebooks/01_POC_Analysis.ipynb
-#    - Run all cells: Menu → Run → Run All Cells
-#    - Wait 2-5 minutes for analysis to complete
-
-# 6. Review outputs in poc_output/ directory
+# 3. Build Docker container
+docker-compose build
 ```
+
+### Running the Analysis
+
+**Option 1: Command-Line Script (Recommended)**
+
+Best for: Quick analysis, automation, debugging, CI/CD
+
+```bash
+# Run the standalone POC analysis script
+docker-compose run --rm jupyter python poc/poc_analysis.py
+
+# Or, if container is already running:
+docker-compose exec jupyter python poc/poc_analysis.py
+```
+
+**Option 2: Interactive Jupyter Notebook**
+
+Best for: Exploration, visualization, experimentation, learning
+
+```bash
+# 1. Start Jupyter Lab
+docker-compose up
+
+# 2. Open browser to: http://localhost:8888
+
+# 3. Navigate to notebooks/01_POC_Analysis.ipynb
+
+# 4. Run all cells: Menu → Run → Run All Cells
+
+# 5. Wait 2-5 minutes for analysis to complete
+```
+
+**Review outputs in `poc_output/` directory**
 
 ### Expected Outputs
 
-After running the notebook, you should see:
+After running the analysis (either method), you should see:
 
 ```
 poc_output/
@@ -153,7 +176,7 @@ ls poc_audio/
 **Problem:** Tempo detection seems wrong
 
 ```python
-# In Cell 2, adjust start_bpm parameter:
+# In poc/poc_analysis.py or Notebook Cell 2, adjust start_bpm parameter:
 tempo_librosa, beats_frames = librosa.beat.beat_track(
     y=y, sr=sr,
     start_bpm=90,  # Change this (try 70 for slow, 120 for fast)
@@ -164,12 +187,12 @@ tempo_librosa, beats_frames = librosa.beat.beat_track(
 **Problem:** Too many/few section boundaries
 
 ```python
-# In Cell 2, adjust peak picking parameters:
+# In poc/poc_analysis.py or Notebook Cell 2, adjust peak picking parameters:
 peaks = librosa.util.peak_pick(
-    novelty,
-    pre_max=10,    # Increase for fewer boundaries
-    post_max=10,   # Increase for fewer boundaries
-    delta=0.2,     # Increase for fewer boundaries
+    onset_env,
+    pre_max=5,     # Increase for fewer boundaries
+    post_max=5,    # Increase for fewer boundaries
+    delta=0.5,     # Increase for fewer boundaries
     wait=15
 )
 ```
@@ -189,8 +212,14 @@ stream_of_worship/
 ├── specs/                     # Design documents
 │   └── worship-music-transition-system-design.md
 │
+├── poc/                       # POC scripts
+│   ├── __init__.py            # Package marker
+│   ├── poc_analysis.py        # Standalone analysis script
+│   ├── reproduce_error.py     # Debugging script
+│   └── README.md              # POC script documentation
+│
 ├── notebooks/                 # Jupyter notebooks
-│   └── 01_POC_Analysis.ipynb  # Main POC analysis
+│   └── 01_POC_Analysis.ipynb  # Interactive POC analysis
 │
 ├── poc_audio/                 # Test audio files (add 3-5 songs here)
 │   └── .gitkeep
@@ -242,6 +271,7 @@ If validation passes:
 
 ## Resources
 
+- **POC Script Guide:** [poc/README.md](poc/README.md)
 - **Design Document:** [specs/worship-music-transition-system-design.md](specs/worship-music-transition-system-design.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
 - **madmom Documentation:** https://madmom.readthedocs.io/
@@ -265,5 +295,5 @@ MIT License - See [LICENSE](LICENSE) file
 
 ---
 
-**Last Updated:** 2024-12-30
-**POC Status:** Ready for validation
+**Last Updated:** 2025-12-30
+**POC Status:** Ready for validation (Standalone script + Jupyter notebook)
