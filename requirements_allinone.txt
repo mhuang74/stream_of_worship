@@ -2,9 +2,10 @@
 allin1==1.1.0
 
 # PyTorch ecosystem (CPU version)
-torch==2.4.1
-torchaudio==2.4.1
-torchvision==0.19.1
+# Note: PyTorch packages are installed separately in Dockerfile with CPU-only versions
+# torch==2.4.1+cpu
+# torchaudio==2.4.1+cpu
+# torchvision==0.19.1+cpu
 
 # Audio processing libraries
 demucs==4.0.1
