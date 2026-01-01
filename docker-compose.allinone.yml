@@ -9,12 +9,15 @@ services:
     container_name: allinone_container
     volumes:
       # Mount current directory for scripts
-      - ./:/app
+      - ./:/workspace
       # Mount audio directories
-      - ./audio_input:/app/audio_input
-      - ./audio_output:/app/audio_output
+      - ./poc_audio:/workspace/audio_input
+      - ./poc_output:/workspace/audio_output
+      # Mount cache directory to persist model downloads
+      - ~/.cache:/root/.cache
     environment:
       - PYTHONUNBUFFERED=1
+    working_dir: /workspace
     # Override command to keep container running
     # Use: docker compose -f docker-compose.allinone.yml run --rm allinone python your_script.py
     command: tail -f /dev/null

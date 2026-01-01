@@ -31,13 +31,6 @@ fi
 echo "✓ Docker daemon is running"
 echo ""
 
-# Create directories
-echo "Creating project directories..."
-mkdir -p notebooks poc_audio poc_output data
-touch notebooks/.gitkeep poc_audio/.gitkeep poc_output/.gitkeep data/.gitkeep
-echo "✓ Directories created: notebooks/, poc_audio/, poc_output/, data/"
-echo ""
-
 # Check for audio files
 echo "Checking for audio files..."
 audio_count=$(find poc_audio -name "*.mp3" -o -name "*.flac" | wc -l | tr -d ' ')

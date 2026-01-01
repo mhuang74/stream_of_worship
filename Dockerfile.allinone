@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Set working directory
-WORKDIR /app
+WORKDIR /workspace
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -35,7 +35,7 @@ COPY natten_prebuilt/natten /usr/local/lib/python3.11/site-packages/natten
 COPY natten_prebuilt/natten.dist-info /usr/local/lib/python3.11/site-packages/natten-0.17.1+torch240cpu.dist-info
 
 # Create a directory for audio files
-RUN mkdir -p /app/audio_input /app/audio_output
+RUN mkdir -p /workspace/audio_input /workspace/audio_output
 
 # Set default command
 CMD ["python", "-c", "import allin1; print('allin1 version:', allin1.__version__ if hasattr(allin1, '__version__') else 'installed')"]

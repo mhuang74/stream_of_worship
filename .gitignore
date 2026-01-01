@@ -212,11 +212,16 @@ __marimo__/
 
 # POC outputs (generated files)
 poc_output/*
+poc_output_*/*
 !poc_output/.gitkeep
+demix/*
 
 # Audio files (too large for git, user-provided)
 poc_audio/*
 !poc_audio/.gitkeep
+
+# embeddings
+**/*.npy
 
 # Data directories (for future phases)
 data/audio/*
