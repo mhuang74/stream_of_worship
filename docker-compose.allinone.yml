@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  allinone:
+    build:
+      context: .
+      dockerfile: Dockerfile.allinone
+    image: allinone:latest
+    container_name: allinone_container
+    volumes:
+      # Mount current directory for scripts
+      - ./:/app
+      # Mount audio directories
+      - ./audio_input:/app/audio_input
+      - ./audio_output:/app/audio_output
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Override command to keep container running
+    # Use: docker compose -f docker-compose.allinone.yml run --rm allinone python your_script.py
+    command: tail -f /dev/null
+    stdin_open: true
+    tty: true
