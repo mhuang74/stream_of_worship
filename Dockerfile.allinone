@@ -1,6 +1,9 @@
 # Use Python 3.11 slim image as base
 FROM python:3.11-slim
 
+# Enable BuildKit platform variables
+ARG TARGETPLATFORM
+
 # Set working directory
 WORKDIR /workspace
 
@@ -27,20 +30,32 @@ COPY requirements_allinone.txt .
 # Install build dependencies first
 RUN uv pip install --no-cache Cython numpy
 
-# Install PyTorch CPU-only versions
-RUN uv pip install --no-cache \
-    --index-url https://download.pytorch.org/whl/cpu \
-    torch==2.4.1+cpu \
-    torchaudio==2.4.1+cpu \
-    torchvision==0.19.1+cpu
+# Install PyTorch - CPU-only for x86_64, standard for ARM64 (M-series Macs)
+RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
+        echo "Installing CPU-only PyTorch for x86_64..." && \
+        uv pip install --no-cache \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.4.1+cpu \
+            torchaudio==2.4.1+cpu \
+            torchvision==0.19.1+cpu; \
+    else \
+        echo "Installing standard PyTorch for ARM64..." && \
+        uv pip install --no-cache torch==2.4.1; \
+    fi
 
 # Install remaining Python dependencies using uv with --no-build-isolation for packages that need Cython
 RUN uv pip install --no-cache --no-build-isolation -r requirements_allinone.txt
 
 # Install natten from source (version 0.17.1 compatible with torch 2.4.1)
 # Use --no-build-isolation because natten needs torch as a build dependency
-# Set NATTEN_IS_FOR_PYPI=1 to force CPU-only build
-RUN NATTEN_IS_FOR_PYPI=1 uv pip install --no-cache --no-build-isolation natten==0.17.1
+# Set NATTEN_IS_FOR_PYPI=1 for x86_64 to force CPU-only build
+RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
+        echo "Installing NATTEN with CPU-only flag for x86_64..." && \
+        NATTEN_IS_FOR_PYPI=1 uv pip install --no-cache --no-build-isolation natten==0.17.1; \
+    else \
+        echo "Installing NATTEN for ARM64..." && \
+        uv pip install --no-cache --no-build-isolation natten==0.17.1; \
+    fi
 
 # Create a directory for audio files
 RUN mkdir -p /workspace/audio_input /workspace/audio_output
