@@ -16,6 +16,10 @@ Key Differences from Original:
 import warnings
 warnings.filterwarnings('ignore')
 
+# Silence NATTEN deprecation warnings
+import logging
+logging.getLogger('natten.functional').setLevel(logging.ERROR)
+
 # Set matplotlib backend before importing pyplot
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for Docker

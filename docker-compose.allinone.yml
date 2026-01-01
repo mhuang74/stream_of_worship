@@ -18,6 +18,7 @@ services:
       - ~/.cache:/root/.cache
     environment:
       - PYTHONUNBUFFERED=1
+      - NATTEN_LOG_LEVEL=error
     working_dir: /workspace
     # Override command to keep container running
     # Use: docker compose -f docker-compose.allinone.yml run --rm allinone python your_script.py
