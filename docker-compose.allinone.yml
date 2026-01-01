@@ -13,7 +13,7 @@ services:
       - ./:/workspace
       # Mount audio directories
       - ./poc_audio:/workspace/audio_input
-      - ./poc_output:/workspace/audio_output
+      - ./poc_output_allinone:/workspace/audio_output
       # Mount cache directory to persist model downloads
       - ~/.cache:/root/.cache
     environment:
