@@ -1,0 +1,41 @@
+# Use Python 3.11 slim image as base
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    gcc \
+    g++ \
+    git \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Set environment variables for uv
+ENV UV_SYSTEM_PYTHON=1
+ENV UV_COMPILE_BYTECODE=1
+
+# Copy requirements file
+COPY requirements_allinone.txt .
+
+# Install build dependencies first
+RUN uv pip install --no-cache Cython numpy torch==2.4.1
+
+# Install remaining Python dependencies using uv with --no-build-isolation for packages that need Cython
+RUN uv pip install --no-cache --no-build-isolation -r requirements_allinone.txt
+
+# Copy pre-built natten package from conda environment
+COPY natten_prebuilt/natten /usr/local/lib/python3.11/site-packages/natten
+COPY natten_prebuilt/natten.dist-info /usr/local/lib/python3.11/site-packages/natten-0.17.1+torch240cpu.dist-info
+
+# Create a directory for audio files
+RUN mkdir -p /app/audio_input /app/audio_output
+
+# Set default command
+CMD ["python", "-c", "import allin1; print('allin1 version:', allin1.__version__ if hasattr(allin1, '__version__') else 'installed')"]
