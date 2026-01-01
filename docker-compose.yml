@@ -16,6 +16,7 @@ services:
       # Mount POC directories
       - ./poc_audio:/workspace/poc_audio
       - ./poc_output:/workspace/poc_output
+      - ./poc_output_allinone:/workspace/poc_output_allinone
       # Mount data directory for future use
       - ./data:/workspace/data
     environment:
