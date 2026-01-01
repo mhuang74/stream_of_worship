@@ -30,9 +30,9 @@ RUN uv pip install --no-cache Cython numpy torch==2.4.1
 # Install remaining Python dependencies using uv with --no-build-isolation for packages that need Cython
 RUN uv pip install --no-cache --no-build-isolation -r requirements_allinone.txt
 
-# Copy pre-built natten package from conda environment
-COPY natten_prebuilt/natten /usr/local/lib/python3.11/site-packages/natten
-COPY natten_prebuilt/natten.dist-info /usr/local/lib/python3.11/site-packages/natten-0.17.1+torch240cpu.dist-info
+# Install natten from source (version 0.17.1 compatible with torch 2.4.1)
+# Use --no-build-isolation because natten needs torch as a build dependency
+RUN uv pip install --no-cache --no-build-isolation natten==0.17.1
 
 # Create a directory for audio files
 RUN mkdir -p /workspace/audio_input /workspace/audio_output
