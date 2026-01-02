@@ -22,24 +22,24 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Set environment variables for uv
+ENV UV_SYSTEM_PYTHON=1
+ENV UV_COMPILE_BYTECODE=1
 
-# Configure Poetry to not create virtual env (we're in Docker)
-RUN poetry config virtualenvs.create false
+# Copy requirements file
+COPY requirements.txt ./
 
-# Pre-install build dependencies for packages that need them
-RUN pip install --no-cache-dir numpy cython
+# Install build dependencies first
+RUN uv pip install --no-cache Cython numpy
 
-# Install Python dependencies
-RUN poetry install --no-interaction --no-ansi --no-root
+# Install Python dependencies using uv (with build isolation for proper dependency resolution)
+RUN uv pip install --no-cache -r requirements.txt
 
-# Install madmom separately (has build issues with Poetry's build isolation)
-RUN pip install --no-cache-dir madmom==0.16.1
+# Install madmom separately (has build issues with build isolation)
+RUN uv pip install --no-cache --no-build-isolation madmom==0.16.1
 
 # Copy project files
 COPY . .
