@@ -54,15 +54,224 @@ sns.set_style("whitegrid")
 from pathlib import Path
 import json
 from datetime import datetime
+import hashlib
+from typing import Optional
+import base64
+import time
 
 # Configuration
 AUDIO_DIR = Path("poc_audio")
 OUTPUT_DIR = Path("poc_output_allinone")  # DIFFERENT OUTPUT DIR
+CACHE_DIR = OUTPUT_DIR / "cache"  # Cache subdirectory
 
 
-def analyze_song_allinone(filepath):
+def compute_file_hash(filepath: Path) -> str:
     """
-    Run all-in-one analysis on a single song.
+    Compute SHA256 hash of audio file contents.
+
+    This hash serves as a content-addressable identifier that remains
+    stable even if the file is renamed or moved.
+
+    Args:
+        filepath: Path to audio file
+
+    Returns:
+        64-character lowercase hex string (SHA256 hash)
+
+    Performance: ~10ms for 5MB files with 64KB chunk reading
+    """
+    sha256_hash = hashlib.sha256()
+
+    # Read file in chunks to handle large files efficiently
+    with open(filepath, "rb") as f:
+        for byte_block in iter(lambda: f.read(65536), b""):
+            sha256_hash.update(byte_block)
+
+    return sha256_hash.hexdigest()
+
+
+def load_from_cache(content_hash: str, cache_dir: Path) -> Optional[dict]:
+    """
+    Load cached analysis results for a given content hash.
+
+    Args:
+        content_hash: SHA256 hash of audio file contents
+        cache_dir: Path to cache directory (e.g., poc_output_allinone/cache)
+
+    Returns:
+        Dictionary with full analysis results if cache hit, None if cache miss
+
+    Cache miss reasons:
+    - Hash not found in cache
+    - Cache file corrupted/unreadable
+    - Cache version mismatch (future-proofing)
+    """
+    # Truncate hash to 32 chars for filename (still 128 bits of entropy)
+    cache_filename = f"{content_hash[:32]}.json"
+    cache_filepath = cache_dir / cache_filename
+
+    if not cache_filepath.exists():
+        return None
+
+    try:
+        with open(cache_filepath, 'r') as f:
+            cache_data = json.load(f)
+
+        # Validate cache format version
+        if cache_data.get('cache_version') != '1.0':
+            print(f"  ⚠️  Cache version mismatch for {cache_data.get('original_filename')}")
+            return None
+
+        # Validate hash matches
+        if cache_data.get('content_hash') != content_hash:
+            print(f"  ⚠️  Hash mismatch in cache file (corrupted?)")
+            return None
+
+        # Deserialize embeddings from base64
+        result_data = cache_data['result_data'].copy()
+        if 'embeddings_serialized' in result_data:
+            embeddings_bytes = base64.b64decode(result_data['embeddings_serialized'])
+            embeddings = np.frombuffer(embeddings_bytes, dtype=np.float32)
+            embeddings = embeddings.reshape(result_data['embeddings_shape'])
+            result_data['_embeddings'] = embeddings
+            del result_data['embeddings_serialized']  # Clean up
+
+        print(f"  ✓ Cache HIT: {cache_data['original_filename']} "
+              f"(cached {cache_data['cached_at'][:10]})")
+
+        return result_data
+
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"  ⚠️  Cache file corrupted: {e}")
+        return None
+
+
+def save_to_cache(
+    content_hash: str,
+    result_data: dict,
+    cache_dir: Path,
+    analysis_duration: float
+) -> None:
+    """
+    Save analysis results to cache immediately after allin1 completes.
+
+    Args:
+        content_hash: SHA256 hash of audio file contents
+        result_data: Full result dictionary from analyze_song_allinone()
+        cache_dir: Path to cache directory
+        analysis_duration: Time taken for analysis (seconds)
+
+    Side effects:
+        - Creates cache_dir if it doesn't exist
+        - Writes individual cache file
+        - Updates cache metadata index
+    """
+    try:
+        # Ensure cache directory exists
+        cache_dir.mkdir(exist_ok=True)
+
+        # Prepare cache data (don't modify original result_data)
+        cache_entry = {
+            'cache_version': '1.0',
+            'content_hash': content_hash,
+            'original_filename': result_data['filename'],
+            'cached_at': datetime.now().isoformat(),
+            'allinone_version': allin1.__version__ if hasattr(allin1, '__version__') else '1.1.0',
+            'analysis_duration_seconds': round(analysis_duration, 2),
+            'result_data': {}
+        }
+
+        # Serialize result data
+        for key, value in result_data.items():
+            if key.startswith('_'):
+                # Handle special underscore-prefixed data
+                if key == '_embeddings':
+                    # Serialize numpy array to base64
+                    embeddings_bytes = value.astype(np.float32).tobytes()
+                    cache_entry['result_data']['embeddings_serialized'] = \
+                        base64.b64encode(embeddings_bytes).decode('ascii')
+                # Skip other underscore fields (y, sr, chroma, rms, beats, downbeats)
+                # They can be recomputed from audio if needed
+            else:
+                # Regular data - JSON serializable
+                cache_entry['result_data'][key] = value
+
+        # Write cache file (truncated hash for filename)
+        cache_filename = f"{content_hash[:32]}.json"
+        cache_filepath = cache_dir / cache_filename
+
+        with open(cache_filepath, 'w') as f:
+            json.dump(cache_entry, f, indent=2)
+
+        # Update metadata index
+        update_cache_metadata(content_hash, cache_entry, cache_dir)
+
+        print(f"  ✓ Cached results: {cache_filename} "
+              f"({analysis_duration:.1f}s analysis time)")
+
+    except (IOError, OSError) as e:
+        print(f"  ⚠️  Failed to write cache: {e}")
+        # Continue execution - analysis still succeeds
+
+
+def update_cache_metadata(content_hash: str, cache_entry: dict, cache_dir: Path) -> None:
+    """
+    Update the central cache metadata index.
+
+    Args:
+        content_hash: SHA256 hash of audio file
+        cache_entry: Full cache entry data
+        cache_dir: Path to cache directory
+    """
+    try:
+        metadata_file = cache_dir / 'metadata.json'
+
+        # Load existing metadata or create new
+        if metadata_file.exists():
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+        else:
+            metadata = {
+                'cache_format_version': '1.0',
+                'last_updated': datetime.now().isoformat(),
+                'total_entries': 0,
+                'entries': {}
+            }
+
+        # Get file size from cache file
+        cache_filename = f"{content_hash[:32]}.json"
+        cache_filepath = cache_dir / cache_filename
+        file_size = cache_filepath.stat().st_size if cache_filepath.exists() else 0
+
+        # Update entry
+        metadata['entries'][content_hash] = {
+            'original_filename': cache_entry['original_filename'],
+            'cached_at': cache_entry['cached_at'],
+            'file_size_bytes': file_size,
+            'cache_file': cache_filename
+        }
+
+        # Update metadata
+        metadata['last_updated'] = datetime.now().isoformat()
+        metadata['total_entries'] = len(metadata['entries'])
+
+        # Save metadata
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+
+    except (IOError, OSError, KeyError) as e:
+        print(f"  ⚠️  Failed to update cache metadata: {e}")
+        # Continue execution - cache file is still valid
+
+
+def analyze_song_allinone(filepath, cache_dir=None, use_cache=True):
+    """
+    Run all-in-one analysis on a single song (with caching).
+
+    Args:
+        filepath: Path to audio file
+        cache_dir: Path to cache directory (default: None = no caching)
+        use_cache: Whether to use cache (default: True)
 
     Returns dictionary with:
     - Basic metadata (filename, duration)
@@ -74,6 +283,43 @@ def analyze_song_allinone(filepath):
     print(f"\n{'='*70}")
     print(f"Analyzing with All-In-One: {filepath.name}")
     print(f"{'='*70}")
+
+    # === CACHE CHECK ===
+    content_hash = None
+    analysis_start_time = None
+
+    if use_cache and cache_dir is not None:
+        print(f"Computing file hash...")
+        content_hash = compute_file_hash(filepath)
+        print(f"  Hash: {content_hash[:16]}...")
+
+        cached_result = load_from_cache(content_hash, cache_dir)
+        if cached_result is not None:
+            # Cache HIT - need to recompute raw data for visualizations
+            print(f"  Loading audio for visualization data...")
+            y, sr = librosa.load(filepath, sr=22050, mono=True)
+
+            # Add raw visualization data back
+            cached_result['_y'] = y
+            cached_result['_sr'] = sr
+
+            # Recompute chroma for visualization
+            chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=512)
+            cached_result['_chroma'] = chroma
+
+            # Recompute RMS for visualization
+            rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+            cached_result['_rms'] = rms
+
+            # Convert beats/downbeats back to numpy arrays
+            cached_result['_beats'] = np.array(cached_result['beats'])
+            cached_result['_downbeats'] = np.array(cached_result['downbeats'])
+
+            print(f"✓ Analysis loaded from cache")
+            return cached_result
+
+        print(f"  Cache MISS - running full analysis...")
+        analysis_start_time = time.time()
 
     # === LOAD AUDIO FOR KEY/ENERGY ANALYSIS ===
     # We still need librosa for key detection and energy metrics
@@ -166,7 +412,7 @@ def analyze_song_allinone(filepath):
         print(f"  {sec['start']:.1f}s - {sec['end']:.1f}s: {sec['label']} ({sec['duration']:.1f}s)")
 
     # === RETURN RESULTS ===
-    return {
+    result = {
         # Metadata
         'filename': filepath.name,
         'filepath': str(filepath),
@@ -212,6 +458,13 @@ def analyze_song_allinone(filepath):
         '_beats': beats,
         '_downbeats': downbeats
     }
+
+    # === CACHE SAVE ===
+    if use_cache and cache_dir is not None and content_hash is not None:
+        analysis_duration = time.time() - analysis_start_time
+        save_to_cache(content_hash, result, cache_dir, analysis_duration)
+
+    return result
 
 
 def calculate_compatibility(song_a, song_b):
@@ -366,7 +619,7 @@ def main():
 
     for audio_file in audio_files:
         try:
-            result = analyze_song_allinone(audio_file)
+            result = analyze_song_allinone(audio_file, cache_dir=CACHE_DIR, use_cache=True)
             results.append(result)
         except Exception as e:
             print(f"\n❌ ERROR processing {audio_file.name}: {str(e)}")
