@@ -163,8 +163,12 @@ def analyze_song(filepath):
     from scipy.ndimage import gaussian_filter1d
     novelty_smooth = gaussian_filter1d(novelty_combined, sigma=20)
 
+    # Ensure float64 dtype and handle NaN/inf values
+    novelty_smooth = np.asarray(novelty_smooth, dtype=np.float64)
+    novelty_smooth = np.nan_to_num(novelty_smooth, nan=0.0, posinf=0.0, neginf=0.0)
+
     # Adaptive threshold: find prominent peaks only
-    threshold = np.mean(novelty_smooth) + 0.5 * np.std(novelty_smooth)
+    threshold = float(np.mean(novelty_smooth) + 0.5 * np.std(novelty_smooth))
 
     # Find peaks above threshold with minimum spacing
     peaks = librosa.util.peak_pick(
@@ -173,7 +177,7 @@ def analyze_song(filepath):
         post_max=30,
         pre_avg=30,
         post_avg=30,
-        delta=threshold * 0.3,
+        delta=float(threshold * 0.3),
         wait=60       # Minimum ~6 seconds between boundaries
     )
 
@@ -196,14 +200,14 @@ def analyze_song(filepath):
     # Safety check: if we have too few sections, try lower threshold
     if len(boundaries) <= 3:  # Only intro/outro or single section
         print("  ⚠️  Initial segmentation found too few sections, adjusting...")
-        threshold = np.mean(novelty_smooth) + 0.2 * np.std(novelty_smooth)
+        threshold = float(np.mean(novelty_smooth) + 0.2 * np.std(novelty_smooth))
         peaks = librosa.util.peak_pick(
             novelty_smooth,
             pre_max=20,
             post_max=20,
             pre_avg=20,
             post_avg=20,
-            delta=threshold * 0.2,
+            delta=float(threshold * 0.2),
             wait=40
         )
         boundary_times = librosa.frames_to_time(peaks, sr=sr, hop_length=hop_length_struct)
