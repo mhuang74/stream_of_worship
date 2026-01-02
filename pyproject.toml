@@ -1,36 +1,13 @@
-[tool.poetry]
+[project]
 name = "worship-music-system"
 version = "0.1.0"
 description = "POC for seamless Chinese worship music transition system"
-authors = ["Your Name <your.email@example.com>"]
+authors = [{name = "Your Name", email = "your.email@example.com"}]
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
+requires-python = ">=3.11"
 
-[tool.poetry.dependencies]
-python = "^3.11"
-
-# Core audio analysis
-numpy = "^1.26.2"
-scipy = "^1.11.4"
-cython = "^3.0.0"
-librosa = "^0.10.1"
-soundfile = "^0.12.1"
-
-# Data manipulation and visualization
-pandas = "^2.1.4"
-matplotlib = "^3.8.2"
-seaborn = "^0.13.0"
-
-# Jupyter environment
-jupyterlab = "^4.0.9"
-ipykernel = "^6.27.1"
-ipywidgets = "^8.1.1"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
-black = "^23.12.1"
-ruff = "^0.1.8"
-ipython = "^8.18.1"
+# Dependencies are now managed in requirements.txt
 
 [tool.black]
 line-length = 100
@@ -41,5 +18,5 @@ line-length = 100
 target-version = "py311"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

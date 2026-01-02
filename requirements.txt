@@ -1,0 +1,27 @@
+# Core audio analysis
+numpy>=1.26.2
+scipy>=1.11.4
+Cython>=3.0.0
+# librosa with compatible dependencies for Python 3.11
+numba>=0.58.0  # Ensure Python 3.11 compatible numba
+librosa>=0.10.1
+soundfile>=0.12.1
+
+# Music analysis (installed separately with --no-build-isolation)
+# madmom==0.16.1
+
+# Data manipulation and visualization
+pandas>=2.1.4
+matplotlib>=3.8.2
+seaborn>=0.13.0
+
+# Jupyter environment
+jupyterlab>=4.0.9
+ipykernel>=6.27.1
+ipywidgets>=8.1.1
+
+# Development tools (optional, included for convenience)
+pytest>=7.4.3
+black>=23.12.1
+ruff>=0.1.8
+ipython>=8.18.1
