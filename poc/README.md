@@ -13,10 +13,10 @@ python poc/poc_analysis.py
 ### Running from Host Machine
 ```bash
 # Option 1: Execute in running container
-docker-compose exec jupyter python poc/poc_analysis.py
+docker-compose exec librosa python poc/poc_analysis.py
 
 # Option 2: Run one-off command
-docker-compose run --rm jupyter python poc/poc_analysis.py
+docker-compose run --rm librosa python poc/poc_analysis.py
 ```
 
 ## Prerequisites

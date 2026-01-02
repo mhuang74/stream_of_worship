@@ -69,7 +69,7 @@ fi
 echo ""
 echo "   OPTION A: Command-Line Script (Recommended)"
 echo "   ----------------------------------------"
-echo "   docker-compose run --rm jupyter python poc/poc_analysis.py"
+echo "   docker-compose run --rm librosa python poc/poc_analysis.py"
 echo ""
 echo "   OPTION B: Interactive Jupyter Notebook"
 echo "   ----------------------------------------"
