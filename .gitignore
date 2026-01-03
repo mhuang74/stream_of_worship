@@ -227,6 +227,7 @@ poc_audio/*
 data/audio/*
 data/cache/*
 data/exports/*
+data/lyrics/*
 !data/.gitkeep
 
 # Poetry lock file (uncomment if using Poetry)

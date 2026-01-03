@@ -25,3 +25,9 @@ pytest>=7.4.3
 black>=23.12.1
 ruff>=0.1.8
 ipython>=8.18.1
+
+# Web scraping (for lyrics retrieval)
+requests>=2.32.0
+beautifulsoup4>=4.14.0
+lxml>=6.0.0
+pypinyin>=0.52.0  # Chinese to Pinyin conversion for filenames
