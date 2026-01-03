@@ -447,6 +447,8 @@ def analyze_song_allinone(filepath, cache_dir=None, use_cache=True):
         'embeddings_shape': list(embeddings.shape),
         'embeddings_mean': float(np.mean(embeddings)),
         'embeddings_std': float(np.std(embeddings)),
+        'embeddings_hop_length': 512,  # Required for section timestep alignment
+        'embeddings_sr': 22050,         # Sample rate for embeddings
         # Store full embeddings as numpy array for future use
         '_embeddings': embeddings,  # Shape: (4 stems, timesteps, 24 dims)
 
