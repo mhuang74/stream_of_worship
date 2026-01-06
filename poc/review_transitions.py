@@ -513,6 +513,7 @@ def main():
     current_index = progress['current_index']
     reviewed_in_session = 0
     session_start = datetime.now()
+    quit_requested = False  # Flag to track intentional quit
 
     # Summary
     reviewed_count = sum(1 for t in transitions if t['review']['status'] != 'pending')
@@ -535,7 +536,8 @@ def main():
                     command = input("> ").strip().lower()
 
                     if command == 'q':
-                        # Quit
+                        # Quit - set flag and raise to exit both loops
+                        quit_requested = True
                         raise KeyboardInterrupt
 
                     elif command == 'h':
@@ -614,7 +616,10 @@ def main():
                         print(f"  Unknown command: {command}. Type 'h' for help")
 
                 except KeyboardInterrupt:
-                    # Handle Ctrl+C during playback
+                    # Re-raise if this was an intentional quit
+                    if quit_requested:
+                        raise
+                    # Otherwise, handle Ctrl+C during playback
                     stop_playback()
                     print()  # New line after ^C
                     continue
