@@ -242,7 +242,7 @@ def get_variant_path(transition, variant_type):
 
     Args:
         transition: Transition metadata dict
-        variant_type: 'short', 'medium', or 'long'
+        variant_type: 'medium-crossfade' or 'medium-silence'
 
     Returns:
         Path object or None if not found
@@ -563,10 +563,16 @@ def main():
                             else:
                                 print(f"  Invalid variant number. Choose 1-{len(transition['variants'])}")
                                 continue
-                        elif variant_spec in ['short', 'medium', 'long']:
-                            variant_type = variant_spec
+                        elif variant_spec in ['medium-crossfade', 'medium-silence', 'crossfade', 'silence']:
+                            # Support both full names and short names
+                            if variant_spec == 'crossfade':
+                                variant_type = 'medium-crossfade'
+                            elif variant_spec == 'silence':
+                                variant_type = 'medium-silence'
+                            else:
+                                variant_type = variant_spec
                         else:
-                            print(f"  Invalid variant. Use 1-3, 'short', 'medium', or 'long'")
+                            print(f"  Invalid variant. Use 1-2, 'crossfade', 'silence', 'medium-crossfade', or 'medium-silence'")
                             continue
 
                         # Get file path and play
