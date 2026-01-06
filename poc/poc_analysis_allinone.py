@@ -299,7 +299,7 @@ def analyze_song_allinone(filepath, cache_dir=None, use_cache=True):
         if cached_result is not None:
             # Cache HIT - need to recompute raw data for visualizations
             print(f"  Loading audio for visualization data...")
-            y, sr = librosa.load(filepath, sr=22050, mono=True)
+            y, sr = librosa.load(str(filepath), sr=22050, mono=True)
 
             # Add raw visualization data back
             cached_result['_y'] = y
@@ -325,7 +325,7 @@ def analyze_song_allinone(filepath, cache_dir=None, use_cache=True):
 
     # === LOAD AUDIO FOR KEY/ENERGY ANALYSIS ===
     # We still need librosa for key detection and energy metrics
-    y, sr = librosa.load(filepath, sr=22050, mono=True)
+    y, sr = librosa.load(str(filepath), sr=22050, mono=True)
     duration = librosa.get_duration(y=y, sr=sr)
     print(f"✓ Loaded: {duration:.1f}s @ {sr} Hz")
 
@@ -560,8 +560,8 @@ def create_simple_crossfade(song_a_path, song_b_path, crossfade_duration=8.0):
     print(f"\nCreating {crossfade_duration}s crossfade...")
 
     # Load stereo audio for higher quality transition
-    y_a, sr = librosa.load(song_a_path, sr=44100, mono=False)
-    y_b, sr_b = librosa.load(song_b_path, sr=44100, mono=False)
+    y_a, sr = librosa.load(str(song_a_path), sr=44100, mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=44100, mono=False)
 
     # Ensure stereo (2 channels)
     if y_a.ndim == 1:
