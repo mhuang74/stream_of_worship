@@ -2,14 +2,13 @@
 """
 Section-Level Transition Generator: Worship Music Transition System
 
-Version: 2.0.0
-Date: 2026-01-05
+Version: 2.1.0
+Date: 2026-01-06
 Purpose: Generate multi-variant section transitions with comprehensive metadata
 
-This script generates three types of transitions for each viable section pair:
-- Short: Crossfade only (6-12s)
-- Medium: Full sections with crossfade
-- Long: Extended context (2 sections each)
+This script generates two types of transitions for each viable section pair:
+- Medium-Crossfade: Full sections with equal-power crossfade (8s)
+- Medium-Silence: Full sections with tempo-based silence gap (configurable beats)
 
 Outputs comprehensive metadata in v2.0 schema with review support.
 """
@@ -48,16 +47,14 @@ CONFIG = {
     'min_score': 60,           # Minimum section compatibility score
     'max_pairs': None,         # Limit number of pairs (None = all viable pairs)
 
-    # Crossfade options
-    'durations': [6, 8, 10, 12],  # All possible durations
-    'adaptive_duration': True,     # Use smart duration selection based on scores
+    # Audio processing options
     'sample_rate': 44100,          # Audio sample rate
     'output_format': 'flac',       # Output format: 'flac' or 'wav'
 
     # Variant options (v2.0)
-    'short_crossfade_adaptive': True,  # Use adaptive duration for short
-    'medium_crossfade_duration': 8.0,   # Fixed duration for medium
-    'long_crossfade_duration': 10.0,    # Fixed duration for long
+    'medium_crossfade_duration': 8.0,   # Fixed duration for crossfade variant
+    'silence_beats': 4,                  # Number of beats for silence variant
+    'silence_fade_duration': 1.0,        # Fade out/in duration for silence variant
 
     # Optional features
     'generate_waveforms': False,   # Create visualization plots
@@ -87,93 +84,8 @@ def generate_transition_filename(song_a, song_b, label_a, label_b, duration):
     return f"transition_section_{base_a}_{label_a}_{base_b}_{label_b}_{duration}s.{CONFIG['output_format']}"
 
 
-def determine_crossfade_durations(pair_info, adaptive=None):
-    """
-    Select appropriate crossfade durations based on compatibility scores.
-
-    Strategy:
-    - High tempo match (95+): Shorter fades work (6-8s)
-    - Good tempo match (80-95): Medium fades (8-10s)
-    - Poor tempo match (<80): Longer fades needed (10-12s)
-
-    Args:
-        pair_info: Dict with compatibility scores
-        adaptive: Use adaptive selection (if None, uses CONFIG setting)
-
-    Returns:
-        List of durations to generate (e.g., [6, 8])
-    """
-    if adaptive is None:
-        adaptive = CONFIG['adaptive_duration']
-
-    if not adaptive:
-        # Generate all durations
-        return CONFIG['durations']
-
-    # Adaptive selection based on tempo score
-    tempo_score = pair_info['tempo_score']
-
-    if tempo_score >= 95:
-        return [6, 8]  # Near-perfect tempo match
-    elif tempo_score >= 80:
-        return [8, 10]  # Good tempo match
-    else:
-        return [10, 12]  # Need longer blend time
 
 
-# =============================================================================
-# SECTION SELECTION FOR VARIANTS
-# =============================================================================
-
-def select_sections_for_long_transition(sections, target_section_index):
-    """
-    Select sections for long-form transition (v2.0).
-
-    Algorithm:
-    - Filter out intro/outro sections
-    - For Song A: Get target section and the one before it
-    - For Song B: Get target section and the one after it
-
-    Args:
-        sections: List of all sections from allin1 analysis (ordered chronologically)
-        target_section_index: Index of the primary section used in compatibility analysis
-
-    Returns:
-        Tuple of (pre_section, main_section, post_section)
-        Any element can be None if not available
-    """
-    # Filter out intro/outro
-    content_sections = [s for s in sections if s['label'] not in ['intro', 'outro']]
-
-    if not content_sections:
-        return None, None, None
-
-    # Find target section in content_sections
-    try:
-        target_idx_in_content = next(
-            i for i, s in enumerate(content_sections)
-            if sections.index(s) == target_section_index
-        )
-    except StopIteration:
-        # Target section is intro/outro, fallback to first content section
-        return None, content_sections[0] if content_sections else None, \
-               content_sections[1] if len(content_sections) > 1 else None
-
-    # For Song A: Get pre-context section
-    if target_idx_in_content > 0:
-        pre_section = content_sections[target_idx_in_content - 1]
-    else:
-        pre_section = None
-
-    main_section = content_sections[target_idx_in_content]
-
-    # For Song B: Get post-context section
-    if target_idx_in_content < len(content_sections) - 1:
-        post_section = content_sections[target_idx_in_content + 1]
-    else:
-        post_section = None
-
-    return pre_section, main_section, post_section
 
 
 # =============================================================================
@@ -224,78 +136,6 @@ def select_transition_candidates(compatibility_df, min_score=None, max_pairs=Non
 # SECTION TRANSITION GENERATION
 # =============================================================================
 
-def generate_section_transition(song_a_path, song_b_path, section_a, section_b,
-                                 crossfade_duration=8.0):
-    """
-    Create crossfade transition between two song sections.
-
-    Algorithm:
-    1. Load stereo audio at 44100 Hz
-    2. Extract section audio segments using start/end times
-    3. Take last N seconds of section A and first N seconds of section B
-    4. Apply equal-power fade curves (sqrt for energy preservation)
-    5. Mix faded segments
-
-    Args:
-        song_a_path, song_b_path: Paths to audio files
-        section_a, section_b: Section info dicts with 'start', 'end' keys
-        crossfade_duration: Crossfade duration in seconds
-
-    Returns:
-        (transition_audio, sample_rate)
-    """
-    # Load stereo audio for higher quality transition
-    y_a, sr = librosa.load(str(song_a_path), sr=CONFIG['sample_rate'], mono=False)
-    y_b, sr_b = librosa.load(str(song_b_path), sr=CONFIG['sample_rate'], mono=False)
-
-    # Ensure stereo (2 channels)
-    if y_a.ndim == 1:
-        y_a = np.stack([y_a, y_a])
-    if y_b.ndim == 1:
-        y_b = np.stack([y_b, y_b])
-
-    # Extract sections
-    section_a_start = int(section_a['start'] * sr)
-    section_a_end = int(section_a['end'] * sr)
-    section_b_start = int(section_b['start'] * sr)
-    section_b_end = int(section_b['end'] * sr)
-
-    section_a_audio = y_a[:, section_a_start:section_a_end]
-    section_b_audio = y_b[:, section_b_start:section_b_end]
-
-    # Determine crossfade region
-    crossfade_samples = int(crossfade_duration * sr)
-
-    # Handle short sections (adaptive crossfade)
-    if section_a_audio.shape[1] < crossfade_samples:
-        log(f"    WARNING: Section A shorter than crossfade, reducing duration from {crossfade_duration}s "
-            f"to {section_a_audio.shape[1] / sr:.1f}s")
-        crossfade_samples = section_a_audio.shape[1]
-
-    if section_b_audio.shape[1] < crossfade_samples:
-        log(f"    WARNING: Section B shorter than crossfade, reducing duration from {crossfade_duration}s "
-            f"to {section_b_audio.shape[1] / sr:.1f}s")
-        crossfade_samples = section_b_audio.shape[1]
-
-    # Take last N seconds of section A
-    outro = section_a_audio[:, -crossfade_samples:]
-
-    # Take first N seconds of section B
-    intro = section_b_audio[:, :crossfade_samples]
-
-    # Equal-power crossfade curves
-    fade_curve = np.linspace(0, 1, crossfade_samples)
-    fade_out = np.sqrt(1 - fade_curve)  # Starts at 1, ends at 0
-    fade_in = np.sqrt(fade_curve)       # Starts at 0, ends at 1
-
-    # Apply fades to both channels
-    outro_faded = outro * fade_out
-    intro_faded = intro * fade_in
-
-    # Mix
-    transition = outro_faded + intro_faded
-
-    return transition, sr
 
 
 def generate_medium_transition(song_a_path, song_b_path, section_a, section_b, crossfade_duration=8.0):
@@ -362,19 +202,28 @@ def generate_medium_transition(song_a_path, song_b_path, section_a, section_b, c
     return transition, sr, actual_duration
 
 
-def generate_long_transition(song_a_path, song_b_path, sections_a, sections_b,
-                             section_a_idx, section_b_idx, crossfade_duration=10.0):
+def generate_medium_silence_transition(song_a_path, song_b_path, section_a, section_b,
+                                       tempo_a, silence_beats=4, fade_duration=1.0):
     """
-    Create long transition: 2 sections from A + crossfade + 2 sections from B.
+    Create medium transition with silence gap between sections.
+
+    Algorithm:
+    1. Load full sections A and B
+    2. Calculate silence duration from tempo: (60.0 / tempo_a) * silence_beats
+    3. Create fade-out at end of section A (fade_duration seconds)
+    4. Create silence array
+    5. Create fade-in at start of section B (fade_duration seconds)
+    6. Concatenate: [section_a_pre] + [fade_out] + [silence] + [fade_in] + [section_b_post]
 
     Args:
         song_a_path, song_b_path: Paths to audio files
-        sections_a, sections_b: Complete list of sections for each song
-        section_a_idx, section_b_idx: Indices of primary sections
-        crossfade_duration: Crossfade duration in seconds
+        section_a, section_b: Section info dicts with 'start', 'end' keys
+        tempo_a: Tempo of song A in BPM (for calculating silence duration)
+        silence_beats: Number of beats for silence (default: 4)
+        fade_duration: Duration of fade out/in in seconds (default: 1.0)
 
     Returns:
-        (transition_audio, sample_rate, actual_duration, sections_used_a, sections_used_b)
+        (transition_audio, sample_rate, actual_duration, silence_duration)
     """
     # Load stereo audio
     y_a, sr = librosa.load(str(song_a_path), sr=CONFIG['sample_rate'], mono=False)
@@ -386,71 +235,66 @@ def generate_long_transition(song_a_path, song_b_path, sections_a, sections_b,
     if y_b.ndim == 1:
         y_b = np.stack([y_b, y_b])
 
-    # Select sections for long transition
-    pre_a, main_a, _ = select_sections_for_long_transition(sections_a, section_a_idx)
-    _, main_b, post_b = select_sections_for_long_transition(sections_b, section_b_idx)
+    # Extract full sections
+    section_a_start = int(section_a['start'] * sr)
+    section_a_end = int(section_a['end'] * sr)
+    section_b_start = int(section_b['start'] * sr)
+    section_b_end = int(section_b['end'] * sr)
 
-    # Build section list for song A
-    sections_to_use_a = []
-    if pre_a is not None:
-        sections_to_use_a.append(pre_a)
-    if main_a is not None:
-        sections_to_use_a.append(main_a)
+    section_a_audio = y_a[:, section_a_start:section_a_end]
+    section_b_audio = y_b[:, section_b_start:section_b_end]
 
-    # Build section list for song B
-    sections_to_use_b = []
-    if main_b is not None:
-        sections_to_use_b.append(main_b)
-    if post_b is not None:
-        sections_to_use_b.append(post_b)
+    # Calculate silence duration from tempo
+    silence_duration = (60.0 / tempo_a) * silence_beats
+    silence_samples = int(silence_duration * sr)
 
-    if not sections_to_use_a or not sections_to_use_b:
-        raise ValueError("Not enough sections available for long transition")
+    # Create silence array (stereo)
+    silence = np.zeros((2, silence_samples), dtype=section_a_audio.dtype)
 
-    # Extract audio for all sections
-    start_a = sections_to_use_a[0]['start']
-    end_a = sections_to_use_a[-1]['end']
-    start_b = sections_to_use_b[0]['start']
-    end_b = sections_to_use_b[-1]['end']
+    # Prepare fade regions
+    fade_samples = int(fade_duration * sr)
 
-    audio_a = y_a[:, int(start_a * sr):int(end_a * sr)]
-    audio_b = y_b[:, int(start_b * sr):int(end_b * sr)]
+    # Split section A: pre-fade and fade-out region
+    if section_a_audio.shape[1] < fade_samples:
+        fade_samples_a = section_a_audio.shape[1]
+    else:
+        fade_samples_a = fade_samples
 
-    # Create crossfade region
-    crossfade_samples = int(crossfade_duration * sr)
+    section_a_pre = section_a_audio[:, :-fade_samples_a]
+    section_a_fade = section_a_audio[:, -fade_samples_a:]
 
-    # Handle short audio
-    if audio_a.shape[1] < crossfade_samples:
-        crossfade_samples = audio_a.shape[1]
-    if audio_b.shape[1] < crossfade_samples:
-        crossfade_samples = audio_b.shape[1]
+    # Split section B: fade-in region and post-fade
+    if section_b_audio.shape[1] < fade_samples:
+        fade_samples_b = section_b_audio.shape[1]
+    else:
+        fade_samples_b = fade_samples
 
-    # Split audio
-    audio_a_pre = audio_a[:, :-crossfade_samples]
-    audio_a_fade = audio_a[:, -crossfade_samples:]
-    audio_b_fade = audio_b[:, :crossfade_samples]
-    audio_b_post = audio_b[:, crossfade_samples:]
+    section_b_fade = section_b_audio[:, :fade_samples_b]
+    section_b_post = section_b_audio[:, fade_samples_b:]
 
-    # Create fade curves
-    fade_curve = np.linspace(0, 1, crossfade_samples)
-    fade_out = np.sqrt(1 - fade_curve)
-    fade_in = np.sqrt(fade_curve)
+    # Create equal-power fade curves (using sqrt for energy preservation)
+    fade_curve_out = np.linspace(1, 0, fade_samples_a)
+    fade_curve_in = np.linspace(0, 1, fade_samples_b)
+
+    fade_out_curve = np.sqrt(fade_curve_out)  # Equal-power fade out
+    fade_in_curve = np.sqrt(fade_curve_in)     # Equal-power fade in
 
     # Apply fades
-    audio_a_faded = audio_a_fade * fade_out
-    audio_b_faded = audio_b_fade * fade_in
-    crossfade = audio_a_faded + audio_b_faded
+    section_a_faded = section_a_fade * fade_out_curve
+    section_b_faded = section_b_fade * fade_in_curve
 
-    # Concatenate
-    transition = np.concatenate([audio_a_pre, crossfade, audio_b_post], axis=1)
+    # Concatenate all parts
+    transition = np.concatenate([
+        section_a_pre,
+        section_a_faded,
+        silence,
+        section_b_faded,
+        section_b_post
+    ], axis=1)
 
     actual_duration = transition.shape[1] / sr
 
-    # Return section labels used
-    sections_used_a = [s['label'] for s in sections_to_use_a]
-    sections_used_b = [s['label'] for s in sections_to_use_b]
-
-    return transition, sr, actual_duration, sections_used_a, sections_used_b
+    return transition, sr, actual_duration, silence_duration
 
 
 # =============================================================================
@@ -503,10 +347,10 @@ def load_all_song_sections(audio_dir, cache_dir):
 def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
                          sections_a, sections_b, section_a_idx, section_b_idx, audio_dir):
     """
-    Generate all three variants (short, medium, long) for a section pair.
+    Generate all variants (medium-crossfade, medium-silence) for a section pair.
 
     Args:
-        pair: Compatibility info dict
+        pair: Compatibility info dict (must include 'tempo_a' for silence calculation)
         section_a, section_b: Section feature dicts
         song_a_path, song_b_path: Path objects to audio files
         sections_a, sections_b: Full section lists for each song
@@ -518,54 +362,12 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
     """
     variants = []
 
-    # === SHORT VARIANT (Crossfade Only) ===
-    log(f"    Generating SHORT variant (crossfade only)...")
+    # Get base filenames for use across variants
+    base_a = song_a_path.stem
+    base_b = song_b_path.stem
 
-    # Determine duration (adaptive or fixed)
-    if CONFIG['short_crossfade_adaptive']:
-        durations = determine_crossfade_durations(pair)
-        short_duration = durations[0]  # Use first duration from adaptive selection
-    else:
-        short_duration = 8.0
-
-    try:
-        transition, sr = generate_section_transition(
-            song_a_path, song_b_path, section_a, section_b,
-            crossfade_duration=short_duration
-        )
-
-        # Generate filename
-        base_a = song_a_path.stem
-        base_b = song_b_path.stem
-        filename = f"transition_short_{base_a}_{section_a['label']}_{base_b}_{section_b['label']}_{int(short_duration)}s.{CONFIG['output_format']}"
-
-        # Save audio
-        filepath = audio_dir / 'short' / filename
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        sf.write(filepath, transition.T, sr)
-
-        file_size_mb = filepath.stat().st_size / (1024 * 1024)
-
-        variants.append({
-            'variant_type': 'short',
-            'crossfade_duration': short_duration,
-            'total_duration': transition.shape[1] / sr,
-            'filename': str(filepath.relative_to(CONFIG['output_dir'])),
-            'file_size_mb': round(file_size_mb, 2),
-            'audio_specs': {
-                'sample_rate': sr,
-                'channels': transition.shape[0],
-                'format': CONFIG['output_format'].upper()
-            }
-        })
-
-        log(f"      ✓ SHORT: {filename} ({file_size_mb:.2f} MB)")
-
-    except Exception as e:
-        log(f"      ✗ Failed to generate SHORT variant: {e}")
-
-    # === MEDIUM VARIANT (Full Sections) ===
-    log(f"    Generating MEDIUM variant (full sections)...")
+    # === MEDIUM-CROSSFADE VARIANT (Full Sections with Crossfade) ===
+    log(f"    Generating MEDIUM-CROSSFADE variant (full sections with crossfade)...")
 
     try:
         transition, sr, duration = generate_medium_transition(
@@ -574,17 +376,17 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
         )
 
         # Generate filename
-        filename = f"transition_medium_{base_a}_{section_a['label']}_{base_b}_{section_b['label']}_{int(CONFIG['medium_crossfade_duration'])}s.{CONFIG['output_format']}"
+        filename = f"transition_medium_crossfade_{base_a}_{section_a['label']}_{base_b}_{section_b['label']}_{int(CONFIG['medium_crossfade_duration'])}s.{CONFIG['output_format']}"
 
         # Save audio
-        filepath = audio_dir / 'medium' / filename
+        filepath = audio_dir / 'medium-crossfade' / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
         sf.write(filepath, transition.T, sr)
 
         file_size_mb = filepath.stat().st_size / (1024 * 1024)
 
         variants.append({
-            'variant_type': 'medium',
+            'variant_type': 'medium-crossfade',
             'crossfade_duration': CONFIG['medium_crossfade_duration'],
             'total_duration': duration,
             'sections_included': {
@@ -600,40 +402,45 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
             }
         })
 
-        log(f"      ✓ MEDIUM: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s)")
+        log(f"      ✓ MEDIUM-CROSSFADE: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s)")
 
     except Exception as e:
-        log(f"      ✗ Failed to generate MEDIUM variant: {e}")
+        log(f"      ✗ Failed to generate MEDIUM-CROSSFADE variant: {e}")
 
-    # === LONG VARIANT (Extended Context) ===
-    log(f"    Generating LONG variant (extended context)...")
+    # === MEDIUM-SILENCE VARIANT (Full Sections with Silence Gap) ===
+    log(f"    Generating MEDIUM-SILENCE variant ({CONFIG['silence_beats']}-beat silence)...")
 
     try:
-        transition, sr, duration, sections_used_a, sections_used_b = generate_long_transition(
-            song_a_path, song_b_path, sections_a, sections_b,
-            section_a_idx, section_b_idx,
-            crossfade_duration=CONFIG['long_crossfade_duration']
+        # Get tempo from pair info
+        tempo_a = pair['tempo_a']
+
+        transition, sr, duration, silence_duration = generate_medium_silence_transition(
+            song_a_path, song_b_path, section_a, section_b,
+            tempo_a=tempo_a,
+            silence_beats=CONFIG['silence_beats'],
+            fade_duration=CONFIG['silence_fade_duration']
         )
 
-        # Generate filename
-        sections_str_a = '-'.join(sections_used_a)
-        sections_str_b = '-'.join(sections_used_b)
-        filename = f"transition_long_{base_a}_{sections_str_a}_{base_b}_{sections_str_b}_{int(CONFIG['long_crossfade_duration'])}s.{CONFIG['output_format']}"
+        # Generate filename (use actual beats value)
+        filename = f"transition_medium_silence_{base_a}_{section_a['label']}_{base_b}_{section_b['label']}_{CONFIG['silence_beats']}beats.{CONFIG['output_format']}"
 
         # Save audio
-        filepath = audio_dir / 'long' / filename
+        filepath = audio_dir / 'medium-silence' / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
         sf.write(filepath, transition.T, sr)
 
         file_size_mb = filepath.stat().st_size / (1024 * 1024)
 
         variants.append({
-            'variant_type': 'long',
-            'crossfade_duration': CONFIG['long_crossfade_duration'],
+            'variant_type': 'medium-silence',
+            'silence_beats': CONFIG['silence_beats'],
+            'silence_duration': silence_duration,
+            'fade_duration': CONFIG['silence_fade_duration'],
             'total_duration': duration,
+            'tempo_used': tempo_a,
             'sections_included': {
-                'song_a': sections_used_a,
-                'song_b': sections_used_b
+                'song_a': [section_a['label']],
+                'song_b': [section_b['label']]
             },
             'filename': str(filepath.relative_to(CONFIG['output_dir'])),
             'file_size_mb': round(file_size_mb, 2),
@@ -644,19 +451,19 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
             }
         })
 
-        log(f"      ✓ LONG: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s)")
+        log(f"      ✓ MEDIUM-SILENCE: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s, silence: {silence_duration:.2f}s)")
 
     except Exception as e:
-        log(f"      ✗ Failed to generate LONG variant: {e}")
+        log(f"      ✗ Failed to generate MEDIUM-SILENCE variant: {e}")
 
     return variants
 
 
 def generate_all_transitions(candidates, section_features_map, audio_dir, cache_dir):
     """
-    Generate all section transition audio files for candidate pairs (v2.0).
+    Generate all section transition audio files for candidate pairs (v2.1).
 
-    This function generates all three variants (short, medium, long) for each pair
+    This function generates both variants (medium-crossfade, medium-silence) for each pair
     and creates comprehensive v2.0 metadata.
 
     Args:
@@ -669,7 +476,7 @@ def generate_all_transitions(candidates, section_features_map, audio_dir, cache_
         List of transition metadata dicts (v2.0 schema)
     """
     log(f"\n{'='*70}")
-    log("GENERATING SECTION TRANSITIONS (v2.0)")
+    log("GENERATING SECTION TRANSITIONS (v2.1)")
     log(f"{'='*70}")
 
     # Create output directory structure
@@ -737,18 +544,9 @@ def generate_all_transitions(candidates, section_features_map, audio_dir, cache_
                 log(f"  WARNING: No variants generated for this pair")
                 continue
 
-            # Build sections_used metadata
-            sections_used_a = []
-            sections_used_b = []
-
-            # For long variant, get the actual sections used
-            long_variant = next((v for v in variants if v['variant_type'] == 'long'), None)
-            if long_variant:
-                sections_used_a = long_variant.get('sections_included', {}).get('song_a', [section_a['label']])
-                sections_used_b = long_variant.get('sections_included', {}).get('song_b', [section_b['label']])
-            else:
-                sections_used_a = [section_a['label']]
-                sections_used_b = [section_b['label']]
+            # Build sections_used metadata (both variants use single sections)
+            sections_used_a = [section_a['label']]
+            sections_used_b = [section_b['label']]
 
             # Create v2.0 metadata structure
             transition_meta = {
@@ -849,7 +647,7 @@ def generate_all_transitions(candidates, section_features_map, audio_dir, cache_
                 },
 
                 'technical_notes': {
-                    'adaptive_duration_used': CONFIG['short_crossfade_adaptive'],
+                    'adaptive_duration_used': False,  # No longer using adaptive durations
                     'section_fallbacks_applied': False,
                     'warnings': []
                 }
@@ -903,9 +701,9 @@ def save_transitions_index(transitions, weights, embedding_stems):
             'min_score_threshold': CONFIG['min_score'],
             'weights': weights,
             'embedding_stems': embedding_stems,
-            'short_crossfade_adaptive': CONFIG['short_crossfade_adaptive'],
             'medium_crossfade_duration': CONFIG['medium_crossfade_duration'],
-            'long_crossfade_duration': CONFIG['long_crossfade_duration'],
+            'silence_beats': CONFIG['silence_beats'],
+            'silence_fade_duration': CONFIG['silence_fade_duration'],
             'output_format': CONFIG['output_format'].upper(),
             'sample_rate': CONFIG['sample_rate']
         },
@@ -980,9 +778,9 @@ def save_summary_csv(transitions):
 
 
 def print_summary_report(transitions):
-    """Print final summary report (v2.0)."""
+    """Print final summary report (v2.1)."""
     log(f"\n{'='*70}")
-    log("GENERATION COMPLETE (v2.0)")
+    log("GENERATION COMPLETE (v2.1)")
     log(f"{'='*70}")
 
     if not transitions:
@@ -995,14 +793,12 @@ def print_summary_report(transitions):
 
     # Count variants
     total_variants = sum(len(t['variants']) for t in transitions)
-    short_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'short')
-    medium_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'medium')
-    long_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'long')
+    medium_crossfade_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'medium-crossfade')
+    medium_silence_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'medium-silence')
 
     log(f"\n  Total variants generated: {total_variants}")
-    log(f"    Short (crossfade only): {short_count}")
-    log(f"    Medium (full sections): {medium_count}")
-    log(f"    Long (extended context): {long_count}")
+    log(f"    Medium-Crossfade (full sections with crossfade): {medium_crossfade_count}")
+    log(f"    Medium-Silence ({CONFIG['silence_beats']}-beat silence gap): {medium_silence_count}")
 
     # List transition pairs
     log(f"\n  Transition pairs:")
@@ -1022,7 +818,7 @@ def print_summary_report(transitions):
     log("NEXT STEPS")
     log(f"{'='*70}")
     log(f"  1. Review transitions using: python poc/review_transitions.py")
-    log(f"  2. Audio files organized in: {CONFIG['output_dir']}/audio/{{short,medium,long}}/")
+    log(f"  2. Audio files organized in: {CONFIG['output_dir']}/audio/{{medium-crossfade,medium-silence}}/")
     log(f"  3. Master index (single source of truth): {CONFIG['output_dir']}/metadata/transitions_index.json")
     log(f"  4. Quick reference CSV: {CONFIG['output_dir']}/metadata/transitions_summary.csv")
     log(f"{'='*70}\n")
@@ -1070,6 +866,10 @@ def parse_args():
     parser.add_argument('--max-pairs', type=int, default=None,
                         help='Maximum number of pairs to generate (default: all)')
 
+    # Silence transition options
+    parser.add_argument('--silence-beats', type=int, default=4,
+                        help='Number of beats for silence transition (default: 4)')
+
     # Other options
     parser.add_argument('--section-type', type=str, default='chorus',
                         choices=['chorus', 'verse', 'bridge'],
@@ -1115,11 +915,13 @@ def main():
     print(f"  Audio directory: {args.audio_dir.absolute()}")
     print(f"  Output directory: {CONFIG['output_dir'].absolute()}")
     print(f"  Min score threshold: {args.min_score}")
+    print(f"  Silence duration: {args.silence_beats} beats")
     print(f"  Compatibility weights: {weights}")
     print(f"  Embedding stems: {args.embedding_stems}")
 
     # Update CONFIG
     CONFIG['min_score'] = args.min_score
+    CONFIG['silence_beats'] = args.silence_beats
     if args.max_pairs:
         CONFIG['max_pairs'] = args.max_pairs
 
