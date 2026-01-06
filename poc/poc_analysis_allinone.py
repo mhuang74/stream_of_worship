@@ -17,6 +17,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Silence NATTEN deprecation warnings
+import os
+os.environ['NATTEN_LOG_LEVEL'] = 'error'
 import logging
 logging.getLogger('natten.functional').setLevel(logging.ERROR)
 
