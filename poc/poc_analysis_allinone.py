@@ -60,11 +60,70 @@ import hashlib
 from typing import Optional
 import base64
 import time
+import argparse
+import sys
+import shutil
+import subprocess
 
 # Configuration
 AUDIO_DIR = Path("poc_audio")
 OUTPUT_DIR = Path("poc_output_allinone")  # DIFFERENT OUTPUT DIR
 CACHE_DIR = OUTPUT_DIR / "cache"  # Cache subdirectory
+
+
+def parse_args():
+    """Parse command-line arguments for stem generation and analysis options."""
+    parser = argparse.ArgumentParser(
+        description='POC Analysis using All-In-One with optional stem generation',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Standard analysis (no stems)
+  python poc/poc_analysis_allinone.py
+
+  # Generate stems after analysis
+  python poc/poc_analysis_allinone.py --generate-stems
+
+  # Generate stems only (skip analysis, use cache)
+  python poc/poc_analysis_allinone.py --stems-only
+
+  # Force regenerate all stems using GPU
+  python poc/poc_analysis_allinone.py --generate-stems --force-stems --stem-device cuda
+
+  # Custom stems directory
+  python poc/poc_analysis_allinone.py --generate-stems --stems-dir /path/to/stems
+"""
+    )
+
+    # Stem generation control
+    parser.add_argument('--generate-stems', action='store_true',
+                       help='Generate stem separations using Demucs (adds ~2 min per song)')
+    parser.add_argument('--stems-only', action='store_true',
+                       help='Only generate stems without analysis (fast for cached songs)')
+
+    # Demucs configuration
+    parser.add_argument('--stem-model', default='htdemucs',
+                       choices=['htdemucs', 'demucs', 'demucs_extra', 'demucs_quantized'],
+                       help='Demucs model to use (default: htdemucs)')
+    parser.add_argument('--stem-device', default='cpu',
+                       choices=['cpu', 'cuda'],
+                       help='Device for Demucs processing (default: cpu)')
+
+    # Directory configuration
+    parser.add_argument('--audio-dir', type=Path, default=AUDIO_DIR,
+                       help=f'Audio files directory (default: {AUDIO_DIR})')
+    parser.add_argument('--output-dir', type=Path, default=OUTPUT_DIR,
+                       help=f'Output directory (default: {OUTPUT_DIR})')
+    parser.add_argument('--stems-dir', type=Path, default=None,
+                       help='Custom stems directory (default: {output_dir}/stems)')
+
+    # Cache control
+    parser.add_argument('--no-cache', action='store_true',
+                       help='Disable analysis cache (force re-analysis)')
+    parser.add_argument('--force-stems', action='store_true',
+                       help='Regenerate stems even if they already exist')
+
+    return parser.parse_args()
 
 
 def compute_file_hash(filepath: Path) -> str:
@@ -264,6 +323,124 @@ def update_cache_metadata(content_hash: str, cache_entry: dict, cache_dir: Path)
     except (IOError, OSError, KeyError) as e:
         print(f"  ⚠️  Failed to update cache metadata: {e}")
         # Continue execution - cache file is still valid
+
+
+def generate_stems_for_songs(
+    audio_files: list,
+    stems_dir: Path,
+    model: str = 'htdemucs',
+    device: str = 'cpu',
+    force: bool = False
+) -> list:
+    """
+    Generate stem separations using Demucs.
+
+    This function wraps Demucs to generate 4-stem separations (bass, drums, other, vocals)
+    directly into the POC output directory structure, independently of allin1 analysis.
+
+    Args:
+        audio_files: List of Path objects to audio files
+        stems_dir: Base directory for stems (e.g., poc_output_allinone/stems)
+        model: Demucs model name ('htdemucs', 'demucs', etc.)
+        device: 'cpu' or 'cuda'
+        force: If False, skip files that already have all 4 stems
+
+    Returns:
+        List of Path objects to stem directories (one per song)
+
+    Directory structure created:
+        stems_dir/
+        ├── song1/
+        │   ├── bass.wav
+        │   ├── drums.wav
+        │   ├── other.wav
+        │   └── vocals.wav
+        └── song2/
+            ├── bass.wav
+            └── ...
+    """
+    print(f"\n{'='*70}")
+    print(f"STEM GENERATION")
+    print(f"{'='*70}")
+    print(f"Model: {model}")
+    print(f"Device: {device}")
+    print(f"Output: {stems_dir}")
+
+    # Ensure stems directory exists
+    stems_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check which files need processing
+    todos = []
+    stem_dirs = []
+
+    for audio_file in audio_files:
+        stem_dir = stems_dir / audio_file.stem
+        stem_dirs.append(stem_dir)
+
+        # Check if all 4 stems exist
+        if not force and stem_dir.is_dir():
+            stems_exist = all([
+                (stem_dir / 'bass.wav').is_file(),
+                (stem_dir / 'drums.wav').is_file(),
+                (stem_dir / 'other.wav').is_file(),
+                (stem_dir / 'vocals.wav').is_file()
+            ])
+            if stems_exist:
+                print(f"  ✓ Stems exist: {audio_file.name} (skipping)")
+                continue
+
+        todos.append(audio_file)
+
+    print(f"\n=> Found {len(audio_files) - len(todos)} songs with stems, {len(todos)} to process")
+
+    if not todos:
+        print("✓ All stems already generated")
+        return stem_dirs
+
+    # Run Demucs for songs that need processing
+    # Use a temporary directory, then move to clean structure
+    temp_demix_dir = stems_dir / '_demix_temp'
+    temp_demix_dir.mkdir(exist_ok=True)
+
+    try:
+        print(f"\nRunning Demucs on {len(todos)} songs...")
+        subprocess.run(
+            [
+                sys.executable, '-m', 'demucs.separate',
+                '--out', temp_demix_dir.as_posix(),
+                '--name', model,
+                '--device', device,
+                *[path.as_posix() for path in todos],
+            ],
+            check=True,
+        )
+
+        # Move stems from temp/{model}/{song}/ to stems/{song}/
+        for audio_file in todos:
+            temp_song_dir = temp_demix_dir / model / audio_file.stem
+            final_song_dir = stems_dir / audio_file.stem
+            final_song_dir.mkdir(exist_ok=True)
+
+            # Move each stem
+            for stem_name in ['bass', 'drums', 'other', 'vocals']:
+                src = temp_song_dir / f'{stem_name}.wav'
+                dst = final_song_dir / f'{stem_name}.wav'
+                if src.exists():
+                    src.rename(dst)
+                    print(f"  ✓ {audio_file.stem}/{stem_name}.wav")
+
+        print(f"\n✓ Generated stems for {len(todos)} songs")
+
+    except subprocess.CalledProcessError as e:
+        print(f"❌ ERROR: Demucs failed with exit code {e.returncode}")
+        raise
+
+    finally:
+        # Clean up temp directory
+        if temp_demix_dir.exists():
+            shutil.rmtree(temp_demix_dir)
+
+    return stem_dirs
 
 
 def analyze_song_allinone(filepath, cache_dir=None, use_cache=True):
@@ -594,36 +771,79 @@ def create_simple_crossfade(song_a_path, song_b_path, crossfade_duration=8.0):
 
 
 def main():
-    """Main execution function."""
-    # === CELL 1: SETUP AND IMPORTS ===
+    """Main execution function with CLI argument support."""
+    # Parse command-line arguments
+    args = parse_args()
+
+    # Override directories from args
+    global OUTPUT_DIR, CACHE_DIR
+    OUTPUT_DIR = args.output_dir
+    CACHE_DIR = OUTPUT_DIR / "cache"
+
+    # Setup stems directory
+    stems_dir = args.stems_dir if args.stems_dir else (OUTPUT_DIR / 'stems')
+
+    # === SETUP AND IMPORTS ===
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     print(f"POC Analysis (All-In-One) Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Audio directory: {AUDIO_DIR.absolute()}")
+    print(f"Audio directory: {args.audio_dir.absolute()}")
     print(f"Output directory: {OUTPUT_DIR.absolute()}")
+    if args.generate_stems or args.stems_only:
+        print(f"Stems directory: {stems_dir.absolute()}")
     print()
 
     # List available songs
-    audio_files = sorted(list(AUDIO_DIR.glob("*.mp3")) + list(AUDIO_DIR.glob("*.flac")))
+    audio_files = sorted(list(args.audio_dir.glob("*.mp3")) + list(args.audio_dir.glob("*.flac")))
     print(f"Found {len(audio_files)} audio files:")
     for i, f in enumerate(audio_files, 1):
         print(f"  {i}. {f.name}")
 
     if len(audio_files) < 3:
         print("\n⚠️  WARNING: Need at least 3 songs for meaningful POC validation")
-        print("   Please add more audio files to poc_audio/ directory")
+        print("   Please add more audio files to audio directory")
     elif len(audio_files) > 5:
         print("\n⚠️  NOTE: More than 5 songs found. POC will analyze all.")
     else:
         print(f"\n✓ Good! {len(audio_files)} songs ready for analysis")
 
+    # === STEMS-ONLY MODE (Early Exit) ===
+    if args.stems_only:
+        print(f"\n{'='*70}")
+        print("STEMS-ONLY MODE")
+        print("Generating stems without running analysis")
+        print(f"{'='*70}\n")
+
+        try:
+            generate_stems_for_songs(
+                audio_files,
+                stems_dir,
+                model=args.stem_model,
+                device=args.stem_device,
+                force=args.force_stems
+            )
+            print(f"\n✓ Stems generation complete: {stems_dir}")
+            print(f"{'='*70}")
+            return 0
+        except Exception as e:
+            print(f"\n❌ ERROR: Stem generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+
     # === CELL 3: ANALYZE ALL SONGS ===
     results = []
     errors = []
 
+    use_cache = not args.no_cache
+
     for audio_file in audio_files:
         try:
-            result = analyze_song_allinone(audio_file, cache_dir=CACHE_DIR, use_cache=True)
+            result = analyze_song_allinone(
+                audio_file,
+                cache_dir=CACHE_DIR if use_cache else None,
+                use_cache=use_cache
+            )
             results.append(result)
         except Exception as e:
             print(f"\n❌ ERROR processing {audio_file.name}: {str(e)}")
@@ -666,6 +886,25 @@ def main():
         print(f"✓ Full results saved to: {json_path}")
     else:
         print("\n⚠️  No songs were successfully analyzed.")
+
+    # === GENERATE STEMS (After Analysis) ===
+    if args.generate_stems and results:
+        print(f"\n{'='*70}")
+        print("GENERATING STEMS")
+        print(f"{'='*70}\n")
+
+        try:
+            generate_stems_for_songs(
+                audio_files,
+                stems_dir,
+                model=args.stem_model,
+                device=args.stem_device,
+                force=args.force_stems
+            )
+            print(f"\n✓ Stems saved to: {stems_dir}")
+        except Exception as e:
+            print(f"\n⚠️  WARNING: Stem generation failed: {e}")
+            print("   Analysis results were saved successfully.")
 
     # === CELL 4: VISUALIZATIONS ===
     if not results:
@@ -926,13 +1165,15 @@ def main():
     else:
         print(f"\n⚠️  No audio files were analyzed.")
         print(f"\nPlease:")
-        print(f"  1. Place 3-5 audio files (MP3/FLAC) in: {AUDIO_DIR.absolute()}")
+        print(f"  1. Place 3-5 audio files (MP3/FLAC) in: {args.audio_dir.absolute()}")
         print(f"  2. Re-run this script")
 
     print(f"\n" + "="*70)
     print(f"POC Analysis (All-In-One) Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"="*70)
 
+    return 0 if results else 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
