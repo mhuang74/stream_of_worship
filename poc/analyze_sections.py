@@ -38,7 +38,13 @@ from datetime import datetime
 import sys
 
 # Import from existing analysis script
-from poc_analysis_allinone import analyze_song_allinone, AUDIO_DIR, OUTPUT_DIR, CACHE_DIR
+from poc_analysis_allinone import (
+    analyze_song_allinone, compute_file_hash, load_from_cache,
+    AUDIO_DIR, CACHE_DIR, OUTPUT_DIR as ALLINONE_OUTPUT_DIR
+)
+
+# Base output directory for this script
+OUTPUT_DIR = ALLINONE_OUTPUT_DIR
 
 
 # =============================================================================
@@ -508,6 +514,59 @@ def calculate_section_compatibility(section_a, section_b, weights=None, embeddin
 # MAIN ANALYSIS FUNCTION
 # =============================================================================
 
+def load_all_song_results(audio_dir, cache_dir, verbose=True):
+    """
+    Load all song analysis results.
+
+    Optimization: First checks for existing poc_full_results.json output,
+    then falls back to individual cache files or re-analysis.
+
+    Returns:
+        List of song result dictionaries
+    """
+    results = []
+
+    # First, try loading from main output JSON if it exists
+    json_path = ALLINONE_OUTPUT_DIR / 'poc_full_results.json'
+    if json_path.exists():
+        log(f"  Found existing allinone analysis: {json_path}", verbose)
+        try:
+            with open(json_path, 'r') as f:
+                results_data = json.load(f)
+
+            # We need to call load_from_cache to get _embeddings and _beats
+            # but we skip the heavy librosa loading inside analyze_song_allinone
+            for result in results_data:
+                audio_file = audio_dir / result['filename']
+                if audio_file.exists():
+                    try:
+                        h = compute_file_hash(audio_file)
+                        full_result = load_from_cache(h, cache_dir)
+                        if full_result:
+                            results.append(full_result)
+                        else:
+                            # Fallback if cache missing
+                            results.append(analyze_song_allinone(audio_file, cache_dir=cache_dir, use_cache=True))
+                    except Exception as e:
+                        log(f"  ⚠️  Error reloading {result['filename']}: {e}", verbose)
+
+            log(f"  ✓ Loaded results for {len(results)} songs via JSON + cache", verbose)
+            return results
+        except Exception as e:
+            log(f"  ⚠️  Could not load from JSON: {e}", verbose)
+            log(f"  Falling back to individual cache/analysis...", verbose)
+
+    # Fallback: search for audio files and analyze each
+    audio_files = sorted(list(audio_dir.glob("*.mp3")) + list(audio_dir.glob("*.flac")))
+    for audio_file in audio_files:
+        try:
+            results.append(analyze_song_allinone(audio_file, cache_dir=cache_dir, use_cache=True))
+        except Exception as e:
+            log(f"  ⚠️  Error analyzing {audio_file.name}: {e}", verbose)
+
+    return results
+
+
 def analyze_all_sections(audio_dir=AUDIO_DIR, cache_dir=CACHE_DIR, output_dir=OUTPUT_DIR,
                          weights=None, embedding_stems='all', section_type='chorus',
                          fallback_to_verse=True, verbose=True):
@@ -561,11 +620,11 @@ def analyze_all_sections(audio_dir=AUDIO_DIR, cache_dir=CACHE_DIR, output_dir=OU
     section_features = []
     skipped_songs = []
 
-    for audio_file in audio_files:
+    song_results = load_all_song_results(audio_dir, cache_dir, verbose=verbose)
+
+    for song_result in song_results:
         try:
-            # Run song-level analysis (use cache if available)
-            log(f"\nProcessing {audio_file.name}...", verbose)
-            song_result = analyze_song_allinone(audio_file, cache_dir=cache_dir, use_cache=True)
+            audio_file = audio_dir / song_result['filename']
 
             # Select best chorus (or verse fallback)
             best_section = select_best_chorus(song_result, audio_file,
@@ -575,13 +634,13 @@ def analyze_all_sections(audio_dir=AUDIO_DIR, cache_dir=CACHE_DIR, output_dir=OU
             if best_section:
                 section_features.append(best_section)
             else:
-                skipped_songs.append(audio_file.name)
+                skipped_songs.append(song_result['filename'])
 
         except Exception as e:
-            log(f"\n❌ ERROR processing {audio_file.name}: {str(e)}", verbose)
+            log(f"\n❌ ERROR processing {song_result['filename']}: {str(e)}", verbose)
             import traceback
             traceback.print_exc()
-            skipped_songs.append(audio_file.name)
+            skipped_songs.append(song_result['filename'])
 
     if skipped_songs:
         log(f"\n⚠️  Skipped {len(skipped_songs)} songs: {', '.join(skipped_songs)}", verbose)
