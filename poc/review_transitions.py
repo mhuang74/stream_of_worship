@@ -474,11 +474,12 @@ def show_help():
     print(f"\n{'─'*70}")
     print("COMMANDS:")
     print(f"{'─'*70}")
-    print("  p <variant>  - Play variant (e.g., 'p 1', 'p short', 'p long')")
+    print("  p <variant>  - Play variant (e.g., 'p 1', 'p crossfade', 'p silence')")
     print("  s            - Stop playback")
     print("  r            - Rate this transition")
     print("  n            - Next transition (without rating)")
     print("  b            - Previous transition")
+    print("  j <number>   - Jump to specific transition (e.g., 'j 5')")
     print("  i            - Show transition info again")
     print("  q            - Quit and save progress")
     print("  h            - Help")
@@ -523,7 +524,10 @@ def main():
     print(f"Type 'h' for help, 'q' to quit\n")
 
     try:
-        while current_index < len(transitions):
+        while True:
+            # Ensure current_index stays within bounds (wrap around)
+            current_index = current_index % len(transitions)
+
             transition = transitions[current_index]
 
             # Display transition info
@@ -606,11 +610,25 @@ def main():
 
                     elif command == 'b':
                         # Previous transition
-                        if current_index > 0:
-                            current_index -= 1
-                            break
-                        else:
-                            print("  Already at first transition")
+                        current_index -= 1
+                        break
+
+                    elif command.startswith('j'):
+                        # Jump to specific transition
+                        parts = command.split()
+                        if len(parts) < 2:
+                            print(f"  Usage: j <number> (e.g., 'j 5' to jump to transition 5)")
+                            continue
+
+                        try:
+                            target = int(parts[1])
+                            if 1 <= target <= len(transitions):
+                                current_index = target - 1
+                                break
+                            else:
+                                print(f"  Invalid transition number. Choose 1-{len(transitions)}")
+                        except ValueError:
+                            print("  Please enter a valid number")
 
                     else:
                         print(f"  Unknown command: {command}. Type 'h' for help")
