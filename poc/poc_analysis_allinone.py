@@ -398,25 +398,33 @@ def generate_stems_for_songs(
         return stem_dirs
 
     # Run Demucs for songs that need processing
-    # Use a temporary directory, then move to clean structure
+    # Process one song at a time and move stems immediately for robustness
+    # This ensures completed stems are preserved even if interrupted
+    print(f"\nProcessing {len(todos)} songs...")
+
     temp_demix_dir = stems_dir / '_demix_temp'
-    temp_demix_dir.mkdir(exist_ok=True)
+    completed = 0
 
-    try:
-        print(f"\nRunning Demucs on {len(todos)} songs...")
-        subprocess.run(
-            [
-                sys.executable, '-m', 'demucs.separate',
-                '--out', temp_demix_dir.as_posix(),
-                '--name', model,
-                '--device', device,
-                *[path.as_posix() for path in todos],
-            ],
-            check=True,
-        )
+    for audio_file in todos:
+        print(f"\n[{completed + 1}/{len(todos)}] {audio_file.name}")
+        temp_demix_dir.mkdir(exist_ok=True)
 
-        # Move stems from temp/{model}/{song}/ to stems/{song}/
-        for audio_file in todos:
+        try:
+            # Run Demucs on single song
+            subprocess.run(
+                [
+                    sys.executable, '-m', 'demucs.separate',
+                    '--out', temp_demix_dir.as_posix(),
+                    '--name', model,
+                    '--device', device,
+                    audio_file.as_posix(),
+                ],
+                check=True,
+                capture_output=True,  # Suppress verbose Demucs output
+                text=True
+            )
+
+            # Move stems from temp/{model}/{song}/ to stems/{song}/
             temp_song_dir = temp_demix_dir / model / audio_file.stem
             final_song_dir = stems_dir / audio_file.stem
             final_song_dir.mkdir(exist_ok=True)
@@ -427,18 +435,26 @@ def generate_stems_for_songs(
                 dst = final_song_dir / f'{stem_name}.wav'
                 if src.exists():
                     src.rename(dst)
-                    print(f"  ✓ {audio_file.stem}/{stem_name}.wav")
+                    print(f"  ✓ {stem_name}.wav")
+                else:
+                    print(f"  ⚠️  {stem_name}.wav not found")
 
-        print(f"\n✓ Generated stems for {len(todos)} songs")
+            completed += 1
+            print(f"  ✓ Complete ({completed}/{len(todos)})")
 
-    except subprocess.CalledProcessError as e:
-        print(f"❌ ERROR: Demucs failed with exit code {e.returncode}")
-        raise
+        except subprocess.CalledProcessError as e:
+            print(f"  ❌ ERROR: Demucs failed with exit code {e.returncode}")
+            if e.stderr:
+                print(f"     {e.stderr}")
+            print(f"  Skipping {audio_file.name}, continuing with remaining songs...")
+            continue
 
-    finally:
-        # Clean up temp directory
-        if temp_demix_dir.exists():
-            shutil.rmtree(temp_demix_dir)
+        finally:
+            # Clean up temp directory for this song
+            if temp_demix_dir.exists():
+                shutil.rmtree(temp_demix_dir)
+
+    print(f"\n✓ Successfully generated stems for {completed}/{len(todos)} songs")
 
     return stem_dirs
 
