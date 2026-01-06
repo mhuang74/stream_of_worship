@@ -245,8 +245,8 @@ def generate_section_transition(song_a_path, song_b_path, section_a, section_b,
         (transition_audio, sample_rate)
     """
     # Load stereo audio for higher quality transition
-    y_a, sr = librosa.load(song_a_path, sr=CONFIG['sample_rate'], mono=False)
-    y_b, sr_b = librosa.load(song_b_path, sr=CONFIG['sample_rate'], mono=False)
+    y_a, sr = librosa.load(str(song_a_path), sr=CONFIG['sample_rate'], mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=CONFIG['sample_rate'], mono=False)
 
     # Ensure stereo (2 channels)
     if y_a.ndim == 1:
@@ -311,8 +311,8 @@ def generate_medium_transition(song_a_path, song_b_path, section_a, section_b, c
         (transition_audio, sample_rate, actual_duration)
     """
     # Load stereo audio
-    y_a, sr = librosa.load(song_a_path, sr=CONFIG['sample_rate'], mono=False)
-    y_b, sr_b = librosa.load(song_b_path, sr=CONFIG['sample_rate'], mono=False)
+    y_a, sr = librosa.load(str(song_a_path), sr=CONFIG['sample_rate'], mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=CONFIG['sample_rate'], mono=False)
 
     # Ensure stereo
     if y_a.ndim == 1:
@@ -377,8 +377,8 @@ def generate_long_transition(song_a_path, song_b_path, sections_a, sections_b,
         (transition_audio, sample_rate, actual_duration, sections_used_a, sections_used_b)
     """
     # Load stereo audio
-    y_a, sr = librosa.load(song_a_path, sr=CONFIG['sample_rate'], mono=False)
-    y_b, sr_b = librosa.load(song_b_path, sr=CONFIG['sample_rate'], mono=False)
+    y_a, sr = librosa.load(str(song_a_path), sr=CONFIG['sample_rate'], mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=CONFIG['sample_rate'], mono=False)
 
     # Ensure stereo
     if y_a.ndim == 1:

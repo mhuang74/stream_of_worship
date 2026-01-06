@@ -163,7 +163,7 @@ def extract_section_features(song_result, section_idx, audio_path, verbose=True)
         f"({section['start']:.1f}s - {section['end']:.1f}s)", verbose)
 
     # === AUDIO EXTRACTION ===
-    y, sr = librosa.load(audio_path, sr=44100, mono=False)
+    y, sr = librosa.load(str(audio_path), sr=44100, mono=False)
 
     # Convert to mono for analysis
     if y.ndim > 1:
@@ -543,6 +543,11 @@ def load_all_song_results(audio_dir, cache_dir, verbose=True):
                         h = compute_file_hash(audio_file)
                         full_result = load_from_cache(h, cache_dir)
                         if full_result:
+                            # Ensure _beats and _embeddings fields exist (cache format uses 'beats', code expects '_beats')
+                            if 'beats' in full_result and '_beats' not in full_result:
+                                full_result['_beats'] = full_result['beats']
+                            if 'embeddings' in full_result and '_embeddings' not in full_result:
+                                full_result['_embeddings'] = full_result['embeddings']
                             results.append(full_result)
                         else:
                             # Fallback if cache missing

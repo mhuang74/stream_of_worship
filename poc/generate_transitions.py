@@ -207,8 +207,8 @@ def create_simple_crossfade(song_a_path, song_b_path, crossfade_duration=8.0):
     Returns: (transition_audio, sample_rate)
     """
     # Load stereo audio for higher quality transition
-    y_a, sr = librosa.load(song_a_path, sr=CONFIG['sample_rate'], mono=False)
-    y_b, sr_b = librosa.load(song_b_path, sr=CONFIG['sample_rate'], mono=False)
+    y_a, sr = librosa.load(str(song_a_path), sr=CONFIG['sample_rate'], mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=CONFIG['sample_rate'], mono=False)
 
     # Ensure stereo (2 channels)
     if y_a.ndim == 1:
