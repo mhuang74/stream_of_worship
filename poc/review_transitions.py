@@ -213,18 +213,24 @@ def display_transition_info(transition, index):
     # Variants available
     print(f"\nAvailable Variants:")
     for idx, variant in enumerate(transition['variants'], 1):
-        variant_type = variant['variant_type'].upper()
+        variant_type = variant['variant_type']
+        variant_type_upper = variant_type.upper()
         duration = variant['total_duration']
         size = variant['file_size_mb']
 
-        if variant_type == 'SHORT':
-            desc = "Crossfade only"
-        elif variant_type == 'MEDIUM':
+        # Description based on variant type
+        if variant_type == 'medium-crossfade':
             desc = "Full sections with crossfade"
-        else:  # LONG
-            desc = "Extended context (2 sections each)"
+        elif variant_type == 'medium-silence':
+            desc = f"Full sections with {variant.get('silence_beats', 4)}-beat silence gap"
+        elif variant_type == 'vocal-fade':
+            desc = f"Vocal-only bridge ({variant.get('transition_beats', 8)}-beat transition)"
+        elif variant_type == 'drum-fade':
+            desc = f"Drum-only bridge ({variant.get('transition_beats', 8)}-beat transition)"
+        else:
+            desc = "Unknown variant type"
 
-        print(f"  [{idx}] {variant_type:<6} ({duration:5.1f}s, {size:5.2f} MB) - {desc}")
+        print(f"  [{idx}] {variant_type_upper:<18} ({duration:5.1f}s, {size:5.2f} MB) - {desc}")
 
     # Review status
     review = transition['review']
@@ -242,7 +248,7 @@ def get_variant_path(transition, variant_type):
 
     Args:
         transition: Transition metadata dict
-        variant_type: 'medium-crossfade' or 'medium-silence'
+        variant_type: 'medium-crossfade', 'medium-silence', 'vocal-fade', or 'drum-fade'
 
     Returns:
         Path object or None if not found
@@ -474,7 +480,7 @@ def show_help():
     print(f"\n{'─'*70}")
     print("COMMANDS:")
     print(f"{'─'*70}")
-    print("  p <variant>  - Play variant (e.g., 'p 1', 'p crossfade', 'p silence')")
+    print("  p <variant>  - Play variant (e.g., 'p 1', 'p crossfade', 'p vocal', 'p drum')")
     print("  s            - Stop playback")
     print("  r            - Rate this transition")
     print("  n            - Next transition (without rating)")
@@ -569,16 +575,21 @@ def main():
                             else:
                                 print(f"  Invalid variant number. Choose 1-{len(transition['variants'])}")
                                 continue
-                        elif variant_spec in ['medium-crossfade', 'medium-silence', 'crossfade', 'silence']:
+                        elif variant_spec in ['medium-crossfade', 'medium-silence', 'vocal-fade', 'drum-fade',
+                                              'crossfade', 'silence', 'vocal', 'drum']:
                             # Support both full names and short names
                             if variant_spec == 'crossfade':
                                 variant_type = 'medium-crossfade'
                             elif variant_spec == 'silence':
                                 variant_type = 'medium-silence'
+                            elif variant_spec == 'vocal':
+                                variant_type = 'vocal-fade'
+                            elif variant_spec == 'drum':
+                                variant_type = 'drum-fade'
                             else:
                                 variant_type = variant_spec
                         else:
-                            print(f"  Invalid variant. Use 1-2, 'crossfade', 'silence', 'medium-crossfade', or 'medium-silence'")
+                            print(f"  Invalid variant. Use 1-4, 'crossfade', 'silence', 'vocal', 'drum', or full names")
                             continue
 
                         # Get file path and play
