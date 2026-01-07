@@ -56,6 +56,10 @@ CONFIG = {
     'silence_beats': 4,                  # Number of beats for silence variant
     'silence_fade_duration': 1.0,        # Fade out/in duration for silence variant
 
+    # Stem-based fade transition options (v2.1)
+    'stem_fade_transition_beats': 8,     # Total beats per song for transition zone
+    'stem_fade_duration_beats': 4,       # Beats for fade in/out within transition zone
+
     # Optional features
     'generate_waveforms': False,   # Create visualization plots
     'verbose': True                # Print detailed progress
@@ -65,6 +69,63 @@ CONFIG = {
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
+
+def load_stems_for_section(song_path, section, stems_base_dir, sr=44100):
+    """
+    Load all 4 stems (bass, drums, other, vocals) for a specific section.
+
+    Args:
+        song_path: Path to original audio file (e.g., "do_it_again.mp3")
+        section: Section dict with 'start', 'end' keys (in seconds)
+        stems_base_dir: Base stems directory (e.g., poc_output_allinone/stems)
+        sr: Target sample rate
+
+    Returns:
+        dict: {
+            'bass': stereo_array,
+            'drums': stereo_array,
+            'other': stereo_array,
+            'vocals': stereo_array
+        }
+
+    Raises:
+        FileNotFoundError: If stems don't exist for this song
+    """
+    # Map song filename to stem directory
+    song_stem = Path(song_path).stem  # e.g., "do_it_again.mp3" -> "do_it_again"
+    stem_dir = stems_base_dir / song_stem
+
+    # Check if stems exist
+    required_stems = ['bass', 'drums', 'other', 'vocals']
+    for stem_name in required_stems:
+        stem_path = stem_dir / f"{stem_name}.wav"
+        if not stem_path.exists():
+            raise FileNotFoundError(
+                f"Stem not found: {stem_path}\n"
+                f"Run stem generation first: python poc/poc_analysis_allinone.py --generate-stems"
+            )
+
+    # Load each stem and extract section
+    section_start = int(section['start'] * sr)
+    section_end = int(section['end'] * sr)
+
+    stems = {}
+    for stem_name in required_stems:
+        stem_path = stem_dir / f"{stem_name}.wav"
+
+        # Load stem audio
+        y, sr_loaded = librosa.load(str(stem_path), sr=sr, mono=False)
+
+        # Ensure stereo
+        if y.ndim == 1:
+            y = np.stack([y, y])
+
+        # Extract section
+        stem_section = y[:, section_start:section_end]
+        stems[stem_name] = stem_section
+
+    return stems
+
 
 def generate_transition_filename(song_a, song_b, label_a, label_b, duration):
     """
@@ -297,6 +358,332 @@ def generate_medium_silence_transition(song_a_path, song_b_path, section_a, sect
     return transition, sr, actual_duration, silence_duration
 
 
+def generate_vocal_fade_transition(song_a_path, song_b_path, section_a, section_b,
+                                   tempo_a, tempo_b, stems_base_dir):
+    """
+    Create vocal-fade transition: sections connected by vocal-only bridge.
+
+    Algorithm:
+    1. Load all 4 stems for both sections
+    2. Song A transition zone (last 8 beats):
+       - Beats -8 to -4: Fade out bass, drums, other (vocals at full)
+       - Beats -4 to 0: Vocals only
+    3. Song B transition zone (first 8 beats):
+       - Beats 0 to 4: Vocals only
+       - Beats 4 to 8: Fade in bass, drums, other (vocals at full)
+    4. Concatenate: [A_pre] + [A_transition] + [B_transition] + [B_post]
+
+    Args:
+        song_a_path, song_b_path: Paths to audio files
+        section_a, section_b: Section dicts with 'start', 'end' keys
+        tempo_a, tempo_b: Tempos in BPM
+        stems_base_dir: Base directory for stems (e.g., OUTPUT_DIR / 'stems')
+
+    Returns:
+        (transition_audio, sample_rate, actual_duration, metadata_dict)
+    """
+    sr = CONFIG['sample_rate']
+
+    # Calculate beat durations
+    beat_duration_a = 60.0 / tempo_a  # seconds per beat
+    beat_duration_b = 60.0 / tempo_b
+
+    # Calculate transition zone durations
+    transition_beats = CONFIG['stem_fade_transition_beats']  # 8 beats
+    fade_beats = CONFIG['stem_fade_duration_beats']          # 4 beats
+
+    transition_duration_a = beat_duration_a * transition_beats  # 8 beats in seconds
+    fade_duration_a = beat_duration_a * fade_beats              # 4 beats in seconds
+
+    transition_duration_b = beat_duration_b * transition_beats
+    fade_duration_b = beat_duration_b * fade_beats
+
+    # Convert to samples
+    transition_samples_a = int(transition_duration_a * sr)
+    fade_samples_a = int(fade_duration_a * sr)
+
+    transition_samples_b = int(transition_duration_b * sr)
+    fade_samples_b = int(fade_duration_b * sr)
+
+    # === LOAD STEMS ===
+    try:
+        stems_a = load_stems_for_section(song_a_path, section_a, stems_base_dir, sr)
+        stems_b = load_stems_for_section(song_b_path, section_b, stems_base_dir, sr)
+    except FileNotFoundError as e:
+        raise RuntimeError(f"Cannot generate vocal-fade transition: {e}")
+
+    # === PROCESS SONG A ===
+    # Split section A into: [pre-transition] + [transition zone]
+    section_a_length = stems_a['vocals'].shape[1]
+
+    if section_a_length < transition_samples_a:
+        raise ValueError(
+            f"Section A too short for transition ({section_a_length/sr:.1f}s < "
+            f"{transition_duration_a:.1f}s). Need at least {transition_beats} beats."
+        )
+
+    # Split all stems at transition boundary
+    split_point_a = section_a_length - transition_samples_a
+
+    stems_a_pre = {name: stem[:, :split_point_a] for name, stem in stems_a.items()}
+    stems_a_trans = {name: stem[:, split_point_a:] for name, stem in stems_a.items()}
+
+    # Split transition zone into: [fade region] + [solo region]
+    stems_a_fade = {name: stem[:, :fade_samples_a] for name, stem in stems_a_trans.items()}
+    stems_a_solo = {name: stem[:, fade_samples_a:] for name, stem in stems_a_trans.items()}
+
+    # Create fade-out curve (equal-power)
+    fade_curve_out = np.linspace(1, 0, fade_samples_a)
+    fade_out = np.sqrt(fade_curve_out)  # Equal-power fade
+
+    # Apply fade to NON-VOCAL stems (bass, drums, other)
+    stems_a_fade_processed = {
+        'vocals': stems_a_fade['vocals'],  # Keep vocals at full volume
+        'bass': stems_a_fade['bass'] * fade_out,
+        'drums': stems_a_fade['drums'] * fade_out,
+        'other': stems_a_fade['other'] * fade_out
+    }
+
+    # In solo region, only vocals (silence for others)
+    stems_a_solo_processed = {
+        'vocals': stems_a_solo['vocals'],
+        'bass': np.zeros_like(stems_a_solo['bass']),
+        'drums': np.zeros_like(stems_a_solo['drums']),
+        'other': np.zeros_like(stems_a_solo['other'])
+    }
+
+    # === PROCESS SONG B ===
+    section_b_length = stems_b['vocals'].shape[1]
+
+    if section_b_length < transition_samples_b:
+        raise ValueError(
+            f"Section B too short for transition ({section_b_length/sr:.1f}s < "
+            f"{transition_duration_b:.1f}s). Need at least {transition_beats} beats."
+        )
+
+    # Split section B into: [transition zone] + [post-transition]
+    stems_b_trans = {name: stem[:, :transition_samples_b] for name, stem in stems_b.items()}
+    stems_b_post = {name: stem[:, transition_samples_b:] for name, stem in stems_b.items()}
+
+    # Split transition zone into: [solo region] + [fade region]
+    stems_b_solo = {name: stem[:, :fade_samples_b] for name, stem in stems_b_trans.items()}
+    stems_b_fade = {name: stem[:, fade_samples_b:] for name, stem in stems_b_trans.items()}
+
+    # In solo region, only vocals
+    stems_b_solo_processed = {
+        'vocals': stems_b_solo['vocals'],
+        'bass': np.zeros_like(stems_b_solo['bass']),
+        'drums': np.zeros_like(stems_b_solo['drums']),
+        'other': np.zeros_like(stems_b_solo['other'])
+    }
+
+    # Create fade-in curve (equal-power)
+    fade_curve_in = np.linspace(0, 1, fade_samples_b)
+    fade_in = np.sqrt(fade_curve_in)
+
+    # Apply fade to NON-VOCAL stems
+    stems_b_fade_processed = {
+        'vocals': stems_b_fade['vocals'],  # Keep vocals at full volume
+        'bass': stems_b_fade['bass'] * fade_in,
+        'drums': stems_b_fade['drums'] * fade_in,
+        'other': stems_b_fade['other'] * fade_in
+    }
+
+    # === MIX STEMS BACK TO STEREO ===
+    def mix_stems(stem_dict):
+        """Sum all stems to create stereo mix."""
+        return (stem_dict['bass'] + stem_dict['drums'] +
+                stem_dict['other'] + stem_dict['vocals'])
+
+    # Mix each region
+    audio_a_pre = mix_stems(stems_a_pre)
+    audio_a_fade = mix_stems(stems_a_fade_processed)
+    audio_a_solo = mix_stems(stems_a_solo_processed)
+
+    audio_b_solo = mix_stems(stems_b_solo_processed)
+    audio_b_fade = mix_stems(stems_b_fade_processed)
+    audio_b_post = mix_stems(stems_b_post)
+
+    # === CONCATENATE ALL PARTS ===
+    transition = np.concatenate([
+        audio_a_pre,      # Song A: pre-transition (full mix)
+        audio_a_fade,     # Song A: fade out non-vocals (4 beats)
+        audio_a_solo,     # Song A: vocals only (4 beats)
+        audio_b_solo,     # Song B: vocals only (4 beats)
+        audio_b_fade,     # Song B: fade in non-vocals (4 beats)
+        audio_b_post      # Song B: post-transition (full mix)
+    ], axis=1)
+
+    actual_duration = transition.shape[1] / sr
+
+    # Additional metadata
+    metadata = {
+        'transition_beats_a': transition_beats,
+        'transition_beats_b': transition_beats,
+        'fade_beats_a': fade_beats,
+        'fade_beats_b': fade_beats,
+        'transition_duration_a': transition_duration_a,
+        'transition_duration_b': transition_duration_b,
+        'featured_stem': 'vocals',
+        'faded_stems': ['bass', 'drums', 'other']
+    }
+
+    return transition, sr, actual_duration, metadata
+
+
+def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b,
+                                  tempo_a, tempo_b, stems_base_dir):
+    """
+    Create drum-fade transition: sections connected by drum-only bridge.
+
+    Algorithm identical to vocal-fade, but keep drums instead of vocals.
+
+    Args:
+        song_a_path, song_b_path: Paths to audio files
+        section_a, section_b: Section dicts with 'start', 'end' keys
+        tempo_a, tempo_b: Tempos in BPM
+        stems_base_dir: Base directory for stems
+
+    Returns:
+        (transition_audio, sample_rate, actual_duration, metadata_dict)
+    """
+    sr = CONFIG['sample_rate']
+
+    # Calculate beat durations
+    beat_duration_a = 60.0 / tempo_a
+    beat_duration_b = 60.0 / tempo_b
+
+    transition_beats = CONFIG['stem_fade_transition_beats']
+    fade_beats = CONFIG['stem_fade_duration_beats']
+
+    transition_duration_a = beat_duration_a * transition_beats
+    fade_duration_a = beat_duration_a * fade_beats
+
+    transition_duration_b = beat_duration_b * transition_beats
+    fade_duration_b = beat_duration_b * fade_beats
+
+    transition_samples_a = int(transition_duration_a * sr)
+    fade_samples_a = int(fade_duration_a * sr)
+
+    transition_samples_b = int(transition_duration_b * sr)
+    fade_samples_b = int(fade_duration_b * sr)
+
+    # === LOAD STEMS ===
+    try:
+        stems_a = load_stems_for_section(song_a_path, section_a, stems_base_dir, sr)
+        stems_b = load_stems_for_section(song_b_path, section_b, stems_base_dir, sr)
+    except FileNotFoundError as e:
+        raise RuntimeError(f"Cannot generate drum-fade transition: {e}")
+
+    # === PROCESS SONG A ===
+    section_a_length = stems_a['drums'].shape[1]
+
+    if section_a_length < transition_samples_a:
+        raise ValueError(
+            f"Section A too short for transition ({section_a_length/sr:.1f}s < "
+            f"{transition_duration_a:.1f}s). Need at least {transition_beats} beats."
+        )
+
+    split_point_a = section_a_length - transition_samples_a
+
+    stems_a_pre = {name: stem[:, :split_point_a] for name, stem in stems_a.items()}
+    stems_a_trans = {name: stem[:, split_point_a:] for name, stem in stems_a.items()}
+
+    stems_a_fade = {name: stem[:, :fade_samples_a] for name, stem in stems_a_trans.items()}
+    stems_a_solo = {name: stem[:, fade_samples_a:] for name, stem in stems_a_trans.items()}
+
+    fade_curve_out = np.linspace(1, 0, fade_samples_a)
+    fade_out = np.sqrt(fade_curve_out)
+
+    # Apply fade to NON-DRUM stems (bass, vocals, other)
+    stems_a_fade_processed = {
+        'drums': stems_a_fade['drums'],  # Keep drums at full volume
+        'bass': stems_a_fade['bass'] * fade_out,
+        'vocals': stems_a_fade['vocals'] * fade_out,
+        'other': stems_a_fade['other'] * fade_out
+    }
+
+    # In solo region, only drums
+    stems_a_solo_processed = {
+        'drums': stems_a_solo['drums'],
+        'bass': np.zeros_like(stems_a_solo['bass']),
+        'vocals': np.zeros_like(stems_a_solo['vocals']),
+        'other': np.zeros_like(stems_a_solo['other'])
+    }
+
+    # === PROCESS SONG B ===
+    section_b_length = stems_b['drums'].shape[1]
+
+    if section_b_length < transition_samples_b:
+        raise ValueError(
+            f"Section B too short for transition ({section_b_length/sr:.1f}s < "
+            f"{transition_duration_b:.1f}s). Need at least {transition_beats} beats."
+        )
+
+    stems_b_trans = {name: stem[:, :transition_samples_b] for name, stem in stems_b.items()}
+    stems_b_post = {name: stem[:, transition_samples_b:] for name, stem in stems_b.items()}
+
+    stems_b_solo = {name: stem[:, :fade_samples_b] for name, stem in stems_b_trans.items()}
+    stems_b_fade = {name: stem[:, fade_samples_b:] for name, stem in stems_b_trans.items()}
+
+    # Solo region: only drums
+    stems_b_solo_processed = {
+        'drums': stems_b_solo['drums'],
+        'bass': np.zeros_like(stems_b_solo['bass']),
+        'vocals': np.zeros_like(stems_b_solo['vocals']),
+        'other': np.zeros_like(stems_b_solo['other'])
+    }
+
+    fade_curve_in = np.linspace(0, 1, fade_samples_b)
+    fade_in = np.sqrt(fade_curve_in)
+
+    # Apply fade to NON-DRUM stems
+    stems_b_fade_processed = {
+        'drums': stems_b_fade['drums'],  # Keep drums at full volume
+        'bass': stems_b_fade['bass'] * fade_in,
+        'vocals': stems_b_fade['vocals'] * fade_in,
+        'other': stems_b_fade['other'] * fade_in
+    }
+
+    # === MIX STEMS ===
+    def mix_stems(stem_dict):
+        return (stem_dict['bass'] + stem_dict['drums'] +
+                stem_dict['other'] + stem_dict['vocals'])
+
+    audio_a_pre = mix_stems(stems_a_pre)
+    audio_a_fade = mix_stems(stems_a_fade_processed)
+    audio_a_solo = mix_stems(stems_a_solo_processed)
+
+    audio_b_solo = mix_stems(stems_b_solo_processed)
+    audio_b_fade = mix_stems(stems_b_fade_processed)
+    audio_b_post = mix_stems(stems_b_post)
+
+    # === CONCATENATE ===
+    transition = np.concatenate([
+        audio_a_pre,
+        audio_a_fade,
+        audio_a_solo,
+        audio_b_solo,
+        audio_b_fade,
+        audio_b_post
+    ], axis=1)
+
+    actual_duration = transition.shape[1] / sr
+
+    metadata = {
+        'transition_beats_a': transition_beats,
+        'transition_beats_b': transition_beats,
+        'fade_beats_a': fade_beats,
+        'fade_beats_b': fade_beats,
+        'transition_duration_a': transition_duration_a,
+        'transition_duration_b': transition_duration_b,
+        'featured_stem': 'drums',
+        'faded_stems': ['bass', 'vocals', 'other']
+    }
+
+    return transition, sr, actual_duration, metadata
+
+
 # =============================================================================
 # MAIN TRANSITION GENERATION
 # =============================================================================
@@ -347,7 +734,7 @@ def load_all_song_sections(audio_dir, cache_dir):
 def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
                          sections_a, sections_b, section_a_idx, section_b_idx, audio_dir):
     """
-    Generate all variants (medium-crossfade, medium-silence) for a section pair.
+    Generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade) for a section pair.
 
     Args:
         pair: Compatibility info dict (must include 'tempo_a' for silence calculation)
@@ -456,6 +843,117 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
     except Exception as e:
         log(f"      ✗ Failed to generate MEDIUM-SILENCE variant: {e}")
 
+    # === VOCAL-FADE VARIANT (Full Sections with Vocal Bridge) ===
+    log(f"    Generating VOCAL-FADE variant ({CONFIG['stem_fade_transition_beats']}-beat transition)...")
+
+    try:
+        # Get stems base directory
+        stems_base_dir = OUTPUT_DIR / 'stems'
+
+        # Get tempos
+        tempo_a = pair['tempo_a']
+        tempo_b = pair['tempo_b']
+
+        transition, sr, duration, fade_metadata = generate_vocal_fade_transition(
+            song_a_path, song_b_path, section_a, section_b,
+            tempo_a, tempo_b, stems_base_dir
+        )
+
+        # Generate filename
+        filename = f"transition_vocal_fade_{base_a}_{section_a['label']}_{base_b}_{section_b['label']}_{CONFIG['stem_fade_transition_beats']}beats.{CONFIG['output_format']}"
+
+        # Save audio
+        filepath = audio_dir / 'vocal-fade' / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(filepath, transition.T, sr)
+
+        file_size_mb = filepath.stat().st_size / (1024 * 1024)
+
+        variants.append({
+            'variant_type': 'vocal-fade',
+            'transition_beats': CONFIG['stem_fade_transition_beats'],
+            'fade_beats': CONFIG['stem_fade_duration_beats'],
+            'transition_duration_a': fade_metadata['transition_duration_a'],
+            'transition_duration_b': fade_metadata['transition_duration_b'],
+            'total_duration': duration,
+            'featured_stem': 'vocals',
+            'faded_stems': ['bass', 'drums', 'other'],
+            'tempo_a_used': tempo_a,
+            'tempo_b_used': tempo_b,
+            'sections_included': {
+                'song_a': [section_a['label']],
+                'song_b': [section_b['label']]
+            },
+            'filename': str(filepath.relative_to(CONFIG['output_dir'])),
+            'file_size_mb': round(file_size_mb, 2),
+            'audio_specs': {
+                'sample_rate': sr,
+                'channels': transition.shape[0],
+                'format': CONFIG['output_format'].upper()
+            }
+        })
+
+        log(f"      ✓ VOCAL-FADE: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s)")
+
+    except FileNotFoundError as e:
+        log(f"      ⚠️  Skipped VOCAL-FADE: Stems not found. Run with --generate-stems first.")
+    except Exception as e:
+        log(f"      ✗ Failed to generate VOCAL-FADE variant: {e}")
+
+    # === DRUM-FADE VARIANT (Full Sections with Drum Bridge) ===
+    log(f"    Generating DRUM-FADE variant ({CONFIG['stem_fade_transition_beats']}-beat transition)...")
+
+    try:
+        stems_base_dir = OUTPUT_DIR / 'stems'
+        tempo_a = pair['tempo_a']
+        tempo_b = pair['tempo_b']
+
+        transition, sr, duration, fade_metadata = generate_drum_fade_transition(
+            song_a_path, song_b_path, section_a, section_b,
+            tempo_a, tempo_b, stems_base_dir
+        )
+
+        # Generate filename
+        filename = f"transition_drum_fade_{base_a}_{section_a['label']}_{base_b}_{section_b['label']}_{CONFIG['stem_fade_transition_beats']}beats.{CONFIG['output_format']}"
+
+        # Save audio
+        filepath = audio_dir / 'drum-fade' / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(filepath, transition.T, sr)
+
+        file_size_mb = filepath.stat().st_size / (1024 * 1024)
+
+        variants.append({
+            'variant_type': 'drum-fade',
+            'transition_beats': CONFIG['stem_fade_transition_beats'],
+            'fade_beats': CONFIG['stem_fade_duration_beats'],
+            'transition_duration_a': fade_metadata['transition_duration_a'],
+            'transition_duration_b': fade_metadata['transition_duration_b'],
+            'total_duration': duration,
+            'featured_stem': 'drums',
+            'faded_stems': ['bass', 'vocals', 'other'],
+            'tempo_a_used': tempo_a,
+            'tempo_b_used': tempo_b,
+            'sections_included': {
+                'song_a': [section_a['label']],
+                'song_b': [section_b['label']]
+            },
+            'filename': str(filepath.relative_to(CONFIG['output_dir'])),
+            'file_size_mb': round(file_size_mb, 2),
+            'audio_specs': {
+                'sample_rate': sr,
+                'channels': transition.shape[0],
+                'format': CONFIG['output_format'].upper()
+            }
+        })
+
+        log(f"      ✓ DRUM-FADE: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s)")
+
+    except FileNotFoundError as e:
+        log(f"      ⚠️  Skipped DRUM-FADE: Stems not found. Run with --generate-stems first.")
+    except Exception as e:
+        log(f"      ✗ Failed to generate DRUM-FADE variant: {e}")
+
     return variants
 
 
@@ -463,8 +961,8 @@ def generate_all_transitions(candidates, section_features_map, audio_dir, cache_
     """
     Generate all section transition audio files for candidate pairs (v2.1).
 
-    This function generates both variants (medium-crossfade, medium-silence) for each pair
-    and creates comprehensive v2.0 metadata.
+    This function generates all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)
+    for each pair and creates comprehensive v2.0 metadata.
 
     Args:
         candidates: List of viable pairs from select_transition_candidates()
@@ -795,10 +1293,14 @@ def print_summary_report(transitions):
     total_variants = sum(len(t['variants']) for t in transitions)
     medium_crossfade_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'medium-crossfade')
     medium_silence_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'medium-silence')
+    vocal_fade_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'vocal-fade')
+    drum_fade_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'drum-fade')
 
     log(f"\n  Total variants generated: {total_variants}")
     log(f"    Medium-Crossfade (full sections with crossfade): {medium_crossfade_count}")
     log(f"    Medium-Silence ({CONFIG['silence_beats']}-beat silence gap): {medium_silence_count}")
+    log(f"    Vocal-Fade ({CONFIG['stem_fade_transition_beats']}-beat vocal transition): {vocal_fade_count}")
+    log(f"    Drum-Fade ({CONFIG['stem_fade_transition_beats']}-beat drum transition): {drum_fade_count}")
 
     # List transition pairs
     log(f"\n  Transition pairs:")
@@ -818,7 +1320,7 @@ def print_summary_report(transitions):
     log("NEXT STEPS")
     log(f"{'='*70}")
     log(f"  1. Review transitions using: python poc/review_transitions.py")
-    log(f"  2. Audio files organized in: {CONFIG['output_dir']}/audio/{{medium-crossfade,medium-silence}}/")
+    log(f"  2. Audio files organized in: {CONFIG['output_dir']}/audio/{{medium-crossfade,medium-silence,vocal-fade,drum-fade}}/")
     log(f"  3. Master index (single source of truth): {CONFIG['output_dir']}/metadata/transitions_index.json")
     log(f"  4. Quick reference CSV: {CONFIG['output_dir']}/metadata/transitions_summary.csv")
     log(f"{'='*70}\n")
