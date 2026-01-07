@@ -361,17 +361,18 @@ def generate_medium_silence_transition(song_a_path, song_b_path, section_a, sect
 def generate_vocal_fade_transition(song_a_path, song_b_path, section_a, section_b,
                                    tempo_a, tempo_b, stems_base_dir):
     """
-    Create vocal-fade transition: sections connected by vocal-only bridge.
+    Create vocal-fade transition: sections connected by vocal-only bridge with silence gap.
 
     Algorithm:
     1. Load all 4 stems for both sections
     2. Song A transition zone (last 8 beats):
        - Beats -8 to -4: Fade out bass, drums, other (vocals at full)
        - Beats -4 to 0: Vocals only
-    3. Song B transition zone (first 8 beats):
+    3. 1 beat of silence (using Song A's tempo)
+    4. Song B transition zone (first 8 beats):
        - Beats 0 to 4: Vocals only
        - Beats 4 to 8: Fade in bass, drums, other (vocals at full)
-    4. Concatenate: [A_pre] + [A_transition] + [B_transition] + [B_post]
+    5. Concatenate: [A_pre] + [A_fade] + [A_solo] + [silence] + [B_solo] + [B_fade] + [B_post]
 
     Args:
         song_a_path, song_b_path: Paths to audio files
@@ -489,6 +490,12 @@ def generate_vocal_fade_transition(song_a_path, song_b_path, section_a, section_
         'other': stems_b_fade['other'] * fade_in
     }
 
+    # === CREATE SILENCE GAP (1 beat between songs) ===
+    silence_beats = 1
+    silence_duration = beat_duration_a * silence_beats  # Use Song A's tempo
+    silence_samples = int(silence_duration * sr)
+    silence_gap = np.zeros((2, silence_samples), dtype=stems_a['vocals'].dtype)
+
     # === MIX STEMS BACK TO STEREO ===
     def mix_stems(stem_dict):
         """Sum all stems to create stereo mix."""
@@ -509,6 +516,7 @@ def generate_vocal_fade_transition(song_a_path, song_b_path, section_a, section_
         audio_a_pre,      # Song A: pre-transition (full mix)
         audio_a_fade,     # Song A: fade out non-vocals (4 beats)
         audio_a_solo,     # Song A: vocals only (4 beats)
+        silence_gap,      # 1 beat of silence (using Song A's tempo)
         audio_b_solo,     # Song B: vocals only (4 beats)
         audio_b_fade,     # Song B: fade in non-vocals (4 beats)
         audio_b_post      # Song B: post-transition (full mix)
@@ -522,6 +530,8 @@ def generate_vocal_fade_transition(song_a_path, song_b_path, section_a, section_
         'transition_beats_b': transition_beats,
         'fade_beats_a': fade_beats,
         'fade_beats_b': fade_beats,
+        'silence_beats': silence_beats,
+        'silence_duration': silence_duration,
         'transition_duration_a': transition_duration_a,
         'transition_duration_b': transition_duration_b,
         'featured_stem': 'vocals',
@@ -873,6 +883,8 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
             'variant_type': 'vocal-fade',
             'transition_beats': CONFIG['stem_fade_transition_beats'],
             'fade_beats': CONFIG['stem_fade_duration_beats'],
+            'silence_beats': fade_metadata['silence_beats'],
+            'silence_duration': fade_metadata['silence_duration'],
             'transition_duration_a': fade_metadata['transition_duration_a'],
             'transition_duration_b': fade_metadata['transition_duration_b'],
             'total_duration': duration,
