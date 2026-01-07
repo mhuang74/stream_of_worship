@@ -544,9 +544,18 @@ def generate_vocal_fade_transition(song_a_path, song_b_path, section_a, section_
 def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b,
                                   tempo_a, tempo_b, stems_base_dir):
     """
-    Create drum-fade transition: sections connected by drum-only bridge.
+    Create drum-fade transition: sections connected by drum-only bridge with silence gap.
 
-    Algorithm identical to vocal-fade, but keep drums instead of vocals.
+    Algorithm:
+    1. Load all 4 stems for both sections
+    2. Song A transition zone (last 4 beats):
+       - Beats -4 to -2: Fade out bass, vocals, other (drums at full)
+       - Beats -2 to 0: Drums only
+    3. 1 beat of silence (using Song A's tempo)
+    4. Song B transition zone (first 4 beats):
+       - Beats 0 to 2: Drums only
+       - Beats 2 to 4: Fade in bass, vocals, other (drums at full)
+    5. Concatenate: [A_pre] + [A_fade] + [A_solo] + [silence] + [B_solo] + [B_fade] + [B_post]
 
     Args:
         song_a_path, song_b_path: Paths to audio files
@@ -563,8 +572,9 @@ def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b
     beat_duration_a = 60.0 / tempo_a
     beat_duration_b = 60.0 / tempo_b
 
-    transition_beats = CONFIG['stem_fade_transition_beats']
-    fade_beats = CONFIG['stem_fade_duration_beats']
+    # Use 4-beat transitions with 2-beat fade for drum-fade
+    transition_beats = 4  # Total beats per song for transition zone
+    fade_beats = 2        # Beats for fade in/out within transition zone
 
     transition_duration_a = beat_duration_a * transition_beats
     fade_duration_a = beat_duration_a * fade_beats
@@ -655,6 +665,12 @@ def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b
         'other': stems_b_fade['other'] * fade_in
     }
 
+    # === CREATE SILENCE GAP (1 beat between songs) ===
+    silence_beats = 1
+    silence_duration = beat_duration_a * silence_beats  # Use Song A's tempo
+    silence_samples = int(silence_duration * sr)
+    silence_gap = np.zeros((2, silence_samples), dtype=stems_a['drums'].dtype)
+
     # === MIX STEMS ===
     def mix_stems(stem_dict):
         return (stem_dict['bass'] + stem_dict['drums'] +
@@ -668,14 +684,15 @@ def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b
     audio_b_fade = mix_stems(stems_b_fade_processed)
     audio_b_post = mix_stems(stems_b_post)
 
-    # === CONCATENATE ===
+    # === CONCATENATE ALL PARTS ===
     transition = np.concatenate([
-        audio_a_pre,
-        audio_a_fade,
-        audio_a_solo,
-        audio_b_solo,
-        audio_b_fade,
-        audio_b_post
+        audio_a_pre,      # Song A: pre-transition (full mix)
+        audio_a_fade,     # Song A: fade out non-drums (2 beats)
+        audio_a_solo,     # Song A: drums only (2 beats)
+        silence_gap,      # 1 beat of silence (using Song A's tempo)
+        audio_b_solo,     # Song B: drums only (2 beats)
+        audio_b_fade,     # Song B: fade in non-drums (2 beats)
+        audio_b_post      # Song B: post-transition (full mix)
     ], axis=1)
 
     actual_duration = transition.shape[1] / sr
@@ -685,6 +702,8 @@ def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b
         'transition_beats_b': transition_beats,
         'fade_beats_a': fade_beats,
         'fade_beats_b': fade_beats,
+        'silence_beats': silence_beats,
+        'silence_duration': silence_duration,
         'transition_duration_a': transition_duration_a,
         'transition_duration_b': transition_duration_b,
         'featured_stem': 'drums',
@@ -913,7 +932,7 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
         log(f"      ✗ Failed to generate VOCAL-FADE variant: {e}")
 
     # === DRUM-FADE VARIANT (Full Sections with Drum Bridge) ===
-    log(f"    Generating DRUM-FADE variant ({CONFIG['stem_fade_transition_beats']}-beat transition)...")
+    log(f"    Generating DRUM-FADE variant (4-beat transition with 1-beat gap)...")
 
     try:
         stems_base_dir = OUTPUT_DIR / 'stems'
@@ -937,8 +956,10 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
 
         variants.append({
             'variant_type': 'drum-fade',
-            'transition_beats': CONFIG['stem_fade_transition_beats'],
-            'fade_beats': CONFIG['stem_fade_duration_beats'],
+            'transition_beats': fade_metadata['transition_beats_a'],
+            'fade_beats': fade_metadata['fade_beats_a'],
+            'silence_beats': fade_metadata['silence_beats'],
+            'silence_duration': fade_metadata['silence_duration'],
             'transition_duration_a': fade_metadata['transition_duration_a'],
             'transition_duration_b': fade_metadata['transition_duration_b'],
             'total_duration': duration,
@@ -1312,7 +1333,7 @@ def print_summary_report(transitions):
     log(f"    Medium-Crossfade (full sections with crossfade): {medium_crossfade_count}")
     log(f"    Medium-Silence ({CONFIG['silence_beats']}-beat silence gap): {medium_silence_count}")
     log(f"    Vocal-Fade ({CONFIG['stem_fade_transition_beats']}-beat vocal transition): {vocal_fade_count}")
-    log(f"    Drum-Fade ({CONFIG['stem_fade_transition_beats']}-beat drum transition): {drum_fade_count}")
+    log(f"    Drum-Fade (4-beat drum transition with 1-beat gap): {drum_fade_count}")
 
     # List transition pairs
     log(f"\n  Transition pairs:")
