@@ -224,7 +224,8 @@ def display_transition_info(transition, index):
         elif variant_type == 'medium-silence':
             desc = f"Full sections with {variant.get('silence_beats', 4)}-beat silence gap"
         elif variant_type == 'vocal-fade':
-            desc = f"Vocal-only bridge ({variant.get('transition_beats', 8)}-beat transition)"
+            silence = variant.get('silence_beats', 1)
+            desc = f"Vocal-only bridge ({variant.get('transition_beats', 8)}-beat transition, {silence}-beat gap)"
         elif variant_type == 'drum-fade':
             desc = f"Drum-only bridge ({variant.get('transition_beats', 8)}-beat transition)"
         else:
