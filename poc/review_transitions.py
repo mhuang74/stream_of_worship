@@ -30,6 +30,9 @@ from datetime import datetime
 import sys
 import threading
 import time
+import select
+import termios
+import tty
 
 # Configuration
 OUTPUT_DIR = Path("poc_output_allinone")
@@ -43,7 +46,13 @@ playback_state = {
     'playing': False,
     'stream': None,
     'current_file': None,
-    'stop_requested': False
+    'stop_requested': False,
+    'audio_data': None,
+    'sample_rate': None,
+    'current_position': 0,
+    'seek_requested': False,
+    'seek_offset': 0,
+    'keyboard_thread': None
 }
 
 
@@ -115,9 +124,67 @@ def save_transitions_index(index):
 # AUDIO PLAYBACK
 # =============================================================================
 
+def get_arrow_key():
+    """
+    Non-blocking arrow key detection for Unix-like systems.
+
+    Returns:
+        'left', 'right', or None
+    """
+    # Check if input is available (non-blocking)
+    if select.select([sys.stdin], [], [], 0)[0]:
+        ch = sys.stdin.read(1)
+
+        # Arrow keys send escape sequences: \x1b[A (up), \x1b[B (down), \x1b[C (right), \x1b[D (left)
+        if ch == '\x1b':
+            # Read the next two characters
+            ch2 = sys.stdin.read(1)
+            if ch2 == '[':
+                ch3 = sys.stdin.read(1)
+                if ch3 == 'C':  # Right arrow
+                    return 'right'
+                elif ch3 == 'D':  # Left arrow
+                    return 'left'
+
+    return None
+
+
+def keyboard_listener_thread():
+    """
+    Background thread to listen for arrow key presses during playback.
+    Updates seek_offset when arrow keys are detected.
+    """
+    global playback_state
+
+    # Save terminal settings
+    old_settings = termios.tcgetattr(sys.stdin)
+
+    try:
+        # Set terminal to raw mode for character-by-character input
+        tty.setcbreak(sys.stdin.fileno())
+
+        while playback_state['playing'] and not playback_state['stop_requested']:
+            key = get_arrow_key()
+
+            if key == 'right':
+                playback_state['seek_offset'] = 5  # Skip forward 5 seconds
+                playback_state['seek_requested'] = True
+                print(f"\r⏩ +5s", end='', flush=True)
+            elif key == 'left':
+                playback_state['seek_offset'] = -5  # Skip backward 5 seconds
+                playback_state['seek_requested'] = True
+                print(f"\r⏪ -5s", end='', flush=True)
+
+            time.sleep(0.05)  # Small delay to avoid busy-waiting
+
+    finally:
+        # Restore terminal settings
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+
 def play_audio(filepath, blocking=False):
     """
-    Play audio file with simple controls.
+    Play audio file with seek controls (arrow keys for ±5s).
 
     Args:
         filepath: Path to audio file
@@ -134,21 +201,75 @@ def play_audio(filepath, blocking=False):
     try:
         # Load audio file
         audio_data, sample_rate = sf.read(filepath)
+        total_duration = len(audio_data) / sample_rate
 
         print(f"\n▶ Playing: {filepath.name}")
-        print(f"  Duration: {len(audio_data) / sample_rate:.1f}s | Press Ctrl+C to stop")
+        print(f"  Duration: {total_duration:.1f}s | ← → to seek ±5s | Ctrl+C to stop")
 
         playback_state['playing'] = True
         playback_state['current_file'] = str(filepath)
         playback_state['stop_requested'] = False
+        playback_state['audio_data'] = audio_data
+        playback_state['sample_rate'] = sample_rate
+        playback_state['current_position'] = 0
+        playback_state['seek_requested'] = False
+        playback_state['seek_offset'] = 0
 
-        # Play audio
+        # Start keyboard listener thread
         if blocking:
-            sd.play(audio_data, sample_rate)
-            sd.wait()
+            kb_thread = threading.Thread(target=keyboard_listener_thread, daemon=True)
+            kb_thread.start()
+            playback_state['keyboard_thread'] = kb_thread
+
+            # Playback loop with seeking support
+            while playback_state['playing'] and not playback_state['stop_requested']:
+                # Handle seek requests
+                if playback_state['seek_requested']:
+                    sd.stop()
+                    playback_state['current_position'] += int(playback_state['seek_offset'] * sample_rate)
+
+                    # Clamp position to valid range
+                    playback_state['current_position'] = max(0, min(
+                        playback_state['current_position'],
+                        len(audio_data) - 1
+                    ))
+
+                    playback_state['seek_requested'] = False
+                    print(f" → {playback_state['current_position'] / sample_rate:.1f}s / {total_duration:.1f}s", flush=True)
+
+                # Calculate remaining audio
+                remaining_audio = audio_data[playback_state['current_position']:]
+
+                if len(remaining_audio) == 0:
+                    # Reached the end
+                    break
+
+                # Play from current position
+                sd.play(remaining_audio, sample_rate)
+                playback_start_time = time.time()
+                start_pos = playback_state['current_position']
+
+                # Wait for playback to finish or for seek/stop request
+                while not playback_state['seek_requested'] and not playback_state['stop_requested']:
+                    time.sleep(0.05)
+
+                    # Update current position based on elapsed time
+                    elapsed_time = time.time() - playback_start_time
+                    playback_state['current_position'] = start_pos + int(elapsed_time * sample_rate)
+
+                    # Check if playback finished naturally
+                    if playback_state['current_position'] >= len(audio_data):
+                        playback_state['playing'] = False
+                        break
+
+                # Stop current playback before seeking or ending
+                sd.stop()
+
             playback_state['playing'] = False
+            print()  # New line after playback
+
         else:
-            # Non-blocking playback
+            # Non-blocking playback (no seeking support)
             sd.play(audio_data, sample_rate)
 
         return True
@@ -486,6 +607,7 @@ def show_help():
     print("COMMANDS:")
     print(f"{'─'*70}")
     print("  p <variant>  - Play variant (e.g., 'p 1', 'p crossfade', 'p vocal', 'p drum', 'p latent')")
+    print("  ← →          - During playback: skip backward/forward 5 seconds")
     print("  s            - Stop playback")
     print("  r            - Rate this transition")
     print("  n            - Next transition (without rating)")
