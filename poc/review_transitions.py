@@ -227,7 +227,11 @@ def display_transition_info(transition, index):
             silence = variant.get('silence_beats', 1)
             desc = f"Vocal-only bridge ({variant.get('transition_beats', 8)}-beat transition, {silence}-beat gap)"
         elif variant_type == 'drum-fade':
-            desc = f"Drum-only bridge ({variant.get('transition_beats', 8)}-beat transition)"
+            desc = f"Drum-only bridge ({variant.get('transition_beats', 4)}-beat transition)"
+        elif variant_type == 'latent-space':
+            steps = variant.get('interpolation_steps', 32)
+            method = variant.get('interpolation_method', 'slerp')
+            desc = f"Neural codec interpolation ({steps} steps, {method})"
         else:
             desc = "Unknown variant type"
 
@@ -481,7 +485,7 @@ def show_help():
     print(f"\n{'─'*70}")
     print("COMMANDS:")
     print(f"{'─'*70}")
-    print("  p <variant>  - Play variant (e.g., 'p 1', 'p crossfade', 'p vocal', 'p drum')")
+    print("  p <variant>  - Play variant (e.g., 'p 1', 'p crossfade', 'p vocal', 'p drum', 'p latent')")
     print("  s            - Stop playback")
     print("  r            - Rate this transition")
     print("  n            - Next transition (without rating)")
@@ -576,8 +580,8 @@ def main():
                             else:
                                 print(f"  Invalid variant number. Choose 1-{len(transition['variants'])}")
                                 continue
-                        elif variant_spec in ['medium-crossfade', 'medium-silence', 'vocal-fade', 'drum-fade',
-                                              'crossfade', 'silence', 'vocal', 'drum']:
+                        elif variant_spec in ['medium-crossfade', 'medium-silence', 'vocal-fade', 'drum-fade', 'latent-space',
+                                              'crossfade', 'silence', 'vocal', 'drum', 'latent']:
                             # Support both full names and short names
                             if variant_spec == 'crossfade':
                                 variant_type = 'medium-crossfade'
@@ -587,10 +591,12 @@ def main():
                                 variant_type = 'vocal-fade'
                             elif variant_spec == 'drum':
                                 variant_type = 'drum-fade'
+                            elif variant_spec == 'latent':
+                                variant_type = 'latent-space'
                             else:
                                 variant_type = variant_spec
                         else:
-                            print(f"  Invalid variant. Use 1-4, 'crossfade', 'silence', 'vocal', 'drum', or full names")
+                            print(f"  Invalid variant. Use 1-5, 'crossfade', 'silence', 'vocal', 'drum', 'latent', or full names")
                             continue
 
                         # Get file path and play
