@@ -1,6 +1,9 @@
 # Core ML/Audio processing library
 allin1==1.1.0
 
+# Transformers for EnCodec neural codec
+transformers>=4.35.0
+
 # PyTorch ecosystem (CPU version)
 # Note: PyTorch packages are installed separately in Dockerfile with CPU-only versions
 # torch==2.4.1+cpu

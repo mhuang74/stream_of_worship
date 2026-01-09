@@ -60,6 +60,13 @@ CONFIG = {
     'stem_fade_transition_beats': 8,     # Total beats per song for transition zone
     'stem_fade_duration_beats': 4,       # Beats for fade in/out within transition zone
 
+    # Latent-space transition options (v2.2)
+    'latent_space_interpolation_steps': 32,      # Number of interpolation steps
+    'latent_space_model': 'facebook/encodec_48khz',  # EnCodec model (24khz or 48khz)
+    'latent_space_overlap_duration': 4.0,        # Seconds from each section
+    'latent_space_silence_beats': 0,             # Optional silence gap (0 = none)
+    'latent_space_bandwidth': 6.0,               # EnCodec bandwidth (6.0 = highest)
+
     # Optional features
     'generate_waveforms': False,   # Create visualization plots
     'verbose': True                # Print detailed progress
@@ -713,6 +720,180 @@ def generate_drum_fade_transition(song_a_path, song_b_path, section_a, section_b
     return transition, sr, actual_duration, metadata
 
 
+def generate_latent_space_transition(song_a_path, song_b_path,
+                                    section_a, section_b,
+                                    tempo_a=None,
+                                    interpolation_steps=32,
+                                    overlap_duration=4.0,
+                                    silence_beats=0):
+    """
+    Create latent-space transition using EnCodec neural codec interpolation.
+
+    Algorithm:
+    1. Extract overlap regions from end of section A and start of section B
+    2. Load EnCodec model from Transformers (48kHz stereo model)
+    3. Encode both segments to continuous latent space (bypass quantization)
+    4. Perform spherical linear interpolation (slerp) with N steps
+    5. Decode interpolated latents back to audio
+    6. Optional: Insert silence gap in middle of interpolation
+    7. Concatenate: [A_pre] + [interpolation] + [B_post]
+    8. Resample back to project sample rate (44.1kHz)
+
+    This method differs from crossfade/stem-based variants by working in
+    learned perceptual latent space rather than raw waveforms.
+
+    Args:
+        song_a_path, song_b_path: Paths to audio files
+        section_a, section_b: Section dicts with 'start', 'end' keys
+        tempo_a: Optional tempo for silence gap calculation (BPM)
+        interpolation_steps: Number of interpolation steps (default: 32)
+        overlap_duration: Seconds of audio from each section (default: 4.0)
+        silence_beats: Optional silence beats in middle (default: 0 = none)
+
+    Returns:
+        (transition_audio, sample_rate, actual_duration, metadata_dict)
+
+    Raises:
+        ImportError: If transformers not installed
+        ValueError: If sections too short for overlap
+        RuntimeError: If EnCodec processing fails
+    """
+    try:
+        # Try importing from local directory first (when running script directly)
+        try:
+            from encodec_interpolation import EncodecInterpolation
+        except ImportError:
+            # Fallback to package import (when running from project root)
+            from poc.encodec_interpolation import EncodecInterpolation
+    except ImportError as e:
+        raise ImportError(
+            f"EnCodec interpolation module import failed: {e}\n"
+            "If transformers is missing: pip install transformers>=4.35.0"
+        )
+
+    sr = CONFIG['sample_rate']
+
+    # Load full sections
+    y_a, sr_a = librosa.load(str(song_a_path), sr=sr, mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=sr, mono=False)
+
+    # Ensure stereo
+    if y_a.ndim == 1:
+        y_a = np.stack([y_a, y_a])
+    if y_b.ndim == 1:
+        y_b = np.stack([y_b, y_b])
+
+    # Extract sections
+    section_a_start = int(section_a['start'] * sr)
+    section_a_end = int(section_a['end'] * sr)
+    section_b_start = int(section_b['start'] * sr)
+    section_b_end = int(section_b['end'] * sr)
+
+    section_a_audio = y_a[:, section_a_start:section_a_end]
+    section_b_audio = y_b[:, section_b_start:section_b_end]
+
+    # Calculate overlap samples
+    overlap_samples = int(overlap_duration * sr)
+
+    # Validate section lengths
+    if section_a_audio.shape[1] < overlap_samples:
+        raise ValueError(
+            f"Section A too short ({section_a_audio.shape[1]/sr:.1f}s) "
+            f"for overlap ({overlap_duration}s). "
+            f"Need at least {overlap_duration}s per section."
+        )
+    if section_b_audio.shape[1] < overlap_samples:
+        raise ValueError(
+            f"Section B too short ({section_b_audio.shape[1]/sr:.1f}s) "
+            f"for overlap ({overlap_duration}s). "
+            f"Need at least {overlap_duration}s per section."
+        )
+
+    # Split sections: [pre] + [overlap] for A, [overlap] + [post] for B
+    section_a_pre = section_a_audio[:, :-overlap_samples]
+    section_a_overlap = section_a_audio[:, -overlap_samples:]
+
+    section_b_overlap = section_b_audio[:, :overlap_samples]
+    section_b_post = section_b_audio[:, overlap_samples:]
+
+    log(f"      Section A: {section_a_audio.shape[1]/sr:.1f}s "
+        f"(pre: {section_a_pre.shape[1]/sr:.1f}s, overlap: {overlap_duration}s)")
+    log(f"      Section B: {section_b_audio.shape[1]/sr:.1f}s "
+        f"(overlap: {overlap_duration}s, post: {section_b_post.shape[1]/sr:.1f}s)")
+
+    # Initialize EnCodec interpolator
+    log(f"      Loading EnCodec model: {CONFIG['latent_space_model']}...")
+    interpolator = EncodecInterpolation(
+        model_name=CONFIG['latent_space_model'],
+        device='cpu',
+        bandwidth=CONFIG['latent_space_bandwidth']
+    )
+
+    # Perform interpolation in latent space
+    log(f"      Interpolating in latent space ({interpolation_steps} steps)...")
+    interpolated, interp_sr = interpolator.interpolate(
+        section_a_overlap,
+        section_b_overlap,
+        num_steps=interpolation_steps,
+        input_sr=sr
+    )
+
+    log(f"      Interpolation complete: {interpolated.shape[1]/interp_sr:.2f}s at {interp_sr}Hz")
+
+    # Resample interpolation back to project sample rate if needed
+    if interp_sr != sr:
+        log(f"      Resampling from {interp_sr}Hz to {sr}Hz...")
+        interpolated = librosa.resample(
+            interpolated,
+            orig_sr=interp_sr,
+            target_sr=sr,
+            res_type='soxr_hq'
+        )
+
+    # Optional: Insert silence gap in middle of interpolation
+    silence_duration = 0.0
+    if silence_beats > 0 and tempo_a:
+        silence_duration = (60.0 / tempo_a) * silence_beats
+        silence_samples = int(silence_duration * sr)
+        silence = np.zeros((2, silence_samples), dtype=section_a_audio.dtype)
+
+        # Split interpolation in half and insert silence
+        mid_point = interpolated.shape[1] // 2
+        interpolated = np.concatenate([
+            interpolated[:, :mid_point],
+            silence,
+            interpolated[:, mid_point:]
+        ], axis=1)
+
+        log(f"      Added {silence_beats}-beat silence gap ({silence_duration:.2f}s)")
+
+    # Concatenate final transition: [A_pre] + [interpolation] + [B_post]
+    transition = np.concatenate([
+        section_a_pre,
+        interpolated,
+        section_b_post
+    ], axis=1)
+
+    actual_duration = transition.shape[1] / sr
+    interpolation_duration = interpolated.shape[1] / sr
+
+    # Build metadata
+    metadata = {
+        'interpolation_steps': interpolation_steps,
+        'interpolation_method': 'slerp',  # Spherical linear interpolation
+        'overlap_duration': overlap_duration,
+        'interpolation_duration': interpolation_duration,
+        'silence_beats': silence_beats,
+        'silence_duration': silence_duration,
+        'model_used': CONFIG['latent_space_model'],
+        'bandwidth': CONFIG['latent_space_bandwidth'],
+        'native_model_sr': interpolator.sampling_rate,
+        'encoding_type': 'continuous_latent',  # Not quantized
+    }
+
+    return transition, sr, actual_duration, metadata
+
+
 # =============================================================================
 # MAIN TRANSITION GENERATION
 # =============================================================================
@@ -986,6 +1167,72 @@ def generate_all_variants(pair, section_a, section_b, song_a_path, song_b_path,
         log(f"      ⚠️  Skipped DRUM-FADE: Stems not found. Run with --generate-stems first.")
     except Exception as e:
         log(f"      ✗ Failed to generate DRUM-FADE variant: {e}")
+
+    # === LATENT-SPACE VARIANT (EnCodec Neural Codec Interpolation) ===
+    log(f"    Generating LATENT-SPACE variant ({CONFIG['latent_space_interpolation_steps']}-step neural interpolation)...")
+
+    try:
+        tempo_a = pair['tempo_a']
+
+        transition, sr, duration, ls_metadata = generate_latent_space_transition(
+            song_a_path, song_b_path, section_a, section_b,
+            tempo_a=tempo_a,
+            interpolation_steps=CONFIG['latent_space_interpolation_steps'],
+            overlap_duration=CONFIG['latent_space_overlap_duration'],
+            silence_beats=CONFIG['latent_space_silence_beats']
+        )
+
+        # Generate filename
+        filename = (f"transition_latent_space_{base_a}_{section_a['label']}_"
+                   f"{base_b}_{section_b['label']}_"
+                   f"{CONFIG['latent_space_interpolation_steps']}steps."
+                   f"{CONFIG['output_format']}")
+
+        # Save audio
+        filepath = audio_dir / 'latent-space' / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(filepath, transition.T, sr)
+
+        file_size_mb = filepath.stat().st_size / (1024 * 1024)
+
+        # Build variant metadata
+        variants.append({
+            'variant_type': 'latent-space',
+            'interpolation_steps': ls_metadata['interpolation_steps'],
+            'interpolation_method': ls_metadata['interpolation_method'],
+            'interpolation_duration': ls_metadata['interpolation_duration'],
+            'overlap_duration': ls_metadata['overlap_duration'],
+            'silence_beats': ls_metadata['silence_beats'],
+            'silence_duration': ls_metadata['silence_duration'],
+            'model_used': ls_metadata['model_used'],
+            'bandwidth': ls_metadata['bandwidth'],
+            'native_model_sr': ls_metadata['native_model_sr'],
+            'encoding_type': ls_metadata['encoding_type'],
+            'total_duration': duration,
+            'sections_included': {
+                'song_a': [section_a['label']],
+                'song_b': [section_b['label']]
+            },
+            'filename': str(filepath.relative_to(CONFIG['output_dir'])),
+            'file_size_mb': round(file_size_mb, 2),
+            'audio_specs': {
+                'sample_rate': sr,
+                'channels': transition.shape[0],
+                'format': CONFIG['output_format'].upper()
+            }
+        })
+
+        log(f"      ✓ LATENT-SPACE: {filename} ({file_size_mb:.2f} MB, {duration:.1f}s)")
+
+    except ImportError as e:
+        log(f"      ⚠️  Skipped LATENT-SPACE: {e}")
+    except ValueError as e:
+        log(f"      ⚠️  Skipped LATENT-SPACE: {e}")
+    except Exception as e:
+        log(f"      ✗ Failed to generate LATENT-SPACE variant: {e}")
+        import traceback
+        if CONFIG['verbose']:
+            traceback.print_exc()
 
     return variants
 
@@ -1328,12 +1575,14 @@ def print_summary_report(transitions):
     medium_silence_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'medium-silence')
     vocal_fade_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'vocal-fade')
     drum_fade_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'drum-fade')
+    latent_space_count = sum(1 for t in transitions for v in t['variants'] if v['variant_type'] == 'latent-space')
 
     log(f"\n  Total variants generated: {total_variants}")
     log(f"    Medium-Crossfade (full sections with crossfade): {medium_crossfade_count}")
     log(f"    Medium-Silence ({CONFIG['silence_beats']}-beat silence gap): {medium_silence_count}")
     log(f"    Vocal-Fade ({CONFIG['stem_fade_transition_beats']}-beat vocal transition): {vocal_fade_count}")
     log(f"    Drum-Fade (4-beat drum transition with 1-beat gap): {drum_fade_count}")
+    log(f"    Latent-Space ({CONFIG['latent_space_interpolation_steps']}-step neural interpolation): {latent_space_count}")
 
     # List transition pairs
     log(f"\n  Transition pairs:")
@@ -1405,6 +1654,16 @@ def parse_args():
     parser.add_argument('--silence-beats', type=int, default=4,
                         help='Number of beats for silence transition (default: 4)')
 
+    # Latent-space transition options
+    parser.add_argument('--latent-space-steps', type=int, default=32,
+                        help='Number of interpolation steps for latent-space variant (default: 32)')
+    parser.add_argument('--latent-space-overlap', type=float, default=4.0,
+                        help='Overlap duration in seconds for latent-space variant (default: 4.0)')
+    parser.add_argument('--latent-space-model', type=str,
+                        default='facebook/encodec_48khz',
+                        choices=['facebook/encodec_24khz', 'facebook/encodec_48khz'],
+                        help='EnCodec model to use (default: 48khz)')
+
     # Other options
     parser.add_argument('--section-type', type=str, default='chorus',
                         choices=['chorus', 'verse', 'bridge'],
@@ -1457,6 +1716,9 @@ def main():
     # Update CONFIG
     CONFIG['min_score'] = args.min_score
     CONFIG['silence_beats'] = args.silence_beats
+    CONFIG['latent_space_interpolation_steps'] = args.latent_space_steps
+    CONFIG['latent_space_overlap_duration'] = args.latent_space_overlap
+    CONFIG['latent_space_model'] = args.latent_space_model
     if args.max_pairs:
         CONFIG['max_pairs'] = args.max_pairs
 
