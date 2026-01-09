@@ -140,8 +140,24 @@ class EncodecInterpolation:
 
             interpolated_chunks.append(audio_interp)
 
-        # Concatenate all chunks: [num_steps, batch, channels, samples]
-        result = torch.cat(interpolated_chunks, dim=2)  # Concat along time
+        # IMPORTANT: Each decoded chunk is full-length audio (~4s)
+        # We need to extract SHORT SNIPPETS from each to create smooth transition
+        # Calculate snippet length: divide total input length by number of steps
+        first_chunk_samples = interpolated_chunks[0].shape[2]
+        snippet_length = first_chunk_samples // num_steps
+
+        # Extract center snippet from each decoded chunk
+        interpolated_snippets = []
+        for chunk in interpolated_chunks:
+            # Take snippet from center of decoded audio
+            chunk_length = chunk.shape[2]
+            start_idx = (chunk_length - snippet_length) // 2
+            end_idx = start_idx + snippet_length
+            snippet = chunk[:, :, start_idx:end_idx]
+            interpolated_snippets.append(snippet)
+
+        # Concatenate snippets (not full chunks!)
+        result = torch.cat(interpolated_snippets, dim=2)  # Concat along time
 
         # Convert to numpy [channels, samples]
         result_np = result.squeeze(0).cpu().numpy()
