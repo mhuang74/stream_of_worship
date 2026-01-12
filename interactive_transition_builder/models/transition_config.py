@@ -37,12 +37,12 @@ class TransitionConfig:
         embeddings_score: Embeddings similarity score
     """
 
-    # Core transition parameters
+    # Core transition parameters (all durations in BEATS, converted to seconds during generation)
     transition_type: TransitionType = TransitionType.SHORT_GAP
-    transition_window: float = 8.0
-    overlap_window: float = 4.0
-    gap_window: float = 2.0
-    stems_to_fade: List[str] = field(default_factory=lambda: ['vocals', 'drums'])
+    transition_window: float = 9.0  # beats
+    overlap_window: float = 2.0     # beats (Overlap type only)
+    gap_window: float = 1.0          # beats (Short Gap type only)
+    stems_to_fade: List[str] = field(default_factory=lambda: ['other', 'drums', 'bass'])
     fade_window_pct: int = 80
 
     # Source selections (optional until user selects)
@@ -64,26 +64,26 @@ class TransitionConfig:
             'min': 2.0,
             'max': 16.0,
             'step': 0.5,
-            'unit': 's',
+            'unit': 'beats',
             'label': 'Transition Window',
-            'description': 'Total duration of transition zone'
+            'description': 'Total duration of transition zone in beats'
         },
         'overlap_window': {
             'min': 0.5,
             'max': 8.0,
             'step': 0.5,
-            'unit': 's',
+            'unit': 'beats',
             'label': 'Overlap Window',
-            'description': 'Duration of overlap (Overlap type only)',
+            'description': 'Duration of overlap in beats (Overlap type only)',
             'enabled_for': [TransitionType.OVERLAP]
         },
         'gap_window': {
             'min': 0.5,
             'max': 8.0,
             'step': 0.5,
-            'unit': 's',
+            'unit': 'beats',
             'label': 'Gap Window',
-            'description': 'Duration of silence gap (Short Gap type only)',
+            'description': 'Duration of silence gap in beats (Short Gap type only)',
             'enabled_for': [TransitionType.SHORT_GAP]
         },
         'fade_window_pct': {
@@ -98,6 +98,37 @@ class TransitionConfig:
 
     AVAILABLE_STEMS = ['vocals', 'drums', 'bass', 'other']
 
+    def beats_to_seconds(self, beats: float, tempo: float) -> float:
+        """
+        Convert beats to seconds based on tempo.
+
+        Args:
+            beats: Duration in beats
+            tempo: Tempo in BPM
+
+        Returns:
+            Duration in seconds
+        """
+        return (60.0 / tempo) * beats
+
+    def get_transition_window_seconds(self) -> float:
+        """Get transition_window in seconds for Song A."""
+        if self.section_a:
+            return self.beats_to_seconds(self.transition_window, self.section_a.tempo)
+        return 0.0
+
+    def get_overlap_window_seconds(self) -> float:
+        """Get overlap_window in seconds for Song A."""
+        if self.section_a:
+            return self.beats_to_seconds(self.overlap_window, self.section_a.tempo)
+        return 0.0
+
+    def get_gap_window_seconds(self) -> float:
+        """Get gap_window in seconds (using Song A tempo)."""
+        if self.section_a:
+            return self.beats_to_seconds(self.gap_window, self.section_a.tempo)
+        return 0.0
+
     def validate(self) -> tuple[bool, Optional[str]]:
         """
         Validate all parameters are within acceptable ranges.
@@ -108,13 +139,13 @@ class TransitionConfig:
         # Validate transition_window
         spec = self.PARAMETER_SPECS['transition_window']
         if not (spec['min'] <= self.transition_window <= spec['max']):
-            return False, f"transition_window must be between {spec['min']}-{spec['max']}s"
+            return False, f"transition_window must be between {spec['min']}-{spec['max']} beats"
 
         # Validate overlap_window (if Overlap type)
         if self.transition_type == TransitionType.OVERLAP:
             spec = self.PARAMETER_SPECS['overlap_window']
             if not (spec['min'] <= self.overlap_window <= spec['max']):
-                return False, f"overlap_window must be between {spec['min']}-{spec['max']}s"
+                return False, f"overlap_window must be between {spec['min']}-{spec['max']} beats"
             if self.overlap_window > self.transition_window:
                 return False, "overlap_window must be <= transition_window"
 
@@ -122,7 +153,7 @@ class TransitionConfig:
         if self.transition_type == TransitionType.SHORT_GAP:
             spec = self.PARAMETER_SPECS['gap_window']
             if not (spec['min'] <= self.gap_window <= spec['max']):
-                return False, f"gap_window must be between {spec['min']}-{spec['max']}s"
+                return False, f"gap_window must be between {spec['min']}-{spec['max']} beats"
 
         # Validate fade_window_pct
         spec = self.PARAMETER_SPECS['fade_window_pct']
@@ -142,11 +173,17 @@ class TransitionConfig:
         if self.song_b is None or self.section_b is None:
             return False, "Song B and Section B must be selected"
 
-        # Validate section durations
-        if self.section_a.duration < self.transition_window:
-            return False, f"Section A duration ({self.section_a.duration:.1f}s) must be >= transition_window ({self.transition_window}s)"
-        if self.section_b.duration < self.transition_window:
-            return False, f"Section B duration ({self.section_b.duration:.1f}s) must be >= transition_window ({self.transition_window}s)"
+        # Validate section durations (convert beats to seconds)
+        tw_seconds_a = self.get_transition_window_seconds()
+        if self.section_b:
+            tw_seconds_b = self.beats_to_seconds(self.transition_window, self.section_b.tempo)
+        else:
+            tw_seconds_b = 0.0
+
+        if self.section_a.duration < tw_seconds_a:
+            return False, f"Section A duration ({self.section_a.duration:.1f}s) must be >= transition_window ({self.transition_window} beats = {tw_seconds_a:.1f}s)"
+        if self.section_b and self.section_b.duration < tw_seconds_b:
+            return False, f"Section B duration ({self.section_b.duration:.1f}s) must be >= transition_window ({self.transition_window} beats = {tw_seconds_b:.1f}s)"
 
         return True, None
 
@@ -267,16 +304,16 @@ class TransitionConfig:
     def reset_to_defaults(self):
         """Reset parameters to default values based on transition type."""
         if self.transition_type == TransitionType.OVERLAP:
-            self.transition_window = 8.0
-            self.overlap_window = 4.0
+            self.transition_window = 6.0  # beats
+            self.overlap_window = 2.0     # beats
             self.stems_to_fade = ['vocals', 'drums']
             self.fade_window_pct = 80
         elif self.transition_type == TransitionType.SHORT_GAP:
-            self.transition_window = 8.0
-            self.gap_window = 2.0
-            self.stems_to_fade = ['vocals', 'drums']
+            self.transition_window = 9.0  # beats
+            self.gap_window = 1.0         # beats
+            self.stems_to_fade = ['other', 'drums', 'bass']
             self.fade_window_pct = 80
         elif self.transition_type == TransitionType.NO_BREAK:
-            self.transition_window = 8.0
-            self.stems_to_fade = ['vocals', 'drums', 'bass', 'other']
+            self.transition_window = 8.0  # beats
+            self.stems_to_fade = ['other', 'drums', 'bass']
             self.fade_window_pct = 100

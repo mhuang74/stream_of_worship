@@ -15,12 +15,14 @@ I've successfully implemented a complete interactive text-based worship transiti
    - **Short Gap**: Brief silence gap between songs to "clear the air"
    - **No Break**: Continuous beat, seamless flow between songs
 
-2. **Fully Configurable Parameters** (all adjustable in real-time):
-   - `transition_window`: Total transition zone duration (2-16s)
-   - `overlap_window`: Overlap duration for Overlap type (0.5-8s)
-   - `gap_window`: Silence duration for Short Gap type (0.5-8s)
+2. **Fully Configurable Parameters** (all in beats, auto-converted to seconds):
+   - `transition_window`: Total transition zone duration (2-16 beats)
+   - `overlap_window`: Overlap duration for Overlap type (0.5-8 beats)
+   - `gap_window`: Silence duration for Short Gap type (0.5-8 beats)
    - `stems_to_fade`: Select which stems to manipulate (vocals, drums, bass, other)
    - `fade_window_pct`: Fade duration as percentage (0-100%)
+
+   **Beat-to-seconds conversion**: Automatically calculated based on each song's tempo (BPM)
 
 3. **Rich Terminal UI**:
    - Song and section browsing with formatted tables
@@ -150,28 +152,34 @@ Generating transition...
 ### Transition Algorithms
 
 #### 1. Overlap (Intro Overlap)
+**Defaults**: 6 beats window, 2 beats overlap, stems: vocals + drums
 ```python
+# Convert beats to seconds based on tempo
 # Extract last transition_window from Song A, first from Song B
-# Fade out selected stems in Song A over fade_window_pct
-# Mix overlap_window region with equal-power crossfade
+# Apply fade-out to selected stems in Song A
+# Apply equal-power crossfade (sqrt curves) during overlap region
 # Result: [A_pre] + [overlap_mixed] + [B_post]
 ```
 
 #### 2. Short Gap
+**Defaults**: 9 beats window, 1 beat gap, stems: other + drums + bass
 ```python
+# Convert beats to seconds based on tempo
 # Extract transition zones from both songs
 # Fade out selected stems in Song A over fade_window_pct
-# Add gap_window seconds of silence
+# Add gap_window of silence
 # Fade in selected stems in Song B over fade_window_pct
 # Result: [A_fade_out] + [silence] + [B_fade_in]
 ```
 
 #### 3. No Break
+**Defaults**: 8 beats window, stems: other + drums + bass, 100% fade
 ```python
+# Convert beats to seconds based on tempo
 # Extract transition zones from both songs
-# Apply equal-power crossfade to selected stems
-# Mix crossfade region preserving energy
-# Result: [A_pre] + [crossfade_mixed] + [B_post]
+# Calculate fade duration based on fade_window_pct
+# Concatenate with fades
+# Result: [A_with_fade] + [B_with_fade]
 ```
 
 ### Data Sources

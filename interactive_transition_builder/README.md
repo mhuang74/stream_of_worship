@@ -9,11 +9,11 @@ A text-based interactive tool for creating worship song transitions based on the
   - **Short Gap**: Brief silence between songs to "clear the air"
   - **No Break**: Continuous beat, seamless flow
 
-- **Fully Configurable Parameters:**
-  - transition_window: Total transition zone duration
-  - overlap_window / gap_window: Type-specific duration
+- **Fully Configurable Parameters** (all durations in beats, auto-converted to seconds based on tempo):
+  - transition_window: Total transition zone duration in beats
+  - overlap_window / gap_window: Type-specific duration in beats
   - stems_to_fade: Select which stems to manipulate (vocals, drums, bass, other)
-  - fade_window_pct: Fade duration as percentage
+  - fade_window_pct: Fade duration as percentage of transition_window
 
 - **Real-Time Generation:** Generate transitions on-demand with immediate audio preview
 - **Compatibility Scoring:** Automatic tempo, key, and energy compatibility analysis
@@ -166,25 +166,40 @@ interactive_transition_builder/
 
 ## Transition Algorithms
 
+**Important**: All transitions include **FULL sections** from both Song A and Song B. The transition effects are applied at the junction points between sections.
+
 ### Overlap (Intro Overlap)
-1. Extract last `transition_window` from Song A
-2. Extract first `transition_window` from Song B
-3. Fade OUT selected stems in Song A
-4. Mix `overlap_window` region
-5. Concatenate: [A_pre] + [overlap_mixed] + [B_post]
+**Default**: 6 beats transition window, 2 beats overlap, stems: vocals + drums
+
+1. Load FULL sections for Song A and Song B
+2. Apply fade-out to selected stems in Song A over last `fade_window_pct` of `transition_window`
+3. Apply equal-power crossfade during `overlap_window` region at the end of A / start of B:
+   - Song A: sqrt(1-t) fade out
+   - Song B: sqrt(t) fade in
+4. Concatenate: [Full A with transitions] + [overlap_mixed] + [Full B with transitions]
+
+**Output**: Complete section A + overlap transition + complete section B
 
 ### Short Gap
-1. Extract transition zones from both songs
-2. Fade OUT selected stems in Song A
-3. Add `gap_window` silence
-4. Fade IN selected stems in Song B
-5. Concatenate: [A_fade_out] + [silence] + [B_fade_in]
+**Default**: 9 beats transition window, 1 beat gap, stems: other + drums + bass
+
+1. Load FULL sections for Song A and Song B
+2. Fade OUT selected stems in Song A over last `fade_window_pct` of `transition_window`
+3. Add `gap_window` (in beats) of silence
+4. Fade IN selected stems in Song B over first `fade_window_pct` of `transition_window`
+5. Concatenate: [Full A with fade_out] + [silence] + [Full B with fade_in]
+
+**Output**: Complete section A (with fade out) + silence gap + complete section B (with fade in)
 
 ### No Break
-1. Extract transition zones from both songs
-2. Apply equal-power crossfade to selected stems
-3. Mix crossfade region
-4. Concatenate: [A_pre] + [crossfade] + [B_post]
+**Default**: 8 beats transition window, stems: other + drums + bass, 100% fade
+
+1. Load FULL sections for Song A and Song B
+2. Calculate fade duration based on `fade_window_pct` of `transition_window`
+3. Apply equal-power crossfade at junction (end of A, start of B)
+4. Concatenate: [Full A with fade] + [crossfade] + [Full B with fade]
+
+**Output**: Complete section A + crossfade + complete section B
 
 ## References
 

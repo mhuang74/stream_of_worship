@@ -116,7 +116,9 @@ class MetadataLoader:
 
         # Build Song objects with sections
         songs = {}
-        for song_data in poc_full_results.get('results', []):
+        # Handle both list format and dict with 'results' key
+        results_list = poc_full_results if isinstance(poc_full_results, list) else poc_full_results.get('results', [])
+        for song_data in results_list:
             filename = song_data['filename']
 
             # Get full key (combine key + mode)

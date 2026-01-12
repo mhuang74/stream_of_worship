@@ -87,53 +87,62 @@ class AudioPlayer:
                 )
                 self.keyboard_thread.start()
 
-                # Playback loop with seeking
-                while self.playing and not self.stop_requested:
-                    # Handle seek requests
-                    if self.seek_requested:
-                        sd.stop()
-                        self.current_position += int(self.seek_offset * self.sample_rate)
+                try:
+                    # Playback loop with seeking
+                    while self.playing and not self.stop_requested:
+                        # Handle seek requests
+                        if self.seek_requested:
+                            sd.stop()
+                            self.current_position += int(self.seek_offset * self.sample_rate)
 
-                        # Clamp position
-                        self.current_position = max(0, min(
-                            self.current_position,
-                            audio_data.shape[1] - 1
-                        ))
+                            # Clamp position
+                            self.current_position = max(0, min(
+                                self.current_position,
+                                audio_data.shape[1] - 1
+                            ))
 
-                        self.seek_requested = False
-                        current_time = self.current_position / self.sample_rate
-                        print(f" → {current_time:.1f}s / {total_duration:.1f}s", flush=True)
+                            self.seek_requested = False
+                            current_time = self.current_position / self.sample_rate
+                            print(f" → {current_time:.1f}s / {total_duration:.1f}s", flush=True)
 
-                    # Get remaining audio
-                    remaining_audio = audio_data[:, self.current_position:]
+                        # Get remaining audio
+                        remaining_audio = audio_data[:, self.current_position:]
 
-                    if remaining_audio.shape[1] == 0:
-                        # Reached the end
-                        break
-
-                    # Play from current position (transpose for sounddevice)
-                    sd.play(remaining_audio.T, self.sample_rate)
-                    playback_start_time = time.time()
-                    start_pos = self.current_position
-
-                    # Wait for playback or seek/stop
-                    while not self.seek_requested and not self.stop_requested:
-                        time.sleep(0.05)
-
-                        # Update position
-                        elapsed_time = time.time() - playback_start_time
-                        self.current_position = start_pos + int(elapsed_time * self.sample_rate)
-
-                        # Check if finished
-                        if self.current_position >= audio_data.shape[1]:
-                            self.playing = False
+                        if remaining_audio.shape[1] == 0:
+                            # Reached the end
                             break
 
-                    # Stop current playback
-                    sd.stop()
+                        # Play from current position (transpose for sounddevice)
+                        sd.play(remaining_audio.T, self.sample_rate)
+                        playback_start_time = time.time()
+                        start_pos = self.current_position
 
-                self.playing = False
-                print()  # New line after playback
+                        # Wait for playback or seek/stop
+                        while not self.seek_requested and not self.stop_requested:
+                            time.sleep(0.05)
+
+                            # Update position
+                            elapsed_time = time.time() - playback_start_time
+                            self.current_position = start_pos + int(elapsed_time * self.sample_rate)
+
+                            # Check if finished
+                            if self.current_position >= audio_data.shape[1]:
+                                self.playing = False
+                                break
+
+                        # Stop current playback
+                        sd.stop()
+
+                except KeyboardInterrupt:
+                    # Ctrl+C pressed - stop playback gracefully
+                    sd.stop()
+                    self.playing = False
+                    self.stop_requested = True
+                    print("\n⏹ Playback stopped")
+                finally:
+                    self.playing = False
+                    if not self.stop_requested:
+                        print()  # New line after playback
 
             else:
                 # Non-blocking playback
@@ -167,18 +176,23 @@ class AudioPlayer:
             tty.setcbreak(sys.stdin.fileno())
 
             while self.playing and not self.stop_requested:
-                key = self._get_arrow_key()
+                try:
+                    key = self._get_arrow_key()
 
-                if key == 'right':
-                    self.seek_offset = 5  # Skip forward 5s
-                    self.seek_requested = True
-                    print(f"\r⏩ +5s", end='', flush=True)
-                elif key == 'left':
-                    self.seek_offset = -5  # Skip backward 5s
-                    self.seek_requested = True
-                    print(f"\r⏪ -5s", end='', flush=True)
+                    if key == 'right':
+                        self.seek_offset = 5  # Skip forward 5s
+                        self.seek_requested = True
+                        print(f"\r⏩ +5s", end='', flush=True)
+                    elif key == 'left':
+                        self.seek_offset = -5  # Skip backward 5s
+                        self.seek_requested = True
+                        print(f"\r⏪ -5s", end='', flush=True)
 
-                time.sleep(0.05)  # Small delay to avoid busy-waiting
+                    time.sleep(0.05)  # Small delay to avoid busy-waiting
+
+                except (KeyboardInterrupt, Exception):
+                    # Stop listening on any error or interrupt
+                    break
 
         finally:
             # Restore terminal settings
