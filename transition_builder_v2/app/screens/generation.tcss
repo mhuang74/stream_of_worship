@@ -1,0 +1,110 @@
+/* Generation screen styles */
+
+Screen {
+    background: $surface;
+}
+
+#mode_banner {
+    dock: top;
+    height: 1;
+    background: $warning;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+}
+
+#main_content {
+    height: auto;
+    padding: 1;
+}
+
+.song-panel {
+    width: 1fr;
+    height: auto;
+    border: solid $primary;
+    padding: 1;
+    margin: 0 1;
+}
+
+#song_a_list, #song_b_list {
+    height: 12;
+    border: solid $accent;
+    margin: 0 0 1 0;
+}
+
+#section_a_list, #section_b_list {
+    height: 8;
+    border: solid $accent;
+    margin: 0 0 1 0;
+}
+
+#metadata_a, #metadata_b {
+    height: 11;
+    border: solid $accent;
+    padding: 1;
+}
+
+#parameters_panel {
+    height: 16;
+    min-height: 16;
+    border: solid $primary;
+    padding: 1;
+    margin: 1;
+}
+
+#params_left_column, #params_right_column {
+    width: 1fr;
+    height: 100%;
+}
+
+#params_left_column > Horizontal,
+#params_right_column > Horizontal {
+    height: 3;
+    margin: 0 0 0 0;
+}
+
+#parameters_panel .param-label {
+    width: 20;
+    content-align: left middle;
+    padding: 0 1;
+}
+
+#parameters_panel Input {
+    width: 12;
+    margin: 0 1;
+}
+
+#parameters_panel Select {
+    width: 24;
+    margin: 0 1;
+}
+
+#warning_panel {
+    height: auto;
+    background: $warning;
+    color: $text;
+    padding: 1;
+    margin: 0 1;
+}
+
+ListView:focus {
+    border: solid $success;
+}
+
+ListItem {
+    padding: 0 1;
+}
+
+/* Highlighted items - controlled by both keyboard and mouse */
+ListItem.-highlight {
+    background: $success 30%;
+    color: $text;
+    text-style: bold;
+}
+
+/* Selected items (checkmarked) */
+ListItem.--selected {
+    background: $success 30%;
+    color: $text;
+    text-style: bold;
+}
