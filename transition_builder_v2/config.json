@@ -1,0 +1,10 @@
+{
+  "audio_folder": "../poc_audio",
+  "output_folder": "../transitions_output",
+  "analysis_json": "../poc_output_allinone/poc_full_results.json",
+  "default_transition_type": "crossfade",
+  "max_history_size": 50,
+  "auto_play_on_generate": true,
+  "session_logging": true,
+  "error_logging": true
+}
