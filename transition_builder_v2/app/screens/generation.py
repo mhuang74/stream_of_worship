@@ -698,7 +698,14 @@ class GenerationScreen(Screen):
                     self.playback.play()
                     self.notify(f"Playing transition... Press [T] to replay", timeout=3)
 
-            # TODO: Add to history
+            # Add to history
+            self._add_transition_to_history(
+                transition_type=transition_type,
+                song_a=song_a,
+                song_b=song_b,
+                output_path=output_path,
+                metadata=metadata
+            )
 
         except Exception as e:
             self.notify(f"Error generating transition: {str(e)}", severity="error")
@@ -799,8 +806,12 @@ class GenerationScreen(Screen):
 
     def action_show_history(self):
         """Switch to history screen (H key)."""
-        # TODO: Implement screen switching
-        self.notify("Show history (not yet implemented)")
+        from app.state import ActiveScreen
+        self.state.active_screen = ActiveScreen.HISTORY
+        # Select most recent transition if history exists and none selected
+        if self.state.transition_history and self.state.selected_history_index is None:
+            self.state.selected_history_index = 0
+        self.app.switch_screen("history")
 
     def action_search_songs(self):
         """Open song search screen (/ key)."""
@@ -1001,3 +1012,86 @@ class GenerationScreen(Screen):
         """Show help overlay (? or F1 key)."""
         # TODO: Implement help overlay
         self.notify("Help (not yet implemented)")
+
+    def _add_transition_to_history(
+        self,
+        transition_type: str,
+        song_a,
+        song_b,
+        output_path,
+        metadata: dict
+    ):
+        """Add a generated transition to history.
+
+        Args:
+            transition_type: Type of transition (gap, crossfade, etc.)
+            song_a: Song A object
+            song_b: Song B object
+            output_path: Path to the generated audio file
+            metadata: Generation metadata dictionary
+        """
+        from datetime import datetime
+        from pathlib import Path
+        from app.models.transition import TransitionRecord
+
+        # Get section labels
+        section_a_label = "unknown"
+        section_b_label = "unknown"
+
+        if self.state.left_section_index is not None and 0 <= self.state.left_section_index < len(song_a.sections):
+            section_a_label = song_a.sections[self.state.left_section_index].label
+
+        if self.state.right_section_index is not None and 0 <= self.state.right_section_index < len(song_b.sections):
+            section_b_label = song_b.sections[self.state.right_section_index].label
+
+        # Calculate compatibility score
+        compat_score = song_b.compatibility_score if song_b.compatibility_score > 0 else 50.0
+
+        # Generate sequential ID
+        next_id = 1
+        if self.state.transition_history:
+            next_id = max(t.id for t in self.state.transition_history) + 1
+
+        # Build parameters dictionary
+        parameters = {
+            "type": transition_type,
+            "gap_beats": abs(self.state.overlap) if transition_type == "gap" else 0,
+            "overlap": self.state.overlap if transition_type != "gap" else 0,
+            "fade_window": self.state.fade_window,
+            "fade_speed": self.state.fade_speed,
+            "stems_to_fade": self.state.stems_to_fade.copy(),
+            "section_a_start_adjust": self.state.from_section_start_adjust,
+            "section_a_end_adjust": self.state.from_section_end_adjust,
+            "section_b_start_adjust": self.state.to_section_start_adjust,
+            "section_b_end_adjust": self.state.to_section_end_adjust,
+        }
+
+        # Add any extension parameters
+        if self.state.extension_parameters:
+            parameters["extension"] = self.state.extension_parameters.copy()
+
+        # Create transition record
+        record = TransitionRecord(
+            id=next_id,
+            transition_type=transition_type,
+            song_a_filename=song_a.filename,
+            song_b_filename=song_b.filename,
+            section_a_label=section_a_label,
+            section_b_label=section_b_label,
+            compatibility_score=compat_score,
+            generated_at=datetime.now(),
+            audio_path=Path(output_path),
+            is_saved=False,
+            saved_path=None,
+            save_note=None,
+            parameters=parameters
+        )
+
+        # Add to history (newest first, capped at 50)
+        self.state.add_transition(record)
+
+        # Exit modify mode if active
+        if self.state.generation_mode == GenerationMode.MODIFY:
+            self.state.generation_mode = GenerationMode.FRESH
+            self.state.base_transition_id = None
+            self.update_screen()  # Update the mode banner

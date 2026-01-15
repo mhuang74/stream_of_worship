@@ -108,11 +108,18 @@ class AppState:
         # Load parameters from transition
         self.left_song_id = transition.song_a_filename
         self.right_song_id = transition.song_b_filename
-        # Section indices would need to be looked up from the catalog
+        # Section indices are looked up from catalog in the History screen
 
         params = transition.parameters
-        self.transition_type = params.get("type", "crossfade")
-        self.overlap = params.get("overlap", 4.0)
+        self.transition_type = params.get("type", "gap")
+
+        # Handle gap vs overlap based on transition type
+        if self.transition_type == "gap":
+            # For gap transitions, use gap_beats as overlap
+            self.overlap = params.get("gap_beats", 1.0)
+        else:
+            self.overlap = params.get("overlap", 4.0)
+
         self.fade_window = params.get("fade_window", 8.0)
         self.fade_speed = params.get("fade_speed", 2.0)
         self.stems_to_fade = params.get("stems_to_fade", ["all"])
