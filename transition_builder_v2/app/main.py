@@ -112,6 +112,31 @@ class TransitionBuilderApp(App):
             self.sub_title = "Generation Screen"
             self.push_screen(self._create_screen("generation"))
 
+    def _cleanup_unsaved_transitions(self):
+        """Remove generated transition files that weren't saved by the user."""
+        output_folder = self.config.output_folder
+        if not output_folder.exists():
+            return
+
+        deleted_count = 0
+        for file_path in output_folder.glob("*.flac"):
+            # Keep files that start with 'saved_transition_'
+            if not file_path.name.startswith("saved_transition_"):
+                try:
+                    file_path.unlink()
+                    deleted_count += 1
+                except Exception:
+                    pass  # Ignore errors during cleanup
+
+        if deleted_count > 0:
+            print(f"Cleaned up {deleted_count} unsaved transition file(s)")
+
+    def action_quit(self) -> None:
+        """Quit the application with cleanup."""
+        self.playback.stop()
+        self._cleanup_unsaved_transitions()
+        self.exit()
+
 
 def main():
     """Main entry point."""

@@ -7,7 +7,6 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Static, Label, ListView, ListItem, Header, Footer, Input
 from textual.binding import Binding
-from textual.events import MouseMove
 
 from app.state import AppState, ActiveScreen, GenerationMode
 from app.models.transition import TransitionRecord
@@ -58,13 +57,6 @@ class TransitionListPanel(ListView):
 
             self.append(item)
 
-    def on_mouse_move(self, event: MouseMove) -> None:
-        """Update highlighted index when mouse moves over items."""
-        widget, _ = self.screen.get_widget_at(*event.screen_offset)
-        if isinstance(widget, ListItem) and widget in self.children:
-            new_index = list(self.children).index(widget)
-            if new_index != self.index:
-                self.index = new_index
 
 
 class TransitionDetailsPanel(Static):
@@ -92,10 +84,11 @@ Generated: {transition.format_time()}
 Status: {transition.status_display}"""
 
         if transition.is_saved and transition.saved_path:
-            details += f"\nSaved Path: {transition.saved_path}"
+            # Show just the filename, not the full path
+            details += f"\nSaved: {transition.saved_path.name}"
 
         if transition.save_note:
-            details += f"\nNote: {transition.save_note}"
+            details += f"\n[bold]Note:[/bold] {transition.save_note}"
 
         self.update(details)
 
@@ -175,12 +168,14 @@ class HistoryScreen(Screen):
         Binding("m", "modify_transition", "Modify", show=True),
         Binding("s", "save_transition", "Save", show=True),
         Binding("d", "delete_transition", "Delete", show=True),
-        Binding("space", "play_pause", "Play/Pause", show=True),
-        Binding("left", "seek_backward", "Seek -3s", show=True),
-        Binding("right", "seek_forward", "Seek +4s", show=True),
+        Binding("space", "start_playback", "Play", show=True),
+        Binding("left", "seek_backward", "-3s", show=True),
+        Binding("right", "seek_forward", "+4s", show=True),
         Binding("escape", "stop_playback", "Stop", show=True),
         Binding("?", "show_help", "Help", show=True),
         Binding("f1", "show_help", "Help", show=False),
+        Binding("ctrl+q", "quit", "Quit", show=False),
+        Binding("ctrl+c", "quit", "Quit", show=False),
     ]
 
     def __init__(self, state: AppState, catalog, playback, generation, *args, **kwargs):
@@ -198,6 +193,7 @@ class HistoryScreen(Screen):
         self.playback = playback
         self.generation = generation
         self._saving_transition = False  # Flag for save mode
+        self._pending_delete_id: int | None = None  # ID of transition pending deletion confirmation
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -259,7 +255,7 @@ class HistoryScreen(Screen):
             index = event.list_view.index
             if index is not None and 0 <= index < len(self.state.transition_history):
                 self.state.selected_history_index = index
-                self.update_screen()
+                self._update_details_panel()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Handle list item highlight (cursor movement)."""
@@ -267,7 +263,17 @@ class HistoryScreen(Screen):
             index = event.list_view.index
             if index is not None and 0 <= index < len(self.state.transition_history):
                 self.state.selected_history_index = index
-                self.update_screen()
+                self._pending_delete_id = None  # Clear pending delete on selection change
+                self._update_details_panel()
+
+    def _update_details_panel(self):
+        """Update only the details and parameters panels (lightweight update)."""
+        selected = self.state.get_selected_transition()
+        self.details_panel.set_transition(selected)
+        if selected:
+            self.parameters_panel.set_parameters(selected.parameters)
+        else:
+            self.parameters_panel.set_parameters(None)
 
     def action_go_to_generation(self):
         """Switch to generation screen (G key)."""
@@ -358,12 +364,61 @@ class HistoryScreen(Screen):
             song_a_name = Path(selected.song_a_filename).stem
             song_b_name = Path(selected.song_b_filename).stem
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"transition_{song_a_name}_to_{song_b_name}_{timestamp}.flac"
+            output_filename = f"saved_transition_{song_a_name}_to_{song_b_name}_{timestamp}.flac"
             output_path = output_folder / output_filename
 
             # Copy file
             import shutil
             shutil.copy2(source_path, output_path)
+
+            # Write FLAC metadata
+            try:
+                from mutagen.flac import FLAC
+                audio = FLAC(str(output_path))
+                audio["TITLE"] = f"Transition: {song_a_name} -> {song_b_name}"
+                audio["ARTIST"] = "Song Transition Preview"
+                audio["ALBUM"] = "Generated Transitions"
+                audio["GENRE"] = f"Transition ({selected.transition_type.capitalize()})"
+                audio["DESCRIPTION"] = f"From: {selected.song_a_filename} [{selected.section_a_label}], To: {selected.song_b_filename} [{selected.section_b_label}]"
+
+                # Add transition parameters as custom tags
+                params = selected.parameters or {}
+                if params.get("type"):
+                    audio["TRANSITION_TYPE"] = str(params["type"])
+                if params.get("gap_beats"):
+                    audio["GAP_BEATS"] = str(params["gap_beats"])
+                if params.get("overlap"):
+                    audio["OVERLAP_BEATS"] = str(params["overlap"])
+                if params.get("fade_window"):
+                    audio["FADE_WINDOW"] = str(params["fade_window"])
+                if params.get("fade_speed"):
+                    audio["FADE_SPEED"] = str(params["fade_speed"])
+                if params.get("stems_to_fade"):
+                    stems = params["stems_to_fade"]
+                    if isinstance(stems, list):
+                        audio["STEMS_TO_FADE"] = ", ".join(stems)
+                    else:
+                        audio["STEMS_TO_FADE"] = str(stems)
+
+                # Section adjustments
+                adjusts = []
+                if params.get("section_a_start_adjust"):
+                    adjusts.append(f"A start: {params['section_a_start_adjust']:+d}")
+                if params.get("section_a_end_adjust"):
+                    adjusts.append(f"A end: {params['section_a_end_adjust']:+d}")
+                if params.get("section_b_start_adjust"):
+                    adjusts.append(f"B start: {params['section_b_start_adjust']:+d}")
+                if params.get("section_b_end_adjust"):
+                    adjusts.append(f"B end: {params['section_b_end_adjust']:+d}")
+                if adjusts:
+                    audio["SECTION_ADJUSTS"] = ", ".join(adjusts)
+
+                if note:
+                    audio["COMMENT"] = note
+                audio.save()
+            except Exception as e:
+                # Don't fail the save if metadata writing fails
+                self.notify(f"Warning: Could not write metadata: {e}", severity="warning")
 
             # Update transition record
             selected.is_saved = True
@@ -383,54 +438,61 @@ class HistoryScreen(Screen):
             self.update_screen()
 
     def action_delete_transition(self):
-        """Delete selected transition (D key)."""
+        """Delete selected transition (D key, requires confirmation)."""
         selected = self.state.get_selected_transition()
         if not selected:
             self.notify("No transition selected", severity="warning")
+            self._pending_delete_id = None
             return
 
         # Check if currently playing
         if self.playback.current_file and str(selected.audio_path) == str(self.playback.current_file):
             self.notify("Cannot delete playing transition", severity="error")
+            self._pending_delete_id = None
             return
 
-        # Remove from history
-        idx = self.state.selected_history_index
-        if idx is not None:
-            self.state.transition_history.pop(idx)
+        # Check if this is a confirmation (same transition selected)
+        if self._pending_delete_id == selected.id:
+            # Confirmed - delete the transition
+            idx = self.state.selected_history_index
+            if idx is not None:
+                self.state.transition_history.pop(idx)
 
-            # Update selection
-            if len(self.state.transition_history) == 0:
-                self.state.selected_history_index = None
-            elif idx >= len(self.state.transition_history):
-                self.state.selected_history_index = len(self.state.transition_history) - 1
+                # Update selection
+                if len(self.state.transition_history) == 0:
+                    self.state.selected_history_index = None
+                elif idx >= len(self.state.transition_history):
+                    self.state.selected_history_index = len(self.state.transition_history) - 1
 
-            self.notify(f"Deleted transition #{selected.id}")
-            self.update_screen()
+                self.notify(f"Deleted transition #{selected.id}")
+                self.update_screen()
 
-    def action_play_pause(self):
-        """Play or pause current transition (Space key)."""
+            self._pending_delete_id = None
+        else:
+            # First press - ask for confirmation
+            self._pending_delete_id = selected.id
+            self.notify(f"Press D again to delete transition #{selected.id}", severity="warning")
+
+    def action_start_playback(self):
+        """Start playback of current transition from beginning (Space key)."""
         selected = self.state.get_selected_transition()
         if not selected:
             self.notify("No transition selected", severity="warning")
             return
 
-        if self.playback.is_playing:
-            self.playback.pause()
-            self.notify("Paused")
-        elif self.playback.is_paused and str(self.playback.current_file) == str(selected.audio_path):
-            self.playback.play()
-            self.notify("Playing")
-        else:
-            # Load and play
-            if selected.audio_path.exists():
-                if self.playback.load(selected.audio_path):
-                    self.playback.play()
-                    self.notify(f"Playing transition #{selected.id}")
-                else:
-                    self.notify("Failed to load audio", severity="error")
+        # Always stop any current playback first to ensure clean state
+        # (even if is_playing is False, there might be lingering threads)
+        self.playback.stop()
+
+        # Load and play from beginning
+        if selected.audio_path.exists():
+            if self.playback.load(selected.audio_path):
+                self.playback.play()
+                self.notify(f"Playing transition #{selected.id}")
             else:
-                self.notify("Audio file not found", severity="error")
+                self.notify("Failed to load audio", severity="error")
+        else:
+            self.notify("Audio file not found", severity="error")
 
     def action_stop_playback(self):
         """Stop playback (Esc key)."""
@@ -445,21 +507,21 @@ class HistoryScreen(Screen):
             self.notify("Playback stopped")
 
     def action_seek_backward(self):
-        """Seek backward 3 seconds (Left key)."""
+        """Seek backward 3 seconds (Left arrow key)."""
         if self.playback.current_file:
             self.playback.seek(-3.0)
             self.notify(f"Seek to {self.playback.position:.1f}s")
-        else:
-            self.notify("No audio loaded")
 
     def action_seek_forward(self):
-        """Seek forward 4 seconds (Right key)."""
+        """Seek forward 4 seconds (Right arrow key)."""
         if self.playback.current_file:
             self.playback.seek(4.0)
             self.notify(f"Seek to {self.playback.position:.1f}s")
-        else:
-            self.notify("No audio loaded")
 
     def action_show_help(self):
         """Show help overlay (? or F1 key)."""
         self.notify("Help (not yet implemented)")
+
+    def action_quit(self):
+        """Quit the application (Ctrl+Q or Ctrl+C)."""
+        self.app.action_quit()
