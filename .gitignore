@@ -219,6 +219,9 @@ demix/*
 # Audio files (too large for git, user-provided)
 poc_audio/*
 !poc_audio/.gitkeep
+*.flac
+*.mp3
+*.wav
 
 # embeddings
 **/*.npy

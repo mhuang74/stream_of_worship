@@ -123,9 +123,27 @@ class PlaybackService:
             self.is_paused = True
             self._stop_flag.set()
 
+            # Stop stream first to unblock any pending write() calls
+            if self._stream:
+                try:
+                    self._stream.stop_stream()
+                except Exception:
+                    pass
+
             # Wait for playback thread to finish
             if self._playback_thread and self._playback_thread.is_alive():
-                self._playback_thread.join(timeout=1.0)
+                self._playback_thread.join(timeout=0.5)
+
+            # Clear thread reference
+            self._playback_thread = None
+
+            # Close stream (will be reopened on resume)
+            if self._stream:
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
 
     def stop(self):
         """Stop playback."""
@@ -133,17 +151,30 @@ class PlaybackService:
         self.is_paused = False
         self._stop_flag.set()
 
-        # Wait for playback thread to finish
-        if self._playback_thread and self._playback_thread.is_alive():
-            self._playback_thread.join(timeout=1.0)
-
-        # Close stream if open
+        # Stop stream first to unblock any pending write() calls
         if self._stream:
-            self._stream.stop_stream()
-            self._stream.close()
+            try:
+                self._stream.stop_stream()
+            except Exception:
+                pass  # Stream may already be stopped
+
+        # Wait for playback thread to finish (should be quick now that stream is stopped)
+        if self._playback_thread and self._playback_thread.is_alive():
+            self._playback_thread.join(timeout=0.5)
+
+        # Clear thread reference
+        self._playback_thread = None
+
+        # Close stream
+        if self._stream:
+            try:
+                self._stream.close()
+            except Exception:
+                pass
             self._stream = None
 
         self.position = 0.0
+        self.current_file = None
 
     def seek(self, offset_seconds: float):
         """Seek by the specified offset (positive or negative).
@@ -245,12 +276,19 @@ class PlaybackService:
                     self.position = 0.0
 
         except Exception as e:
-            print(f"Playback error: {e}")
+            if "Stream not open" not in str(e):
+                print(f"Playback error: {e}")
         finally:
-            # Clean up stream
+            # Clean up stream (may already be closed by stop())
             if self._stream:
-                self._stream.stop_stream()
-                self._stream.close()
+                try:
+                    self._stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
                 self._stream = None
 
     def __del__(self):

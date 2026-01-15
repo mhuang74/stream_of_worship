@@ -28,14 +28,14 @@
 }
 
 #details_panel {
-    height: 12;
+    height: 14;
     border: solid $accent;
     padding: 1;
     margin: 0 0 1 0;
 }
 
 #params_readonly_panel {
-    height: 12;
+    height: 10;
     border: solid $accent;
     padding: 1;
 }

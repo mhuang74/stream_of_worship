@@ -9,6 +9,7 @@ numpy>=1.26.2
 scipy>=1.11.4
 librosa>=0.10.1
 soundfile>=0.12.1
+mutagen>=1.47.0  # For FLAC metadata
 
 # Testing
 pytest>=7.4.0
