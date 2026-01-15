@@ -1,8 +1,8 @@
-# Implementation Status - Generation Screen
+# Implementation Status - Transition Builder V2
 
 ## 🎯 Current Status Summary
 
-**FULLY FUNCTIONAL**: The TUI app is ready for use with gap transitions!
+**FULLY FUNCTIONAL**: The TUI app is ready for use with gap transitions and history management!
 
 **What works:**
 - Complete interactive TUI with song browsing, selection, and metadata display
@@ -13,15 +13,20 @@
 - Section-based playback for previewing songs
 - Keyboard shortcuts for all operations
 - Mouse hover navigation
+- **History screen** for reviewing and managing generated transitions
+- **Screen navigation** between Generation and History screens (H key / G key)
+- **Transition history** with automatic tracking (max 50 items)
+- **Modify mode** to edit existing transition parameters
+- **Save transitions** to disk with optional notes
+- **Delete transitions** from history
 
 **What's missing:**
 - Other transition types (crossfade, vocal-fade, drum-fade)
-- History screen for managing saved transitions
 - Song search functionality
 - Help overlay
 - Session logging
 
-**Ready for:** Generating and previewing gap transitions between song sections with full interactive control.
+**Ready for:** Full workflow of generating, reviewing, modifying, and saving gap transitions.
 
 ---
 
@@ -100,7 +105,7 @@
   - T: Play last generated transition
   - Shift+T: Generate and play focused preview
   - S: Swap Song A ⇄ Song B
-  - H: History screen (not yet implemented)
+  - H: Switch to History screen
   - /: Search (not yet implemented)
   - Esc: Stop playback or exit modify mode
   - ?: Help (not yet implemented)
@@ -113,12 +118,33 @@
   - Metadata updates on selection
   - State properly tracked in AppState
 
+### History Screen
+- **HistoryScreen** (`app/screens/history.py`)
+  - Full TUI layout with Textual
+  - Transition list panel (newest first)
+  - Transition details panel (read-only)
+  - Parameters display panel (read-only snapshot)
+  - Save transition with optional note
+  - Delete transition (with protection against deleting playing transition)
+  - Modify mode integration
+  - Screen navigation to/from Generation screen
+
+- **History Screen Keybindings**
+  - G: Go to Generation screen (new transition)
+  - M: Modify selected transition
+  - S: Save selected transition
+  - D: Delete selected transition
+  - Space: Play/Pause selected transition
+  - Left/Right: Seek controls
+  - Esc: Stop playback or cancel save
+
 ### Project Infrastructure
 - Configuration file (`config.json`)
 - Requirements file with Textual dependency
 - Run script (`run.sh`)
 - Complete README with usage instructions
 - CSS styling for Generation screen (`generation.tcss`)
+- CSS styling for History screen (`history.tcss`)
 
 ### Parameters Panel
 - ✅ Fully interactive parameter editing
@@ -167,12 +193,6 @@
   - Drum-fade transition
   - Stem-based transitions
 
-- **History Screen**
-  - List view of transitions
-  - Playback controls
-  - Save/Delete operations
-  - Modify action integration
-
 - **Song Search Screen**
   - Modal overlay
   - Keyword filtering
@@ -183,12 +203,6 @@
   - Modal display
   - Context-aware shortcuts
   - Screen-specific bindings
-
-### Screen Transitions
-- Navigation between screens
-- State preservation
-- Modal overlay handling
-- Back button support
 
 ### Logging
 - Session logging (events, selections, parameters)
@@ -204,13 +218,23 @@
 - ⏳ Temporary file management for ephemeral transitions
 
 ### History Features
-- 50-item cap enforcement
-- Modify mode integration
-- Save to disk with notes
-- Delete with confirmation
-- Exit warning for unsaved transitions
+- ✅ 50-item cap enforcement (auto-removes oldest)
+- ✅ Modify mode integration (M key)
+- ✅ Save to disk with notes (S key)
+- ✅ Delete transitions (D key, with playing protection)
+- ⏳ Exit warning for unsaved transitions
 
 ## Testing Status
+
+### Automated Tests
+Run tests with: `pytest tests/test_screens.py -v`
+
+Tests cover:
+- ✅ Screen navigation (Generation ↔ History)
+- ✅ Transition generation and history tracking
+- ✅ Modify mode functionality
+- ✅ History management (cap at 50, delete)
+- ✅ State management (reset, exit modify mode)
 
 ### Verified
 - ✅ Project structure created
@@ -223,12 +247,12 @@
 - ✅ Section boundary adjustments work
 - ✅ Playback service with PyAudio
 - ✅ Parameter editing and validation
+- ✅ History screen navigation and operations
+- ✅ Modify mode with parameter loading
 
 ### Needs Testing
-- ⏳ Full end-to-end workflow in terminal
 - ⏳ Edge cases (missing files, corrupt audio)
 - ⏳ Performance with large song catalogs
-- ⏳ Multiple rapid generations
 - ⏳ Playback on different audio devices
 - ⏳ Terminal size responsiveness
 
@@ -319,7 +343,7 @@
 transition_builder_v2/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # ✅ Entry point
+│   ├── main.py                 # ✅ Entry point with screen switching
 │   ├── state.py                # ✅ AppState model
 │   ├── models/
 │   │   ├── __init__.py
@@ -333,7 +357,9 @@ transition_builder_v2/
 │   ├── screens/
 │   │   ├── __init__.py
 │   │   ├── generation.py       # ✅ GenerationScreen (fully functional)
-│   │   └── generation.tcss     # ✅ CSS styles
+│   │   ├── generation.tcss     # ✅ Generation screen CSS
+│   │   ├── history.py          # ✅ HistoryScreen (fully functional)
+│   │   └── history.tcss        # ✅ History screen CSS
 │   └── utils/
 │       ├── __init__.py
 │       └── config.py           # ✅ Config loader
@@ -381,10 +407,16 @@ Current functionality:
 - Swap songs (S key)
 - Full keyboard navigation (Tab, arrows, Enter)
 - Stop playback (Esc)
+- **History screen (H key)**:
+  - View all generated transitions
+  - Play transitions (Space key)
+  - Save to disk (S key) with optional notes
+  - Delete transitions (D key)
+  - Modify transition parameters (M key)
+  - Navigate back to Generation screen (G key)
 
 Not yet functional:
 - Other transition types (crossfade, vocal-fade, drum-fade)
-- History screen (H key)
 - Song search (/ key)
 - Help overlay (? key)
 - Quick test/ephemeral generation (Shift+G)
