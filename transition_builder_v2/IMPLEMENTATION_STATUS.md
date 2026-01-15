@@ -9,7 +9,7 @@
 - Full parameter editing (all parameters adjustable in real-time)
 - Gap transition generation with section boundary adjustments
 - Focused preview generation (quick transition point audition)
-- Complete playback system with PyAudio (play/pause/stop/seek)
+- Complete playback system with PyAudio (play/stop/seek)
 - Section-based playback for previewing songs
 - Keyboard shortcuts for all operations
 - Mouse hover navigation
@@ -17,8 +17,9 @@
 - **Screen navigation** between Generation and History screens (H key / G key)
 - **Transition history** with automatic tracking (max 50 items)
 - **Modify mode** to edit existing transition parameters
-- **Save transitions** to disk with optional notes
-- **Delete transitions** from history
+- **Save transitions** to disk with FLAC metadata and optional notes
+- **Delete transitions** from history (with confirmation)
+- **Automatic cleanup** of unsaved transition files on exit
 
 **What's missing:**
 - Other transition types (crossfade, vocal-fade, drum-fade)
@@ -64,10 +65,11 @@
 
 - **PlaybackService** (`app/services/playback.py`)
   - Full PyAudio backend implementation
-  - Play/pause/stop/seek operations
+  - Play/stop/seek operations (simplified from play/pause/stop)
   - Section-based playback with boundaries
   - Position tracking and duration calculation
   - Threaded playback loop for non-blocking operation
+  - Fast thread cleanup (0.5s timeout, proper stream shutdown)
   - Graceful fallback when PyAudio unavailable
 
 - **TransitionGenerationService** (`app/services/generation.py`)
@@ -124,27 +126,31 @@
   - Transition list panel (newest first)
   - Transition details panel (read-only)
   - Parameters display panel (read-only snapshot)
-  - Save transition with optional note
-  - Delete transition (with protection against deleting playing transition)
+  - Save transition with optional note and FLAC metadata
+  - Delete transition with confirmation (press D twice)
   - Modify mode integration
   - Screen navigation to/from Generation screen
+  - Optimized UI updates (lightweight panel refresh on cursor movement)
 
 - **History Screen Keybindings**
   - G: Go to Generation screen (new transition)
   - M: Modify selected transition
-  - S: Save selected transition
-  - D: Delete selected transition
-  - Space: Play/Pause selected transition
-  - Left/Right: Seek controls
+  - S: Save selected transition (writes FLAC metadata)
+  - D: Delete selected transition (press twice to confirm)
+  - Space: Play selected transition (from beginning)
+  - Left/Right: Seek controls (-3s/+4s)
   - Esc: Stop playback or cancel save
+  - Ctrl+Q/Ctrl+C: Quit application
 
 ### Project Infrastructure
 - Configuration file (`config.json`)
-- Requirements file with Textual dependency
+- Requirements file with Textual and mutagen dependencies
 - Run script (`run.sh`)
 - Complete README with usage instructions
 - CSS styling for Generation screen (`generation.tcss`)
 - CSS styling for History screen (`history.tcss`)
+- **App exit cleanup**: Removes unsaved transition files on exit
+- **FLAC metadata**: Saved transitions include title, artist, album, genre, and custom parameter tags
 
 ### Parameters Panel
 - ✅ Fully interactive parameter editing
@@ -209,6 +215,11 @@
 - Error logging (generation failures, file errors)
 - Log file rotation
 
+### Validation
+- Parameter validation warnings (overlap, fade_window, etc.)
+- Section duration validation
+- Auto-dismiss warnings on parameter change
+
 ### Generation Features
 - ✅ Standard generation (G key)
 - ✅ Focused preview generation (Shift+T key)
@@ -220,14 +231,16 @@
 ### History Features
 - ✅ 50-item cap enforcement (auto-removes oldest)
 - ✅ Modify mode integration (M key)
-- ✅ Save to disk with notes (S key)
-- ✅ Delete transitions (D key, with playing protection)
-- ⏳ Exit warning for unsaved transitions
+- ✅ Save to disk with FLAC metadata and notes (S key)
+- ✅ Delete transitions with confirmation (D key twice)
+- ✅ Automatic cleanup of unsaved files on exit
 
 ## Testing Status
 
 ### Automated Tests
 Run tests with: `pytest tests/test_screens.py -v`
+
+**14 tests, all passing**
 
 Tests cover:
 - ✅ Screen navigation (Generation ↔ History)
@@ -270,39 +283,27 @@ Tests cover:
    - Auto-dismiss on parameter change
    - Section duration validation
 
-3. **Build History Screen**
-   - List view of generated transitions
-   - Playback integration
-   - Save/Delete functionality
-   - Modify action to edit parameters
-
-4. **Add Song Search Screen**
+3. **Add Song Search Screen**
    - Modal overlay
    - Keyword filtering
    - BPM/Key filtering
    - Preview functionality
 
-5. **Implement Screen Navigation**
-   - Switch between Generation/History
-   - Modal overlays (Search, Help)
-   - State preservation
-
-6. **Add Help Overlay**
+4. **Add Help Overlay**
    - Context-aware keyboard shortcuts
    - Screen-specific bindings
    - Quick reference guide
 
-7. **Add Logging**
+5. **Add Logging**
    - Session event logging
    - Error logging
    - File rotation
 
-8. **Implement Ephemeral Generation**
+6. **Implement Ephemeral Generation**
    - Quick test mode (Shift+G)
    - Temporary file management
-   - Auto-cleanup on exit
 
-9. **Polish and Test**
+7. **Polish and Test**
    - End-to-end workflow testing
    - Error handling
    - Edge cases
@@ -343,7 +344,7 @@ Tests cover:
 transition_builder_v2/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # ✅ Entry point with screen switching
+│   ├── main.py                 # ✅ Entry point with screen switching and cleanup
 │   ├── state.py                # ✅ AppState model
 │   ├── models/
 │   │   ├── __init__.py
@@ -363,7 +364,12 @@ transition_builder_v2/
 │   └── utils/
 │       ├── __init__.py
 │       └── config.py           # ✅ Config loader
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py             # ✅ Pytest fixtures
+│   └── test_screens.py         # ✅ Regression tests (14 tests)
 ├── config.json                 # ✅ Configuration
+├── pytest.ini                  # ✅ Pytest configuration
 ├── requirements.txt            # ✅ Dependencies
 ├── run.sh                      # ✅ Run script
 ├── README.md                   # ✅ Documentation
@@ -374,7 +380,9 @@ transition_builder_v2/
 
 - **textual**: TUI framework (installed ✅)
 - **numpy, scipy, librosa, soundfile**: Audio processing (from parent project ✅)
-- **pyaudio**: Audio playback backend (needs to be installed for playback ✅)
+- **pyaudio**: Audio playback backend (installed ✅)
+- **mutagen**: FLAC metadata writing for saved transitions (installed ✅)
+- **pytest, pytest-asyncio**: Test framework for regression tests (installed ✅)
 
 ## Running the App
 
@@ -407,13 +415,16 @@ Current functionality:
 - Swap songs (S key)
 - Full keyboard navigation (Tab, arrows, Enter)
 - Stop playback (Esc)
+- Quit application (Ctrl+Q, Ctrl+C)
 - **History screen (H key)**:
   - View all generated transitions
-  - Play transitions (Space key)
-  - Save to disk (S key) with optional notes
-  - Delete transitions (D key)
+  - Play transitions (Space key, plays from beginning)
+  - Seek during playback (Left/Right arrow keys)
+  - Save to disk (S key) with FLAC metadata and optional notes
+  - Delete transitions (D key twice to confirm)
   - Modify transition parameters (M key)
   - Navigate back to Generation screen (G key)
+- **Automatic cleanup** of unsaved transition files on exit
 
 Not yet functional:
 - Other transition types (crossfade, vocal-fade, drum-fade)
