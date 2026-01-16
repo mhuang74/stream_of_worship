@@ -219,6 +219,17 @@ class ParametersPanel(Container):
                         max_length=6
                     )
                     yield self.fade_speed_input
+                
+                # Fade Bottom
+                with Horizontal():
+                    yield Label("Fade Bottom (%):", classes="param-label")
+                    self.fade_bottom_input = Input(
+                        value=str(int(self.state.fade_bottom * 100)),
+                        placeholder="0",
+                        id="fade_bottom_input",
+                        max_length=3
+                    )
+                    yield self.fade_bottom_input
 
             # Right column: section adjustments
             with Vertical(id="params_right_column"):
@@ -334,6 +345,8 @@ class ParametersPanel(Container):
                     input_widget.value = str(self.state.fade_window)
                 elif input_widget.id == "fade_speed_input":
                     input_widget.value = str(self.state.fade_speed)
+                elif input_widget.id == "fade_bottom_input":
+                    input_widget.value = str(int(self.state.fade_bottom * 100))
                 return
 
             # Update state
@@ -343,6 +356,11 @@ class ParametersPanel(Container):
                 self.state.fade_window = value
             elif input_widget.id == "fade_speed_input":
                 self.state.fade_speed = value
+            elif input_widget.id == "fade_bottom_input":
+                # Ensure 0-100 range
+                value = max(0.0, min(100.0, value))
+                self.state.fade_bottom = value / 100.0
+                input_widget.value = str(int(value))
 
     def update_from_state(self):
         """Update UI from current state values."""
@@ -350,6 +368,7 @@ class ParametersPanel(Container):
         self.overlap_input.value = str(abs(self.state.overlap))
         self.fade_window_input.value = str(self.state.fade_window)
         self.fade_speed_input.value = str(self.state.fade_speed)
+        self.fade_bottom_input.value = str(int(self.state.fade_bottom * 100))
         self.from_start_input.value = str(self.state.from_section_start_adjust)
         self.from_end_input.value = str(self.state.from_section_end_adjust)
         self.to_start_input.value = str(self.state.to_section_start_adjust)
@@ -683,7 +702,9 @@ class GenerationScreen(Screen):
                     section_a_start_adjust=self.state.from_section_start_adjust,
                     section_a_end_adjust=self.state.from_section_end_adjust,
                     section_b_start_adjust=self.state.to_section_start_adjust,
-                    section_b_end_adjust=self.state.to_section_end_adjust
+                    section_b_end_adjust=self.state.to_section_end_adjust,
+                    fade_window_beats=self.state.fade_window,  # Pass valid fade args
+                    fade_bottom=self.state.fade_bottom
                 )
             else:
                 self.notify(f"Transition type '{transition_type}' not yet implemented", severity="warning")
@@ -721,6 +742,7 @@ class GenerationScreen(Screen):
                         "overlap": self.state.overlap,
                         "fade_window": self.state.fade_window,
                         "fade_speed": self.state.fade_speed,
+                        "fade_bottom": self.state.fade_bottom,
                         "from_section_start_adjust": self.state.from_section_start_adjust,
                         "from_section_end_adjust": self.state.from_section_end_adjust,
                         "to_section_start_adjust": self.state.to_section_start_adjust,

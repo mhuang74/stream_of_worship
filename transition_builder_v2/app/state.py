@@ -48,6 +48,7 @@ class AppState:
     overlap: float = 1.0  # in beats, can be negative (for Gap, this is gap duration)
     fade_window: float = 8.0  # in beats (total: half for fade-out, half for fade-in)
     fade_speed: float = 2.0  # in beats (unused for gap, kept for crossfade compatibility)
+    fade_bottom: float = 0.33  # min volume during fade (0.0 to 1.0)
     # Default: fade all stems except vocals (bass, drums, other)
     stems_to_fade: list[str] = field(default_factory=lambda: ["bass", "drums", "other"])
     extension_parameters: dict = field(default_factory=dict)
@@ -82,6 +83,7 @@ class AppState:
         self.overlap = 1.0
         self.fade_window = 8.0
         self.fade_speed = 2.0
+        self.fade_bottom = 0.33
         self.stems_to_fade = ["bass", "drums", "other"]  # Default: fade all except vocals
         self.extension_parameters = {}
         self.from_section_start_adjust = 0
@@ -123,6 +125,7 @@ class AppState:
 
         self.fade_window = params.get("fade_window", 8.0)
         self.fade_speed = params.get("fade_speed", 2.0)
+        self.fade_bottom = params.get("fade_bottom", 0.0)
         self.stems_to_fade = params.get("stems_to_fade", ["all"])
         self.extension_parameters = params.get("extension", {})
 

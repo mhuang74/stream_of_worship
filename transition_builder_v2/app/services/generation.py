@@ -140,7 +140,8 @@ class TransitionGenerationService:
         stems_to_fade: list[str],
         fade_type: str,  # "out" or "in"
         fade_samples: int,
-        at_start: bool = False  # If True, fade at start; if False, fade at end
+        at_start: bool = False,  # If True, fade at start; if False, fade at end
+        min_db: float = -60.0,
     ) -> dict[str, np.ndarray]:
         """Apply fade to specified stems.
 
@@ -150,6 +151,7 @@ class TransitionGenerationService:
             fade_type: "out" for fade-out, "in" for fade-in
             fade_samples: Number of samples for fade duration
             at_start: If True, apply fade at start of audio; if False, at end
+            min_db: Minimum dB level for the fade (default -60.0)
 
         Returns:
             Dict of stem_name -> audio array with fades applied
@@ -159,9 +161,9 @@ class TransitionGenerationService:
 
         # Create fade curve
         if fade_type == "out":
-            fade_curve = create_logarithmic_fade_out(fade_samples)
+            fade_curve = create_logarithmic_fade_out(fade_samples, min_db=min_db)
         else:
-            fade_curve = create_logarithmic_fade_in(fade_samples)
+            fade_curve = create_logarithmic_fade_in(fade_samples, min_db=min_db)
 
         # Expand to stereo for broadcasting
         fade_curve_stereo = fade_curve[:, np.newaxis]
@@ -216,6 +218,7 @@ class TransitionGenerationService:
         section_b_index: int,
         gap_beats: float = 1.0,
         fade_window_beats: float = 8.0,
+        fade_bottom: float = 0.33,
         stems_to_fade: list[str] | None = None,
         section_a_start_adjust: int = 0,
         section_a_end_adjust: int = 0,
@@ -236,6 +239,7 @@ class TransitionGenerationService:
             section_b_index: Index of section in song B
             gap_beats: Number of beats of silence (default: 1.0)
             fade_window_beats: Total fade duration in beats (half for each direction)
+            fade_bottom: Minimum volume during fade as percentage (0.0 to 1.0). Default 0.33.
             stems_to_fade: List of stems to fade ["bass", "drums", "other", "vocals"]
                            Empty list = no fade. Default: ["bass", "drums", "other"]
             section_a_start_adjust: Beats to adjust section A start (-4 to +4)
@@ -249,6 +253,14 @@ class TransitionGenerationService:
         """
         if stems_to_fade is None:
             stems_to_fade = ["bass", "drums", "other"]
+
+        # Calculate min_db from fade_bottom (0.0 to 1.0)
+        if fade_bottom <= 0.001:
+            calculated_min_db = -60.0
+        else:
+            # Convert linear gain (0-1) to dB
+            # 20 * log10(gain)
+            calculated_min_db = 20.0 * np.log10(fade_bottom)
 
         # Get sections
         section_a = song_a.sections[section_a_index]
@@ -299,12 +311,22 @@ class TransitionGenerationService:
 
             # Apply fade-out to section A stems (at end)
             section_stems_a = self._apply_fade_to_stems(
-                section_stems_a, stems_to_fade, "out", fade_out_samples, at_start=False
+                section_stems_a,
+                stems_to_fade,
+                "out",
+                fade_out_samples,
+                at_start=False,
+                min_db=calculated_min_db,
             )
 
             # Apply fade-in to section B stems (at start)
             section_stems_b = self._apply_fade_to_stems(
-                section_stems_b, stems_to_fade, "in", fade_in_samples, at_start=True
+                section_stems_b,
+                stems_to_fade,
+                "in",
+                fade_in_samples,
+                at_start=True,
+                min_db=calculated_min_db,
             )
 
             # Mix stems
@@ -345,15 +367,23 @@ class TransitionGenerationService:
 
                 # Apply fade-out at end of section A
                 if fade_out_samples > 0 and len(section_a_audio) > 0:
-                    fade_out_curve = create_logarithmic_fade_out(fade_out_samples)
+                    fade_out_curve = create_logarithmic_fade_out(
+                        fade_out_samples, min_db=calculated_min_db
+                    )
                     actual_samples = min(fade_out_samples, len(section_a_audio))
-                    section_a_audio[-actual_samples:] *= fade_out_curve[:actual_samples, np.newaxis]
+                    section_a_audio[-actual_samples:] *= fade_out_curve[
+                        :actual_samples, np.newaxis
+                    ]
 
                 # Apply fade-in at start of section B
                 if fade_in_samples > 0 and len(section_b_audio) > 0:
-                    fade_in_curve = create_logarithmic_fade_in(fade_in_samples)
+                    fade_in_curve = create_logarithmic_fade_in(
+                        fade_in_samples, min_db=calculated_min_db
+                    )
                     actual_samples = min(fade_in_samples, len(section_b_audio))
-                    section_b_audio[:actual_samples] *= fade_in_curve[:actual_samples, np.newaxis]
+                    section_b_audio[:actual_samples] *= fade_in_curve[
+                        :actual_samples, np.newaxis
+                    ]
 
         # Calculate gap duration in seconds using song A's tempo
         gap_duration_seconds = (gap_beats * 60.0) / song_a.tempo
@@ -393,7 +423,9 @@ class TransitionGenerationService:
             },
             "gap_beats": gap_beats,
             "gap_duration_seconds": gap_duration_seconds,
+
             "fade_window_beats": fade_window_beats,
+            "fade_bottom": fade_bottom,
             "stems_to_fade": stems_to_fade,
             "used_stems": use_stems,
             "total_duration_seconds": transition_audio.shape[0] / sr_a,
@@ -428,6 +460,7 @@ class TransitionGenerationService:
         if transition_type.lower() == "gap":
             gap_beats = kwargs.get("gap_beats", 1.0)
             fade_window_beats = kwargs.get("fade_window_beats", 8.0)
+            fade_bottom = kwargs.get("fade_bottom", 0.33)
             stems_to_fade = kwargs.get("stems_to_fade", None)
             section_a_start_adjust = kwargs.get("section_a_start_adjust", 0)
             section_a_end_adjust = kwargs.get("section_a_end_adjust", 0)
@@ -441,6 +474,7 @@ class TransitionGenerationService:
                 section_b_index=section_b_index,
                 gap_beats=gap_beats,
                 fade_window_beats=fade_window_beats,
+                fade_bottom=fade_bottom,
                 stems_to_fade=stems_to_fade,
                 section_a_start_adjust=section_a_start_adjust,
                 section_a_end_adjust=section_a_end_adjust,

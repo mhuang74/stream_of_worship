@@ -45,8 +45,8 @@ Screen {
 }
 
 #parameters_panel {
-    height: 16;
-    min-height: 16;
+    height: 20;
+    min-height: 20;
     border: solid $primary;
     padding: 1;
     margin: 1;
