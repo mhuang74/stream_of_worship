@@ -2,7 +2,7 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Static, Label, ListView, ListItem, Header, Footer, Input, Select
+from textual.widgets import Static, Label, ListView, ListItem, Header, Footer, Input, Select, Checkbox
 from textual.binding import Binding
 from textual.events import MouseMove
 
@@ -231,6 +231,18 @@ class ParametersPanel(Container):
                     )
                     yield self.fade_bottom_input
 
+                # Stem checkboxes for selecting which stems to fade
+                with Horizontal(classes="stem-checkboxes"):
+                    yield Label("Fade Stems:", classes="param-label stem-label")
+                    self.stem_bass_cb = Checkbox("Bass", value="bass" in self.state.stems_to_fade, id="stem_bass")
+                    self.stem_drums_cb = Checkbox("Drums", value="drums" in self.state.stems_to_fade, id="stem_drums")
+                    self.stem_other_cb = Checkbox("Other", value="other" in self.state.stems_to_fade, id="stem_other")
+                    self.stem_vocals_cb = Checkbox("Vocals", value="vocals" in self.state.stems_to_fade, id="stem_vocals")
+                    yield self.stem_bass_cb
+                    yield self.stem_drums_cb
+                    yield self.stem_other_cb
+                    yield self.stem_vocals_cb
+
             # Right column: section adjustments
             with Vertical(id="params_right_column"):
                 # Section adjustments
@@ -283,6 +295,26 @@ class ParametersPanel(Container):
                 self.overlap_label.update("Gap (beats):")
             else:
                 self.overlap_label.update("Overlap (beats):")
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Handle stem checkbox changes."""
+        stem_map = {
+            "stem_bass": "bass",
+            "stem_drums": "drums",
+            "stem_other": "other",
+            "stem_vocals": "vocals",
+        }
+        checkbox_id = event.checkbox.id
+        if checkbox_id in stem_map:
+            stem_name = stem_map[checkbox_id]
+            if event.value:
+                # Add stem to list if checked
+                if stem_name not in self.state.stems_to_fade:
+                    self.state.stems_to_fade.append(stem_name)
+            else:
+                # Remove stem from list if unchecked
+                if stem_name in self.state.stems_to_fade:
+                    self.state.stems_to_fade.remove(stem_name)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle input submission (Enter key)."""
@@ -373,6 +405,12 @@ class ParametersPanel(Container):
         self.from_end_input.value = str(self.state.from_section_end_adjust)
         self.to_start_input.value = str(self.state.to_section_start_adjust)
         self.to_end_input.value = str(self.state.to_section_end_adjust)
+
+        # Update stem checkboxes
+        self.stem_bass_cb.value = "bass" in self.state.stems_to_fade
+        self.stem_drums_cb.value = "drums" in self.state.stems_to_fade
+        self.stem_other_cb.value = "other" in self.state.stems_to_fade
+        self.stem_vocals_cb.value = "vocals" in self.state.stems_to_fade
 
         # Update label
         if self.state.transition_type == "gap":
@@ -703,8 +741,9 @@ class GenerationScreen(Screen):
                     section_a_end_adjust=self.state.from_section_end_adjust,
                     section_b_start_adjust=self.state.to_section_start_adjust,
                     section_b_end_adjust=self.state.to_section_end_adjust,
-                    fade_window_beats=self.state.fade_window,  # Pass valid fade args
-                    fade_bottom=self.state.fade_bottom
+                    fade_window_beats=self.state.fade_window,
+                    fade_bottom=self.state.fade_bottom,
+                    stems_to_fade=self.state.stems_to_fade.copy(),
                 )
             else:
                 self.notify(f"Transition type '{transition_type}' not yet implemented", severity="warning")
@@ -823,7 +862,10 @@ class GenerationScreen(Screen):
                 section_a_start_adjust=self.state.from_section_start_adjust,
                 section_a_end_adjust=self.state.from_section_end_adjust,
                 section_b_start_adjust=self.state.to_section_start_adjust,
-                section_b_end_adjust=self.state.to_section_end_adjust
+                section_b_end_adjust=self.state.to_section_end_adjust,
+                fade_window_beats=self.state.fade_window,
+                fade_bottom=self.state.fade_bottom,
+                stems_to_fade=self.state.stems_to_fade.copy(),
             )
 
             # Stop current playback and play preview
