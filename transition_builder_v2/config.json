@@ -2,6 +2,7 @@
   "audio_folder": "../poc_audio",
   "output_folder": "../transitions_output",
   "analysis_json": "../poc_output_allinone/poc_full_results.json",
+  "stems_folder": "../poc_output_allinone/stems",
   "default_transition_type": "gap",
   "max_history_size": 50,
   "auto_play_on_generate": true,

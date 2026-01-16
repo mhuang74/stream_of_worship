@@ -7,17 +7,206 @@ from app.models.song import Song
 from app.models.transition import TransitionRecord
 
 
+# Available stem types
+STEM_TYPES = ["vocals", "bass", "drums", "other"]
+
+
+def create_logarithmic_fade_out(num_samples: int, min_db: float = -60.0) -> np.ndarray:
+    """Create a logarithmic fade-out curve.
+
+    Goes from 1.0 (full volume) to near-silence following dB curve.
+
+    Args:
+        num_samples: Number of samples for the fade
+        min_db: Minimum dB level at end of fade (default -60 dB = ~0.001)
+
+    Returns:
+        1D numpy array of gain values from 1.0 to ~0
+    """
+    if num_samples <= 0:
+        return np.array([])
+
+    # Linear dB ramp from 0 to min_db
+    db_curve = np.linspace(0, min_db, num_samples)
+    # Convert dB to linear gain
+    gain_curve = 10 ** (db_curve / 20.0)
+    return gain_curve.astype(np.float32)
+
+
+def create_logarithmic_fade_in(num_samples: int, min_db: float = -60.0) -> np.ndarray:
+    """Create a logarithmic fade-in curve.
+
+    Goes from near-silence to 1.0 (full volume) following dB curve.
+
+    Args:
+        num_samples: Number of samples for the fade
+        min_db: Starting dB level (default -60 dB = ~0.001)
+
+    Returns:
+        1D numpy array of gain values from ~0 to 1.0
+    """
+    if num_samples <= 0:
+        return np.array([])
+
+    # Linear dB ramp from min_db to 0
+    db_curve = np.linspace(min_db, 0, num_samples)
+    # Convert dB to linear gain
+    gain_curve = 10 ** (db_curve / 20.0)
+    return gain_curve.astype(np.float32)
+
+
+def get_stem_folder_name(song_filename: str) -> str:
+    """Convert song filename to stem folder name.
+
+    Examples:
+        'do_it_again.flac' -> 'do_it_again'
+        'joy_to_heaven.mp3' -> 'joy_to_heaven'
+
+    Args:
+        song_filename: The song filename with extension
+
+    Returns:
+        Folder name (filename without extension)
+    """
+    return Path(song_filename).stem
+
+
 class TransitionGenerationService:
     """Service for generating audio transitions between song sections."""
 
-    def __init__(self, output_dir: Path):
+    def __init__(self, output_dir: Path, stems_folder: Path | None = None):
         """Initialize the generation service.
 
         Args:
             output_dir: Directory to save generated transitions
+            stems_folder: Directory containing stem files (optional)
         """
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.stems_folder = stems_folder
+
+    def _get_stems_path(self, song_filename: str) -> Path | None:
+        """Get path to stems folder for a song.
+
+        Args:
+            song_filename: The song filename
+
+        Returns:
+            Path to stems folder, or None if not available
+        """
+        if self.stems_folder is None:
+            return None
+
+        folder_name = get_stem_folder_name(song_filename)
+        stems_path = self.stems_folder / folder_name
+
+        if stems_path.exists():
+            return stems_path
+        return None
+
+    def _load_stems(
+        self,
+        stems_path: Path,
+        sample_rate: int | None = None
+    ) -> tuple[dict[str, np.ndarray], int]:
+        """Load all stem files from a folder.
+
+        Args:
+            stems_path: Path to folder containing stem wav files
+            sample_rate: Expected sample rate (for validation)
+
+        Returns:
+            Tuple of (dict of stem_name -> audio array, sample_rate)
+        """
+        stems = {}
+        sr = None
+
+        for stem_name in STEM_TYPES:
+            stem_file = stems_path / f"{stem_name}.wav"
+            if stem_file.exists():
+                audio, stem_sr = sf.read(str(stem_file), dtype='float32')
+                if sr is None:
+                    sr = stem_sr
+                # Ensure stereo
+                if audio.ndim == 1:
+                    audio = np.stack([audio, audio], axis=-1)
+                stems[stem_name] = audio
+
+        return stems, sr or 44100
+
+    def _apply_fade_to_stems(
+        self,
+        stems: dict[str, np.ndarray],
+        stems_to_fade: list[str],
+        fade_type: str,  # "out" or "in"
+        fade_samples: int,
+        at_start: bool = False  # If True, fade at start; if False, fade at end
+    ) -> dict[str, np.ndarray]:
+        """Apply fade to specified stems.
+
+        Args:
+            stems: Dict of stem_name -> audio array
+            stems_to_fade: List of stem names to apply fade to
+            fade_type: "out" for fade-out, "in" for fade-in
+            fade_samples: Number of samples for fade duration
+            at_start: If True, apply fade at start of audio; if False, at end
+
+        Returns:
+            Dict of stem_name -> audio array with fades applied
+        """
+        if fade_samples <= 0:
+            return stems
+
+        # Create fade curve
+        if fade_type == "out":
+            fade_curve = create_logarithmic_fade_out(fade_samples)
+        else:
+            fade_curve = create_logarithmic_fade_in(fade_samples)
+
+        # Expand to stereo for broadcasting
+        fade_curve_stereo = fade_curve[:, np.newaxis]
+
+        result = {}
+        for stem_name, audio in stems.items():
+            if stem_name in stems_to_fade or "all" in stems_to_fade:
+                # Apply fade
+                audio = audio.copy()
+                if at_start:
+                    # Fade at beginning
+                    actual_samples = min(fade_samples, len(audio))
+                    audio[:actual_samples] *= fade_curve_stereo[:actual_samples]
+                else:
+                    # Fade at end
+                    actual_samples = min(fade_samples, len(audio))
+                    audio[-actual_samples:] *= fade_curve_stereo[:actual_samples]
+                result[stem_name] = audio
+            else:
+                # Keep at full volume
+                result[stem_name] = audio
+
+        return result
+
+    def _mix_stems(self, stems: dict[str, np.ndarray]) -> np.ndarray:
+        """Mix multiple stems together.
+
+        Args:
+            stems: Dict of stem_name -> audio array
+
+        Returns:
+            Mixed audio array
+        """
+        if not stems:
+            return np.array([])
+
+        # Find the longest stem
+        max_len = max(len(audio) for audio in stems.values())
+
+        # Mix by adding all stems together
+        mixed = np.zeros((max_len, 2), dtype=np.float32)
+        for audio in stems.values():
+            mixed[:len(audio)] += audio
+
+        return mixed
 
     def generate_gap_transition(
         self,
@@ -26,16 +215,19 @@ class TransitionGenerationService:
         section_a_index: int,
         section_b_index: int,
         gap_beats: float = 1.0,
+        fade_window_beats: float = 8.0,
+        stems_to_fade: list[str] | None = None,
         section_a_start_adjust: int = 0,
         section_a_end_adjust: int = 0,
         section_b_start_adjust: int = 0,
         section_b_end_adjust: int = 0,
         sample_rate: int = 44100
     ) -> tuple[Path, dict]:
-        """Generate a gap transition between two song sections.
+        """Generate a gap transition between two song sections with optional fading.
 
-        Gap transition: section A + silence (N beats) + section B.
-        No fading, all stems preserved.
+        Gap transition: section A (with fade-out) + silence + section B (with fade-in).
+        Fading is applied to selected stems using logarithmic (dB) curve.
+        fade_window is split equally: half for fade-out, half for fade-in.
 
         Args:
             song_a: First song
@@ -43,6 +235,9 @@ class TransitionGenerationService:
             section_a_index: Index of section in song A
             section_b_index: Index of section in song B
             gap_beats: Number of beats of silence (default: 1.0)
+            fade_window_beats: Total fade duration in beats (half for each direction)
+            stems_to_fade: List of stems to fade ["bass", "drums", "other", "vocals"]
+                           Empty list = no fade. Default: ["bass", "drums", "other"]
             section_a_start_adjust: Beats to adjust section A start (-4 to +4)
             section_a_end_adjust: Beats to adjust section A end (-4 to +4)
             section_b_start_adjust: Beats to adjust section B start (-4 to +4)
@@ -52,56 +247,115 @@ class TransitionGenerationService:
         Returns:
             Tuple of (output_path, metadata_dict)
         """
+        if stems_to_fade is None:
+            stems_to_fade = ["bass", "drums", "other"]
+
         # Get sections
         section_a = song_a.sections[section_a_index]
         section_b = song_b.sections[section_b_index]
 
-        # Load audio files
-        audio_a, sr_a = sf.read(str(song_a.filepath), dtype='float32')
-        audio_b, sr_b = sf.read(str(song_b.filepath), dtype='float32')
+        # Check if stems are available for both songs
+        stems_path_a = self._get_stems_path(song_a.filename)
+        stems_path_b = self._get_stems_path(song_b.filename)
+        use_stems = stems_path_a is not None and stems_path_b is not None and len(stems_to_fade) > 0
 
-        # Ensure stereo
-        if audio_a.ndim == 1:
-            audio_a = np.stack([audio_a, audio_a], axis=-1)
-        if audio_b.ndim == 1:
-            audio_b = np.stack([audio_b, audio_b], axis=-1)
-
-        # Apply section adjustments
-        # Positive = extend (start earlier/end later), Negative = clip (start later/end earlier)
-        # For start: +N starts N beats later (clip), -N starts N beats earlier (extend)
-        # For end: +N ends N beats later (extend), -N ends N beats earlier (clip)
-        beat_duration_a = 60.0 / song_a.tempo  # Duration of one beat in seconds
+        # Calculate beat durations
+        beat_duration_a = 60.0 / song_a.tempo
         beat_duration_b = 60.0 / song_b.tempo
 
-        # Adjust section A boundaries
+        # Adjust section boundaries
         section_a_start = section_a.start + (section_a_start_adjust * beat_duration_a)
         section_a_end = section_a.end + (section_a_end_adjust * beat_duration_a)
-
-        # Adjust section B boundaries
         section_b_start = section_b.start + (section_b_start_adjust * beat_duration_b)
         section_b_end = section_b.end + (section_b_end_adjust * beat_duration_b)
 
-        # Clamp to file boundaries
-        section_a_start = max(0, section_a_start)
-        section_a_end = min(len(audio_a) / sr_a, section_a_end)
-        section_b_start = max(0, section_b_start)
-        section_b_end = min(len(audio_b) / sr_b, section_b_end)
+        if use_stems:
+            # Load stems for both songs
+            stems_a, sr_a = self._load_stems(stems_path_a)
+            stems_b, sr_b = self._load_stems(stems_path_b)
 
-        # Extract section A
-        start_sample_a = int(section_a_start * sr_a)
-        end_sample_a = int(section_a_end * sr_a)
-        section_a_audio = audio_a[start_sample_a:end_sample_a]
+            # Clamp to file boundaries (use first stem's length)
+            first_stem_a = next(iter(stems_a.values()))
+            first_stem_b = next(iter(stems_b.values()))
+            section_a_start = max(0, section_a_start)
+            section_a_end = min(len(first_stem_a) / sr_a, section_a_end)
+            section_b_start = max(0, section_b_start)
+            section_b_end = min(len(first_stem_b) / sr_b, section_b_end)
 
-        # Extract section B
-        start_sample_b = int(section_b_start * sr_b)
-        end_sample_b = int(section_b_end * sr_b)
-        section_b_audio = audio_b[start_sample_b:end_sample_b]
+            # Extract sections from stems
+            start_sample_a = int(section_a_start * sr_a)
+            end_sample_a = int(section_a_end * sr_a)
+            start_sample_b = int(section_b_start * sr_b)
+            end_sample_b = int(section_b_end * sr_b)
 
-        # Resample if necessary (assume both songs at same sample rate for now)
-        # TODO: Add resampling if sr_a != sr_b
+            section_stems_a = {name: audio[start_sample_a:end_sample_a] for name, audio in stems_a.items()}
+            section_stems_b = {name: audio[start_sample_b:end_sample_b] for name, audio in stems_b.items()}
+
+            # Calculate fade samples (half of fade_window for each direction)
+            fade_out_beats = fade_window_beats / 2.0
+            fade_in_beats = fade_window_beats / 2.0
+            fade_out_samples = int((fade_out_beats * 60.0 / song_a.tempo) * sr_a)
+            fade_in_samples = int((fade_in_beats * 60.0 / song_b.tempo) * sr_b)
+
+            # Apply fade-out to section A stems (at end)
+            section_stems_a = self._apply_fade_to_stems(
+                section_stems_a, stems_to_fade, "out", fade_out_samples, at_start=False
+            )
+
+            # Apply fade-in to section B stems (at start)
+            section_stems_b = self._apply_fade_to_stems(
+                section_stems_b, stems_to_fade, "in", fade_in_samples, at_start=True
+            )
+
+            # Mix stems
+            section_a_audio = self._mix_stems(section_stems_a)
+            section_b_audio = self._mix_stems(section_stems_b)
+        else:
+            # Fallback: load full audio and apply fade to entire mix
+            audio_a, sr_a = sf.read(str(song_a.filepath), dtype='float32')
+            audio_b, sr_b = sf.read(str(song_b.filepath), dtype='float32')
+
+            # Ensure stereo
+            if audio_a.ndim == 1:
+                audio_a = np.stack([audio_a, audio_a], axis=-1)
+            if audio_b.ndim == 1:
+                audio_b = np.stack([audio_b, audio_b], axis=-1)
+
+            # Clamp to file boundaries
+            section_a_start = max(0, section_a_start)
+            section_a_end = min(len(audio_a) / sr_a, section_a_end)
+            section_b_start = max(0, section_b_start)
+            section_b_end = min(len(audio_b) / sr_b, section_b_end)
+
+            # Extract sections
+            start_sample_a = int(section_a_start * sr_a)
+            end_sample_a = int(section_a_end * sr_a)
+            start_sample_b = int(section_b_start * sr_b)
+            end_sample_b = int(section_b_end * sr_b)
+
+            section_a_audio = audio_a[start_sample_a:end_sample_a].copy()
+            section_b_audio = audio_b[start_sample_b:end_sample_b].copy()
+
+            # Apply fades to full mix if stems_to_fade is not empty
+            if len(stems_to_fade) > 0:
+                fade_out_beats = fade_window_beats / 2.0
+                fade_in_beats = fade_window_beats / 2.0
+                fade_out_samples = int((fade_out_beats * 60.0 / song_a.tempo) * sr_a)
+                fade_in_samples = int((fade_in_beats * 60.0 / song_b.tempo) * sr_b)
+
+                # Apply fade-out at end of section A
+                if fade_out_samples > 0 and len(section_a_audio) > 0:
+                    fade_out_curve = create_logarithmic_fade_out(fade_out_samples)
+                    actual_samples = min(fade_out_samples, len(section_a_audio))
+                    section_a_audio[-actual_samples:] *= fade_out_curve[:actual_samples, np.newaxis]
+
+                # Apply fade-in at start of section B
+                if fade_in_samples > 0 and len(section_b_audio) > 0:
+                    fade_in_curve = create_logarithmic_fade_in(fade_in_samples)
+                    actual_samples = min(fade_in_samples, len(section_b_audio))
+                    section_b_audio[:actual_samples] *= fade_in_curve[:actual_samples, np.newaxis]
 
         # Calculate gap duration in seconds using song A's tempo
-        # 1 beat = 60 / BPM seconds
         gap_duration_seconds = (gap_beats * 60.0) / song_a.tempo
         gap_samples = int(gap_duration_seconds * sr_a)
 
@@ -139,6 +393,9 @@ class TransitionGenerationService:
             },
             "gap_beats": gap_beats,
             "gap_duration_seconds": gap_duration_seconds,
+            "fade_window_beats": fade_window_beats,
+            "stems_to_fade": stems_to_fade,
+            "used_stems": use_stems,
             "total_duration_seconds": transition_audio.shape[0] / sr_a,
             "sample_rate": sr_a,
             "output_file": str(output_path)
@@ -170,14 +427,25 @@ class TransitionGenerationService:
         """
         if transition_type.lower() == "gap":
             gap_beats = kwargs.get("gap_beats", 1.0)
+            fade_window_beats = kwargs.get("fade_window_beats", 8.0)
+            stems_to_fade = kwargs.get("stems_to_fade", None)
             section_a_start_adjust = kwargs.get("section_a_start_adjust", 0)
             section_a_end_adjust = kwargs.get("section_a_end_adjust", 0)
             section_b_start_adjust = kwargs.get("section_b_start_adjust", 0)
             section_b_end_adjust = kwargs.get("section_b_end_adjust", 0)
+            
             return self.generate_gap_transition(
-                song_a, song_b, section_a_index, section_b_index, gap_beats,
-                section_a_start_adjust, section_a_end_adjust,
-                section_b_start_adjust, section_b_end_adjust
+                song_a=song_a,
+                song_b=song_b,
+                section_a_index=section_a_index,
+                section_b_index=section_b_index,
+                gap_beats=gap_beats,
+                fade_window_beats=fade_window_beats,
+                stems_to_fade=stems_to_fade,
+                section_a_start_adjust=section_a_start_adjust,
+                section_a_end_adjust=section_a_end_adjust,
+                section_b_start_adjust=section_b_start_adjust,
+                section_b_end_adjust=section_b_end_adjust
             )
         else:
             raise NotImplementedError(f"Transition type '{transition_type}' not yet implemented")
@@ -194,12 +462,13 @@ class TransitionGenerationService:
         section_a_end_adjust: int = 0,
         section_b_start_adjust: int = 0,
         section_b_end_adjust: int = 0,
-        sample_rate: int = 44100
+        sample_rate: int = 44100,
+        **kwargs
     ) -> tuple[Path, dict]:
-        """Generate a focused preview of transition point.
+        """Generate a focused preview of transition point using the production path.
 
         Preview: last N beats of section A + gap + first N beats of section B.
-        Useful for quick auditioning of the transition point.
+        Delegates to generate_gap_transition to ensure WYSIWYG results (including fades/stems).
 
         Args:
             song_a: First song
@@ -213,101 +482,81 @@ class TransitionGenerationService:
             section_b_start_adjust: Beats to adjust section B start (-4 to +4)
             section_b_end_adjust: Beats to adjust section B end (-4 to +4)
             sample_rate: Sample rate for output (default: 44100)
+            **kwargs: Additional arguments passed to generate_gap_transition (e.g., stems_to_fade)
 
         Returns:
             Tuple of (output_path, metadata_dict)
         """
-        # Get sections
+        # Get sections to calculate durations
         section_a = song_a.sections[section_a_index]
         section_b = song_b.sections[section_b_index]
 
-        # Load audio files
-        audio_a, sr_a = sf.read(str(song_a.filepath), dtype='float32')
-        audio_b, sr_b = sf.read(str(song_b.filepath), dtype='float32')
-
-        # Ensure stereo
-        if audio_a.ndim == 1:
-            audio_a = np.stack([audio_a, audio_a], axis=-1)
-        if audio_b.ndim == 1:
-            audio_b = np.stack([audio_b, audio_b], axis=-1)
-
-        # Apply section adjustments
-        # Positive = extend (start earlier/end later), Negative = clip (start later/end earlier)
-        # For start: +N starts N beats later (clip), -N starts N beats earlier (extend)
-        # For end: +N ends N beats later (extend), -N ends N beats earlier (clip)
-        beat_duration_a = 60.0 / song_a.tempo  # Duration of one beat in seconds
+        # Calculate beat durations
+        beat_duration_a = 60.0 / song_a.tempo
         beat_duration_b = 60.0 / song_b.tempo
 
-        # Adjust section A boundaries
-        section_a_start_adjusted = section_a.start + (section_a_start_adjust * beat_duration_a)
-        section_a_end_adjusted = section_a.end + (section_a_end_adjust * beat_duration_a)
+        # Calculate section durations in beats
+        # Note: We use the actual time duration from the section object
+        section_duration_beats_a = (section_a.end - section_a.start) / beat_duration_a
+        section_duration_beats_b = (section_b.end - section_b.start) / beat_duration_b
 
-        # Adjust section B boundaries
-        section_b_start_adjusted = section_b.start + (section_b_start_adjust * beat_duration_b)
-        section_b_end_adjusted = section_b.end + (section_b_end_adjust * beat_duration_b)
+        # Calculate adjustments for the preview window
+        # Section A: We want the LAST `preview_beats`.
+        # So we adjust the start time forward to: End - `preview_beats`
+        # New_Start_Adjust = (Original_Duration_Beats + Original_End_Adjust) - Preview_Beats
+        # We take max with original start adjust to ensure we don't start before the user intended (if they clipped it heavily)
+        preview_start_adjust_a = max(
+            section_a_start_adjust,
+            section_duration_beats_a + section_a_end_adjust - preview_beats
+        )
 
-        # Clamp to file boundaries
-        section_a_start_adjusted = max(0, section_a_start_adjusted)
-        section_a_end_adjusted = min(len(audio_a) / sr_a, section_a_end_adjusted)
-        section_b_start_adjusted = max(0, section_b_start_adjusted)
-        section_b_end_adjusted = min(len(audio_b) / sr_b, section_b_end_adjusted)
+        # Section B: We want the FIRST `preview_beats`.
+        # So we adjust the end time backward to: Start + `preview_beats`
+        # New_End_Adjust = (Original_Start_Adjust + Preview_Beats) - Original_Duration_Beats
+        # We take min with original end adjust
+        preview_end_adjust_b = min(
+            section_b_end_adjust,
+            -section_duration_beats_b + section_b_start_adjust + preview_beats
+        )
 
-        # Calculate preview duration in seconds using each song's tempo
-        preview_duration_a = (preview_beats * 60.0) / song_a.tempo
-        preview_duration_b = (preview_beats * 60.0) / song_b.tempo
+        # Generate using the production path
+        # This gives us fades, stems, and consistent audio processing
+        output_path, metadata = self.generate_gap_transition(
+            song_a=song_a,
+            song_b=song_b,
+            section_a_index=section_a_index,
+            section_b_index=section_b_index,
+            gap_beats=gap_beats,
+            section_a_start_adjust=preview_start_adjust_a,
+            section_a_end_adjust=section_a_end_adjust,
+            section_b_start_adjust=section_b_start_adjust,
+            section_b_end_adjust=preview_end_adjust_b,
+            sample_rate=sample_rate,
+            **kwargs
+        )
 
-        # Extract LAST N beats of section A (from adjusted boundaries)
-        section_a_start = int(section_a_start_adjusted * sr_a)
-        section_a_end = int(section_a_end_adjusted * sr_a)
-        preview_samples_a = int(preview_duration_a * sr_a)
+        # Rename the output file to match preview naming convention
+        # Original: transition_gap_...
+        # New: preview_...
+        new_filename = f"preview_{song_a.filename}_{section_a.label}_{song_b.filename}_{section_b.label}_{preview_beats}beats.flac"
+        new_output_path = self.output_dir / new_filename
+        
+        # Move/Rename file
+        if output_path.exists():
+            output_path.replace(new_output_path)
+            output_path = new_output_path
 
-        # Take from end of section A
-        section_a_preview_start = max(section_a_start, section_a_end - preview_samples_a)
-        section_a_preview = audio_a[section_a_preview_start:section_a_end]
-
-        # Extract FIRST N beats of section B (from adjusted boundaries)
-        section_b_start = int(section_b_start_adjusted * sr_b)
-        section_b_end = int(section_b_end_adjusted * sr_b)
-        preview_samples_b = int(preview_duration_b * sr_b)
-
-        # Take from beginning of section B
-        section_b_preview_end = min(section_b_end, section_b_start + preview_samples_b)
-        section_b_preview = audio_b[section_b_start:section_b_preview_end]
-
-        # Add gap if specified
-        if gap_beats > 0:
-            gap_duration_seconds = (gap_beats * 60.0) / song_a.tempo
-            gap_samples = int(gap_duration_seconds * sr_a)
-            silence = np.zeros((gap_samples, 2), dtype='float32')
-            preview_audio = np.vstack([section_a_preview, silence, section_b_preview])
-        else:
-            preview_audio = np.vstack([section_a_preview, section_b_preview])
-
-        # Generate output filename for preview
-        output_filename = f"preview_{song_a.filename}_{section_a.label}_{song_b.filename}_{section_b.label}_{preview_beats}beats.flac"
-        output_path = self.output_dir / output_filename
-
-        # Save audio
-        sf.write(str(output_path), preview_audio, sr_a, format='FLAC')
-
-        # Create metadata
-        metadata = {
-            "type": "focused_preview",
-            "song_a": song_a.filename,
-            "song_b": song_b.filename,
-            "section_a": {
-                "label": section_a.label,
-                "index": section_a_index,
-            },
-            "section_b": {
-                "label": section_b.label,
-                "index": section_b_index,
-            },
-            "preview_beats": preview_beats,
-            "gap_beats": gap_beats,
-            "total_duration_seconds": preview_audio.shape[0] / sr_a,
-            "sample_rate": sr_a,
-            "output_file": str(output_path)
+        # Update metadata to reflect this is a preview
+        metadata["type"] = "focused_preview"
+        metadata["preview_beats"] = preview_beats
+        metadata["output_file"] = str(output_path)
+        
+        # Add original adjustments for reference since we modified them in the call
+        metadata["original_adjustments"] = {
+            "section_a_start": section_a_start_adjust,
+            "section_a_end": section_a_end_adjust,
+            "section_b_start": section_b_start_adjust,
+            "section_b_end": section_b_end_adjust
         }
 
         return output_path, metadata
