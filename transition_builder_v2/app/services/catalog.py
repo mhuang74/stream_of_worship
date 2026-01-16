@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from app.models.song import Song
+from app.utils.logger import get_error_logger
 
 
 class SongCatalogLoader:
@@ -33,11 +34,17 @@ class SongCatalogLoader:
         try:
             with open(json_path, 'r') as f:
                 data = json.load(f)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             self.warnings.append(f"JSON file not found: {json_path}")
+            logger = get_error_logger()
+            if logger:
+                logger.log_catalog_error(str(json_path), e)
             return self.songs
         except json.JSONDecodeError as e:
             self.warnings.append(f"Malformed JSON: {json_path} - {e}")
+            logger = get_error_logger()
+            if logger:
+                logger.log_catalog_error(str(json_path), e)
             return self.songs
 
         if not isinstance(data, list):
@@ -62,6 +69,9 @@ class SongCatalogLoader:
             except (KeyError, ValueError, TypeError) as e:
                 filename = song_data.get("filename", "unknown")
                 self.warnings.append(f"Skipping song {filename}: {e}")
+                logger = get_error_logger()
+                if logger:
+                    logger.log_catalog_error(str(json_path), e, song_filename=filename)
                 continue
 
         return self.songs
