@@ -45,8 +45,8 @@ Screen {
 }
 
 #parameters_panel {
-    height: 20;
-    min-height: 20;
+    height: 24;
+    min-height: 24;
     border: solid $primary;
     padding: 1;
     margin: 1;
@@ -77,6 +77,23 @@ Screen {
 #parameters_panel Select {
     width: 24;
     margin: 0 1;
+}
+
+/* Stem checkboxes */
+.stem-checkboxes {
+    height: 3;
+    margin: 0;
+}
+
+.stem-checkboxes .stem-label {
+    width: 14;
+    content-align: left middle;
+}
+
+.stem-checkboxes Checkbox {
+    width: auto;
+    margin: 0 0 0 0;
+    padding: 0;
 }
 
 #warning_panel {

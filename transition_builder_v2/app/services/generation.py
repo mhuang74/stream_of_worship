@@ -11,46 +11,66 @@ from app.models.transition import TransitionRecord
 STEM_TYPES = ["vocals", "bass", "drums", "other"]
 
 
-def create_logarithmic_fade_out(num_samples: int, min_db: float = -60.0) -> np.ndarray:
+def create_logarithmic_fade_out(num_samples: int, fade_bottom: float = 0.0) -> np.ndarray:
     """Create a logarithmic fade-out curve.
 
-    Goes from 1.0 (full volume) to near-silence following dB curve.
+    Goes from 1.0 (full volume) to fade_bottom following dB curve.
 
     Args:
         num_samples: Number of samples for the fade
-        min_db: Minimum dB level at end of fade (default -60 dB = ~0.001)
+        fade_bottom: Minimum volume at end of fade (0.0 to 1.0, default 0.0)
 
     Returns:
-        1D numpy array of gain values from 1.0 to ~0
+        1D numpy array of gain values from 1.0 to fade_bottom
     """
     if num_samples <= 0:
         return np.array([])
 
+    # Clamp fade_bottom to valid range
+    fade_bottom = max(0.0, min(1.0, fade_bottom))
+
+    if fade_bottom >= 1.0:
+        return np.ones(num_samples, dtype=np.float32)
+
+    if fade_bottom <= 0.001:
+        min_db = -60.0
+    else:
+        min_db = 20.0 * np.log10(fade_bottom)
+
     # Linear dB ramp from 0 to min_db
     db_curve = np.linspace(0, min_db, num_samples)
-    # Convert dB to linear gain
     gain_curve = 10 ** (db_curve / 20.0)
     return gain_curve.astype(np.float32)
 
 
-def create_logarithmic_fade_in(num_samples: int, min_db: float = -60.0) -> np.ndarray:
+def create_logarithmic_fade_in(num_samples: int, fade_bottom: float = 0.0) -> np.ndarray:
     """Create a logarithmic fade-in curve.
 
-    Goes from near-silence to 1.0 (full volume) following dB curve.
+    Goes from fade_bottom to 1.0 (full volume) following dB curve.
 
     Args:
         num_samples: Number of samples for the fade
-        min_db: Starting dB level (default -60 dB = ~0.001)
+        fade_bottom: Starting volume (0.0 to 1.0, default 0.0)
 
     Returns:
-        1D numpy array of gain values from ~0 to 1.0
+        1D numpy array of gain values from fade_bottom to 1.0
     """
     if num_samples <= 0:
         return np.array([])
 
+    # Clamp fade_bottom to valid range
+    fade_bottom = max(0.0, min(1.0, fade_bottom))
+
+    if fade_bottom >= 1.0:
+        return np.ones(num_samples, dtype=np.float32)
+
+    if fade_bottom <= 0.001:
+        min_db = -60.0
+    else:
+        min_db = 20.0 * np.log10(fade_bottom)
+
     # Linear dB ramp from min_db to 0
     db_curve = np.linspace(min_db, 0, num_samples)
-    # Convert dB to linear gain
     gain_curve = 10 ** (db_curve / 20.0)
     return gain_curve.astype(np.float32)
 
@@ -141,7 +161,7 @@ class TransitionGenerationService:
         fade_type: str,  # "out" or "in"
         fade_samples: int,
         at_start: bool = False,  # If True, fade at start; if False, fade at end
-        min_db: float = -60.0,
+        fade_bottom: float = 0.0,
     ) -> dict[str, np.ndarray]:
         """Apply fade to specified stems.
 
@@ -151,7 +171,7 @@ class TransitionGenerationService:
             fade_type: "out" for fade-out, "in" for fade-in
             fade_samples: Number of samples for fade duration
             at_start: If True, apply fade at start of audio; if False, at end
-            min_db: Minimum dB level for the fade (default -60.0)
+            fade_bottom: Minimum volume during fade (0.0 to 1.0, default 0.0)
 
         Returns:
             Dict of stem_name -> audio array with fades applied
@@ -161,9 +181,9 @@ class TransitionGenerationService:
 
         # Create fade curve
         if fade_type == "out":
-            fade_curve = create_logarithmic_fade_out(fade_samples, min_db=min_db)
+            fade_curve = create_logarithmic_fade_out(fade_samples, fade_bottom=fade_bottom)
         else:
-            fade_curve = create_logarithmic_fade_in(fade_samples, min_db=min_db)
+            fade_curve = create_logarithmic_fade_in(fade_samples, fade_bottom=fade_bottom)
 
         # Expand to stereo for broadcasting
         fade_curve_stereo = fade_curve[:, np.newaxis]
@@ -254,14 +274,6 @@ class TransitionGenerationService:
         if stems_to_fade is None:
             stems_to_fade = ["bass", "drums", "other"]
 
-        # Calculate min_db from fade_bottom (0.0 to 1.0)
-        if fade_bottom <= 0.001:
-            calculated_min_db = -60.0
-        else:
-            # Convert linear gain (0-1) to dB
-            # 20 * log10(gain)
-            calculated_min_db = 20.0 * np.log10(fade_bottom)
-
         # Get sections
         section_a = song_a.sections[section_a_index]
         section_b = song_b.sections[section_b_index]
@@ -316,7 +328,7 @@ class TransitionGenerationService:
                 "out",
                 fade_out_samples,
                 at_start=False,
-                min_db=calculated_min_db,
+                fade_bottom=fade_bottom,
             )
 
             # Apply fade-in to section B stems (at start)
@@ -326,7 +338,7 @@ class TransitionGenerationService:
                 "in",
                 fade_in_samples,
                 at_start=True,
-                min_db=calculated_min_db,
+                fade_bottom=fade_bottom,
             )
 
             # Mix stems
@@ -368,7 +380,7 @@ class TransitionGenerationService:
                 # Apply fade-out at end of section A
                 if fade_out_samples > 0 and len(section_a_audio) > 0:
                     fade_out_curve = create_logarithmic_fade_out(
-                        fade_out_samples, min_db=calculated_min_db
+                        fade_out_samples, fade_bottom=fade_bottom
                     )
                     actual_samples = min(fade_out_samples, len(section_a_audio))
                     section_a_audio[-actual_samples:] *= fade_out_curve[
@@ -378,7 +390,7 @@ class TransitionGenerationService:
                 # Apply fade-in at start of section B
                 if fade_in_samples > 0 and len(section_b_audio) > 0:
                     fade_in_curve = create_logarithmic_fade_in(
-                        fade_in_samples, min_db=calculated_min_db
+                        fade_in_samples, fade_bottom=fade_bottom
                     )
                     actual_samples = min(fade_in_samples, len(section_b_audio))
                     section_b_audio[:actual_samples] *= fade_in_curve[
