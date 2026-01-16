@@ -1,8 +1,11 @@
 """Audio playback service using PyAudio backend."""
 import threading
+import time
 from pathlib import Path
 import numpy as np
 import soundfile as sf
+
+from app.utils.logger import get_error_logger
 
 try:
     import pyaudio
@@ -46,6 +49,9 @@ class PlaybackService:
                 self._pyaudio = pyaudio.PyAudio()
             except Exception as e:
                 print(f"Warning: Failed to initialize PyAudio: {e}")
+                logger = get_error_logger()
+                if logger:
+                    logger.log_playback_error("PyAudio", e, operation="initialization")
                 self._pyaudio = None
 
     def load(self, audio_path: Path, section_start: float | None = None, section_end: float | None = None) -> bool:
@@ -93,6 +99,9 @@ class PlaybackService:
 
         except Exception as e:
             print(f"Error loading audio file: {e}")
+            logger = get_error_logger()
+            if logger:
+                logger.log_playback_error(str(audio_path), e, operation="load")
             return False
 
     def play(self):
@@ -119,6 +128,9 @@ class PlaybackService:
     def pause(self):
         """Pause playback."""
         if self.is_playing:
+            # Track if we had an active stream (for sleep at end)
+            had_active_stream = self._stream is not None
+
             self.is_playing = False
             self.is_paused = True
             self._stop_flag.set()
@@ -127,8 +139,8 @@ class PlaybackService:
             if self._stream:
                 try:
                     self._stream.stop_stream()
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._log_stream_error(e, "stop_stream")
 
             # Wait for playback thread to finish
             if self._playback_thread and self._playback_thread.is_alive():
@@ -141,12 +153,21 @@ class PlaybackService:
             if self._stream:
                 try:
                     self._stream.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._log_stream_error(e, "close_stream")
                 self._stream = None
+
+            # Give macOS CoreAudio time to release the audio device
+            if had_active_stream:
+                time.sleep(0.1)
 
     def stop(self):
         """Stop playback."""
+        # Track if we had an active stream (for sleep at end)
+        had_active_stream = self._stream is not None or (
+            self._playback_thread is not None and self._playback_thread.is_alive()
+        )
+
         self.is_playing = False
         self.is_paused = False
         self._stop_flag.set()
@@ -155,8 +176,8 @@ class PlaybackService:
         if self._stream:
             try:
                 self._stream.stop_stream()
-            except Exception:
-                pass  # Stream may already be stopped
+            except Exception as e:
+                self._log_stream_error(e, "stop_stream")
 
         # Wait for playback thread to finish (should be quick now that stream is stopped)
         if self._playback_thread and self._playback_thread.is_alive():
@@ -165,13 +186,19 @@ class PlaybackService:
         # Clear thread reference
         self._playback_thread = None
 
-        # Close stream
+        # Close stream (may have been closed by finally block already)
         if self._stream:
             try:
                 self._stream.close()
-            except Exception:
-                pass
+            except Exception as e:
+                self._log_stream_error(e, "close_stream")
             self._stream = None
+
+        # Give macOS CoreAudio time to release the audio device
+        # Without this delay, opening a new stream immediately can fail with -50
+        # Must sleep even if finally block already closed the stream
+        if had_active_stream:
+            time.sleep(0.1)  # 100ms for more reliable device release
 
         self.position = 0.0
         self.current_file = None
@@ -233,12 +260,22 @@ class PlaybackService:
 
         try:
             # Open PyAudio stream
-            self._stream = self._pyaudio.open(
-                format=pyaudio.paFloat32,
-                channels=self._channels,
-                rate=self._sample_rate,
-                output=True
-            )
+            # Note: PortAudio may print benign error messages to stderr (e.g., "-50" errors)
+            # These cannot be suppressed as Textual controls the terminal
+            try:
+                self._stream = self._pyaudio.open(
+                    format=pyaudio.paFloat32,
+                    channels=self._channels,
+                    rate=self._sample_rate,
+                    output=True
+                )
+            except Exception as e:
+                logger = get_error_logger()
+                if logger and self.current_file:
+                    logger.log_playback_error(
+                        str(self.current_file), e, operation="open_stream"
+                    )
+                return
 
             # Determine playback boundaries
             if self._section_start is not None and self._section_end is not None:
@@ -276,20 +313,55 @@ class PlaybackService:
                     self.position = 0.0
 
         except Exception as e:
-            if "Stream not open" not in str(e):
+            # Filter out benign errors that occur during normal stop/pause operations
+            error_str = str(e)
+            benign = any(x in error_str for x in ["Stream not open", "-9986", "-9988"])
+            if not benign:
                 print(f"Playback error: {e}")
+                logger = get_error_logger()
+                if logger and self.current_file:
+                    logger.log_playback_error(str(self.current_file), e, operation="playback")
         finally:
             # Clean up stream (may already be closed by stop())
+            # Note: Don't sleep here - stop() handles the delay for device release
             if self._stream:
                 try:
                     self._stream.stop_stream()
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._log_stream_error(e, "stop_stream")
                 try:
                     self._stream.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._log_stream_error(e, "close_stream")
                 self._stream = None
+
+    def _log_stream_error(self, error: Exception, operation: str) -> None:
+        """Log a stream-related error if it's not a common benign error.
+
+        Args:
+            error: The exception that occurred
+            operation: The operation that failed (e.g., "stop_stream", "close_stream", "write")
+        """
+        error_str = str(error)
+        # Skip logging for common benign errors that occur during normal cleanup
+        # -9986 = paStreamIsStopped (stream already stopped, happens during race between
+        #         stop()/pause() and _playback_loop's finally block - this is expected)
+        # -9988 = paStreamIsNotStopped (stream not stopped when trying to close)
+        benign_errors = [
+            "Stream not open",
+            "Stream closed",
+            "not open",
+            "-9986",  # paStreamIsStopped - already stopped
+            "-9988",  # paStreamIsNotStopped
+        ]
+        if any(benign in error_str for benign in benign_errors):
+            return
+
+        # Log the error
+        logger = get_error_logger()
+        if logger:
+            audio_path = str(self.current_file) if self.current_file else "unknown"
+            logger.log_playback_error(audio_path, error, operation=operation)
 
     def __del__(self):
         """Clean up resources."""

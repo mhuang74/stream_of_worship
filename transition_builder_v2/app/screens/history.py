@@ -10,6 +10,7 @@ from textual.binding import Binding
 
 from app.state import AppState, ActiveScreen, GenerationMode
 from app.models.transition import TransitionRecord
+from app.utils.logger import get_error_logger
 
 
 class TransitionListPanel(ListView):
@@ -419,6 +420,9 @@ class HistoryScreen(Screen):
             except Exception as e:
                 # Don't fail the save if metadata writing fails
                 self.notify(f"Warning: Could not write metadata: {e}", severity="warning")
+                logger = get_error_logger()
+                if logger:
+                    logger.log_file_error(str(output_path), e, operation="write_metadata")
 
             # Update transition record
             selected.is_saved = True
@@ -429,6 +433,13 @@ class HistoryScreen(Screen):
 
         except Exception as e:
             self.notify(f"Error saving: {str(e)}", severity="error")
+            logger = get_error_logger()
+            if logger and selected:
+                logger.log_file_error(
+                    str(selected.audio_path),
+                    e,
+                    operation="save_transition"
+                )
 
         finally:
             # Hide save input and update screen

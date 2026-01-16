@@ -9,6 +9,7 @@ from textual.events import MouseMove
 from app.state import AppState, GenerationMode
 from app.models.song import Song
 from app.services.catalog import SongCatalogLoader
+from app.utils.logger import get_error_logger
 
 
 class SongListPanel(ListView):
@@ -709,6 +710,23 @@ class GenerationScreen(Screen):
 
         except Exception as e:
             self.notify(f"Error generating transition: {str(e)}", severity="error")
+            logger = get_error_logger()
+            if logger:
+                logger.log_generation_error(
+                    song_a=song_a.filename if song_a else "unknown",
+                    song_b=song_b.filename if song_b else "unknown",
+                    transition_type=self.state.transition_type,
+                    error=e,
+                    parameters={
+                        "overlap": self.state.overlap,
+                        "fade_window": self.state.fade_window,
+                        "fade_speed": self.state.fade_speed,
+                        "from_section_start_adjust": self.state.from_section_start_adjust,
+                        "from_section_end_adjust": self.state.from_section_end_adjust,
+                        "to_section_start_adjust": self.state.to_section_start_adjust,
+                        "to_section_end_adjust": self.state.to_section_end_adjust,
+                    }
+                )
 
     def action_play_transition(self):
         """Play last generated transition (T key)."""
@@ -798,6 +816,18 @@ class GenerationScreen(Screen):
 
         except Exception as e:
             self.notify(f"Error generating preview: {str(e)}", severity="error")
+            logger = get_error_logger()
+            if logger:
+                logger.log_generation_error(
+                    song_a=song_a.filename if song_a else "unknown",
+                    song_b=song_b.filename if song_b else "unknown",
+                    transition_type="focused_preview",
+                    error=e,
+                    parameters={
+                        "preview_beats": 4.0,
+                        "gap_beats": gap_beats,
+                    }
+                )
 
     def action_quick_test(self):
         """Quick test generation (Shift+G)."""

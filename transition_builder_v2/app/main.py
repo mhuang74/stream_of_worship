@@ -9,6 +9,7 @@ from app.services.catalog import SongCatalogLoader
 from app.services.playback import PlaybackService
 from app.services.generation import TransitionGenerationService
 from app.utils.config import Config
+from app.utils.logger import init_error_logger, get_error_logger
 from app.screens.generation import GenerationScreen
 from app.screens.history import HistoryScreen
 
@@ -33,6 +34,11 @@ class TransitionBuilderApp(App):
         except (FileNotFoundError, ValueError) as e:
             print(f"Error loading configuration: {e}", file=sys.stderr)
             sys.exit(1)
+
+        # Initialize error logger
+        # Log file is created in the same directory as config.json
+        log_path = config_path.parent / "transitions_errors.log"
+        init_error_logger(log_path=log_path, enabled=self.config.error_logging)
 
         # Initialize state
         self.state = AppState()
@@ -119,14 +125,16 @@ class TransitionBuilderApp(App):
             return
 
         deleted_count = 0
+        logger = get_error_logger()
         for file_path in output_folder.glob("*.flac"):
             # Keep files that start with 'saved_transition_'
             if not file_path.name.startswith("saved_transition_"):
                 try:
                     file_path.unlink()
                     deleted_count += 1
-                except Exception:
-                    pass  # Ignore errors during cleanup
+                except Exception as e:
+                    if logger:
+                        logger.log_file_error(str(file_path), e, operation="delete")
 
         if deleted_count > 0:
             print(f"Cleaned up {deleted_count} unsaved transition file(s)")

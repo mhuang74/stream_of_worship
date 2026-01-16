@@ -20,12 +20,13 @@
 - **Save transitions** to disk with FLAC metadata and optional notes
 - **Delete transitions** from history (with confirmation)
 - **Automatic cleanup** of unsaved transition files on exit
+- **Error logging** to `./transitions_errors.log` (configurable via `error_logging` in config)
 
 **What's missing:**
 - Other transition types (crossfade, vocal-fade, drum-fade)
 - Song search functionality
 - Help overlay
-- Session logging
+- Session logging (events, selections, parameters)
 
 **Ready for:** Full workflow of generating, reviewing, modifying, and saving gap transitions.
 
@@ -71,6 +72,8 @@
   - Threaded playback loop for non-blocking operation
   - Fast thread cleanup (0.5s timeout, proper stream shutdown)
   - Graceful fallback when PyAudio unavailable
+  - Error logging integration for playback failures
+  - Filters benign PortAudio cleanup errors from logs
 
 - **TransitionGenerationService** (`app/services/generation.py`)
   - Gap transition generation (full sections with silence gap)
@@ -85,6 +88,13 @@
   - JSON configuration loader
   - Path resolution relative to config file
   - Validation with clear error messages
+
+- **ErrorLogger** (`app/utils/logger.py`)
+  - Centralized error logging to `./transitions_errors.log`
+  - Specialized methods: `log_generation_error()`, `log_playback_error()`, `log_file_error()`, `log_catalog_error()`
+  - Timestamps, context, and full stack traces
+  - Configurable via `error_logging` setting in config.json
+  - Filters benign PortAudio errors (-9986, -9988) from logs
 
 ### UI Components
 - **GenerationScreen** (`app/screens/generation.py`)
@@ -211,9 +221,9 @@
   - Screen-specific bindings
 
 ### Logging
-- Session logging (events, selections, parameters)
-- Error logging (generation failures, file errors)
-- Log file rotation
+- ⏳ Session logging (events, selections, parameters)
+- ✅ Error logging (generation failures, file errors) - writes to `./transitions_errors.log`
+- ⏳ Log file rotation
 
 ### Validation
 - Parameter validation warnings (overlap, fade_window, etc.)
@@ -294,10 +304,9 @@ Tests cover:
    - Screen-specific bindings
    - Quick reference guide
 
-5. **Add Logging**
-   - Session event logging
-   - Error logging
-   - File rotation
+5. **Add Session Logging**
+   - Session event logging (selections, parameters, actions)
+   - Log file rotation
 
 6. **Implement Ephemeral Generation**
    - Quick test mode (Shift+G)
@@ -363,7 +372,8 @@ transition_builder_v2/
 │   │   └── history.tcss        # ✅ History screen CSS
 │   └── utils/
 │       ├── __init__.py
-│       └── config.py           # ✅ Config loader
+│       ├── config.py           # ✅ Config loader
+│       └── logger.py           # ✅ ErrorLogger for error logging
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py             # ✅ Pytest fixtures
