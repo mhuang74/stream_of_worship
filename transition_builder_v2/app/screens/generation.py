@@ -725,10 +725,8 @@ class GenerationScreen(Screen):
             transition_type = self.state.transition_type.lower()
 
             if transition_type == "gap":
-                # Gap transition: use overlap parameter as gap_beats (but positive)
-                gap_beats = abs(self.state.overlap)  # Convert negative overlap to positive gap
-                if gap_beats == 0:
-                    gap_beats = 1.0  # Default to 1 beat
+                # Gap transition: use overlap parameter as gap_beats (0 = seamless transition)
+                gap_beats = abs(self.state.overlap)
 
                 output_path, metadata = self.generation.generate_transition(
                     song_a=song_a,
