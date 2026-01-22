@@ -20,6 +20,8 @@ class TransitionRecord:
     saved_path: Path | None = None
     save_note: str | None = None
     parameters: dict = field(default_factory=dict)
+    output_type: str = "transition"  # "transition" or "full_song"
+    full_song_path: Path | None = None  # If output_type=="full_song"
 
     def format_list_display(self) -> str:
         """Format for display in history list."""
