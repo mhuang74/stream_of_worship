@@ -235,3 +235,195 @@ def init_error_logger(log_path: Optional[Path] = None, enabled: bool = True) -> 
     global _error_logger
     _error_logger = ErrorLogger(log_path=log_path, enabled=enabled)
     return _error_logger
+
+
+class SessionLogger:
+    """Session logging service for tracking transition generation operations.
+
+    Logs generation events with stem fade details to a session log file.
+    Respects the session_logging configuration setting.
+    """
+
+    DEFAULT_LOG_FILE = "transitions_session.log"
+
+    def __init__(self, log_path: Optional[Path] = None, enabled: bool = True):
+        """Initialize the session logger.
+
+        Args:
+            log_path: Path to the log file. Defaults to ./transitions_session.log
+            enabled: Whether session logging is enabled (from config.session_logging)
+        """
+        self._enabled = enabled
+        self._log_path = log_path or Path(self.DEFAULT_LOG_FILE)
+
+    @property
+    def enabled(self) -> bool:
+        """Whether session logging is enabled."""
+        return self._enabled
+
+    @property
+    def log_path(self) -> Path:
+        """Path to the log file."""
+        return self._log_path
+
+    def _write_log(self, entry: str) -> None:
+        """Write a log entry to the file.
+
+        Args:
+            entry: The formatted log entry to write
+        """
+        if not self._enabled:
+            return
+
+        try:
+            with open(self._log_path, 'a') as f:
+                f.write(entry)
+        except Exception:
+            # If we can't write to the log file, fail silently
+            pass
+
+    def log_generation_start(
+        self,
+        song_a: str,
+        song_b: str,
+        section_a_label: str,
+        section_b_label: str,
+        transition_type: str,
+        parameters: dict
+    ) -> None:
+        """Log the start of a transition generation.
+
+        Args:
+            song_a: Song A filename
+            song_b: Song B filename
+            section_a_label: Section label for song A
+            section_b_label: Section label for song B
+            transition_type: Type of transition being generated
+            parameters: Dictionary of generation parameters
+        """
+        if not self._enabled:
+            return
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = [
+            f"{timestamp} [SESSION] Generation started",
+            f"  Transition: {song_a} ({section_a_label}) -> {song_b} ({section_b_label})",
+            f"  Type: {transition_type}",
+            "  Parameters:",
+        ]
+
+        for key, value in parameters.items():
+            lines.append(f"    {key}: {value}")
+
+        lines.append("")
+        self._write_log('\n'.join(lines) + '\n')
+
+    def log_stems_operation(
+        self,
+        song_name: str,
+        stems_to_fade: list[str],
+        stems_kept: list[str],
+        fade_type: str,
+        fade_bottom: float
+    ) -> None:
+        """Log a stem fade operation.
+
+        Args:
+            song_name: Name of the song being processed
+            stems_to_fade: List of stems being faded
+            stems_kept: List of stems kept at full volume
+            fade_type: "out" or "in"
+            fade_bottom: Minimum volume during fade
+        """
+        if not self._enabled:
+            return
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        fade_direction = "Fade-out" if fade_type == "out" else "Fade-in"
+        fade_percent = int(fade_bottom * 100)
+
+        lines = [
+            f"{timestamp} [STEMS] {fade_direction} operation for: {song_name}",
+            f"  Stems fading (to {fade_percent}%): {', '.join(stems_to_fade) if stems_to_fade else 'none'}",
+            f"  Stems kept at 100%: {', '.join(stems_kept) if stems_kept else 'none'}",
+            "",
+        ]
+
+        self._write_log('\n'.join(lines) + '\n')
+
+    def log_generation_complete(
+        self,
+        output_path: str,
+        duration_seconds: float,
+        used_stems: bool
+    ) -> None:
+        """Log successful completion of a transition generation.
+
+        Args:
+            output_path: Path to the generated output file
+            duration_seconds: Duration of the generated audio in seconds
+            used_stems: Whether stems were used for the generation
+        """
+        if not self._enabled:
+            return
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = [
+            f"{timestamp} [SESSION] Generation completed",
+            f"  Output: {output_path}",
+            f"  Duration: {duration_seconds:.2f}s",
+            f"  Used stems: {'Yes' if used_stems else 'No'}",
+            "-" * 60,
+            "",
+        ]
+
+        self._write_log('\n'.join(lines) + '\n')
+
+    def log_fallback(self, reason: str) -> None:
+        """Log when falling back to full mix (no stem-based processing).
+
+        Args:
+            reason: Explanation for why fallback occurred
+        """
+        if not self._enabled:
+            return
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = [
+            f"{timestamp} [FALLBACK] Using full mix instead of stems",
+            f"  Reason: {reason}",
+            "",
+        ]
+
+        self._write_log('\n'.join(lines) + '\n')
+
+
+# Global session logger instance (initialized by main.py)
+_session_logger: Optional[SessionLogger] = None
+
+
+def get_session_logger() -> Optional[SessionLogger]:
+    """Get the global session logger instance.
+
+    Returns:
+        The global SessionLogger instance, or None if not initialized
+    """
+    return _session_logger
+
+
+def init_session_logger(log_path: Optional[Path] = None, enabled: bool = True) -> SessionLogger:
+    """Initialize the global session logger.
+
+    Args:
+        log_path: Path to the log file
+        enabled: Whether session logging is enabled
+
+    Returns:
+        The initialized SessionLogger instance
+    """
+    global _session_logger
+    _session_logger = SessionLogger(log_path=log_path, enabled=enabled)
+    return _session_logger
