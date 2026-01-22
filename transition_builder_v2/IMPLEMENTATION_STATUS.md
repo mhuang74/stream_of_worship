@@ -21,12 +21,12 @@
 - **Delete transitions** from history (with confirmation)
 - **Automatic cleanup** of unsaved transition files on exit
 - **Error logging** to `./transitions_errors.log` (configurable via `error_logging` in config)
+- **Session logging** to `./transitions_session.log` (configurable via `session_logging` in config)
 
 **What's missing:**
 - Other transition types (crossfade, vocal-fade, drum-fade)
 - Song search functionality
 - Help overlay
-- Session logging (events, selections, parameters)
 
 **Ready for:** Full workflow of generating, reviewing, modifying, and saving gap transitions.
 
@@ -95,6 +95,12 @@
   - Timestamps, context, and full stack traces
   - Configurable via `error_logging` setting in config.json
   - Filters benign PortAudio errors (-9986, -9988) from logs
+
+- **SessionLogger** (`app/utils/logger.py`)
+  - Session event logging to `./transitions_session.log`
+  - Specialized methods: `log_generation_start()`, `log_stems_operation()`, `log_generation_complete()`, `log_fallback()`
+  - Tracks transition generation with stem fade operations
+  - Configurable via `session_logging` setting in config.json
 
 ### UI Components
 - **GenerationScreen** (`app/screens/generation.py`)
@@ -221,7 +227,7 @@
   - Screen-specific bindings
 
 ### Logging
-- ⏳ Session logging (events, selections, parameters)
+- ✅ Session logging (events, selections, parameters) - writes to `./transitions_session.log`
 - ✅ Error logging (generation failures, file errors) - writes to `./transitions_errors.log`
 - ⏳ Log file rotation
 
@@ -304,15 +310,11 @@ Tests cover:
    - Screen-specific bindings
    - Quick reference guide
 
-5. **Add Session Logging**
-   - Session event logging (selections, parameters, actions)
-   - Log file rotation
-
-6. **Implement Ephemeral Generation**
+5. **Implement Ephemeral Generation**
    - Quick test mode (Shift+G)
    - Temporary file management
 
-7. **Polish and Test**
+6. **Polish and Test**
    - End-to-end workflow testing
    - Error handling
    - Edge cases
@@ -373,7 +375,7 @@ transition_builder_v2/
 │   └── utils/
 │       ├── __init__.py
 │       ├── config.py           # ✅ Config loader
-│       └── logger.py           # ✅ ErrorLogger for error logging
+│       └── logger.py           # ✅ ErrorLogger and SessionLogger
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py             # ✅ Pytest fixtures

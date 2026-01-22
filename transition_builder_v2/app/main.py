@@ -9,7 +9,7 @@ from app.services.catalog import SongCatalogLoader
 from app.services.playback import PlaybackService
 from app.services.generation import TransitionGenerationService
 from app.utils.config import Config
-from app.utils.logger import init_error_logger, get_error_logger
+from app.utils.logger import init_error_logger, get_error_logger, init_session_logger
 from app.screens.generation import GenerationScreen
 from app.screens.history import HistoryScreen
 
@@ -39,6 +39,10 @@ class TransitionBuilderApp(App):
         # Log file is created in the same directory as config.json
         log_path = config_path.parent / "transitions_errors.log"
         init_error_logger(log_path=log_path, enabled=self.config.error_logging)
+
+        # Initialize session logger
+        session_log_path = config_path.parent / "transitions_session.log"
+        init_session_logger(log_path=session_log_path, enabled=self.config.session_logging)
 
         # Initialize state
         self.state = AppState()

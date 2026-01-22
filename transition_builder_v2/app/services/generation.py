@@ -5,6 +5,7 @@ import soundfile as sf
 
 from app.models.song import Song
 from app.models.transition import TransitionRecord
+from app.utils.logger import get_session_logger
 
 
 # Available stem types
@@ -283,6 +284,23 @@ class TransitionGenerationService:
         stems_path_b = self._get_stems_path(song_b.filename)
         use_stems = stems_path_a is not None and stems_path_b is not None and len(stems_to_fade) > 0
 
+        # Log generation start
+        session_logger = get_session_logger()
+        if session_logger:
+            session_logger.log_generation_start(
+                song_a=song_a.filename,
+                song_b=song_b.filename,
+                section_a_label=section_a.label,
+                section_b_label=section_b.label,
+                transition_type="gap",
+                parameters={
+                    "gap_beats": gap_beats,
+                    "fade_window_beats": fade_window_beats,
+                    "fade_bottom": fade_bottom,
+                    "stems_to_fade": stems_to_fade,
+                }
+            )
+
         # Calculate beat durations
         beat_duration_a = 60.0 / song_a.tempo
         beat_duration_b = 60.0 / song_b.tempo
@@ -331,6 +349,17 @@ class TransitionGenerationService:
                 fade_bottom=fade_bottom,
             )
 
+            # Log fade-out operation for Song A
+            if session_logger:
+                stems_kept = [s for s in STEM_TYPES if s not in stems_to_fade]
+                session_logger.log_stems_operation(
+                    song_name=song_a.filename,
+                    stems_to_fade=stems_to_fade,
+                    stems_kept=stems_kept,
+                    fade_type="out",
+                    fade_bottom=fade_bottom
+                )
+
             # Apply fade-in to section B stems (at start)
             section_stems_b = self._apply_fade_to_stems(
                 section_stems_b,
@@ -341,11 +370,34 @@ class TransitionGenerationService:
                 fade_bottom=fade_bottom,
             )
 
+            # Log fade-in operation for Song B
+            if session_logger:
+                stems_kept = [s for s in STEM_TYPES if s not in stems_to_fade]
+                session_logger.log_stems_operation(
+                    song_name=song_b.filename,
+                    stems_to_fade=stems_to_fade,
+                    stems_kept=stems_kept,
+                    fade_type="in",
+                    fade_bottom=fade_bottom
+                )
+
             # Mix stems
             section_a_audio = self._mix_stems(section_stems_a)
             section_b_audio = self._mix_stems(section_stems_b)
         else:
             # Fallback: load full audio and apply fade to entire mix
+            # Log fallback reason
+            if session_logger:
+                if stems_path_a is None and stems_path_b is None:
+                    reason = "Stems not available for either song"
+                elif stems_path_a is None:
+                    reason = f"Stems not available for {song_a.filename}"
+                elif stems_path_b is None:
+                    reason = f"Stems not available for {song_b.filename}"
+                else:
+                    reason = "No stems selected for fading"
+                session_logger.log_fallback(reason)
+
             audio_a, sr_a = sf.read(str(song_a.filepath), dtype='float32')
             audio_b, sr_b = sf.read(str(song_b.filepath), dtype='float32')
 
@@ -413,6 +465,14 @@ class TransitionGenerationService:
 
         # Save audio
         sf.write(str(output_path), transition_audio, sr_a, format='FLAC')
+
+        # Log generation complete
+        if session_logger:
+            session_logger.log_generation_complete(
+                output_path=str(output_path),
+                duration_seconds=transition_audio.shape[0] / sr_a,
+                used_stems=use_stems
+            )
 
         # Create metadata
         metadata = {
