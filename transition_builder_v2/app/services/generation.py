@@ -666,3 +666,138 @@ class TransitionGenerationService:
         }
 
         return output_path, metadata
+
+    def generate_full_song_output(
+        self,
+        song_a: Song,
+        song_b: Song,
+        section_a_index: int,
+        section_b_index: int,
+        transition_audio_path: Path,
+        sr: int = 44100  # Sample rate (should match transition)
+    ) -> tuple[Path, dict]:
+        """Generate a complete song set:
+        - Song A sections before selected section
+        - Previously generated transition
+        - Song B sections after selected section
+
+        Args:
+            song_a: Song A object
+            song_b: Song B object
+            section_a_index: Index of selected Song A section
+            section_b_index: Index of selected Song B section
+            transition_audio_path: Path to previously generated transition audio
+            sr: Sample rate
+
+        Returns:
+            Tuple of (output_path, metadata_dict)
+        """
+        # 1. Load transition audio
+        transition_audio, sr_transition = sf.read(str(transition_audio_path))
+        if sr != sr_transition:
+            raise ValueError(f"Sample rate mismatch: expected {sr}, got {sr_transition}")
+
+        # Ensure stereo
+        if transition_audio.ndim == 1:
+            transition_audio = np.stack([transition_audio, transition_audio], axis=-1)
+
+        # 2. Load Song A sections BEFORE selected section
+        song_a_audio_parts = []
+        if section_a_index > 0:
+            song_a_full, sr_a = sf.read(str(song_a.filepath), dtype='float32')
+            if sr != sr_a:
+                import librosa
+                song_a_full = librosa.resample(song_a_full.T, orig_sr=sr_a, target_sr=sr).T
+
+            # Ensure stereo
+            if song_a_full.ndim == 1:
+                song_a_full = np.stack([song_a_full, song_a_full], axis=-1)
+
+            for i in range(section_a_index):
+                section = song_a.sections[i]
+                start_sample = int(section.start * sr)
+                end_sample = int(section.end * sr)
+                section_audio = song_a_full[start_sample:end_sample]
+                song_a_audio_parts.append(section_audio)
+
+        # 3. Load Song B sections AFTER selected section
+        song_b_audio_parts = []
+        if section_b_index < len(song_b.sections) - 1:
+            song_b_full, sr_b = sf.read(str(song_b.filepath), dtype='float32')
+            if sr != sr_b:
+                import librosa
+                song_b_full = librosa.resample(song_b_full.T, orig_sr=sr_b, target_sr=sr).T
+
+            # Ensure stereo
+            if song_b_full.ndim == 1:
+                song_b_full = np.stack([song_b_full, song_b_full], axis=-1)
+
+            for i in range(section_b_index + 1, len(song_b.sections)):
+                section = song_b.sections[i]
+                start_sample = int(section.start * sr)
+                end_sample = int(section.end * sr)
+                section_audio = song_b_full[start_sample:end_sample]
+                song_b_audio_parts.append(section_audio)
+
+        # 4. Concatenate all parts
+        all_parts = []
+
+        # Add Song A prefix sections
+        all_parts.extend(song_a_audio_parts)
+
+        # Add transition (contains Song A selected + gap + Song B selected)
+        all_parts.append(transition_audio)
+
+        # Add Song B suffix sections
+        all_parts.extend(song_b_audio_parts)
+
+        # Combine
+        if all_parts:
+            output_audio = np.vstack(all_parts)
+        else:
+            # Edge case: only transition (no before/after sections)
+            output_audio = transition_audio
+
+        # 5. Create output directory
+        output_dir = Path("song_sets_output")
+        output_dir.mkdir(exist_ok=True)
+
+        # 6. Generate filename
+        section_a_label = song_a.sections[section_a_index].label
+        section_b_label = song_b.sections[section_b_index].label
+        filename = (
+            f"songset_{song_a.filename}_{section_a_label}_to_"
+            f"{song_b.filename}_{section_b_label}.flac"
+        )
+        output_path = output_dir / filename
+
+        # 7. Write to file
+        sf.write(str(output_path), output_audio, sr, format='FLAC')
+
+        # 8. Create metadata
+        metadata = {
+            "output_type": "full_song",
+            "song_a": song_a.filename,
+            "song_b": song_b.filename,
+            "section_a_index": section_a_index,
+            "section_b_index": section_b_index,
+            "section_a_label": section_a_label,
+            "section_b_label": section_b_label,
+            "num_song_a_sections_before": section_a_index,
+            "num_song_b_sections_after": len(song_b.sections) - section_b_index - 1,
+            "total_duration": len(output_audio) / sr,
+            "sample_rate": sr,
+        }
+
+        # 9. Log
+        session_logger = get_session_logger()
+        if session_logger:
+            session_logger.log_generation_complete(
+                song_a=song_a.filename,
+                song_b=song_b.filename,
+                output_path=str(output_path),
+                duration=metadata["total_duration"],
+                extra_info=f"Full song output: {metadata['num_song_a_sections_before']} + transition + {metadata['num_song_b_sections_after']} sections"
+            )
+
+        return output_path, metadata

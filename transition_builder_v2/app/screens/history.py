@@ -38,8 +38,17 @@ class TransitionListPanel(ListView):
             return
 
         for idx, transition in enumerate(transitions):
-            # Format: #5 Crossfade: Song A -> Song B (87%)
-            text = transition.format_list_display()
+            # Check output type for different display
+            if transition.output_type == "full_song":
+                type_icon = "♫"  # Musical note for full songs
+                type_display = "Full Song"
+            else:
+                type_icon = "⇄"  # Arrow for transitions
+                type_display = transition.transition_type.capitalize()
+
+            # Format: #5 [Icon] Type: Song A -> Song B (87%)
+            compat_pct = int(transition.compatibility_score)
+            text = f"#{transition.id} {type_icon} {type_display}: {transition.song_a_filename} → {transition.song_b_filename} ({compat_pct}%)"
 
             # Add selection indicator
             if selected_index is not None and idx == selected_index:
@@ -78,11 +87,24 @@ class TransitionDetailsPanel(Static):
             return
 
         # Build details text
-        details = f"""Type: {transition.transition_type.capitalize()}
+        if transition.output_type == "full_song":
+            type_display = "Full Song Output"
+        else:
+            type_display = transition.transition_type.capitalize()
+
+        details = f"""Type: {type_display}
 Songs: {transition.song_a_filename} [{transition.section_a_label}] -> {transition.song_b_filename} [{transition.section_b_label}]
 Compatibility: {int(transition.compatibility_score)}%
 Generated: {transition.format_time()}
 Status: {transition.status_display}"""
+
+        # Add full song specific details
+        if transition.output_type == "full_song" and transition.parameters:
+            num_before = transition.parameters.get("num_song_a_sections_before", 0)
+            num_after = transition.parameters.get("num_song_b_sections_after", 0)
+            total_duration = transition.parameters.get("total_duration", 0)
+            details += f"\nStructure: {num_before} sections + transition + {num_after} sections"
+            details += f"\nTotal Duration: {int(total_duration)}s"
 
         if transition.is_saved and transition.saved_path:
             # Show just the filename, not the full path
@@ -114,42 +136,52 @@ class ParametersReadOnlyPanel(Static):
         # Build parameters text
         lines = []
 
-        # Base parameters
-        if "type" in params:
-            lines.append(f"Type: {params['type']}")
-        if "gap_beats" in params:
-            lines.append(f"Gap: {params['gap_beats']} beats")
-        if "overlap" in params:
-            lines.append(f"Overlap: {params['overlap']} beats")
-        if "fade_window" in params:
-            lines.append(f"Fade Window: {params['fade_window']} beats")
-        if "fade_speed" in params:
-            lines.append(f"Fade Speed: {params['fade_speed']} beats")
-        if "stems_to_fade" in params:
-            stems = params['stems_to_fade']
-            if isinstance(stems, list):
-                lines.append(f"Stems: {', '.join(stems)}")
-            else:
-                lines.append(f"Stems: {stems}")
+        # Check if this is a full song output
+        if params.get("output_type") == "full_song":
+            lines.append(f"Output Type: Full Song")
+            if "num_song_a_sections_before" in params:
+                lines.append(f"Song A prefix sections: {params['num_song_a_sections_before']}")
+            if "num_song_b_sections_after" in params:
+                lines.append(f"Song B suffix sections: {params['num_song_b_sections_after']}")
+            if "total_duration" in params:
+                lines.append(f"Total duration: {int(params['total_duration'])}s")
+        else:
+            # Base parameters for regular transitions
+            if "type" in params:
+                lines.append(f"Type: {params['type']}")
+            if "gap_beats" in params:
+                lines.append(f"Gap: {params['gap_beats']} beats")
+            if "overlap" in params:
+                lines.append(f"Overlap: {params['overlap']} beats")
+            if "fade_window" in params:
+                lines.append(f"Fade Window: {params['fade_window']} beats")
+            if "fade_speed" in params:
+                lines.append(f"Fade Speed: {params['fade_speed']} beats")
+            if "stems_to_fade" in params:
+                stems = params['stems_to_fade']
+                if isinstance(stems, list):
+                    lines.append(f"Stems: {', '.join(stems)}")
+                else:
+                    lines.append(f"Stems: {stems}")
 
-        # Section adjustments
-        adjusts = []
-        if params.get("section_a_start_adjust"):
-            adjusts.append(f"A start: {params['section_a_start_adjust']:+d}")
-        if params.get("section_a_end_adjust"):
-            adjusts.append(f"A end: {params['section_a_end_adjust']:+d}")
-        if params.get("section_b_start_adjust"):
-            adjusts.append(f"B start: {params['section_b_start_adjust']:+d}")
-        if params.get("section_b_end_adjust"):
-            adjusts.append(f"B end: {params['section_b_end_adjust']:+d}")
+            # Section adjustments
+            adjusts = []
+            if params.get("section_a_start_adjust"):
+                adjusts.append(f"A start: {params['section_a_start_adjust']:+d}")
+            if params.get("section_a_end_adjust"):
+                adjusts.append(f"A end: {params['section_a_end_adjust']:+d}")
+            if params.get("section_b_start_adjust"):
+                adjusts.append(f"B start: {params['section_b_start_adjust']:+d}")
+            if params.get("section_b_end_adjust"):
+                adjusts.append(f"B end: {params['section_b_end_adjust']:+d}")
 
-        if adjusts:
-            lines.append(f"Section Adjusts: {', '.join(adjusts)}")
+            if adjusts:
+                lines.append(f"Section Adjusts: {', '.join(adjusts)}")
 
-        # Extension parameters
-        if params.get("extension"):
-            for key, value in params["extension"].items():
-                lines.append(f"{key}: {value}")
+            # Extension parameters
+            if params.get("extension"):
+                for key, value in params["extension"].items():
+                    lines.append(f"{key}: {value}")
 
         self.update("\n".join(lines) if lines else "No parameters")
 

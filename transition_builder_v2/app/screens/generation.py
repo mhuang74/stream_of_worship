@@ -444,10 +444,9 @@ class GenerationScreen(Screen):
     BINDINGS = [
         Binding("tab", "cycle_panel", "Next Panel", show=True),
         Binding("shift+tab", "cycle_panel_reverse", "Prev Panel", show=True),
-        Binding("g", "generate", "Generate", show=True),
-        Binding("G", "quick_test", "Quick Test", show=False),
-        Binding("t", "play_transition", "Play Transition", show=True),
-        Binding("T", "play_focused_preview", "Focused Preview", show=True),
+        Binding("T", "generate", "Generate", show=True),
+        Binding("t", "play_focused_preview", "Preview", show=True),
+        Binding("o", "create_output", "Create Output", show=True),
         Binding("h", "show_history", "History", show=True),
         Binding("/", "search_songs", "Search", show=True),
         Binding("s", "swap_songs", "Swap A⇄B", show=True),
@@ -691,7 +690,7 @@ class GenerationScreen(Screen):
             self.notify("No songs to swap")
 
     def action_generate(self):
-        """Generate transition (G key)."""
+        """Generate full transition (Shift-T key)."""
         # Validate selection
         if not self.state.left_song_id:
             self.notify("Please select Song A first", severity="warning")
@@ -787,31 +786,8 @@ class GenerationScreen(Screen):
                     }
                 )
 
-    def action_play_transition(self):
-        """Play last generated transition (T key)."""
-        if not self.state.last_generated_transition_path:
-            self.notify("No transition generated yet. Press [G] to generate one.", severity="warning")
-            return
-
-        from pathlib import Path
-        transition_path = Path(self.state.last_generated_transition_path)
-
-        if not transition_path.exists():
-            self.notify(f"Transition file not found: {transition_path.name}", severity="error")
-            return
-
-        # Stop current playback and play transition
-        if self.playback.is_playing or self.playback.is_paused:
-            self.playback.stop()
-
-        if self.playback.load(transition_path):
-            self.playback.play()
-            self.notify(f"Playing transition: {transition_path.name}")
-        else:
-            self.notify(f"Error loading transition file", severity="error")
-
     def action_play_focused_preview(self):
-        """Play focused preview of transition point (Shift+T key).
+        """Generate and play focused preview (t key).
 
         Plays last 4 beats of Song A section + gap + first 4 beats of Song B section.
         """
@@ -891,10 +867,100 @@ class GenerationScreen(Screen):
                     }
                 )
 
-    def action_quick_test(self):
-        """Quick test generation (Shift+G)."""
-        # TODO: Implement ephemeral generation
-        self.notify("Quick test (not yet implemented)")
+    def action_create_output(self) -> None:
+        """Create full song output file (o key)."""
+        # Validate we have a transition to build from
+        if not self.state.last_generated_transition_path:
+            self.notify("Generate a transition first (Shift-T)", severity="warning")
+            return
+
+        # Validate we still have the same selections
+        if not all([
+            self.state.left_song_id,
+            self.state.right_song_id,
+            self.state.left_section_index is not None,
+            self.state.right_section_index is not None
+        ]):
+            self.notify("Song or section selection changed. Generate transition first.", severity="warning")
+            return
+
+        # Get songs and sections
+        song_a = self.catalog.get_song(self.state.left_song_id)
+        song_b = self.catalog.get_song(self.state.right_song_id)
+        section_a_index = self.state.left_section_index
+        section_b_index = self.state.right_section_index
+
+        if not song_a or not song_b:
+            self.notify("Song selection error", severity="error")
+            return
+
+        try:
+            # Generate full song output
+            from pathlib import Path
+            output_path, metadata = self.generation.generate_full_song_output(
+                song_a=song_a,
+                song_b=song_b,
+                section_a_index=section_a_index,
+                section_b_index=section_b_index,
+                transition_audio_path=Path(self.state.last_generated_transition_path),
+                sr=44100  # Standard sample rate
+            )
+
+            # Create history record
+            from app.models.transition import TransitionRecord
+            from datetime import datetime
+
+            record = TransitionRecord(
+                id=len(self.state.transition_history) + 1,
+                transition_type="full_song",  # Special type
+                song_a_filename=song_a.filename,
+                song_b_filename=song_b.filename,
+                section_a_label=song_a.sections[section_a_index].label,
+                section_b_label=song_b.sections[section_b_index].label,
+                compatibility_score=song_b.compatibility_score,
+                generated_at=datetime.now(),
+                audio_path=output_path,
+                is_saved=False,
+                saved_path=None,
+                save_note=None,
+                parameters={
+                    "output_type": "full_song",
+                    "num_song_a_sections_before": metadata["num_song_a_sections_before"],
+                    "num_song_b_sections_after": metadata["num_song_b_sections_after"],
+                    "total_duration": metadata["total_duration"],
+                },
+                output_type="full_song",
+                full_song_path=output_path
+            )
+
+            # Add to history (with 50-item cap)
+            self.state.transition_history.insert(0, record)
+            if len(self.state.transition_history) > 50:
+                self.state.transition_history.pop()
+
+            # Auto-play if configured
+            if self.app.config.auto_play_on_generate:
+                if self.playback.load(str(output_path)):
+                    self.playback.play()
+
+            self.notify(
+                f"Full song output created: {metadata['num_song_a_sections_before']} + transition + {metadata['num_song_b_sections_after']} sections",
+                severity="information"
+            )
+
+        except Exception as e:
+            self.notify(f"Output generation failed: {e}", severity="error")
+            logger = get_error_logger()
+            if logger:
+                logger.log_generation_error(
+                    song_a=song_a.filename,
+                    song_b=song_b.filename,
+                    transition_type="full_song",
+                    error=e,
+                    parameters={
+                        "context": "Full song output generation"
+                    }
+                )
 
     def action_show_history(self):
         """Switch to history screen (H key)."""
