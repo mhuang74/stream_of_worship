@@ -369,7 +369,101 @@ All transition types must support these base parameters:
 
 ---
 
-## 10. Song Search Screen
+## 10. Full Song Output Generation
+
+### Overview
+
+Transform the transition builder from generating isolated transitions to creating complete song sets suitable for worship services. The output consists of Song A (up to transition point) + Transition + Song B (from transition point onward).
+
+### Output Structure
+
+The full song output combines three parts:
+1. **Song A Prefix**: All sections BEFORE the selected section (excluding the selected section itself)
+2. **Transition**: Previously generated transition audio (includes selected sections from both songs + gap)
+3. **Song B Suffix**: All sections AFTER the selected section (excluding the selected section itself)
+
+Example:
+- Song A has sections: [Intro, Verse 1, Chorus 1, Verse 2, Chorus 2, Bridge, Chorus 3, Outro]
+- User selects Chorus 2 as transition point
+- Song A prefix: [Intro, Verse 1, Chorus 1, Verse 2]
+- Transition: [Chorus 2 from Song A + gap + Verse from Song B]
+- Song B suffix: [Chorus, Bridge, Outro]
+- Final output: All above concatenated into single audio file
+
+### Key Bindings
+
+| Key | Action |
+|-----|--------|
+| o | Create full song output from last generated transition |
+
+### Workflow
+
+1. User selects Song A and section (e.g., Chorus)
+2. User selects Song B and section (e.g., Verse)
+3. User generates transition (Shift-T key)
+4. User presses 'o' to create full song output
+5. System validates transition exists
+6. System extracts Song A sections before selected section
+7. System loads previously generated transition audio
+8. System extracts Song B sections after selected section
+9. System concatenates all parts with proper sample rate handling
+10. Output saved to `song_sets_output/` directory
+11. History record created with special "full_song" type
+12. Auto-plays if configured
+
+### Output Directory
+
+- **Location**: `song_sets_output/` (separate from `transitions_output/`)
+- **Format**: FLAC
+- **Naming Convention**: `songset_{songA}_{sectionA}_to_{songB}_{sectionB}.flac`
+- **Example**: `songset_do_it_again_chorus_to_joy_to_heaven_verse.flac`
+
+### History Integration
+
+Full song outputs are tracked in history with special characteristics:
+
+- **Icon**: `♫` (musical note) vs `⇄` (arrow for transitions)
+- **Type Display**: "Full Song" instead of transition type
+- **Metadata Includes**:
+  - Number of Song A prefix sections
+  - Number of Song B suffix sections
+  - Total duration
+  - Transition details
+
+### Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| First section of Song A selected | Output = Transition + Song B suffix |
+| Last section of Song B selected | Output = Song A prefix + Transition |
+| Both first and last sections | Output = Just the transition |
+| Sample rate mismatch | Automatic resampling using librosa |
+| No transition generated yet | Warning: "Generate a transition first (Shift-T)" |
+| Selections changed | Warning: "Generate transition first" |
+
+### Parameters
+
+Full song output records include:
+- `output_type`: "full_song"
+- `num_song_a_sections_before`: Count of prefix sections
+- `num_song_b_sections_after`: Count of suffix sections
+- `total_duration`: Complete output duration in seconds
+- `sample_rate`: Audio sample rate
+
+### Use Case
+
+**Worship Service Preparation**:
+1. Sound engineer wants complete song transitions for Sunday service
+2. Generates transition between "Do It Again" and "Joy to Heaven"
+3. Previews transition point (t key)
+4. Satisfied with transition, generates full version (Shift-T)
+5. Creates complete worship set with 'o' key
+6. Output includes full intro/verses from Song A, transition, and continuation through Song B
+7. File ready to load into playback system for live service
+
+---
+
+## 11. Song Search Screen
 
 ### Purpose
 
@@ -434,7 +528,7 @@ Provides scalable song discovery when catalog grows large (100+ songs).
 
 ---
 
-## 11. Help Overlay Screen
+## 12. Help Overlay Screen
 
 ### Purpose
 
@@ -472,7 +566,7 @@ Display all keyboard shortcuts for current context.
 
 ---
 
-## 12. State Model
+## 13. State Model
 
 ### App-Level State
 
@@ -543,7 +637,7 @@ class TransitionRecord:
 
 ---
 
-## 13. Screen Transition Diagram
+## 14. Screen Transition Diagram
 
 ```
 ┌──────────────┐
@@ -570,7 +664,7 @@ class TransitionRecord:
 
 ---
 
-## 14. Generation Mode State Diagram
+## 15. Generation Mode State Diagram
 
 ```
 FRESH MODE (default)
@@ -588,7 +682,7 @@ FRESH MODE (reset params)
 
 ---
 
-## 15. Transition Lifecycle
+## 16. Transition Lifecycle
 
 ```
 Select Songs & Sections
@@ -615,7 +709,7 @@ Playback / Compare / Modify / Save
 
 ---
 
-## 16. Configuration File (config.json)
+## 17. Configuration File (config.json)
 
 ### Location
 - **./config.json** (project root)
@@ -653,7 +747,7 @@ Playback / Compare / Modify / Save
 
 ---
 
-## 17. Data Schema
+## 18. Data Schema
 
 ### Song JSON Schema (from poc_analysis_allinone.py)
 
@@ -755,7 +849,7 @@ Compatibility scores are computed during the analysis phase (poc_analysis_allino
 
 ---
 
-## 18. Logging
+## 19. Logging
 
 ### Session Log (./session_TIMESTAMP.log)
 
@@ -801,7 +895,7 @@ Example log entries:
 
 ---
 
-## 19. Panel Focus and Keyboard Navigation
+## 20. Panel Focus and Keyboard Navigation
 
 ### Generation Screen Panel Focus
 
@@ -829,8 +923,9 @@ Example log entries:
 | Tab | Cycle panel focus | Song A → Song B → Parameters |
 | H | Switch to History screen | Preserves all Generation state |
 | / | Open Song Search (modal) | Context-aware (Song A or B) |
-| G | Generate transition | Disabled if selections incomplete |
-| Shift+G | Quick test (ephemeral) | Generates without adding to history |
+| Shift+T | Generate transition | Creates transition audio file |
+| t | Preview transition | Generates focused preview (last 4 beats + gap + first 4 beats) |
+| o | Create output | Creates full song set (Song A prefix + transition + Song B suffix) |
 | Esc | Exit Modify Mode | Only if in Modify Mode; resets params |
 
 ### History Screen Specific
@@ -855,7 +950,7 @@ Example log entries:
 
 ---
 
-## 20. UI Visual Specifications
+## 21. UI Visual Specifications
 
 ### Color Coding
 
@@ -909,7 +1004,7 @@ FOOTER: Space=Pause  ←/→=Seek  M=Modify  S=Save  ?=Help
 
 ---
 
-## 21. Primary Use Cases
+## 22. Primary Use Cases
 
 1. **Generate first transition between two songs**
    - User selects Song A, chooses chorus section
@@ -975,7 +1070,7 @@ FOOTER: Space=Pause  ←/→=Seek  M=Modify  S=Save  ?=Help
 
 ---
 
-## 22. UX Principles
+## 23. UX Principles
 
 - **Keyboard-first interaction**: All actions accessible via keyboard
 - **Non-destructive experimentation**: History is immutable, Modify creates new records
@@ -988,7 +1083,7 @@ FOOTER: Space=Pause  ←/→=Seek  M=Modify  S=Save  ?=Help
 
 ---
 
-## 23. Edge Cases and Error Handling
+## 24. Edge Cases and Error Handling
 
 ### Missing Audio Files
 - **At startup**: Scan and show warnings, allow continuation with available songs
@@ -1026,7 +1121,7 @@ FOOTER: Space=Pause  ←/→=Seek  M=Modify  S=Save  ?=Help
 
 ---
 
-## 24. Future Extensions (Out of Scope for V1)
+## 25. Future Extensions (Out of Scope for V1)
 
 - Persistent transition library across sessions
 - Waveform visualization in playback panel
@@ -1043,7 +1138,7 @@ FOOTER: Space=Pause  ←/→=Seek  M=Modify  S=Save  ?=Help
 
 ---
 
-## 25. Implementation Notes
+## 26. Implementation Notes
 
 ### Technology Stack (Recommended)
 
@@ -1104,7 +1199,7 @@ stream_of_worship/
 
 ---
 
-## 26. Glossary
+## 27. Glossary
 
 | Term | Definition |
 |------|------------|
@@ -1120,7 +1215,7 @@ stream_of_worship/
 
 ---
 
-## 27. Decision Log
+## 28. Decision Log
 
 ### Key Design Decisions and Rationale
 
