@@ -9,13 +9,15 @@
 - Full parameter editing (all parameters adjustable in real-time)
 - Gap transition generation with section boundary adjustments
 - Focused preview generation (quick transition point audition)
+- **Full song output generation** - creates complete worship sets (Song A prefix + transition + Song B suffix)
 - Complete playback system with PyAudio (play/stop/seek)
 - Section-based playback for previewing songs
-- Keyboard shortcuts for all operations
+- Keyboard shortcuts for all operations (updated: Shift-T=generate, t=preview, o=create output)
 - Mouse hover navigation
 - **History screen** for reviewing and managing generated transitions
 - **Screen navigation** between Generation and History screens (H key / G key)
 - **Transition history** with automatic tracking (max 50 items)
+- **History displays full song outputs** with ♫ icon and section counts
 - **Modify mode** to edit existing transition parameters
 - **Save transitions** to disk with FLAC metadata and optional notes
 - **Delete transitions** from history (with confirmation)
@@ -48,6 +50,8 @@
 - **TransitionRecord** (`app/models/transition.py`)
   - Represents a generated transition with metadata
   - Tracks saved state, parameters, and file paths
+  - Supports both transition and full_song output types
+  - Fields: `output_type` ("transition" or "full_song"), `full_song_path`
 
 - **AppState** (`app/state.py`)
   - Complete application state management
@@ -78,10 +82,12 @@
 - **TransitionGenerationService** (`app/services/generation.py`)
   - Gap transition generation (full sections with silence gap)
   - Focused preview generation (last N beats + gap + first N beats)
+  - **Full song output generation** (Song A prefix + transition + Song B suffix)
   - Section boundary adjustments (±4 beats on start/end)
   - Audio loading with stereo conversion
-  - Sample rate handling and validation
+  - Sample rate handling and validation with librosa resampling
   - Metadata generation for all transitions
+  - Edge case handling (no prefix/suffix sections, sample rate mismatches)
 
 ### Utilities
 - **Config** (`app/utils/config.py`)
@@ -118,10 +124,9 @@
   - Space: Play highlighted item (song/section)
   - Left/Right: Seek backward/forward (±3-4s)
   - A/B: Play Song A/B with selected section
-  - G: Generate full transition
-  - Shift+G: Quick test (not yet implemented)
-  - T: Play last generated transition
-  - Shift+T: Generate and play focused preview
+  - **Shift+T: Generate full transition** (updated from G)
+  - **t: Generate and play focused preview** (updated from Shift+T)
+  - **o: Create full song output** (new - creates complete worship set)
   - S: Swap Song A ⇄ Song B
   - H: Switch to History screen
   - /: Search (not yet implemented)
@@ -136,12 +141,27 @@
   - Metadata updates on selection
   - State properly tracked in AppState
 
+### Full Song Output Generation
+- **Full Song Set Creation** (`app/services/generation.py`)
+  - Combines Song A prefix sections + transition + Song B suffix sections
+  - Validates previously generated transition exists
+  - Extracts sections before selected Song A section
+  - Extracts sections after selected Song B section
+  - Handles edge cases (no prefix/suffix sections)
+  - Automatic sample rate resampling with librosa
+  - Saves to `song_sets_output/` directory (separate from transitions)
+  - Creates history records with output_type="full_song"
+  - Filename format: `songset_{songA}_{sectionA}_to_{songB}_{sectionB}.flac`
+  - Metadata includes section counts and total duration
+
 ### History Screen
 - **HistoryScreen** (`app/screens/history.py`)
   - Full TUI layout with Textual
   - Transition list panel (newest first)
+  - **Visual distinction**: ♫ icon for full songs vs ⇄ for transitions
   - Transition details panel (read-only)
-  - Parameters display panel (read-only snapshot)
+  - **Full song details**: Shows section counts and total duration
+  - Parameters display panel (read-only snapshot, context-aware for output type)
   - Save transition with optional note and FLAC metadata
   - Delete transition with confirmation (press D twice)
   - Modify mode integration
@@ -237,12 +257,12 @@
 - Auto-dismiss warnings on parameter change
 
 ### Generation Features
-- ✅ Standard generation (G key)
-- ✅ Focused preview generation (Shift+T key)
+- ✅ Standard transition generation (Shift-T key)
+- ✅ Focused preview generation (t key)
+- ✅ Full song output generation (o key)
 - ✅ Auto-play after generation
-- ⏳ Ephemeral generation (Shift+G)
+- ✅ Sample rate resampling for mismatched audio files
 - ⏳ Progress display with spinner (instant for now)
-- ⏳ Temporary file management for ephemeral transitions
 
 ### History Features
 - ✅ 50-item cap enforcement (auto-removes oldest)
@@ -273,11 +293,14 @@ Tests cover:
 - ✅ Compatibility scoring functional
 - ✅ Gap transition generation works correctly
 - ✅ Focused preview generation works correctly
+- ✅ Full song output generation works correctly
 - ✅ Section boundary adjustments work
+- ✅ Sample rate resampling with librosa
 - ✅ Playback service with PyAudio
 - ✅ Parameter editing and validation
 - ✅ History screen navigation and operations
 - ✅ Modify mode with parameter loading
+- ✅ Full song display in history with icons and metadata
 
 ### Needs Testing
 - ⏳ Edge cases (missing files, corrupt audio)
@@ -353,6 +376,7 @@ Tests cover:
 
 ```
 transition_builder_v2/
+├── song_sets_output/           # ✅ Full song output files (auto-created)
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # ✅ Entry point with screen switching and cleanup
@@ -419,9 +443,9 @@ Current functionality:
 - Select Song A and Song B with sections
 - View metadata (BPM, key, duration, compatibility)
 - Edit all transition parameters in real-time
-- Generate gap transitions (G key)
-- Play generated transitions (T key)
-- Generate and play focused previews (Shift+T key)
+- Generate gap transitions (Shift-T key)
+- Generate and play focused previews (t key)
+- **Create full song outputs (o key)** - complete worship sets with prefix + transition + suffix
 - Play songs and sections (Space, A, B keys)
 - Seek controls (Left/Right arrow keys ±3-4s)
 - Swap songs (S key)
@@ -429,7 +453,9 @@ Current functionality:
 - Stop playback (Esc)
 - Quit application (Ctrl+Q, Ctrl+C)
 - **History screen (H key)**:
-  - View all generated transitions
+  - View all generated transitions and full song outputs
+  - Visual distinction: ♫ icon for full songs, ⇄ for transitions
+  - Display section counts and total duration for full songs
   - Play transitions (Space key, plays from beginning)
   - Seek during playback (Left/Right arrow keys)
   - Save to disk (S key) with FLAC metadata and optional notes
@@ -442,4 +468,3 @@ Not yet functional:
 - Other transition types (crossfade, vocal-fade, drum-fade)
 - Song search (/ key)
 - Help overlay (? key)
-- Quick test/ephemeral generation (Shift+G)
