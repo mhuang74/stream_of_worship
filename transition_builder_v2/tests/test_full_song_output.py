@@ -56,15 +56,15 @@ def sample_songs(temp_dirs):
     samples = int(sr * duration)
     audio_data = np.random.randn(samples, 2).astype(np.float32) * 0.1
 
-    song_a_path = audio_dir / "song_a.flac"
-    song_b_path = audio_dir / "song_b.flac"
+    song_a_path = audio_dir / "song_a.ogg"
+    song_b_path = audio_dir / "song_b.ogg"
 
-    sf.write(str(song_a_path), audio_data, sr, format='FLAC')
-    sf.write(str(song_b_path), audio_data, sr, format='FLAC')
+    sf.write(str(song_a_path), audio_data, sr, format='OGG', subtype='VORBIS')
+    sf.write(str(song_b_path), audio_data, sr, format='OGG', subtype='VORBIS')
 
     # Create Song objects with Path filepath
     song_a = Song(
-        filename="song_a.flac",
+        filename="song_a.ogg",
         filepath=song_a_path,  # This is a Path object
         duration=duration,
         tempo=120.0,
@@ -82,7 +82,7 @@ def sample_songs(temp_dirs):
     )
 
     song_b = Song(
-        filename="song_b.flac",
+        filename="song_b.ogg",
         filepath=song_b_path,  # This is a Path object
         duration=duration,
         tempo=120.0,
@@ -117,8 +117,8 @@ def create_transition_file(temp_dirs, duration=5.0, sr=44100):
     samples = int(sr * duration)
     audio_data = np.random.randn(samples, 2).astype(np.float32) * 0.1
 
-    transition_path = temp_dirs["output_dir"] / "test_transition.flac"
-    sf.write(str(transition_path), audio_data, sr, format='FLAC')
+    transition_path = temp_dirs["output_dir"] / "test_transition.ogg"
+    sf.write(str(transition_path), audio_data, sr, format='OGG', subtype='VORBIS')
 
     return transition_path
 
@@ -187,15 +187,15 @@ class TestFullSongOutputStringPathBug:
         samples = int(sr * duration)
         audio_data = np.random.randn(samples, 2).astype(np.float32) * 0.1
 
-        song_a_path = audio_dir / "song_a_str.flac"
-        song_b_path = audio_dir / "song_b_str.flac"
+        song_a_path = audio_dir / "song_a_str.ogg"
+        song_b_path = audio_dir / "song_b_str.ogg"
 
-        sf.write(str(song_a_path), audio_data, sr, format='FLAC')
-        sf.write(str(song_b_path), audio_data, sr, format='FLAC')
+        sf.write(str(song_a_path), audio_data, sr, format='OGG', subtype='VORBIS')
+        sf.write(str(song_b_path), audio_data, sr, format='OGG', subtype='VORBIS')
 
         # Create Song objects with STRING filepath (simulating the bug)
         song_a = Song(
-            filename="song_a_str.flac",
+            filename="song_a_str.ogg",
             filepath=str(song_a_path),  # String instead of Path!
             duration=duration,
             tempo=120.0,
@@ -213,7 +213,7 @@ class TestFullSongOutputStringPathBug:
         )
 
         song_b = Song(
-            filename="song_b_str.flac",
+            filename="song_b_str.ogg",
             filepath=str(song_b_path),  # String instead of Path!
             duration=duration,
             tempo=120.0,
@@ -306,8 +306,8 @@ class TestPlaybackServiceStringPathBug:
         samples = int(sr * duration)
         audio_data = np.random.randn(samples, 2).astype(np.float32) * 0.1
 
-        audio_path = audio_dir / "test_audio.flac"
-        sf.write(str(audio_path), audio_data, sr, format='FLAC')
+        audio_path = audio_dir / "test_audio.ogg"
+        sf.write(str(audio_path), audio_data, sr, format='OGG', subtype='VORBIS')
 
         # Test with Path object
         playback = PlaybackService()
@@ -328,8 +328,8 @@ class TestPlaybackServiceStringPathBug:
         samples = int(sr * duration)
         audio_data = np.random.randn(samples, 2).astype(np.float32) * 0.1
 
-        audio_path = audio_dir / "test_audio_str.flac"
-        sf.write(str(audio_path), audio_data, sr, format='FLAC')
+        audio_path = audio_dir / "test_audio_str.ogg"
+        sf.write(str(audio_path), audio_data, sr, format='OGG', subtype='VORBIS')
 
         # Test with string path - this is how the screen calls it
         playback = PlaybackService()

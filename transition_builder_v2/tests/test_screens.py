@@ -254,7 +254,7 @@ class TestHistoryManagement:
                     section_b_label="verse",
                     compatibility_score=80.0,
                     generated_at=datetime.now(),
-                    audio_path=Path(f"/tmp/test_{i}.flac"),
+                    audio_path=Path(f"/tmp/test_{i}.ogg"),
                     parameters={"type": "gap"}
                 )
                 app.state.add_transition(record)
@@ -283,7 +283,7 @@ class TestHistoryManagement:
             section_b_label="verse",
             compatibility_score=80.0,
             generated_at=datetime.now(),
-            audio_path=Path("/tmp/test.flac"),
+            audio_path=Path("/tmp/test.ogg"),
             parameters={"type": "gap"}
         )
         app.state.add_transition(record)
@@ -445,9 +445,9 @@ class TestFullWorkflow:
             # Verify the file is in the output_songs directory
             assert "output_songs" in str(full_song_path)
 
-            # Verify both files are FLAC format
-            assert transition_path.suffix == ".flac"
-            assert full_song_path.suffix == ".flac"
+            # Verify both files are OGG format
+            assert transition_path.suffix == ".ogg"
+            assert full_song_path.suffix == ".ogg"
 
     @pytest.mark.asyncio
     async def test_workflow_with_custom_parameters(self, app):

@@ -98,13 +98,18 @@ Compatibility: {int(transition.compatibility_score)}%
 Generated: {transition.format_time()}
 Status: {transition.status_display}"""
 
+        # Add duration for all transition types
+        if transition.parameters:
+            # Full song outputs use "total_duration", regular transitions use "total_duration_seconds"
+            duration = transition.parameters.get("total_duration") or transition.parameters.get("total_duration_seconds")
+            if duration:
+                details += f"\nDuration: {int(duration)}s"
+
         # Add full song specific details
         if transition.output_type == "full_song" and transition.parameters:
             num_before = transition.parameters.get("num_song_a_sections_before", 0)
             num_after = transition.parameters.get("num_song_b_sections_after", 0)
-            total_duration = transition.parameters.get("total_duration", 0)
             details += f"\nStructure: {num_before} sections + transition + {num_after} sections"
-            details += f"\nTotal Duration: {int(total_duration)}s"
 
         if transition.is_saved and transition.saved_path:
             # Show just the filename, not the full path
@@ -398,17 +403,17 @@ class HistoryScreen(Screen):
             song_a_name = Path(selected.song_a_filename).stem
             song_b_name = Path(selected.song_b_filename).stem
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"saved_transition_{song_a_name}_to_{song_b_name}_{timestamp}.flac"
+            output_filename = f"saved_transition_{song_a_name}_to_{song_b_name}_{timestamp}.ogg"
             output_path = output_folder / output_filename
 
             # Copy file
             import shutil
             shutil.copy2(source_path, output_path)
 
-            # Write FLAC metadata
+            # Write OGG Vorbis metadata
             try:
-                from mutagen.flac import FLAC
-                audio = FLAC(str(output_path))
+                from mutagen.oggvorbis import OggVorbis
+                audio = OggVorbis(str(output_path))
                 audio["TITLE"] = f"Transition: {song_a_name} -> {song_b_name}"
                 audio["ARTIST"] = "Song Transition Preview"
                 audio["ALBUM"] = "Generated Transitions"

@@ -234,6 +234,35 @@ class TransitionGenerationService:
 
         return mixed
 
+    def _save_audio_file(
+        self,
+        file_path: Path,
+        audio_data: np.ndarray,
+        sample_rate: int,
+        format: str = 'OGG',
+        subtype: str = 'VORBIS'
+    ) -> None:
+        """Save audio file safely using chunked writing to avoid OGG segfaults.
+        
+        Writing large OGG Vorbis files in one shot can cause segmentation faults
+        on some systems (e.g. macOS with specific libsndfile versions).
+        Writing in chunks avoids this issue.
+        """
+        channels = audio_data.shape[1] if audio_data.ndim > 1 else 1
+        
+        # Use a safe block size (e.g. 8192 frames)
+        block_size = 8192
+        
+        with sf.SoundFile(str(file_path), mode='w', samplerate=sample_rate, channels=channels, format=format, subtype=subtype) as f:
+            if len(audio_data) <= block_size:
+                f.write(audio_data)
+            else:
+                # Write in chunks
+                for i in range(0, len(audio_data), block_size):
+                    chunk = audio_data[i:i+block_size]
+                    f.write(chunk)
+
+
     def generate_gap_transition(
         self,
         song_a: Song,
@@ -463,11 +492,14 @@ class TransitionGenerationService:
         transition_audio = np.vstack([section_a_audio, silence, section_b_audio])
 
         # Generate output filename
-        output_filename = f"transition_gap_{song_a.filename}_{section_a.label}_{song_b.filename}_{section_b.label}_{gap_beats}beats.flac"
+        output_filename = f"transition_gap_{song_a.filename}_{section_a.label}_{song_b.filename}_{section_b.label}_{gap_beats}beats.ogg"
         output_path = self.output_dir / output_filename
 
-        # Save audio
-        sf.write(str(output_path), transition_audio, sr_a, format='FLAC')
+        # Save audio (OGG Vorbis at quality 5 for good compression/quality balance)
+        # Quality range: -1 to 10, where 5 is ~160 kbps
+        # Save audio (OGG Vorbis at quality 5 for good compression/quality balance)
+        # Quality range: -1 to 10, where 5 is ~160 kbps
+        self._save_audio_file(output_path, transition_audio, sr_a, format='OGG', subtype='VORBIS')
 
         # Log generation complete
         if session_logger:
@@ -647,7 +679,7 @@ class TransitionGenerationService:
         # Rename the output file to match preview naming convention
         # Original: transition_gap_...
         # New: preview_...
-        new_filename = f"preview_{song_a.filename}_{section_a.label}_{song_b.filename}_{section_b.label}_{preview_beats}beats.flac"
+        new_filename = f"preview_{song_a.filename}_{section_a.label}_{song_b.filename}_{section_b.label}_{preview_beats}beats.ogg"
         new_output_path = self.output_dir / new_filename
         
         # Move/Rename file
@@ -790,12 +822,15 @@ class TransitionGenerationService:
         section_b_label = song_b.sections[section_b_index].label
         filename = (
             f"songset_{song_a.filename}_{section_a_label}_to_"
-            f"{song_b.filename}_{section_b_label}.flac"
+            f"{song_b.filename}_{section_b_label}.ogg"
         )
         output_path = output_dir / filename
 
-        # 7. Write to file
-        sf.write(str(output_path), output_audio, sr, format='FLAC')
+        # 7. Write to file (OGG Vorbis at quality 5 for good compression/quality balance)
+        # Quality range: -1 to 10, where 5 is ~160 kbps
+        # 7. Write to file (OGG Vorbis at quality 5 for good compression/quality balance)
+        # Quality range: -1 to 10, where 5 is ~160 kbps
+        self._save_audio_file(output_path, output_audio, sr, format='OGG', subtype='VORBIS')
 
         # 8. Create metadata
         metadata = {
