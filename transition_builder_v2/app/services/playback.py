@@ -54,17 +54,21 @@ class PlaybackService:
                     logger.log_playback_error("PyAudio", e, operation="initialization")
                 self._pyaudio = None
 
-    def load(self, audio_path: Path, section_start: float | None = None, section_end: float | None = None) -> bool:
+    def load(self, audio_path: Path | str, section_start: float | None = None, section_end: float | None = None) -> bool:
         """Load an audio file for playback.
 
         Args:
-            audio_path: Path to the audio file
+            audio_path: Path to the audio file (Path object or string)
             section_start: Start time in seconds (None = from beginning)
             section_end: End time in seconds (None = to end)
 
         Returns:
             True if loaded successfully, False otherwise
         """
+        # Convert string path to Path object if needed
+        if not isinstance(audio_path, Path):
+            audio_path = Path(audio_path)
+
         if not audio_path.exists():
             return False
 
