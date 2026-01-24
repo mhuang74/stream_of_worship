@@ -222,7 +222,7 @@ poc_audio/*
 *.flac
 *.mp3
 *.wav
-
+*.ogg
 # embeddings
 **/*.npy
 
@@ -249,3 +249,4 @@ Thumbs.db
 *.swp
 *.swo
 *.swn
+output_songs/songset_name_of_jesus.mp3_chorus_to_give_thanks.mp3_verse.ogg
