@@ -51,7 +51,8 @@ class TransitionBuilderApp(App):
         self.catalog = SongCatalogLoader(self.config.audio_folder)
         self.playback = PlaybackService()
         self.generation = TransitionGenerationService(
-            self.config.output_folder,
+            output_dir=self.config.output_folder,
+            output_songs_dir=self.config.output_songs_folder,
             stems_folder=self.config.stems_folder
         )
 

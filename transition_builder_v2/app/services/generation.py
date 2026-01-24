@@ -95,15 +95,18 @@ def get_stem_folder_name(song_filename: str) -> str:
 class TransitionGenerationService:
     """Service for generating audio transitions between song sections."""
 
-    def __init__(self, output_dir: Path, stems_folder: Path | None = None):
+    def __init__(self, output_dir: Path, output_songs_dir: Path, stems_folder: Path | None = None):
         """Initialize the generation service.
 
         Args:
             output_dir: Directory to save generated transitions
+            output_songs_dir: Directory to save full song outputs
             stems_folder: Directory containing stem files (optional)
         """
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_songs_dir = output_songs_dir
+        self.output_songs_dir.mkdir(parents=True, exist_ok=True)
         self.stems_folder = stems_folder
 
     def _get_stems_path(self, song_filename: str) -> Path | None:
@@ -562,7 +565,7 @@ class TransitionGenerationService:
         song_b: Song,
         section_a_index: int,
         section_b_index: int,
-        preview_beats: float = 4.0,
+        preview_beats: float = 8.0,
         gap_beats: float = 0.0,
         section_a_start_adjust: int = 0,
         section_a_end_adjust: int = 0,
@@ -673,7 +676,7 @@ class TransitionGenerationService:
         song_b: Song,
         section_a_index: int,
         section_b_index: int,
-        transition_audio_path: Path,
+        transition_audio_path: Path | str,
         sr: int = 44100  # Sample rate (should match transition)
     ) -> tuple[Path, dict]:
         """Generate a complete song set:
@@ -686,12 +689,33 @@ class TransitionGenerationService:
             song_b: Song B object
             section_a_index: Index of selected Song A section
             section_b_index: Index of selected Song B section
-            transition_audio_path: Path to previously generated transition audio
+            transition_audio_path: Path to previously generated transition audio (Path or str)
             sr: Sample rate
 
         Returns:
             Tuple of (output_path, metadata_dict)
         """
+        # Convert all paths to Path objects early for consistent handling
+        from pathlib import Path
+
+        # Ensure transition_audio_path is a Path object
+        if not isinstance(transition_audio_path, Path):
+            transition_audio_path = Path(str(transition_audio_path))
+
+        # Validate transition audio exists
+        if not transition_audio_path.exists():
+            raise FileNotFoundError(f"Transition audio file not found: {transition_audio_path}")
+
+        # Get song filepaths as Path objects without mutation
+        song_a_path = Path(str(song_a.filepath)) if song_a.filepath else None
+        song_b_path = Path(str(song_b.filepath)) if song_b.filepath else None
+
+        # Validate song files exist
+        if song_a_path and not song_a_path.exists():
+            raise FileNotFoundError(f"Song A audio file not found: {song_a_path}")
+        if song_b_path and not song_b_path.exists():
+            raise FileNotFoundError(f"Song B audio file not found: {song_b_path}")
+
         # 1. Load transition audio
         transition_audio, sr_transition = sf.read(str(transition_audio_path))
         if sr != sr_transition:
@@ -704,7 +728,7 @@ class TransitionGenerationService:
         # 2. Load Song A sections BEFORE selected section
         song_a_audio_parts = []
         if section_a_index > 0:
-            song_a_full, sr_a = sf.read(str(song_a.filepath), dtype='float32')
+            song_a_full, sr_a = sf.read(str(song_a_path), dtype='float32')
             if sr != sr_a:
                 import librosa
                 song_a_full = librosa.resample(song_a_full.T, orig_sr=sr_a, target_sr=sr).T
@@ -723,7 +747,7 @@ class TransitionGenerationService:
         # 3. Load Song B sections AFTER selected section
         song_b_audio_parts = []
         if section_b_index < len(song_b.sections) - 1:
-            song_b_full, sr_b = sf.read(str(song_b.filepath), dtype='float32')
+            song_b_full, sr_b = sf.read(str(song_b_path), dtype='float32')
             if sr != sr_b:
                 import librosa
                 song_b_full = librosa.resample(song_b_full.T, orig_sr=sr_b, target_sr=sr).T
@@ -758,9 +782,8 @@ class TransitionGenerationService:
             # Edge case: only transition (no before/after sections)
             output_audio = transition_audio
 
-        # 5. Create output directory
-        output_dir = Path("song_sets_output")
-        output_dir.mkdir(exist_ok=True)
+        # 5. Use configured output directory for full song sets
+        output_dir = self.output_songs_dir
 
         # 6. Generate filename
         section_a_label = song_a.sections[section_a_index].label
@@ -787,17 +810,16 @@ class TransitionGenerationService:
             "num_song_b_sections_after": len(song_b.sections) - section_b_index - 1,
             "total_duration": len(output_audio) / sr,
             "sample_rate": sr,
+            "output_file": str(output_path),
         }
 
         # 9. Log
         session_logger = get_session_logger()
         if session_logger:
             session_logger.log_generation_complete(
-                song_a=song_a.filename,
-                song_b=song_b.filename,
                 output_path=str(output_path),
-                duration=metadata["total_duration"],
-                extra_info=f"Full song output: {metadata['num_song_a_sections_before']} + transition + {metadata['num_song_b_sections_after']} sections"
+                duration_seconds=metadata["total_duration"],
+                used_stems=False
             )
 
         return output_path, metadata
