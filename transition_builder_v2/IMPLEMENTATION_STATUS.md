@@ -22,8 +22,10 @@
 - **Save transitions** to disk with FLAC metadata and optional notes
 - **Delete transitions** from history (with confirmation)
 - **Automatic cleanup** of unsaved transition files on exit
+- **Configuration-driven output paths** - all directories configurable via config.json
 - **Error logging** to `./transitions_errors.log` (configurable via `error_logging` in config)
 - **Session logging** to `./transitions_session.log` (configurable via `session_logging` in config)
+- **Comprehensive test suite** - 17 automated tests including full workflow integration tests
 
 **What's missing:**
 - Other transition types (crossfade, vocal-fade, drum-fade)
@@ -31,6 +33,12 @@
 - Help overlay
 
 **Ready for:** Full workflow of generating, reviewing, modifying, and saving gap transitions.
+
+**Recent improvements:**
+- ✅ Refactored to use configuration system for all output paths
+- ✅ Added comprehensive workflow integration tests
+- ✅ Standardized directory naming convention (`output_*`)
+- ✅ Fixed path handling for full song output generation
 
 ---
 
@@ -88,12 +96,18 @@
   - Sample rate handling and validation with librosa resampling
   - Metadata generation for all transitions
   - Edge case handling (no prefix/suffix sections, sample rate mismatches)
+  - **Configuration-driven output paths**: Uses `output_folder` and `output_songs_folder` from config
+  - Automatic directory creation on initialization
 
 ### Utilities
 - **Config** (`app/utils/config.py`)
   - JSON configuration loader
   - Path resolution relative to config file
   - Validation with clear error messages
+  - **Configurable output directories**:
+    - `output_folder`: Directory for transition files (default: `./output_transitions`)
+    - `output_songs_folder`: Directory for full song outputs (default: `./output_songs`)
+  - All paths properly integrated into generation service
 
 - **ErrorLogger** (`app/utils/logger.py`)
   - Centralized error logging to `./transitions_errors.log`
@@ -149,10 +163,11 @@
   - Extracts sections after selected Song B section
   - Handles edge cases (no prefix/suffix sections)
   - Automatic sample rate resampling with librosa
-  - Saves to `song_sets_output/` directory (separate from transitions)
+  - **Saves to configured `output_songs_folder`** (separate from transitions)
   - Creates history records with output_type="full_song"
   - Filename format: `songset_{songA}_{sectionA}_to_{songB}_{sectionB}.flac`
   - Metadata includes section counts and total duration
+  - **Proper path handling**: No hardcoded paths, all via config
 
 ### History Screen
 - **HistoryScreen** (`app/screens/history.py`)
@@ -179,10 +194,18 @@
   - Ctrl+Q/Ctrl+C: Quit application
 
 ### Project Infrastructure
-- Configuration file (`config.json`)
+- **Configuration file** (`config.json`)
+  - All paths configurable (audio, output_transitions, output_songs, stems, analysis)
+  - Transition type defaults, history size, auto-play settings
+  - Logging toggles (session and error logging)
 - Requirements file with Textual and mutagen dependencies
 - Run script (`run.sh`)
 - Complete README with usage instructions
+- **Test suite** (`tests/`)
+  - Unit tests for all major components
+  - Integration tests for full workflows
+  - Standalone workflow test runner
+  - Test documentation and fixtures
 - CSS styling for Generation screen (`generation.tcss`)
 - CSS styling for History screen (`history.tcss`)
 - **App exit cleanup**: Removes unsaved transition files on exit
@@ -276,7 +299,7 @@
 ### Automated Tests
 Run tests with: `pytest tests/test_screens.py -v`
 
-**14 tests, all passing**
+**17 tests, all passing** (includes full workflow integration tests)
 
 Tests cover:
 - ✅ Screen navigation (Generation ↔ History)
@@ -284,6 +307,21 @@ Tests cover:
 - ✅ Modify mode functionality
 - ✅ History management (cap at 50, delete)
 - ✅ State management (reset, exit modify mode)
+- ✅ **Full workflow integration tests** (TestFullWorkflow):
+  - Complete workflow: select songs → preview (t) → generate (Shift-T) → output (o)
+  - Custom parameters (gap, fade window, fade bottom, stems)
+  - Seamless transitions (gap=0)
+  - File creation verification
+  - Directory structure validation
+
+### Standalone Workflow Test
+Run with: `python tests/run_workflow_test.py`
+
+- Standalone executable test script
+- Tests complete user workflow from start to finish
+- Detailed step-by-step output
+- Verification of all generated files
+- Helpful for debugging and demonstrations
 
 ### Verified
 - ✅ Project structure created
@@ -301,6 +339,9 @@ Tests cover:
 - ✅ History screen navigation and operations
 - ✅ Modify mode with parameter loading
 - ✅ Full song display in history with icons and metadata
+- ✅ Configuration-driven output paths (no hardcoded directories)
+- ✅ Complete workflow: select → preview → generate → output
+- ✅ Comprehensive test suite with integration tests
 
 ### Needs Testing
 - ⏳ Edge cases (missing files, corrupt audio)
@@ -344,6 +385,48 @@ Tests cover:
    - Documentation
    - Performance optimization
 
+## Recent Refactoring & Improvements
+
+### Configuration System Refactoring (Latest)
+- **Issue**: Output paths were hardcoded in generation service
+- **Solution**: Added `output_songs_folder` to Config class
+- **Benefits**:
+  - All output paths now configurable via `config.json`
+  - No hardcoded paths in generation service
+  - Easy to customize output locations
+  - Proper separation of concerns
+- **Files Updated**: `config.py`, `generation.py`, `main.py`, all tests
+
+### Directory Naming Standardization
+- **Old naming**: `transitions_output`, `song_sets_output`
+- **New naming**: `output_transitions`, `output_songs`
+- **Rationale**: Consistent `output_*` prefix, alphabetical sorting
+- **Impact**: Updated config, tests, and documentation
+
+### Comprehensive Test Suite
+- **Added**: Full workflow integration tests (`TestFullWorkflow`)
+- **Added**: Standalone workflow test runner (`run_workflow_test.py`)
+- **Coverage**: 17 tests covering end-to-end workflows
+- **Tests verify**:
+  - Complete workflow: select → preview → generate → output
+  - Custom parameters (gap, fade, stems)
+  - Seamless transitions (gap=0)
+  - File creation and directory structure
+  - Path handling and config integration
+
+### Path Handling Improvements
+- **Fixed**: String vs Path object inconsistencies in TransitionRecord
+- **Fixed**: Audio path validation before file operations
+- **Fixed**: Proper Path object handling throughout generation service
+- **Added**: Defensive path conversion and validation
+- **Added**: Clear error messages for missing files
+
+### Documentation Updates
+- **Added**: `REFACTORING_SUMMARY.md` - detailed refactoring documentation
+- **Updated**: `IMPLEMENTATION_STATUS.md` - reflects all recent changes
+- **Updated**: Test README with usage examples
+- **Updated**: All references to output directories
+
 ## Known Limitations
 
 1. **Compatibility Scores**: Currently using simple tempo/key similarity. Production version should:
@@ -376,7 +459,6 @@ Tests cover:
 
 ```
 transition_builder_v2/
-├── song_sets_output/           # ✅ Full song output files (auto-created)
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # ✅ Entry point with screen switching and cleanup
@@ -388,7 +470,7 @@ transition_builder_v2/
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── catalog.py          # ✅ SongCatalogLoader
-│   │   ├── generation.py       # ✅ TransitionGenerationService
+│   │   ├── generation.py       # ✅ TransitionGenerationService (config-driven paths)
 │   │   └── playback.py         # ✅ PlaybackService (PyAudio)
 │   ├── screens/
 │   │   ├── __init__.py
@@ -398,19 +480,55 @@ transition_builder_v2/
 │   │   └── history.tcss        # ✅ History screen CSS
 │   └── utils/
 │       ├── __init__.py
-│       ├── config.py           # ✅ Config loader
+│       ├── config.py           # ✅ Config loader (with output_songs_folder)
 │       └── logger.py           # ✅ ErrorLogger and SessionLogger
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py             # ✅ Pytest fixtures
-│   └── test_screens.py         # ✅ Regression tests (14 tests)
-├── config.json                 # ✅ Configuration
+│   ├── test_screens.py         # ✅ Test suite (17 tests including workflows)
+│   ├── run_workflow_test.py    # ✅ Standalone workflow test
+│   └── README.md               # ✅ Test documentation
+├── config.json                 # ✅ Configuration (with output paths)
 ├── pytest.ini                  # ✅ Pytest configuration
 ├── requirements.txt            # ✅ Dependencies
 ├── run.sh                      # ✅ Run script
 ├── README.md                   # ✅ Documentation
-└── IMPLEMENTATION_STATUS.md    # ✅ This file
+├── IMPLEMENTATION_STATUS.md    # ✅ This file
+└── REFACTORING_SUMMARY.md      # ✅ Config refactoring documentation
+
+# Output directories (auto-created, configured via config.json):
+../output_transitions/          # Transition files (gap transitions, previews)
+../output_songs/                # Full song output files (complete worship sets)
 ```
+
+## Configuration
+
+The app uses `config.json` for all configuration. Example:
+
+```json
+{
+  "audio_folder": "../poc_audio",
+  "output_folder": "../output_transitions",
+  "output_songs_folder": "../output_songs",
+  "analysis_json": "../poc_output_allinone/poc_full_results.json",
+  "stems_folder": "../poc_output_allinone/stems",
+  "default_transition_type": "gap",
+  "max_history_size": 50,
+  "auto_play_on_generate": true,
+  "session_logging": true,
+  "error_logging": true
+}
+```
+
+**Key configuration options:**
+- `output_folder`: Directory for transition files (default: `./output_transitions`)
+- `output_songs_folder`: Directory for full song outputs (default: `./output_songs`)
+- `stems_folder`: Directory containing separated stems for advanced fading
+- `auto_play_on_generate`: Automatically play generated transitions
+- `session_logging`: Enable session event logging
+- `error_logging`: Enable error logging
+
+All paths are resolved relative to the config file location.
 
 ## Dependencies
 
@@ -434,11 +552,23 @@ Or directly:
 
 The app will:
 1. Load config from `config.json`
-2. Load song catalog from JSON (11 songs)
-3. Launch the Generation screen
-4. Display song lists, sections, and metadata
+2. Create output directories (`output_transitions/`, `output_songs/`) if they don't exist
+3. Load song catalog from JSON (11 songs)
+4. Launch the Generation screen
+5. Display song lists, sections, and metadata
 
-Current functionality:
+**Complete Workflow:**
+1. **Select songs and sections** in Generation screen
+2. **Preview transition** (t key) - generates focused preview (last 8 beats + gap + first 8 beats)
+3. **Generate transition** (Shift-T key) - generates full transition file
+   - Saved to `output_transitions/transition_gap_*.flac`
+4. **Create full song output** (o key) - generates complete worship set
+   - Song A prefix sections + transition + Song B suffix sections
+   - Saved to `output_songs/songset_*.flac`
+5. **Review in History** (H key) - view, play, save, or modify transitions
+6. **Save to final location** (S key in History) - copy to configured output folder with metadata
+
+**Current functionality:**
 - Browse songs (sorted alphabetically, Song B sorted by compatibility)
 - Select Song A and Song B with sections
 - View metadata (BPM, key, duration, compatibility)

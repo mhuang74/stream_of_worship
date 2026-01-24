@@ -384,7 +384,8 @@ class HistoryScreen(Screen):
 
         try:
             # Copy audio file to output folder
-            source_path = selected.audio_path
+            from pathlib import Path
+            source_path = Path(selected.audio_path) if isinstance(selected.audio_path, str) else selected.audio_path
             if not source_path.exists():
                 self.notify("Source audio file not found", severity="error")
                 return
@@ -528,8 +529,10 @@ class HistoryScreen(Screen):
         self.playback.stop()
 
         # Load and play from beginning
-        if selected.audio_path.exists():
-            if self.playback.load(selected.audio_path):
+        from pathlib import Path
+        audio_path = Path(selected.audio_path) if isinstance(selected.audio_path, str) else selected.audio_path
+        if audio_path.exists():
+            if self.playback.load(audio_path):
                 self.playback.play()
                 self.notify(f"Playing transition #{selected.id}")
             else:

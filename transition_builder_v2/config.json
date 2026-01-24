@@ -1,6 +1,7 @@
 {
   "audio_folder": "../poc_audio",
-  "output_folder": "../transitions_output",
+  "output_folder": "../output_transitions",
+  "output_songs_folder": "../output_songs",
   "analysis_json": "../poc_output_allinone/poc_full_results.json",
   "stems_folder": "../poc_output_allinone/stems",
   "default_transition_type": "gap",

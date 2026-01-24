@@ -789,7 +789,7 @@ class GenerationScreen(Screen):
     def action_play_focused_preview(self):
         """Generate and play focused preview (t key).
 
-        Plays last 4 beats of Song A section + gap + first 4 beats of Song B section.
+        Plays last 8 beats of Song A section + gap + first 8 beats of Song B section.
         """
         # Validate selection
         if not self.state.left_song_id:
@@ -831,7 +831,7 @@ class GenerationScreen(Screen):
                 song_b=song_b,
                 section_a_index=self.state.left_section_index,
                 section_b_index=self.state.right_section_index,
-                preview_beats=4.0,
+                preview_beats=8.0,
                 gap_beats=gap_beats,
                 section_a_start_adjust=self.state.from_section_start_adjust,
                 section_a_end_adjust=self.state.from_section_end_adjust,
@@ -848,7 +848,7 @@ class GenerationScreen(Screen):
 
             if self.playback.load(output_path):
                 self.playback.play()
-                self.notify(f"Playing preview: last 4 beats A → first 4 beats B")
+                self.notify(f"Playing preview: last 8 beats A → first 8 beats B")
             else:
                 self.notify(f"Error loading preview file", severity="error")
 
@@ -897,12 +897,18 @@ class GenerationScreen(Screen):
         try:
             # Generate full song output
             from pathlib import Path
+
+            # Validate transition path before passing
+            transition_path_str = self.state.last_generated_transition_path
+            if not transition_path_str:
+                raise ValueError("No transition path available")
+
             output_path, metadata = self.generation.generate_full_song_output(
                 song_a=song_a,
                 song_b=song_b,
                 section_a_index=section_a_index,
                 section_b_index=section_b_index,
-                transition_audio_path=Path(self.state.last_generated_transition_path),
+                transition_audio_path=transition_path_str,  # Pass as string, will be converted inside
                 sr=44100  # Standard sample rate
             )
 
@@ -919,7 +925,7 @@ class GenerationScreen(Screen):
                 section_b_label=song_b.sections[section_b_index].label,
                 compatibility_score=song_b.compatibility_score,
                 generated_at=datetime.now(),
-                audio_path=output_path,
+                audio_path=str(output_path),  # Convert Path to string for consistency
                 is_saved=False,
                 saved_path=None,
                 save_note=None,
@@ -930,7 +936,7 @@ class GenerationScreen(Screen):
                     "total_duration": metadata["total_duration"],
                 },
                 output_type="full_song",
-                full_song_path=output_path
+                full_song_path=str(output_path)  # Convert Path to string for consistency
             )
 
             # Add to history (with 50-item cap)
@@ -949,6 +955,8 @@ class GenerationScreen(Screen):
             )
 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             self.notify(f"Output generation failed: {e}", severity="error")
             logger = get_error_logger()
             if logger:
@@ -958,7 +966,8 @@ class GenerationScreen(Screen):
                     transition_type="full_song",
                     error=e,
                     parameters={
-                        "context": "Full song output generation"
+                        "context": "Full song output generation",
+                        "traceback": error_details
                     }
                 )
 
@@ -1238,7 +1247,7 @@ class GenerationScreen(Screen):
             section_b_label=section_b_label,
             compatibility_score=compat_score,
             generated_at=datetime.now(),
-            audio_path=Path(output_path),
+            audio_path=str(output_path),  # Store as string for consistency
             is_saved=False,
             saved_path=None,
             save_note=None,
