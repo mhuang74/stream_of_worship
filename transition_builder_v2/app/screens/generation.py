@@ -925,7 +925,7 @@ class GenerationScreen(Screen):
                 section_b_label=song_b.sections[section_b_index].label,
                 compatibility_score=song_b.compatibility_score,
                 generated_at=datetime.now(),
-                audio_path=str(output_path),  # Convert Path to string for consistency
+                audio_path=output_path,  # Store Path object (matches model type)
                 is_saved=False,
                 saved_path=None,
                 save_note=None,
@@ -936,7 +936,7 @@ class GenerationScreen(Screen):
                     "total_duration": metadata["total_duration"],
                 },
                 output_type="full_song",
-                full_song_path=str(output_path)  # Convert Path to string for consistency
+                full_song_path=output_path  # Store Path object (matches model type)
             )
 
             # Add to history (with 50-item cap)
@@ -1238,6 +1238,10 @@ class GenerationScreen(Screen):
             parameters["extension"] = self.state.extension_parameters.copy()
 
         # Create transition record
+        # Ensure output_path is a Path object for consistency with model type
+        if not isinstance(output_path, Path):
+            output_path = Path(output_path)
+
         record = TransitionRecord(
             id=next_id,
             transition_type=transition_type,
@@ -1247,7 +1251,7 @@ class GenerationScreen(Screen):
             section_b_label=section_b_label,
             compatibility_score=compat_score,
             generated_at=datetime.now(),
-            audio_path=str(output_path),  # Store as string for consistency
+            audio_path=output_path,  # Store Path object (matches model type)
             is_saved=False,
             saved_path=None,
             save_note=None,
