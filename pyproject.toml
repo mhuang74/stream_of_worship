@@ -6,8 +6,20 @@ authors = [{name = "Your Name", email = "your.email@example.com"}]
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
+dependencies = []
 
-# Dependencies are now managed in requirements.txt
+[project.optional-dependencies]
+scraper = [
+    "beautifulsoup4>=4.14.0",
+    "lxml>=6.0.0",
+    "requests>=2.32.0",
+    "pypinyin>=0.52.0"
+]
+
+# Package discovery - only include poc directory
+[tool.setuptools.packages.find]
+include = ["poc*"]
+exclude = ["tests*", "test*"]
 
 [tool.black]
 line-length = 100
