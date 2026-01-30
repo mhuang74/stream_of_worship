@@ -43,4 +43,4 @@ result = model.transcribe(
     vad_parameters=dict(min_silence_duration_ms=500),
 )
 
-export_to_lrc(result, "give_thanks_large.lrc")
+export_to_lrc(result, "give_thanks.whisper.lrc")
