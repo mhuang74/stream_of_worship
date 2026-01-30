@@ -226,6 +226,9 @@ poc_audio/*
 # embeddings
 **/*.npy
 
+# Lyrics
+*.lrc
+
 # Data directories (for future phases)
 data/audio/*
 data/cache/*
