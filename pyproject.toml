@@ -104,6 +104,17 @@ dev = [
     "ipykernel==7.1.0",
     "ipywidgets==8.1.8",
 ]
+transcription = [
+    "funasr>=1.3.0",
+    "torch>=2.10.0",
+    "torchaudio>=2.10.0",
+    "modelscope>=1.34.0"
+]
+
+# Package discovery - only include poc directory
+[tool.setuptools.packages.find]
+include = ["poc*"]
+exclude = ["tests*", "test*"]
 
 [tool.black]
 line-length = 100
