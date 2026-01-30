@@ -253,3 +253,7 @@ Thumbs.db
 *.swo
 *.swn
 output_songs/songset_name_of_jesus.mp3_chorus_to_give_thanks.mp3_verse.ogg
+
+# Data archives
+allinone_cache.tar.Z
+poc_audio.tar.Z
