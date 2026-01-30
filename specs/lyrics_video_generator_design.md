@@ -168,9 +168,9 @@ We may include metadata headers:
 
 ---
 
-## 5. Application Expansion: Playlist TUI
+## 5. Production version of User TUI App: Addition of Playlist 
 
-The existing `transition_builder_v2` will be expanded with new screens for intelligent song discovery and playlist building.
+The existing `transition_builder_v2` will be the basis of Production version of the user facing Transition Builder TUI App, with new screens for intelligent song discovery and playlist building.
 
 ### 5.1 New Screen: `SongDiscoveryScreen` (LLM-Assisted)
 
