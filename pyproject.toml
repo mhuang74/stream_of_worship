@@ -1,12 +1,21 @@
 [project]
-name = "worship-music-system"
-version = "0.1.0"
-description = "POC for seamless Chinese worship music transition system"
-authors = [{name = "Your Name", email = "your.email@example.com"}]
+name = "stream-of-worship"
+version = "0.2.0"
+description = "Seamless Chinese worship music transition system with lyrics video generation"
+authors = [{name = "Stream of Worship Contributors"}]
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
-dependencies = []
+
+dependencies = [
+    "beautifulsoup4>=4.14.0",
+    "lxml>=6.0.0",
+    "requests>=2.32.0",
+    "pypinyin>=0.52.0",
+    "pathlib>=1.0.0",
+    "dataclasses>=0.0",
+    "typing>=3.0.0",
+]
 
 [project.optional-dependencies]
 scraper = [
@@ -16,10 +25,47 @@ scraper = [
     "pypinyin>=0.52.0"
 ]
 
-# Package discovery - only include poc directory
+# LRC generation dependencies (Whisper + LLM)
+lrc_generation = [
+    "openai-whisper>=20231117",
+    "openai>=1.0.0",
+]
+
+# Video generation dependencies
+video = [
+    "ffmpeg-python>=0.2.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+]
+
+# TUI dependencies
+tui = [
+    "textual>=0.44.0",
+    "pydub>=0.25.0",
+]
+
+# Song analysis dependencies
+song_analysis = [
+    "librosa>=0.10.0",
+    "numpy>=1.24.0",
+]
+
+# All dependencies together
+all = [
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis]",
+]
+
+[project.scripts]
+stream-of-worship = "stream_of_worship.cli.main:main"
+
+# Package discovery - use src layout
 [tool.setuptools.packages.find]
-include = ["poc*"]
+where = ["src"]
+include = ["stream_of_worship*"]
 exclude = ["tests*", "test*"]
+
+[tool.setuptools.package-data]
+stream_of_worship = ["assets/fonts/*"]
 
 [tool.black]
 line-length = 100
