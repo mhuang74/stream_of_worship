@@ -53,7 +53,8 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
       - **Cost**: ~$0.01-0.02 per song. For 100 songs: $1-2 total. Cost is acceptable for batch ingestion.
       - Prompt LLM to align scraped text to Whisper timestamps at phrase level.
       - Handle edge cases (repeated phrases, ad-libs, etc.).
-    - **Step D**: Apply beat-snap logic (using `analysis.json` beats) to always align timestamps to musical grid.
+      - **Failure Handling**: If LLM alignment fails, song is flagged for manual review and excluded from catalog. No automatic Whisper-only fallback.
+    - **Step D**: Apply beat-snap logic (using `analysis.json` beats) to always align timestamps to musical grid. Whisper phrase boundaries inform text grouping, but timestamps snap to nearest beat.
     - **Step E**: Export to `.lrc` format with phrase-level granularity.
 
 3b. **Implement `poc/generate_song_metadata.py`**

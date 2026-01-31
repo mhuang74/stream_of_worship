@@ -138,6 +138,8 @@ A new script `poc/generate_lrc.py` will handle the creation of high-quality time
 
 **Lyric Source Policy**: Scraped lyrics are **required**. Songs without scraped lyrics are not added to the catalog. No fallback to Whisper-only transcription (too error-prone for worship context). The current scraper targeting sop.org (Stream of Praise) covers the majority of the song library. For songs outside SOP, manual lyric entry or future scraper expansion will be needed.
 
+**Quality Gate**: If LLM alignment fails, the song is **excluded from the catalog** until manually fixed. No automatic fallback. This ensures only high-quality LRC files enter the system.
+
 **LRC Granularity**: Phrase-level. Each LRC entry represents a phrase or clause (roughly half a lyric line). Provides good timing precision without word-level complexity.
 
 1.  **ASR (Whisper)**: Run OpenAI Whisper (`large-v3` model) **locally** on the song audio to get a raw transcript with word-level timestamps. GPU recommended but CPU acceptable for batch processing. Expected processing: ~1-2 minutes per song on CPU, ~10-15 seconds on GPU. Large-v3 prioritizes accuracy over speed for worship lyrics.
@@ -149,11 +151,11 @@ A new script `poc/generate_lrc.py` will handle the creation of high-quality time
     - Output: Phrase-level aligned LRC entries.
     - **Phrase Boundaries**: Derived from Whisper's natural pause detection. LLM maps scraped text to Whisper's detected phrase groupings.
     - LLM can handle Chinese text nuances, punctuation variations, and Whisper transcription errors.
-    - **Fallback**: If LLM fails, flag song for manual review.
+    - **Failure Handling**: If LLM fails, song is excluded from catalog. Manual review/retry required.
     - **Cost Estimate**: ~$0.01-0.02 per song (GPT-4o-mini pricing).
 4.  **Beat Grid Integration**:
     - Load `analysis.json` to get the beat grid.
-    - **Always** snap LRC timestamps to nearest beat/downbeat for musical precision.
+    - **Always** snap LRC timestamps to nearest beat/downbeat for musical precision. Whisper phrase boundaries inform grouping, but final timestamps align to beat grid.
 5.  **Manual Review**: LRC files can be manually edited in any text editor if alignment is incorrect. No in-app editor required.
 6.  **Output**: Write standard `.lrc` format.
 
@@ -303,7 +305,7 @@ python -m app.playlist validate --from-json playlist.json
 *   **Global Preview**: **Audio-only** playback of the entire set. No real-time video preview in TUI (video is generated on export).
 *   **Playlist Persistence**: Local JSON files in a `playlists/` directory. Git-friendly, no cloud sync.
 *   **Playlist Size**: Designed for 5-10 songs (typical worship set). UI does not require pagination.
-*   **Tempo/Key Adjustment**: Not supported. Songs play at their original tempo and key. Users should select songs with compatible tempos/keys.
+*   **Tempo/Key Adjustment**: Not supported. Songs play at their original tempo and key. Users must select songs with compatible tempos/keys (no tempo warping).
 
 ---
 
@@ -338,9 +340,7 @@ The requirement is to show lyrics **1 beat before** the audio.
 *   **Layer 2 (Intro Sequence - 8 beats)**:
     *   Duration: Fixed at 8 beats (duration in seconds depends on first song's BPM).
     *   Fade in Title: "Worship Set" (or user defined).
-    *   List Songs:
-        1. Song A - Artist
-        2. Song B - Artist
+    *   List Songs: **All songs in the set**, including partial sections (e.g., "Song B - Artist (Chorus only)").
     *   Fade out as intro ends.
 *   **Layer 2.5 (Song Metadata - Persistent)**:
     *   **Always Visible**: Small label in corner (e.g., top-left or bottom-right) showing current song title/artist.
