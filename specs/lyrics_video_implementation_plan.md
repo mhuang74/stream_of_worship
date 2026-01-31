@@ -15,6 +15,10 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
 
 ## MVP Phase 1: Project Setup & Data Migration
 
+### Phase 1a: Project Structure Reorganization (Priority)
+
+**Rationale**: Reorganize first to establish clean foundation before building new features. The existing TUI has moderate coupling to the 2-song model, so refactoring upfront prevents rework.
+
 1.  **Reorganize Project Structure**
     - Move `transition_builder_v2/app/` to `src/stream_of_worship/tui/`.
     - Create `src/stream_of_worship/ingestion/` for production ingestion tools.
@@ -35,15 +39,31 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
     - Create directories on first run.
     - Config: Allow override via environment variable `STREAM_OF_WORSHIP_DATA_DIR`.
 
+### Phase 1b: Data Migration
+
+**Assumptions Confirmed**:
+- `poc_full_results.json` structure is **stable** - safe to parse for migration
+- Analysis tools (`allin1`, lyrics scraper) work reliably on full catalog
+- Migration scope: **all songs at once** (no subset limitation needed)
+
 4.  **Migrate Existing Data** (`scripts/migrate_song_library.py`)
-    - Create per-song directories in user data location (`song_library/songs/`).
+    - **Idempotent design**: Safe to re-run, skips already-migrated songs
+    - **Output location**: Direct to platform-specific user data directory (e.g., `~/.local/share/stream_of_worship/song_library/`)
+    - **Song naming**: Pinyin transliteration + sequential integer ID (e.g., `jiang_tian_chang_kai_209`)
+      - Sequential IDs assigned during ingestion (not migration concern)
+      - Cross-platform safe (avoids unicode filename issues)
+    - Create per-song directories in user data location (`song_library/songs/{song_id}/`).
     - Extract individual song analyses from `poc_full_results.json` into per-song `analysis.json`.
     - Move scraped lyrics from `data/lyrics/songs/{song_id}.json` to per-song `lyrics.json`.
-    - Move stems from `stems_output/{song_name}/` to per-song `stems/` directories.
-    - Link or copy source audio files.
+    - **Move/copy stems** from `stems_output/{song_name}/` to per-song `stems/` directories (physically relocate, don't symlink).
+    - Copy source audio files from `poc_audio/` (predictable naming matches analysis results).
     - Generate `song_library/catalog_index.json`.
 
 ## MVP Phase 2: LRC Generation Pipeline (Priority)
+
+**Approach**: Test single song end-to-end first, then batch process full catalog.
+
+**Expected Failure Rate**: 5-15% of songs may fail LLM alignment (moderate risk). Songs with spoken sections, complex harmonies, or non-standard structures are most at risk. Failed songs are flagged for manual review and excluded from catalog until fixed.
 
 3.  **Implement `poc/generate_lrc.py`**
     - **Step A**: Load audio and run `openai-whisper` (large-v3 model, local) to get word-level timestamps with natural phrase groupings. Prioritize accuracy over speed; expected ~1-2 min/song on CPU, ~10-15 sec on GPU.
@@ -56,6 +76,11 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
       - **Failure Handling**: If LLM alignment fails, song is flagged for manual review and excluded from catalog. No automatic Whisper-only fallback.
     - **Step D**: Apply beat-snap logic (using `analysis.json` beats) to always align timestamps to musical grid. Whisper phrase boundaries inform text grouping, but timestamps snap to nearest beat.
     - **Step E**: Export to `.lrc` format with phrase-level granularity.
+
+**Testing Strategy**:
+1. Run on single test song to validate pipeline end-to-end
+2. Review output quality and adjust prompts if needed
+3. Batch process full catalog once pipeline is validated
 
 3b. **Implement `poc/generate_song_metadata.py`**
     - **Input**: Scraped lyrics text, song title, artist.
@@ -151,19 +176,31 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
 ## Verification Plan
 
 ### MVP Manual Verification
-1.  **Data Migration**: Run `scripts/migrate_song_library.py` and verify:
-    - Each song has its own directory with `analysis.json`, `lyrics.json`.
-    - `catalog_index.json` lists all songs with correct metadata.
-2.  **LRC Generation**: Run `python poc/generate_lrc.py --song "Song Name"` and verify the `.lrc` file opens in a media player and syncs correctly.
-3.  **Playlist TUI**:
-    - Start app: `python -m app.main`.
-    - Manually add/remove songs, reorder.
-    - Edit transitions between songs.
-    - Play audio preview.
-4.  **Video Export**:
-    - Press `E` to export video.
-    - Watch resulting `.mp4`.
-    - Check: Intro shows correct songs, lyrics appear 1 beat before audio, song title visible in corner, no audio gaps.
+
+**Data Migration**:
+1. Run `scripts/migrate_song_library.py` (idempotent - safe to re-run)
+2. Verify output in platform-specific directory (e.g., `~/.local/share/stream_of_worship/song_library/`)
+3. Check each song directory contains: `analysis.json`, `lyrics.json`, `audio.mp3`, `stems/`
+4. Verify `catalog_index.json` lists all songs with pinyin_name_{id} format
+5. Re-run migration to confirm idempotency (should skip existing songs)
+
+**LRC Generation** (Test-First Approach):
+1. Run on single test song: `python poc/generate_lrc.py --song-id "jiang_tian_chang_kai_209"`
+2. Verify `.lrc` file opens in media player and syncs correctly
+3. Review alignment quality (check phrase boundaries match natural breaks)
+4. Once validated, batch process: `python poc/generate_lrc.py --all`
+5. **Expected outcome**: ~85-95% success rate (5-15% flagged for manual review)
+
+**Playlist TUI**:
+- Start app: `python -m stream_of_worship`
+- Manually add/remove songs, reorder
+- Edit transitions between songs
+- Play audio preview
+
+**Video Export**:
+- Press `E` to export video
+- Watch resulting `.mp4`
+- Check: Intro shows correct songs, lyrics appear 1 beat before audio, song title visible in corner, no audio gaps
 
 ### Post-MVP Manual Verification
 5.  **Song Discovery TUI**:
@@ -177,3 +214,22 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
 - `tests/test_lrc_generation.py`: Test LLM alignment prompt, beat-snapping logic.
 - `tests/test_song_discovery.py`: Test LLM client, catalog search, shortlist generation. (Post-MVP)
 - `tests/integration/test_full_workflow.py`: End-to-end test from playlist → export (audio only, faster).
+
+---
+
+## Appendix: Key Design Decisions
+
+### Decisions Confirmed During Requirements Review
+
+| Decision | Rationale |
+|----------|-----------|
+| **Project structure first** | Reorganize to `src/` layout before building new features to avoid rework |
+| **Pinyin + sequential ID naming** | Cross-platform safe, readable, IDs assigned by ingestion pipeline |
+| **Idempotent migration** | Safe to re-run, skips already-migrated songs |
+| **Direct output to user data dir** | No temporary staging needed; migration is deterministic |
+| **Move stems (don't symlink)** | Self-contained song directories, easier cloud sync later |
+| **Test single song first** | Validate LRC pipeline before batch processing full catalog |
+| **Expected 5-15% LLM failure rate** | Acceptable for quality gate; manual review handles edge cases |
+| **Moderate TUI refactoring** | Existing components reusable with manageable refactoring for multi-song model |
+| **Tools work reliably** | `allin1` and lyrics scraper validated on full catalog; no blockers |
+| **`poc_full_results.json` is stable** | Safe to parse for migration; format won't change significantly |

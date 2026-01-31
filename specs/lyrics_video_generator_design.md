@@ -79,7 +79,9 @@ cloud_bucket/
 │   ├── backgrounds/           # .mp4 loops or .jpg images
 │   └── fonts/                 # .ttf files
 └── songs/
-    ├── {song_id}/             # song_id = pinyin_title_uniqueid
+    ├── {song_id}/             # song_id = pinyin_title_{sequential_id}
+    │   │                      # Example: jiang_tian_chang_kai_209
+    │   │                      # Sequential ID assigned by ingestion pipeline
     │   ├── audio.mp3          # Original source audio (MP3 from source)
     │   ├── analysis.json      # Output from poc_analysis_allinone.py (BPM, key, sections, beats)
     │   ├── metadata.json      # LLM-generated: summary, themes, bible_verses, vocalist
@@ -243,6 +245,12 @@ The TUI uses a **wizard-style flow**:
 
 ### 5.2 New Screen: `PlaylistScreen`
 Replaces the strict 2-song GenerationScreen layout for transition configuration.
+
+**Implementation Notes**:
+- The existing TUI has moderate coupling to the 2-song model; refactoring required but manageable
+- Reusable components: Audio playback service, song library browser, transition parameter editors
+- New components needed: Multi-song list view, drag-and-drop/keyboard reordering, per-song section selection
+- The existing `GenerationScreen` remains available for quick 2-song transitions (accessible via menu)
 
 **Layout Concept:**
 ```
@@ -413,6 +421,11 @@ See `specs/lyrics_video_implementation_plan.md` for detailed implementation step
 - Sufficient capability for Chinese text alignment and semantic understanding.
 - OpenRouter provides model flexibility for future changes.
 - No free alternative provides comparable accuracy for Chinese worship lyrics.
+
+**Quality Gate**:
+- Expected failure rate: 5-15% of songs (songs with spoken sections, complex harmonies, or non-standard structures)
+- Failed songs are flagged for manual review and excluded from catalog
+- No automatic fallback to Whisper-only transcription (ensures quality)
 
 ### 9.5 Cloud Storage: S3-Compatible (Cloudflare R2)
 **Decision**: Use S3-compatible storage (Cloudflare R2) for centralized catalog.
