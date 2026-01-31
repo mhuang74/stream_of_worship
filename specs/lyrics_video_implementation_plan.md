@@ -6,7 +6,8 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
 
 **Approach**: Manual Selection MVP first, then add LLM Discovery.
 
-- **MVP Scope**: Migration → LRC Generation → Playlist Screen (manual song selection) → Audio/Video Export.
+- **MVP Scope**: Migration → LRC Generation → Playlist Screen (manual song selection) → Audio/Video Export (local-only).
+- **Phase 2**: Add cloud sync (R2/S3) for centralized song catalog, multi-device access, and collaborator sharing.
 - **Post-MVP**: Add LLM-powered SongDiscoveryScreen.
 - **Priority**: LRC generation is the critical foundation for lyrics video.
 
@@ -30,6 +31,7 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
 3.  **Implement Platform-Specific Paths** (`src/stream_of_worship/core/paths.py`)
     - **macOS**: `~/Library/Application Support/StreamOfWorship/` for data, `~/Library/Caches/StreamOfWorship/` for cache.
     - **Linux**: `~/.local/share/stream_of_worship/` (XDG_DATA_HOME), `~/.cache/stream_of_worship/` (XDG_CACHE_HOME).
+    - **Windows**: `%APPDATA%\StreamOfWorship\` for data, `%LOCALAPPDATA%\StreamOfWorship\cache\` for cache.
     - Create directories on first run.
     - Config: Allow override via environment variable `STREAM_OF_WORSHIP_DATA_DIR`.
 
@@ -44,10 +46,11 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
 ## MVP Phase 2: LRC Generation Pipeline (Priority)
 
 3.  **Implement `poc/generate_lrc.py`**
-    - **Step A**: Load audio and run `openai-whisper` (v2-large, local) to get word-level timestamps with natural phrase groupings.
+    - **Step A**: Load audio and run `openai-whisper` (large-v3 model, local) to get word-level timestamps with natural phrase groupings. Prioritize accuracy over speed; expected ~1-2 min/song on CPU, ~10-15 sec on GPU.
     - **Step B**: Load "gold standard" text from `data/lyrics/` (scraped data).
     - **Step C**: Implement LLM-based alignment using GPT-4o-mini via OpenRouter:
       - Send Whisper output + scraped lyrics to LLM.
+      - **Cost**: ~$0.01-0.02 per song. For 100 songs: $1-2 total. Cost is acceptable for batch ingestion.
       - Prompt LLM to align scraped text to Whisper timestamps at phrase level.
       - Handle edge cases (repeated phrases, ad-libs, etc.).
     - **Step D**: Apply beat-snap logic (using `analysis.json` beats) to always align timestamps to musical grid.
@@ -62,6 +65,11 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
       - `vocalist`: "male", "female", or "mixed".
     - **LLM**: Use same configurable model as LRC generation.
     - **Batch Processing**: Run for all songs in catalog during ingestion.
+
+3c. **Stem Separation Configuration**
+    - **Tool**: Use Demucs (`htdemucs_6s` model) for high-quality stems.
+    - **Priority**: Quality over speed; Demucs provides superior separation vs alternatives.
+    - **Expected Time**: ~10-20 min/song on CPU, ~1-2 min on GPU.
 
 ## MVP Phase 3: TUI - Playlist Screen (Manual Selection)
 
@@ -92,8 +100,8 @@ This plan outlines the steps to implement the Lyrics Video Generator and expand 
       - `render_lyrics()`:
         - Load `.lrc` file.
         - Calculate "Look-ahead" timing: `t_display = t_lyric - (60/BPM)`.
-        - Draw text using `Pillow` for high-quality font rendering (Noto Sans TC bundled).
-        - Generate overlay images, composite with ffmpeg-python.
+        - Draw text using `Pillow` for high-quality font rendering (Noto Sans TC bundled). Quality prioritized over render speed.
+        - Generate overlay images, composite with ffmpeg-python. Expected render: ~10-15 minutes for 20-minute playlist (acceptable as background task).
       - `render_background()`: Loop background video/image using FFmpeg.
       - `composite()`: Use ffmpeg-python to combine layers efficiently.
 
