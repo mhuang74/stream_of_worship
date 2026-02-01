@@ -38,6 +38,7 @@ class TransitionGenerationService:
         # Ensure directories exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.output_songs_dir.mkdir(parents=True, exist_ok=True)
+        self.stems_folder.mkdir(parents=True, exist_ok=True)
 
         # Track next ID for transitions
         self._next_id = 1

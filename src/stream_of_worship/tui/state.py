@@ -130,7 +130,10 @@ class AppState:
             return True
 
         song_id = self.playlist_items.pop(from_index)
-        self.playlist_items.insert(to_index, song_id)
+        # Adjust to_index when moving forward (from_index < to_index)
+        # because list has shrunk by 1 after pop
+        insert_index = to_index if from_index > to_index else to_index - 1
+        self.playlist_items.insert(insert_index, song_id)
         return True
 
     def clear_playlist(self) -> None:

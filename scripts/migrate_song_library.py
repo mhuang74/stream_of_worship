@@ -107,20 +107,23 @@ def get_source_audio_path(song_name: str, audio_dir: Path) -> Path:
     """Get source audio file path for a song.
 
     Args:
-        song_name: Song name (may have variants)
+        song_name: Song name (may have variants or include extension)
         audio_dir: Path to poc_audio directory
 
     Returns:
         Path to audio file or None if not found
     """
+    # Handle case where song_name already includes extension
+    stem = Path(song_name).stem
+
     # Try exact match first
-    audio_path = audio_dir / f"{song_name}.mp3"
+    audio_path = audio_dir / f"{stem}.mp3"
     if audio_path.exists():
         return audio_path
 
     # Try case-insensitive match
     for file_path in audio_dir.glob("*.mp3"):
-        if file_path.stem.lower() == song_name.lower():
+        if file_path.stem.lower() == stem.lower():
             return file_path
 
     return None

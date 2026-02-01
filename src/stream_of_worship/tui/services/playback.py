@@ -90,6 +90,7 @@ class PlaybackService:
         with self._lock:
             if self._paused:
                 self._paused = False
+                self._playing = True
                 return True
             if not self._playing:
                 self._playing = True

@@ -230,7 +230,10 @@ class Playlist:
             return True
 
         item = self.items.pop(from_index)
-        self.items.insert(to_index, item)
+        # Adjust to_index when moving forward (from_index < to_index)
+        # because the list has shrunk by 1 after pop
+        insert_index = to_index if from_index > to_index else to_index - 1
+        self.items.insert(insert_index, item)
         self._update_metadata()
         return True
 

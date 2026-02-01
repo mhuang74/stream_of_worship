@@ -114,7 +114,7 @@ class Config:
         """
         for key, value in kwargs.items():
             if hasattr(self, key):
-                setattr(config, key, value)
+                setattr(self, key, value)
 
     @property
     def video_resolution_tuple(self) -> tuple[int, int]:
@@ -131,7 +131,6 @@ class Config:
         }
         return resolutions.get(self.video_resolution, (1920, 1080))
 
-    @property
     def lyrics_lookahead_seconds(self, bpm: float) -> float:
         """Get lyrics look-ahead time in seconds based on BPM.
 
