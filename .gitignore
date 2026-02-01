@@ -255,4 +255,7 @@ Thumbs.db
 # Data archives
 allinone_cache.tar.Z
 poc_audio.tar.Z
+
+# local files
 tmp/
+.claude/
