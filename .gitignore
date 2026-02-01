@@ -218,6 +218,8 @@ demix/*
 
 # Audio files (too large for git, user-provided)
 poc_audio/*
+output_songs/*
+stems_output/*
 !poc_audio/.gitkeep
 *.flac
 *.mp3
@@ -249,14 +251,8 @@ Thumbs.db
 *.swp
 *.swo
 *.swn
-<<<<<<< Updated upstream
-output_songs/songset_name_of_jesus.mp3_chorus_to_give_thanks.mp3_verse.ogg
-=======
 
 # Data archives
 allinone_cache.tar.Z
 poc_audio.tar.Z
->>>>>>> Stashed changes
-# Data archives
-allinone_cache.tar.Z
-poc_audio.tar.Z
+tmp/
