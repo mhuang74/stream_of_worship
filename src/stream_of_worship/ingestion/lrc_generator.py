@@ -201,22 +201,27 @@ class LRCGenerator:
         return words
 
     def _llm_align(
-        self, lyrics_text: str, whisper_words: List[WhisperWord]
+        self, lyrics_text: str, whisper_words: List[WhisperWord], max_retries: int = 3
     ) -> List[LRCLine]:
         """Use LLM to align scraped lyrics with Whisper timestamps.
 
         Args:
             lyrics_text: Scraped lyrics (gold standard)
             whisper_words: Whisper word-level output with timestamps
+            max_retries: Maximum number of retries on failure
 
         Returns:
             List of LRC lines with aligned timestamps
 
         Raises:
-            RuntimeError: If LLM alignment fails
+            RuntimeError: If LLM alignment fails after all retries
         """
         # Prepare Whisper context for LLM
         whisper_context = self._format_whisper_for_llm(whisper_words)
+
+        # Get the first and last timestamp to understand the time range
+        first_time = whisper_words[0].start if whisper_words else 0
+        last_time = whisper_words[-1].end if whisper_words else 0
 
         prompt = f"""You are tasked with aligning scraped song lyrics to Whisper ASR timestamps.
 
@@ -224,66 +229,74 @@ class LRCGenerator:
 Align the scraped lyrics to the Whisper timestamps. The Whisper output gives word-level timing.
 You need to determine which groups of words form phrases and assign timestamps to those phrases.
 
-## Scraped Lyrics (Gold Standard)
+## Scraped Lyrics (Gold Standard - Use this exact text)
 ```
 {lyrics_text}
 ```
 
-## Whisper ASR Output
+## Whisper ASR Output (Timing Reference)
+Audio duration: {first_time:.1f}s to {last_time:.1f}s
+
 {whisper_context}
 
 ## Instructions
-1. Parse the scraped lyrics into natural phrases (not individual words, not entire lines if too long).
+1. Parse the scraped lyrics into natural phrases (typically half a line or one clause).
 2. For each phrase, find the matching words in the Whisper output by semantic similarity.
 3. Use the start time of the first word in the phrase as the phrase timestamp.
 4. Return results as JSON array with "time_seconds" and "text" fields.
 5. Handle repeated phrases, ad-libs, and variations by matching context.
-6. If scraped lyrics differ significantly from Whisper transcription, still use scraped text (it's the gold standard).
+6. If scraped lyrics differ from Whisper transcription, use scraped text (it's the gold standard).
+7. Ensure timestamps are within audio range ({first_time:.1f}s to {last_time:.1f}s).
 
 ## Output Format
-Return ONLY a JSON array like this:
-```json
-[
-  {{"time_seconds": 12.5, "text": "phrase one"}},
-  {{"time_seconds": 18.2, "text": "phrase two"}}
-]
-```
+Return ONLY a JSON array. Example:
+[{{"time_seconds": 12.5, "text": "phrase one"}}, {{"time_seconds": 18.2, "text": "phrase two"}}]
 
-Do not include any markdown code blocks or extra text. Just the JSON array."""
+No markdown, no explanation, just the JSON array."""
 
-        try:
-            response = self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,  # Lower temperature for more deterministic alignment
-                max_tokens=4000,
-            )
-
-            content = response.choices[0].message.content.strip()
-
-            # Clean up any markdown code blocks
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
-
-            data = json.loads(content)
-
-            lines: List[LRCLine] = []
-            for item in data:
-                lines.append(
-                    LRCLine(time_seconds=float(item["time_seconds"]), text=item["text"])
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = self.llm_client.chat.completions.create(
+                    model=self.llm_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,  # Lower temperature for more deterministic alignment
+                    max_tokens=4000,
                 )
 
-            return lines
+                content = response.choices[0].message.content.strip()
 
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"LLM returned invalid JSON: {e}")
-        except Exception as e:
-            raise RuntimeError(f"LLM alignment failed: {e}")
+                # Clean up any markdown code blocks
+                if content.startswith("```json"):
+                    content = content[7:]
+                if content.startswith("```"):
+                    content = content[3:]
+                if content.endswith("```"):
+                    content = content[:-3]
+                content = content.strip()
+
+                data = json.loads(content)
+
+                lines: List[LRCLine] = []
+                for item in data:
+                    lines.append(
+                        LRCLine(time_seconds=float(item["time_seconds"]), text=item["text"])
+                    )
+
+                return lines
+
+            except json.JSONDecodeError as e:
+                last_error = f"LLM returned invalid JSON: {e}"
+                if attempt < max_retries - 1:
+                    print(f"  Retry {attempt + 1}/{max_retries}: JSON parse error, retrying...")
+                    continue
+            except Exception as e:
+                last_error = f"LLM alignment failed: {e}"
+                if attempt < max_retries - 1:
+                    print(f"  Retry {attempt + 1}/{max_retries}: {e}, retrying...")
+                    continue
+
+        raise RuntimeError(last_error)
 
     def _format_whisper_for_llm(self, words: List[WhisperWord]) -> str:
         """Format Whisper output for LLM prompt.
@@ -294,6 +307,8 @@ Do not include any markdown code blocks or extra text. Just the JSON array."""
         Returns:
             Formatted string for prompt
         """
+        # Process all words without truncation - chunk into groups of 10
+        # with empty lines between groups for readability
         lines = []
         for i, word in enumerate(words):
             # Group into chunks to save tokens
@@ -301,15 +316,6 @@ Do not include any markdown code blocks or extra text. Just the JSON array."""
                 if i > 0:
                     lines.append("")
             lines.append(f"[{word.start:.2f}-{word.end:.2f}s] {word.word}")
-
-        # Limit context to avoid exceeding token limits
-        max_words = 200  # Limit to ~200 words for context
-        if len(words) > max_words:
-            truncated = words[:max_words]
-            lines = []
-            for word in truncated:
-                lines.append(f"[{word.start:.2f}-{word.end:.2f}s] {word.word}")
-            lines.append(f"... ({len(words) - max_words} more words not shown)")
 
         return "\n".join(lines)
 
@@ -357,7 +363,7 @@ Do not include any markdown code blocks or extra text. Just the JSON array."""
         songs: List[Tuple[Path, str, List[float], Path]],
         max_failures: int = 5,
         progress_callback=None,
-    ) -> Tuple[int, int]:
+    ) -> Tuple[int, int, List[Path]]:
         """Generate LRC files for multiple songs.
 
         Args:
@@ -366,25 +372,34 @@ Do not include any markdown code blocks or extra text. Just the JSON array."""
             progress_callback: Optional callback for progress updates
 
         Returns:
-            Tuple of (success_count, failure_count)
+            Tuple of (success_count, failure_count, list of successful output paths)
         """
         success = 0
         failures = 0
         total = len(songs)
+        successful_paths: List[Path] = []
 
         for i, (audio_path, lyrics, beats, output_path) in enumerate(songs):
             if progress_callback:
                 progress_callback(f"Processing {i + 1}/{total}: {audio_path.name}", i / total)
 
-            if self.generate(audio_path, lyrics, beats, output_path):
-                success += 1
-            else:
+            try:
+                if self.generate(audio_path, lyrics, beats, output_path):
+                    success += 1
+                    successful_paths.append(output_path)
+                else:
+                    failures += 1
+                    if failures >= max_failures:
+                        print(f"Stopping after {max_failures} failures")
+                        break
+            except Exception as e:
+                print(f"  Error processing {audio_path.name}: {e}")
                 failures += 1
                 if failures >= max_failures:
                     print(f"Stopping after {max_failures} failures")
                     break
 
-        return success, failures
+        return success, failures, successful_paths
 
 
 def parse_lrc_file(path: Path) -> List[LRCLine]:
