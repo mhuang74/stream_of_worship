@@ -1,109 +1,57 @@
 [project]
-name = "worship-music-system"
-version = "0.1.0"
-description = "POC for seamless Chinese worship music transition system"
-authors = [{name = "Your Name", email = "your.email@example.com"}]
+name = "stream-of-worship"
+version = "0.2.0"
+description = "Seamless Chinese worship music transition system with lyrics video generation"
+authors = [{name = "Stream of Worship Contributors"}]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 
 dependencies = [
-    "numpy>=1.26.2",
-    "scipy>=1.11.4",
-    "Cython>=3.0.0",
-    "numba>=0.58.0",
-    "librosa>=0.10.1",
-    "soundfile>=0.12.1",
-    "pandas>=2.1.4",
-    "matplotlib>=3.8.2",
-    "seaborn>=0.13.0",
+    "beautifulsoup4>=4.14.0",
+    "lxml>=6.0.0",
+    "requests>=2.32.0",
+    "pypinyin>=0.52.0",
+    "pathlib>=1.0.0",
+    "dataclasses>=0.0",
+    "typing>=3.0.0",
 ]
 
 [project.optional-dependencies]
-song_analysis = [
-    "allin1==1.1.0",
-    "demucs==4.0.1",
-    "librosa==0.10.2.post1",
-    "madmom @ git+https://github.com/CPJKU/madmom.git@27f032e8947204902c675e5e341a3faf5dc86dae",
-    "openunmix==1.3.0",
-    "audioread==3.0.1",
-    "soundfile==0.12.1",
-    "sounddevice==0.4.6",
-    "soxr==0.5.0.post1",
-    "julius==0.2.7",
-    "lameenc==1.7.0",
-    "mido==1.3.2",
-    "numpy>=2.0.0,<2.1.0",
-    "pandas==2.2.2",
-    "scipy==1.14.1",
-    "scikit-learn==1.5.1",
-    "numba==0.60.0",
-    "llvmlite==0.43.0",
-    "einops==0.8.0",
-    "hydra-core==1.3.2",
-    "omegaconf==2.3.0",
-    "huggingface-hub==0.24.6",
-    "dora-search==0.1.12",
-    "joblib==1.4.2",
-    "cloudpickle==3.0.0",
-    "msgpack==1.0.8",
-    "submitit==1.5.1",
-    "pooch==1.8.2",
-    "tqdm==4.66.5",
-    "treetable==0.2.5",
-    "matplotlib==3.9.2",
-    "contourpy==1.3.0",
-    "fonttools==4.53.1",
-    "cycler==0.12.1",
-    "kiwisolver==1.4.7",
-    "seaborn==0.13.2",
-    "antlr4-python3-runtime==4.9.3",
-    "cffi==1.17.1",
-    "decorator==5.1.1",
-    "fsspec==2024.9.0",
-    "lazy-loader==0.4",
-    "packaging==23.2",
-    "platformdirs==4.2.2",
-    "pycparser==2.22",
-    "pyparsing==3.1.4",
-    "python-dateutil==2.9.0.post0",
-    "retrying==1.3.4",
-    "six==1.16.0",
-    "threadpoolctl==3.5.0",
-    "torch==2.4.1",
-    "torchaudio==2.4.1",
-    "natten==0.17.1",
-    "rich==14.3.1",
-    "pyyaml==6.0.3",
-    "networkx==3.6.1",
-    "pillow==12.1.0",
-]
-song_scraper = [
-    "requests>=2.32.0",
+scraper = [
     "beautifulsoup4>=4.14.0",
     "lxml>=6.0.0",
-    "pypinyin>=0.52.0",
+    "requests>=2.32.0",
+    "pypinyin>=0.52.0"
 ]
+
+# LRC generation dependencies (Whisper + LLM)
+lrc_generation = [
+    "openai-whisper>=20231117",
+    "openai>=1.0.0",
+]
+
+# Video generation dependencies
+video = [
+    "ffmpeg-python>=0.2.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+]
+
+# TUI dependencies
 tui = [
-    "textual>=0.47.0",
-    "pyaudio>=0.2.13",
-    "numpy>=1.26.2",
-    "scipy>=1.11.4",
-    "librosa>=0.10.1",
-    "soundfile>=0.12.1",
-    "mutagen>=1.47.0",
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
+    "textual>=0.44.0",
+    "pydub>=0.25.0",
 ]
-dev = [
-    "pytest>=7.4.3",
-    "black>=23.12.1",
-    "ruff>=0.1.8",
-    "jupyterlab==4.5.3",
-    "ipython==9.9.0",
-    "ipykernel==7.1.0",
-    "ipywidgets==8.1.8",
+
+# Song analysis dependencies
+song_analysis = [
+    "librosa>=0.10.0",
+    "numpy>=1.24.0",
 ]
+
+# Transcription dependencies
+# LRC generation dependencies (Whisper + LLM)
 transcription = [
     "funasr>=1.3.0",
     "torch>=2.10.0",
@@ -111,10 +59,29 @@ transcription = [
     "modelscope>=1.34.0"
 ]
 
-# Package discovery - only include poc directory
+# Test dependencies
+test = [
+    "pytest>=7.4.0",
+    "pytest-mock>=3.12.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+# All dependencies together
+all = [
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,test,transcription]",
+]
+
+[project.scripts]
+stream-of-worship = "stream_of_worship.cli.main:main"
+
+# Package discovery - use src layout
 [tool.setuptools.packages.find]
-include = ["poc*"]
+where = ["src"]
+include = ["stream_of_worship*"]
 exclude = ["tests*", "test*"]
+
+[tool.setuptools.package-data]
+stream_of_worship = ["assets/fonts/*"]
 
 [tool.black]
 line-length = 100
@@ -137,3 +104,15 @@ natten = ["torch"]
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+# Exclude scripts directory from test collection
+# scripts/test_allinone_analyze.py is a standalone script for Docker use
+norecursedirs = ["scripts", ".*", "build", "dist", "*.egg-info"]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
