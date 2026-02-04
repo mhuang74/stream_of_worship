@@ -4,14 +4,10 @@ version = "0.2.0"
 description = "Seamless Chinese worship music transition system with lyrics video generation"
 authors = [{name = "Stream of Worship Contributors"}]
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.11"
 
 dependencies = [
-    "beautifulsoup4>=4.14.0",
-    "lxml>=6.0.0",
-    "requests>=2.32.0",
-    "pypinyin>=0.52.0",
     "pathlib>=1.0.0",
     "dataclasses>=0.0",
     "typing>=3.0.0",
@@ -50,6 +46,15 @@ song_analysis = [
     "numpy>=1.24.0",
 ]
 
+# Transcription dependencies
+# LRC generation dependencies (Whisper + LLM)
+transcription = [
+    "funasr>=1.3.0",
+    "torch>=2.10.0",
+    "torchaudio>=2.10.0",
+    "modelscope>=1.34.0"
+]
+
 # Test dependencies
 test = [
     "pytest>=7.4.0",
@@ -59,7 +64,7 @@ test = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,test]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,test,transcription]",
 ]
 
 [project.scripts]
@@ -81,6 +86,16 @@ target-version = ['py311']
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.uv]
+package = false
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+]
+
+[tool.uv.extra-build-dependencies]
+natten = ["torch"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

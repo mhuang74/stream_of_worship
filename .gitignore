@@ -228,6 +228,9 @@ stems_output/*
 # embeddings
 **/*.npy
 
+# Lyrics
+*.lrc
+
 # Data directories (for future phases)
 data/audio/*
 data/cache/*
@@ -251,7 +254,6 @@ Thumbs.db
 *.swp
 *.swo
 *.swn
-
 # Data archives
 allinone_cache.tar.Z
 poc_audio.tar.Z
