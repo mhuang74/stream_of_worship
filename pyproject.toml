@@ -8,10 +8,6 @@ license = "MIT"
 requires-python = ">=3.11"
 
 dependencies = [
-    "beautifulsoup4>=4.14.0",
-    "lxml>=6.0.0",
-    "requests>=2.32.0",
-    "pypinyin>=0.52.0",
     "pathlib>=1.0.0",
     "dataclasses>=0.0",
     "typing>=3.0.0",
