@@ -63,6 +63,14 @@ migration = [
     "pypinyin>=0.52.0",
 ]
 
+# Admin CLI dependencies
+admin = [
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "tomli>=2.0.0",
+    "tomli-w>=1.0.0",
+]
+
 # Test dependencies
 test = [
     "pytest>=7.4.0",
@@ -72,11 +80,12 @@ test = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription,admin]",
 ]
 
 [project.scripts]
 stream-of-worship = "stream_of_worship.cli.main:main"
+sow-admin = "stream_of_worship.admin.main:cli_entry"
 
 # Package discovery - use src layout
 [tool.setuptools.packages.find]
