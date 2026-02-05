@@ -1,31 +1,166 @@
-# Worship Music Transition System
+# Stream of Worship - Admin Tools & Analysis Service
 
-Seamless Chinese worship music playback system for Stream of Praise (SOP) and similar worship songs.
+Command-line tool and microservice for managing a Chinese worship music library. Includes song catalog scraping, audio download, deep learning analysis (tempo/key/structure), stem separation, and LRC generation.
 
-## Project Status: POC Phase
+**Note:** This repository (`sow_cli_admin`) contains both the lightweight CLI tool (`sow-admin`) and the heavy Analysis Service. They are architecturally separate but co-located in a monorepo.
 
-**Current Phase:** Proof of Concept (Week 1)
-**Goal:** Validate audio analysis pipeline with 3-5 songs
+## Project Status: Production Development
 
-### What's Working (POC)
+**Current Phase:** Phase 4 - Analysis Service Implementation
+**Architecture:** Three-component system (POC, CLI, Service)
 
-- ✅ Standalone POC analysis script (command-line)
-- ✅ Jupyter notebook environment with Docker (interactive)
-- ✅ Audio analysis (tempo, key, structure, energy)
-- ✅ Compatibility scoring between song pairs
-- ✅ Simple crossfade transition prototype
+### Components Status
 
-### What's NOT in POC
-
-- ❌ Database (PostgreSQL) - Coming in Phase 2
-- ❌ Web API (FastAPI) - Coming in Phase 5
-- ❌ Frontend UI (Next.js) - Coming in Phase 5
-- ❌ Advanced transitions (tempo stretching, pitch shift) - Future
-- ❌ Full 400-song library processing - Phase 3
+| Component | Status | Location | Purpose |
+|-----------|--------|----------|---------|
+| **POC Scripts** | ✅ Complete | `poc/` | Experimental analysis validation |
+| **Admin CLI** | 🚧 Phases 1-3 Complete | `src/stream_of_worship/admin/` | Catalog management, audio download |
+| **Analysis Service** | 🔄 Phase 4 In Progress | `services/analysis/` | Audio analysis microservice |
+| **User App** | 📋 Planned (Phase 8+) | `src/stream_of_worship/app/` | Transition songset & lyrics video generation |
 
 ---
 
-## Quick Start (POC)
+## Architecture Overview
+
+The project consists of **four architecturally separate components**:
+
+### 1. 🧪 POC Scripts (Experimental)
+- **Location:** `poc/` directory
+- **Purpose:** Validate analysis algorithms during development
+- **Runtime:** One-off script execution in Docker
+- **Technologies:** Librosa (signal processing) or All-In-One (deep learning)
+- **Status:** Archived experimental code (including `poc/transition_builder_v2/` TUI)
+
+### 2. 🖥️ Admin CLI (Backend Management)
+- **Location:** `src/stream_of_worship/admin/` (Python package)
+- **Purpose:** Backend tool for catalog management and audio operations
+- **Users:** Administrators, DevOps
+- **Runtime:** One-shot CLI commands (`sow-admin catalog scrape`, `sow-admin audio download`)
+- **Dependencies:** **Lightweight** (~50MB) - typer, requests, yt-dlp, boto3
+- **Database:** Local SQLite with Turso cloud sync support
+- **Installation:** `uv run --extra admin sow-admin`
+
+### 3. 🚀 Analysis Service (Microservice)
+- **Location:** `services/analysis/` (separate package: `sow_analysis`)
+- **Purpose:** CPU/GPU-intensive audio analysis and stem separation
+- **Users:** Called by Admin CLI or User App
+- **Runtime:** Long-lived FastAPI HTTP server (port 8000)
+- **Technologies:** FastAPI, PyTorch, allin1, Demucs, Cloudflare R2
+- **Dependencies:** **Heavy** (~2GB) - PyTorch, ML models, NATTEN
+- **Deployment:** Docker container with platform-specific builds (x86_64 vs ARM64)
+- **API:** REST endpoints at `http://localhost:8000/api/v1/`
+
+### 4. 🎵 User App (End-User Application)
+- **Location:** `src/stream_of_worship/app/` (planned)
+- **Purpose:** Interactive tool for generating transition songsets and lyrics videos
+- **Users:** Worship leaders, media team members
+- **Runtime:** TUI (Textual framework) or GUI application
+- **Technologies:** Textual (TUI), Pydub (audio), MoviePy (video), FFmpeg
+- **Data Source:**
+  - **Metadata:** Turso cloud database (synced from Admin CLI)
+  - **Audio Assets:** Cloudflare R2 (pre-analyzed stems, LRC files)
+- **Key Features:**
+  - Browse master song catalog
+  - Select songs for transitions (with compatibility scoring)
+  - Adjust transition parameters (crossfade, tempo stretch, key shift)
+  - Generate multi-song audio files with smooth transitions
+  - Generate lyrics videos with synchronized LRC timing
+  - Export final audio/video outputs
+- **Evolution:** Production upgrade from `poc/transition_builder_v2/` TUI prototype
+
+### Why Architecturally Separate?
+
+| Concern | POC Scripts | Admin CLI | Analysis Service | User App |
+|---------|-------------|-----------|------------------|----------|
+| **Runtime Model** | Ad-hoc experimentation | One-shot commands | Long-lived daemon | Interactive session |
+| **Target Users** | Developers | Admins / DevOps | Internal service | Worship leaders / media teams |
+| **Dependencies** | Varies (experimental) | Minimal | Very heavy (PyTorch) | Moderate (FFmpeg, video libs) |
+| **Distribution** | Development only | pip install (admin) | Docker image | Desktop app / pip install |
+| **Deployment** | Local developer machine | Admin's machine | Cloud server / GPU | End-user's machine |
+| **Data Access** | Local files | SQLite + R2 (read/write) | R2 + temp cache | Turso + R2 (read-only) |
+| **Versioning** | Unversioned (experimental) | Semantic versioning | Independent API versions | Semantic versioning |
+| **Communication** | N/A | HTTP client (to Service) | HTTP server | HTTP client (to Service) + Turso sync |
+
+### Component Interaction
+
+```
+Backend Flow (Admin):
+┌──────────────────┐
+│  Admin CLI       │  ← Lightweight, runs on admin's machine
+│  (sow-admin)     │
+└────────┬─────────┘
+         │
+         ├─── catalog scrape ──→ sop.org → SQLite (local)
+         │
+         ├─── audio download ──→ YouTube → R2 upload → SQLite
+         │
+         └─── audio analyze ──→ HTTP POST /api/v1/jobs/analyze
+                                          ↓
+                         ┌────────────────────────────┐
+                         │  Analysis Service          │  ← Heavy ML, GPU server
+                         │  (FastAPI + Job Queue)     │
+                         └────────────┬───────────────┘
+                                      │
+                         ┌────────────┴────────────┐
+                         ↓                         ↓
+                  ┌─────────────┐         ┌─────────────┐
+                  │ allin1      │         │ Demucs      │
+                  │ worker      │         │ worker      │
+                  └──────┬──────┘         └──────┬──────┘
+                         │                       │
+                         └───────────┬───────────┘
+                                     ↓
+                            ┌─────────────────┐
+                            │ Cloudflare R2   │  → Stems, JSON, LRC
+                            └────────┬────────┘
+                                     │
+                         ┌───────────┴───────────┐
+                         ↓                       ↓
+                   ┌──────────┐          ┌─────────────┐
+                   │ SQLite   │ ──sync→  │ Turso Cloud │
+                   │ (local)  │          │ (replicated)│
+                   └──────────┘          └──────┬──────┘
+                                                 │
+                                                 ↓
+Frontend Flow (End-User):                       │
+┌──────────────────┐                            │
+│  User App        │  ← Interactive TUI/GUI     │
+│  (sow-app)       │                            │
+└────────┬─────────┘                            │
+         │                                      │
+         ├─── read catalog metadata ───────────┘
+         │
+         ├─── download audio/stems ───→ R2 (read-only)
+         │
+         ├─── generate transitions ──→ Local processing (Pydub)
+         │
+         └─── render lyrics video ───→ Local processing (MoviePy)
+                     ↓
+              Final outputs:
+              - transition_songset.mp3
+              - lyrics_video.mp4
+```
+
+**Key Design Decisions:**
+1. **Admin CLI** never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP.
+2. **User App** reads from Turso (metadata) and R2 (audio assets) but never writes. It's a read-only consumer.
+3. **Analysis Service** is the only component with heavy ML dependencies and GPU access.
+4. **Turso Sync** enables User App to work with up-to-date catalog without direct database access to admin's machine.
+
+---
+
+## Quick Start
+
+Choose the component you want to work with:
+
+- **[POC Scripts](#quick-start-poc)** - Experimental analysis validation (archived)
+- **[Admin CLI](#cli-installation)** - Backend catalog and audio management (admins)
+- **[Analysis Service](#analysis-service-setup)** - Audio analysis microservice (Phase 4)
+- **[User App](#user-app-usage)** - Transition songset generation (end-users, Phase 8+)
+
+---
+
+## Quick Start (POC) {#quick-start-poc}
 
 ### Prerequisites
 
@@ -297,6 +432,216 @@ ls -lh poc_output_allinone/
 
 ---
 
+## CLI Installation {#cli-installation}
+
+The `sow-admin` CLI is the production tool for managing the song catalog and audio library.
+
+### Prerequisites
+1. **Python 3.11+** installed
+2. **uv** package manager ([Installation](https://docs.astral.sh/uv/getting-started/installation/))
+3. **git** for cloning the repository
+
+### Installation Steps
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/sow_cli_admin.git
+cd sow_cli_admin
+
+# Install the CLI with admin extras
+uv sync --extra admin
+
+# Verify installation
+uv run sow-admin --version
+```
+
+### Basic Usage
+
+```bash
+# Initialize database
+uv run sow-admin db init
+
+# Scrape song catalog from sop.org
+uv run sow-admin catalog scrape
+
+# Search for songs
+uv run sow-admin catalog search "主祢是愛"
+
+# Download audio for a song (requires YouTube, R2 credentials)
+uv run sow-admin audio download --song-id "zhu-ni-shi-ai-1"
+
+# List downloaded recordings
+uv run sow-admin audio list
+
+# Submit analysis job (requires Analysis Service running)
+uv run sow-admin audio analyze --recording-id "abc123def456"
+```
+
+### Configuration
+
+Create a config file at `~/.config/sow-admin/config.toml`:
+
+```toml
+[database]
+path = "/Users/you/.local/share/sow-admin/sow.db"
+
+[r2]
+bucket = "your-r2-bucket"
+endpoint_url = "https://your-account.r2.cloudflarestorage.com"
+region = "auto"
+
+[analysis_service]
+base_url = "http://localhost:8000"
+```
+
+Set environment variables for R2 credentials:
+```bash
+export SOW_R2_ACCESS_KEY_ID="your-access-key"
+export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
+```
+
+**See [CLI Documentation](docs/cli-usage.md) for complete command reference.**
+
+---
+
+## Analysis Service Setup {#analysis-service-setup}
+
+The Analysis Service is a FastAPI microservice that performs audio analysis and stem separation.
+
+### Prerequisites
+1. **Docker Desktop** installed and running
+2. **Cloudflare R2** account and credentials
+3. **8GB+ RAM** (16GB recommended for GPU)
+4. **GPU** (optional, but recommended for faster processing)
+
+### Quick Start
+
+```bash
+# Navigate to service directory
+cd services/analysis
+
+# Set environment variables
+cp .env.example .env
+# Edit .env with your R2 credentials:
+#   SOW_R2_ACCESS_KEY_ID=your-key
+#   SOW_R2_SECRET_ACCESS_KEY=your-secret
+
+# Build the Docker image (takes 10-20 minutes first time)
+docker compose build
+
+# Start the service
+docker compose up -d
+
+# Check service health
+curl http://localhost:8000/api/v1/health
+# Expected: {"status": "healthy", "version": "0.1.0"}
+
+# View logs
+docker compose logs -f
+```
+
+### Submit Analysis Job
+
+```bash
+# Via CLI (recommended)
+uv run sow-admin audio analyze --recording-id "abc123def456"
+
+# Or via direct HTTP request
+curl -X POST http://localhost:8000/api/v1/jobs/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recording_id": "abc123def456",
+    "audio_url": "s3://bucket/audio.mp3",
+    "options": {
+      "extract_stems": true,
+      "compute_embeddings": true
+    }
+  }'
+```
+
+### Check Job Status
+
+```bash
+# Get job status
+curl http://localhost:8000/api/v1/jobs/{job_id}
+
+# Response:
+# {
+#   "job_id": "550e8400-e29b-41d4-a716-446655440000",
+#   "status": "completed",
+#   "progress": 1.0,
+#   "result": {
+#     "tempo_bpm": 120.5,
+#     "musical_key": "C",
+#     "musical_mode": "major",
+#     "duration_seconds": 245.3,
+#     ...
+#   }
+# }
+```
+
+**See [Analysis Service Documentation](services/analysis/README.md) for API reference.**
+
+---
+
+## User App Usage {#user-app-usage}
+
+**Status:** Planned for Phase 8+ (after Admin CLI + Analysis Service are complete)
+
+The User App is the end-user facing tool for creating transition songsets and lyrics videos. It will be a production-ready evolution of the `poc/transition_builder_v2/` TUI prototype.
+
+### Planned Features
+
+**Song Selection**
+- Browse master song catalog (synced from Turso)
+- Search by title, artist, album, key, tempo
+- View song metadata and analysis results
+- Preview audio stems (vocals, drums, bass, other)
+
+**Transition Generation**
+- Select multiple songs for a songset
+- View compatibility scores between songs
+- Adjust transition parameters:
+  - Crossfade duration
+  - Tempo stretching (match BPM)
+  - Key shifting (match musical key)
+  - Transition point selection (verse → chorus, etc.)
+- Real-time preview of transitions
+- Export multi-song audio file
+
+**Lyrics Video Generation**
+- Load LRC files from R2
+- Select video template (backgrounds, fonts, animations)
+- Customize styling (colors, positioning, effects)
+- Sync lyrics with audio timeline
+- Export MP4 video file
+
+### Planned Installation (Phase 8+)
+
+```bash
+# Install User App with app extras
+uv sync --extra app
+
+# Run the User App
+uv run sow-app
+
+# Or with GUI version (future)
+uv run sow-app --gui
+```
+
+### Data Dependencies
+
+The User App requires:
+1. **Turso database access** (read-only) - Song catalog metadata
+2. **R2 storage access** (read-only) - Audio stems, LRC files
+3. **FFmpeg** installed locally - Audio/video processing
+
+No direct Admin CLI access needed - User App is fully decoupled.
+
+**See [User App Roadmap](#phase-8-user-app-development-planned) for development timeline.**
+
+---
+
 ## POC Validation Checklist
 
 ### 1. Tempo Accuracy
@@ -403,73 +748,178 @@ peaks = librosa.util.peak_pick(
 ## Project Structure
 
 ```
-stream_of_worship/
-├── docker/                    # Docker infrastructure
-│   ├── docker-compose.yml     # Librosa service definitions
-│   ├── docker-compose.allinone.yml  # Deep learning environment
-│   ├── Dockerfile             # Librosa container image
-│   └── Dockerfile.allinone    # All-In-One container image
-├── pyproject.toml             # Python dependencies
-├── README.md                  # This file
-├── .gitignore                 # Git exclusions
+sow_cli_admin/                           # Repository root
 │
-├── specs/                     # Design documents
-│   └── worship-music-transition-system-design.md
+├── src/stream_of_worship/admin/         # 🖥️ Admin CLI Package (backend)
+│   ├── commands/                        #    CLI command groups
+│   │   ├── db.py                        #    - db init/status/reset
+│   │   ├── catalog.py                   #    - catalog scrape/list/search
+│   │   └── audio.py                     #    - audio download/list/analyze
+│   ├── services/                        #    Business logic
+│   │   ├── scraper.py                   #    - HTML scraping (sop.org)
+│   │   ├── youtube.py                   #    - yt-dlp wrapper
+│   │   ├── hasher.py                    #    - SHA-256 hashing
+│   │   └── r2.py                        #    - R2 storage client
+│   ├── db/                              #    Database layer
+│   │   ├── client.py                    #    - SQLite client
+│   │   ├── schema.py                    #    - Table definitions
+│   │   └── models.py                    #    - Pydantic models
+│   ├── config.py                        #    TOML config loader
+│   └── main.py                          #    Typer app entry point
 │
-├── poc/                       # All proof-of-concept work
-│   ├── poc_analysis.py        # Librosa analysis script
-│   ├── poc_analysis_allinone.py  # Deep learning analysis
-│   ├── README.md              # POC documentation
-│   ├── audio/                 # Input audio files
-│   ├── output/                # Librosa analysis results
-│   ├── output_allinone/       # All-In-One analysis results
-│   ├── notebooks/             # Jupyter notebooks
-│   └── transition_builder_v2/ # Legacy TUI (archived)
+├── src/stream_of_worship/app/           # 🎵 User App Package (frontend)
+│   │                                    #    [Planned - Phase 8+]
+│   ├── screens/                         #    TUI screens (Textual)
+│   │   ├── catalog_browser.py           #    - Song catalog browser
+│   │   ├── transition_builder.py        #    - Transition builder UI
+│   │   └── video_generator.py           #    - Lyrics video generator
+│   ├── services/                        #    Business logic
+│   │   ├── turso_client.py              #    - Turso database reader
+│   │   ├── r2_downloader.py             #    - R2 asset downloader
+│   │   ├── transition_engine.py         #    - Audio transition generator
+│   │   └── video_renderer.py            #    - Video rendering engine
+│   ├── models.py                        #    Data models
+│   └── main.py                          #    App entry point
 │
-├── src/                       # Production package (src layout)
-│   └── stream_of_worship/
+├── services/analysis/                   # 🚀 Analysis Service (heavy ML)
+│   ├── src/sow_analysis/                #    Service package (separate)
+│   │   ├── main.py                      #    FastAPI app
+│   │   ├── config.py                    #    Service configuration
+│   │   ├── models.py                    #    Request/response schemas
+│   │   ├── routes/                      #    API endpoints
+│   │   │   ├── health.py                #    - GET /health
+│   │   │   └── jobs.py                  #    - POST/GET /jobs/*
+│   │   ├── workers/                     #    Background workers
+│   │   │   ├── analyzer.py              #    - allin1 analysis
+│   │   │   ├── separator.py             #    - Demucs stem separation
+│   │   │   ├── lrc.py                   #    - LRC generation (Phase 6)
+│   │   │   └── queue.py                 #    - In-memory job queue
+│   │   └── storage/                     #    Storage layer
+│   │       ├── r2.py                    #    - R2 client (async)
+│   │       └── cache.py                 #    - Content-hash cache
+│   ├── Dockerfile                       #    Multi-stage Docker build
+│   ├── docker-compose.yml               #    Service orchestration
+│   ├── pyproject.toml                   #    Service dependencies
+│   └── README.md                        #    API documentation
 │
-└── scripts/                   # Admin / bridge scripts
+├── poc/                                 # 🧪 POC Scripts (archived)
+│   ├── docker/                          #    POC Docker environments
+│   │   ├── docker-compose.yml           #    - Librosa environment
+│   │   ├── docker-compose.allinone.yml  #    - Deep learning environment
+│   │   ├── Dockerfile                   #    - Librosa image
+│   │   └── Dockerfile.allinone          #    - All-In-One image
+│   ├── poc_analysis.py                  #    Librosa analysis script
+│   ├── poc_analysis_allinone.py         #    Deep learning analysis
+│   ├── lyrics_scraper.py                #    Lyrics scraper prototype
+│   ├── audio/                           #    Test audio files
+│   ├── output/                          #    Librosa results
+│   ├── output_allinone/                 #    All-In-One results
+│   └── transition_builder_v2/           #    Legacy TUI (archived)
+│
+├── tests/admin/                         # CLI unit tests
+│   ├── commands/                        #    Command tests
+│   ├── services/                        #    Service tests
+│   └── db/                              #    Database tests
+│
+├── specs/                               # Design documents
+│   ├── sow_admin_design.md              #    CLI + Service architecture
+│   └── worship-music-transition-system-design.md  # Original POC spec
+│
+├── reports/                             # Implementation plans
+│   └── phase4_detailed_impl_plan.md     #    Analysis Service plan
+│
+├── pyproject.toml                       # Root project config
+├── README.md                            # This file
+└── .gitignore                           # Git exclusions
 ```
+
+### Key Separation Points
+
+| Directory | Package Name | Purpose | Target Users | Deployment |
+|-----------|-------------|---------|--------------|------------|
+| `src/stream_of_worship/admin/` | `stream-of-worship-admin` | Backend management CLI | Admins / DevOps | `pip install` (admin) |
+| `src/stream_of_worship/app/` | `stream-of-worship-app` | End-user transition/video tool | Worship leaders / media teams | Desktop app or `pip install` |
+| `services/analysis/` | `sow-analysis` | Audio analysis microservice | Internal service | Docker image |
+| `poc/` | N/A (scripts) | Experimental validation | Developers | Local scripts only |
 
 ---
 
-## Next Steps After POC
+## Development Roadmap
 
-If validation passes:
+### ✅ Phase 1: Foundation (Complete)
+- [x] CLI scaffold (Typer)
+- [x] Database schema (SQLite + Turso sync support)
+- [x] Configuration (TOML)
+- [x] `db` command group (init, status, reset)
 
-### Phase 2: Core Infrastructure (2 weeks)
+### ✅ Phase 2: Catalog Management (Complete)
+- [x] Web scraper for sop.org
+- [x] Song ID normalization (Chinese → pinyin)
+- [x] `catalog` command group (scrape, list, search, show)
+- [x] Incremental scraping
 
-- [ ] PostgreSQL database schema
-- [ ] SQLAlchemy models
-- [ ] Modular preprocessing pipeline (`src/preprocessing/`)
-- [ ] Unit tests
+### ✅ Phase 3: Audio Download (Complete)
+- [x] YouTube search and download (yt-dlp)
+- [x] Content-hash based deduplication (SHA-256)
+- [x] Cloudflare R2 upload
+- [x] `audio` command group (download, list, show)
+- [x] Recording metadata tracking
 
-### Phase 3: Batch Processing (1 week)
+### 🔄 Phase 4: Analysis Service (In Progress)
+- [ ] FastAPI service architecture
+- [ ] Job queue (in-memory for MVP, Redis later)
+- [ ] allin1 worker (tempo, key, beats, sections, embeddings)
+- [ ] Demucs worker (stem separation)
+- [ ] R2 stems upload
+- [ ] Docker deployment (x86_64 + ARM64 support)
+- [ ] CLI integration (`audio analyze`, `audio status`)
 
-- [ ] Process full SOP library (~400 songs)
-- [ ] Compute compatibility matrix
-- [ ] Database population
+### 📋 Phase 5: CLI ↔ Service Integration (Planned)
+- [ ] `audio analyze` command (submit jobs via HTTP)
+- [ ] `audio status` command (poll job status)
+- [ ] `audio results` command (fetch analysis results)
+- [ ] Retry logic and error handling
+- [ ] Progress indicators
 
-### Phase 4: Runtime System (2 weeks)
+### 📋 Phase 6: LRC Generation (Planned)
+- [ ] Whisper transcription worker
+- [ ] LLM line alignment (GPT-4 / Claude)
+- [ ] LRC file generation
+- [ ] R2 LRC upload
+- [ ] `lyrics generate` command
+- [ ] `lyrics show` command
 
-- [ ] Playlist generator
-- [ ] Transition renderer (tempo stretch, pitch shift)
-- [ ] Playback engine
+### 📋 Phase 7: Turso Sync (Planned)
+- [ ] Turso cloud database setup
+- [ ] Bidirectional sync logic (Admin CLI ↔ Turso)
+- [ ] Conflict resolution
+- [ ] `db sync` command
+- [ ] Multi-device admin support
 
-### Phase 5: API & UI (2 weeks)
+### 📋 Phase 8: User App Development (Planned)
+- [ ] Textual TUI framework setup
+- [ ] Turso client (read-only connection)
+- [ ] R2 downloader (audio stems, LRC files)
+- [ ] Song catalog browser screen
+- [ ] Transition builder screen
+  - [ ] Song selection with compatibility scores
+  - [ ] Parameter adjustment (crossfade, tempo, key)
+  - [ ] Real-time transition preview
+- [ ] Lyrics video generator screen
+  - [ ] LRC file loader
+  - [ ] Template selection and styling
+  - [ ] Video rendering with MoviePy
+- [ ] Export functionality (audio + video)
+- [ ] `sow-app` command entry point
 
-- [ ] FastAPI REST endpoints
-- [ ] Next.js frontend
-- [ ] Playback controls
+### 📋 Phase 9: User App Enhancements (Future)
+- [ ] GUI version (PyQt or Electron)
+- [ ] Cloud rendering service (offload video generation)
+- [ ] Template marketplace (custom video templates)
+- [ ] Playlist scheduling (service planning)
+- [ ] Multi-output formats (720p, 1080p, 4K)
 
-### Phase 6: Deployment (1 week)
-
-- [ ] Production Docker setup
-- [ ] Performance tuning
-- [ ] Documentation
-
-**Total Timeline:** 9 weeks for MVP
+**Current Focus:** Phase 4 - Analysis Service implementation
 
 ---
 
