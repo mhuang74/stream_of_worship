@@ -38,6 +38,9 @@ video = [
 tui = [
     "textual>=0.44.0",
     "pydub>=0.25.0",
+    "pyaudio>=0.2.14",
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0",
 ]
 
 # Song analysis dependencies

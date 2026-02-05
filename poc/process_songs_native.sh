@@ -1,4 +1,0 @@
-python poc_analysis_allinone.py
-python analyze_sections.py
-python generate_transitions.py
-python generate_section_transitions.py
