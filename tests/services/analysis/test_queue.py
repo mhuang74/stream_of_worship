@@ -70,7 +70,7 @@ class TestJobQueue:
 
 
 class TestLRCJobProcessing:
-    """Test LRC job processing (stub behavior)."""
+    """Test LRC job processing."""
 
     @pytest.fixture
     async def queue(self):
@@ -81,26 +81,30 @@ class TestLRCJobProcessing:
             q.stop()
 
     @pytest.mark.asyncio
-    async def test_lrc_job_fails_with_not_implemented(self, queue):
-        """Test LRC job fails with not implemented error."""
+    async def test_lrc_job_uses_cache(self, queue):
+        """Test LRC job returns cached result when available."""
         request = LrcJobRequest(
             audio_url="s3://bucket/hash/audio.mp3",
-            content_hash="abc123",
+            content_hash="abc123def456",
             lyrics_text="Line 1\nLine 2",
         )
 
-        job = await queue.submit(JobType.LRC, request)
+        # Pre-populate cache
+        queue.cache_manager.save_lrc_result(
+            request.content_hash,
+            {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 2},
+        )
 
-        # Process the job directly
+        job = await queue.submit(JobType.LRC, request)
         await queue._process_lrc_job(job)
 
-        assert job.status == JobStatus.FAILED
-        assert "not yet implemented" in job.error_message
-        assert job.stage == "not_implemented"
+        assert job.status == JobStatus.COMPLETED
+        assert job.stage == "cached"
+        assert job.result.line_count == 2
 
     @pytest.mark.asyncio
     async def test_lrc_job_with_invalid_request(self, queue):
-        """Test LRC job with invalid request type."""
+        """Test LRC job with invalid request type fails gracefully."""
         # Submit as analyze but try to process as LRC
         request = AnalyzeJobRequest(
             audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123"
@@ -115,9 +119,9 @@ class TestLRCJobProcessing:
 
         await queue._process_lrc_job(job)
 
-        # LRC job should fail with not implemented regardless of request type
+        # LRC job should fail with invalid request type error
         assert job.status == JobStatus.FAILED
-        assert "not yet implemented" in job.error_message
+        assert "Invalid request type" in job.error_message
 
 
 class TestJobQueueConcurrency:

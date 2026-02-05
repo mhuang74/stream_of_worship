@@ -18,8 +18,6 @@ from ..models import (
 )
 from ..storage.cache import CacheManager
 from ..storage.r2 import R2Client
-from .lrc import LRCWorkerNotImplementedError, generate_lrc
-
 # Optional imports for heavy dependencies
 try:
     from .analyzer import analyze_audio
@@ -27,6 +25,13 @@ try:
 except ImportError:
     analyze_audio = None
     separate_stems = None
+
+# Optional LRC imports - require whisper and openai
+try:
+    from .lrc import LRCWorkerError, generate_lrc
+except ImportError:
+    LRCWorkerError = Exception
+    generate_lrc = None
 
 
 @dataclass
@@ -266,8 +271,8 @@ class JobQueue:
     async def _process_lrc_job(self, job: Job) -> None:
         """Process an LRC generation job.
 
-        Phase 4 stub: immediately marks job as failed. The real worker
-        (workers/lrc.py) is implemented in Phase 6.
+        Downloads audio from R2, optionally uses vocals stem for cleaner
+        transcription, runs Whisper + LLM alignment, uploads LRC to R2.
 
         Args:
             job: Job to process
@@ -275,24 +280,103 @@ class JobQueue:
         job.status = JobStatus.PROCESSING
         job.updated_at = datetime.now(timezone.utc)
         job.stage = "starting"
+        job.progress = 0.1
+
+        request = job.request
+        if not isinstance(request, LrcJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for LRC job"
+            job.updated_at = datetime.now(timezone.utc)
+            return
+
+        # Check if LRC dependencies are available
+        if generate_lrc is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "LRC dependencies not available (whisper, openai)"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            return
 
         try:
-            # Try to call the stub - it will raise
-            request = job.request
-            if isinstance(request, LrcJobRequest):
-                # This will raise LRCWorkerNotImplementedError
-                await generate_lrc(
-                    Path("/tmp/audio.mp3"), request.lyrics_text, request.options
-                )
-            else:
-                raise LRCWorkerNotImplementedError(
-                    "LRC worker not yet implemented (Phase 6)"
+            # Check cache first (unless force=True)
+            if not request.options.force:
+                cached = self.cache_manager.get_lrc_result(request.content_hash)
+                if cached:
+                    job.result = JobResult(
+                        lrc_url=cached.get("lrc_url"),
+                        line_count=cached.get("line_count"),
+                    )
+                    job.status = JobStatus.COMPLETED
+                    job.progress = 1.0
+                    job.stage = "cached"
+                    job.updated_at = datetime.now(timezone.utc)
+                    return
+
+            # Initialize R2 if not done
+            if not self.r2_client and settings.R2_ENDPOINT_URL:
+                self.initialize_r2(settings.R2_BUCKET, settings.R2_ENDPOINT_URL)
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                hash_prefix = request.content_hash[:12]
+
+                # Download audio from R2
+                job.stage = "downloading"
+                job.progress = 0.2
+                job.updated_at = datetime.now(timezone.utc)
+
+                audio_path = temp_path / "audio.mp3"
+                if self.r2_client:
+                    await self.r2_client.download_audio(request.audio_url, audio_path)
+
+                # Check if vocals stem exists and should be used
+                transcription_path = audio_path
+                if request.options.use_vocals_stem and self.r2_client:
+                    vocals_url = f"s3://{settings.R2_BUCKET}/{hash_prefix}/stems/vocals.wav"
+                    if await self.r2_client.check_exists(vocals_url):
+                        vocals_path = temp_path / "vocals.wav"
+                        await self.r2_client.download_audio(vocals_url, vocals_path)
+                        transcription_path = vocals_path
+                        job.stage = "using_vocals_stem"
+
+                # Run Whisper transcription
+                job.stage = "transcribing"
+                job.progress = 0.4
+                job.updated_at = datetime.now(timezone.utc)
+
+                lrc_path = temp_path / "lyrics.lrc"
+                lrc_path, line_count = await generate_lrc(
+                    transcription_path,
+                    request.lyrics_text,
+                    request.options,
+                    output_path=lrc_path,
                 )
 
-        except LRCWorkerNotImplementedError as e:
+                job.stage = "uploading"
+                job.progress = 0.8
+                job.updated_at = datetime.now(timezone.utc)
+
+                # Upload LRC to R2
+                lrc_url = None
+                if self.r2_client:
+                    lrc_url = await self.r2_client.upload_lrc(hash_prefix, lrc_path)
+
+                # Save to cache
+                cache_result = {"lrc_url": lrc_url, "line_count": line_count}
+                self.cache_manager.save_lrc_result(request.content_hash, cache_result)
+
+                # Set job result
+                job.result = JobResult(lrc_url=lrc_url, line_count=line_count)
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+
+        except LRCWorkerError as e:
             job.status = JobStatus.FAILED
             job.error_message = str(e)
-            job.stage = "not_implemented"
+            job.stage = "lrc_error"
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error_message = f"Unexpected error: {e}"

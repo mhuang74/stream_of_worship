@@ -9,16 +9,20 @@ except ImportError:
     analyze_audio = None
     separate_stems = None
 
-from .lrc import generate_lrc, LRCWorkerNotImplementedError
-from .queue import JobQueue, Job, JobStatus, JobType
+# Optional LRC imports - require whisper and openai dependencies
+try:
+    from .lrc import generate_lrc, LRCWorkerError
+except ImportError:
+    generate_lrc = None
+    LRCWorkerError = None
+
+from .queue import JobQueue, Job
 
 __all__ = [
     "analyze_audio",
     "separate_stems",
     "generate_lrc",
-    "LRCWorkerNotImplementedError",
+    "LRCWorkerError",
     "JobQueue",
     "Job",
-    "JobStatus",
-    "JobType",
 ]

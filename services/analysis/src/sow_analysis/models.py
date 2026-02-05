@@ -43,6 +43,10 @@ class LrcOptions(BaseModel):
     """Options for LRC generation jobs."""
 
     whisper_model: str = "large-v3"
+    llm_model: str = "openai/gpt-4o-mini"  # OpenRouter model path
+    use_vocals_stem: bool = True  # Prefer vocals stem for cleaner transcription
+    language: str = "zh"  # Whisper language hint
+    force: bool = False  # Re-generate even if cached
 
 
 class LrcJobRequest(BaseModel):

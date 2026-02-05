@@ -26,5 +26,14 @@ class Settings(BaseSettings):
     DEMUCS_MODEL: str = "htdemucs"
     DEMUCS_DEVICE: str = "cpu"  # "cuda" or "cpu"
 
+    # LLM Configuration (OpenAI-compatible API for LRC alignment)
+    # Supports OpenRouter, nano-gpt.com, synthetic.new, or OpenAI direct
+    SOW_LLM_API_KEY: str = ""
+    SOW_LLM_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+    # Whisper Configuration
+    WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
+    WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
+
 
 settings = Settings()
