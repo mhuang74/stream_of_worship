@@ -35,10 +35,10 @@ from stream_of_worship.core.catalog import Song, CatalogIndex
 
 
 # Configuration
-POC_RESULTS_PATH = Path("poc_output_allinone/poc_full_results.json")
+POC_RESULTS_PATH = Path("poc/output_allinone/poc_full_results.json")
 LYRICS_SOURCE_PATH = Path("data/lyrics/songs")
-AUDIO_SOURCE_PATH = Path("poc_audio")
-STEMS_SOURCE_PATH = Path("stems_output")
+AUDIO_SOURCE_PATH = Path("poc/audio")
+STEMS_SOURCE_PATH = Path("poc/output_allinone/stems")
 
 # Song ID counter (will be incremented during migration)
 # Songs that were already migrated should use their existing IDs

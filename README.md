@@ -209,7 +209,7 @@ The project includes an **experimental deep learning approach** using the `allin
 
 ```bash
 # Build the allinone Docker image using the separate docker-compose file
-docker compose -f docker-compose.allinone.yml build
+docker compose -f docker/docker-compose.allinone.yml build
 
 # This will take 10-20 minutes as it:
 # - Installs PyTorch (CPU-only for x86_64, standard for ARM64/M-series)
@@ -226,14 +226,14 @@ docker compose -f docker-compose.allinone.yml build
 
 ```bash
 # Run the POC analysis using all-in-one deep learning models
-docker compose -f docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
+docker compose -f docker/docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
 ```
 
 **What happens:**
 1. Docker starts container from allinone image
-2. Mounts `poc_audio/` (input) and `poc_output_allinone/` (output)
+2. Mounts `poc/audio/` (input) and `poc/output_allinone/` (output)
 3. Runs deep learning analysis with all-in-one models
-4. Saves results to `poc_output_allinone/`
+4. Saves results to `poc/output_allinone/`
 5. Container automatically removed after completion
 
 **Expected output:**
@@ -348,9 +348,9 @@ ls -lh poc_output_allinone/
 
 ```bash
 # Solution: Stop existing Jupyter instance or change port
-docker-compose down
-# Edit docker-compose.yml: Change "8888:8888" to "8889:8888"
-docker-compose up
+docker compose -f docker/docker-compose.yml down
+# Edit docker/docker-compose.yml: Change "8888:8888" to "8889:8888"
+docker compose -f docker/docker-compose.yml up
 ```
 
 ### Audio Issues
@@ -404,29 +404,32 @@ peaks = librosa.util.peak_pick(
 
 ```
 stream_of_worship/
-├── docker-compose.yml          # Docker service definitions
-├── Dockerfile                  # Container image
-├── pyproject.toml             # Python dependencies (Poetry)
+├── docker/                    # Docker infrastructure
+│   ├── docker-compose.yml     # Librosa service definitions
+│   ├── docker-compose.allinone.yml  # Deep learning environment
+│   ├── Dockerfile             # Librosa container image
+│   └── Dockerfile.allinone    # All-In-One container image
+├── pyproject.toml             # Python dependencies
 ├── README.md                  # This file
 ├── .gitignore                 # Git exclusions
 │
 ├── specs/                     # Design documents
 │   └── worship-music-transition-system-design.md
 │
-├── poc/                       # POC scripts
-│   ├── __init__.py            # Package marker
-│   ├── poc_analysis.py        # Standalone analysis script
-│   ├── reproduce_error.py     # Debugging script
-│   └── README.md              # POC script documentation
+├── poc/                       # All proof-of-concept work
+│   ├── poc_analysis.py        # Librosa analysis script
+│   ├── poc_analysis_allinone.py  # Deep learning analysis
+│   ├── README.md              # POC documentation
+│   ├── audio/                 # Input audio files
+│   ├── output/                # Librosa analysis results
+│   ├── output_allinone/       # All-In-One analysis results
+│   ├── notebooks/             # Jupyter notebooks
+│   └── transition_builder_v2/ # Legacy TUI (archived)
 │
-├── notebooks/                 # Jupyter notebooks
-│   └── 01_POC_Analysis.ipynb  # Interactive POC analysis
+├── src/                       # Production package (src layout)
+│   └── stream_of_worship/
 │
-├── poc_audio/                 # Test audio files (add 3-5 songs here)
-│   └── .gitkeep
-│
-└── poc_output/                # Generated outputs
-    └── .gitkeep
+└── scripts/                   # Admin / bridge scripts
 ```
 
 ---

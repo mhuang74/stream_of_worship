@@ -1,16 +1,16 @@
 services:
   allinone:
     build:
-      context: .
-      dockerfile: Dockerfile.allinone
+      context: ..
+      dockerfile: docker/Dockerfile.allinone
     image: allinone:latest
     container_name: allinone_container
     volumes:
       # Mount current directory for scripts
-      - ./:/workspace
+      - ..:/workspace
       # Mount audio directories
-      - ./poc_audio:/workspace/audio_input
-      - ./poc_output_allinone:/workspace/audio_output
+      - ../poc/audio:/workspace/audio_input
+      - ../poc/output_allinone:/workspace/audio_output
       # Mount cache directory to persist model downloads
       - ~/.cache:/root/.cache
     environment:

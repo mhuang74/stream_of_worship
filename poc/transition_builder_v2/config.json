@@ -1,0 +1,12 @@
+{
+  "audio_folder": "../audio",
+  "output_folder": "../../output_transitions",
+  "output_songs_folder": "../../output_songs",
+  "analysis_json": "../output_allinone/poc_full_results.json",
+  "stems_folder": "../output_allinone/stems",
+  "default_transition_type": "gap",
+  "max_history_size": 50,
+  "auto_play_on_generate": true,
+  "session_logging": true,
+  "error_logging": true
+}

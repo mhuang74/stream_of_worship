@@ -21,7 +21,7 @@ class Config:
     output_folder: Path = field(default_factory=lambda: get_user_data_dir() / "output_transitions")
     output_songs_folder: Path = field(default_factory=lambda: get_user_data_dir() / "output_songs")
     stems_folder: Path = field(default_factory=lambda: Path("stems_output"))
-    analysis_json: Path = field(default_factory=lambda: Path("poc_output_allinone/poc_full_results.json"))
+    analysis_json: Path = field(default_factory=lambda: Path("poc/output_allinone/poc_full_results.json"))
     lyrics_folder: Path = field(default_factory=lambda: Path("data/lyrics/songs"))
 
     # TUI Settings
