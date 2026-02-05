@@ -4,6 +4,7 @@ Provides CLI commands for downloading audio from YouTube, listing
 recordings, and viewing recording details.
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -11,17 +12,58 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording
+from stream_of_worship.admin.services.analysis import (
+    AnalysisClient,
+    AnalysisServiceError,
+    JobInfo,
+)
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
 from stream_of_worship.admin.services.r2 import R2Client
 from stream_of_worship.admin.services.youtube import YouTubeDownloader
 
 console = Console()
 app = typer.Typer(help="Audio recording operations")
+
+
+def _format_duration(seconds: Optional[float]) -> str:
+    """Format duration as MM:SS.
+
+    Args:
+        seconds: Duration in seconds
+
+    Returns:
+        Formatted string like "3:45"
+    """
+    if seconds is None:
+        return "--:--"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{minutes}:{secs:02d}"
+
+
+def _colorize_status(status: str) -> str:
+    """Get Rich markup for status.
+
+    Args:
+        status: Status string
+
+    Returns:
+        Rich markup string
+    """
+    if status == "completed":
+        return f"[green]{status}[/green]"
+    elif status == "processing":
+        return f"[yellow]{status}[/yellow]"
+    elif status == "failed":
+        return f"[red]{status}[/red]"
+    else:
+        return f"[dim]{status}[/dim]"
 
 
 @app.command("download")
@@ -300,3 +342,329 @@ def show_recording(
         title=f"Recording: {recording.hash_prefix}",
         border_style="green",
     ))
+
+
+@app.command("analyze")
+def analyze_recording(
+    identifier: str = typer.Argument(..., help="Song ID or hash prefix to analyze"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
+    no_stems: bool = typer.Option(
+        False, "--no-stems", help="Skip stem separation"
+    ),
+    wait: bool = typer.Option(
+        False, "--wait", "-w", help="Wait for analysis to complete"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Submit a recording for analysis.
+
+    Resolves the identifier as a song_id or hash_prefix, then submits
+the recording to the analysis service for tempo/key/beats/sections detection.
+    """
+    # Standard config/db boilerplate
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Resolve identifier -> recording
+    recording: Optional[Recording] = None
+
+    # Try song_id first
+    song = db_client.get_song(identifier)
+    if song:
+        recording = db_client.get_recording_by_song_id(song.id)
+        if not recording:
+            console.print(f"[red]Song {identifier} has no recording.[/red]")
+            raise typer.Exit(1)
+    else:
+        # Try hash_prefix
+        recording = db_client.get_recording_by_hash(identifier)
+
+    if not recording:
+        console.print(f"[red]Recording not found: {identifier}[/red]")
+        raise typer.Exit(1)
+
+    # Validate r2_audio_url exists
+    if not recording.r2_audio_url:
+        console.print(
+            f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Check if already analyzed
+    if recording.analysis_status == "completed" and not force:
+        console.print(
+            f"[yellow]Recording {recording.hash_prefix} is already analyzed. "
+            f"Use --force to re-analyze.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    # Check if already processing
+    if recording.analysis_status == "processing" and recording.analysis_job_id:
+        if not wait:
+            console.print(
+                f"[yellow]Analysis already in progress for "
+                f"{recording.hash_prefix} (job: {recording.analysis_job_id})[/yellow]"
+            )
+            raise typer.Exit(0)
+        # With --wait, we'll poll the existing job
+        job_id = recording.analysis_job_id
+        skip_submission = True
+    else:
+        skip_submission = False
+
+    # Create analysis client
+    try:
+        client = AnalysisClient(config.analysis_url)
+    except ValueError as e:
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Submit analysis (unless we're polling an existing job)
+    if not skip_submission:
+        try:
+            job = client.submit_analysis(
+                audio_url=recording.r2_audio_url,
+                content_hash=recording.content_hash,
+                generate_stems=not no_stems,
+                force=force,
+            )
+        except AnalysisServiceError as e:
+            if e.status_code == 401:
+                console.print(f"[red]Authentication failed: {e}[/red]")
+            else:
+                console.print(f"[red]Failed to submit analysis: {e}[/red]")
+            raise typer.Exit(1)
+
+        job_id = job.job_id
+
+        # Update DB
+        db_client.update_recording_status(
+            hash_prefix=recording.hash_prefix,
+            analysis_status="processing",
+            analysis_job_id=job_id,
+        )
+
+        console.print(f"[green]Analysis submitted (job: {job_id})[/green]")
+    else:
+        console.print(f"[cyan]Polling existing job: {job_id}[/cyan]")
+
+    # Wait mode with progress
+    if wait:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("{task.fields[stage]}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "Analyzing...", total=100, stage="", completed=0
+            )
+
+            def update_progress(job_info: JobInfo) -> None:
+                pct = int(job_info.progress * 100)
+                progress.update(
+                    task, completed=pct, stage=f"[{job_info.stage}]"
+                )
+
+            try:
+                final_job = client.wait_for_completion(
+                    job_id,
+                    poll_interval=3.0,
+                    timeout=600.0,
+                    callback=update_progress,
+                )
+            except AnalysisServiceError as e:
+                console.print(f"[red]{e}[/red]")
+                db_client.update_recording_status(
+                    hash_prefix=recording.hash_prefix,
+                    analysis_status="failed",
+                )
+                raise typer.Exit(1)
+
+        if final_job.status == "failed":
+            error_msg = final_job.error_message or "Unknown error"
+            console.print(f"[red]Analysis failed: {error_msg}[/red]")
+            db_client.update_recording_status(
+                hash_prefix=recording.hash_prefix,
+                analysis_status="failed",
+            )
+            raise typer.Exit(1)
+
+        # Store results
+        if final_job.result:
+            result = final_job.result
+            db_client.update_recording_analysis(
+                hash_prefix=recording.hash_prefix,
+                duration_seconds=result.duration_seconds,
+                tempo_bpm=result.tempo_bpm,
+                musical_key=result.musical_key,
+                musical_mode=result.musical_mode,
+                key_confidence=result.key_confidence,
+                loudness_db=result.loudness_db,
+                beats=json.dumps(result.beats) if result.beats else None,
+                downbeats=json.dumps(result.downbeats)
+                if result.downbeats
+                else None,
+                sections=json.dumps(result.sections) if result.sections else None,
+                embeddings_shape=json.dumps(result.embeddings_shape)
+                if result.embeddings_shape
+                else None,
+                r2_stems_url=result.stems_url,
+            )
+
+        console.print(f"[green]Analysis completed for {recording.hash_prefix}[/green]")
+        if final_job.result:
+            if final_job.result.tempo_bpm:
+                console.print(f"  Tempo: {final_job.result.tempo_bpm:.1f} BPM")
+            if final_job.result.musical_key:
+                console.print(f"  Key: {final_job.result.musical_key}")
+            if final_job.result.duration_seconds:
+                console.print(
+                    f"  Duration: {_format_duration(final_job.result.duration_seconds)}"
+                )
+
+
+@app.command("status")
+def check_status(
+    job_id: Optional[str] = typer.Argument(None, help="Job ID to check"),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Check analysis status.
+
+    With JOB_ID: query the service for that job's status.
+    Without: list all recordings with pending/processing/failed status.
+    """
+    # Standard config/db boilerplate
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Mode A: Query specific job
+    if job_id:
+        try:
+            client = AnalysisClient(config.analysis_url)
+        except ValueError as e:
+            console.print(f"[red]Analysis service not configured: {e}[/red]")
+            raise typer.Exit(1)
+
+        try:
+            job = client.get_job(job_id)
+        except AnalysisServiceError as e:
+            if e.status_code == 404:
+                console.print(f"[red]Job not found: {job_id}[/red]")
+            elif e.status_code == 401:
+                console.print(f"[red]Authentication failed: {e}[/red]")
+            else:
+                console.print(f"[red]Failed to get job status: {e}[/red]")
+            raise typer.Exit(1)
+
+        # Display job info in a panel
+        lines = [
+            f"[cyan]Job ID:[/cyan] {job.job_id}",
+            f"[cyan]Type:[/cyan] {job.job_type}",
+            f"[cyan]Status:[/cyan] {_colorize_status(job.status)}",
+        ]
+
+        if job.stage:
+            lines.append(f"[cyan]Stage:[/cyan] {job.stage}")
+
+        lines.append(f"[cyan]Progress:[/cyan] {int(job.progress * 100)}%")
+
+        if job.created_at:
+            lines.append(f"[cyan]Created:[/cyan] {job.created_at}")
+        if job.updated_at:
+            lines.append(f"[cyan]Updated:[/cyan] {job.updated_at}")
+
+        if job.status == "failed" and job.error_message:
+            lines.append("")
+            lines.append(f"[red]Error: {job.error_message}[/red]")
+
+        if job.result and job.status == "completed":
+            lines.append("")
+            lines.append("[bold]Results:[/bold]")
+            if job.result.duration_seconds:
+                lines.append(
+                    f"  Duration: {_format_duration(job.result.duration_seconds)}"
+                )
+            if job.result.tempo_bpm:
+                lines.append(f"  Tempo: {job.result.tempo_bpm:.1f} BPM")
+            if job.result.musical_key:
+                lines.append(f"  Key: {job.result.musical_key}")
+            if job.result.musical_mode:
+                lines.append(f"  Mode: {job.result.musical_mode}")
+            if job.result.stems_url:
+                lines.append(f"  Stems: {job.result.stems_url}")
+
+        console.print(Panel.fit(
+            "\n".join(lines),
+            title=f"Job: {job.job_id}",
+            border_style="green" if job.status == "completed" else "yellow",
+        ))
+        return
+
+    # Mode B: List pending recordings
+    cursor = db_client.connection.cursor()
+    cursor.execute(
+        """
+        SELECT r.*, s.title as song_title
+        FROM recordings r
+        LEFT JOIN songs s ON r.song_id = s.id
+        WHERE r.analysis_status != 'completed' OR r.lrc_status != 'completed'
+        ORDER BY r.imported_at DESC
+        """
+    )
+
+    rows = cursor.fetchall()
+    if not rows:
+        console.print("[green]All recordings are fully processed.[/green]")
+        return
+
+    table = Table(title=f"Pending Recordings ({len(rows)} total)")
+    table.add_column("Hash Prefix", style="dim", no_wrap=True)
+    table.add_column("Song", style="cyan")
+    table.add_column("Analysis", style="magenta")
+    table.add_column("Analysis Job", style="dim")
+    table.add_column("LRC", style="blue")
+    table.add_column("LRC Job", style="dim")
+
+    for row in rows:
+        hash_prefix = row[1]
+        song_title = row[25] if row[25] else "-"
+        analysis_status = row[19]
+        analysis_job_id = row[20] or "-"
+        lrc_status = row[21]
+        lrc_job_id = row[22] or "-"
+
+        table.add_row(
+            hash_prefix,
+            song_title,
+            _colorize_status(analysis_status),
+            analysis_job_id[:16] + "..." if len(analysis_job_id) > 19 else analysis_job_id,
+            _colorize_status(lrc_status),
+            lrc_job_id[:16] + "..." if len(lrc_job_id) > 19 else lrc_job_id,
+        )
+
+    console.print(table)

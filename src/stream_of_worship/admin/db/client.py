@@ -493,6 +493,7 @@ class DatabaseClient:
         downbeats: Optional[str] = None,
         sections: Optional[str] = None,
         embeddings_shape: Optional[str] = None,
+        r2_stems_url: Optional[str] = None,
     ) -> None:
         """Update recording with analysis results.
 
@@ -508,6 +509,7 @@ class DatabaseClient:
             downbeats: JSON array of downbeat timestamps
             sections: JSON array of sections
             embeddings_shape: JSON array of dimensions
+            r2_stems_url: R2 URL for stems directory
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
@@ -524,6 +526,7 @@ class DatabaseClient:
                     downbeats = ?,
                     sections = ?,
                     embeddings_shape = ?,
+                    r2_stems_url = COALESCE(?, r2_stems_url),
                     analysis_status = 'completed',
                     updated_at = datetime('now')
                 WHERE hash_prefix = ?
@@ -542,6 +545,7 @@ class DatabaseClient:
                     downbeats,
                     sections,
                     embeddings_shape,
+                    r2_stems_url,
                     hash_prefix,
                 ),
             )

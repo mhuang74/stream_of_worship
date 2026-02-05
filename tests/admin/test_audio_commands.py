@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.main import app
+from stream_of_worship.admin.services.analysis import AnalysisServiceError, JobInfo
 
 runner = CliRunner()
 
@@ -590,3 +591,785 @@ class TestAudioShowCommand:
         assert result.exit_code == 0
         assert "ffffffffffff" in result.output
         assert "orphan.mp3" in result.output
+
+
+class TestAnalyzeCommand:
+    """Tests for 'audio analyze' command."""
+
+    @pytest.fixture
+    def setup(self, tmp_path):
+        """Create a temp database seeded with one song and recording."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        song = Song(
+            id="song_001",
+            title="測試歌曲",
+            source_url="https://example.com/1",
+            scraped_at=datetime.now().isoformat(),
+            composer="測試作曲家",
+        )
+        client.insert_song(song)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'[database]\npath = "{db_path}"\n')
+
+        return {"db_path": db_path, "config_path": config_path, "song": song}
+
+    def test_analyze_without_config(self):
+        """Fails cleanly when no config file exists."""
+        with patch("stream_of_worship.admin.config.get_config_path") as mock_path:
+            mock_path.side_effect = FileNotFoundError("No config")
+            result = runner.invoke(app, ["audio", "analyze", "abc123"])
+
+        assert result.exit_code == 1
+        assert "Config file not found" in result.output
+
+    def test_analyze_without_database(self, tmp_path):
+        """Fails when the database path does not exist."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+
+        result = runner.invoke(
+            app, ["audio", "analyze", "abc123", "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 1
+        assert "Database not found" in result.output
+
+    def test_analyze_recording_not_found_by_hash(self, setup):
+        """Error for nonexistent hash prefix."""
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "nonexistent123",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Recording not found" in result.output
+
+    def test_analyze_recording_not_found_by_song_id(self, setup):
+        """Error when song has no recording."""
+        # Song exists but has no recording
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "song_001",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "has no recording" in result.output
+
+    def test_analyze_no_r2_audio_url(self, setup):
+        """Error when recording lacks audio URL."""
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url=None,
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "has no audio URL" in result.output
+
+    def test_analyze_already_completed_no_force(self, setup):
+        """Exit 0 with message when already done."""
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="completed",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "already analyzed" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_already_completed_with_force(self, mock_client_cls, setup, monkeypatch):
+        """Re-submits with --force."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="completed",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+                "--force",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Analysis submitted" in result.output
+        mock_client.submit_analysis.assert_called_once()
+
+    def test_analyze_already_processing_no_wait(self, setup, monkeypatch):
+        """Exit 0 with existing job info."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="processing",
+            analysis_job_id="existing-job-123",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "already in progress" in result.output
+        assert "existing-job-123" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_already_processing_with_wait(self, mock_client_cls, setup, monkeypatch):
+        """Polls existing job."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="processing",
+            analysis_job_id="existing-job-123",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="existing-job-123",
+            status="completed",
+            job_type="analysis",
+            progress=1.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+                "--wait",
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_client.wait_for_completion.assert_called_once()
+
+    def test_analyze_missing_api_key(self, setup):
+        """Error when SOW_ANALYSIS_API_KEY not set."""
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not configured" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_service_unavailable(self, mock_client_cls, setup, monkeypatch):
+        """Error when service unreachable."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.side_effect = AnalysisServiceError(
+            "Cannot connect to analysis service"
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Failed to submit" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_fire_and_forget_success(self, mock_client_cls, setup, monkeypatch):
+        """Submits, updates DB to 'processing'."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-abc-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Analysis submitted" in result.output
+        assert "job-abc-123" in result.output
+
+        # Verify DB updated
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "processing"
+        assert updated.analysis_job_id == "job-abc-123"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_by_hash_prefix(self, mock_client_cls, setup, monkeypatch):
+        """Resolves by hash prefix."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_analysis.assert_called_once()
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_by_song_id(self, mock_client_cls, setup, monkeypatch):
+        """Resolves by song_id."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "song_001",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_analysis.assert_called_once()
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_wait_mode_completed(self, mock_client_cls, setup, monkeypatch):
+        """Polls, stores results to DB."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        from stream_of_worship.admin.services.analysis import AnalysisResult
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-123",
+            status="completed",
+            job_type="analysis",
+            progress=1.0,
+            result=AnalysisResult(
+                duration_seconds=245.5,
+                tempo_bpm=128.0,
+                musical_key="G",
+                musical_mode="major",
+                key_confidence=0.95,
+                loudness_db=-8.5,
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+                "--wait",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Analysis completed" in result.output
+
+        # Verify DB updated with results
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "completed"
+        assert updated.duration_seconds == 245.5
+        assert updated.tempo_bpm == 128.0
+        assert updated.musical_key == "G"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_wait_mode_failed(self, mock_client_cls, setup, monkeypatch):
+        """Updates DB to 'failed' on failure."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-123",
+            status="failed",
+            job_type="analysis",
+            progress=0.0,
+            error_message="Analysis pipeline error",
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+                "--wait",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Analysis failed" in result.output
+
+        # Verify DB updated to failed
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "failed"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_wait_mode_timeout(self, mock_client_cls, setup, monkeypatch):
+        """Error on poll timeout."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client.wait_for_completion.side_effect = AnalysisServiceError(
+            "Timed out waiting for job"
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+                "--wait",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Timed out" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_no_stems_flag(self, mock_client_cls, setup, monkeypatch):
+        """Passes generate_stems=False."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-123",
+            status="queued",
+            job_type="analysis",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "aaaaaaaaaaaa",
+                "--config", str(setup["config_path"]),
+                "--no-stems",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Verify generate_stems=False was passed
+        call_kwargs = mock_client.submit_analysis.call_args[1]
+        assert call_kwargs["generate_stems"] is False
+
+
+class TestStatusCommand:
+    """Tests for 'audio status' command."""
+
+    @pytest.fixture
+    def setup(self, tmp_path):
+        """Create a temp database seeded with one song and recording."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        song = Song(
+            id="song_001",
+            title="測試歌曲",
+            source_url="https://example.com/1",
+            scraped_at=datetime.now().isoformat(),
+        )
+        client.insert_song(song)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'[database]\npath = "{db_path}"\n')
+
+        return {"db_path": db_path, "config_path": config_path, "song": song}
+
+    def test_status_without_config(self):
+        """Fails cleanly when no config file exists."""
+        with patch("stream_of_worship.admin.config.get_config_path") as mock_path:
+            mock_path.side_effect = FileNotFoundError("No config")
+            result = runner.invoke(app, ["audio", "status"])
+
+        assert result.exit_code == 1
+        assert "Config file not found" in result.output
+
+    def test_status_without_database(self, tmp_path):
+        """Fails when the database path does not exist."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+
+        result = runner.invoke(
+            app, ["audio", "status", "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 1
+        assert "Database not found" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_status_with_job_id_success(self, mock_client_cls, setup, monkeypatch):
+        """Displays job in Rich Panel."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        mock_client = MagicMock()
+        mock_client.get_job.return_value = JobInfo(
+            job_id="job-abc-123",
+            status="completed",
+            job_type="analysis",
+            progress=1.0,
+            stage="complete",
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "status", "job-abc-123",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "job-abc-123" in result.output
+        assert "completed" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_status_with_job_id_not_found(self, mock_client_cls, setup, monkeypatch):
+        """Error 404 handling."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        mock_client = MagicMock()
+        mock_client.get_job.side_effect = AnalysisServiceError(
+            "Job not found", status_code=404
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "status", "nonexistent-job",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Job not found" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_status_with_job_id_missing_api_key(self, mock_client_cls, setup, monkeypatch):
+        """Error 401 handling."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        mock_client = MagicMock()
+        mock_client.get_job.side_effect = AnalysisServiceError(
+            "Authentication failed", status_code=401
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "status", "some-job",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Authentication failed" in result.output
+
+    def test_status_no_args_all_completed(self, setup):
+        """'All recordings processed' message."""
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="completed",
+            lrc_status="completed",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            ["audio", "status", "--config", str(setup["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        assert "All recordings are fully processed" in result.output
+
+    def test_status_no_args_pending(self, setup):
+        """Shows pending recordings table."""
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="pending",
+            lrc_status="pending",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            ["audio", "status", "--config", str(setup["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        assert "Pending Recordings" in result.output
+        assert "aaaaaaaaaaaa" in result.output
+
+    def test_status_empty_database(self, tmp_path):
+        """Empty DB handling."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'[database]\npath = "{db_path}"\n')
+
+        result = runner.invoke(
+            app,
+            ["audio", "status", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "All recordings are fully processed" in result.output
