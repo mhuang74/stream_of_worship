@@ -58,6 +58,11 @@ transcription = [
     "modelscope>=1.34.0"
 ]
 
+# Migration dependencies (scripts/migrate_song_library.py)
+migration = [
+    "pypinyin>=0.52.0",
+]
+
 # Test dependencies
 test = [
     "pytest>=7.4.0",
@@ -67,7 +72,7 @@ test = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,test,transcription]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription]",
 ]
 
 [project.scripts]
