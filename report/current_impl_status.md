@@ -10,9 +10,9 @@
 
 The Stream of Worship project consists of an Admin CLI for backend management and an Analysis Service microservice for audio processing. The project has completed the foundational infrastructure, catalog management, audio download pipeline, and the Analysis Service implementation.
 
-**Overall Progress:** 4 of 8 phases complete (~50%)
+**Overall Progress:** 5 of 8 phases complete (~62%)
 
-**Latest Milestone:** Phase 4 (Analysis Service) completed in commit `bdd01d3`
+**Latest Milestone:** Phase 5 (CLI ↔ Service Integration) completed in commit `cb96e17`
 
 ---
 
@@ -215,16 +215,36 @@ For GPU acceleration, ensure:
 
 ---
 
-### Phase 5: CLI-Service Integration ⏳ NOT STARTED
+### Phase 5: CLI ↔ Service Integration ✅ COMPLETE
 
-**Status:** Not yet implemented
+**Status:** Fully implemented and tested (commit `cb96e17`)
 
-**Planned Components:**
-- Analysis trigger commands
-- Progress reporting
-- Result retrieval
+**Components:**
+- AnalysisClient service (`src/stream_of_worship/admin/services/analysis.py`)
+  - HTTP client for FastAPI analysis service
+  - `AnalysisServiceError` exception with status_code support
+  - `AnalysisResult` dataclass with all analysis fields
+  - `JobInfo` dataclass for job status tracking
+  - Methods: `health_check()`, `submit_analysis()`, `get_job()`, `wait_for_completion()`
+- Audio commands integration (`src/stream_of_worship/admin/commands/audio.py`)
+  - `audio analyze` - Submit recording for analysis
+    - Resolves identifier as song_id or hash_prefix
+    - `--force` flag for re-analysis
+    - `--no-stems` to skip stem separation
+    - `--wait` with Rich progress display (spinner, bar, stage)
+    - Handles already-completed and already-processing states
+  - `audio status` - Check analysis status
+    - Query specific job by ID
+    - List pending recordings when no ID provided
+    - Color-coded status display
+- Database updates (`src/stream_of_worship/admin/db/client.py`)
+  - `update_recording_analysis()` with `r2_stems_url` parameter
+  - Status tracking for analysis and LRC jobs
 
-**Estimated Effort:** Medium
+**Tests:**
+- `tests/admin/test_analysis_client.py` - 28 tests
+- `tests/admin/test_audio_commands.py` - 27 tests (analyze/status commands)
+- **Total: 55 new tests**
 
 ---
 
@@ -274,7 +294,8 @@ sow_cli_admin/
 │   │       ├── scraper.py           # sop.org scraper
 │   │       ├── youtube.py           # yt-dlp wrapper
 │   │       ├── hasher.py            # SHA-256 hashing
-│   │       └── r2.py                # R2 storage client
+│   │       ├── r2.py                # R2 storage client
+│   │       └── analysis.py          # Analysis Service HTTP client (Phase 5)
 │   └── app/                          # 🎵 User App (PLANNED - Phase 8)
 │       └── [future TUI for transitions]
 │
@@ -345,9 +366,10 @@ sow_cli_admin/
 | Hasher Service | `tests/admin/services/test_hasher.py` | 10 | ✅ Complete |
 | R2 Client | `tests/admin/services/test_r2.py` | 10 | ✅ Complete |
 | Catalog Commands | `tests/admin/commands/test_catalog_commands.py` | 22 | ✅ Complete |
-| Audio Commands | `tests/admin/commands/test_audio_commands.py` | 24 | ✅ Complete |
+| Audio Commands | `tests/admin/commands/test_audio_commands.py` | 51 | ✅ Complete |
+| Analysis Client | `tests/admin/test_analysis_client.py` | 28 | ✅ Complete |
 
-**Admin CLI Total: ~141 tests**
+**Admin CLI Total: ~195 tests**
 
 ### Analysis Service Tests
 
@@ -362,7 +384,7 @@ sow_cli_admin/
 
 **Analysis Service Total: 54 tests**
 
-**Combined Total: ~195 tests (all passing)**
+**Combined Total: ~249 tests (all passing)**
 
 ---
 
@@ -416,22 +438,22 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 
 ## Next Steps / Pending Work
 
-### Immediate Priorities (Phase 5 - CLI ↔ Service Integration)
+### Immediate Priorities (Phase 6 - LRC Generation)
 
-1. **Analysis Commands**
-   - `audio analyze` - Submit analysis jobs to the service
-   - `audio status` - Poll job status with progress indicators
-   - `audio results` - Fetch and display analysis results
+1. **LRC Worker Implementation**
+   - Implement `workers/lrc.py` (currently a stub)
+   - Whisper transcription for word-level timestamps
+   - LLM-based lyrics alignment
 
-2. **Service Communication**
-   - HTTP client for Analysis Service API
-   - Retry logic and error handling
-   - Progress tracking and status updates
+2. **LRC Commands**
+   - `lyrics generate` - Submit LRC generation jobs
+   - `lyrics show` - Display LRC files
+   - `lyrics validate` - Check alignment quality
 
 3. **Integration Testing**
-   - End-to-end tests with local Analysis Service
-   - Docker Compose setup for integration tests
-   - Mock service for unit tests
+   - Whisper model loading tests
+   - LLM alignment accuracy tests
+   - End-to-end LRC generation tests
 
 ### Upcoming Phases
 
@@ -533,6 +555,7 @@ test = [
 - Phase 2: `1685d69` - Catalog Management
 - Phase 3: `a2690b2` - Audio Download
 - Phase 4: `bdd01d3` - Analysis Service
+- Phase 5: `cb96e17` - CLI ↔ Service Integration
 
 ---
 
