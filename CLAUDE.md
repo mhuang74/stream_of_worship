@@ -14,16 +14,17 @@ The end goal is to:
 ## Architecture & Structure
 
 - **`poc/`**: Core analysis scripts and utilities (Phase 1).
-  - `poc_analysis.py`: Main analysis script using Librosa (Signal Processing).
-  - `poc_analysis_allinone.py`: Advanced analysis using `allin1` (Deep Learning).
-  - `lyrics_scraper.py`: Utility to scrape Chinese lyrics from sop.org.
-- **`poc/transition_builder_v2/`**: Text-based User Interface (TUI) for interactive transition generation (archived).
-  - Built with the [Textual](https://textual.textualize.io/) framework.
-  - `app/`: Application source code (`main.py`, `services/`, `screens/`, `models/`).
-  - `config.json`: Configuration for paths and settings.
+  * **`poc/audio/`**: Input directory for source audio files (MP3/FLAC).
+  * **`poc/output/`**: Output directory for analysis results (JSON, CSV, PNG) 
+  * `poc_analysis.py`: Analysis script using Librosa (Signal Processing). Deprecated.
+  * `poc_analysis_allinone.py`: Main analysis script using `allin1` (Deep Learning).
+  * `lyrics_scraper.py`: Utility to scrape Chinese lyrics from sop.org.
+  * **`poc/transition_builder_v2/`**: Text-based User Interface (TUI) for interactive transition generation (archived).
+    * POC TUI built with the [Textual](https://textual.textualize.io/) framework.
+    * `app/`: Application source code (`main.py`, `services/`, `screens/`, `models/`).
+    * `config.json`: Configuration for paths and settings.
 - **`data/`**: Data storage (e.g., `data/lyrics/`).
-- **`poc/audio/`**: Input directory for source audio files (MP3/FLAC).
-- **`poc/output/`**: Output directory for analysis results (JSON, CSV, PNG) and generated transitions.
+and generated transitions.
 - **`specs/`**: Design specifications and documentation.
 - **Docker** (`docker/`): Containerized environments for reproducible analysis.
   - `docker/docker-compose.yml`: Standard environment (Librosa).
@@ -32,10 +33,10 @@ The end goal is to:
 
 ### Running Analysis (POC)
 ```bash
-# Standard analysis (Librosa) - Fast, lightweight
+# [Deprecated] Standard analysis (Librosa) - Fast, lightweight
 docker compose -f docker/docker-compose.yml run --rm librosa python poc/poc_analysis.py
 
-# Advanced analysis (All-In-One) - Slower, more accurate
+# Main song analysis (All-In-One) - Slower, more accurate
 docker compose -f docker/docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
 ```
 
