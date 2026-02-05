@@ -8,11 +8,11 @@
 
 ## Executive Summary
 
-The Stream of Worship project consists of an Admin CLI for backend management and an Analysis Service microservice for audio processing. The project has completed the foundational infrastructure, catalog management, audio download pipeline, and the Analysis Service implementation.
+The Stream of Worship project consists of an Admin CLI for backend management and an Analysis Service microservice for audio processing. The project has completed the foundational infrastructure, catalog management, audio download pipeline, Analysis Service implementation, CLI-Service integration, and LRC generation.
 
-**Overall Progress:** 5 of 8 phases complete (~62%)
+**Overall Progress:** 6 of 8 phases complete (~75%)
 
-**Latest Milestone:** Phase 5 (CLI ↔ Service Integration) completed in commit `cb96e17`
+**Latest Milestone:** Phase 6 (LRC Generation) completed in commit `f858da4`
 
 ---
 
@@ -248,16 +248,67 @@ For GPU acceleration, ensure:
 
 ---
 
-### Phase 6: LRC Generation ⏳ NOT STARTED
+### Phase 6: LRC Generation ✅ COMPLETE
 
-**Status:** Not yet implemented
+**Status:** Fully implemented and tested (commit `f858da4`)
 
-**Planned Components:**
-- LRC sync service integration
-- Lyrics formatting
-- Timing alignment
+**Components:**
+- LRC worker (`services/analysis/src/sow_analysis/workers/lrc.py`)
+  - Whisper transcription with word-level timestamps
+  - OpenAI-compatible LLM alignment (OpenRouter/nano-gpt/synthetic.new/OpenAI)
+  - Retry logic with configurable max attempts
+  - Error handling: `LRCWorkerError`, `LLMConfigError`, `WhisperTranscriptionError`, `LLMAlignmentError`
+  - Pipeline: Whisper → LLM alignment → LRC file generation
+- Extended models (`services/analysis/src/sow_analysis/models.py`)
+  - `LrcOptions` with `llm_model`, `use_vocals_stem`, `language`, `force` fields
+  - Support for custom LLM providers via `SOW_LLM_BASE_URL`
+- Configuration updates (`services/analysis/src/sow_analysis/config.py`)
+  - `SOW_LLM_API_KEY` - API key for OpenAI-compatible services
+  - `SOW_LLM_BASE_URL` - Base URL (default: OpenRouter)
+  - `WHISPER_DEVICE` - CPU or CUDA device selection
+  - `WHISPER_CACHE_DIR` - Model cache directory
+- Queue integration (`services/analysis/src/sow_analysis/workers/queue.py`)
+  - Full `_process_lrc_job()` implementation
+  - Downloads audio from R2
+  - Optional vocals stem usage for cleaner transcription
+  - Content-hash based caching (skip if cached unless `force=True`)
+  - Uploads generated LRC files to R2
+- Docker updates (`services/analysis/docker-compose.yml`)
+  - Added `SOW_LLM_API_KEY`, `SOW_LLM_BASE_URL`, `WHISPER_DEVICE` environment variables
 
-**Estimated Effort:** Medium
+**LRC Generation Pipeline:**
+```
+HTTP Request → Download Audio → (Optional) Use Vocals Stem →
+Whisper Transcription → LLM Alignment → Generate LRC →
+Upload to R2 → Cache Result
+```
+
+**Dependencies Added:**
+- `openai-whisper>=20231117` - Audio transcription with word timestamps
+- `openai>=1.10.0` - OpenAI client (works with OpenRouter and other providers)
+
+**Tests:**
+- `tests/services/analysis/test_lrc_worker.py` - 31 comprehensive tests
+  - LRC line formatting (5 tests)
+  - Whisper word handling (1 test)
+  - Prompt building (2 tests)
+  - LLM response parsing (7 tests)
+  - LRC file writing (3 tests)
+  - Whisper transcription (2 tests)
+  - LLM alignment (3 tests)
+  - Full pipeline integration (1 test)
+  - Queue processing (5 tests)
+  - LrcOptions model (2 tests)
+- Updated `tests/services/analysis/test_queue.py` - 2 tests updated for new behavior
+
+**Key Features:**
+- Multi-provider LLM support (OpenRouter, nano-gpt.com, synthetic.new, OpenAI)
+- Automatic vocals stem detection and usage
+- Word-level timestamp precision from Whisper
+- Intelligent lyrics alignment preserving original text
+- Markdown code block stripping from LLM responses
+- Configurable retry logic for API failures
+- Content-hash based result caching
 
 ---
 
@@ -310,7 +361,7 @@ sow_cli_admin/
 │   │   ├── workers/
 │   │   │   ├── analyzer.py          # allin1 worker
 │   │   │   ├── separator.py         # Demucs worker
-│   │   │   ├── lrc.py               # LRC stub (Phase 6)
+│   │   │   ├── lrc.py               # LRC worker (Whisper + LLM)
 │   │   │   └── queue.py             # Job queue
 │   │   └── storage/
 │   │       ├── r2.py                # Async R2 client
@@ -337,7 +388,8 @@ sow_cli_admin/
 │       ├── test_queue.py
 │       ├── test_r2.py
 │       ├── test_cache.py
-│       └── test_api.py
+│       ├── test_api.py
+│       └── test_lrc_worker.py
 │
 ├── poc/                              # 🧪 POC Scripts (ARCHIVED)
 │   ├── docker/
@@ -369,7 +421,7 @@ sow_cli_admin/
 | Audio Commands | `tests/admin/commands/test_audio_commands.py` | 51 | ✅ Complete |
 | Analysis Client | `tests/admin/test_analysis_client.py` | 28 | ✅ Complete |
 
-**Admin CLI Total: ~195 tests**
+**Admin CLI Total: 210 tests**
 
 ### Analysis Service Tests
 
@@ -381,10 +433,11 @@ sow_cli_admin/
 | R2 Client | `tests/services/analysis/test_r2.py` | ~8 | ✅ Complete |
 | Cache | `tests/services/analysis/test_cache.py` | ~6 | ✅ Complete |
 | API Routes | `tests/services/analysis/test_api.py` | ~5 | ✅ Complete |
+| LRC Worker | `tests/services/analysis/test_lrc_worker.py` | 31 | ✅ Complete |
 
-**Analysis Service Total: 54 tests**
+**Analysis Service Total: 85 tests**
 
-**Combined Total: ~249 tests (all passing)**
+**Combined Total: 295 tests (all passing)**
 
 ---
 
@@ -426,6 +479,7 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 | Web Framework | FastAPI + uvicorn |
 | Audio Analysis | allin1 (deep learning) |
 | Stem Separation | Demucs |
+| LRC Generation | Whisper + OpenAI-compatible LLM |
 | Deep Learning | PyTorch 2.4.1 (platform-conditional) |
 | Attention | NATTEN 0.17.1 (compiled from source) |
 | Cloud Storage | boto3 (async with run_in_executor) |
@@ -438,30 +492,24 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 
 ## Next Steps / Pending Work
 
-### Immediate Priorities (Phase 6 - LRC Generation)
+### Immediate Priorities (Phase 7 - Turso Sync)
 
-1. **LRC Worker Implementation**
-   - Implement `workers/lrc.py` (currently a stub)
-   - Whisper transcription for word-level timestamps
-   - LLM-based lyrics alignment
+1. **Sync Protocol Implementation**
+   - Local SQLite to Turso cloud synchronization
+   - Conflict resolution strategy
+   - Incremental vs full sync
 
-2. **LRC Commands**
-   - `lyrics generate` - Submit LRC generation jobs
-   - `lyrics show` - Display LRC files
-   - `lyrics validate` - Check alignment quality
+2. **Sync Commands**
+   - `db sync` - Trigger synchronization
+   - `db sync-status` - Check sync state
+   - `db sync-reset` - Reset sync metadata
 
-3. **Integration Testing**
-   - Whisper model loading tests
-   - LLM alignment accuracy tests
-   - End-to-end LRC generation tests
+3. **Testing**
+   - Sync state management tests
+   - Conflict resolution tests
+   - End-to-end sync tests
 
 ### Upcoming Phases
-
-- **Phase 6:** LRC generation (Whisper + LLM)
-  - Implement `workers/lrc.py` (currently a stub)
-  - Whisper transcription worker
-  - LLM-based line alignment
-  - `lyrics generate` and `lyrics show` commands
 
 - **Phase 7:** Turso Sync
   - Bidirectional sync (Admin CLI ↔ Turso cloud)
@@ -508,6 +556,8 @@ dependencies = [
     "demucs>=4.0.0",
     "natten==0.17.1",        # Compiled from source in Dockerfile
     "boto3>=1.34.0",
+    "openai-whisper>=20231117",  # Phase 6: LRC generation
+    "openai>=1.10.0",            # Phase 6: LLM alignment
 ]
 ```
 
@@ -538,6 +588,7 @@ test = [
 - Phase 1-2: Catalog management foundation with retry logic and rate limiting
 - Phase 3: Hash-based deduplication prevents duplicate R2 uploads
 - Phase 4: Content-hash caching avoids re-analyzing identical audio files
+- Phase 6: LLM-agnostic design supports any OpenAI-compatible API provider
 - All database operations use Pydantic models for type safety
 - Tests use temporary databases and mocked HTTP/R2 clients for isolation
 - CLI follows command-group pattern (db, catalog, audio)
@@ -556,6 +607,7 @@ test = [
 - Phase 3: `a2690b2` - Audio Download
 - Phase 4: `bdd01d3` - Analysis Service
 - Phase 5: `cb96e17` - CLI ↔ Service Integration
+- Phase 6: `f858da4` - LRC Generation
 
 ---
 
