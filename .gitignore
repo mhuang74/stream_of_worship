@@ -211,16 +211,17 @@ __marimo__/
 # ============================================================================
 
 # POC outputs (generated files)
-poc_output/*
-poc_output_*/*
-!poc_output/.gitkeep
-demix/*
+poc/output/*
+poc/output_*/*
+!poc/output/.gitkeep
+!poc/output_allinone/.gitkeep
+poc/demix/*
 
 # Audio files (too large for git, user-provided)
-poc_audio/*
+poc/audio/*
 output_songs/*
 stems_output/*
-!poc_audio/.gitkeep
+!poc/audio/.gitkeep
 *.flac
 *.mp3
 *.wav

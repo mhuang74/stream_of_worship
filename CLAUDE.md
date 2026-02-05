@@ -17,32 +17,32 @@ The end goal is to:
   - `poc_analysis.py`: Main analysis script using Librosa (Signal Processing).
   - `poc_analysis_allinone.py`: Advanced analysis using `allin1` (Deep Learning).
   - `lyrics_scraper.py`: Utility to scrape Chinese lyrics from sop.org.
-- **`transition_builder_v2/`**: Text-based User Interface (TUI) for interactive transition generation.
+- **`poc/transition_builder_v2/`**: Text-based User Interface (TUI) for interactive transition generation (archived).
   - Built with the [Textual](https://textual.textualize.io/) framework.
   - `app/`: Application source code (`main.py`, `services/`, `screens/`, `models/`).
   - `config.json`: Configuration for paths and settings.
 - **`data/`**: Data storage (e.g., `data/lyrics/`).
-- **`poc_audio/`**: Input directory for source audio files (MP3/FLAC).
-- **`poc_output/`**: Output directory for analysis results (JSON, CSV, PNG) and generated transitions.
+- **`poc/audio/`**: Input directory for source audio files (MP3/FLAC).
+- **`poc/output/`**: Output directory for analysis results (JSON, CSV, PNG) and generated transitions.
 - **`specs/`**: Design specifications and documentation.
-- **Docker**: Containerized environments for reproducible analysis.
-  - `docker-compose.yml`: Standard environment (Librosa).
-  - `docker-compose.allinone.yml`: Deep learning environment (PyTorch, All-In-One).
+- **Docker** (`docker/`): Containerized environments for reproducible analysis.
+  - `docker/docker-compose.yml`: Standard environment (Librosa).
+  - `docker/docker-compose.allinone.yml`: Deep learning environment (PyTorch, All-In-One).
 
 
 ### Running Analysis (POC)
 ```bash
 # Standard analysis (Librosa) - Fast, lightweight
-docker-compose run --rm librosa python poc/poc_analysis.py
+docker compose -f docker/docker-compose.yml run --rm librosa python poc/poc_analysis.py
 
 # Advanced analysis (All-In-One) - Slower, more accurate
-docker compose -f docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
+docker compose -f docker/docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
 ```
 
 ### Running the Transition Builder (TUI)
 ```bash
 # Navigate to directory first
-cd transition_builder_v2
+cd poc/transition_builder_v2
 
 # Run via Python module
 uv run --extra tui python -m app.main
@@ -66,7 +66,7 @@ uv run --extra scraper python poc/lyrics_scraper.py --limit 10
 ### Testing
 ```bash
 # Run tests for Transition Builder
-cd transition_builder_v2
+cd poc/transition_builder_v2
 pytest
 ```
 
@@ -75,7 +75,7 @@ pytest
 - **Python Version**: 3.11+
 - **Python Env**: 
   - ALWAYS use `uv add` to add dependencies so it's documented in pyproject.toml
-  - for running song analysis using allinone library, use Docker via docker-compose.allinone.yml (due to dependencies on NATTEN native libraries, doesn't work on Apple Silicon MacOS)
+  - for running song analysis using allinone library, use Docker via docker/docker-compose.allinone.yml (due to dependencies on NATTEN native libraries, doesn't work on Apple Silicon MacOS)
   - when not doing song analysis via allinone, use `uv run` to execute in isolated environment
   - put dependencies for different usecases into separate extra sections in pyproject.toml, eg song_analysis, scraper, tui, etc
 - **Path Handling**: ALWAYS use `pathlib.Path` for file system operations. Do not use string concatenation for paths.

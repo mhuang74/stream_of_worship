@@ -1,22 +1,22 @@
 services:
   librosa:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: worship-music-poc
     ports:
       - "8888:8888"
     volumes:
       # Mount notebooks directory for live editing
-      - ./notebooks:/workspace/notebooks
+      - ../poc/notebooks:/workspace/notebooks
       # Mount POC script directory
-      - ./poc:/workspace/poc
+      - ../poc:/workspace/poc
       # Mount POC directories
-      - ./poc_audio:/workspace/poc_audio
-      - ./poc_output:/workspace/poc_output
-      - ./poc_output_allinone:/workspace/poc_output_allinone
+      - ../poc/audio:/workspace/poc_audio
+      - ../poc/output:/workspace/poc_output
+      - ../poc/output_allinone:/workspace/poc_output_allinone
       # Mount data directory for future use
-      - ./data:/workspace/data
+      - ../data:/workspace/data
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - PYTHONUNBUFFERED=1
