@@ -1,0 +1,305 @@
+"""In-memory job queue for asynchronous processing."""
+
+import asyncio
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
+
+from ..config import settings
+from ..models import (
+    AnalyzeJobRequest,
+    JobResult,
+    JobStatus,
+    JobType,
+    LrcJobRequest,
+    Section,
+)
+from ..storage.cache import CacheManager
+from ..storage.r2 import R2Client
+from .lrc import LRCWorkerNotImplementedError, generate_lrc
+
+# Optional imports for heavy dependencies
+try:
+    from .analyzer import analyze_audio
+    from .separator import separate_stems
+except ImportError:
+    analyze_audio = None
+    separate_stems = None
+
+
+@dataclass
+class Job:
+    """Represents a job in the queue."""
+
+    id: str
+    type: JobType
+    status: JobStatus
+    request: Union[AnalyzeJobRequest, LrcJobRequest]
+    result: Optional[JobResult] = None
+    error_message: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    progress: float = 0.0
+    stage: str = ""
+
+
+class JobQueue:
+    """In-memory job queue with concurrent execution control."""
+
+    def __init__(
+        self,
+        max_concurrent: int = 2,
+        cache_dir: Path = Path("/cache"),
+    ):
+        """Initialize job queue.
+
+        Args:
+            max_concurrent: Maximum number of concurrent jobs
+            cache_dir: Directory for caching results
+        """
+        self.max_concurrent = max_concurrent
+        self.cache_manager = CacheManager(cache_dir)
+        self.r2_client: Optional[R2Client] = None
+        self._jobs: Dict[str, Job] = {}
+        self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._running = False
+
+    def initialize_r2(self, bucket: str, endpoint_url: str) -> None:
+        """Initialize R2 client.
+
+        Args:
+            bucket: R2 bucket name
+            endpoint_url: R2 endpoint URL
+        """
+        self.r2_client = R2Client(bucket, endpoint_url)
+
+    async def submit(
+        self, job_type: JobType, request: Union[AnalyzeJobRequest, LrcJobRequest]
+    ) -> Job:
+        """Submit a new job to the queue.
+
+        Args:
+            job_type: Type of job (analyze or lrc)
+            request: Job request data
+
+        Returns:
+            Created job instance
+        """
+        job_id = f"job_{uuid.uuid4().hex[:12]}"
+
+        job = Job(
+            id=job_id,
+            type=job_type,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        self._jobs[job_id] = job
+        await self._queue.put(job_id)
+
+        return job
+
+    async def get_job(self, job_id: str) -> Optional[Job]:
+        """Get job by ID.
+
+        Args:
+            job_id: Job ID to look up
+
+        Returns:
+            Job instance or None if not found
+        """
+        return self._jobs.get(job_id)
+
+    async def process_jobs(self) -> None:
+        """Background task that processes queued jobs."""
+        self._running = True
+
+        while self._running:
+            try:
+                # Wait for a job with timeout to allow checking _running
+                job_id = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                job = self._jobs.get(job_id)
+
+                if job:
+                    # Process job in background with semaphore
+                    asyncio.create_task(self._process_job_with_semaphore(job))
+
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+
+    async def _process_job_with_semaphore(self, job: Job) -> None:
+        """Process a job with concurrency control."""
+        async with self._semaphore:
+            if job.type == JobType.ANALYZE:
+                await self._process_analysis_job(job)
+            elif job.type == JobType.LRC:
+                await self._process_lrc_job(job)
+
+    async def _process_analysis_job(self, job: Job) -> None:
+        """Process an analysis job.
+
+        Args:
+            job: Job to process
+        """
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "downloading"
+        job.progress = 0.1
+
+        request = job.request
+        if not isinstance(request, AnalyzeJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for analysis job"
+            job.updated_at = datetime.now(timezone.utc)
+            return
+
+        # Check if analysis dependencies are available
+        if analyze_audio is None or separate_stems is None:
+            job.status = JobStatus.FAILED
+            job.error_message = (
+                "Analysis dependencies not available (librosa, allin1, demucs)"
+            )
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            return
+
+        try:
+            # Initialize R2 if not done
+            if not self.r2_client and settings.R2_ENDPOINT_URL:
+                self.initialize_r2(settings.R2_BUCKET, settings.R2_ENDPOINT_URL)
+
+            # Download audio from R2
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                audio_path = temp_path / "audio.mp3"
+
+                if self.r2_client:
+                    await self.r2_client.download_audio(request.audio_url, audio_path)
+
+                job.stage = "analyzing"
+                job.progress = 0.3
+
+                # Run analysis
+                analysis_result = await analyze_audio(
+                    audio_path,
+                    self.cache_manager,
+                    force=request.options.force,
+                )
+
+                job.progress = 0.6
+
+                # Generate stems if requested
+                stems_url = None
+                if request.options.generate_stems:
+                    job.stage = "separating"
+
+                    stems_dir = temp_path / "stems"
+                    await separate_stems(
+                        audio_path,
+                        stems_dir,
+                        model=request.options.stem_model,
+                        device=settings.DEMUCS_DEVICE,
+                        cache_manager=self.cache_manager,
+                        content_hash=request.content_hash,
+                        force=request.options.force,
+                    )
+
+                    job.progress = 0.8
+
+                    # Upload stems to R2
+                    if self.r2_client:
+                        hash_prefix = request.content_hash[:12]
+                        stems_url = await self.r2_client.upload_stems(
+                            hash_prefix, stems_dir
+                        )
+
+                    job.progress = 0.9
+
+                # Upload analysis result to R2
+                if self.r2_client:
+                    hash_prefix = request.content_hash[:12]
+                    analysis_data = {**analysis_result}
+                    if stems_url:
+                        analysis_data["stems_url"] = stems_url
+                    await self.r2_client.upload_analysis_result(
+                        hash_prefix, analysis_data
+                    )
+
+                # Build job result
+                sections = [
+                    Section(**s) for s in analysis_result.get("sections", [])
+                ]
+
+                job.result = JobResult(
+                    duration_seconds=analysis_result.get("duration_seconds"),
+                    tempo_bpm=analysis_result.get("tempo_bpm"),
+                    musical_key=analysis_result.get("musical_key"),
+                    musical_mode=analysis_result.get("musical_mode"),
+                    key_confidence=analysis_result.get("key_confidence"),
+                    loudness_db=analysis_result.get("loudness_db"),
+                    beats=analysis_result.get("beats"),
+                    downbeats=analysis_result.get("downbeats"),
+                    sections=sections if sections else None,
+                    embeddings_shape=analysis_result.get("embeddings_shape"),
+                    stems_url=stems_url,
+                )
+
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "error"
+
+        finally:
+            job.updated_at = datetime.now(timezone.utc)
+
+    async def _process_lrc_job(self, job: Job) -> None:
+        """Process an LRC generation job.
+
+        Phase 4 stub: immediately marks job as failed. The real worker
+        (workers/lrc.py) is implemented in Phase 6.
+
+        Args:
+            job: Job to process
+        """
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "starting"
+
+        try:
+            # Try to call the stub - it will raise
+            request = job.request
+            if isinstance(request, LrcJobRequest):
+                # This will raise LRCWorkerNotImplementedError
+                await generate_lrc(
+                    Path("/tmp/audio.mp3"), request.lyrics_text, request.options
+                )
+            else:
+                raise LRCWorkerNotImplementedError(
+                    "LRC worker not yet implemented (Phase 6)"
+                )
+
+        except LRCWorkerNotImplementedError as e:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "not_implemented"
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = f"Unexpected error: {e}"
+            job.stage = "error"
+
+        job.updated_at = datetime.now(timezone.utc)
+
+    def stop(self) -> None:
+        """Stop processing jobs."""
+        self._running = False
