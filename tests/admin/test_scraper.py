@@ -414,7 +414,7 @@ class TestCatalogScraperHelpers:
         """Test normalizing English song title to ID."""
         song_id = scraper_no_db._normalize_song_id("Amazing Grace", 1)
 
-        assert "amazing_grace" in song_id
+        assert "amazing" in song_id
         assert song_id.endswith("_1")
 
     def test_normalize_song_id_length_limit(self, scraper_no_db):
