@@ -69,6 +69,10 @@ admin = [
     "rich>=13.0.0",
     "tomli>=2.0.0",
     "tomli-w>=1.0.0",
+    "beautifulsoup4>=4.14.3",
+    "lxml>=6.0.2",
+    "requests>=2.32.5",
+    "pypinyin>=0.55.0",
 ]
 
 # Test dependencies
