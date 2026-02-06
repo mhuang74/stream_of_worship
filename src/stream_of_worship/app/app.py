@@ -87,10 +87,13 @@ class SowApp(App):
 
     def on_mount(self) -> None:
         """Handle app mount event."""
-        self.push_screen(self._get_screen(AppScreen.SONGSET_LIST))
+        self.push_screen(self._get_or_create_screen(AppScreen.SONGSET_LIST))
 
-    def _get_screen(self, screen: AppScreen):
-        """Get or create a screen instance.
+    def _get_or_create_screen(self, screen: AppScreen):
+        """Get or create a screen instance with caching.
+
+        This is our custom screen caching logic (not Textual's internal _get_screen).
+        Lazily instantiates screens on first access and caches them for reuse.
 
         Args:
             screen: Screen enum value
@@ -135,7 +138,7 @@ class SowApp(App):
             self.playback.stop()
 
         self.state.navigate_to(screen)
-        self.push_screen(self._get_screen(screen))
+        self.push_screen(self._get_or_create_screen(screen))
 
     def navigate_back(self) -> None:
         """Navigate back to the previous screen."""
