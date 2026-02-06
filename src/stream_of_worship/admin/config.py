@@ -71,12 +71,25 @@ class AdminConfig:
         if "service" in data:
             config.analysis_url = data["service"].get("analysis_url", config.analysis_url)
 
-        # Load R2 config
+        # Load R2 config from file
         if "r2" in data:
             r2 = data["r2"]
             config.r2_bucket = r2.get("bucket", config.r2_bucket)
             config.r2_endpoint_url = r2.get("endpoint_url", config.r2_endpoint_url)
             config.r2_region = r2.get("region", config.r2_region)
+
+        # Override R2 config from environment variables (takes precedence)
+        env_bucket = os.environ.get("SOW_R2_BUCKET")
+        if env_bucket:
+            config.r2_bucket = env_bucket
+
+        env_endpoint = os.environ.get("SOW_R2_ENDPOINT_URL")
+        if env_endpoint:
+            config.r2_endpoint_url = env_endpoint
+
+        env_region = os.environ.get("SOW_R2_REGION")
+        if env_region:
+            config.r2_region = env_region
 
         # Load Turso config
         if "turso" in data:

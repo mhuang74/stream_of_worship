@@ -207,7 +207,7 @@ class AssetCache:
         if not force and cache_path.exists():
             return cache_path
 
-        s3_key = self._get_s3_key(hash_prefix, "lrc", "lyrics.lrc")
+        s3_key = f"{hash_prefix}/lyrics.lrc"
 
         try:
             if not self.r2_client.file_exists(s3_key):
