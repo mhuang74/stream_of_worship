@@ -508,6 +508,29 @@ export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 
 **See [CLI Documentation](docs/cli-usage.md) for complete command reference.**
 
+### Batch Operations
+
+The CLI uses `song_id` as the user-facing identifier, making batch operations easy with standard Unix tools:
+
+```bash
+# Download audio for all songs in an album
+sow-admin catalog list --album "敬拜讚美15" --format ids | \
+  xargs -I{} sow-admin audio download {}
+
+# Analyze all songs that have audio but no analysis yet
+sow-admin audio list --status pending --format ids | \
+  xargs -I{} sow-admin audio analyze {}
+
+# Download and analyze a specific list of songs
+cat songs_to_process.txt | xargs -I{} sow-admin audio download {}
+cat songs_to_process.txt | xargs -I{} sow-admin audio analyze {}
+
+# Check status of all pending analyses
+sow-admin audio status
+```
+
+**Tip:** The `--format ids` flag outputs one ID per line, making it perfect for piping to `xargs`.
+
 ---
 
 ## Analysis Service Setup {#analysis-service-setup}
