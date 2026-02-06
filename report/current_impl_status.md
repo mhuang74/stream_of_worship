@@ -10,9 +10,9 @@
 
 The Stream of Worship project consists of an Admin CLI for backend management and an Analysis Service microservice for audio processing. The project has completed the foundational infrastructure, catalog management, audio download pipeline, Analysis Service implementation, CLI-Service integration, and LRC generation.
 
-**Overall Progress:** 6 of 8 phases complete (~75%)
+**Overall Progress:** 7 of 8 phases complete (~88%)
 
-**Latest Milestone:** Phase 6 (LRC Generation) completed in commit `f858da4`
+**Latest Milestone:** Phase 7 (Turso Sync) completed in commit `ce5bbc4`
 
 ---
 
@@ -312,16 +312,57 @@ Upload to R2 → Cache Result
 
 ---
 
-### Phase 7: Turso Sync ⏳ NOT STARTED
+### Phase 7: Turso Sync ✅ COMPLETE
 
-**Status:** Not yet implemented
+**Status:** Fully implemented and tested (commit `ce5bbc4`)
 
-**Planned Components:**
-- Local-to-cloud synchronization
-- Conflict resolution
-- Sync state management
+**Components:**
+- SyncService (`src/stream_of_worship/admin/services/sync.py`)
+  - High-level sync orchestration with status checking
+  - Configuration validation (libsql, database, URL, token)
+  - Error handling: `SyncConfigError`, `SyncNetworkError`
+  - URL masking for security
+- DatabaseClient enhancements (`src/stream_of_worship/admin/db/client.py`)
+  - Conditional libsql backend for Turso support
+  - Automatic fallback to sqlite3 when not configured
+  - `is_turso_enabled` property
+  - `sync()` method for embedded replica sync
+  - `update_sync_metadata()` for sync state tracking
+- Sync metadata tracking
+  - `last_sync_at` - ISO timestamp of last sync
+  - `sync_version` - Schema version for sync protocol
+  - `local_device_id` - Unique device identifier
+- CLI commands (`src/stream_of_worship/admin/commands/db.py`)
+  - `db sync` - Execute cloud sync with `--force` flag
+  - Enhanced `db status` - Displays sync configuration state
 
-**Estimated Effort:** Low
+**Configuration:**
+```toml
+[database]
+path = "/path/to/sow.db"
+
+[turso]
+database_url = "libsql://your-db.turso.io"
+```
+```bash
+export SOW_TURSO_TOKEN="your-auth-token"
+```
+
+**Security:**
+- Auth token from `SOW_TURSO_TOKEN` environment variable (not config file)
+- URL masking in status display prevents token leakage
+
+**Tests:**
+- `tests/admin/services/test_sync.py` - 28 tests
+- `tests/admin/commands/test_db_commands.py` - 24 tests
+- **Total: 52 new tests**
+
+**Dependencies:**
+- Optional `libsql>=0.1.0` via `uv add --extra turso libsql`
+
+**Backward Compatibility:**
+- Zero breaking changes - operates in local-only mode if libsql not installed
+- All existing functionality preserved
 
 ---
 
@@ -346,7 +387,8 @@ sow_cli_admin/
 │   │       ├── youtube.py           # yt-dlp wrapper
 │   │       ├── hasher.py            # SHA-256 hashing
 │   │       ├── r2.py                # R2 storage client
-│   │       └── analysis.py          # Analysis Service HTTP client (Phase 5)
+│   │       ├── analysis.py          # Analysis Service HTTP client (Phase 5)
+│   │       └── sync.py              # Turso sync service (Phase 7)
 │   └── app/                          # 🎵 User App (PLANNED - Phase 8)
 │       └── [future TUI for transitions]
 │
@@ -374,12 +416,14 @@ sow_cli_admin/
 │   ├── admin/                        # CLI tests
 │   │   ├── commands/
 │   │   │   ├── test_catalog_commands.py
-│   │   │   └── test_audio_commands.py
+│   │   │   ├── test_audio_commands.py
+│   │   │   └── test_db_commands.py   # Phase 7
 │   │   ├── services/
 │   │   │   ├── test_scraper.py
 │   │   │   ├── test_youtube.py
 │   │   │   ├── test_hasher.py
-│   │   │   └── test_r2.py
+│   │   │   ├── test_r2.py
+│   │   │   └── test_sync.py          # Phase 7
 │   │   └── db/
 │   │       └── test_client.py
 │   └── services/analysis/            # Service tests
@@ -420,8 +464,10 @@ sow_cli_admin/
 | Catalog Commands | `tests/admin/commands/test_catalog_commands.py` | 22 | ✅ Complete |
 | Audio Commands | `tests/admin/commands/test_audio_commands.py` | 51 | ✅ Complete |
 | Analysis Client | `tests/admin/test_analysis_client.py` | 28 | ✅ Complete |
+| Sync Service | `tests/admin/services/test_sync.py` | 28 | ✅ Complete |
+| DB Commands | `tests/admin/commands/test_db_commands.py` | 24 | ✅ Complete |
 
-**Admin CLI Total: 210 tests**
+**Admin CLI Total: 262 tests**
 
 ### Analysis Service Tests
 
@@ -437,7 +483,7 @@ sow_cli_admin/
 
 **Analysis Service Total: 85 tests**
 
-**Combined Total: 295 tests (all passing)**
+**Combined Total: 347 tests (all passing)**
 
 ---
 
@@ -492,32 +538,9 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 
 ## Next Steps / Pending Work
 
-### Immediate Priorities (Phase 7 - Turso Sync)
+### Upcoming Phase
 
-1. **Sync Protocol Implementation**
-   - Local SQLite to Turso cloud synchronization
-   - Conflict resolution strategy
-   - Incremental vs full sync
-
-2. **Sync Commands**
-   - `db sync` - Trigger synchronization
-   - `db sync-status` - Check sync state
-   - `db sync-reset` - Reset sync metadata
-
-3. **Testing**
-   - Sync state management tests
-   - Conflict resolution tests
-   - End-to-end sync tests
-
-### Upcoming Phases
-
-- **Phase 7:** Turso Sync
-  - Bidirectional sync (Admin CLI ↔ Turso cloud)
-  - Conflict resolution strategy
-  - `db sync` command
-  - Multi-device admin support
-
-- **Phase 8:** User App (TUI)
+- **Phase 8:** User App (TUI) ⏳ PLANNED
   - Textual-based TUI for end-users
   - Song catalog browser (read from Turso)
   - Transition songset builder
@@ -539,6 +562,11 @@ admin = [
     "rich>=13.0.0",
     "yt-dlp>=2024.1.1",      # Phase 3
     "boto3>=1.34.0",         # Phase 3
+]
+
+# Optional: Turso cloud sync support
+turso = [
+    "libsql>=0.1.0",         # Phase 7
 ]
 ```
 
@@ -597,6 +625,7 @@ test = [
 ### Security
 
 - R2 credentials read from environment variables (`SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`)
+- Turso auth token from `SOW_TURSO_TOKEN` environment variable (Phase 7)
 - No credentials stored in config files or code
 - Database paths configurable via TOML config
 
@@ -608,6 +637,7 @@ test = [
 - Phase 4: `bdd01d3` - Analysis Service
 - Phase 5: `cb96e17` - CLI ↔ Service Integration
 - Phase 6: `f858da4` - LRC Generation
+- Phase 7: `ce5bbc4` - Turso Sync
 
 ---
 
