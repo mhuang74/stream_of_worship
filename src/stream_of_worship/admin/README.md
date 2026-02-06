@@ -104,12 +104,20 @@ path = "/custom/path/sow.db"
 
 ### Environment Variables
 
-Sensitive values should be set via environment variables:
+Configuration values can be set via environment variables (takes precedence over config file):
 
 ```bash
-export SOW_ANALYSIS_API_KEY="your-api-key"
+# R2 Configuration (non-sensitive)
+export SOW_R2_BUCKET="your-bucket-name"
+export SOW_R2_ENDPOINT_URL="https://xxx.r2.cloudflarestorage.com"
+export SOW_R2_REGION="auto"
+
+# R2 Credentials (sensitive - never commit these)
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
 export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
+
+# Other services
+export SOW_ANALYSIS_API_KEY="your-api-key"
 export SOW_TURSO_AUTH_TOKEN="your-turso-token"
 ```
 

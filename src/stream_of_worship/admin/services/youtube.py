@@ -79,6 +79,11 @@ class YouTubeDownloader:
             "noplaylist": True,
             "default_search": "ytsearch1",
             "quiet": True,
+            "extractor_args": {
+                "youtube": {
+                    "remote_components": "ejs:github",
+                }
+            },
         }
 
         try:
@@ -87,13 +92,24 @@ class YouTubeDownloader:
                 if info is None:
                     raise RuntimeError(f"No results found for query: {query}")
 
-                filename = ydl.prepare_filename(info)
-                # FFmpeg post-processor rewrites the extension to .mp3
-                mp3_path = Path(filename).with_suffix(".mp3")
-                if mp3_path.exists():
-                    return mp3_path
-                if Path(filename).exists():
-                    return Path(filename)
-                raise RuntimeError(f"Downloaded file not found: {filename}")
+                # After download, find the actual output file
+                # prepare_filename() may not match actual filename when using ytsearch
+                mp3_files = list(self.output_dir.glob("*.mp3"))
+                if mp3_files:
+                    return mp3_files[0]
+
+                # Fallback: check for any audio file
+                audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
+                for ext in audio_exts:
+                    files = list(self.output_dir.glob(f"*{ext}"))
+                    if files:
+                        return files[0]
+
+                # Debug: list all files in output directory
+                existing_files = list(self.output_dir.iterdir())
+                raise RuntimeError(
+                    f"Downloaded file not found. "
+                    f"Files in directory: {[f.name for f in existing_files]}"
+                )
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e

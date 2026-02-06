@@ -494,8 +494,14 @@ region = "auto"
 base_url = "http://localhost:8000"
 ```
 
-Set environment variables for R2 credentials:
+Set environment variables for R2 (takes precedence over config file):
 ```bash
+# Non-sensitive R2 config
+export SOW_R2_BUCKET="your-bucket"
+export SOW_R2_ENDPOINT_URL="https://xxx.r2.cloudflarestorage.com"
+export SOW_R2_REGION="auto"
+
+# Sensitive credentials (never commit these)
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
 export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 ```
