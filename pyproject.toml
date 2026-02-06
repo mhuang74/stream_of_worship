@@ -82,6 +82,16 @@ admin = [
     "boto3>=1.34.0",
 ]
 
+# User App (TUI) dependencies
+app = [
+    "textual>=0.44.0",
+    "pydub>=0.25.0",
+    "miniaudio>=1.59",
+    "ffmpeg-python>=0.2.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+]
+
 # Test dependencies
 test = [
     "pytest>=7.4.0",
@@ -95,12 +105,13 @@ test = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription,admin]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription,admin,turso,app]",
 ]
 
 [project.scripts]
 stream-of-worship = "stream_of_worship.cli.main:main"
 sow-admin = "stream_of_worship.admin.main:cli_entry"
+sow-app = "stream_of_worship.app.main:cli_entry"
 
 # Package discovery - use src layout
 [tool.setuptools.packages.find]
