@@ -387,7 +387,7 @@ class TestAudioListCommand:
         assert "bbbbbbbbbbbb" not in result.output
 
     def test_list_ids_format(self, setup_with_recordings):
-        """ids format outputs one hash prefix per line."""
+        """ids format outputs one song_id per line."""
         result = runner.invoke(
             app,
             [
@@ -398,8 +398,8 @@ class TestAudioListCommand:
         )
 
         assert result.exit_code == 0
-        assert "aaaaaaaaaaaa" in result.output
-        assert "bbbbbbbbbbbb" in result.output
+        assert "song_001" in result.output
+        assert "song_002" in result.output
 
     def test_list_with_limit(self, setup_with_recordings):
         """Limit parameter restricts number of returned recordings."""
@@ -490,31 +490,32 @@ class TestAudioShowCommand:
         assert result.exit_code == 1
         assert "Database not found" in result.output
 
-    def test_show_nonexistent_recording(self, setup_with_recording):
-        """Reports an error for a hash prefix that does not exist."""
+    def test_show_no_recording_for_song(self, setup_with_recording):
+        """Reports an error when song has no recording."""
         result = runner.invoke(
             app,
             [
-                "audio", "show", "nonexistent",
+                "audio", "show", "song_without_recording",
                 "--config", str(setup_with_recording["config_path"]),
             ],
         )
 
         assert result.exit_code == 1
-        assert "Recording not found" in result.output
+        assert "No recording found" in result.output
 
     def test_show_displays_basic_fields(self, setup_with_recording):
         """All basic metadata fields are rendered."""
         result = runner.invoke(
             app,
             [
-                "audio", "show", "dddddddddddd",
+                "audio", "show", "song_001",
                 "--config", str(setup_with_recording["config_path"]),
             ],
         )
 
         assert result.exit_code == 0
-        assert "dddddddddddd" in result.output
+        assert "song_001" in result.output
+        assert "dddddddddddd" in result.output  # hash prefix shown for reference
         assert "d" * 64 in result.output  # full hash
         assert "test_song.mp3" in result.output
         assert "測試歌曲" in result.output
@@ -525,7 +526,7 @@ class TestAudioShowCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "show", "dddddddddddd",
+                "audio", "show", "song_001",
                 "--config", str(setup_with_recording["config_path"]),
             ],
         )
@@ -543,9 +544,18 @@ class TestAudioShowCommand:
         client = DatabaseClient(db_path)
         client.initialize_schema()
 
+        song = Song(
+            id="song_pending",
+            title="Pending Song",
+            source_url="https://example.com/pending",
+            scraped_at=datetime.now().isoformat(),
+        )
+        client.insert_song(song)
+
         recording = Recording(
             content_hash="e" * 64,
             hash_prefix="eeeeeeeeeeee",
+            song_id="song_pending",
             original_filename="pending.mp3",
             file_size_bytes=1000,
             imported_at="2024-01-15T10:30:00",
@@ -557,20 +567,23 @@ class TestAudioShowCommand:
         config_path.write_text(f'[database]\npath = "{db_path}"\n')
 
         result = runner.invoke(
-            app, ["audio", "show", "eeeeeeeeeeee", "--config", str(config_path)]
+            app, ["audio", "show", "song_pending", "--config", str(config_path)]
         )
 
         assert result.exit_code == 0
+        assert "song_pending" in result.output
         assert "eeeeeeeeeeee" in result.output
         assert "pending" in result.output
         assert "Analysis Results" not in result.output
 
     def test_show_recording_without_linked_song(self, tmp_path):
-        """Recording with no song_id renders without song info."""
+        """Recording with no song_id cannot be looked up by song_id."""
         db_path = tmp_path / "test.db"
         client = DatabaseClient(db_path)
         client.initialize_schema()
 
+        # Create an orphan recording (no song_id) - this shouldn't happen
+        # in normal usage since we now require song_id for all recordings
         recording = Recording(
             content_hash="f" * 64,
             hash_prefix="ffffffffffff",
@@ -584,13 +597,13 @@ class TestAudioShowCommand:
         config_path = tmp_path / "config.toml"
         config_path.write_text(f'[database]\npath = "{db_path}"\n')
 
+        # Trying to look up by non-existent song_id should fail
         result = runner.invoke(
-            app, ["audio", "show", "ffffffffffff", "--config", str(config_path)]
+            app, ["audio", "show", "nonexistent_song", "--config", str(config_path)]
         )
 
-        assert result.exit_code == 0
-        assert "ffffffffffff" in result.output
-        assert "orphan.mp3" in result.output
+        assert result.exit_code == 1
+        assert "No recording found" in result.output
 
 
 class TestAnalyzeCommand:
@@ -638,20 +651,7 @@ class TestAnalyzeCommand:
         assert result.exit_code == 1
         assert "Database not found" in result.output
 
-    def test_analyze_recording_not_found_by_hash(self, setup):
-        """Error for nonexistent hash prefix."""
-        result = runner.invoke(
-            app,
-            [
-                "audio", "analyze", "nonexistent123",
-                "--config", str(setup["config_path"]),
-            ],
-        )
-
-        assert result.exit_code == 1
-        assert "Recording not found" in result.output
-
-    def test_analyze_recording_not_found_by_song_id(self, setup):
+    def test_analyze_no_recording_for_song(self, setup):
         """Error when song has no recording."""
         # Song exists but has no recording
         result = runner.invoke(
@@ -663,7 +663,20 @@ class TestAnalyzeCommand:
         )
 
         assert result.exit_code == 1
-        assert "has no recording" in result.output
+        assert "No recording found" in result.output
+
+    def test_analyze_song_not_found(self, setup):
+        """Error when song doesn't exist."""
+        result = runner.invoke(
+            app,
+            [
+                "audio", "analyze", "nonexistent_song",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "No recording found" in result.output
 
     def test_analyze_no_r2_audio_url(self, setup):
         """Error when recording lacks audio URL."""
@@ -682,7 +695,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
             ],
         )
@@ -708,7 +721,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
             ],
         )
@@ -746,7 +759,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
                 "--force",
             ],
@@ -777,7 +790,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
             ],
         )
@@ -817,7 +830,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
                 "--wait",
             ],
@@ -843,7 +856,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
             ],
         )
@@ -877,7 +890,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
             ],
         )
@@ -914,7 +927,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
             ],
         )
@@ -929,45 +942,8 @@ class TestAnalyzeCommand:
         assert updated.analysis_job_id == "job-abc-123"
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
-    def test_analyze_by_hash_prefix(self, mock_client_cls, setup, monkeypatch):
-        """Resolves by hash prefix."""
-        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
-
-        db_client = DatabaseClient(setup["db_path"])
-        recording = Recording(
-            content_hash="a" * 64,
-            hash_prefix="aaaaaaaaaaaa",
-            song_id="song_001",
-            original_filename="test.mp3",
-            file_size_bytes=1000,
-            imported_at=datetime.now().isoformat(),
-            r2_audio_url="s3://sow-audio/test/audio.mp3",
-        )
-        db_client.insert_recording(recording)
-
-        mock_client = MagicMock()
-        mock_client.submit_analysis.return_value = JobInfo(
-            job_id="job-123",
-            status="queued",
-            job_type="analysis",
-            progress=0.0,
-        )
-        mock_client_cls.return_value = mock_client
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "analyze", "aaaaaaaaaaaa",
-                "--config", str(setup["config_path"]),
-            ],
-        )
-
-        assert result.exit_code == 0
-        mock_client.submit_analysis.assert_called_once()
-
-    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_by_song_id(self, mock_client_cls, setup, monkeypatch):
-        """Resolves by song_id."""
+        """Analyzes using song_id."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
         db_client = DatabaseClient(setup["db_path"])
@@ -1046,7 +1022,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
                 "--wait",
             ],
@@ -1098,7 +1074,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
                 "--wait",
             ],
@@ -1143,7 +1119,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
                 "--wait",
             ],
@@ -1181,7 +1157,7 @@ class TestAnalyzeCommand:
         result = runner.invoke(
             app,
             [
-                "audio", "analyze", "aaaaaaaaaaaa",
+                "audio", "analyze", "song_001",
                 "--config", str(setup["config_path"]),
                 "--no-stems",
             ],
@@ -1355,7 +1331,7 @@ class TestStatusCommand:
 
         assert result.exit_code == 0
         assert "Pending Recordings" in result.output
-        assert "aaaaaaaaaaaa" in result.output
+        assert "song_001" in result.output
 
     def test_status_empty_database(self, tmp_path):
         """Empty DB handling."""
