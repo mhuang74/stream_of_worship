@@ -573,6 +573,9 @@ PYTHONPATH=src uv run --extra admin --extra test pytest tests/admin/ -v
 # Run analysis service tests
 pytest tests/services/analysis/ -v
 
+# Run User App tests
+PYTHONPATH=src uv run --extra admin --extra app --extra test pytest tests/app/ -v
+
 # Run all tests with coverage
 pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 ```
@@ -611,6 +614,19 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 | Caching | Content-hash based |
 | Testing | pytest, pytest-asyncio |
 | Containerization | Docker (multi-stage builds) |
+
+### User App (TUI)
+
+| Layer | Technology |
+|-------|------------|
+| TUI Framework | Textual |
+| Audio Manipulation | pydub |
+| Audio Playback | miniaudio |
+| Video Generation | Pillow (frames) + FFmpeg (encoding) |
+| Database | SQLite (local) |
+| Cloud Storage | boto3 (R2 downloads) |
+| Reactive State | Observer pattern |
+| Testing | pytest |
 
 ---
 
@@ -743,6 +759,7 @@ test = [
 - Phase 4: `bdd01d3` - Analysis Service
 - Phase 5: `cb96e17` - CLI ↔ Service Integration
 - Phase 6: `f858da4` - LRC Generation
+- Phase 8: `b82fc0d` - User App (TUI)
 
 ---
 
