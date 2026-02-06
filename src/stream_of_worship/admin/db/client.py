@@ -1,15 +1,15 @@
 """Database client for sow-admin.
 
 Provides SQLite database operations for local storage of song catalog
-and recording metadata. Designed to be compatible with libsql/Turso for
-future sync functionality.
+and recording metadata. Supports libsql/Turso for embedded replica sync.
 """
 
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Generator, Optional, Union
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
@@ -20,46 +20,93 @@ from stream_of_worship.admin.db.schema import (
     ROW_COUNT_QUERY,
 )
 
+# Optional libsql import for Turso support
+try:
+    import libsql
+
+    LIBSQL_AVAILABLE = True
+except ImportError:
+    LIBSQL_AVAILABLE = False
+    libsql = None  # type: ignore
+
+
+class SyncError(Exception):
+    """Error during database sync operation."""
+
+    def __init__(self, message: str, cause: Optional[Exception] = None):
+        super().__init__(message)
+        self.cause = cause
+
 
 class DatabaseClient:
-    """Client for local SQLite database operations.
+    """Client for local SQLite database operations with optional Turso sync.
 
     This client manages the connection to the local SQLite database and
     provides methods for CRUD operations on songs and recordings.
+    When Turso is configured, it uses libsql for embedded replica sync.
 
     Attributes:
         db_path: Path to the SQLite database file
+        turso_url: Turso database URL for sync (optional)
+        turso_token: Turso auth token (optional)
         connection: Active database connection
     """
 
-    def __init__(self, db_path: Path):
+    def __init__(
+        self,
+        db_path: Path,
+        turso_url: Optional[str] = None,
+        turso_token: Optional[str] = None,
+    ):
         """Initialize the database client.
 
         Args:
             db_path: Path to the SQLite database file
+            turso_url: Turso database URL for sync (optional)
+            turso_token: Turso auth token (optional)
         """
         self.db_path = db_path
-        self._connection: Optional[sqlite3.Connection] = None
+        self.turso_url = turso_url
+        self.turso_token = turso_token
+        self._connection: Optional[Union[sqlite3.Connection, "libsql.Connection"]] = None
 
     @property
-    def connection(self) -> sqlite3.Connection:
+    def is_turso_enabled(self) -> bool:
+        """Check if Turso sync is enabled.
+
+        Returns:
+            True if Turso URL is configured and libsql is available
+        """
+        return bool(self.turso_url and LIBSQL_AVAILABLE)
+
+    @property
+    def connection(self) -> Union[sqlite3.Connection, "libsql.Connection"]:
         """Get or create database connection.
 
         Returns:
-            Active SQLite connection
+            Active database connection (sqlite3 or libsql)
         """
         if self._connection is None:
             # Ensure directory exists
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-            self._connection = sqlite3.connect(
-                self.db_path,
-                detect_types=sqlite3.PARSE_DECLTYPES,
-            )
-            self._connection.row_factory = sqlite3.Row
+            if self.is_turso_enabled:
+                # Use libsql for Turso embedded replica
+                self._connection = libsql.connect(
+                    str(self.db_path),
+                    sync_url=self.turso_url,
+                    auth_token=self.turso_token or "",
+                )
+            else:
+                # Use standard sqlite3
+                self._connection = sqlite3.connect(
+                    self.db_path,
+                    detect_types=sqlite3.PARSE_DECLTYPES,
+                )
+                self._connection.row_factory = sqlite3.Row
 
-            # Enable foreign keys
-            self._connection.execute("PRAGMA foreign_keys = ON")
+                # Enable foreign keys
+                self._connection.execute("PRAGMA foreign_keys = ON")
 
         return self._connection
 
@@ -68,6 +115,42 @@ class DatabaseClient:
         if self._connection:
             self._connection.close()
             self._connection = None
+
+    def sync(self) -> None:
+        """Sync with Turso cloud database.
+
+        Raises:
+            SyncError: If sync fails or Turso is not configured
+        """
+        if not self.is_turso_enabled:
+            raise SyncError("Turso sync is not configured")
+
+        try:
+            # Cast to libsql.Connection for type checking
+            conn = self.connection
+            conn.sync()  # type: ignore
+
+            # Update last sync timestamp
+            self.update_sync_metadata("last_sync_at", datetime.now().isoformat())
+        except Exception as e:
+            raise SyncError(f"Sync failed: {e}", cause=e)
+
+    def update_sync_metadata(self, key: str, value: str) -> None:
+        """Update sync metadata value.
+
+        Args:
+            key: Metadata key to update
+            value: New value
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO sync_metadata (key, value, updated_at)
+                VALUES (?, ?, datetime('now'))
+                """,
+                (key, value),
+            )
 
     def __enter__(self) -> "DatabaseClient":
         """Context manager entry."""
@@ -151,18 +234,24 @@ class DatabaseClient:
         fk_result = cursor.fetchone()
         foreign_keys_enabled = bool(fk_result[0]) if fk_result else False
 
-        # Get last sync time
-        cursor.execute(
-            "SELECT value FROM sync_metadata WHERE key = 'last_sync_at'"
-        )
-        sync_result = cursor.fetchone()
-        last_sync_at = sync_result[0] if sync_result else None
+        # Get sync metadata
+        cursor.execute("SELECT key, value FROM sync_metadata")
+        sync_meta = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # Ensure local_device_id is set
+        local_device_id = sync_meta.get("local_device_id", "")
+        if not local_device_id and self.is_turso_enabled:
+            local_device_id = str(uuid.uuid4())[:8]
+            self.update_sync_metadata("local_device_id", local_device_id)
 
         return DatabaseStats(
             table_counts=table_counts,
             integrity_ok=integrity_ok,
             foreign_keys_enabled=foreign_keys_enabled,
-            last_sync_at=last_sync_at if last_sync_at else None,
+            last_sync_at=sync_meta.get("last_sync_at") or None,
+            sync_version=sync_meta.get("sync_version", "1"),
+            local_device_id=local_device_id,
+            turso_configured=self.is_turso_enabled,
         )
 
     # Song operations
