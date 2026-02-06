@@ -306,12 +306,18 @@ class DatabaseStats:
         integrity_ok: Whether integrity check passed
         foreign_keys_enabled: Whether foreign keys are enabled
         last_sync_at: Last sync timestamp (if any)
+        sync_version: Schema version for sync compatibility
+        local_device_id: Unique identifier for this device
+        turso_configured: Whether Turso sync is configured
     """
 
     table_counts: dict[str, int] = field(default_factory=dict)
     integrity_ok: bool = True
     foreign_keys_enabled: bool = False
     last_sync_at: Optional[str] = None
+    sync_version: str = "1"
+    local_device_id: str = ""
+    turso_configured: bool = False
 
     @property
     def total_songs(self) -> int:

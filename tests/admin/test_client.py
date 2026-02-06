@@ -3,10 +3,15 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stream_of_worship.admin.db.client import DatabaseClient
+from stream_of_worship.admin.db.client import (
+    DatabaseClient,
+    LIBSQL_AVAILABLE,
+    SyncError,
+)
 from stream_of_worship.admin.db.models import Recording, Song
 
 
@@ -407,3 +412,89 @@ class TestTransaction:
         # Verify data was not committed
         result = client.get_song("test_song2")
         assert result is None
+
+
+class TestSyncFeatures:
+    """Tests for Turso sync functionality."""
+
+    def test_is_turso_enabled_without_config(self, temp_db_path):
+        """Test that Turso is disabled when not configured."""
+        client = DatabaseClient(temp_db_path)
+        assert client.is_turso_enabled is False
+
+    def test_is_turso_enabled_with_config(self, temp_db_path):
+        """Test Turso detection with configuration."""
+        client = DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+        # Will be False because libsql is not available in test environment
+        assert client.is_turso_enabled is False
+
+    def test_sync_raises_error_when_not_configured(self, temp_db_path):
+        """Test that sync raises error when Turso is not configured."""
+        client = DatabaseClient(temp_db_path)
+
+        with pytest.raises(SyncError, match="Turso sync is not configured"):
+            client.sync()
+
+    def test_get_stats_without_sync_metadata(self, client):
+        """Test getting stats when sync metadata is not initialized."""
+        stats = client.get_stats()
+
+        assert stats.sync_version == "1"
+        assert stats.local_device_id == ""
+        assert stats.turso_configured is False
+
+    def test_get_stats_with_turso_disabled(self, client):
+        """Test getting stats with Turso explicitly disabled."""
+        stats = client.get_stats()
+
+        assert stats.turso_configured is False
+        assert stats.last_sync_at is None
+
+    def test_update_sync_metadata(self, client):
+        """Test updating sync metadata."""
+        client.update_sync_metadata("test_key", "test_value")
+
+        cursor = client.connection.cursor()
+        cursor.execute("SELECT value FROM sync_metadata WHERE key = 'test_key'")
+        result = cursor.fetchone()
+
+        assert result[0] == "test_value"
+
+    def test_update_sync_metadata_overwrites_existing(self, client):
+        """Test that updating existing metadata overwrites value."""
+        client.update_sync_metadata("test_key", "value1")
+        client.update_sync_metadata("test_key", "value2")
+
+        cursor = client.connection.cursor()
+        cursor.execute("SELECT value FROM sync_metadata WHERE key = 'test_key'")
+        result = cursor.fetchone()
+
+        assert result[0] == "value2"
+
+    @patch("stream_of_worship.admin.db.client.LIBSQL_AVAILABLE", True)
+    @patch("stream_of_worship.admin.db.client.libsql")
+    def test_turso_connection_mocked(self, mock_libsql, temp_db_path):
+        """Test Turso connection with mocked libsql."""
+        mock_conn = MagicMock()
+        mock_libsql.connect.return_value = mock_conn
+
+        client = DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+
+        assert client.is_turso_enabled is True
+
+        # Access connection property
+        _ = client.connection
+
+        mock_libsql.connect.assert_called_once_with(
+            str(temp_db_path),
+            sync_url="libsql://test.turso.io",
+            auth_token="test-token",
+        )
