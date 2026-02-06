@@ -4,71 +4,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Stream of Worship is a seamless Chinese worship music transition system designed to analyze songs (tempo, key, structure) and generate smooth transitions between them. The project is currently in the Proof of Concept (POC) phase, focusing on validation of audio analysis pipelines and interactive transition generation.
+Stream of Worship is a seamless Chinese worship music transition system designed to analyze songs (tempo, key, structure) and generate smooth transitions between them.
 
 The end goal is to:
 - generate audio file containing multiple songs with smooth transiton between songs
 - generate video file containing lyrics video of multiple songs with smooth transition between songs
 - interactive tool to select multiple songs from song library, experiment with transition parameters, and generate output audio/video file with multiple songs with smooth transition between songs
+- admin tool to manage song library (via scraping sop.org), and perform song analysis and lyrics LRC generation
 
 ## Architecture & Structure
 
-- **`poc/`**: Core analysis scripts and utilities (Phase 1).
-  - `poc_analysis.py`: Main analysis script using Librosa (Signal Processing).
-  - `poc_analysis_allinone.py`: Advanced analysis using `allin1` (Deep Learning).
-  - `lyrics_scraper.py`: Utility to scrape Chinese lyrics from sop.org.
-- **`poc/transition_builder_v2/`**: Text-based User Interface (TUI) for interactive transition generation (archived).
-  - Built with the [Textual](https://textual.textualize.io/) framework.
-  - `app/`: Application source code (`main.py`, `services/`, `screens/`, `models/`).
-  - `config.json`: Configuration for paths and settings.
-- **`data/`**: Data storage (e.g., `data/lyrics/`).
-- **`poc/audio/`**: Input directory for source audio files (MP3/FLAC).
-- **`poc/output/`**: Output directory for analysis results (JSON, CSV, PNG) and generated transitions.
-- **`specs/`**: Design specifications and documentation.
-- **Docker** (`docker/`): Containerized environments for reproducible analysis.
-  - `docker/docker-compose.yml`: Standard environment (Librosa).
-  - `docker/docker-compose.allinone.yml`: Deep learning environment (PyTorch, All-In-One).
+The project consists of **four architecturally separate components**:
 
+### 1. 🧪 POC Scripts (Experimental)
+- **Location:** `poc/` directory
+- **Purpose:** Validate analysis algorithms during development
+- **Runtime:** One-off script execution in Docker
+- **Technologies:** Librosa (signal processing) or All-In-One (deep learning)
+- **Status:** Archived experimental code (including `poc/transition_builder_v2/` TUI)
 
-### Running Analysis (POC)
-```bash
-# Standard analysis (Librosa) - Fast, lightweight
-docker compose -f docker/docker-compose.yml run --rm librosa python poc/poc_analysis.py
+### 2. 🖥️ Admin CLI (Backend Management)
+- **Location:** `src/stream_of_worship/admin/` (Python package)
+- **Purpose:** Backend tool for catalog management and audio operations
+- **Users:** Administrators, DevOps
+- **Runtime:** One-shot CLI commands (`sow-admin catalog scrape`, `sow-admin audio download`)
+- **Dependencies:** **Lightweight** (~50MB) - typer, requests, yt-dlp, boto3
+- **Database:** Local SQLite with Turso cloud sync support
+- **Installation:** `uv run --extra admin sow-admin`
 
-# Advanced analysis (All-In-One) - Slower, more accurate
-docker compose -f docker/docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
-```
+### 3. 🚀 Analysis Service (Microservice)
+- **Location:** `services/analysis/` (separate package: `sow_analysis`)
+- **Purpose:** CPU/GPU-intensive audio analysis and stem separation
+- **Users:** Called by Admin CLI or User App
+- **Runtime:** Long-lived FastAPI HTTP server (port 8000)
+- **Technologies:** FastAPI, PyTorch, allin1, Demucs, Cloudflare R2
+- **Dependencies:** **Heavy** (~2GB) - PyTorch, ML models, NATTEN
+- **Deployment:** Docker container with platform-specific builds (x86_64 vs ARM64)
+- **API:** REST endpoints at `http://localhost:8000/api/v1/`
 
-### Running the Transition Builder (TUI)
-```bash
-# Navigate to directory first
-cd poc/transition_builder_v2
+### 4. 🎵 User App (End-User Application)
+- **Location:** `src/stream_of_worship/app/` (planned)
+- **Purpose:** Interactive tool for generating transition songsets and lyrics videos
+- **Users:** Worship leaders, media team members
+- **Runtime:** TUI (Textual framework) or GUI application
+- **Technologies:** Textual (TUI), Pydub (audio), MoviePy (video), FFmpeg
+- **Data Source:**
+  - **Metadata:** Turso cloud database (synced from Admin CLI)
+  - **Audio Assets:** Cloudflare R2 (pre-analyzed stems, LRC files)
+- **Key Features:**
+  - Browse master song catalog
+  - Select songs for transitions (with compatibility scoring)
+  - Adjust transition parameters (crossfade, tempo stretch, key shift)
+  - Generate multi-song audio files with smooth transitions
+  - Generate lyrics videos with synchronized LRC timing
+  - Export final audio/video outputs
+- **Evolution:** Production upgrade from `poc/transition_builder_v2/` TUI prototype
 
-# Run via Python module
-uv run --extra tui python -m app.main
-
-# OR via script
-./run.sh
-```
-
-### Running the Lyrics Scraper
-```bash
-# Run full scrape
-uv run --extra scraper python poc/lyrics_scraper.py
-
-# Validate with test song
-uv run --extra scraper python poc/lyrics_scraper.py --test
-
-# Scrape with limit
-uv run --extra scraper python poc/lyrics_scraper.py --limit 10
-```
-
-### Testing
-```bash
-# Run tests for Transition Builder
-cd poc/transition_builder_v2
-pytest
-```
 
 ## Development Guidelines
 
@@ -90,3 +81,4 @@ pytest
 - **Safety**:
   - Use `run_in_background=True` for long-running analysis tasks.
   - Verify file existence before reading/processing.
+- Update `report/current_impl_status.md` and MEMORY after completion of each phase, typically triggered by git commit
