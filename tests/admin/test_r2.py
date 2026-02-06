@@ -159,3 +159,83 @@ class TestAudioExists:
         result = client.audio_exists("abc123def456")
 
         assert result is False
+
+
+class TestDownloadFile:
+    """Tests for R2Client.download_file (generic file download)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_download_file_downloads_by_s3_key(self, mock_boto_client, r2_env, tmp_path):
+        """Verify download_file uses correct key."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        dest = tmp_path / "subdir" / "lyrics.lrc"
+        result = client.download_file("abc123def456/lrc/lyrics.lrc", dest)
+
+        assert result == dest
+        mock_s3.download_file.assert_called_once_with(
+            "sow-audio", "abc123def456/lrc/lyrics.lrc", str(dest)
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_download_file_creates_parent_directories(self, mock_boto_client, r2_env, tmp_path):
+        """Verify mkdir parents."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        dest = tmp_path / "deep" / "nested" / "path" / "file.mp3"
+        client.download_file("abc123def456/audio.mp3", dest)
+
+        assert dest.parent.exists()
+        assert dest.parent.is_dir()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_download_file_returns_dest_path(self, mock_boto_client, r2_env, tmp_path):
+        """Verify download_file returns destination path."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        dest = tmp_path / "output.mp3"
+        result = client.download_file("abc123def456/stems/vocals.mp3", dest)
+
+        assert result == dest
+
+
+class TestFileExists:
+    """Tests for R2Client.file_exists (generic file existence check)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_file_exists_returns_true_when_exists(self, mock_boto_client, r2_env):
+        """Verify head_object success."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.file_exists("abc123def456/lrc/lyrics.lrc")
+
+        assert result is True
+        mock_s3.head_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123def456/lrc/lyrics.lrc"
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_file_exists_returns_false_when_missing(self, mock_boto_client, r2_env):
+        """Verify ClientError handling."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.file_exists("abc123def456/lrc/nonexistent.lrc")
+
+        assert result is False
