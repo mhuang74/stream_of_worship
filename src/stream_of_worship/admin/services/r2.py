@@ -102,3 +102,32 @@ class R2Client:
             return True
         except ClientError:
             return False
+
+    def download_file(self, s3_key: str, dest_path: Path) -> Path:
+        """Download a file from R2 by its S3 key.
+
+        Args:
+            s3_key: Full S3 key (path within bucket)
+            dest_path: Local path to save the downloaded file
+
+        Returns:
+            *dest_path* after the download completes
+        """
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        self._client.download_file(self.bucket, s3_key, str(dest_path))
+        return dest_path
+
+    def file_exists(self, s3_key: str) -> bool:
+        """Check whether a file exists in R2 by its S3 key.
+
+        Args:
+            s3_key: Full S3 key (path within bucket)
+
+        Returns:
+            True if the object exists in the bucket
+        """
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=s3_key)
+            return True
+        except ClientError:
+            return False

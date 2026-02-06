@@ -1,0 +1,125 @@
+/* Stream of Worship - App Styles */
+
+Screen {
+    align: center middle;
+}
+
+/* Header and Footer */
+Header {
+    dock: top;
+    height: 3;
+    content-align: center middle;
+    background: $surface;
+    color: $text;
+}
+
+Footer {
+    dock: bottom;
+    height: 1;
+    background: $surface-darken-1;
+}
+
+/* Common labels */
+#title {
+    text-align: center;
+    text-style: bold;
+    padding: 1 2;
+}
+
+#subtitle {
+    text-align: center;
+    color: $text-muted;
+    padding: 0 2 1 2;
+}
+
+/* Data Tables */
+DataTable {
+    height: 1fr;
+    margin: 1 2;
+    border: solid $primary;
+}
+
+DataTable > .datatable--header {
+    text-style: bold;
+    background: $surface-darken-1;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary-darken-1;
+}
+
+DataTable > .datatable--hover {
+    background: $primary-darken-2;
+}
+
+/* Buttons */
+Button {
+    margin: 0 1;
+}
+
+#buttons {
+    align: center middle;
+    padding: 1 2;
+}
+
+/* Input fields */
+Input {
+    margin: 0 1;
+}
+
+#search_row {
+    align: center middle;
+    padding: 0 2;
+}
+
+/* Settings rows */
+#cache_row, #output_row, #gap_row, #template_row, #crossfade_row, #duration_row, #key_row {
+    align: left middle;
+    padding: 0 2;
+    height: 3;
+}
+
+#cache_row Label, #output_row Label, #gap_row Label, #template_row Label,
+#crossfade_row Label, #duration_row Label, #key_row Label {
+    width: 25;
+}
+
+#cache_row Input, #output_row Input, #gap_row Input, #duration_row Input, #key_row Input {
+    width: 40;
+}
+
+/* Progress bar */
+#progress_bar {
+    margin: 2 4;
+}
+
+#status_label {
+    text-align: center;
+    padding: 1 2;
+}
+
+#detail_label {
+    text-align: center;
+    color: $text-muted;
+    padding: 0 2 1 2;
+}
+
+/* Songset info */
+#songset_name {
+    text-align: center;
+    padding: 0 2 1 2;
+}
+
+#song_info {
+    text-align: center;
+    padding: 0 2 1 2;
+}
+
+/* Container spacing */
+Vertical {
+    padding: 0 1;
+}
+
+Horizontal {
+    height: auto;
+}
