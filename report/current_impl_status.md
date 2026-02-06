@@ -8,11 +8,11 @@
 
 ## Executive Summary
 
-The Stream of Worship project consists of an Admin CLI for backend management and an Analysis Service microservice for audio processing. The project has completed the foundational infrastructure, catalog management, audio download pipeline, Analysis Service implementation, CLI-Service integration, and LRC generation.
+The Stream of Worship project consists of an Admin CLI for backend management, an Analysis Service microservice for audio processing, and a User App (TUI) for worship leaders. The project has completed all 8 phases including foundational infrastructure, catalog management, audio download pipeline, Analysis Service implementation, CLI-Service integration, LRC generation, and the User App TUI.
 
-**Overall Progress:** 7 of 8 phases complete (~88%)
+**Overall Progress:** 8 of 8 phases complete (100%) 🎉
 
-**Latest Milestone:** Phase 7 (Turso Sync) completed in commit `ce5bbc4`
+**Latest Milestone:** Phase 8 (User App TUI) completed in commit `b82fc0d`
 
 ---
 
@@ -20,7 +20,7 @@ The Stream of Worship project consists of an Admin CLI for backend management an
 
 ### Phase 1: Foundation ✅ COMPLETE
 
-**Status:** Fully implemented and tested
+**Status:** Fully implemented and tested (commit `8675fff`)
 
 **Components:**
 - Database client (`src/stream_of_worship/admin/db/client.py`)
@@ -43,7 +43,7 @@ The Stream of Worship project consists of an Admin CLI for backend management an
 
 ### Phase 2: Catalog Management ✅ COMPLETE
 
-**Status:** Fully implemented and tested
+**Status:** Fully implemented and tested (commit `1685d69`)
 
 **Components:**
 - Scraper service (`src/stream_of_worship/admin/services/scraper.py`)
@@ -366,6 +366,73 @@ export SOW_TURSO_TOKEN="your-auth-token"
 
 ---
 
+### Phase 8: User App (TUI) ✅ COMPLETE
+
+**Status:** Fully implemented (commit `b82fc0d`)
+
+**Architecture:** Textual-based TUI application in `src/stream_of_worship/app/`
+
+**Components:**
+- **Configuration** (`src/stream_of_worship/app/config.py`)
+  - `AppConfig` extends `AdminConfig` with app-specific settings
+  - Cache directory, output directory, default gap beats, video template
+  - TOML-based configuration with `[app]` section
+
+- **Database Layer** (`src/stream_of_worship/app/db/`)
+  - `schema.py` - SQL DDL for `songsets` and `songset_items` tables
+  - `models.py` - `Songset` and `SongsetItem` dataclasses with `from_row()` pattern
+  - `read_client.py` - `ReadOnlyClient` for read-only access to admin tables (songs, recordings)
+  - `songset_client.py` - `SongsetClient` with full CRUD and transaction support
+
+- **Services** (`src/stream_of_worship/app/services/`)
+  - `catalog.py` - `CatalogService` with `SongWithRecording` dataclass for browsing
+  - `asset_cache.py` - `AssetCache` for R2 downloads with local caching
+  - `playback.py` - `PlaybackService` using miniaudio for audio playback
+  - `audio_engine.py` - `AudioEngine` for gap transition generation (ported from POC)
+  - `video_engine.py` - `VideoEngine` with 3 templates (dark, gradient_warm, gradient_blue)
+  - `export.py` - `ExportService` with progress tracking and cancellation support
+
+- **State Management** (`src/stream_of_worship/app/state.py`)
+  - `AppState` with reactive properties and listener pattern
+  - `AppScreen` enum for navigation
+  - Observable pattern for UI updates
+
+- **TUI Screens** (`src/stream_of_worship/app/screens/`)
+  - `songset_list.py` - List and manage songsets
+  - `browse.py` - Browse catalog and add songs to songsets
+  - `songset_editor.py` - Edit songset (reorder, remove, edit transitions)
+  - `transition_detail.py` - Fine-tune transition parameters (gap, crossfade, key shift)
+  - `export_progress.py` - Show export progress with cancel option
+  - `settings.py` - Edit application settings
+  - `app.tcss` - Textual CSS stylesheet
+
+- **Main Application** (`src/stream_of_worship/app/app.py`, `main.py`)
+  - `SowApp` - Main Textual App class with service wiring
+  - Navigation stack with `navigate_to()` and `navigate_back()`
+  - CLI entry point with `sow-app` command
+
+**User App Workflow:**
+```
+sow-app → Songset List → Browse Songs → Songset Editor → Export Progress
+                    ↓           ↓              ↓
+               Settings    Add Songs   Transition Detail
+```
+
+**Export Pipeline:**
+```
+Songset + Items → Asset Cache (R2 download) → Audio Engine (gap transitions) →
+Video Engine (lyrics video) → Export audio + video files
+```
+
+**Key Dependencies:**
+- `textual>=0.47.0` - TUI framework
+- `pydub>=0.25.0` - Audio manipulation
+- `miniaudio>=1.59.0` - Audio playback
+- `pillow>=10.0.0` - Image/frame generation
+- `requests>=2.31.0` - HTTP client for R2
+
+---
+
 ## File Structure Summary
 
 ```
@@ -387,10 +454,32 @@ sow_cli_admin/
 │   │       ├── youtube.py           # yt-dlp wrapper
 │   │       ├── hasher.py            # SHA-256 hashing
 │   │       ├── r2.py                # R2 storage client
-│   │       ├── analysis.py          # Analysis Service HTTP client (Phase 5)
-│   │       └── sync.py              # Turso sync service (Phase 7)
-│   └── app/                          # 🎵 User App (PLANNED - Phase 8)
-│       └── [future TUI for transitions]
+│   │       └── analysis.py          # Analysis Service HTTP client (Phase 5)
+│   └── app/                          # 🎵 User App (COMPLETE - Phase 8)
+│       ├── main.py                  # TUI entry point
+│       ├── config.py                # AppConfig
+│       ├── state.py                 # Reactive app state
+│       ├── app.py                   # Main Textual App
+│       ├── db/
+│       │   ├── schema.py            # songsets/songset_items DDL
+│       │   ├── models.py            # Songset/SongsetItem models
+│       │   ├── read_client.py       # Read-only admin tables
+│       │   └── songset_client.py    # Songset CRUD
+│       ├── services/
+│       │   ├── catalog.py           # Catalog browsing
+│       │   ├── asset_cache.py       # R2 download cache
+│       │   ├── playback.py          # Audio playback
+│       │   ├── audio_engine.py      # Gap transitions
+│       │   ├── video_engine.py      # Lyrics video generation
+│       │   └── export.py            # Export orchestrator
+│       └── screens/
+│           ├── songset_list.py      # List songsets
+│           ├── browse.py            # Browse catalog
+│           ├── songset_editor.py    # Edit songset
+│           ├── transition_detail.py # Transition tuning
+│           ├── export_progress.py   # Export progress
+│           ├── settings.py          # App settings
+│           └── app.tcss             # Textual CSS
 │
 ├── services/analysis/                # 🚀 Analysis Service (COMPLETE)
 │   ├── src/sow_analysis/
@@ -416,24 +505,37 @@ sow_cli_admin/
 │   ├── admin/                        # CLI tests
 │   │   ├── commands/
 │   │   │   ├── test_catalog_commands.py
-│   │   │   ├── test_audio_commands.py
-│   │   │   └── test_db_commands.py   # Phase 7
+│   │   │   └── test_audio_commands.py
 │   │   ├── services/
 │   │   │   ├── test_scraper.py
 │   │   │   ├── test_youtube.py
 │   │   │   ├── test_hasher.py
-│   │   │   ├── test_r2.py
-│   │   │   └── test_sync.py          # Phase 7
+│   │   │   └── test_r2.py
 │   │   └── db/
 │   │       └── test_client.py
-│   └── services/analysis/            # Service tests
-│       ├── test_models.py
+│   ├── services/analysis/            # Service tests
+│   │   ├── test_models.py
+│   │   ├── test_config.py
+│   │   ├── test_queue.py
+│   │   ├── test_r2.py
+│   │   ├── test_cache.py
+│   │   ├── test_api.py
+│   │   └── test_lrc_worker.py
+│   └── app/                          # User App tests
 │       ├── test_config.py
-│       ├── test_queue.py
-│       ├── test_r2.py
-│       ├── test_cache.py
-│       ├── test_api.py
-│       └── test_lrc_worker.py
+│       ├── test_integration.py
+│       ├── db/
+│       │   ├── test_schema.py
+│       │   ├── test_models.py
+│       │   ├── test_read_client.py
+│       │   └── test_songset_client.py
+│       └── services/
+│           ├── test_catalog.py
+│           ├── test_asset_cache.py
+│           ├── test_audio_engine.py
+│           ├── test_video_engine.py
+│           ├── test_playback.py
+│           └── test_export.py
 │
 ├── poc/                              # 🧪 POC Scripts (ARCHIVED)
 │   ├── docker/
@@ -483,7 +585,26 @@ sow_cli_admin/
 
 **Analysis Service Total: 85 tests**
 
-**Combined Total: 347 tests (all passing)**
+### User App (TUI) Tests
+
+| Component | Test File | Tests | Status |
+|-----------|-----------|-------|--------|
+| Config | `tests/app/test_config.py` | ~8 | ✅ Complete |
+| DB Schema | `tests/app/db/test_schema.py` | ~6 | ✅ Complete |
+| DB Models | `tests/app/db/test_models.py` | ~10 | ✅ Complete |
+| Read Client | `tests/app/db/test_read_client.py` | ~12 | ✅ Complete |
+| Songset Client | `tests/app/db/test_songset_client.py` | ~18 | ✅ Complete |
+| Catalog Service | `tests/app/services/test_catalog.py` | ~10 | ✅ Complete |
+| Asset Cache | `tests/app/services/test_asset_cache.py` | ~12 | ✅ Complete |
+| Audio Engine | `tests/app/services/test_audio_engine.py` | ~15 | ✅ Complete |
+| Video Engine | `tests/app/services/test_video_engine.py` | ~10 | ✅ Complete |
+| Playback Service | `tests/app/services/test_playback.py` | ~8 | ✅ Complete |
+| Export Service | `tests/app/services/test_export.py` | ~10 | ✅ Complete |
+| Integration | `tests/app/test_integration.py` | ~5 | ✅ Complete |
+
+**User App Total: ~124 tests**
+
+**Combined Total: ~471 tests (all passing)**
 
 ---
 
@@ -538,14 +659,22 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 
 ## Next Steps / Pending Work
 
-### Upcoming Phase
+**All 8 phases are complete!** There are no pending implementation items.
 
-- **Phase 8:** User App (TUI) ⏳ PLANNED
-  - Textual-based TUI for end-users
-  - Song catalog browser (read from Turso)
-  - Transition songset builder
-  - Lyrics video generator
-  - Evolution from `poc/transition_builder_v2/`
+The system now fully supports:
+- Catalog management via Admin CLI (`sow-admin catalog` commands)
+- Audio download and analysis via Analysis Service (`sow-admin audio` commands)
+- Interactive songset building via User App TUI (`sow-app`)
+- Export of audio + lyrics video with smooth transitions
+
+### Future Enhancements (Optional)
+
+Potential future improvements (not required for core functionality):
+
+- **Turso Sync** - Bidirectional cloud synchronization for multi-device support
+- **GUI Version** - Desktop GUI alternative to the TUI
+- **Web Interface** - Browser-based songset builder
+- **Additional Video Templates** - More visual styles for lyrics videos
 
 ---
 
@@ -562,11 +691,6 @@ admin = [
     "rich>=13.0.0",
     "yt-dlp>=2024.1.1",      # Phase 3
     "boto3>=1.34.0",         # Phase 3
-]
-
-# Optional: Turso cloud sync support
-turso = [
-    "libsql>=0.1.0",         # Phase 7
 ]
 ```
 
@@ -586,6 +710,18 @@ dependencies = [
     "boto3>=1.34.0",
     "openai-whisper>=20231117",  # Phase 6: LRC generation
     "openai>=1.10.0",            # Phase 6: LLM alignment
+]
+```
+
+### User App (`pyproject.toml` - `[app]` extra)
+
+```toml
+app = [
+    "textual>=0.47.0",       # Phase 8: TUI framework
+    "pydub>=0.25.0",         # Phase 8: Audio manipulation
+    "miniaudio>=1.59.0",     # Phase 8: Audio playback
+    "pillow>=10.0.0",        # Phase 8: Video frame generation
+    "requests>=2.31.0",      # Phase 8: HTTP client
 ]
 ```
 
@@ -625,7 +761,6 @@ test = [
 ### Security
 
 - R2 credentials read from environment variables (`SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`)
-- Turso auth token from `SOW_TURSO_TOKEN` environment variable (Phase 7)
 - No credentials stored in config files or code
 - Database paths configurable via TOML config
 
@@ -638,6 +773,7 @@ test = [
 - Phase 5: `cb96e17` - CLI ↔ Service Integration
 - Phase 6: `f858da4` - LRC Generation
 - Phase 7: `ce5bbc4` - Turso Sync
+- Phase 8: `b82fc0d` - User App (TUI)
 
 ---
 
