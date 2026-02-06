@@ -200,7 +200,7 @@ def list_recordings(
     """List audio recordings.
 
     Display recordings from the database with optional status filtering.
-    Use ``--format ids`` for one hash prefix per line (pipeable).
+    Use ``--format ids`` for one song ID per line (pipeable).
     """
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
@@ -221,16 +221,18 @@ def list_recordings(
 
     if format == "ids":
         for rec in recordings:
-            console.print(rec.hash_prefix)
+            console.print(rec.song_id if rec.song_id else rec.hash_prefix)
     else:
         table = Table(title=f"Recordings ({len(recordings)} total)")
+        table.add_column("Song ID", style="cyan", no_wrap=True)
+        table.add_column("Song Title", style="green")
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
-        table.add_column("Song", style="cyan")
-        table.add_column("Filename", style="green")
-        table.add_column("Size", style="yellow", justify="right")
-        table.add_column("Status", style="magenta", justify="center")
+        table.add_column("Filename", style="yellow")
+        table.add_column("Size", style="magenta", justify="right")
+        table.add_column("Status", style="blue", justify="center")
 
         for rec in recordings:
+            song_id = rec.song_id or "-"
             song_title = "-"
             if rec.song_id:
                 song = db_client.get_song(rec.song_id)
@@ -249,8 +251,9 @@ def list_recordings(
                 status_text = rec.analysis_status
 
             table.add_row(
-                rec.hash_prefix,
+                song_id,
                 song_title,
+                rec.hash_prefix,
                 rec.original_filename,
                 size_str,
                 status_text,
@@ -261,8 +264,8 @@ def list_recordings(
 
 @app.command("show")
 def show_recording(
-    hash_prefix: str = typer.Argument(
-        ..., help="Hash prefix of the recording to show"
+    song_id: str = typer.Argument(
+        ..., help="Song ID to show recording for"
     ),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to config file"
@@ -285,22 +288,29 @@ def show_recording(
 
     db_client = DatabaseClient(config.db_path)
 
-    recording = db_client.get_recording_by_hash(hash_prefix)
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(f"[red]Recording not found: {hash_prefix}[/red]")
+        console.print(
+            f"[red]No recording found for {song_id}. "
+            f"Run 'sow-admin audio download {song_id}'[/red]"
+        )
         raise typer.Exit(1)
 
+    # Get song info
+    song = db_client.get_song(song_id)
+
     info_lines = [
-        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
-        f"[cyan]Full Hash:[/cyan] {recording.content_hash}",
+        f"[cyan]Song ID:[/cyan] {song_id}",
     ]
 
-    if recording.song_id:
-        song = db_client.get_song(recording.song_id)
-        if song:
-            info_lines.append(f"[cyan]Song:[/cyan] {song.title} ({song.id})")
-        else:
-            info_lines.append(f"[cyan]Song ID:[/cyan] {recording.song_id}")
+    if song:
+        info_lines.append(f"[cyan]Song Title:[/cyan] {song.title}")
+
+    info_lines.extend([
+        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
+        f"[cyan]Full Hash:[/cyan] {recording.content_hash}",
+    ])
 
     info_lines.extend([
         f"[cyan]Filename:[/cyan] {recording.original_filename}",
@@ -339,14 +349,14 @@ def show_recording(
 
     console.print(Panel.fit(
         "\n".join(info_lines),
-        title=f"Recording: {recording.hash_prefix}",
+        title=f"Recording: {song_id}",
         border_style="green",
     ))
 
 
 @app.command("analyze")
 def analyze_recording(
-    identifier: str = typer.Argument(..., help="Song ID or hash prefix to analyze"),
+    song_id: str = typer.Argument(..., help="Song ID to analyze"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
     no_stems: bool = typer.Option(
         False, "--no-stems", help="Skip stem separation"
@@ -360,8 +370,8 @@ def analyze_recording(
 ) -> None:
     """Submit a recording for analysis.
 
-    Resolves the identifier as a song_id or hash_prefix, then submits
-the recording to the analysis service for tempo/key/beats/sections detection.
+    Looks up the recording by song_id and submits it to the analysis service
+    for tempo/key/beats/sections detection.
     """
     # Standard config/db boilerplate
     try:
@@ -376,22 +386,13 @@ the recording to the analysis service for tempo/key/beats/sections detection.
 
     db_client = DatabaseClient(config.db_path)
 
-    # Resolve identifier -> recording
-    recording: Optional[Recording] = None
-
-    # Try song_id first
-    song = db_client.get_song(identifier)
-    if song:
-        recording = db_client.get_recording_by_song_id(song.id)
-        if not recording:
-            console.print(f"[red]Song {identifier} has no recording.[/red]")
-            raise typer.Exit(1)
-    else:
-        # Try hash_prefix
-        recording = db_client.get_recording_by_hash(identifier)
-
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(f"[red]Recording not found: {identifier}[/red]")
+        console.print(
+            f"[red]No recording found for {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
         raise typer.Exit(1)
 
     # Validate r2_audio_url exists
@@ -525,7 +526,7 @@ the recording to the analysis service for tempo/key/beats/sections detection.
                 r2_stems_url=result.stems_url,
             )
 
-        console.print(f"[green]Analysis completed for {recording.hash_prefix}[/green]")
+        console.print(f"[green]Analysis completed for {song_id}[/green]")
         if final_job.result:
             if final_job.result.tempo_bpm:
                 console.print(f"  Tempo: {final_job.result.tempo_bpm:.1f} BPM")
@@ -643,28 +644,25 @@ def check_status(
         return
 
     table = Table(title=f"Pending Recordings ({len(rows)} total)")
+    table.add_column("Song ID", style="cyan", no_wrap=True)
+    table.add_column("Song Title", style="green")
     table.add_column("Hash Prefix", style="dim", no_wrap=True)
-    table.add_column("Song", style="cyan")
     table.add_column("Analysis", style="magenta")
-    table.add_column("Analysis Job", style="dim")
     table.add_column("LRC", style="blue")
-    table.add_column("LRC Job", style="dim")
 
     for row in rows:
+        song_id = row[2] if row[2] else "-"
         hash_prefix = row[1]
         song_title = row[25] if row[25] else "-"
         analysis_status = row[19]
-        analysis_job_id = row[20] or "-"
         lrc_status = row[21]
-        lrc_job_id = row[22] or "-"
 
         table.add_row(
-            hash_prefix,
+            song_id,
             song_title,
+            hash_prefix,
             _colorize_status(analysis_status),
-            analysis_job_id[:16] + "..." if len(analysis_job_id) > 19 else analysis_job_id,
             _colorize_status(lrc_status),
-            lrc_job_id[:16] + "..." if len(lrc_job_id) > 19 else lrc_job_id,
         )
 
     console.print(table)

@@ -51,12 +51,9 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
   - Retry logic with exponential backoff
   - Artist and song listing extraction
 - Catalog commands (`src/stream_of_worship/admin/commands/catalog.py`)
-  - `catalog scrape-artists` - Scrape artist catalog from sop.org
-  - `catalog scrape-songs` - Scrape songs for specific artists
-  - `catalog import` - Import catalog from JSON
-  - `catalog export` - Export catalog to JSON
+  - `catalog scrape` - Scrape song catalog from sop.org
   - `catalog list` - List catalog entries with filters
-  - `catalog stats` - Show catalog statistics
+  - `catalog show <song_id>` - Show song details with recording panel (if audio exists)
   - `catalog search` - Search catalog by keyword
 
 **Tests:**
@@ -83,9 +80,11 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
   - 12-character hash prefix generation
   - Deduplication support
 - Audio commands (`src/stream_of_worship/admin/commands/audio.py`)
-  - `audio download` - Download from YouTube and upload to R2
-  - `audio list` - List downloaded recordings
-  - `audio show` - Show recording details
+  - `audio download <song_id>` - Download from YouTube and upload to R2
+  - `audio list` - List downloaded recordings (shows Song ID as primary column)
+  - `audio show <song_id>` - Show recording details by song ID
+  - `audio analyze <song_id>` - Submit recording for analysis by song ID
+  - `audio status` - Check analysis status (shows Song ID as primary column)
 
 **Download Pipeline:**
 ```
@@ -227,16 +226,17 @@ For GPU acceleration, ensure:
   - `JobInfo` dataclass for job status tracking
   - Methods: `health_check()`, `submit_analysis()`, `get_job()`, `wait_for_completion()`
 - Audio commands integration (`src/stream_of_worship/admin/commands/audio.py`)
-  - `audio analyze` - Submit recording for analysis
-    - Resolves identifier as song_id or hash_prefix
+  - `audio analyze <song_id>` - Submit recording for analysis by song_id
     - `--force` flag for re-analysis
     - `--no-stems` to skip stem separation
     - `--wait` with Rich progress display (spinner, bar, stage)
     - Handles already-completed and already-processing states
   - `audio status` - Check analysis status
     - Query specific job by ID
-    - List pending recordings when no ID provided
+    - List pending recordings when no ID provided (shows Song ID as primary column)
     - Color-coded status display
+  - `audio show <song_id>` - Show recording details by song_id
+  - `audio list` - List recordings with Song ID as primary column
 - Database updates (`src/stream_of_worship/admin/db/client.py`)
   - `update_recording_analysis()` with `r2_stems_url` parameter
   - Status tracking for analysis and LRC jobs

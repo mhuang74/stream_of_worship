@@ -390,6 +390,49 @@ def show_song(
         border_style="green",
     ))
 
+    # Recording panel
+    recording = db_client.get_recording_by_song_id(song_id)
+    if recording:
+        recording_lines = ["[cyan]Audio Available:[/cyan] [green]✓[/green]"]
+        recording_lines.append(f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}")
+
+        if recording.file_size_bytes:
+            size_mb = recording.file_size_bytes / (1024 * 1024)
+            recording_lines.append(f"[cyan]File Size:[/cyan] {size_mb:.1f} MB")
+
+        if recording.duration_seconds:
+            minutes = int(recording.duration_seconds // 60)
+            secs = int(recording.duration_seconds % 60)
+            recording_lines.append(f"[cyan]Duration:[/cyan] {minutes}:{secs:02d}")
+
+        # Analysis status
+        if recording.analysis_status == "completed":
+            analysis_text = "[green]completed[/green]"
+        elif recording.analysis_status == "failed":
+            analysis_text = "[red]failed[/red]"
+        elif recording.analysis_status == "processing":
+            analysis_text = "[yellow]processing[/yellow]"
+        else:
+            analysis_text = f"[dim]{recording.analysis_status}[/dim]"
+        recording_lines.append(f"[cyan]Analysis:[/cyan] {analysis_text}")
+
+        # LRC status
+        if recording.lrc_status == "completed":
+            lrc_text = "[green]completed[/green]"
+        elif recording.lrc_status == "failed":
+            lrc_text = "[red]failed[/red]"
+        elif recording.lrc_status == "processing":
+            lrc_text = "[yellow]processing[/yellow]"
+        else:
+            lrc_text = f"[dim]{recording.lrc_status}[/dim]"
+        recording_lines.append(f"[cyan]LRC:[/cyan] {lrc_text}")
+
+        console.print(Panel.fit(
+            "\n".join(recording_lines),
+            title="Recording",
+            border_style="green",
+        ))
+
     # Lyrics panel
     lyrics_list = song.lyrics_list
     if lyrics_list:
