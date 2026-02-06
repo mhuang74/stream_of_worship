@@ -84,6 +84,7 @@ admin = [
 
 # User App (TUI) dependencies
 app = [
+    "stream-of-worship[admin]",
     "textual>=0.44.0",
     "pydub>=0.25.0",
     "miniaudio>=1.59",
