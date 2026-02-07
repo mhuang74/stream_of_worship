@@ -1,8 +1,69 @@
-# Stream of Worship - Admin Tools & Analysis Service
+# Stream of Worship
 
-Command-line tool and microservice for managing a Chinese worship music library. Includes song catalog scraping, audio download, deep learning analysis (tempo/key/structure), stem separation, and LRC generation.
+A seamless Chinese worship music transition system designed to analyze songs (tempo, key, structure) and generate smooth transitions between them.
 
-**Note:** This repository (`sow_cli_admin`) contains both the lightweight CLI tool (`sow-admin`) and the heavy Analysis Service. They are architecturally separate but co-located in a monorepo.
+**End Goals:**
+- Generate audio files containing multiple songs with smooth transitions between songs
+- Generate video files containing lyrics videos of multiple songs with smooth transitions
+- Provide an interactive tool to select songs from the library, experiment with transition parameters, and generate output audio/video files
+- Provide an admin tool to manage the song library (via scraping sop.org) and perform song analysis and lyrics LRC generation
+
+**Note:** This repository contains both the lightweight CLI tool (`sow-admin`) and the heavy Analysis Service. They are architecturally separate but co-located in a monorepo.
+
+## Quick Start
+
+This project consists of three components. Here's how to run each:
+
+| Component | Purpose | Run Command |
+|-----------|---------|-------------|
+| **Admin CLI** | Catalog management, audio download | `uv run --extra admin sow-admin --help` |
+| **User App** | Interactive TUI for transitions | `uv run --extra app sow-app run` |
+| **Analysis Service** | Audio analysis & stem separation | `cd services/analysis && docker compose up -d` |
+
+### Prerequisites
+- **Admin CLI & User App**: Python 3.11+, `uv` package manager
+- **Analysis Service**: Docker Desktop, Cloudflare R2 credentials
+
+### Component Details
+
+#### Admin CLI (Backend Management)
+```bash
+# Initialize database
+uv run --extra admin sow-admin db init
+
+# Scrape song catalog
+uv run --extra admin sow-admin catalog scrape
+
+# Download audio
+uv run --extra admin sow-admin audio download --song-id "song-id"
+```
+
+#### User App (End-User TUI)
+```bash
+# Run the interactive TUI
+uv run --extra app sow-app run
+
+# Or with custom config
+uv run --extra app sow-app run --config /path/to/config.toml
+```
+
+#### Analysis Service (Microservice)
+```bash
+cd services/analysis
+
+# Copy and configure environment
+cp .env.example .env
+# Edit .env with R2 credentials
+
+# Build and start
+docker compose build  # First time only (10-20 min)
+docker compose up -d
+
+# Check health
+curl http://localhost:8000/api/v1/health
+```
+
+---
 
 ## Project Status: Production Development
 
