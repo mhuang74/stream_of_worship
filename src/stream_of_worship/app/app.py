@@ -13,6 +13,7 @@ from stream_of_worship.admin.services.r2 import R2Client
 from stream_of_worship.app.config import AppConfig
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
+from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
@@ -20,6 +21,8 @@ from stream_of_worship.app.services.export import ExportService
 from stream_of_worship.app.services.playback import PlaybackService
 from stream_of_worship.app.services.video_engine import VideoEngine
 from stream_of_worship.app.state import AppScreen, AppState
+
+logger = get_logger(__name__)
 
 
 class SowApp(App):
@@ -82,50 +85,46 @@ class SowApp(App):
             output_dir=config.output_dir,
         )
 
-        # Screen instances (lazy loaded)
-        self._screens: dict[AppScreen, object] = {}
-
     def on_mount(self) -> None:
         """Handle app mount event."""
-        self.push_screen(self._get_or_create_screen(AppScreen.SONGSET_LIST))
+        logger.info("App mounted, pushing initial screen: SONGSET_LIST")
+        self.push_screen(self._create_screen(AppScreen.SONGSET_LIST))
 
-    def _get_or_create_screen(self, screen: AppScreen):
-        """Get or create a screen instance with caching.
+    def _create_screen(self, screen: AppScreen):
+        """Create a fresh screen instance.
 
-        This is our custom screen caching logic (not Textual's internal _get_screen).
-        Lazily instantiates screens on first access and caches them for reuse.
+        Creates a new screen instance on each call to avoid Textual issues
+        with pushing the same screen instance multiple times.
 
         Args:
             screen: Screen enum value
 
         Returns:
-            Screen instance
+            New screen instance
         """
-        if screen not in self._screens:
-            if screen == AppScreen.SONGSET_LIST:
-                from stream_of_worship.app.screens.songset_list import SongsetListScreen
-                self._screens[screen] = SongsetListScreen(self.state, self.songset_client)
-            elif screen == AppScreen.BROWSE:
-                from stream_of_worship.app.screens.browse import BrowseScreen
-                self._screens[screen] = BrowseScreen(self.state, self.catalog, self.songset_client)
-            elif screen == AppScreen.SONGSET_EDITOR:
-                from stream_of_worship.app.screens.songset_editor import SongsetEditorScreen
-                self._screens[screen] = SongsetEditorScreen(
-                    self.state, self.songset_client, self.catalog, self.playback
-                )
-            elif screen == AppScreen.TRANSITION_DETAIL:
-                from stream_of_worship.app.screens.transition_detail import TransitionDetailScreen
-                self._screens[screen] = TransitionDetailScreen(
-                    self.state, self.songset_client, self.playback
-                )
-            elif screen == AppScreen.EXPORT_PROGRESS:
-                from stream_of_worship.app.screens.export_progress import ExportProgressScreen
-                self._screens[screen] = ExportProgressScreen(self.state, self.export_service)
-            elif screen == AppScreen.SETTINGS:
-                from stream_of_worship.app.screens.settings import SettingsScreen
-                self._screens[screen] = SettingsScreen(self.state, self.config)
-
-        return self._screens[screen]
+        logger.debug(f"Creating fresh screen instance: {screen.name}")
+        if screen == AppScreen.SONGSET_LIST:
+            from stream_of_worship.app.screens.songset_list import SongsetListScreen
+            return SongsetListScreen(self.state, self.songset_client)
+        elif screen == AppScreen.BROWSE:
+            from stream_of_worship.app.screens.browse import BrowseScreen
+            return BrowseScreen(self.state, self.catalog, self.songset_client)
+        elif screen == AppScreen.SONGSET_EDITOR:
+            from stream_of_worship.app.screens.songset_editor import SongsetEditorScreen
+            return SongsetEditorScreen(
+                self.state, self.songset_client, self.catalog, self.playback
+            )
+        elif screen == AppScreen.TRANSITION_DETAIL:
+            from stream_of_worship.app.screens.transition_detail import TransitionDetailScreen
+            return TransitionDetailScreen(
+                self.state, self.songset_client, self.playback
+            )
+        elif screen == AppScreen.EXPORT_PROGRESS:
+            from stream_of_worship.app.screens.export_progress import ExportProgressScreen
+            return ExportProgressScreen(self.state, self.export_service)
+        elif screen == AppScreen.SETTINGS:
+            from stream_of_worship.app.screens.settings import SettingsScreen
+            return SettingsScreen(self.state, self.config)
 
     def navigate_to(self, screen: AppScreen) -> None:
         """Navigate to a screen.
@@ -133,17 +132,32 @@ class SowApp(App):
         Args:
             screen: Screen to navigate to
         """
+        logger.info(f"Navigate to: {screen.name} (from {self.state.current_screen.name})")
+
         # Stop playback when switching screens
         if self.playback.is_playing or self.playback.is_paused:
+            logger.debug("Stopping playback before navigation")
             self.playback.stop()
 
         self.state.navigate_to(screen)
-        self.push_screen(self._get_or_create_screen(screen))
+        self.push_screen(self._create_screen(screen))
+        logger.debug(f"Screen pushed, stack depth: {len(self.screen_stack)}")
 
     def navigate_back(self) -> None:
         """Navigate back to the previous screen."""
+        logger.info(
+            f"Navigate back requested (current: {self.state.current_screen.name}, "
+            f"previous: {self.state.previous_screen.name if self.state.previous_screen else 'None'})"
+        )
         if self.state.navigate_back():
+            logger.info(f"Popping screen, stack depth before: {len(self.screen_stack)}")
             self.pop_screen()
+            logger.info(
+                f"Screen popped, stack depth after: {len(self.screen_stack)}, "
+                f"current screen: {self.state.current_screen.name}"
+            )
+        else:
+            logger.warning("Cannot navigate back - no previous screen")
 
     def action_quit(self) -> None:
         """Quit the application with cleanup."""

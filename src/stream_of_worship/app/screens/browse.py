@@ -58,6 +58,12 @@ class BrowseScreen(Screen):
             table.add_columns("Title", "Key", "Tempo", "Duration", "Album")
             yield table
 
+            with Vertical(id="empty_state", classes="hidden"):
+                yield Static("📭", id="empty_icon")
+                yield Label("[bold]Catalog Empty[/bold]", id="empty_title")
+                yield Static("Loading...", id="empty_message")
+                yield Button("Refresh", id="btn_refresh", variant="default")
+
             with Horizontal(id="buttons"):
                 yield Button("Add to Songset", id="btn_add", variant="primary")
                 yield Button("Preview", id="btn_preview")
@@ -69,8 +75,27 @@ class BrowseScreen(Screen):
         """Handle mount event."""
         self._load_songs()
 
+    def _show_empty_state(self, message: str) -> None:
+        """Show empty state with custom message."""
+        empty_container = self.query_one("#empty_state")
+        empty_container.remove_class("hidden")
+
+        message_widget = self.query_one("#empty_message", Static)
+        message_widget.update(message)
+
+        table = self.query_one("#song_table", DataTable)
+        table.add_class("hidden")
+
+    def _hide_empty_state(self) -> None:
+        """Hide empty state and show table."""
+        empty_container = self.query_one("#empty_state")
+        empty_container.add_class("hidden")
+
+        table = self.query_one("#song_table", DataTable)
+        table.remove_class("hidden")
+
     def _load_songs(self, query: str = "") -> None:
-        """Load and display songs.
+        """Load and display songs with empty state handling.
 
         Args:
             query: Optional search query
@@ -84,6 +109,15 @@ class BrowseScreen(Screen):
 
         table = self.query_one("#song_table", DataTable)
         table.clear()
+
+        # Check if catalog is empty
+        if not self.songs:
+            health = self.catalog.get_catalog_health()
+            self._show_empty_state(health["guidance"])
+            return
+
+        # Hide empty state and show results
+        self._hide_empty_state()
 
         for song in self.songs:
             table.add_row(
@@ -111,6 +145,9 @@ class BrowseScreen(Screen):
             search_input = self.query_one("#search_input", Input)
             search_input.value = ""
             self._load_songs()
+        elif button_id == "btn_refresh":
+            self._load_songs()
+            self.notify("Catalog refreshed")
         elif button_id == "btn_add":
             self.action_add_to_songset()
         elif button_id == "btn_preview":

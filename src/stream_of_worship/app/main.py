@@ -12,6 +12,7 @@ from rich.panel import Panel
 
 from stream_of_worship.app.app import SowApp
 from stream_of_worship.app.config import AppConfig, ensure_app_config_exists, get_app_config_path
+from stream_of_worship.app.logging_config import setup_logging
 
 app = typer.Typer(
     name="sow-app",
@@ -90,6 +91,40 @@ def _check_database(config: AppConfig) -> bool:
     return True
 
 
+def _check_catalog_health(config: AppConfig) -> None:
+    """Check catalog health and warn user if incomplete.
+
+    Args:
+        config: App configuration
+    """
+    from stream_of_worship.app.db.read_client import ReadOnlyClient
+    from stream_of_worship.app.services.catalog import CatalogService
+
+    db_client = ReadOnlyClient(config.db_path)
+    catalog = CatalogService(db_client)
+    health = catalog.get_catalog_health()
+
+    if health["status"] == "ready":
+        console.print(
+            f"[green]✓[/green] Catalog ready: {health['analyzed_recordings']} analyzed recording(s)"
+        )
+        return
+
+    # Show warning for incomplete states
+    console.print(
+        Panel.fit(
+            f"[bold yellow]Catalog Incomplete[/bold yellow]\n\n"
+            f"Songs: {health['total_songs']}\n"
+            f"Recordings: {health['total_recordings']}\n"
+            f"Analyzed: {health['analyzed_recordings']}\n\n"
+            f"[cyan]{health['guidance']}[/cyan]\n\n"
+            "You can still launch the app, but the Browse screen will be empty.",
+            title="Warning",
+            border_style="yellow",
+        )
+    )
+
+
 @app.command()
 def run(
     config_path: Path = typer.Option(
@@ -122,14 +157,29 @@ def run(
     if not _check_database(config):
         raise typer.Exit(1)
 
+    # Check catalog health
+    _check_catalog_health(config)
+
+    # Set up logging
+    log_dir = config.cache_dir / "logs"
+    logger = setup_logging(log_dir)
+    logger.info(f"App configuration loaded from: {config.config_path if hasattr(config, 'config_path') else 'default'}")
+    logger.info(f"Database: {config.db_path}")
+    logger.info(f"Cache dir: {config.cache_dir}")
+    console.print(f"[dim]Session log: {log_dir}/sow_app_*.log[/dim]")
+
     # Launch TUI
     try:
         app_instance = SowApp(config)
+        logger.info("Launching TUI application")
         app_instance.run()
+        logger.info("Application exited normally")
     except KeyboardInterrupt:
+        logger.info("Application interrupted by user (Ctrl+C)")
         console.print("\n[yellow]Interrupted by user[/yellow]")
         raise typer.Exit(0)
     except Exception as e:
+        logger.exception(f"Application error: {e}")
         console.print(f"[red]Error running app: {e}[/red]")
         raise typer.Exit(1)
 

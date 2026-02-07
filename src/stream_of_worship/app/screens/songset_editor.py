@@ -10,9 +10,12 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 
 from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.songset_client import SongsetClient
+from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.playback import PlaybackService
 from stream_of_worship.app.state import AppScreen, AppState
+
+logger = get_logger(__name__)
 
 
 class SongsetEditorScreen(Screen):
@@ -73,6 +76,9 @@ class SongsetEditorScreen(Screen):
 
     def on_mount(self) -> None:
         """Handle mount event."""
+        logger.info(
+            f"SongsetEditorScreen mounted (songset: {self.state.selected_songset.id if self.state.selected_songset else 'None'})"
+        )
         self._refresh()
 
         # Listen for state changes
@@ -129,7 +135,7 @@ class SongsetEditorScreen(Screen):
         elif button_id == "btn_export":
             self.action_export()
         elif button_id == "btn_back":
-            self.app.navigate_back()
+            self.action_back()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection."""
@@ -179,5 +185,6 @@ class SongsetEditorScreen(Screen):
         self.app.navigate_to(AppScreen.EXPORT_PROGRESS)
 
     def action_back(self) -> None:
-        """Go back."""
+        """Go back to songset list."""
+        logger.info("Action: back (from songset editor)")
         self.app.navigate_back()

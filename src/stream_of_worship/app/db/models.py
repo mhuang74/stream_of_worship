@@ -66,7 +66,7 @@ class Songset:
         Returns:
             Unique ID string
         """
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         return f"songset_{timestamp}"
 
 

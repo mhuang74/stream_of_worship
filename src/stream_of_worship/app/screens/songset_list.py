@@ -3,6 +3,7 @@
 Displays all user-created songsets with options to create, edit, or delete.
 """
 
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -10,7 +11,10 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 
 from stream_of_worship.app.db.models import Songset
 from stream_of_worship.app.db.songset_client import SongsetClient
+from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.state import AppScreen, AppState
+
+logger = get_logger(__name__)
 
 
 class SongsetListScreen(Screen):
@@ -18,6 +22,7 @@ class SongsetListScreen(Screen):
 
     BINDINGS = [
         ("n", "new_songset", "New Songset"),
+        ("e", "edit_songset", "Edit"),
         ("d", "delete_songset", "Delete"),
         ("enter", "edit_songset", "Edit"),
         ("q", "quit", "Quit"),
@@ -41,7 +46,7 @@ class SongsetListScreen(Screen):
 
         with Vertical():
             yield Label("[bold]Your Songsets[/bold]", id="title")
-            yield Label("Press 'n' to create a new songset, Enter to edit", id="subtitle")
+            yield Label("Press 'n' for new, 'e' or Enter to edit, 'd' to delete", id="subtitle")
 
             table = DataTable(id="songset_table")
             table.add_columns("Name", "Description", "Songs", "Updated")
@@ -57,7 +62,17 @@ class SongsetListScreen(Screen):
 
     def on_mount(self) -> None:
         """Handle mount event."""
+        logger.info("SongsetListScreen mounted")
         self._load_songsets()
+
+
+    def on_screen_resume(self, event: events.ScreenResume) -> None:
+        """Handle screen resume event (when another screen is popped)."""
+        logger.info("SongsetListScreen resumed (screen popped from above)")
+        self._load_songsets()
+        # Use call_after_refresh to ensure focus is set after screen is fully rendered
+        logger.debug("Scheduling focus restoration after refresh")
+        self.call_after_refresh(self._restore_focus)
 
     def _load_songsets(self) -> None:
         """Load and display songsets."""
@@ -85,6 +100,26 @@ class SongsetListScreen(Screen):
                 key=songset.id,
             )
 
+    def _restore_focus(self) -> None:
+        """Restore focus to the table after screen resume."""
+        table = self.query_one("#songset_table", DataTable)
+        logger.debug(
+            f"Restoring focus: rows={len(table.rows)}, "
+            f"cursor_row={table.cursor_row}, "
+            f"has_focus={table.has_focus}"
+        )
+        if len(table.rows) > 0:
+            # Ensure cursor is on first row if not set
+            if table.cursor_row is None:
+                table.cursor_row = 0
+                logger.debug("Set cursor to row 0")
+            # Force focus to the table
+            table.focus()
+            logger.info(
+                f"Focus restored to table: cursor_row={table.cursor_row}, "
+                f"has_focus={table.has_focus}"
+            )
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection."""
         songset_id = event.row_key.value
@@ -108,31 +143,53 @@ class SongsetListScreen(Screen):
 
     def action_new_songset(self) -> None:
         """Create a new songset."""
+        logger.info("Action: new_songset")
         # For simplicity, create with default name and let user edit
         songset = self.songset_client.create_songset(
             name="New Songset",
             description="",
         )
+        logger.debug(f"Created songset: {songset.id}")
         self.state.select_songset(songset)
         self.app.navigate_to(AppScreen.SONGSET_EDITOR)
 
     def action_edit_songset(self) -> None:
         """Edit selected songset."""
+        logger.info("Action: edit_songset")
         table = self.query_one("#songset_table", DataTable)
+        logger.debug(f"Table state: cursor_row={table.cursor_row}, rows={len(table.rows)}, has_focus={table.has_focus}")
         if table.cursor_row is not None:
-            row_key = table.get_row_at(table.cursor_row)[0]
-            songset = self.songset_client.get_songset(row_key)
-            if songset:
-                self.state.select_songset(songset)
-                self.app.navigate_to(AppScreen.SONGSET_EDITOR)
+            # Get selected songset ID from row key
+            rows = list(table.rows.keys())
+            if table.cursor_row < len(rows):
+                songset_id = rows[table.cursor_row].value
+                logger.info(f"Editing songset: {songset_id}")
+                songset = self.songset_client.get_songset(songset_id)
+                if songset:
+                    self.state.select_songset(songset)
+                    self.app.navigate_to(AppScreen.SONGSET_EDITOR)
+                else:
+                    logger.warning(f"Songset not found: {songset_id}")
+        else:
+            logger.warning("Cannot edit: no cursor row")
+            self.notify("No songset selected", severity="warning")
 
     def action_delete_songset(self) -> None:
         """Delete selected songset."""
+        logger.info("Action: delete_songset")
         table = self.query_one("#songset_table", DataTable)
         if table.cursor_row is not None:
             # Get selected songset
             rows = list(table.rows.keys())
             if table.cursor_row < len(rows):
-                songset_id = rows[table.cursor_row]
-                self.songset_client.delete_songset(songset_id)
-                self._load_songsets()
+                songset_id = rows[table.cursor_row].value
+                logger.info(f"Deleting songset: {songset_id}")
+                songset = self.songset_client.get_songset(songset_id)
+                if songset:
+                    self.songset_client.delete_songset(songset_id)
+                    logger.debug(f"Deleted songset: {songset.name}")
+                    self.notify(f"Deleted songset '{songset.name}'")
+                    self._load_songsets()
+        else:
+            logger.warning("Cannot delete: no cursor row")
+            self.notify("No songset selected", severity="warning")

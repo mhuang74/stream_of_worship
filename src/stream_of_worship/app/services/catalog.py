@@ -226,3 +226,54 @@ class CatalogService:
             Best recording or None
         """
         return self.db_client.get_recording_by_song_id(song_id)
+
+    def get_catalog_health(self) -> dict:
+        """Get catalog health status with actionable guidance.
+
+        Returns:
+            Dictionary with:
+            - status: 'empty'|'no_recordings'|'no_analysis'|'ready'
+            - total_songs: int
+            - total_recordings: int
+            - analyzed_recordings: int
+            - guidance: str (user-facing message with next steps)
+        """
+        stats = self.get_stats()
+        total_songs = stats["total_songs"]
+        total_recordings = stats["total_recordings"]
+        analyzed = stats["analyzed_recordings"]
+
+        if total_songs == 0:
+            return {
+                "status": "empty",
+                "total_songs": 0,
+                "total_recordings": 0,
+                "analyzed_recordings": 0,
+                "guidance": "No songs found. Run: sow-admin catalog scrape",
+            }
+
+        if total_recordings == 0:
+            return {
+                "status": "no_recordings",
+                "total_songs": total_songs,
+                "total_recordings": 0,
+                "analyzed_recordings": 0,
+                "guidance": f"Found {total_songs} songs but no audio files. Download audio: sow-admin audio download <song_id>",
+            }
+
+        if analyzed == 0:
+            return {
+                "status": "no_analysis",
+                "total_songs": total_songs,
+                "total_recordings": total_recordings,
+                "analyzed_recordings": 0,
+                "guidance": f"Found {total_songs} songs and {total_recordings} recording(s), but no analysis completed. Run: sow-admin audio analyze <song_id>",
+            }
+
+        return {
+            "status": "ready",
+            "total_songs": total_songs,
+            "total_recordings": total_recordings,
+            "analyzed_recordings": analyzed,
+            "guidance": f"Catalog ready: {analyzed} analyzed recording(s) available",
+        }
