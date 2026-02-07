@@ -113,7 +113,8 @@ class SowApp(App):
         elif screen == AppScreen.SONGSET_EDITOR:
             from stream_of_worship.app.screens.songset_editor import SongsetEditorScreen
             return SongsetEditorScreen(
-                self.state, self.songset_client, self.catalog, self.playback
+                self.state, self.songset_client, self.catalog, self.playback,
+                self.audio_engine, self.asset_cache
             )
         elif screen == AppScreen.TRANSITION_DETAIL:
             from stream_of_worship.app.screens.transition_detail import TransitionDetailScreen

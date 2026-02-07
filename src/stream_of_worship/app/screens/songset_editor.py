@@ -14,6 +14,8 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.logging_config import get_logger
+from stream_of_worship.app.services.asset_cache import AssetCache
+from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.playback import PlaybackService
 from stream_of_worship.app.state import AppScreen, AppState
@@ -29,6 +31,7 @@ class SongsetEditorScreen(Screen):
         ("r", "remove_song", "Remove"),
         ("e", "edit_transition", "Edit Transition"),
         ("p", "preview", "Preview"),
+        ("space", "toggle_playback", "Play/Stop"),
         ("x", "export", "Export"),
         ("i", "edit_info", "Edit Info"),
         ("escape", "back", "Back"),
@@ -40,6 +43,8 @@ class SongsetEditorScreen(Screen):
         songset_client: SongsetClient,
         catalog: CatalogService,
         playback: PlaybackService,
+        audio_engine: AudioEngine,
+        asset_cache: AssetCache,
     ):
         """Initialize the screen.
 
@@ -48,12 +53,16 @@ class SongsetEditorScreen(Screen):
             songset_client: Songset database client
             catalog: Catalog service
             playback: Playback service
+            audio_engine: Audio engine for generating previews
+            asset_cache: Asset cache for downloading audio
         """
         super().__init__()
         self.state = state
         self.songset_client = songset_client
         self.catalog = catalog
         self.playback = playback
+        self.audio_engine = audio_engine
+        self.asset_cache = asset_cache
         self.items: list[SongsetItem] = []
 
     def compose(self) -> ComposeResult:
@@ -77,7 +86,7 @@ class SongsetEditorScreen(Screen):
             with Horizontal(id="buttons"):
                 yield Button("Add Songs", id="btn_add", variant="primary")
                 yield Button("Remove", id="btn_remove")
-                yield Button("Edit Gap", id="btn_edit")
+                yield Button("Edit Transition", id="btn_edit")
                 yield Button("Preview", id="btn_preview")
                 yield Button("Export", id="btn_export", variant="success")
                 yield Button("Back", id="btn_back")
@@ -283,13 +292,69 @@ class SongsetEditorScreen(Screen):
         self.app.navigate_to(AppScreen.TRANSITION_DETAIL)
 
     def action_preview(self) -> None:
-        """Preview the songset."""
+        """Preview the transition from previous song to selected song."""
         if len(self.items) < 2:
             self.notify("Need at least 2 songs to preview transition", severity="warning")
             return
 
-        # Generate a temporary preview
-        self.notify("Generating preview...")
+        to_item = self._get_selected_item()
+        if not to_item:
+            self.notify("No song selected", severity="error")
+            return
+
+        # Find the index of the selected item
+        try:
+            to_index = self.items.index(to_item)
+        except ValueError:
+            self.notify("Selected song not found in songset", severity="error")
+            return
+
+        # Can't preview transition for the first song (no previous song)
+        if to_index == 0:
+            self.notify("First song has no transition to preview", severity="warning")
+            return
+
+        from_item = self.items[to_index - 1]
+
+        self.notify("Generating transition preview...")
+
+        try:
+            preview_path = self.audio_engine.preview_transition(from_item, to_item)
+            if preview_path:
+                self.playback.play(preview_path)
+                self.notify(f"Playing transition: {from_item.song_title} → {to_item.song_title}")
+            else:
+                self.notify("Failed to generate preview", severity="error")
+        except Exception as e:
+            logger.error(f"Error generating preview: {e}")
+            self.notify(f"Error generating preview: {e}", severity="error")
+
+    def action_toggle_playback(self) -> None:
+        """Toggle playback of the currently selected song with spacebar."""
+        if self.playback.is_playing:
+            self.playback.stop()
+            self.notify("Playback stopped")
+            return
+
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No song selected", severity="error")
+            return
+
+        if not item.recording_hash_prefix:
+            self.notify("Selected song has no audio recording", severity="error")
+            return
+
+        try:
+            audio_path = self.asset_cache.download_audio(item.recording_hash_prefix)
+            if audio_path:
+                self.playback.play(audio_path)
+                self.notify(f"Playing: {item.song_title}")
+            else:
+                self.notify("Failed to download audio file", severity="error")
+        except Exception as e:
+            logger.error(f"Error playing audio: {e}")
+            self.notify(f"Error playing audio: {e}", severity="error")
 
     def action_export(self) -> None:
         """Export the songset."""
