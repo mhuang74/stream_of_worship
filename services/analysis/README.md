@@ -177,11 +177,27 @@ To enable GPU acceleration for Demucs and Whisper:
 
 2. Set environment variables:
    ```bash
-   SOW_DEMUCS_DEVICE=cuda
-   SOW_WHISPER_DEVICE=cuda
+   export SOW_DEMUCS_DEVICE=cuda
+   export SOW_WHISPER_DEVICE=cuda
    ```
 
-3. The `docker-compose.yml` already includes the GPU reservation block. If you don't have a GPU, remove or comment out the `deploy.resources` section.
+3. Uncomment the GPU section in `docker-compose.yml`:
+   ```yaml
+   deploy:
+     resources:
+       reservations:
+         devices:
+           - driver: nvidia
+             count: 1
+             capabilities: [ gpu ]
+   ```
+
+4. Start the service:
+   ```bash
+   docker compose up -d
+   ```
+
+If you don't have a GPU, the service will run fine on CPU with the default configuration.
 
 ## Stopping the Service
 

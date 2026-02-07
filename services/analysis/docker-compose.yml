@@ -26,15 +26,15 @@ services:
       - SOW_WHISPER_DEVICE=${SOW_WHISPER_DEVICE:-cpu}
     volumes:
       - analysis-cache:/cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            # GPU block requires nvidia-container-toolkit.
-            # For CPU-only fallback, remove the entire deploy.resources block.
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
+    # GPU support: Uncomment the 'deploy' section below if you have a GPU
+    # and NVIDIA Container Toolkit installed. See README.md for details.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [ gpu ]
 
 volumes:
   analysis-cache:
