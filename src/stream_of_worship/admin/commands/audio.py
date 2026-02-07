@@ -411,7 +411,7 @@ def analyze_recording(
         raise typer.Exit(0)
 
     # Check if already processing
-    if recording.analysis_status == "processing" and recording.analysis_job_id:
+    if recording.analysis_status == "processing" and recording.analysis_job_id and not force:
         if not wait:
             console.print(
                 f"[yellow]Analysis already in progress for "
