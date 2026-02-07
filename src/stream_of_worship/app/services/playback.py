@@ -9,9 +9,14 @@ import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Generator, Optional
 
 import miniaudio
+import numpy as np
+
+from stream_of_worship.app.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class PlaybackState(Enum):
@@ -67,7 +72,7 @@ class PlaybackService:
 
         self._device: Optional[miniaudio.PlaybackDevice] = None
         self._source: Optional[miniaudio.DecodedSoundFile] = None
-        self._stream: Optional[miniaudio.Stream] = None
+        self._generator: Optional[Generator] = None
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -184,6 +189,7 @@ class PlaybackService:
         self.stop()
 
         if not file_path.exists():
+            logger.error(f"Audio file not found: {file_path}")
             return False
 
         try:
@@ -195,17 +201,87 @@ class PlaybackService:
                 sample_rate=44100,
             )
 
+            # Calculate duration (samples is array.array of int16 values, interleaved)
+            # Total frames = total_samples / nchannels
+            total_frames = len(self._source.samples) // self._source.nchannels
+            duration = total_frames / self._source.sample_rate if self._source.sample_rate > 0 else 0
+
+
             with self._lock:
                 self._current_file = file_path
-                self._duration_seconds = len(self._source.samples) / (
-                    self._source.sample_rate * self._source.nchannels * 2  # 2 bytes per sample (S16)
-                ) if self._source.sample_rate > 0 else 0
+                self._duration_seconds = duration
                 self._position_seconds = 0.0
 
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to load audio: {e}")
             self._source = None
             return False
+
+    def _stream_generator(self, source_samples, start_sample):
+        """Coroutine generator that yields audio chunks as requested by miniaudio.
+
+        This generator receives the number of frames needed via .send() and yields
+        that exact amount of audio data as a numpy array with shape (num_frames, nchannels).
+
+        Args:
+            source_samples: array.array of int16 audio samples (interleaved stereo)
+            start_sample: Starting sample position (not bytes)
+
+        Yields:
+            Numpy arrays with shape (num_frames, nchannels) and dtype int16
+        """
+        sample_pos = start_sample  # Position in samples, not bytes
+        nchannels = 2  # Stereo
+
+        try:
+            # Initialize: yield empty array, receive first frame request
+            num_frames = yield np.zeros((0, nchannels), dtype=np.int16)
+
+            while not self._stop_event.is_set() and sample_pos < len(source_samples):
+                # Handle None or invalid frame requests
+                if num_frames is None or num_frames <= 0:
+                    logger.warning(f"Invalid frame request: {num_frames}")
+                    break
+
+                # Calculate how many samples we need (frames * channels)
+                samples_needed = num_frames * nchannels
+                end_pos = min(sample_pos + samples_needed, len(source_samples))
+                chunk = source_samples[sample_pos:end_pos]
+
+                # Convert array.array to numpy array
+                samples = np.array(chunk, dtype=np.int16)
+
+                # Pad with zeros if we don't have enough samples
+                if len(samples) < samples_needed:
+                    padding = samples_needed - len(samples)
+                    samples = np.concatenate([samples, np.zeros(padding, dtype=np.int16)])
+                    logger.debug(f"Padded with {padding} samples of silence")
+
+                # Apply volume scaling
+                if self.volume != 1.0:
+                    samples = (samples * self.volume).astype(np.int16)
+
+                # Reshape to (num_frames, nchannels)
+                samples = samples.reshape((num_frames, nchannels))
+
+                sample_pos = end_pos
+
+                # Yield the samples array and receive next frame request
+                num_frames = yield samples
+
+                # If we've reached the end, break
+                if sample_pos >= len(source_samples):
+                    break
+
+        except GeneratorExit:
+            return
+
+        # Playback finished naturally
+        if not self._stop_event.is_set():
+            self._set_state(PlaybackState.STOPPED)
+            if self._on_finished:
+                self._on_finished()
 
     def play(self, file_path: Optional[Path] = None, start_seconds: float = 0.0) -> bool:
         """Start or resume playback.
@@ -217,45 +293,82 @@ class PlaybackService:
         Returns:
             True if playback started
         """
+        # Save the target position and file before stopping
         with self._lock:
             if file_path:
                 self._current_file = file_path
-                self._position_seconds = start_seconds
             elif self._state == PlaybackState.PAUSED:
                 # Resume from pause
                 pass
             elif not self._current_file:
                 return False
 
-        # Load if needed
+            target_position = start_seconds
+            target_file = self._current_file
+
+        # Stop any existing playback first
+        self.stop()
+
+        # Restore current file after stop
+        with self._lock:
+            self._current_file = target_file
+
+        # Load if needed (load() will reset position to 0, so we'll restore it after)
         if file_path or not self._source:
             if not self.load(self._current_file):
                 return False
 
+        # Restore position after load (which also resets it to 0)
+        with self._lock:
+            self._position_seconds = target_position
+
         try:
+            # Calculate start position in samples (source.samples is array.array of int16 values)
+            sample_rate = self._source.sample_rate
+            nchannels = self._source.nchannels
+            # Calculate sample index (frames * channels since samples are interleaved)
+            start_sample_index = int(self._position_seconds * sample_rate * nchannels)
+
+            if start_sample_index >= len(self._source.samples):
+                return False
+
+            logger.debug(
+                f"Starting playback: {self._current_file.name} | "
+                f"{self._duration_seconds:.1f}s, {len(self._source.samples)} samples, "
+                f"{sample_rate}Hz, volume={self.volume} | "
+                f"start={target_position:.1f}s"
+            )
+
+            # Create and prime the generator (must be started before passing to device)
+            self._generator = self._stream_generator(self._source.samples, start_sample_index)
+            next(self._generator)  # Prime the generator
+
             # Create playback device
             self._device = miniaudio.PlaybackDevice(
                 output_format=miniaudio.SampleFormat.SIGNED16,
-                nchannels=2,
-                sample_rate=44100,
-                buffer_msec=self.buffer_ms,
+                nchannels=nchannels,
+                sample_rate=sample_rate,
             )
 
-            # Start playback thread
+            # Start playback thread for position tracking
             self._stop_event.clear()
             self._position_thread = threading.Thread(target=self._position_tracker, daemon=True)
             self._position_thread.start()
 
             with self._lock:
-                self._start_time = time.time() - self._position_seconds
+                self._start_time = time.time() - target_position
+                self._position_seconds = 0.0  # Reset to 0 for position tracking
                 self._paused_at = None
 
             self._set_state(PlaybackState.PLAYING)
 
-            # Start playback (simplified - full implementation would handle streaming)
+            # Start the device with the primed generator
+            # miniaudio will send() the required number of frames to the generator
+            self._device.start(self._generator)
             return True
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Playback error: {e}", exc_info=True)
             self.stop()
             return False
 
@@ -295,6 +408,15 @@ class PlaybackService:
         """Stop playback and reset position."""
         self._stop_event.set()
 
+        # Close generator first
+        if self._generator:
+            try:
+                self._generator.close()
+            except Exception:
+                pass
+            self._generator = None
+
+        # Stop and close device
         if self._device:
             try:
                 self._device.stop()
@@ -303,6 +425,7 @@ class PlaybackService:
                 pass
             self._device = None
 
+        # Wait for position thread to finish
         if self._position_thread and self._position_thread.is_alive():
             self._position_thread.join(timeout=1.0)
 
@@ -329,16 +452,64 @@ class PlaybackService:
             if not self._current_file or not self._source:
                 return False
 
+            # Clamp position to valid range
             position_seconds = max(0.0, min(position_seconds, self._duration_seconds))
-            self._position_seconds = position_seconds
+            was_playing = self._state == PlaybackState.PLAYING
 
-            if self._state == PlaybackState.PLAYING:
-                self._start_time = time.time() - position_seconds
+        # If playing, restart playback at new position
+        if was_playing:
+            logger.debug(f"Seeking to {position_seconds:.2f}s while playing")
+            return self.play(start_seconds=position_seconds)
+        else:
+            # Just update position if not playing
+            with self._lock:
+                self._position_seconds = position_seconds
 
-        if self._on_position_changed:
-            self._on_position_changed(self.get_position())
+            if self._on_position_changed:
+                self._on_position_changed(self.get_position())
 
-        return True
+            return True
+
+    def skip_forward(self, seconds: float = 10.0) -> bool:
+        """Skip forward by specified seconds.
+
+        Args:
+            seconds: Number of seconds to skip forward (default 10)
+
+        Returns:
+            True if skip was successful
+        """
+        current = self.position_seconds
+        duration = self.duration_seconds
+
+        # If within 'seconds' of the end, don't skip - just let it finish
+        if current + seconds >= duration - 1.0:
+            logger.debug(f"Near end of track ({current:.1f}s / {duration:.1f}s), not skipping forward")
+            return False
+
+        new_position = min(current + seconds, duration)
+        logger.debug(f"Skipping forward {seconds}s: {current:.1f}s -> {new_position:.1f}s")
+        return self.seek(new_position)
+
+    def skip_backward(self, seconds: float = 10.0) -> bool:
+        """Skip backward by specified seconds.
+
+        Args:
+            seconds: Number of seconds to skip backward (default 10)
+
+        Returns:
+            True if skip was successful
+        """
+        current = self.position_seconds
+
+        # If within 'seconds' of the start, go to beginning
+        if current <= seconds:
+            logger.debug(f"Near start of track ({current:.1f}s), skipping to beginning")
+            return self.seek(0.0)
+
+        new_position = max(current - seconds, 0.0)
+        logger.debug(f"Skipping backward {seconds}s: {current:.1f}s -> {new_position:.1f}s")
+        return self.seek(new_position)
 
     def set_volume(self, volume: float) -> None:
         """Set playback volume.
