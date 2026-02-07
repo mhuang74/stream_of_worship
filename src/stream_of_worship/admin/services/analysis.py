@@ -201,6 +201,75 @@ class AnalysisClient:
                 )
             raise AnalysisServiceError(f"Analysis submission failed: {e}")
 
+    def submit_lrc(
+        self,
+        audio_url: str,
+        content_hash: str,
+        lyrics_text: str,
+        whisper_model: str = "large-v3",
+        language: str = "zh",
+        use_vocals_stem: bool = True,
+        force: bool = False,
+    ) -> JobInfo:
+        """Submit an audio file for LRC generation.
+
+        Args:
+            audio_url: R2 URL of the audio file
+            content_hash: SHA-256 hash of the audio content
+            lyrics_text: Raw lyrics text to align
+            whisper_model: Whisper model to use
+            language: Language hint for transcription
+            use_vocals_stem: Whether to use vocals stem for better alignment
+            force: Whether to force re-generation
+
+        Returns:
+            JobInfo for the submitted job
+
+        Raises:
+            AnalysisServiceError: If submission fails
+        """
+        payload = {
+            "audio_url": audio_url,
+            "content_hash": content_hash,
+            "lyrics_text": lyrics_text,
+            "options": {
+                "whisper_model": whisper_model,
+                "language": language,
+                "use_vocals_stem": use_vocals_stem,
+                "force": force,
+            },
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/lrc",
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid API key", status_code=401
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_job_response(data)
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e.response, "status_code"):
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"LRC submission failed (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"LRC submission failed: {e}")
+
     def get_job(self, job_id: str) -> JobInfo:
         """Get information about a job.
 
