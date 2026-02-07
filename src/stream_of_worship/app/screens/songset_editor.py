@@ -3,6 +3,7 @@
 Allows editing a songset: reordering songs, adjusting transitions, previewing.
 """
 
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -27,6 +28,7 @@ class SongsetEditorScreen(Screen):
         ("e", "edit_transition", "Edit Transition"),
         ("p", "preview", "Preview"),
         ("x", "export", "Export"),
+        ("i", "edit_info", "Edit Info"),
         ("escape", "back", "Back"),
     ]
 
@@ -58,7 +60,12 @@ class SongsetEditorScreen(Screen):
 
         with Vertical():
             yield Label("[bold]Songset Editor[/bold]", id="title")
-            yield Label(id="songset_name")
+
+            with Horizontal(id="info_container"):
+                yield Label("Name:", id="name_label")
+                yield Input(placeholder="Songset name", id="input_name")
+                yield Label("Description:", id="desc_label")
+                yield Input(placeholder="Description (optional)", id="input_description")
 
             table = DataTable(id="items_table")
             table.add_columns("#", "Song", "Key", "Duration", "Gap", "Transition")
@@ -84,14 +91,22 @@ class SongsetEditorScreen(Screen):
         # Listen for state changes
         self.state.add_listener("selected_songset", lambda _: self._refresh())
 
+
     def _refresh(self) -> None:
         """Refresh the display."""
         songset = self.state.selected_songset
         if not songset:
             return
 
-        name_label = self.query_one("#songset_name", Label)
-        name_label.update(f"[bold]{songset.name}[/bold] - {songset.description or ''}")
+        # Update input fields with current values
+        try:
+            name_input = self.query_one("#input_name", Input)
+            name_input.value = songset.name
+
+            desc_input = self.query_one("#input_description", Input)
+            desc_input.value = songset.description or ""
+        except Exception as e:
+            logger.error(f"Failed to update input fields: {e}")
 
         self._load_items()
 
@@ -145,6 +160,56 @@ class SongsetEditorScreen(Screen):
                 self.state.select_item(item)
                 break
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle input submission (Enter key)."""
+        if event.input.id in ("input_name", "input_description"):
+            self._save_songset_info()
+            # Move focus to table
+            table = self.query_one("#items_table", DataTable)
+            table.focus()
+
+    def on_input_blurred(self, event: Input.Blurred) -> None:
+        """Handle input losing focus."""
+        if event.input.id in ("input_name", "input_description"):
+            self._save_songset_info()
+
+    def _save_songset_info(self) -> None:
+        """Save songset name and description from input fields."""
+        if not self.state.selected_songset:
+            return
+
+        name_input = self.query_one("#input_name", Input)
+        desc_input = self.query_one("#input_description", Input)
+
+        name = name_input.value.strip()
+        description = desc_input.value.strip()
+
+        # Validate name is not empty
+        if not name:
+            self.notify("Songset name cannot be empty", severity="error")
+            name_input.value = self.state.selected_songset.name
+            return
+
+        # Only update if changed
+        if (name != self.state.selected_songset.name or
+            description != (self.state.selected_songset.description or "")):
+
+            success = self.songset_client.update_songset(
+                self.state.selected_songset.id,
+                name=name,
+                description=description if description else None,
+            )
+
+            if success:
+                logger.info(f"Updated songset info: name='{name}', description='{description}'")
+                # Update state
+                self.state.selected_songset.name = name
+                self.state.selected_songset.description = description if description else None
+                self.notify("Songset info updated")
+            else:
+                logger.error("Failed to update songset info")
+                self.notify("Failed to update songset", severity="error")
+
     def action_add_songs(self) -> None:
         """Navigate to browse screen to add songs."""
         self.app.navigate_to(AppScreen.BROWSE)
@@ -183,6 +248,11 @@ class SongsetEditorScreen(Screen):
             return
 
         self.app.navigate_to(AppScreen.EXPORT_PROGRESS)
+
+    def action_edit_info(self) -> None:
+        """Focus the name input to edit songset info."""
+        name_input = self.query_one("#input_name", Input)
+        name_input.focus()
 
     def action_back(self) -> None:
         """Go back to songset list."""

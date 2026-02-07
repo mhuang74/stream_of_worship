@@ -105,9 +105,23 @@ Input {
 }
 
 /* Songset info */
-#songset_name {
-    text-align: center;
+#info_container {
+    align: center middle;
     padding: 0 2 1 2;
+    height: auto;
+}
+
+#info_container Label {
+    width: auto;
+    margin: 0 1;
+}
+
+#input_name {
+    width: 30;
+}
+
+#input_description {
+    width: 50;
 }
 
 #song_info {
