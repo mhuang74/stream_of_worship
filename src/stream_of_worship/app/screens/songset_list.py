@@ -193,3 +193,8 @@ class SongsetListScreen(Screen):
         else:
             logger.warning("Cannot delete: no cursor row")
             self.notify("No songset selected", severity="warning")
+
+    def action_quit(self) -> None:
+        """Quit the application."""
+        logger.info("Action: quit (from songset list)")
+        self.app.action_quit()

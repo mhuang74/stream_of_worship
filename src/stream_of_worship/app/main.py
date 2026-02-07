@@ -166,7 +166,7 @@ def run(
     logger.info(f"App configuration loaded from: {config.config_path if hasattr(config, 'config_path') else 'default'}")
     logger.info(f"Database: {config.db_path}")
     logger.info(f"Cache dir: {config.cache_dir}")
-    console.print(f"[dim]Session log: {log_dir}/sow_app_*.log[/dim]")
+    console.print(f"[dim]Session log: {log_dir}/sow_app.log[/dim]")
 
     # Launch TUI
     try:
