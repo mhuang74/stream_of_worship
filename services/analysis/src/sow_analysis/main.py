@@ -34,8 +34,8 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize R2 if configured
-    if settings.R2_ENDPOINT_URL:
-        job_queue.initialize_r2(settings.R2_BUCKET, settings.R2_ENDPOINT_URL)
+    if settings.SOW_R2_ENDPOINT_URL:
+        job_queue.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
     # Set job queue in routes
     set_job_queue(job_queue)

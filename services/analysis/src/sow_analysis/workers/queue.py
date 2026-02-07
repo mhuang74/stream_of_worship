@@ -175,8 +175,8 @@ class JobQueue:
 
         try:
             # Initialize R2 if not done
-            if not self.r2_client and settings.R2_ENDPOINT_URL:
-                self.initialize_r2(settings.R2_BUCKET, settings.R2_ENDPOINT_URL)
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
             # Download audio from R2
             import tempfile
@@ -313,8 +313,8 @@ class JobQueue:
                     return
 
             # Initialize R2 if not done
-            if not self.r2_client and settings.R2_ENDPOINT_URL:
-                self.initialize_r2(settings.R2_BUCKET, settings.R2_ENDPOINT_URL)
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
             import tempfile
 
@@ -334,7 +334,7 @@ class JobQueue:
                 # Check if vocals stem exists and should be used
                 transcription_path = audio_path
                 if request.options.use_vocals_stem and self.r2_client:
-                    vocals_url = f"s3://{settings.R2_BUCKET}/{hash_prefix}/stems/vocals.wav"
+                    vocals_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/vocals.wav"
                     if await self.r2_client.check_exists(vocals_url):
                         vocals_path = temp_path / "vocals.wav"
                         await self.r2_client.download_audio(vocals_url, vocals_path)

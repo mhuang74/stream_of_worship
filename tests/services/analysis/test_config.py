@@ -16,11 +16,11 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
-            assert settings.R2_BUCKET == "sow-audio"
-            assert settings.R2_ENDPOINT_URL == ""
+            assert settings.SOW_R2_BUCKET == "sow-audio"
+            assert settings.SOW_R2_ENDPOINT_URL == ""
             assert settings.SOW_R2_ACCESS_KEY_ID == ""
             assert settings.SOW_R2_SECRET_ACCESS_KEY == ""
-            assert settings.ANALYSIS_API_KEY == ""
+            assert settings.SOW_ANALYSIS_API_KEY == ""
             assert settings.CACHE_DIR == Path("/cache")
             assert settings.MAX_CONCURRENT_JOBS == 2
             assert settings.DEMUCS_MODEL == "htdemucs"
@@ -29,11 +29,11 @@ class TestSettings:
     def test_custom_values_from_env(self):
         """Test loading custom values from environment."""
         env_vars = {
-            "R2_BUCKET": "my-bucket",
-            "R2_ENDPOINT_URL": "https://r2.example.com",
+            "SOW_R2_BUCKET": "my-bucket",
+            "SOW_R2_ENDPOINT_URL": "https://r2.example.com",
             "SOW_R2_ACCESS_KEY_ID": "access-key",
             "SOW_R2_SECRET_ACCESS_KEY": "secret-key",
-            "ANALYSIS_API_KEY": "api-key",
+            "SOW_ANALYSIS_API_KEY": "api-key",
             "CACHE_DIR": "/custom/cache",
             "MAX_CONCURRENT_JOBS": "4",
             "DEMUCS_MODEL": "demucs",
@@ -43,11 +43,11 @@ class TestSettings:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
 
-            assert settings.R2_BUCKET == "my-bucket"
-            assert settings.R2_ENDPOINT_URL == "https://r2.example.com"
+            assert settings.SOW_R2_BUCKET == "my-bucket"
+            assert settings.SOW_R2_ENDPOINT_URL == "https://r2.example.com"
             assert settings.SOW_R2_ACCESS_KEY_ID == "access-key"
             assert settings.SOW_R2_SECRET_ACCESS_KEY == "secret-key"
-            assert settings.ANALYSIS_API_KEY == "api-key"
+            assert settings.SOW_ANALYSIS_API_KEY == "api-key"
             assert settings.CACHE_DIR == Path("/custom/cache")
             assert settings.MAX_CONCURRENT_JOBS == 4
             assert settings.DEMUCS_MODEL == "demucs"

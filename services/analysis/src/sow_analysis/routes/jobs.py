@@ -33,7 +33,7 @@ def set_job_queue(queue: "JobQueue") -> None:
 
 
 async def verify_api_key(authorization: Optional[str] = Header(None)) -> str:
-    """Verify Bearer token matches ANALYSIS_API_KEY.
+    """Verify Bearer token matches SOW_ANALYSIS_API_KEY.
 
     Args:
         authorization: Authorization header value
@@ -49,10 +49,10 @@ async def verify_api_key(authorization: Optional[str] = Header(None)) -> str:
 
     token = authorization[7:]
 
-    if not settings.ANALYSIS_API_KEY:
-        raise HTTPException(500, "ANALYSIS_API_KEY not configured on server")
+    if not settings.SOW_ANALYSIS_API_KEY:
+        raise HTTPException(500, "SOW_ANALYSIS_API_KEY not configured on server")
 
-    if token != settings.ANALYSIS_API_KEY:
+    if token != settings.SOW_ANALYSIS_API_KEY:
         raise HTTPException(401, "Invalid API key")
 
     return token

@@ -63,13 +63,13 @@ def mock_settings():
     """Mock settings with API key."""
     with patch(
         "sow_analysis.routes.jobs.settings",
-        ANALYSIS_API_KEY="test-api-key",
+        SOW_ANALYSIS_API_KEY="test-api-key",
     ):
         with patch(
             "sow_analysis.routes.health.settings",
-            ANALYSIS_API_KEY="test-api-key",
-            R2_BUCKET="test-bucket",
-            R2_ENDPOINT_URL="",
+            SOW_ANALYSIS_API_KEY="test-api-key",
+            SOW_R2_BUCKET="test-bucket",
+            SOW_R2_ENDPOINT_URL="",
             CACHE_DIR="/tmp/test-cache",
         ):
             yield

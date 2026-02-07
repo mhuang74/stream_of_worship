@@ -493,7 +493,7 @@ class TestLRCJobQueueProcessing:
                 mock_settings.WHISPER_CACHE_DIR = Path(tmp)
                 mock_settings.WHISPER_DEVICE = "cpu"
                 mock_settings.SOW_LLM_API_KEY = ""  # Missing key
-                mock_settings.R2_BUCKET = "test-bucket"
+                mock_settings.SOW_R2_BUCKET = "test-bucket"
 
                 with patch("whisper.load_model", return_value=mock_model):
                     await queue._process_lrc_job(job)
@@ -509,7 +509,7 @@ class TestLRCOptions:
         """Test default option values."""
         options = LrcOptions()
         assert options.whisper_model == "large-v3"
-        assert options.llm_model == "openai/gpt-4o-mini"
+        assert options.llm_model == ""  # Empty by default, falls back to SOW_LLM_MODEL env var
         assert options.use_vocals_stem is True
         assert options.language == "zh"
         assert options.force is False

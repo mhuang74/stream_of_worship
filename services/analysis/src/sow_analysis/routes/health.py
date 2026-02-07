@@ -31,11 +31,11 @@ def check_r2_connection() -> dict:
     Returns:
         Status dictionary
     """
-    if not settings.R2_ENDPOINT_URL:
+    if not settings.SOW_R2_ENDPOINT_URL:
         return {"status": "not_configured"}
     if not settings.SOW_R2_ACCESS_KEY_ID or not settings.SOW_R2_SECRET_ACCESS_KEY:
         return {"status": "missing_credentials"}
-    return {"status": "configured", "bucket": settings.R2_BUCKET}
+    return {"status": "configured", "bucket": settings.SOW_R2_BUCKET}
 
 
 @router.get("/health")

@@ -241,20 +241,35 @@ async def _llm_align(
     Args:
         lyrics_text: Original lyrics text
         whisper_words: Words with timestamps from Whisper
-        llm_model: LLM model identifier (e.g., "openai/gpt-4o-mini")
+        llm_model: LLM model identifier (e.g., "openai/gpt-4o-mini"), falls back to SOW_LLM_MODEL
         max_retries: Maximum retry attempts on parse failure
 
     Returns:
         List of LRCLine with aligned timestamps
 
     Raises:
-        LLMConfigError: If LLM API key is not configured
+        LLMConfigError: If LLM API key or model is not configured
         LLMAlignmentError: If alignment fails after retries
     """
     if not settings.SOW_LLM_API_KEY:
         raise LLMConfigError(
             "SOW_LLM_API_KEY environment variable not set. "
             "Set this to your OpenRouter/OpenAI API key."
+        )
+
+    if not settings.SOW_LLM_BASE_URL:
+        raise LLMConfigError(
+            "SOW_LLM_BASE_URL environment variable not set. "
+            "Set this to your OpenAI-compatible API base URL "
+            "(e.g., https://openrouter.ai/api/v1)."
+        )
+
+    # Use provided model or fall back to env var
+    effective_model = llm_model or settings.SOW_LLM_MODEL
+    if not effective_model:
+        raise LLMConfigError(
+            "LLM model not specified. Either set llm_model in the request "
+            "or set SOW_LLM_MODEL environment variable."
         )
 
     loop = asyncio.get_event_loop()
@@ -269,7 +284,7 @@ async def _llm_align(
         )
 
         response = client.chat.completions.create(
-            model=llm_model,
+            model=effective_model,
             messages=[
                 {"role": "user", "content": prompt},
             ],
@@ -277,6 +292,8 @@ async def _llm_align(
         )
 
         return response.choices[0].message.content
+
+    logger.info(f"Using LLM model: {effective_model}")
 
     last_error: Optional[Exception] = None
     for attempt in range(max_retries):
