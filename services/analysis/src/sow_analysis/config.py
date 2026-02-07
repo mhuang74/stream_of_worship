@@ -20,11 +20,11 @@ class Settings(BaseSettings):
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
-    MAX_CONCURRENT_JOBS: int = 2
+    SOW_MAX_CONCURRENT_JOBS: int = 2
 
     # Demucs Configuration
-    DEMUCS_MODEL: str = "htdemucs"
-    DEMUCS_DEVICE: str = "cpu"  # "cuda" or "cpu"
+    SOW_DEMUCS_MODEL: str = "htdemucs"
+    SOW_DEMUCS_DEVICE: str = "cpu"  # "cuda" or "cpu"
 
     # LLM Configuration (OpenAI-compatible API for LRC alignment)
     # Supports OpenRouter, nano-gpt.com, synthetic.new, or OpenAI direct
@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     SOW_LLM_MODEL: str = ""  # e.g., "openai/gpt-4o-mini" for OpenRouter
 
     # Whisper Configuration
-    WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
-    WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
+    SOW_WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
+    SOW_WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
 
 
 settings = Settings()

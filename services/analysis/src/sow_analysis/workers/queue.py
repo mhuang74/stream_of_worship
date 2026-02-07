@@ -210,7 +210,7 @@ class JobQueue:
                         audio_path,
                         stems_dir,
                         model=request.options.stem_model,
-                        device=settings.DEMUCS_DEVICE,
+                        device=settings.SOW_DEMUCS_DEVICE,
                         cache_manager=self.cache_manager,
                         content_hash=request.content_hash,
                         force=request.options.force,

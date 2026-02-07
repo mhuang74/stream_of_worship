@@ -93,7 +93,7 @@ async def _run_whisper_transcription(
         import whisper
 
         # Ensure cache directory exists
-        cache_dir = settings.WHISPER_CACHE_DIR
+        cache_dir = settings.SOW_WHISPER_CACHE_DIR
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Load model
@@ -373,7 +373,7 @@ async def generate_lrc(
         audio_path,
         model_name=options.whisper_model,
         language=options.language,
-        device=settings.WHISPER_DEVICE,
+        device=settings.SOW_WHISPER_DEVICE,
     )
 
     # Step 2: LLM alignment

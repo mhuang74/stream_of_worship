@@ -15,15 +15,15 @@ services:
       - SOW_R2_ACCESS_KEY_ID=${SOW_R2_ACCESS_KEY_ID}
       - SOW_R2_SECRET_ACCESS_KEY=${SOW_R2_SECRET_ACCESS_KEY}
       - SOW_ANALYSIS_API_KEY=${SOW_ANALYSIS_API_KEY}
-      - MAX_CONCURRENT_JOBS=${MAX_CONCURRENT_JOBS:-2}
-      - DEMUCS_DEVICE=${DEMUCS_DEVICE:-cpu}
+      - SOW_MAX_CONCURRENT_JOBS=${SOW_MAX_CONCURRENT_JOBS:-2}
+      - SOW_DEMUCS_DEVICE=${SOW_DEMUCS_DEVICE:-cpu}
       - NATTEN_LOG_LEVEL=error
       # LLM Configuration for LRC generation
       - SOW_LLM_API_KEY=${SOW_LLM_API_KEY}
       - SOW_LLM_BASE_URL=${SOW_LLM_BASE_URL}
       - SOW_LLM_MODEL=${SOW_LLM_MODEL}
       # Whisper Configuration
-      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
+      - SOW_WHISPER_DEVICE=${SOW_WHISPER_DEVICE:-cpu}
     volumes:
       - analysis-cache:/cache
     deploy:

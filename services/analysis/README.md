@@ -51,9 +51,9 @@ SOW_LLM_MODEL="openai/gpt-4o-mini"
 
 ```bash
 # Processing Configuration
-MAX_CONCURRENT_JOBS=2          # Number of parallel jobs (default: 2)
-DEMUCS_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
-WHISPER_DEVICE=cpu             # "cpu" or "cuda" (default: cpu)
+SOW_MAX_CONCURRENT_JOBS=2      # Number of parallel jobs (default: 2)
+SOW_DEMUCS_DEVICE=cpu          # "cpu" or "cuda" (default: cpu)
+SOW_WHISPER_DEVICE=cpu         # "cpu" or "cuda" (default: cpu)
 ```
 
 ## Quick Start
@@ -177,8 +177,8 @@ To enable GPU acceleration for Demucs and Whisper:
 
 2. Set environment variables:
    ```bash
-   DEMUCS_DEVICE=cuda
-   WHISPER_DEVICE=cuda
+   SOW_DEMUCS_DEVICE=cuda
+   SOW_WHISPER_DEVICE=cuda
    ```
 
 3. The `docker-compose.yml` already includes the GPU reservation block. If you don't have a GPU, remove or comment out the `deploy.resources` section.

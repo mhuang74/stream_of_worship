@@ -205,7 +205,7 @@ class TestRunWhisperTranscription:
         mock_model.transcribe.return_value = mock_result
 
         with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-            mock_settings.WHISPER_CACHE_DIR = Path("/tmp/whisper")
+            mock_settings.SOW_WHISPER_CACHE_DIR = Path("/tmp/whisper")
             with patch("whisper.load_model", return_value=mock_model):
                 with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
                     words = await _run_whisper_transcription(
@@ -223,7 +223,7 @@ class TestRunWhisperTranscription:
         mock_model.transcribe.return_value = {"segments": []}
 
         with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-            mock_settings.WHISPER_CACHE_DIR = Path("/tmp/whisper")
+            mock_settings.SOW_WHISPER_CACHE_DIR = Path("/tmp/whisper")
             with patch("whisper.load_model", return_value=mock_model):
                 with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
                     with pytest.raises(WhisperTranscriptionError):
@@ -336,8 +336,8 @@ class TestGenerateLRC:
             output_path = Path(tmp) / "output.lrc"
 
             with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-                mock_settings.WHISPER_CACHE_DIR = Path(tmp) / "whisper"
-                mock_settings.WHISPER_DEVICE = "cpu"
+                mock_settings.SOW_WHISPER_CACHE_DIR = Path(tmp) / "whisper"
+                mock_settings.SOW_WHISPER_DEVICE = "cpu"
                 mock_settings.SOW_LLM_API_KEY = "test-key"
                 mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
 
@@ -490,8 +490,8 @@ class TestLRCJobQueueProcessing:
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-                mock_settings.WHISPER_CACHE_DIR = Path(tmp)
-                mock_settings.WHISPER_DEVICE = "cpu"
+                mock_settings.SOW_WHISPER_CACHE_DIR = Path(tmp)
+                mock_settings.SOW_WHISPER_DEVICE = "cpu"
                 mock_settings.SOW_LLM_API_KEY = ""  # Missing key
                 mock_settings.SOW_R2_BUCKET = "test-bucket"
 

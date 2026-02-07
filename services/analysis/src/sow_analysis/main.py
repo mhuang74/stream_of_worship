@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 
     # Startup
     job_queue = JobQueue(
-        max_concurrent=settings.MAX_CONCURRENT_JOBS,
+        max_concurrent=settings.SOW_MAX_CONCURRENT_JOBS,
         cache_dir=settings.CACHE_DIR,
     )
 
