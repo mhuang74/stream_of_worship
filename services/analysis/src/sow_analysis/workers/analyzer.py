@@ -1,6 +1,8 @@
 """Audio analysis worker using allin1 and librosa."""
 
 import asyncio
+import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +10,8 @@ import librosa
 import numpy as np
 
 from ..storage.cache import CacheManager
+
+logger = logging.getLogger(__name__)
 
 # Key detection profiles (Krumhansl-Schmuckler)
 MAJOR_PROFILE = np.array(
@@ -95,10 +99,16 @@ async def analyze_audio(
             return cached
 
     # Load audio
+    logger.info(f"Loading audio file: {audio_path}")
+    load_start = time.time()
     y, sr = librosa.load(str(audio_path), sr=None, mono=True)
     duration = librosa.get_duration(y=y, sr=sr)
+    load_elapsed = time.time() - load_start
+    logger.info(f"Audio loaded in {load_elapsed:.2f}s - Duration: {duration:.2f}s")
 
     # Run allin1 analysis in thread pool (it's blocking)
+    logger.info("Starting allin1 analysis (tempo, beats, sections, embeddings)")
+    allin1_start = time.time()
     loop = asyncio.get_event_loop()
 
     def run_allin1():
@@ -111,6 +121,8 @@ async def analyze_audio(
         )
 
     result = await loop.run_in_executor(None, run_allin1)
+    allin1_elapsed = time.time() - allin1_start
+    logger.info(f"allin1 analysis completed in {allin1_elapsed:.2f}s")
 
     # Extract allin1 results
     bpm = result.bpm
@@ -135,10 +147,17 @@ async def analyze_audio(
     embeddings_shape = list(result.embeddings.shape)
 
     # Key detection with librosa
+    logger.info("Detecting musical key...")
+    key_start = time.time()
     mode, key, key_confidence = detect_key(y, sr)
+    key_elapsed = time.time() - key_start
+    logger.info(f"Key detection completed in {key_elapsed:.2f}s - Detected: {key} {mode}")
 
     # Loudness
     loudness_db = compute_loudness(y)
+
+    total_elapsed = time.time() - load_start
+    logger.info(f"Total analysis time: {total_elapsed:.2f}s")
 
     # Build result
     analysis_result = {

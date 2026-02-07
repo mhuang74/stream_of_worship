@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -98,15 +99,21 @@ async def _run_whisper_transcription(
 
         # Load model
         logger.info(f"Loading Whisper model: {model_name} on {device}")
+        model_load_start = time.time()
         model = whisper.load_model(model_name, device=device, download_root=str(cache_dir))
+        model_load_elapsed = time.time() - model_load_start
+        logger.info(f"Whisper model loaded in {model_load_elapsed:.2f}s")
 
         # Transcribe with word timestamps
-        logger.info(f"Transcribing: {audio_path}")
+        logger.info(f"Running Whisper transcription: {audio_path}")
+        transcribe_start = time.time()
         result = model.transcribe(
             str(audio_path),
             language=language,
             word_timestamps=True,
         )
+        transcribe_elapsed = time.time() - transcribe_start
+        logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
 
         # Extract words from segments
         words = []
@@ -296,16 +303,21 @@ async def _llm_align(
     logger.info(f"Using LLM model: {effective_model}")
 
     last_error: Optional[Exception] = None
+    llm_start = time.time()
     for attempt in range(max_retries):
         try:
             logger.info(f"LLM alignment attempt {attempt + 1}/{max_retries}")
+            attempt_start = time.time()
             response_text = await loop.run_in_executor(None, _call_llm)
+            attempt_elapsed = time.time() - attempt_start
+            logger.info(f"LLM call completed in {attempt_elapsed:.2f}s")
             lines = _parse_llm_response(response_text)
 
             if not lines:
                 raise ValueError("LLM returned empty alignment")
 
-            logger.info(f"Successfully aligned {len(lines)} lyric lines")
+            total_llm_elapsed = time.time() - llm_start
+            logger.info(f"Successfully aligned {len(lines)} lyric lines (total LLM time: {total_llm_elapsed:.2f}s)")
             return lines
 
         except json.JSONDecodeError as e:
@@ -369,6 +381,7 @@ async def generate_lrc(
 
     # Step 1: Run Whisper transcription
     logger.info(f"Starting LRC generation for {audio_path}")
+    lrc_start = time.time()
     whisper_words = await _run_whisper_transcription(
         audio_path,
         model_name=options.whisper_model,
@@ -385,6 +398,7 @@ async def generate_lrc(
 
     # Step 3: Write LRC file
     line_count = _write_lrc(lrc_lines, output_path)
-    logger.info(f"Wrote {line_count} lines to {output_path}")
+    total_elapsed = time.time() - lrc_start
+    logger.info(f"Wrote {line_count} lines to {output_path} (total LRC time: {total_elapsed:.2f}s)")
 
     return output_path, line_count

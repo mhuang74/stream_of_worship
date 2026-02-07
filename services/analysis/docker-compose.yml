@@ -1,5 +1,31 @@
 version: '3.8'
 
+# Define common environment variables using YAML anchor
+x-common-env: &common-env
+  SOW_R2_BUCKET: ${SOW_R2_BUCKET}
+  SOW_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
+  SOW_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
+  SOW_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
+  SOW_ANALYSIS_API_KEY: ${SOW_ANALYSIS_API_KEY}
+  SOW_MAX_CONCURRENT_JOBS: ${SOW_MAX_CONCURRENT_JOBS:-2}
+  SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
+  NATTEN_LOG_LEVEL: error
+  # LLM Configuration for LRC generation
+  SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
+  SOW_LLM_BASE_URL: ${SOW_LLM_BASE_URL}
+  SOW_LLM_MODEL: ${SOW_LLM_MODEL}
+  # Whisper Configuration
+  SOW_WHISPER_DEVICE: ${SOW_WHISPER_DEVICE:-cpu}
+
+# Define common GPU configuration using YAML anchor
+x-gpu-deploy: &gpu-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [ gpu ]
+
 services:
   analysis:
     build:
@@ -10,31 +36,35 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SOW_R2_BUCKET=${SOW_R2_BUCKET}
-      - SOW_R2_ENDPOINT_URL=${SOW_R2_ENDPOINT_URL}
-      - SOW_R2_ACCESS_KEY_ID=${SOW_R2_ACCESS_KEY_ID}
-      - SOW_R2_SECRET_ACCESS_KEY=${SOW_R2_SECRET_ACCESS_KEY}
-      - SOW_ANALYSIS_API_KEY=${SOW_ANALYSIS_API_KEY}
-      - SOW_MAX_CONCURRENT_JOBS=${SOW_MAX_CONCURRENT_JOBS:-2}
-      - SOW_DEMUCS_DEVICE=${SOW_DEMUCS_DEVICE:-cpu}
-      - NATTEN_LOG_LEVEL=error
-      # LLM Configuration for LRC generation
-      - SOW_LLM_API_KEY=${SOW_LLM_API_KEY}
-      - SOW_LLM_BASE_URL=${SOW_LLM_BASE_URL}
-      - SOW_LLM_MODEL=${SOW_LLM_MODEL}
-      # Whisper Configuration
-      - SOW_WHISPER_DEVICE=${SOW_WHISPER_DEVICE:-cpu}
+      <<: *common-env
     volumes:
       - analysis-cache:/cache
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [ gpu ]
+    #   <<: *gpu-deploy
+
+  # Development mode: mounts local code for hot-reload
+  # Usage: docker compose up analysis-dev
+  analysis-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=true
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+      DEV_MODE: "true"
+    volumes:
+      - analysis-cache:/cache
+      - ./src:/workspace/src:ro
+    # GPU support: Uncomment the 'deploy' section below if you have a GPU
+    # and NVIDIA Container Toolkit installed. See README.md for details.
+    # deploy:
+    #   <<: *gpu-deploy
 
 volumes:
   analysis-cache:

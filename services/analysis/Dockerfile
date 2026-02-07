@@ -4,7 +4,10 @@ FROM python:3.11-slim
 # Platform arg required for conditional PyTorch/NATTEN install
 ARG TARGETPLATFORM
 
-WORKDIR /app
+# Development mode flag - set to "true" for dev mode with volume mount
+ARG DEV_MODE=false
+
+WORKDIR /workspace
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -36,6 +39,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
     fi
 
 # Copy and install service dependencies
+# In dev mode, this prepares the environment; code comes from volume mount
 COPY pyproject.toml .
 RUN uv pip install --no-cache --no-build-isolation -e ".[service]"
 
@@ -46,7 +50,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
         uv pip install --no-cache --no-build-isolation natten==0.17.1; \
     fi
 
-# Copy application code
+# Copy application code (only used in production mode, overridden by volume in dev)
 COPY src/ ./src/
 
 # Create cache directory
@@ -55,5 +59,10 @@ RUN mkdir -p /cache
 # Expose port
 EXPOSE 8000
 
-# Run the service
-CMD ["uvicorn", "sow_analysis.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the service with optional reload for development
+# In dev mode, mount your local code to /workspace and use DEV_MODE=true
+CMD if [ "$DEV_MODE" = "true" ]; then \
+        uvicorn sow_analysis.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /workspace/src; \
+    else \
+        uvicorn sow_analysis.main:app --host 0.0.0.0 --port 8000; \
+    fi

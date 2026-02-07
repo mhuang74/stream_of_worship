@@ -1,6 +1,8 @@
 """In-memory job queue for asynchronous processing."""
 
 import asyncio
+import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -8,6 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 from ..models import (
     AnalyzeJobRequest,
     JobResult,
@@ -151,6 +155,9 @@ class JobQueue:
         Args:
             job: Job to process
         """
+        job_start_time = time.time()
+        logger.info(f"Starting analysis job {job.id} for audio: {job.request.audio_url}")
+
         job.status = JobStatus.PROCESSING
         job.updated_at = datetime.now(timezone.utc)
         job.stage = "downloading"
@@ -186,12 +193,17 @@ class JobQueue:
                 audio_path = temp_path / "audio.mp3"
 
                 if self.r2_client:
+                    logger.info(f"[{job.id}] Downloading audio from R2...")
+                    download_start = time.time()
                     await self.r2_client.download_audio(request.audio_url, audio_path)
+                    download_elapsed = time.time() - download_start
+                    logger.info(f"[{job.id}] Audio download completed in {download_elapsed:.2f}s")
 
                 job.stage = "analyzing"
                 job.progress = 0.3
 
                 # Run analysis
+                logger.info(f"[{job.id}] Starting audio analysis...")
                 analysis_result = await analyze_audio(
                     audio_path,
                     self.cache_manager,
@@ -204,6 +216,7 @@ class JobQueue:
                 stems_url = None
                 if request.options.generate_stems:
                     job.stage = "separating"
+                    logger.info(f"[{job.id}] Starting stem separation...")
 
                     stems_dir = temp_path / "stems"
                     await separate_stems(
@@ -260,10 +273,14 @@ class JobQueue:
                 job.progress = 1.0
                 job.stage = "complete"
 
+                total_elapsed = time.time() - job_start_time
+                logger.info(f"[{job.id}] Analysis job completed in {total_elapsed:.2f}s")
+
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error_message = str(e)
             job.stage = "error"
+            logger.error(f"[{job.id}] Analysis job failed: {e}")
 
         finally:
             job.updated_at = datetime.now(timezone.utc)
@@ -277,6 +294,9 @@ class JobQueue:
         Args:
             job: Job to process
         """
+        job_start_time = time.time()
+        logger.info(f"Starting LRC job {job.id} for audio: {job.request.audio_url}")
+
         job.status = JobStatus.PROCESSING
         job.updated_at = datetime.now(timezone.utc)
         job.stage = "starting"
@@ -329,7 +349,11 @@ class JobQueue:
 
                 audio_path = temp_path / "audio.mp3"
                 if self.r2_client:
+                    logger.info(f"[{job.id}] Downloading audio from R2...")
+                    download_start = time.time()
                     await self.r2_client.download_audio(request.audio_url, audio_path)
+                    download_elapsed = time.time() - download_start
+                    logger.info(f"[{job.id}] Audio download completed in {download_elapsed:.2f}s")
 
                 # Check if vocals stem exists and should be used
                 transcription_path = audio_path
@@ -373,14 +397,19 @@ class JobQueue:
                 job.progress = 1.0
                 job.stage = "complete"
 
+                total_elapsed = time.time() - job_start_time
+                logger.info(f"[{job.id}] LRC job completed in {total_elapsed:.2f}s")
+
         except LRCWorkerError as e:
             job.status = JobStatus.FAILED
             job.error_message = str(e)
             job.stage = "lrc_error"
+            logger.error(f"[{job.id}] LRC job failed: {e}")
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error_message = f"Unexpected error: {e}"
             job.stage = "error"
+            logger.error(f"[{job.id}] LRC job failed with unexpected error: {e}")
 
         job.updated_at = datetime.now(timezone.utc)
 
