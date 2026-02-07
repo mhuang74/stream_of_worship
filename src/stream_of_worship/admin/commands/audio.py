@@ -230,6 +230,7 @@ def list_recordings(
         table.add_column("Filename", style="yellow")
         table.add_column("Size", style="magenta", justify="right")
         table.add_column("Status", style="blue", justify="center")
+        table.add_column("Job ID", style="dim", no_wrap=True)
 
         for rec in recordings:
             song_id = rec.song_id or "-"
@@ -250,6 +251,8 @@ def list_recordings(
             else:
                 status_text = rec.analysis_status
 
+            job_id = rec.analysis_job_id or "-"
+
             table.add_row(
                 song_id,
                 song_title,
@@ -257,6 +260,7 @@ def list_recordings(
                 rec.original_filename,
                 size_str,
                 status_text,
+                job_id,
             )
 
         console.print(table)
@@ -648,21 +652,27 @@ def check_status(
     table.add_column("Song Title", style="green")
     table.add_column("Hash Prefix", style="dim", no_wrap=True)
     table.add_column("Analysis", style="magenta")
+    table.add_column("Analysis Job", style="dim", no_wrap=True)
     table.add_column("LRC", style="blue")
+    table.add_column("LRC Job", style="dim", no_wrap=True)
 
     for row in rows:
         song_id = row[2] if row[2] else "-"
         hash_prefix = row[1]
         song_title = row[25] if row[25] else "-"
         analysis_status = row[19]
+        analysis_job_id = row[20] if row[20] else "-"
         lrc_status = row[21]
+        lrc_job_id = row[22] if row[22] else "-"
 
         table.add_row(
             song_id,
             song_title,
             hash_prefix,
             _colorize_status(analysis_status),
+            analysis_job_id,
             _colorize_status(lrc_status),
+            lrc_job_id,
         )
 
     console.print(table)
