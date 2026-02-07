@@ -32,6 +32,8 @@ class SongsetEditorScreen(Screen):
         ("e", "edit_transition", "Edit Transition"),
         ("p", "preview", "Preview"),
         ("space", "toggle_playback", "Play/Stop"),
+        ("left", "skip_backward", "Skip -10s"),
+        ("right", "skip_forward", "Skip +10s"),
         ("x", "export", "Export"),
         ("i", "edit_info", "Edit Info"),
         ("escape", "back", "Back"),
@@ -355,6 +357,30 @@ class SongsetEditorScreen(Screen):
         except Exception as e:
             logger.error(f"Error playing audio: {e}")
             self.notify(f"Error playing audio: {e}", severity="error")
+
+    def action_skip_forward(self) -> None:
+        """Skip forward 10 seconds in current playback."""
+        if not self.playback.is_playing:
+            self.notify("No audio playing", severity="warning")
+            return
+
+        if self.playback.skip_forward(10.0):
+            current = self.playback.position_seconds
+            duration = self.playback.duration_seconds
+            self.notify(f"⏩ {current:.0f}s / {duration:.0f}s")
+        else:
+            self.notify("Near end of track", severity="info")
+
+    def action_skip_backward(self) -> None:
+        """Skip backward 10 seconds in current playback."""
+        if not self.playback.is_playing:
+            self.notify("No audio playing", severity="warning")
+            return
+
+        if self.playback.skip_backward(10.0):
+            current = self.playback.position_seconds
+            duration = self.playback.duration_seconds
+            self.notify(f"⏪ {current:.0f}s / {duration:.0f}s")
 
     def action_export(self) -> None:
         """Export the songset."""

@@ -193,8 +193,6 @@ class PlaybackService:
             return False
 
         try:
-            logger.debug(f"Loading audio file: {file_path} ({file_path.stat().st_size} bytes)")
-
             # Decode to get duration
             self._source = miniaudio.decode_file(
                 str(file_path),
@@ -208,8 +206,6 @@ class PlaybackService:
             total_frames = len(self._source.samples) // self._source.nchannels
             duration = total_frames / self._source.sample_rate if self._source.sample_rate > 0 else 0
 
-            logger.debug(f"Audio loaded: {self._source.sample_rate}Hz, {self._source.nchannels}ch, "
-                        f"{len(self._source.samples)} samples, {duration:.2f}s duration")
 
             with self._lock:
                 self._current_file = file_path
@@ -236,15 +232,11 @@ class PlaybackService:
             Numpy arrays with shape (num_frames, nchannels) and dtype int16
         """
         sample_pos = start_sample  # Position in samples, not bytes
-        chunks_yielded = 0
         nchannels = 2  # Stereo
-
-        logger.debug(f"Stream generator starting: start_sample={start_sample}, total_samples={len(source_samples)}, volume={self.volume}")
 
         try:
             # Initialize: yield empty array, receive first frame request
             num_frames = yield np.zeros((0, nchannels), dtype=np.int16)
-            logger.debug(f"Generator primed, first request: {num_frames} frames")
 
             while not self._stop_event.is_set() and sample_pos < len(source_samples):
                 # Handle None or invalid frame requests
@@ -273,28 +265,17 @@ class PlaybackService:
                 # Reshape to (num_frames, nchannels)
                 samples = samples.reshape((num_frames, nchannels))
 
-                chunks_yielded += 1
-                if chunks_yielded <= 5:
-                    logger.debug(f"Yielding chunk {chunks_yielded}: shape {samples.shape} at sample pos {sample_pos}")
-
                 sample_pos = end_pos
 
                 # Yield the samples array and receive next frame request
                 num_frames = yield samples
 
-                if chunks_yielded <= 5:
-                    logger.debug(f"Received next frame request: {num_frames}")
-
                 # If we've reached the end, break
                 if sample_pos >= len(source_samples):
-                    logger.debug("Reached end of audio samples")
                     break
 
         except GeneratorExit:
-            logger.debug(f"Stream generator stopped externally: yielded {chunks_yielded} chunks, final pos={current_pos}")
             return
-
-        logger.debug(f"Stream generator ending naturally: yielded {chunks_yielded} chunks, final pos={current_pos}")
 
         # Playback finished naturally
         if not self._stop_event.is_set():
@@ -312,23 +293,34 @@ class PlaybackService:
         Returns:
             True if playback started
         """
+        # Save the target position and file before stopping
         with self._lock:
             if file_path:
                 self._current_file = file_path
-                self._position_seconds = start_seconds
             elif self._state == PlaybackState.PAUSED:
                 # Resume from pause
                 pass
             elif not self._current_file:
                 return False
 
+            target_position = start_seconds
+            target_file = self._current_file
+
         # Stop any existing playback first
         self.stop()
 
-        # Load if needed
+        # Restore current file after stop
+        with self._lock:
+            self._current_file = target_file
+
+        # Load if needed (load() will reset position to 0, so we'll restore it after)
         if file_path or not self._source:
             if not self.load(self._current_file):
                 return False
+
+        # Restore position after load (which also resets it to 0)
+        with self._lock:
+            self._position_seconds = target_position
 
         try:
             # Calculate start position in samples (source.samples is array.array of int16 values)
@@ -340,7 +332,12 @@ class PlaybackService:
             if start_sample_index >= len(self._source.samples):
                 return False
 
-            logger.debug(f"Starting playback: start_sample={start_sample_index}, file={self._current_file}, volume={self.volume}")
+            logger.debug(
+                f"Starting playback: {self._current_file.name} | "
+                f"{self._duration_seconds:.1f}s, {len(self._source.samples)} samples, "
+                f"{sample_rate}Hz, volume={self.volume} | "
+                f"start={target_position:.1f}s"
+            )
 
             # Create and prime the generator (must be started before passing to device)
             self._generator = self._stream_generator(self._source.samples, start_sample_index)
@@ -359,7 +356,8 @@ class PlaybackService:
             self._position_thread.start()
 
             with self._lock:
-                self._start_time = time.time() - self._position_seconds
+                self._start_time = time.time() - target_position
+                self._position_seconds = 0.0  # Reset to 0 for position tracking
                 self._paused_at = None
 
             self._set_state(PlaybackState.PLAYING)
@@ -367,8 +365,6 @@ class PlaybackService:
             # Start the device with the primed generator
             # miniaudio will send() the required number of frames to the generator
             self._device.start(self._generator)
-
-            logger.debug("Playback device started successfully")
             return True
 
         except Exception as e:
@@ -456,16 +452,64 @@ class PlaybackService:
             if not self._current_file or not self._source:
                 return False
 
+            # Clamp position to valid range
             position_seconds = max(0.0, min(position_seconds, self._duration_seconds))
-            self._position_seconds = position_seconds
+            was_playing = self._state == PlaybackState.PLAYING
 
-            if self._state == PlaybackState.PLAYING:
-                self._start_time = time.time() - position_seconds
+        # If playing, restart playback at new position
+        if was_playing:
+            logger.debug(f"Seeking to {position_seconds:.2f}s while playing")
+            return self.play(start_seconds=position_seconds)
+        else:
+            # Just update position if not playing
+            with self._lock:
+                self._position_seconds = position_seconds
 
-        if self._on_position_changed:
-            self._on_position_changed(self.get_position())
+            if self._on_position_changed:
+                self._on_position_changed(self.get_position())
 
-        return True
+            return True
+
+    def skip_forward(self, seconds: float = 10.0) -> bool:
+        """Skip forward by specified seconds.
+
+        Args:
+            seconds: Number of seconds to skip forward (default 10)
+
+        Returns:
+            True if skip was successful
+        """
+        current = self.position_seconds
+        duration = self.duration_seconds
+
+        # If within 'seconds' of the end, don't skip - just let it finish
+        if current + seconds >= duration - 1.0:
+            logger.debug(f"Near end of track ({current:.1f}s / {duration:.1f}s), not skipping forward")
+            return False
+
+        new_position = min(current + seconds, duration)
+        logger.debug(f"Skipping forward {seconds}s: {current:.1f}s -> {new_position:.1f}s")
+        return self.seek(new_position)
+
+    def skip_backward(self, seconds: float = 10.0) -> bool:
+        """Skip backward by specified seconds.
+
+        Args:
+            seconds: Number of seconds to skip backward (default 10)
+
+        Returns:
+            True if skip was successful
+        """
+        current = self.position_seconds
+
+        # If within 'seconds' of the start, go to beginning
+        if current <= seconds:
+            logger.debug(f"Near start of track ({current:.1f}s), skipping to beginning")
+            return self.seek(0.0)
+
+        new_position = max(current - seconds, 0.0)
+        logger.debug(f"Skipping backward {seconds}s: {current:.1f}s -> {new_position:.1f}s")
+        return self.seek(new_position)
 
     def set_volume(self, volume: float) -> None:
         """Set playback volume.
