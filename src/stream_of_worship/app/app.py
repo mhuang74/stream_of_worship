@@ -87,8 +87,9 @@ class SowApp(App):
 
     def on_mount(self) -> None:
         """Handle app mount event."""
-        logger.info("App mounted, pushing initial screen: SONGSET_LIST")
-        self.push_screen(self._create_screen(AppScreen.SONGSET_LIST))
+        logger.info("App mounted, navigating to initial screen: SONGSET_LIST")
+        # Use navigate_to to properly set up state
+        self.navigate_to(AppScreen.SONGSET_LIST)
 
     def _create_screen(self, screen: AppScreen):
         """Create a fresh screen instance.
@@ -147,17 +148,19 @@ class SowApp(App):
         """Navigate back to the previous screen."""
         logger.info(
             f"Navigate back requested (current: {self.state.current_screen.name}, "
-            f"previous: {self.state.previous_screen.name if self.state.previous_screen else 'None'})"
+            f"stack depth: {len(self.screen_stack)})"
         )
-        if self.state.navigate_back():
+        # Use Textual's screen stack directly (need > 1 screen to go back)
+        if len(self.screen_stack) > 1:
             logger.info(f"Popping screen, stack depth before: {len(self.screen_stack)}")
             self.pop_screen()
+            self.state.navigate_back()  # Update state to match
             logger.info(
                 f"Screen popped, stack depth after: {len(self.screen_stack)}, "
                 f"current screen: {self.state.current_screen.name}"
             )
         else:
-            logger.warning("Cannot navigate back - no previous screen")
+            logger.warning("Cannot navigate back - only one screen in stack")
 
     def action_quit(self) -> None:
         """Quit the application with cleanup."""

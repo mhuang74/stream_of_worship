@@ -3,6 +3,8 @@
 Allows browsing and searching the song catalog to add songs to a songset.
 """
 
+from typing import Optional
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -56,6 +58,7 @@ class BrowseScreen(Screen):
 
             table = DataTable(id="song_table")
             table.add_columns("Title", "Key", "Tempo", "Duration", "Album")
+            table.cursor_type = "row"
             yield table
 
             with Vertical(id="empty_state", classes="hidden"):
@@ -162,32 +165,66 @@ class BrowseScreen(Screen):
         if song:
             self.state.select_song(song)
 
+    def _get_selected_song(self) -> Optional[SongWithRecording]:
+        """Get the currently highlighted song based on cursor position."""
+        table = self.query_one("#song_table", DataTable)
+
+        # Always use cursor row - that's what the user sees highlighted
+        if table.cursor_row is not None:
+            rows = list(table.rows.keys())
+            if table.cursor_row < len(rows):
+                song_id = rows[table.cursor_row].value
+                return self.catalog.get_song_with_recording(song_id)
+
+        # Fallback to explicit selection if cursor not available
+        return self.state.selected_song
+
     def action_add_to_songset(self) -> None:
         """Add selected song to current songset."""
-        if not self.state.selected_song:
+        song = self._get_selected_song()
+
+        if not song:
+            self.notify("No song selected", severity="warning")
             return
 
+        # Update state to reflect selection
+        self.state.select_song(song)
+
+        # If no songset selected, create one automatically
         if not self.state.selected_songset:
-            self.notify("No songset selected", severity="error")
-            return
+            songset = self.songset_client.create_songset(
+                name="New Songset",
+                description="",
+            )
+            self.state.select_songset(songset)
+            self.notify(f"Created new songset: {songset.name}")
 
-        song = self.state.selected_song
         recording = song.recording
+
+        if not recording:
+            self.notify("No recording available for this song", severity="error")
+            return
 
         self.songset_client.add_item(
             songset_id=self.state.selected_songset.id,
             song_id=song.song.id,
-            recording_hash_prefix=recording.hash_prefix if recording else None,
+            recording_hash_prefix=recording.hash_prefix,
         )
 
         self.notify(f"Added '{song.song.title}' to songset")
 
     def action_preview(self) -> None:
         """Preview selected song."""
-        if not self.state.selected_song:
+        song = self._get_selected_song()
+
+        if not song:
+            self.notify("No song selected", severity="warning")
             return
 
-        recording = self.state.selected_song.recording
+        # Update state to reflect selection
+        self.state.select_song(song)
+
+        recording = song.recording
         if not recording:
             self.notify("No recording available for preview", severity="error")
             return

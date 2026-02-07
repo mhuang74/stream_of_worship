@@ -3,6 +3,8 @@
 Allows editing a songset: reordering songs, adjusting transitions, previewing.
 """
 
+from typing import Optional
+
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -69,6 +71,7 @@ class SongsetEditorScreen(Screen):
 
             table = DataTable(id="items_table")
             table.add_columns("#", "Song", "Key", "Duration", "Gap", "Transition")
+            table.cursor_type = "row"
             yield table
 
             with Horizontal(id="buttons"):
@@ -88,8 +91,21 @@ class SongsetEditorScreen(Screen):
         )
         self._refresh()
 
+        # Focus the song list, not the name input
+        self.call_after_refresh(self._focus_song_list)
+
         # Listen for state changes
         self.state.add_listener("selected_songset", lambda _: self._refresh())
+
+    def _focus_song_list(self) -> None:
+        """Focus the items table."""
+        table = self.query_one("#items_table", DataTable)
+        table.focus()
+
+    def on_screen_resume(self, event: events.ScreenResume) -> None:
+        """Handle screen resume (when returning from browse/add songs)."""
+        logger.info("SongsetEditorScreen resumed, refreshing items")
+        self._refresh()
 
 
     def _refresh(self) -> None:
@@ -210,26 +226,60 @@ class SongsetEditorScreen(Screen):
                 logger.error("Failed to update songset info")
                 self.notify("Failed to update songset", severity="error")
 
+    def _get_selected_item(self) -> Optional[SongsetItem]:
+        """Get the currently selected item, or the cursor row if none selected."""
+        if self.state.selected_item:
+            return self.state.selected_item
+
+        # If no explicit selection, use cursor row
+        table = self.query_one("#items_table", DataTable)
+        if table.cursor_row is not None:
+            rows = list(table.rows.keys())
+            if table.cursor_row < len(rows):
+                item_id = rows[table.cursor_row].value
+                for item in self.items:
+                    if item.id == item_id:
+                        return item
+
+        return None
+
     def action_add_songs(self) -> None:
         """Navigate to browse screen to add songs."""
         self.app.navigate_to(AppScreen.BROWSE)
 
     def action_remove_song(self) -> None:
         """Remove selected song from songset."""
-        if not self.state.selected_item:
+        item = self._get_selected_item()
+
+        if not item:
             self.notify("No song selected", severity="error")
             return
 
-        self.songset_client.remove_item(self.state.selected_item.id)
+        # Save cursor position before removal
+        table = self.query_one("#items_table", DataTable)
+        cursor_row = table.cursor_row
+
+        self.state.select_item(item)
+        self.songset_client.remove_item(item.id)
+        self.state.select_item(None)  # Clear selection after removal
         self._load_items()
+
+        # Restore cursor position (stay at same index, or last item if removed last)
+        if cursor_row is not None and len(self.items) > 0:
+            new_cursor = min(cursor_row, len(self.items) - 1)
+            table.move_cursor(row=new_cursor)
+
         self.notify("Song removed")
 
     def action_edit_transition(self) -> None:
         """Edit transition for selected item."""
-        if not self.state.selected_item:
+        item = self._get_selected_item()
+
+        if not item:
             self.notify("No song selected", severity="error")
             return
 
+        self.state.select_item(item)
         self.app.navigate_to(AppScreen.TRANSITION_DETAIL)
 
     def action_preview(self) -> None:
