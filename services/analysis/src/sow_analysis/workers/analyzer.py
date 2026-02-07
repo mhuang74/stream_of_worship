@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -107,20 +108,24 @@ async def analyze_audio(
     logger.info(f"Audio loaded in {load_elapsed:.2f}s - Duration: {duration:.2f}s")
 
     # Run allin1 analysis in thread pool (it's blocking)
+    # Use isolated temp directory to prevent concurrent jobs from mixing outputs
     logger.info("Starting allin1 analysis (tempo, beats, sections, embeddings)")
     allin1_start = time.time()
     loop = asyncio.get_event_loop()
 
-    def run_allin1():
-        return allin1.analyze(
-            str(audio_path),
-            out_dir=None,
-            visualize=False,
-            include_embeddings=True,
-            sonify=False,
-        )
+    with tempfile.TemporaryDirectory() as temp_dir:
 
-    result = await loop.run_in_executor(None, run_allin1)
+        def run_allin1():
+            return allin1.analyze(
+                str(audio_path),
+                out_dir=temp_dir,
+                visualize=False,
+                include_embeddings=True,
+                sonify=False,
+            )
+
+        result = await loop.run_in_executor(None, run_allin1)
+
     allin1_elapsed = time.time() - allin1_start
     logger.info(f"allin1 analysis completed in {allin1_elapsed:.2f}s")
 
