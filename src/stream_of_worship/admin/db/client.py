@@ -569,6 +569,33 @@ class DatabaseClient:
 
             cursor.execute(sql, params)
 
+    def get_recording_by_job_id(self, job_id: str, job_type: str = "analysis") -> Optional[Recording]:
+        """Get a recording by its analysis or LRC job ID.
+
+        Args:
+            job_id: The job ID
+            job_type: Type of job ("analysis" or "lrc")
+
+        Returns:
+            Recording or None if not found
+        """
+        cursor = self.connection.cursor()
+        if job_type == "analysis":
+            cursor.execute(
+                "SELECT * FROM recordings WHERE analysis_job_id = ?",
+                (job_id,),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM recordings WHERE lrc_job_id = ?",
+                (job_id,),
+            )
+        row = cursor.fetchone()
+
+        if row:
+            return Recording.from_row(tuple(row))
+        return None
+
     def update_recording_analysis(
         self,
         hash_prefix: str,

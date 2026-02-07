@@ -545,6 +545,9 @@ def analyze_recording(
 @app.command("status")
 def check_status(
     job_id: Optional[str] = typer.Argument(None, help="Job ID to check"),
+    sync: bool = typer.Option(
+        False, "--sync", "-s", help="Sync pending statuses from analysis service"
+    ),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to config file"
     ),
@@ -553,6 +556,7 @@ def check_status(
 
     With JOB_ID: query the service for that job's status.
     Without: list all recordings with pending/processing/failed status.
+    Use --sync to update local database with latest statuses from service.
     """
     # Standard config/db boilerplate
     try:
@@ -630,7 +634,67 @@ def check_status(
         ))
         return
 
-    # Mode B: List pending recordings
+    # Mode B: Sync and list pending recordings
+    # If --sync, query analysis service for all pending jobs and update local DB
+    if sync:
+        try:
+            client = AnalysisClient(config.analysis_url)
+        except ValueError as e:
+            console.print(f"[red]Analysis service not configured: {e}[/red]")
+            raise typer.Exit(1)
+
+        # Get all recordings with pending/processing analysis status
+        pending_recordings = db_client.list_recordings(status="processing")
+        pending_recordings.extend(db_client.list_recordings(status="pending"))
+
+        if pending_recordings:
+            console.print(f"[cyan]Syncing {len(pending_recordings)} pending recording(s)...[/cyan]")
+            synced_count = 0
+            failed_count = 0
+
+            for rec in pending_recordings:
+                if not rec.analysis_job_id:
+                    continue
+
+                try:
+                    job = client.get_job(rec.analysis_job_id)
+
+                    # Update status if job is completed or failed
+                    if job.status == "completed":
+                        db_client.update_recording_analysis(
+                            hash_prefix=rec.hash_prefix,
+                            duration_seconds=job.result.duration_seconds if job.result else None,
+                            tempo_bpm=job.result.tempo_bpm if job.result else None,
+                            musical_key=job.result.musical_key if job.result else None,
+                            musical_mode=job.result.musical_mode if job.result else None,
+                            key_confidence=job.result.key_confidence if job.result else None,
+                            loudness_db=job.result.loudness_db if job.result else None,
+                            beats=json.dumps(job.result.beats) if job.result and job.result.beats else None,
+                            downbeats=json.dumps(job.result.downbeats) if job.result and job.result.downbeats else None,
+                            sections=json.dumps(job.result.sections) if job.result and job.result.sections else None,
+                            embeddings_shape=json.dumps(job.result.embeddings_shape) if job.result and job.result.embeddings_shape else None,
+                            r2_stems_url=job.result.stems_url if job.result else None,
+                        )
+                        synced_count += 1
+                    elif job.status == "failed":
+                        db_client.update_recording_status(
+                            hash_prefix=rec.hash_prefix,
+                            analysis_status="failed",
+                        )
+                        synced_count += 1
+                    # If still processing, leave as-is
+
+                except AnalysisServiceError as e:
+                    console.print(f"[dim]Could not sync {rec.analysis_job_id}: {e}[/dim]")
+                    failed_count += 1
+
+            if synced_count > 0:
+                console.print(f"[green]Synced {synced_count} recording(s)[/green]")
+            if failed_count > 0:
+                console.print(f"[yellow]Failed to sync {failed_count} job(s)[/yellow]")
+            console.print("")
+
+    # List pending recordings
     cursor = db_client.connection.cursor()
     cursor.execute(
         """
