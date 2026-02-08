@@ -16,54 +16,23 @@ The end goal is to:
 
 The project consists of **four architecturally separate components**:
 
-### 1. 🧪 POC Scripts (Experimental)
+### 1. POC Scripts (Experimental)
 - **Location:** `poc/` directory
-- **Purpose:** Validate analysis algorithms during development
-- **Runtime:** One-off script execution in Docker
-- **Technologies:** Librosa (signal processing) or All-In-One (deep learning)
-- **Status:** Archived experimental code (including `poc/transition_builder_v2/` TUI)
 
-### 2. 🖥️ Admin CLI (Backend Management)
+### 2. Admin CLI (Backend Management)
 - **Location:** `src/stream_of_worship/admin/` (Python package)
-- **Purpose:** Backend tool for catalog management and audio operations
-- **Users:** Administrators, DevOps
-- **Runtime:** One-shot CLI commands (`sow-admin catalog scrape`, `sow-admin audio download`)
-- **Dependencies:** **Lightweight** (~50MB) - typer, requests, yt-dlp, boto3
-- **Database:** Local SQLite with Turso cloud sync support
-- **Installation:** `uv run --extra admin sow-admin`
 
-### 3. 🚀 Analysis Service (Microservice)
+### 3. Analysis Service (Microservice)
 - **Location:** `services/analysis/` (separate package: `sow_analysis`)
-- **Purpose:** CPU/GPU-intensive audio analysis and stem separation
-- **Users:** Called by Admin CLI or User App
-- **Runtime:** Long-lived FastAPI HTTP server (port 8000)
-- **Technologies:** FastAPI, PyTorch, allin1, Demucs, Cloudflare R2
-- **Dependencies:** **Heavy** (~2GB) - PyTorch, ML models, NATTEN
-- **Deployment:** Docker container with platform-specific builds (x86_64 vs ARM64)
-- **API:** REST endpoints at `http://localhost:8000/api/v1/`
 
-### 4. 🎵 User App (End-User Application)
-- **Location:** `src/stream_of_worship/app/` (planned)
-- **Purpose:** Interactive tool for generating transition songsets and lyrics videos
-- **Users:** Worship leaders, media team members
-- **Runtime:** TUI (Textual framework) or GUI application
-- **Technologies:** Textual (TUI), Pydub (audio), MoviePy (video), FFmpeg
-- **Data Source:**
-  - **Metadata:** Turso cloud database (synced from Admin CLI)
-  - **Audio Assets:** Cloudflare R2 (pre-analyzed stems, LRC files)
-- **Key Features:**
-  - Browse master song catalog
-  - Select songs for transitions (with compatibility scoring)
-  - Adjust transition parameters (crossfade, tempo stretch, key shift)
-  - Generate multi-song audio files with smooth transitions
-  - Generate lyrics videos with synchronized LRC timing
-  - Export final audio/video outputs
-- **Evolution:** Production upgrade from `poc/transition_builder_v2/` TUI prototype
+### 4. User App (End-User Application)
+- **Location:** `src/stream_of_worship/app/` (Python package)
+
 
 
 ## Development Guidelines
 
-- **Python Version**: 3.11+
+- **Python Version**: 3.11
 - **Python Env**: 
   - ALWAYS use `uv add` to add dependencies so it's documented in pyproject.toml
   - for running song analysis using allinone library, use Docker via docker/docker-compose.allinone.yml (due to dependencies on NATTEN native libraries, doesn't work on Apple Silicon MacOS)
