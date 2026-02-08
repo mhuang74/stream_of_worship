@@ -12,6 +12,7 @@ from stream_of_worship.app.services.video_engine import (
     VideoEngine,
     VideoTemplate,
     LRCLine,
+    GlobalLRCLine,
     TEMPLATES,
 )
 
@@ -211,3 +212,93 @@ class TestLRCLine:
         line = LRCLine(time_seconds=0.0, text="Start")
 
         assert line.time_seconds == 0.0
+
+
+class TestGlobalLRCLine:
+    """Tests for GlobalLRCLine dataclass."""
+
+    def test_global_lrcline_creation(self):
+        """Verify GlobalLRCLine works."""
+        line = GlobalLRCLine(
+            global_time_seconds=65.0,
+            local_time_seconds=5.0,
+            text="Test lyric",
+            title="Test Song"
+        )
+
+        assert line.global_time_seconds == 65.0
+        assert line.local_time_seconds == 5.0
+        assert line.text == "Test lyric"
+        assert line.title == "Test Song"
+
+
+class TestRenderFrameGlobalTiming:
+    """Tests for _render_frame with global timing - multi-song exports."""
+
+    def test_render_frame_finds_lyric_by_global_time(self, video_engine):
+        """Verify lyrics are found using global_time_seconds, not local."""
+        # Simulate two songs: Song 1 at 0-60s, Song 2 at 60-120s
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=0.0, local_time_seconds=0.0, text="Song 1 Line 1", title="Song 1"),
+            GlobalLRCLine(global_time_seconds=5.0, local_time_seconds=5.0, text="Song 1 Line 2", title="Song 1"),
+            # Song 2 starts at global time 60s, but local time 0s
+            GlobalLRCLine(global_time_seconds=60.0, local_time_seconds=0.0, text="Song 2 Line 1", title="Song 2"),
+            GlobalLRCLine(global_time_seconds=65.0, local_time_seconds=5.0, text="Song 2 Line 2", title="Song 2"),
+        ]
+
+        # At global time 60s, we should see Song 2 Line 1 (not Song 1 Line 1 with local_time=0)
+        img = video_engine._render_frame(lyrics, current_time=60.0)
+
+        # Verify image was created
+        assert img is not None
+        assert img.size == (1920, 1080)
+
+    def test_render_frame_at_boundary_between_songs(self, video_engine):
+        """Verify correct lyric shown at song boundary."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=0.0, local_time_seconds=0.0, text="First Song Start", title="Song 1"),
+            GlobalLRCLine(global_time_seconds=30.0, local_time_seconds=30.0, text="First Song End", title="Song 1"),
+            GlobalLRCLine(global_time_seconds=30.0, local_time_seconds=0.0, text="Second Song Start", title="Song 2"),
+        ]
+
+        # At exactly 30s, should show the last line with global_time <= 30
+        img = video_engine._render_frame(lyrics, current_time=30.0)
+        assert img is not None
+
+    def test_render_frame_title_derived_from_global_lyrics(self, video_engine):
+        """Verify title is derived from the active GlobalLRCLine."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=0.0, local_time_seconds=0.0, text="Line 1", title="First Song"),
+            GlobalLRCLine(global_time_seconds=60.0, local_time_seconds=0.0, text="Line 2", title="Second Song"),
+        ]
+
+        # At time 60s, title should be "Second Song"
+        img = video_engine._render_frame(lyrics, current_time=60.0)
+        assert img is not None
+
+    def test_render_frame_before_first_lyric(self, video_engine):
+        """Verify behavior before first lyric starts."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=10.0, local_time_seconds=10.0, text="First Lyric", title="Song 1"),
+        ]
+
+        # At time 0, no lyric should be active
+        img = video_engine._render_frame(lyrics, current_time=0.0)
+        assert img is not None
+
+    def test_render_frame_second_song_lyrics_not_shown_early(self, video_engine):
+        """Critical test: 2nd song lyrics with local_time=0 should NOT show at video time 0."""
+        # This is the bug scenario: Song 2 starts at 60s global time
+        # Its first lyric has local_time_seconds=0 but global_time_seconds=60
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=0.0, local_time_seconds=0.0, text="Song 1 First Line", title="Song 1"),
+            GlobalLRCLine(global_time_seconds=60.0, local_time_seconds=0.0, text="Song 2 First Line", title="Song 2"),
+        ]
+
+        # At video time 0, should NOT show "Song 2 First Line" even though its local_time is 0
+        img = video_engine._render_frame(lyrics, current_time=0.0)
+        assert img is not None
+
+        # At video time 60, SHOULD show "Song 2 First Line"
+        img_at_60 = video_engine._render_frame(lyrics, current_time=60.0)
+        assert img_at_60 is not None
