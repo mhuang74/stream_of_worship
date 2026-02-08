@@ -98,40 +98,63 @@ async def _run_whisper_transcription(
     loop = asyncio.get_event_loop()
 
     def _transcribe():
-        import whisper
+        from faster_whisper import WhisperModel
 
         # Ensure cache directory exists
         cache_dir = settings.SOW_WHISPER_CACHE_DIR
         cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Determine device
+        device_type = device if device else "cuda"
+        compute_type = "int8"  # Use int8 quantization for speed
+
         # Load model
-        logger.info(f"Loading Whisper model: {model_name} on {device}")
+        logger.info(f"Loading Whisper model: {model_name} on {device_type} with {compute_type}")
         model_load_start = time.time()
-        model = whisper.load_model(model_name, device=device, download_root=str(cache_dir))
+        model = WhisperModel(
+            model_name,
+            device=device_type,
+            compute_type=compute_type,
+            download_root=str(cache_dir),
+        )
         model_load_elapsed = time.time() - model_load_start
         logger.info(f"Whisper model loaded in {model_load_elapsed:.2f}s")
 
-        # Transcribe with segment timestamps (phrase-level)
+        # Transcribe with Chinese worship song optimizations
         logger.info(f"Running Whisper transcription: {audio_path}")
         transcribe_start = time.time()
-        result = model.transcribe(
+
+        # VAD parameters to filter out background music/instrumentals
+        vad_parameters = {
+            "min_silence_duration_ms": 500,
+        }
+
+        # Initial prompt in Chinese for better recognition of worship song lyrics
+        initial_prompt = "这是一首中文敬拜歌的歌詞"
+
+        segments, info = model.transcribe(
             str(audio_path),
             language=language,
-            word_timestamps=False,  # Use segment-level timestamps for phrases
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters=vad_parameters,
+            initial_prompt=initial_prompt,
         )
+
         transcribe_elapsed = time.time() - transcribe_start
         logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
+        logger.info(f"Detected language: {info.language}, probability: {info.language_probability:.2f}")
 
-        # Extract phrases from segments
+        # Extract phrases from segments (convert generator to list)
         phrases = []
-        for segment in result.get("segments", []):
-            text = segment.get("text", "").strip()
+        for segment in segments:
+            text = segment.text.strip()
             if text:
                 phrases.append(
                     WhisperPhrase(
                         text=text,
-                        start=segment["start"],
-                        end=segment["end"],
+                        start=segment.start,
+                        end=segment.end,
                     )
                 )
 
