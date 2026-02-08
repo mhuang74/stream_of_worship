@@ -124,11 +124,6 @@ async def _run_whisper_transcription(
         logger.info(f"Running Whisper transcription: {audio_path}")
         transcribe_start = time.time()
 
-        # VAD parameters to filter out background music/instrumentals
-        vad_parameters = {
-            "min_silence_duration_ms": 500,
-        }
-
         # Initial prompt in Chinese for better recognition of worship song lyrics
         initial_prompt = "这是一首中文敬拜歌的歌詞"
 
@@ -136,8 +131,7 @@ async def _run_whisper_transcription(
             str(audio_path),
             language=language,
             beam_size=5,
-            vad_filter=True,
-            vad_parameters=vad_parameters,
+            vad_filter=False,  # Disabled - audio is already vocal stem from Demucs
             initial_prompt=initial_prompt,
         )
 
@@ -200,9 +194,12 @@ def _build_alignment_prompt(lyrics_text: str, whisper_phrases: List[WhisperPhras
         indent=2,
     )
 
-    return f"""You are a lyrics alignment assistant. Your task is to align the original lyrics with Whisper transcription timestamps.
+    # Calculate total duration from whisper phrases
+    last_timestamp = max(p.end for p in whisper_phrases) if whisper_phrases else 0.0
 
-## Original Lyrics (Gold Standard Text)
+    return f"""You are a lyrics alignment assistant. Your task is to assign accurate timestamps to every line sung in the song.
+
+## Original Lyrics (Gold Standard Text - Use exactly as written)
 ```
 {lyrics_text}
 ```
@@ -212,25 +209,42 @@ def _build_alignment_prompt(lyrics_text: str, whisper_phrases: List[WhisperPhras
 {phrases_json}
 ```
 
-## Instructions
-1. Use the original lyrics as the authoritative text - do NOT use Whisper's transcribed text
-2. Map each lyric line to the phrase that best matches its content
-3. Use the phrase's start time as the line's timestamp
-4. If a line spans multiple phrases, use the first phrase's start time
-5. If a lyric line has no matching phrase, interpolate based on surrounding phrases
-6. Ensure timestamps are in chronological order
-7. Return ONLY a JSON array, no other text
+## Song Structure Information
+- Total audio duration: {last_timestamp:.2f} seconds
+- The Whisper transcription contains {len(whisper_phrases)} phrases
+
+## Critical Instructions
+
+1. **IMPORTANT**: Worship songs often repeat verses and choruses multiple times. The same lyric line may appear 3-5+ times throughout the song.
+
+2. **Process each Whisper phrase**: Go through the Whisper transcription in order. For EACH phrase, find the best matching lyric line from the original lyrics.
+
+3. **Allow repetitions**: The same lyric line CAN and SHOULD appear multiple times in your output with different timestamps if it was sung multiple times.
+
+4. **Output length**: Your output MUST have approximately {len(whisper_phrases)} entries (one per Whisper phrase). Do NOT consolidate repeated sections.
+
+5. **Text authority**: Use the exact text from "Original Lyrics", not the Whisper transcription (which may have errors).
+
+6. **Timestamp handling**: Use the start time of each Whisper phrase as the timestamp for the matched lyric line.
+
+7. **Chronological order**: Ensure all timestamps are in ascending order.
 
 ## Output Format
 Return a JSON array where each object has:
-- "time_seconds": float (start time of the line in seconds)
-- "text": string (the original lyric line, exactly as provided)
+- "time_seconds": float (start time from the corresponding Whisper phrase)
+- "text": string (the matched lyric line from Original Lyrics, exactly as provided)
 
-Example output:
+Example showing repeated chorus:
 ```json
 [
-  {{"time_seconds": 0.5, "text": "第一行歌詞"}},
-  {{"time_seconds": 4.2, "text": "第二行歌詞"}}
+  {{"time_seconds": 15.0, "text": "我要看見"}},
+  {{"time_seconds": 18.5, "text": "我要看見"}},
+  {{"time_seconds": 22.0, "text": "如同摩西看見祢的榮耀"}},
+  {{"time_seconds": 42.0, "text": "我要看見"}},
+  {{"time_seconds": 45.5, "text": "我要看見"}},
+  {{"time_seconds": 49.0, "text": "這世代要看見祢榮耀"}},
+  {{"time_seconds": 56.0, "text": "我要看見"}},
+  {{"time_seconds": 58.0, "text": "我要看見"}}
 ]
 ```
 
@@ -278,6 +292,57 @@ def _parse_llm_response(response_text: str) -> List[LRCLine]:
         )
 
     return lines
+
+
+def _validate_alignment_coverage(
+    lrc_lines: List[LRCLine],
+    whisper_phrases: List[WhisperPhrase],
+    duration_threshold_seconds: float = 10.0,
+) -> None:
+    """Validate that LLM alignment covers the full duration of the audio.
+
+    Args:
+        lrc_lines: Aligned LRC lines from LLM
+        whisper_phrases: Original Whisper transcription phrases
+        duration_threshold_seconds: Threshold for duration coverage warning
+
+    Logs warnings if:
+        - LLM output has significantly fewer lines than Whisper phrases
+        - Last timestamp in LLM output is much earlier than last Whisper phrase
+    """
+    if not lrc_lines or not whisper_phrases:
+        logger.warning("Cannot validate alignment: empty LRC lines or Whisper phrases")
+        return
+
+    # Get last timestamps
+    last_lrc_time = max(line.time_seconds for line in lrc_lines)
+    last_whisper_time = max(p.end for p in whisper_phrases)
+
+    # Check duration coverage
+    duration_gap = last_whisper_time - last_lrc_time
+    if duration_gap > duration_threshold_seconds:
+        logger.warning(
+            f"LRC alignment may be incomplete: last LRC timestamp is {last_lrc_time:.2f}s, "
+            f"but audio continues until {last_whisper_time:.2f}s (gap: {duration_gap:.2f}s). "
+            f"The song may have repeated sections that were not properly aligned."
+        )
+
+    # Check line count ratio
+    expected_lines = len(whisper_phrases)
+    actual_lines = len(lrc_lines)
+    if actual_lines < expected_lines * 0.7:  # Less than 70% of expected lines
+        logger.warning(
+            f"LRC alignment may be missing repetitions: got {actual_lines} lines "
+            f"but Whisper detected {expected_lines} phrases. "
+            f"Repeated sections may have been consolidated incorrectly."
+        )
+
+    # Log coverage stats at info level
+    coverage_pct = (last_lrc_time / last_whisper_time * 100) if last_whisper_time > 0 else 0
+    logger.info(
+        f"Alignment coverage: {actual_lines}/{expected_lines} lines, "
+        f"{last_lrc_time:.2f}s/{last_whisper_time:.2f}s ({coverage_pct:.1f}%)"
+    )
 
 
 async def _llm_align(
@@ -375,6 +440,9 @@ async def _llm_align(
 
             if not lines:
                 raise ValueError("LLM returned empty alignment")
+
+            # Phase 2: Post-alignment validation
+            _validate_alignment_coverage(lines, whisper_phrases)
 
             total_llm_elapsed = time.time() - llm_start
             logger.info(f"Successfully aligned {len(lines)} lyric lines (total LLM time: {total_llm_elapsed:.2f}s)")
