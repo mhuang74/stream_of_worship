@@ -135,10 +135,7 @@ async def _run_whisper_transcription(
             initial_prompt=initial_prompt,
         )
 
-        transcribe_elapsed = time.time() - transcribe_start
-        logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
-        logger.info(f"Detected language: {info.language}, probability: {info.language_probability:.2f}")
-
+        # Note: segments is a generator - transcription happens during iteration
         # Extract phrases from segments (convert generator to list)
         phrases = []
         for segment in segments:
@@ -151,6 +148,10 @@ async def _run_whisper_transcription(
                         end=segment.end,
                     )
                 )
+
+        transcribe_elapsed = time.time() - transcribe_start
+        logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
+        logger.info(f"Detected language: {info.language}, probability: {info.language_probability:.2f}")
 
         return phrases
 
