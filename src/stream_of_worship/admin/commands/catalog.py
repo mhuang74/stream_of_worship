@@ -249,7 +249,7 @@ def search_songs(
     field: str = typer.Option(
         "all",
         "--field",
-        help="Field to search (title|lyrics|composer|all)",
+        help="Field to search (title|lyrics|composer|album|all)",
     ),
     limit: int = typer.Option(
         20,

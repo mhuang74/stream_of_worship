@@ -356,7 +356,7 @@ class DatabaseClient:
 
         Args:
             query: Search query string
-            field: Field to search (title, lyrics, composer, all)
+            field: Field to search (title, lyrics, composer, album, all)
             limit: Maximum number of results
 
         Returns:
@@ -375,13 +375,17 @@ class DatabaseClient:
         elif field == "composer":
             sql = "SELECT * FROM songs WHERE composer LIKE ? OR lyricist LIKE ?"
             params = [search_pattern, search_pattern]
+        elif field == "album":
+            sql = "SELECT * FROM songs WHERE album_name LIKE ? OR album_series LIKE ?"
+            params = [search_pattern, search_pattern]
         else:  # all
             sql = """
                 SELECT * FROM songs WHERE
                 title LIKE ? OR title_pinyin LIKE ? OR
-                lyrics_raw LIKE ? OR composer LIKE ? OR lyricist LIKE ?
+                lyrics_raw LIKE ? OR composer LIKE ? OR lyricist LIKE ? OR
+                album_name LIKE ? OR album_series LIKE ?
             """
-            params = [search_pattern] * 5
+            params = [search_pattern] * 7
 
         sql += f" ORDER BY id LIMIT {limit}"
 
