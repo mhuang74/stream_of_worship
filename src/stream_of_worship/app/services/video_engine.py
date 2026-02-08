@@ -32,6 +32,23 @@ class LRCLine:
 
 
 @dataclass
+class GlobalLRCLine:
+    """An LRC line with global timing for multi-song exports.
+
+    Attributes:
+        global_time_seconds: Time in the final video (seconds)
+        local_time_seconds: Original time within the song (seconds)
+        text: Lyric text
+        title: Song title for this lyric
+    """
+
+    global_time_seconds: float
+    local_time_seconds: float
+    text: str
+    title: str
+
+
+@dataclass
 class VideoTemplate:
     """Configuration for a video template.
 
@@ -191,16 +208,14 @@ class VideoEngine:
 
     def _render_frame(
         self,
-        lyrics: list[LRCLine],
+        lyrics: list[GlobalLRCLine],
         current_time: float,
-        title: str = "",
     ) -> Image.Image:
         """Render a single video frame.
 
         Args:
-            lyrics: List of LRC lines
+            lyrics: List of LRC lines with global timing
             current_time: Current playback time in seconds
-            title: Song title to display
 
         Returns:
             PIL Image
@@ -210,6 +225,14 @@ class VideoEngine:
         draw = ImageDraw.Draw(img)
         font = self._get_font()
 
+        # Find current song title from the active lyric
+        title = ""
+        for line in lyrics:
+            if line.global_time_seconds <= current_time:
+                title = line.title
+            else:
+                break
+
         # Draw title at top
         if title:
             title_font = self._get_font(int(self.template.font_size * 0.8))
@@ -218,10 +241,10 @@ class VideoEngine:
             x = (width - text_width) // 2
             draw.text((x, 50), title, font=title_font, fill=self.template.text_color)
 
-        # Find current lyric line
+        # Find current lyric line using global time
         current_index = -1
         for i, line in enumerate(lyrics):
-            if line.time_seconds <= current_time:
+            if line.global_time_seconds <= current_time:
                 current_index = i
             else:
                 break
@@ -273,14 +296,18 @@ class VideoEngine:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Collect all lyrics with global timing
-        all_lyrics: list[tuple[float, LRCLine, str]] = []  # (global_time, line, title)
+        all_lyrics: list[GlobalLRCLine] = []
 
         for segment in audio_result.segments:
             lyrics = self._load_lrc(segment.item.recording_hash_prefix or "")
             if lyrics:
                 for line in lyrics:
-                    global_time = segment.start_time_seconds + line.time_seconds
-                    all_lyrics.append((global_time, line, segment.item.song_title or "Unknown"))
+                    all_lyrics.append(GlobalLRCLine(
+                        global_time_seconds=segment.start_time_seconds + line.time_seconds,
+                        local_time_seconds=line.time_seconds,
+                        text=line.text,
+                        title=segment.item.song_title or "Unknown",
+                    ))
 
         if not all_lyrics:
             # No lyrics - generate blank video
@@ -329,19 +356,8 @@ class VideoEngine:
                 if progress_callback and frame % fps == 0:  # Update every second
                     progress_callback(frame, total_frames)
 
-                # Find current song title
-                current_title = ""
-                for segment in audio_result.segments:
-                    if segment.start_time_seconds <= current_time < segment.start_time_seconds + segment.duration_seconds:
-                        current_title = segment.item.song_title or ""
-                        break
-
-                # Render frame
-                img = self._render_frame(
-                    [line for _, line, _ in all_lyrics],
-                    current_time,
-                    current_title,
-                )
+                # Render frame using global timing
+                img = self._render_frame(all_lyrics, current_time)
 
                 # Convert to bytes and write
                 frame_bytes = img.tobytes()
