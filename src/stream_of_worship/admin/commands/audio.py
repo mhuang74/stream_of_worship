@@ -7,7 +7,7 @@ recordings, and viewing recording details.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -487,7 +487,7 @@ def analyze_recording(
             try:
                 final_job = client.wait_for_completion(
                     job_id,
-                    poll_interval=3.0,
+                    poll_interval=30.0,
                     timeout=600.0,
                     callback=update_progress,
                 )
@@ -675,7 +675,7 @@ def lrc_recording(
             try:
                 final_job = client.wait_for_completion(
                     job_id,
-                    poll_interval=3.0,
+                    poll_interval=30.0,
                     timeout=600.0,
                     callback=update_progress,
                 )
@@ -714,6 +714,12 @@ def check_status(
     sync: bool = typer.Option(
         False, "--sync", "-s", help="Sync pending statuses from analysis service"
     ),
+    force_status: Optional[str] = typer.Option(
+        None, "--force-status", help="Force update status (completed, failed, pending). Use when Analysis Service has lost state."
+    ),
+    force_url: Optional[str] = typer.Option(
+        None, "--force-url", help="URL to set when using --force-status (stems_url for analysis, lrc_url for lrc)"
+    ),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to config file"
     ),
@@ -723,6 +729,7 @@ def check_status(
     With JOB_ID: query the service for that job's status.
     Without: list all recordings with pending/processing/failed status.
     Use --sync to update local database with latest statuses from service.
+    Use --force-status when Analysis Service has restarted and lost job state.
     """
     # Standard config/db boilerplate
     try:
@@ -736,6 +743,35 @@ def check_status(
         raise typer.Exit(1)
 
     db_client = DatabaseClient(config.db_path)
+
+    # Validate force_status if provided
+    if force_status and force_status not in ("completed", "failed", "pending"):
+        console.print("[red]--force-status must be one of: completed, failed, pending[/red]")
+        raise typer.Exit(1)
+
+    # Handle --force-status mode
+    if force_status:
+        if job_id:
+            # Force update specific recording by job_id
+            # Try analysis job first, then lrc job
+            rec = db_client.get_recording_by_job_id(job_id, job_type="analysis")
+            if not rec:
+                rec = db_client.get_recording_by_job_id(job_id, job_type="lrc")
+            if not rec:
+                console.print(f"[red]No recording found with job_id: {job_id}[/red]")
+                raise typer.Exit(1)
+
+            _update_recording_status_force(
+                db_client, rec, force_status, force_url, console
+            )
+            return
+        elif sync:
+            # Force update all pending recordings
+            _force_sync_all_pending(db_client, force_status, force_url, console)
+            return
+        else:
+            console.print("[red]--force-status requires either a JOB_ID or --sync flag[/red]")
+            raise typer.Exit(1)
 
     # Mode A: Query specific job
     if job_id:
@@ -938,3 +974,123 @@ def check_status(
         )
 
     console.print(table)
+
+
+def _update_recording_status_force(
+    db_client: DatabaseClient,
+    rec: Any,
+    status: str,
+    force_url: Optional[str],
+    console: Console,
+) -> None:
+    """Force update a recording's status."""
+    from stream_of_worship.admin.db.models import Recording
+
+    if not isinstance(rec, Recording):
+        console.print("[red]Invalid recording object[/red]")
+        raise typer.Exit(1)
+
+    # Determine if this is an analysis or LRC job based on which job_id exists
+    job_type = "unknown"
+    if rec.analysis_job_id and not rec.lrc_job_id:
+        job_type = "analysis"
+    elif rec.lrc_job_id and not rec.analysis_job_id:
+        job_type = "lrc"
+    elif rec.analysis_job_id and rec.lrc_job_id:
+        # Both exist - need to ask user or infer from context
+        # For now, update both if status is the same
+        job_type = "both"
+
+    if job_type in ("analysis", "both"):
+        if status == "completed":
+            if force_url:
+                db_client.update_recording_analysis(
+                    hash_prefix=rec.hash_prefix,
+                    r2_stems_url=force_url,
+                )
+            else:
+                # Just update status without URL
+                db_client.update_recording_status(
+                    hash_prefix=rec.hash_prefix,
+                    analysis_status=status,
+                )
+        else:
+            db_client.update_recording_status(
+                hash_prefix=rec.hash_prefix,
+                analysis_status=status,
+            )
+        console.print(f"[green]Updated analysis status to '{status}' for {rec.hash_prefix}[/green]")
+
+    if job_type in ("lrc", "both"):
+        if status == "completed" and force_url:
+            db_client.update_recording_lrc(
+                hash_prefix=rec.hash_prefix,
+                r2_lrc_url=force_url,
+            )
+        else:
+            db_client.update_recording_status(
+                hash_prefix=rec.hash_prefix,
+                lrc_status=status,
+            )
+        console.print(f"[green]Updated LRC status to '{status}' for {rec.hash_prefix}[/green]")
+
+
+def _force_sync_all_pending(
+    db_client: DatabaseClient,
+    status: str,
+    force_url: Optional[str],
+    console: Console,
+) -> None:
+    """Force update all pending recordings."""
+    # Get all non-completed recordings
+    cursor = db_client.connection.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM recordings
+        WHERE analysis_status IN ('pending', 'processing', 'failed')
+           OR lrc_status IN ('pending', 'processing', 'failed')
+        """
+    )
+    rows = cursor.fetchall()
+
+    if not rows:
+        console.print("[green]No pending recordings to update.[/green]")
+        return
+
+    from stream_of_worship.admin.db.models import Recording
+
+    updated = 0
+    for row in rows:
+        rec = Recording.from_row(row)
+
+        # Update analysis if pending/processing/failed
+        if rec.analysis_status in ("pending", "processing", "failed"):
+            if status == "completed" and force_url:
+                db_client.update_recording_analysis(
+                    hash_prefix=rec.hash_prefix,
+                    r2_stems_url=force_url,
+                )
+            else:
+                db_client.update_recording_status(
+                    hash_prefix=rec.hash_prefix,
+                    analysis_status=status,
+                )
+            updated += 1
+
+        # Update LRC if pending/processing/failed
+        if rec.lrc_status in ("pending", "processing", "failed"):
+            if status == "completed" and force_url:
+                db_client.update_recording_lrc(
+                    hash_prefix=rec.hash_prefix,
+                    r2_lrc_url=force_url,
+                )
+            else:
+                db_client.update_recording_status(
+                    hash_prefix=rec.hash_prefix,
+                    lrc_status=status,
+                )
+            updated += 1
+
+    console.print(f"[green]Force updated {updated} recording(s) to status '{status}'[/green]")
+    if force_url:
+        console.print(f"[dim]URL set: {force_url}[/dim]")

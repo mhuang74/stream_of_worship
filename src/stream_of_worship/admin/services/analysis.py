@@ -37,6 +37,7 @@ class AnalysisResult:
         sections: List of section objects
         embeddings_shape: Embedding dimensions
         stems_url: R2 URL for stems directory
+        lrc_url: R2 URL for LRC file
     """
 
     duration_seconds: Optional[float] = None
@@ -50,6 +51,7 @@ class AnalysisResult:
     sections: Optional[List[Dict[str, Any]]] = None
     embeddings_shape: Optional[List[int]] = None
     stems_url: Optional[str] = None
+    lrc_url: Optional[str] = None
 
 
 @dataclass
@@ -381,6 +383,7 @@ class AnalysisClient:
                 sections=result_data.get("sections"),
                 embeddings_shape=result_data.get("embeddings_shape"),
                 stems_url=result_data.get("stems_url"),
+                lrc_url=result_data.get("lrc_url"),
             )
 
         return JobInfo(
