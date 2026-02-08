@@ -234,6 +234,7 @@ class JobQueue:
                 analysis_result = await analyze_audio(
                     audio_path,
                     self.cache_manager,
+                    request.content_hash,
                 )
 
                 job.progress = 0.6
