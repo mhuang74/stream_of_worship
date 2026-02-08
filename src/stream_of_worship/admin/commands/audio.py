@@ -7,7 +7,7 @@ recordings, and viewing recording details.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -487,7 +487,7 @@ def analyze_recording(
             try:
                 final_job = client.wait_for_completion(
                     job_id,
-                    poll_interval=3.0,
+                    poll_interval=30.0,
                     timeout=600.0,
                     callback=update_progress,
                 )
@@ -542,21 +542,24 @@ def analyze_recording(
                 )
 
 
-@app.command("status")
-def check_status(
-    job_id: Optional[str] = typer.Argument(None, help="Job ID to check"),
-    sync: bool = typer.Option(
-        False, "--sync", "-s", help="Sync pending statuses from analysis service"
+@app.command("lrc")
+def lrc_recording(
+    song_id: str = typer.Argument(..., help="Song ID to generate LRC for"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-generation"),
+    whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
+    language: str = typer.Option("zh", "--lang", help="Language hint"),
+    no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
+    wait: bool = typer.Option(
+        False, "--wait", "-w", help="Wait for LRC generation to complete"
     ),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to config file"
     ),
 ) -> None:
-    """Check analysis status.
+    """Submit a recording for lyrics alignment (LRC generation).
 
-    With JOB_ID: query the service for that job's status.
-    Without: list all recordings with pending/processing/failed status.
-    Use --sync to update local database with latest statuses from service.
+    Looks up the recording and its associated song lyrics, then submits
+    to the analysis service for Whisper-based alignment.
     """
     # Standard config/db boilerplate
     try:
@@ -570,6 +573,205 @@ def check_status(
         raise typer.Exit(1)
 
     db_client = DatabaseClient(config.db_path)
+
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for {song_id}.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Look up song for lyrics
+    song = db_client.get_song(song_id)
+    if not song or not song.lyrics_raw:
+        console.print(f"[red]No lyrics found for song {song_id}.[/red]")
+        raise typer.Exit(1)
+
+    # Validate r2_audio_url exists
+    if not recording.r2_audio_url:
+        console.print(
+            f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Check if already has LRC
+    if recording.lrc_status == "completed" and not force:
+        console.print(
+            f"[yellow]Recording {recording.hash_prefix} already has LRC. "
+            f"Use --force to re-generate.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    # Check if already processing
+    if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
+        if not wait:
+            console.print(
+                f"[yellow]LRC generation already in progress for "
+                f"{recording.hash_prefix} (job: {recording.lrc_job_id})[/yellow]"
+            )
+            raise typer.Exit(0)
+        job_id = recording.lrc_job_id
+        skip_submission = True
+    else:
+        skip_submission = False
+
+    # Create analysis client
+    try:
+        client = AnalysisClient(config.analysis_url)
+    except ValueError as e:
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Submit LRC (unless we're polling an existing job)
+    if not skip_submission:
+        try:
+            job = client.submit_lrc(
+                audio_url=recording.r2_audio_url,
+                content_hash=recording.content_hash,
+                lyrics_text=song.lyrics_raw,
+                whisper_model=whisper_model,
+                language=language,
+                use_vocals_stem=not no_vocals,
+                force=force,
+            )
+        except AnalysisServiceError as e:
+            console.print(f"[red]Failed to submit LRC job: {e}[/red]")
+            raise typer.Exit(1)
+
+        job_id = job.job_id
+
+        # Update DB
+        db_client.update_recording_status(
+            hash_prefix=recording.hash_prefix,
+            lrc_status="processing",
+            lrc_job_id=job_id,
+        )
+
+        console.print(f"[green]LRC job submitted (job: {job_id})[/green]")
+    else:
+        console.print(f"[cyan]Polling existing job: {job_id}[/cyan]")
+
+    # Wait mode with progress
+    if wait:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("{task.fields[stage]}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "Generating LRC...", total=100, stage="", completed=0
+            )
+
+            def update_progress(job_info: JobInfo) -> None:
+                pct = int(job_info.progress * 100)
+                progress.update(
+                    task, completed=pct, stage=f"[{job_info.stage}]"
+                )
+
+            try:
+                final_job = client.wait_for_completion(
+                    job_id,
+                    poll_interval=30.0,
+                    timeout=600.0,
+                    callback=update_progress,
+                )
+            except AnalysisServiceError as e:
+                console.print(f"[red]{e}[/red]")
+                db_client.update_recording_status(
+                    hash_prefix=recording.hash_prefix,
+                    lrc_status="failed",
+                )
+                raise typer.Exit(1)
+
+        if final_job.status == "failed":
+            error_msg = final_job.error_message or "Unknown error"
+            console.print(f"[red]LRC generation failed: {error_msg}[/red]")
+            db_client.update_recording_status(
+                hash_prefix=recording.hash_prefix,
+                lrc_status="failed",
+            )
+            raise typer.Exit(1)
+
+        # Store results
+        if final_job.result and final_job.result.lrc_url:
+            db_client.update_recording_lrc(
+                hash_prefix=recording.hash_prefix,
+                r2_lrc_url=final_job.result.lrc_url,
+            )
+
+        console.print(f"[green]LRC generation completed for {song_id}[/green]")
+        if final_job.result and final_job.result.lrc_url:
+            console.print(f"  LRC URL: {final_job.result.lrc_url}")
+
+
+@app.command("status")
+def check_status(
+    job_id: Optional[str] = typer.Argument(None, help="Job ID to check"),
+    sync: bool = typer.Option(
+        False, "--sync", "-s", help="Sync pending statuses from analysis service"
+    ),
+    force_status: Optional[str] = typer.Option(
+        None, "--force-status", help="Force update status (completed, failed, pending). Use when Analysis Service has lost state."
+    ),
+    force_url: Optional[str] = typer.Option(
+        None, "--force-url", help="URL to set when using --force-status (stems_url for analysis, lrc_url for lrc)"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Check analysis status.
+
+    With JOB_ID: query the service for that job's status.
+    Without: list all recordings with pending/processing/failed status.
+    Use --sync to update local database with latest statuses from service.
+    Use --force-status when Analysis Service has restarted and lost job state.
+    """
+    # Standard config/db boilerplate
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Validate force_status if provided
+    if force_status and force_status not in ("completed", "failed", "pending"):
+        console.print("[red]--force-status must be one of: completed, failed, pending[/red]")
+        raise typer.Exit(1)
+
+    # Handle --force-status mode
+    if force_status:
+        if job_id:
+            # Force update specific recording by job_id
+            # Try analysis job first, then lrc job
+            rec = db_client.get_recording_by_job_id(job_id, job_type="analysis")
+            if not rec:
+                rec = db_client.get_recording_by_job_id(job_id, job_type="lrc")
+            if not rec:
+                console.print(f"[red]No recording found with job_id: {job_id}[/red]")
+                raise typer.Exit(1)
+
+            _update_recording_status_force(
+                db_client, rec, force_status, force_url, console
+            )
+            return
+        elif sync:
+            # Force update all pending recordings
+            _force_sync_all_pending(db_client, force_status, force_url, console)
+            return
+        else:
+            console.print("[red]--force-status requires either a JOB_ID or --sync flag[/red]")
+            raise typer.Exit(1)
 
     # Mode A: Query specific job
     if job_id:
@@ -614,18 +816,22 @@ def check_status(
         if job.result and job.status == "completed":
             lines.append("")
             lines.append("[bold]Results:[/bold]")
-            if job.result.duration_seconds:
-                lines.append(
-                    f"  Duration: {_format_duration(job.result.duration_seconds)}"
-                )
-            if job.result.tempo_bpm:
-                lines.append(f"  Tempo: {job.result.tempo_bpm:.1f} BPM")
-            if job.result.musical_key:
-                lines.append(f"  Key: {job.result.musical_key}")
-            if job.result.musical_mode:
-                lines.append(f"  Mode: {job.result.musical_mode}")
-            if job.result.stems_url:
-                lines.append(f"  Stems: {job.result.stems_url}")
+            if job.job_type == "analysis":
+                if job.result.duration_seconds:
+                    lines.append(
+                        f"  Duration: {_format_duration(job.result.duration_seconds)}"
+                    )
+                if job.result.tempo_bpm:
+                    lines.append(f"  Tempo: {job.result.tempo_bpm:.1f} BPM")
+                if job.result.musical_key:
+                    lines.append(f"  Key: {job.result.musical_key}")
+                if job.result.musical_mode:
+                    lines.append(f"  Mode: {job.result.musical_mode}")
+                if job.result.stems_url:
+                    lines.append(f"  Stems: {job.result.stems_url}")
+            elif job.job_type == "lrc":
+                if job.result.lrc_url:
+                    lines.append(f"  LRC URL: {job.result.lrc_url}")
 
         console.print(Panel.fit(
             "\n".join(lines),
@@ -643,53 +849,81 @@ def check_status(
             console.print(f"[red]Analysis service not configured: {e}[/red]")
             raise typer.Exit(1)
 
-        # Get all recordings with pending/processing analysis status
+        # Get all recordings with pending/processing analysis or LRC status
         pending_recordings = db_client.list_recordings(status="processing")
         pending_recordings.extend(db_client.list_recordings(status="pending"))
+        
+        # Also check for pending LRC jobs
+        cursor = db_client.connection.cursor()
+        cursor.execute("SELECT hash_prefix FROM recordings WHERE lrc_status IN ('pending', 'processing')")
+        lrc_pending_hashes = [row[0] for row in cursor.fetchall()]
+        
+        # Merge hashes to sync
+        hashes_to_sync = set(rec.hash_prefix for rec in pending_recordings) | set(lrc_pending_hashes)
 
-        if pending_recordings:
-            console.print(f"[cyan]Syncing {len(pending_recordings)} pending recording(s)...[/cyan]")
+        if hashes_to_sync:
+            console.print(f"[cyan]Syncing {len(hashes_to_sync)} pending recording(s)...[/cyan]")
             synced_count = 0
             failed_count = 0
 
-            for rec in pending_recordings:
-                if not rec.analysis_job_id:
+            for h_prefix in hashes_to_sync:
+                rec = db_client.get_recording_by_hash(h_prefix)
+                if not rec:
                     continue
 
-                try:
-                    job = client.get_job(rec.analysis_job_id)
+                # Sync analysis job
+                if rec.analysis_job_id and rec.analysis_status in ("pending", "processing"):
+                    try:
+                        job = client.get_job(rec.analysis_job_id)
+                        if job.status == "completed":
+                            db_client.update_recording_analysis(
+                                hash_prefix=rec.hash_prefix,
+                                duration_seconds=job.result.duration_seconds if job.result else None,
+                                tempo_bpm=job.result.tempo_bpm if job.result else None,
+                                musical_key=job.result.musical_key if job.result else None,
+                                musical_mode=job.result.musical_mode if job.result else None,
+                                key_confidence=job.result.key_confidence if job.result else None,
+                                loudness_db=job.result.loudness_db if job.result else None,
+                                beats=json.dumps(job.result.beats) if job.result and job.result.beats else None,
+                                downbeats=json.dumps(job.result.downbeats) if job.result and job.result.downbeats else None,
+                                sections=json.dumps(job.result.sections) if job.result and job.result.sections else None,
+                                embeddings_shape=json.dumps(job.result.embeddings_shape) if job.result and job.result.embeddings_shape else None,
+                                r2_stems_url=job.result.stems_url if job.result else None,
+                            )
+                            synced_count += 1
+                        elif job.status == "failed":
+                            db_client.update_recording_status(
+                                hash_prefix=rec.hash_prefix,
+                                analysis_status="failed",
+                            )
+                            synced_count += 1
+                    except AnalysisServiceError as e:
+                        console.print(f"[dim]Could not sync analysis {rec.analysis_job_id}: {e}[/dim]")
+                        failed_count += 1
 
-                    # Update status if job is completed or failed
-                    if job.status == "completed":
-                        db_client.update_recording_analysis(
-                            hash_prefix=rec.hash_prefix,
-                            duration_seconds=job.result.duration_seconds if job.result else None,
-                            tempo_bpm=job.result.tempo_bpm if job.result else None,
-                            musical_key=job.result.musical_key if job.result else None,
-                            musical_mode=job.result.musical_mode if job.result else None,
-                            key_confidence=job.result.key_confidence if job.result else None,
-                            loudness_db=job.result.loudness_db if job.result else None,
-                            beats=json.dumps(job.result.beats) if job.result and job.result.beats else None,
-                            downbeats=json.dumps(job.result.downbeats) if job.result and job.result.downbeats else None,
-                            sections=json.dumps(job.result.sections) if job.result and job.result.sections else None,
-                            embeddings_shape=json.dumps(job.result.embeddings_shape) if job.result and job.result.embeddings_shape else None,
-                            r2_stems_url=job.result.stems_url if job.result else None,
-                        )
-                        synced_count += 1
-                    elif job.status == "failed":
-                        db_client.update_recording_status(
-                            hash_prefix=rec.hash_prefix,
-                            analysis_status="failed",
-                        )
-                        synced_count += 1
-                    # If still processing, leave as-is
-
-                except AnalysisServiceError as e:
-                    console.print(f"[dim]Could not sync {rec.analysis_job_id}: {e}[/dim]")
-                    failed_count += 1
+                # Sync LRC job
+                if rec.lrc_job_id and rec.lrc_status in ("pending", "processing"):
+                    try:
+                        job = client.get_job(rec.lrc_job_id)
+                        if job.status == "completed":
+                            if job.result and job.result.lrc_url:
+                                db_client.update_recording_lrc(
+                                    hash_prefix=rec.hash_prefix,
+                                    r2_lrc_url=job.result.lrc_url,
+                                )
+                                synced_count += 1
+                        elif job.status == "failed":
+                            db_client.update_recording_status(
+                                hash_prefix=rec.hash_prefix,
+                                lrc_status="failed",
+                            )
+                            synced_count += 1
+                    except AnalysisServiceError as e:
+                        console.print(f"[dim]Could not sync LRC {rec.lrc_job_id}: {e}[/dim]")
+                        failed_count += 1
 
             if synced_count > 0:
-                console.print(f"[green]Synced {synced_count} recording(s)[/green]")
+                console.print(f"[green]Synced {synced_count} job(s)[/green]")
             if failed_count > 0:
                 console.print(f"[yellow]Failed to sync {failed_count} job(s)[/yellow]")
             console.print("")
@@ -740,3 +974,123 @@ def check_status(
         )
 
     console.print(table)
+
+
+def _update_recording_status_force(
+    db_client: DatabaseClient,
+    rec: Any,
+    status: str,
+    force_url: Optional[str],
+    console: Console,
+) -> None:
+    """Force update a recording's status."""
+    from stream_of_worship.admin.db.models import Recording
+
+    if not isinstance(rec, Recording):
+        console.print("[red]Invalid recording object[/red]")
+        raise typer.Exit(1)
+
+    # Determine if this is an analysis or LRC job based on which job_id exists
+    job_type = "unknown"
+    if rec.analysis_job_id and not rec.lrc_job_id:
+        job_type = "analysis"
+    elif rec.lrc_job_id and not rec.analysis_job_id:
+        job_type = "lrc"
+    elif rec.analysis_job_id and rec.lrc_job_id:
+        # Both exist - need to ask user or infer from context
+        # For now, update both if status is the same
+        job_type = "both"
+
+    if job_type in ("analysis", "both"):
+        if status == "completed":
+            if force_url:
+                db_client.update_recording_analysis(
+                    hash_prefix=rec.hash_prefix,
+                    r2_stems_url=force_url,
+                )
+            else:
+                # Just update status without URL
+                db_client.update_recording_status(
+                    hash_prefix=rec.hash_prefix,
+                    analysis_status=status,
+                )
+        else:
+            db_client.update_recording_status(
+                hash_prefix=rec.hash_prefix,
+                analysis_status=status,
+            )
+        console.print(f"[green]Updated analysis status to '{status}' for {rec.hash_prefix}[/green]")
+
+    if job_type in ("lrc", "both"):
+        if status == "completed" and force_url:
+            db_client.update_recording_lrc(
+                hash_prefix=rec.hash_prefix,
+                r2_lrc_url=force_url,
+            )
+        else:
+            db_client.update_recording_status(
+                hash_prefix=rec.hash_prefix,
+                lrc_status=status,
+            )
+        console.print(f"[green]Updated LRC status to '{status}' for {rec.hash_prefix}[/green]")
+
+
+def _force_sync_all_pending(
+    db_client: DatabaseClient,
+    status: str,
+    force_url: Optional[str],
+    console: Console,
+) -> None:
+    """Force update all pending recordings."""
+    # Get all non-completed recordings
+    cursor = db_client.connection.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM recordings
+        WHERE analysis_status IN ('pending', 'processing', 'failed')
+           OR lrc_status IN ('pending', 'processing', 'failed')
+        """
+    )
+    rows = cursor.fetchall()
+
+    if not rows:
+        console.print("[green]No pending recordings to update.[/green]")
+        return
+
+    from stream_of_worship.admin.db.models import Recording
+
+    updated = 0
+    for row in rows:
+        rec = Recording.from_row(row)
+
+        # Update analysis if pending/processing/failed
+        if rec.analysis_status in ("pending", "processing", "failed"):
+            if status == "completed" and force_url:
+                db_client.update_recording_analysis(
+                    hash_prefix=rec.hash_prefix,
+                    r2_stems_url=force_url,
+                )
+            else:
+                db_client.update_recording_status(
+                    hash_prefix=rec.hash_prefix,
+                    analysis_status=status,
+                )
+            updated += 1
+
+        # Update LRC if pending/processing/failed
+        if rec.lrc_status in ("pending", "processing", "failed"):
+            if status == "completed" and force_url:
+                db_client.update_recording_lrc(
+                    hash_prefix=rec.hash_prefix,
+                    r2_lrc_url=force_url,
+                )
+            else:
+                db_client.update_recording_status(
+                    hash_prefix=rec.hash_prefix,
+                    lrc_status=status,
+                )
+            updated += 1
+
+    console.print(f"[green]Force updated {updated} recording(s) to status '{status}'[/green]")
+    if force_url:
+        console.print(f"[dim]URL set: {force_url}[/dim]")

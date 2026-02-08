@@ -665,3 +665,27 @@ class DatabaseClient:
                     hash_prefix,
                 ),
             )
+
+    def update_recording_lrc(
+        self,
+        hash_prefix: str,
+        r2_lrc_url: str,
+    ) -> None:
+        """Update recording with LRC results.
+
+        Args:
+            hash_prefix: The hash prefix of the recording
+            r2_lrc_url: R2 URL for the generated LRC file
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+
+            sql = """
+                UPDATE recordings SET
+                    r2_lrc_url = ?,
+                    lrc_status = 'completed',
+                    updated_at = datetime('now')
+                WHERE hash_prefix = ?
+            """
+
+            cursor.execute(sql, (r2_lrc_url, hash_prefix))
