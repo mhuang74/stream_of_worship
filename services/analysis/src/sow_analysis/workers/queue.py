@@ -1,6 +1,7 @@
 """In-memory job queue for asynchronous processing."""
 
 import asyncio
+import hashlib
 import logging
 import time
 import uuid
@@ -12,6 +13,28 @@ from typing import Any, Dict, Optional, Union
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_lrc_cache_key(content_hash: str, lyrics_text: str) -> str:
+    """Compute cache key for LRC generation based on audio hash and lyrics.
+
+    The cache key is a hash of both the audio content hash and the lyrics text.
+    This ensures that if either the audio or lyrics change, a new LRC is generated.
+
+    Args:
+        content_hash: Hash of the audio file content
+        lyrics_text: The scraped lyrics text
+
+    Returns:
+        Cache key string
+    """
+    # Create a composite string of both inputs
+    lyrics_hash = hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest()[:16]
+    composite = f"{content_hash}:{lyrics_hash}"
+    # Return a shorter hash of the composite
+    return hashlib.sha256(composite.encode("utf-8")).hexdigest()[:32]
+
+
 from ..models import (
     AnalyzeJobRequest,
     JobResult,
@@ -317,11 +340,16 @@ class JobQueue:
             job.updated_at = datetime.now(timezone.utc)
             return
 
+        # Compute composite cache key based on audio hash + lyrics hash
+        lrc_cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
+        logger.info(f"[{job.id}] LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
+
         try:
             # Check cache first (unless force=True)
             if not request.options.force:
-                cached = self.cache_manager.get_lrc_result(request.content_hash)
+                cached = self.cache_manager.get_lrc_result(lrc_cache_key)
                 if cached:
+                    logger.info(f"[{job.id}] LRC cache hit - returning cached result")
                     job.result = JobResult(
                         lrc_url=cached.get("lrc_url"),
                         line_count=cached.get("line_count"),
@@ -365,18 +393,40 @@ class JobQueue:
                         transcription_path = vocals_path
                         job.stage = "using_vocals_stem"
 
-                # Run Whisper transcription
+                # Check for cached Whisper transcription (audio hash only, not lyrics)
+                cached_phrases = None
+                if not request.options.force:
+                    cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
+                    if cached_data:
+                        from .lrc import WhisperPhrase
+                        cached_phrases = [WhisperPhrase(**p) for p in cached_data]
+                        logger.info(f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases")
+                        job.stage = "transcription_cached"
+                    else:
+                        logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
+
+                # Run Whisper transcription (or use cached)
                 job.stage = "transcribing"
                 job.progress = 0.4
                 job.updated_at = datetime.now(timezone.utc)
 
                 lrc_path = temp_path / "lyrics.lrc"
-                lrc_path, line_count = await generate_lrc(
+                lrc_path, line_count, whisper_phrases = await generate_lrc(
                     transcription_path,
                     request.lyrics_text,
                     request.options,
                     output_path=lrc_path,
+                    cached_phrases=cached_phrases,
                 )
+
+                # Cache the Whisper transcription for future use (if not using cache)
+                if cached_phrases is None and whisper_phrases:
+                    phrases_data = [
+                        {"text": p.text, "start": p.start, "end": p.end}
+                        for p in whisper_phrases
+                    ]
+                    self.cache_manager.save_whisper_transcription(request.content_hash, phrases_data)
+                    logger.info(f"[{job.id}] Whisper transcription cached for future use")
 
                 job.stage = "uploading"
                 job.progress = 0.8
@@ -387,9 +437,10 @@ class JobQueue:
                 if self.r2_client:
                     lrc_url = await self.r2_client.upload_lrc(hash_prefix, lrc_path)
 
-                # Save to cache
+                # Save to cache using composite key (audio hash + lyrics hash)
                 cache_result = {"lrc_url": lrc_url, "line_count": line_count}
-                self.cache_manager.save_lrc_result(request.content_hash, cache_result)
+                self.cache_manager.save_lrc_result(lrc_cache_key, cache_result)
+                logger.info(f"[{job.id}] LRC result cached with key: {lrc_cache_key}")
 
                 # Set job result
                 job.result = JobResult(lrc_url=lrc_url, line_count=line_count)
