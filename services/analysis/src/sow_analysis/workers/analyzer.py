@@ -68,7 +68,6 @@ def compute_loudness(y: np.ndarray) -> float:
 async def analyze_audio(
     audio_path: Path,
     cache_manager: CacheManager,
-    force: bool = False,
 ) -> dict:
     """Analyze audio file using allin1 + librosa.
 
@@ -84,7 +83,6 @@ async def analyze_audio(
     Args:
         audio_path: Path to audio file
         cache_manager: Cache manager instance
-        force: Re-process even if cached
 
     Returns:
         Dictionary with all analysis fields
@@ -92,12 +90,10 @@ async def analyze_audio(
     import allin1
 
     # Check cache first
-    if not force:
-        # Try to get from cache using file hash from path
-        # This is a simplified approach - in production we'd hash the file
-        cached = cache_manager.get_analysis_result(audio_path.stem)
-        if cached:
-            return cached
+    cached = cache_manager.get_analysis_result(audio_path.stem)
+    if cached:
+        logger.info(f"Cache hit for analysis result: {audio_path.stem}")
+        return cached
 
     # Load audio
     logger.info(f"Loading audio file: {audio_path}")

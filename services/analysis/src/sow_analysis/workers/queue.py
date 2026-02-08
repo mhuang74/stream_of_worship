@@ -97,6 +97,7 @@ class JobQueue:
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._lrc_lock = asyncio.Lock()  # Only one LRC job at a time (high memory usage)
         self._running = False
 
     def initialize_r2(self, bucket: str, endpoint_url: str) -> None:
@@ -170,7 +171,10 @@ class JobQueue:
             if job.type == JobType.ANALYZE:
                 await self._process_analysis_job(job)
             elif job.type == JobType.LRC:
-                await self._process_lrc_job(job)
+                # LRC jobs use a separate lock to ensure only one runs at a time
+                # (Whisper transcription uses almost all RAM)
+                async with self._lrc_lock:
+                    await self._process_lrc_job(job)
 
     async def _process_analysis_job(self, job: Job) -> None:
         """Process an analysis job.
@@ -230,7 +234,6 @@ class JobQueue:
                 analysis_result = await analyze_audio(
                     audio_path,
                     self.cache_manager,
-                    force=request.options.force,
                 )
 
                 job.progress = 0.6
@@ -249,7 +252,6 @@ class JobQueue:
                         device=settings.SOW_DEMUCS_DEVICE,
                         cache_manager=self.cache_manager,
                         content_hash=request.content_hash,
-                        force=request.options.force,
                     )
 
                     job.progress = 0.8
@@ -345,7 +347,7 @@ class JobQueue:
         logger.info(f"[{job.id}] LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
 
         try:
-            # Check cache first (unless force=True)
+            # Check LRC result cache first (unless force=True - allows prompt improvements)
             if not request.options.force:
                 cached = self.cache_manager.get_lrc_result(lrc_cache_key)
                 if cached:
@@ -395,15 +397,14 @@ class JobQueue:
 
                 # Check for cached Whisper transcription (audio hash only, not lyrics)
                 cached_phrases = None
-                if not request.options.force:
-                    cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
-                    if cached_data:
-                        from .lrc import WhisperPhrase
-                        cached_phrases = [WhisperPhrase(**p) for p in cached_data]
-                        logger.info(f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases")
-                        job.stage = "transcription_cached"
-                    else:
-                        logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
+                cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
+                if cached_data:
+                    from .lrc import WhisperPhrase
+                    cached_phrases = [WhisperPhrase(**p) for p in cached_data]
+                    logger.info(f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases")
+                    job.stage = "transcription_cached"
+                else:
+                    logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
 
                 # Run Whisper transcription (or use cached)
                 job.stage = "transcribing"
