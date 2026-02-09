@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    job_queue.stop()
+    await job_queue.stop()
     task.cancel()
     try:
         await task
