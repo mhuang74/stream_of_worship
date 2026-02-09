@@ -15,6 +15,7 @@ from stream_of_worship.app.services.video_engine import (
     GlobalLRCLine,
     TEMPLATES,
 )
+from stream_of_worship.app.services.audio_engine import AudioSegmentInfo
 
 
 @pytest.fixture
@@ -50,6 +51,19 @@ def video_engine(mock_asset_cache):
     return VideoEngine(
         asset_cache=mock_asset_cache,
         template=TEMPLATES["dark"],
+    )
+
+
+def create_mock_segment(song_title: str, start_time: float, duration: float):
+    """Create a mock AudioSegmentInfo for testing."""
+    mock_item = Mock()
+    mock_item.song_title = song_title
+    return AudioSegmentInfo(
+        item=mock_item,
+        audio_path=Path("/tmp/test.mp3"),
+        start_time_seconds=start_time,
+        duration_seconds=duration,
+        gap_before_seconds=0.0,
     )
 
 
@@ -245,9 +259,13 @@ class TestRenderFrameGlobalTiming:
             GlobalLRCLine(global_time_seconds=60.0, local_time_seconds=0.0, text="Song 2 Line 1", title="Song 2"),
             GlobalLRCLine(global_time_seconds=65.0, local_time_seconds=5.0, text="Song 2 Line 2", title="Song 2"),
         ]
+        segments = [
+            create_mock_segment("Song 1", 0.0, 60.0),
+            create_mock_segment("Song 2", 60.0, 60.0),
+        ]
 
         # At global time 60s, we should see Song 2 Line 1 (not Song 1 Line 1 with local_time=0)
-        img = video_engine._render_frame(lyrics, current_time=60.0)
+        img = video_engine._render_frame(lyrics, segments, current_time=60.0)
 
         # Verify image was created
         assert img is not None
@@ -260,45 +278,59 @@ class TestRenderFrameGlobalTiming:
             GlobalLRCLine(global_time_seconds=30.0, local_time_seconds=30.0, text="First Song End", title="Song 1"),
             GlobalLRCLine(global_time_seconds=30.0, local_time_seconds=0.0, text="Second Song Start", title="Song 2"),
         ]
+        segments = [
+            create_mock_segment("Song 1", 0.0, 30.0),
+            create_mock_segment("Song 2", 30.0, 30.0),
+        ]
 
-        # At exactly 30s, should show the last line with global_time <= 30
-        img = video_engine._render_frame(lyrics, current_time=30.0)
+        # At exactly 30s, should show Song 2 (new segment starts at 30s)
+        img = video_engine._render_frame(lyrics, segments, current_time=30.0)
         assert img is not None
 
-    def test_render_frame_title_derived_from_global_lyrics(self, video_engine):
-        """Verify title is derived from the active GlobalLRCLine."""
+    def test_render_frame_title_derived_from_segments(self, video_engine):
+        """Verify title is derived from segments, not just active lyrics."""
         lyrics = [
             GlobalLRCLine(global_time_seconds=0.0, local_time_seconds=0.0, text="Line 1", title="First Song"),
             GlobalLRCLine(global_time_seconds=60.0, local_time_seconds=0.0, text="Line 2", title="Second Song"),
         ]
+        segments = [
+            create_mock_segment("First Song", 0.0, 60.0),
+            create_mock_segment("Second Song", 60.0, 60.0),
+        ]
 
-        # At time 60s, title should be "Second Song"
-        img = video_engine._render_frame(lyrics, current_time=60.0)
+        # At time 60s, title should be "Second Song" based on segment
+        img = video_engine._render_frame(lyrics, segments, current_time=60.0)
         assert img is not None
 
-    def test_render_frame_before_first_lyric(self, video_engine):
-        """Verify behavior before first lyric starts."""
+    def test_render_frame_shows_title_before_first_lyric(self, video_engine):
+        """Verify title appears during intro before first lyric starts."""
         lyrics = [
             GlobalLRCLine(global_time_seconds=10.0, local_time_seconds=10.0, text="First Lyric", title="Song 1"),
         ]
+        segments = [
+            create_mock_segment("Song 1", 0.0, 60.0),
+        ]
 
-        # At time 0, no lyric should be active
-        img = video_engine._render_frame(lyrics, current_time=0.0)
+        # At time 0, title should show but no lyrics (intro)
+        img = video_engine._render_frame(lyrics, segments, current_time=0.0)
         assert img is not None
 
     def test_render_frame_second_song_lyrics_not_shown_early(self, video_engine):
-        """Critical test: 2nd song lyrics with local_time=0 should NOT show at video time 0."""
-        # This is the bug scenario: Song 2 starts at 60s global time
-        # Its first lyric has local_time_seconds=0 but global_time_seconds=60
+        """Critical test: 2nd song lyrics should NOT show during 1st song."""
+        # Song 2 starts at 60s global time
         lyrics = [
             GlobalLRCLine(global_time_seconds=0.0, local_time_seconds=0.0, text="Song 1 First Line", title="Song 1"),
             GlobalLRCLine(global_time_seconds=60.0, local_time_seconds=0.0, text="Song 2 First Line", title="Song 2"),
         ]
+        segments = [
+            create_mock_segment("Song 1", 0.0, 60.0),
+            create_mock_segment("Song 2", 60.0, 60.0),
+        ]
 
-        # At video time 0, should NOT show "Song 2 First Line" even though its local_time is 0
-        img = video_engine._render_frame(lyrics, current_time=0.0)
+        # At video time 0, should NOT show "Song 2 First Line"
+        img = video_engine._render_frame(lyrics, segments, current_time=0.0)
         assert img is not None
 
         # At video time 60, SHOULD show "Song 2 First Line"
-        img_at_60 = video_engine._render_frame(lyrics, current_time=60.0)
+        img_at_60 = video_engine._render_frame(lyrics, segments, current_time=60.0)
         assert img_at_60 is not None
