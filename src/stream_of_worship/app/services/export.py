@@ -65,6 +65,8 @@ class ExportJob:
         include_video: Whether to generate video
         video_template: Video template to use
         created_at: When the job was created
+        started_at: When the export actually started processing
+        completed_at: When the export completed (or None if not done)
         audio_result: Audio export result (populated after export)
     """
 
@@ -76,6 +78,8 @@ class ExportJob:
     include_video: bool
     video_template: VideoTemplate
     created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     audio_result: Optional[ExportResult] = None
 
 
@@ -246,6 +250,7 @@ class ExportService:
 
         self._current_job = job
         self._cancel_event.clear()
+        job.started_at = datetime.now()  # Track start time
 
         total_steps = 3 if include_video else 2  # Prepare, Audio, [Video]
 
@@ -312,6 +317,7 @@ class ExportService:
                 )
 
             # Complete
+            job.completed_at = datetime.now()  # Track completion time
             self._update_state(
                 ExportState.COMPLETED,
                 total_steps,
@@ -321,6 +327,7 @@ class ExportService:
             self._notify_completion(job, True)
 
         except Exception as e:
+            job.completed_at = datetime.now()  # Track completion time even on failure
             error_msg = str(e)
             self._update_state(
                 ExportState.FAILED,
