@@ -14,7 +14,9 @@ The Analysis Service is a FastAPI-based microservice that performs CPU/GPU-inten
 This service is designed to run as a long-lived container with async job processing:
 
 - **API Layer**: FastAPI endpoints for job submission and status checking
-- **Job Queue**: In-memory queue with configurable concurrency
+- **Job Queue**: In-memory queue with separate concurrency controls
+  - Analysis jobs: Serialized (1 at a time) due to high memory/CPU usage with allin1
+  - LRC jobs: Configurable concurrency (default: 2) with faster-whisper
 - **Workers**: Background tasks for analysis, stem separation, and LRC generation
 - **Cache**: Local filesystem cache for expensive operations
 
@@ -51,9 +53,10 @@ SOW_LLM_MODEL="openai/gpt-4o-mini"
 
 ```bash
 # Processing Configuration
-SOW_MAX_CONCURRENT_JOBS=2      # Number of parallel jobs (default: 2)
-SOW_DEMUCS_DEVICE=cpu          # "cpu" or "cuda" (default: cpu)
-SOW_WHISPER_DEVICE=cpu         # "cpu" or "cuda" (default: cpu)
+SOW_MAX_CONCURRENT_ANALYSIS_JOBS=1  # Analysis jobs (default: 1, serialized for memory)
+SOW_MAX_CONCURRENT_LRC_JOBS=2       # LRC jobs (default: 2, concurrent with faster-whisper)
+SOW_DEMUCS_DEVICE=cpu               # "cpu" or "cuda" (default: cpu)
+SOW_WHISPER_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
 ```
 
 ## Quick Start

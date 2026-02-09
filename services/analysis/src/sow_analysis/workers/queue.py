@@ -82,22 +82,27 @@ class JobQueue:
 
     def __init__(
         self,
-        max_concurrent: int = 2,
+        max_concurrent_analysis: int = 1,
+        max_concurrent_lrc: int = 2,
         cache_dir: Path = Path("/cache"),
     ):
         """Initialize job queue.
 
         Args:
-            max_concurrent: Maximum number of concurrent jobs
+            max_concurrent_analysis: Maximum concurrent analysis jobs (1 = serialized)
+            max_concurrent_lrc: Maximum concurrent LRC jobs
             cache_dir: Directory for caching results
         """
-        self.max_concurrent = max_concurrent
+        self.max_concurrent_analysis = max_concurrent_analysis
+        self.max_concurrent_lrc = max_concurrent_lrc
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._lrc_lock = asyncio.Lock()  # Only one LRC job at a time (high memory usage)
+        # Analysis jobs use lock for serialization (high memory/CPU with allin1)
+        self._analysis_lock = asyncio.Lock()
+        # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
+        self._lrc_semaphore = asyncio.Semaphore(max_concurrent_lrc)
         self._running = False
 
     def initialize_r2(self, bucket: str, endpoint_url: str) -> None:
@@ -167,14 +172,14 @@ class JobQueue:
 
     async def _process_job_with_semaphore(self, job: Job) -> None:
         """Process a job with concurrency control."""
-        async with self._semaphore:
-            if job.type == JobType.ANALYZE:
+        if job.type == JobType.ANALYZE:
+            # Analysis jobs use lock for serialization (allin1 is memory/CPU intensive)
+            async with self._analysis_lock:
                 await self._process_analysis_job(job)
-            elif job.type == JobType.LRC:
-                # LRC jobs use a separate lock to ensure only one runs at a time
-                # (Whisper transcription uses almost all RAM)
-                async with self._lrc_lock:
-                    await self._process_lrc_job(job)
+        elif job.type == JobType.LRC:
+            # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
+            async with self._lrc_semaphore:
+                await self._process_lrc_job(job)
 
     async def _process_analysis_job(self, job: Job) -> None:
         """Process an analysis job.
