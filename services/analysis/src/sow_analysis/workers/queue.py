@@ -104,6 +104,8 @@ class JobQueue:
         # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
         self._lrc_semaphore = asyncio.Semaphore(max_concurrent_lrc)
         self._running = False
+        self._logging_task: Optional[asyncio.Task] = None
+        self._log_interval_seconds: float = 60.0
 
     def initialize_r2(self, bucket: str, endpoint_url: str) -> None:
         """Initialize R2 client.
@@ -154,6 +156,7 @@ class JobQueue:
     async def process_jobs(self) -> None:
         """Background task that processes queued jobs."""
         self._running = True
+        self._start_periodic_logging()
 
         while self._running:
             try:
@@ -471,6 +474,79 @@ class JobQueue:
 
         job.updated_at = datetime.now(timezone.utc)
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop processing jobs."""
         self._running = False
+        await self.stop_periodic_logging()
+
+    def _log_queue_state(self) -> None:
+        """Log current queue state statistics."""
+        now = datetime.now(timezone.utc)
+
+        # Count jobs by type and status
+        stats: Dict[JobType, Dict[JobStatus, int]] = {
+            JobType.ANALYZE: {status: 0 for status in JobStatus},
+            JobType.LRC: {status: 0 for status in JobStatus},
+        }
+
+        # Track wait times for queued and processing jobs
+        queued_wait_times: Dict[JobType, list] = {JobType.ANALYZE: [], JobType.LRC: []}
+        processing_durations: Dict[JobType, list] = {JobType.ANALYZE: [], JobType.LRC: []}
+
+        for job in self._jobs.values():
+            stats[job.type][job.status] += 1
+
+            if job.status == JobStatus.QUEUED:
+                wait_time = (now - job.created_at).total_seconds()
+                queued_wait_times[job.type].append(wait_time)
+            elif job.status == JobStatus.PROCESSING:
+                duration = (now - job.updated_at).total_seconds()
+                processing_durations[job.type].append(duration)
+
+        # Build summary line
+        analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]}"
+        lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]}"
+
+        wait_time_str = ""
+        if queued_wait_times[JobType.ANALYZE]:
+            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.ANALYZE][:3])
+            if len(queued_wait_times[JobType.ANALYZE]) > 3:
+                waits += f",...+{len(queued_wait_times[JobType.ANALYZE]) - 3}more"
+            wait_time_str += f" ANALYZE queued=[{waits}]"
+        if queued_wait_times[JobType.LRC]:
+            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.LRC][:3])
+            if len(queued_wait_times[JobType.LRC]) > 3:
+                waits += f",...+{len(queued_wait_times[JobType.LRC]) - 3}more"
+            wait_time_str += f" LRC queued=[{waits}]"
+        if processing_durations[JobType.ANALYZE]:
+            avg_dur = sum(processing_durations[JobType.ANALYZE]) / len(processing_durations[JobType.ANALYZE])
+            wait_time_str += f" ANALYZE processing={avg_dur:.0f}s"
+        if processing_durations[JobType.LRC]:
+            avg_dur = sum(processing_durations[JobType.LRC]) / len(processing_durations[JobType.LRC])
+            wait_time_str += f" LRC processing={avg_dur:.0f}s"
+
+        logger.info(
+            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
+        )
+
+    async def _periodic_logging_loop(self) -> None:
+        """Background task that logs queue state periodically."""
+        while self._running:
+            self._log_queue_state()
+            try:
+                await asyncio.sleep(self._log_interval_seconds)
+            except asyncio.CancelledError:
+                break
+
+    def _start_periodic_logging(self) -> None:
+        """Start the periodic logging background task."""
+        self._logging_task = asyncio.create_task(self._periodic_logging_loop())
+
+    async def stop_periodic_logging(self) -> None:
+        """Stop the periodic logging task gracefully."""
+        if self._logging_task:
+            self._logging_task.cancel()
+            try:
+                await self._logging_task
+            except asyncio.CancelledError:
+                pass
