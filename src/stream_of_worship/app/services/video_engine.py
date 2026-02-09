@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
-from stream_of_worship.app.services.audio_engine import ExportResult
+from stream_of_worship.app.services.audio_engine import AudioSegmentInfo, ExportResult
 from stream_of_worship.core.paths import get_bundled_font_path
 
 logger = get_logger(__name__)
@@ -241,12 +241,14 @@ class VideoEngine:
     def _render_frame(
         self,
         lyrics: list[GlobalLRCLine],
+        segments: list[AudioSegmentInfo],
         current_time: float,
     ) -> Image.Image:
         """Render a single video frame.
 
         Args:
             lyrics: List of LRC lines with global timing
+            segments: Audio segments with timing and song info
             current_time: Current playback time in seconds
 
         Returns:
@@ -257,57 +259,74 @@ class VideoEngine:
         draw = ImageDraw.Draw(img)
         font = self._get_font()
 
-        # Find current song title from the active lyric
-        title = ""
-        for line in lyrics:
-            if line.global_time_seconds <= current_time:
-                title = line.title
-            else:
+        # Find current song based on segment timing
+        current_title = ""
+        for segment in segments:
+            segment_start = segment.start_time_seconds
+            segment_end = segment_start + segment.duration_seconds
+            if segment_start <= current_time < segment_end:
+                current_title = segment.item.song_title or "Unknown"
                 break
 
-        # Draw title at top
-        if title:
+        # Draw title at top (always show when song is playing)
+        if current_title:
             title_font = self._get_font(int(self.template.font_size * 0.8))
-            bbox = draw.textbbox((0, 0), title, font=title_font)
+            bbox = draw.textbbox((0, 0), current_title, font=title_font)
             text_width = bbox[2] - bbox[0]
             x = (width - text_width) // 2
-            draw.text((x, 50), title, font=title_font, fill=self.template.text_color)
+            draw.text((x, 50), current_title, font=title_font, fill=self.template.text_color)
 
-        # Find current lyric line using global time
-        current_index = -1
-        for i, line in enumerate(lyrics):
-            if line.global_time_seconds <= current_time:
-                current_index = i
-            else:
-                break
+        # Group lyrics by title for easy lookup
+        lyrics_by_song: dict[str, list[GlobalLRCLine]] = {}
+        for line in lyrics:
+            if line.title not in lyrics_by_song:
+                lyrics_by_song[line.title] = []
+            lyrics_by_song[line.title].append(line)
 
-        # Draw lyrics (show current line and next line)
-        # Current line: 2x larger font, centered vertically
-        if current_index >= 0:
-            current_line = lyrics[current_index]
-            current_font = self._get_font(int(self.template.font_size * 2))
+        # Find active lyrics only for the current song
+        current_song_lyrics = lyrics_by_song.get(current_title, [])
 
-            bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
-            text_width = bbox[2] - bbox[0]
-            x = (width - text_width) // 2
-            y = height // 2 - (bbox[3] - bbox[1]) // 2
+        # Only show lyrics if current time is within this song's lyric time range
+        if current_song_lyrics:
+            first_lyric_time = current_song_lyrics[0].global_time_seconds
+            last_lyric_time = current_song_lyrics[-1].global_time_seconds
 
-            draw.text((x, y), current_line.text, font=current_font, fill=self.template.highlight_color)
+            # Only render lyrics if we're within the lyric time range
+            if first_lyric_time <= current_time <= last_lyric_time:
+                # Find current lyric index within this song's lyrics
+                current_index = -1
+                for i, line in enumerate(current_song_lyrics):
+                    if line.global_time_seconds <= current_time:
+                        current_index = i
+                    else:
+                        break
 
-            # Next line: 50% transparent, pushed 200px lower
-            next_index = current_index + 1
-            if next_index < len(lyrics):
-                next_line = lyrics[next_index]
-                next_font = font
+                # Draw current line: 2x larger font, centered vertically
+                if current_index >= 0:
+                    current_line = current_song_lyrics[current_index]
+                    current_font = self._get_font(int(self.template.font_size * 2))
 
-                bbox = draw.textbbox((0, 0), next_line.text, font=next_font)
-                text_width = bbox[2] - bbox[0]
-                x = (width - text_width) // 2
-                y = height // 2 + 200
+                    bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
+                    text_width = bbox[2] - bbox[0]
+                    x = (width - text_width) // 2
+                    y = height // 2 - (bbox[3] - bbox[1]) // 2
 
-                # 50% transparent: convert RGB to RGBA with alpha = 128
-                next_color = (*self.template.text_color, 128)
-                draw.text((x, y), next_line.text, font=next_font, fill=next_color)
+                    draw.text((x, y), current_line.text, font=current_font, fill=self.template.highlight_color)
+
+                    # Next line: 50% transparent, pushed 200px lower
+                    next_index = current_index + 1
+                    if next_index < len(current_song_lyrics):
+                        next_line = current_song_lyrics[next_index]
+                        next_font = font
+
+                        bbox = draw.textbbox((0, 0), next_line.text, font=next_font)
+                        text_width = bbox[2] - bbox[0]
+                        x = (width - text_width) // 2
+                        y = height // 2 + 200
+
+                        # 50% transparent: convert RGB to RGBA with alpha = 128
+                        next_color = (*self.template.text_color, 128)
+                        draw.text((x, y), next_line.text, font=next_font, fill=next_color)
 
         return img
 
@@ -397,7 +416,7 @@ class VideoEngine:
                     progress_callback(frame, total_frames)
 
                 # Render frame using global timing
-                img = self._render_frame(all_lyrics, current_time)
+                img = self._render_frame(all_lyrics, audio_result.segments, current_time)
 
                 # Convert to bytes and write
                 frame_bytes = img.tobytes()
