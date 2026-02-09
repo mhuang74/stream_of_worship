@@ -3,6 +3,8 @@
 Shows progress of audio/video export with cancel option.
 """
 
+from datetime import timedelta
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -110,9 +112,20 @@ class ExportProgressScreen(Screen):
         """
         def update():
             status_label = self.query_one("#status_label", Label)
+            detail_label = self.query_one("#detail_label", Label)
+
             if success:
                 status_label.update("[bold green]Export complete![/bold green]")
                 self.notify(f"Exported to: {job.output_audio_path}")
+
+                # Calculate and display elapsed time
+                if job.started_at and job.completed_at:
+                    elapsed = job.completed_at - job.started_at
+                    if elapsed.total_seconds() < 60:
+                        time_str = f"{elapsed.total_seconds():.1f}s"
+                    else:
+                        time_str = str(timedelta(seconds=int(elapsed.total_seconds())))
+                    detail_label.update(f"Total time: {time_str}")
             else:
                 status_label.update("[bold red]Export failed![/bold red]")
 

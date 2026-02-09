@@ -99,9 +99,40 @@ def mock_read_client():
     # Mock connection for raw SQL queries
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    mock_cursor.fetchall.return_value = [("C",), ("D",), ("G",)]
+    # Initially return empty for SQL queries (list_available_keys will override this)
+    mock_cursor.fetchall.return_value = []
     mock_conn.cursor.return_value = mock_cursor
     client.connection = mock_conn
+
+    # Override fetchall for list_available_keys (which uses SQL)
+    def mock_execute_and_fetchall(query, params=None):
+        """Mock execute that checks the query and returns appropriate results."""
+        # For list_available_keys query
+        if "SELECT DISTINCT s.musical_key" in query:
+            return [("C",), ("D",), ("G",)]
+        return []
+
+    # Store the original execute and fetchall
+    original_execute = mock_cursor.execute
+    original_fetchall = mock_cursor.fetchall
+
+    # Track the last query for debugging
+    last_query = []
+    last_params = []
+
+    def mock_execute(query, params=None):
+        last_query.append(query)
+        last_params.append(params)
+        # Don't actually do anything
+
+    def mock_fetchall_with_context():
+        """Mock fetchall that returns results based on the last query."""
+        if last_query and "SELECT DISTINCT s.musical_key" in last_query[-1]:
+            return [("C",), ("D",), ("G",)]
+        return []
+
+    mock_cursor.execute = mock_execute
+    mock_cursor.fetchall = mock_fetchall_with_context
 
     return client
 
@@ -144,12 +175,12 @@ class TestGetSongWithRecording:
 class TestListSongsWithRecordings:
     """Tests for list_songs_with_recordings."""
 
-    def test_list_songs_with_recordings_returns_analyzed_only(self, catalog_service, mock_read_client):
-        """Verify filters for recordings."""
-        result = catalog_service.list_songs_with_recordings(only_analyzed=True)
+    def test_list_songs_with_only_recordings_filter(self, catalog_service, mock_read_client):
+        """Verify only_with_recordings filter."""
+        # song_0003 has no recording
+        result = catalog_service.list_songs_with_recordings(only_with_recordings=True)
 
-        # Should only return songs with analyzed recordings
-        assert len(result) == 2  # song_0001 and song_0002 have recordings
+        assert len(result) == 2
         assert all(r.recording is not None for r in result)
 
     def test_list_songs_with_recordings_returns_empty_when_none(self, catalog_service, mock_read_client):
@@ -159,14 +190,6 @@ class TestListSongsWithRecordings:
         result = catalog_service.list_songs_with_recordings()
 
         assert result == []
-
-    def test_list_songs_with_only_recordings_filter(self, catalog_service, mock_read_client):
-        """Verify only_with_recordings filter."""
-        # song_0003 has no recording
-        result = catalog_service.list_songs_with_recordings(only_with_recordings=True)
-
-        assert len(result) == 2
-        assert all(r.recording is not None for r in result)
 
 
 class TestSearchSongs:

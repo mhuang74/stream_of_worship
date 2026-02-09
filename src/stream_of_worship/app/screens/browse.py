@@ -108,7 +108,7 @@ class BrowseScreen(Screen):
             self.songs = self.catalog.search_songs_with_recordings(query, limit=50)
         else:
             self.songs = self.catalog.list_songs_with_recordings(
-                only_analyzed=True, limit=50
+                only_with_lrc=True, limit=50
             )
 
         table = self.query_one("#song_table", DataTable)

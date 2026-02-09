@@ -103,6 +103,7 @@ class CatalogService:
         offset: int = 0,
         only_with_recordings: bool = False,
         only_analyzed: bool = False,
+        only_with_lrc: bool = False,
     ) -> list[SongWithRecording]:
         """List songs with their recordings.
 
@@ -113,10 +114,17 @@ class CatalogService:
             offset: Number of results to skip
             only_with_recordings: Only return songs with recordings
             only_analyzed: Only return songs with analyzed recordings
+            only_with_lrc: Only return songs with LRC lyrics
 
         Returns:
             List of SongWithRecording
         """
+        # When filtering by LRC status, query via recordings first to ensure
+        # we get the right songs even with a limit (LRC songs may not be
+        # in the first N songs when ordered by title)
+        if only_with_lrc:
+            return self._list_lrc_songs(album=album, key=key, limit=limit, offset=offset)
+
         # When filtering by analysis status, query via recordings first to ensure
         # we get the right songs even with a limit (analyzed songs may not be
         # in the first N songs when ordered by title)
@@ -171,6 +179,75 @@ class CatalogService:
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.analysis_status = 'completed'
+        """
+        params: list = []
+
+        if album:
+            query += " AND s.album_name = ?"
+            params.append(album)
+
+        if key:
+            query += " AND s.musical_key = ?"
+            params.append(key)
+
+        query += " ORDER BY s.title"
+
+        if limit:
+            query += f" LIMIT {limit}"
+
+        if offset:
+            query += f" OFFSET {offset}"
+
+        cursor.execute(query, params)
+
+        result = []
+        for row in cursor.fetchall():
+            # Split row into song and recording parts
+            # Song has 16 columns (0-15), Recording has 25 columns (16-40)
+            # Total: 41 columns in the JOIN result
+            row_tuple = tuple(row)
+            song = Song.from_row(row_tuple[0:16])
+            # Recording columns start at 16 (content_hash)
+            recording = Recording.from_row(row_tuple[16:])
+            result.append(SongWithRecording(song=song, recording=recording))
+
+        return result
+
+    def _list_lrc_songs(
+        self,
+        album: Optional[str] = None,
+        key: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> list[SongWithRecording]:
+        """List songs with LRC lyrics.
+
+        Queries through recordings to find songs with completed LRC generation,
+        ensuring proper pagination even when songs are spread across the catalog.
+
+        Args:
+            album: Filter by album name
+            key: Filter by musical key
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of SongWithRecording with LRC lyrics
+        """
+        cursor = self.db_client.connection.cursor()
+
+        # Build query joining songs and recordings
+        query = """
+            SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
+                   r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
+                   r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
+                   r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
+                   r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
+                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
+                   r.updated_at
+            FROM songs s
+            JOIN recordings r ON s.id = r.song_id
+            WHERE r.lrc_status = 'completed'
         """
         params: list = []
 

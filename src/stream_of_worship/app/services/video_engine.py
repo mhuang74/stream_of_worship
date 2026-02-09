@@ -6,6 +6,7 @@ for video encoding. Supports multiple templates and resolutions.
 
 import re
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -170,6 +171,27 @@ class VideoEngine:
         logger.warning("All font paths failed, using PIL default font")
         return ImageFont.load_default()
 
+    def _get_video_codec_args(self, bitrate: str = "8000k") -> list[str]:
+        """Get platform-appropriate video codec arguments.
+
+        Uses hardware acceleration on macOS (h264_videotoolbox) for M-series chips,
+        which is 3-5x faster than software encoding. Falls back to software encoding
+        with ultrafast preset on other platforms.
+
+        Args:
+            bitrate: Video bitrate (e.g., "8000k" for ~8 Mbps).
+
+        Returns:
+            List of FFmpeg codec arguments
+        """
+        if sys.platform == "darwin":
+            # Use Apple Silicon hardware encoder
+            # Note: h264_videotoolbox doesn't support CRF, must use bitrate
+            return ['-c:v', 'h264_videotoolbox', '-b:v', bitrate]
+        else:
+            # Fastest software encoding preset
+            return ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23']
+
     def _parse_lrc(self, lrc_content: str) -> list[LRCLine]:
         """Parse LRC file content.
 
@@ -231,7 +253,7 @@ class VideoEngine:
             PIL Image
         """
         width, height = self.template.resolution
-        img = Image.new('RGB', (width, height), self.template.background_color)
+        img = Image.new('RGBA', (width, height), self.template.background_color + (255,))
         draw = ImageDraw.Draw(img)
         font = self._get_font()
 
@@ -259,26 +281,33 @@ class VideoEngine:
             else:
                 break
 
-        # Draw lyrics (show surrounding lines)
-        lines_to_show = 5
-        start_index = max(0, current_index - 2)
-        end_index = min(len(lyrics), start_index + lines_to_show)
+        # Draw lyrics (show current line and next line)
+        # Current line: 2x larger font, centered vertically
+        if current_index >= 0:
+            current_line = lyrics[current_index]
+            current_font = self._get_font(int(self.template.font_size * 2))
 
-        y_start = height // 2 - (lines_to_show * self.template.font_size) // 2
-
-        for i in range(start_index, end_index):
-            line = lyrics[i]
-            is_current = i == current_index
-
-            color = self.template.highlight_color if is_current else self.template.text_color
-            font_to_use = self._get_font(int(self.template.font_size * 1.2)) if is_current else font
-
-            bbox = draw.textbbox((0, 0), line.text, font=font_to_use)
+            bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
             text_width = bbox[2] - bbox[0]
             x = (width - text_width) // 2
-            y = y_start + (i - start_index) * (self.template.font_size + 20)
+            y = height // 2 - (bbox[3] - bbox[1]) // 2
 
-            draw.text((x, y), line.text, font=font_to_use, fill=color)
+            draw.text((x, y), current_line.text, font=current_font, fill=self.template.highlight_color)
+
+            # Next line: 50% transparent, pushed 200px lower
+            next_index = current_index + 1
+            if next_index < len(lyrics):
+                next_line = lyrics[next_index]
+                next_font = font
+
+                bbox = draw.textbbox((0, 0), next_line.text, font=next_font)
+                text_width = bbox[2] - bbox[0]
+                x = (width - text_width) // 2
+                y = height // 2 + 200
+
+                # 50% transparent: convert RGB to RGBA with alpha = 128
+                next_color = (*self.template.text_color, 128)
+                draw.text((x, y), next_line.text, font=next_font, fill=next_color)
 
         return img
 
@@ -288,16 +317,19 @@ class VideoEngine:
         items: list[SongsetItem],
         output_path: Path,
         progress_callback: Optional[Callable[[int, int], None]] = None,
-        fps: int = 30,
+        fps: int = 24,
     ) -> Path:
         """Generate a lyrics video synchronized with audio.
+
+        Uses platform-appropriate video encoding (h264_videotoolbox on macOS for
+        M-series chips, libx264-ultrafast on other platforms) and AAC audio encoding.
 
         Args:
             audio_result: Result from audio engine export
             items: Songset items with recording info
             output_path: Path for output video
             progress_callback: Called with (current_frame, total_frames)
-            fps: Frames per second
+            fps: Frames per second (default 24 for lyrics videos)
 
         Returns:
             Path to generated video
@@ -329,22 +361,20 @@ class VideoEngine:
         total_frames = int(audio_result.total_duration_seconds * fps)
         width, height = self.template.resolution
 
-        # Build FFmpeg command
+        # Build FFmpeg command with platform-specific encoding
         cmd = [
             self.ffmpeg_path,
             '-y',  # Overwrite output
             '-f', 'rawvideo',
             '-vcodec', 'rawvideo',
             '-s', f'{width}x{height}',
-            '-pix_fmt', 'rgb24',
+            '-pix_fmt', 'rgba',  # RGBA for transparency support
             '-r', str(fps),
             '-i', '-',  # Read from stdin
             '-i', str(audio_result.output_path),
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-b:a', '192k',
+            *self._get_video_codec_args(),  # Platform-specific video codec
+            '-c:a', 'aac',  # Encode to AAC (MP4 container standard)
+            '-b:a', '192k',  # Audio bitrate
             '-shortest',
             str(output_path),
         ]
@@ -387,14 +417,17 @@ class VideoEngine:
         self,
         audio_path: Path,
         output_path: Path,
-        fps: int = 30,
+        fps: int = 24,
     ) -> Path:
         """Generate a blank video with just the background.
+
+        Uses platform-appropriate video encoding (h264_videotoolbox on macOS for
+        M-series chips, libx264-ultrafast on other platforms) and AAC audio encoding.
 
         Args:
             audio_path: Path to audio file
             output_path: Path for output video
-            fps: Frames per second
+            fps: Frames per second (default 24 for lyrics videos)
 
         Returns:
             Path to generated video
@@ -427,11 +460,9 @@ class VideoEngine:
             '-f', 'lavfi',
             '-i', f'color=c=black:s={width}x{height}:d={duration}',
             '-i', str(audio_path),
-            '-c:v', 'libx264',
-            '-preset', 'fast',
-            '-crf', '28',
-            '-c:a', 'aac',
-            '-b:a', '192k',
+            *self._get_video_codec_args(bitrate="5000k"),  # Lower bitrate for blank
+            '-c:a', 'aac',  # Encode to AAC (MP4 container standard)
+            '-b:a', '192k',  # Audio bitrate
             '-shortest',
             str(output_path),
         ]
