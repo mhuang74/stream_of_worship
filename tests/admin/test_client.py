@@ -378,6 +378,24 @@ class TestRecordingOperations:
         retrieved = client.get_recording_by_hash("c6de4449928d")
         assert retrieved.original_filename == "other.mp3"
 
+    def test_delete_recording_success(self, client, sample_recording):
+        """Deletes recording by hash_prefix."""
+        client.insert_recording(sample_recording)
+
+        # Verify recording exists
+        assert client.get_recording_by_hash("c6de4449928d") is not None
+
+        # Delete recording
+        client.delete_recording("c6de4449928d")
+
+        # Verify recording is deleted
+        assert client.get_recording_by_hash("c6de4449928d") is None
+
+    def test_delete_recording_not_found(self, client):
+        """Deleting non-existent recording does not raise error."""
+        # Should not raise an error
+        client.delete_recording("nonexistent_hash")
+
 
 class TestTransaction:
     """Tests for transaction handling."""

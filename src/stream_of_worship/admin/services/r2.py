@@ -151,3 +151,14 @@ class R2Client:
         if len(parts) != 2:
             raise ValueError(f"Invalid S3 URL format: {s3_url}")
         return parts[0], parts[1]
+
+    def delete_file(self, s3_key: str) -> None:
+        """Delete a file from R2 by its S3 key.
+
+        Args:
+            s3_key: Full S3 key (path within bucket)
+
+        Raises:
+            ClientError: If deletion fails
+        """
+        self._client.delete_object(Bucket=self.bucket, Key=s3_key)

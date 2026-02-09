@@ -1,5 +1,6 @@
 """Tests for audio CLI commands."""
 
+import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -75,7 +76,8 @@ class TestAudioDownloadCommand:
         assert result.exit_code == 1
         assert "Song not found" in result.output
 
-    def test_download_existing_recording(self, setup):
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_download_existing_recording(self, mock_r2_cls, setup):
         """Exits 0 with an informational message when a recording already exists."""
         db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
@@ -88,6 +90,9 @@ class TestAudioDownloadCommand:
         )
         db_client.insert_recording(recording)
 
+        mock_r2 = MagicMock()
+        mock_r2_cls.return_value = mock_r2
+
         result = runner.invoke(
             app,
             ["audio", "download", "song_001", "--config", str(setup["config_path"])],
@@ -96,9 +101,14 @@ class TestAudioDownloadCommand:
         assert result.exit_code == 0
         assert "Recording already exists" in result.output
         assert "aaaaaaaaaaaa" in result.output
+        assert "--force" in result.output
 
-    def test_download_dry_run_shows_metadata(self, setup):
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_download_dry_run_shows_metadata(self, mock_r2_cls, setup):
         """Dry run displays song metadata and search query without downloading."""
+        mock_r2 = MagicMock()
+        mock_r2_cls.return_value = mock_r2
+
         result = runner.invoke(
             app,
             [
@@ -134,6 +144,12 @@ class TestAudioDownloadCommand:
 
         mock_downloader = MagicMock()
         mock_downloader.build_search_query.return_value = "測試歌曲 測試作曲家 測試專輯"
+        mock_downloader.preview_video.return_value = {
+            "id": "test123",
+            "title": "Test Video",
+            "duration": 245,
+            "webpage_url": "https://youtube.com/watch?v=test123",
+        }
         mock_downloader.download.return_value = fake_audio
         mock_downloader_cls.return_value = mock_downloader
 
@@ -146,14 +162,18 @@ class TestAudioDownloadCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "download", "song_001", "--config", str(setup["config_path"])],
+            ["audio", "download", "song_001", "--config", str(setup["config_path"]), "--yes"],
         )
 
         assert result.exit_code == 0
+        assert "Video Preview" in result.output
         assert "Downloaded: downloaded.mp3" in result.output
         assert "bbbbbbbbbbbb" in result.output
         assert "Uploaded" in result.output
         assert "Recording saved" in result.output
+
+        # Verify preview_video was called
+        mock_downloader.preview_video.assert_called_once()
 
         # Verify the recording was persisted
         db_client = DatabaseClient(setup["db_path"])
@@ -181,12 +201,21 @@ class TestAudioDownloadCommand:
         """YouTube download errors are reported cleanly."""
         mock_downloader = MagicMock()
         mock_downloader.build_search_query.return_value = "query"
+        mock_downloader.preview_video.return_value = {
+            "id": "test123",
+            "title": "Test Video",
+            "duration": 245,
+            "webpage_url": "https://youtube.com/watch?v=test123",
+        }
         mock_downloader.download.side_effect = RuntimeError("Network error")
         mock_downloader_cls.return_value = mock_downloader
 
+        mock_r2 = MagicMock()
+        mock_r2_cls.return_value = mock_r2
+
         result = runner.invoke(
             app,
-            ["audio", "download", "song_001", "--config", str(setup["config_path"])],
+            ["audio", "download", "song_001", "--config", str(setup["config_path"]), "--yes"],
         )
 
         assert result.exit_code == 1
@@ -246,6 +275,12 @@ class TestAudioDownloadCommand:
 
         mock_downloader = MagicMock()
         mock_downloader.build_search_query.return_value = "query"
+        mock_downloader.preview_video.return_value = {
+            "id": "test123",
+            "title": "Test Video",
+            "duration": 245,
+            "webpage_url": "https://youtube.com/watch?v=test123",
+        }
         mock_downloader.download.return_value = fake_audio
         mock_downloader_cls.return_value = mock_downloader
 
@@ -258,7 +293,7 @@ class TestAudioDownloadCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "download", "song_001", "--config", str(setup["config_path"])],
+            ["audio", "download", "song_001", "--config", str(setup["config_path"]), "--yes"],
         )
 
         assert result.exit_code == 1
@@ -1349,3 +1384,540 @@ class TestStatusCommand:
 
         assert result.exit_code == 0
         assert "All recordings are fully processed" in result.output
+
+
+class TestDownloadCommandNewFeatures:
+    """Tests for new download command features (--force, --url, preview)."""
+
+    @pytest.fixture
+    def setup(self, tmp_path):
+        """Create a temp database seeded with one song."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        song = Song(
+            id="song_001",
+            title="將天敞開",
+            source_url="https://example.com/1",
+            scraped_at=datetime.now().isoformat(),
+            composer="游智婷",
+            album_name="敬拜讚美15",
+        )
+        client.insert_song(song)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'''[database]
+path = "{db_path}"
+
+[r2]
+bucket = "test-bucket"
+endpoint_url = "https://test.r2.dev"
+region = "auto"
+''')
+
+        return {
+            "db_path": db_path,
+            "config_path": config_path,
+            "song": song,
+            "tmp_path": tmp_path,
+        }
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    def test_download_with_force_shows_deletion_message(
+        self, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """--force shows deletion message for existing recording."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+
+        # Create existing recording
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="old" * 24,
+            hash_prefix="oldoldoldold",
+            song_id="song_001",
+            original_filename="old.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://bucket/oldoldoldold/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = True
+        mock_r2.upload_audio.return_value = "s3://bucket/newhash/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader
+        mock_yt = MagicMock()
+        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
+        mock_yt.preview_video.return_value = {
+            "id": "abc123",
+            "title": "Test Video",
+            "duration": 245,
+            "webpage_url": "https://youtube.com/watch?v=abc123",
+        }
+        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Test Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",  # Skip confirmation
+                "--force",  # Delete existing
+            ],
+        )
+
+        # Verify the deletion message was shown
+        assert "Deleting existing recording" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    def test_download_with_url_uses_direct_url(
+        self, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """--url directly downloads from provided URL."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = False
+        mock_r2.upload_audio.return_value = "s3://bucket/hash/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader
+        mock_yt = MagicMock()
+        mock_yt.preview_video.return_value = {
+            "id": "custom123",
+            "title": "Custom Video",
+            "duration": 245,
+            "webpage_url": "https://youtube.com/watch?v=custom123",
+        }
+        mock_yt.download_by_url.return_value = setup["tmp_path"] / "Custom Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Custom Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",
+                "--url", "https://youtube.com/watch?v=custom123",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Verify download_by_url was called, not download
+        mock_yt.download_by_url.assert_called_once_with("https://youtube.com/watch?v=custom123")
+        assert mock_yt.download.call_count == 0
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    def test_download_shows_duration_warning(
+        self, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """Shows warning for videos over 7 minutes."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = False
+        mock_r2.upload_audio.return_value = "s3://bucket/hash/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader with long video (500 seconds = 8:20)
+        mock_yt = MagicMock()
+        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
+        mock_yt.preview_video.return_value = {
+            "id": "long123",
+            "title": "Long Video",
+            "duration": 500,
+            "webpage_url": "https://youtube.com/watch?v=long123",
+        }
+        mock_yt.download.return_value = setup["tmp_path"] / "Long Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Long Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Should show formatted duration 8:20
+        assert "8:20" in result.output
+
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    @patch("stream_of_worship.admin.commands.audio._submit_analysis_job")
+    def test_download_with_analyze_flag(
+        self, mock_submit_analysis, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """--analyze flag submits analysis job after download."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = False
+        mock_r2.upload_audio.return_value = "s3://bucket/hash123/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader
+        mock_yt = MagicMock()
+        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
+        mock_yt.preview_video.return_value = {
+            "id": "test123",
+            "title": "Test Video",
+            "duration": 300,
+            "webpage_url": "https://youtube.com/watch?v=test123",
+        }
+        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Test Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",
+                "--analyze",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Submitting for analysis" in result.output
+        mock_submit_analysis.assert_called_once()
+
+        # Verify it was called with recording
+        call_kwargs = mock_submit_analysis.call_args[1]
+        assert "recording" in call_kwargs
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    @patch("stream_of_worship.admin.commands.audio._submit_lrc_job")
+    def test_download_with_lrc_flag(
+        self, mock_submit_lrc, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """--lrc flag submits LRC job after download."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
+
+        # Add lyrics to the song
+        db_client = DatabaseClient(setup["db_path"])
+        song = db_client.get_song("song_001")
+        song.lyrics_raw = "這是歌詞\n第二行歌詞"
+        db_client.insert_song(song)
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = False
+        mock_r2.upload_audio.return_value = "s3://bucket/hash456/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader
+        mock_yt = MagicMock()
+        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
+        mock_yt.preview_video.return_value = {
+            "id": "test456",
+            "title": "Test Video",
+            "duration": 300,
+            "webpage_url": "https://youtube.com/watch?v=test456",
+        }
+        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Test Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",
+                "--lrc",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Submitting for LRC generation" in result.output
+        mock_submit_lrc.assert_called_once()
+
+        # Verify it was called with song_id and recording
+        call_kwargs = mock_submit_lrc.call_args[1]
+        assert "song_id" in call_kwargs
+        assert call_kwargs["song_id"] == "song_001"
+        assert "recording" in call_kwargs
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    @patch("stream_of_worship.admin.commands.audio._submit_analysis_job")
+    @patch("stream_of_worship.admin.commands.audio._submit_lrc_job")
+    def test_download_with_all_flag(
+        self, mock_submit_lrc, mock_submit_analysis, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """--all flag triggers both analysis and LRC submission."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
+
+        # Add lyrics to the song
+        db_client = DatabaseClient(setup["db_path"])
+        song = db_client.get_song("song_001")
+        song.lyrics_raw = "這是歌詞\n第二行歌詞"
+        db_client.insert_song(song)
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = False
+        mock_r2.upload_audio.return_value = "s3://bucket/hash789/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader
+        mock_yt = MagicMock()
+        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
+        mock_yt.preview_video.return_value = {
+            "id": "test789",
+            "title": "Test Video",
+            "duration": 300,
+            "webpage_url": "https://youtube.com/watch?v=test789",
+        }
+        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Test Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",
+                "--all",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Both messages should be shown
+        assert "Submitting for analysis" in result.output
+        assert "Submitting for LRC generation" in result.output
+        # Both jobs should be submitted
+        mock_submit_analysis.assert_called_once()
+        mock_submit_lrc.assert_called_once()
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
+    def test_download_without_analysis_flags_only_downloads(
+        self, mock_yt_class, mock_r2_class, setup, monkeypatch
+    ):
+        """Without --analyze/-lrc/--all, download does NOT submit analysis or LRC."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
+
+        # Mock R2 client
+        mock_r2 = MagicMock()
+        mock_r2.audio_exists.return_value = False
+        mock_r2.upload_audio.return_value = "s3://bucket/simple/audio.mp3"
+        mock_r2_class.return_value = mock_r2
+
+        # Mock YouTube downloader
+        mock_yt = MagicMock()
+        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
+        mock_yt.preview_video.return_value = {
+            "id": "simple",
+            "title": "Test Video",
+            "duration": 300,
+            "webpage_url": "https://youtube.com/watch?v=simple",
+        }
+        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
+        mock_yt_class.return_value = mock_yt
+
+        # Create fake downloaded file
+        mp3_path = setup["tmp_path"] / "Test Video.mp3"
+        mp3_path.write_bytes(b"fake audio")
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "song_001",
+                "--config", str(setup["config_path"]),
+                "--yes",
+                # No --analyze, --lrc, or --all flags
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Should NOT show submission messages
+        assert "Submitting for analysis" not in result.output
+        assert "Submitting for LRC" not in result.output
+        # Upload success message should still appear
+        assert "Recording saved" in result.output
+
+
+class TestDeleteCommand:
+    """Tests for 'audio delete' command."""
+
+    @pytest.fixture
+    def setup(self, tmp_path):
+        """Create a temp database seeded with song and recording."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        song = Song(
+            id="song_001",
+            title="測試歌曲",
+            source_url="https://example.com/1",
+            scraped_at=datetime.now().isoformat(),
+        )
+        client.insert_song(song)
+
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://bucket/aaaaaaaaaaaa/audio.mp3",
+        )
+        client.insert_recording(recording)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'''[database]
+path = "{db_path}"
+
+[r2]
+bucket = "test-bucket"
+endpoint_url = "https://test.r2.dev"
+region = "auto"
+''')
+
+        return {
+            "db_path": db_path,
+            "config_path": config_path,
+            "song": song,
+            "recording": recording,
+        }
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_delete_without_confirmation(self, mock_r2_class, setup, monkeypatch):
+        """Prompts for confirmation without --yes."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+
+        mock_r2 = MagicMock()
+        mock_r2_class.return_value = mock_r2
+
+        result = runner.invoke(
+            app,
+            ["audio", "delete", "song_001", "--config", str(setup["config_path"])],
+            input="y",  # Confirm
+        )
+
+        assert result.exit_code == 0
+        assert "Delete this recording" in result.output
+        # After confirmation, recording should be deleted
+        db_client = DatabaseClient(setup["db_path"])
+        assert db_client.get_recording_by_song_id("song_001") is None
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_delete_with_yes_flag(self, mock_r2_class, setup, monkeypatch):
+        """Skips confirmation with --yes flag."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+
+        mock_r2 = MagicMock()
+        mock_r2_class.return_value = mock_r2
+
+        result = runner.invoke(
+            app,
+            ["audio", "delete", "song_001", "--config", str(setup["config_path"]), "--yes"],
+        )
+
+        assert result.exit_code == 0
+        assert "deleted successfully" in result.output
+        # Verify recording deleted
+        db_client = DatabaseClient(setup["db_path"])
+        assert db_client.get_recording_by_song_id("song_001") is None
+
+    def test_delete_removes_from_database(self, setup, monkeypatch):
+        """Removes recording from database."""
+        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
+
+        result = runner.invoke(
+            app,
+            ["audio", "delete", "song_001", "--config", str(setup["config_path"]), "--yes"],
+        )
+
+        assert result.exit_code == 0
+        # Verify recording deleted from database
+        db_client = DatabaseClient(setup["db_path"])
+        assert db_client.get_recording_by_song_id("song_001") is None
+
+    def test_delete_nonexistent_recording(self, tmp_path):
+        """Error when recording doesn't exist."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        song = Song(
+            id="song_001",
+            title="測試",
+            source_url="https://example.com",
+            scraped_at=datetime.now().isoformat(),
+        )
+        client.insert_song(song)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'''[database]
+path = "{db_path}"
+
+[r2]
+bucket = "test-bucket"
+endpoint_url = "https://test.r2.dev"
+region = "auto"
+''')
+
+        result = runner.invoke(
+            app,
+            ["audio", "delete", "song_001", "--config", str(config_path), "--yes"],
+        )
+
+        assert result.exit_code == 1
+        assert "No recording found" in result.output

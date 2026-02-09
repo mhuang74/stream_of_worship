@@ -693,3 +693,24 @@ class DatabaseClient:
             """
 
             cursor.execute(sql, (r2_lrc_url, hash_prefix))
+
+    def delete_recording(self, hash_prefix: str) -> None:
+        """Delete a recording by hash_prefix.
+
+        Args:
+            hash_prefix: The hash prefix of the recording to delete
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            # First, clear any references from songset_items
+            # (foreign key constraint would otherwise prevent deletion)
+            # This table may not exist in all databases, so handle gracefully
+            try:
+                cursor.execute(
+                    "UPDATE songset_items SET recording_hash_prefix = NULL WHERE recording_hash_prefix = ?",
+                    (hash_prefix,)
+                )
+            except sqlite3.OperationalError:
+                # Table doesn't exist - skip this step
+                pass
+            cursor.execute("DELETE FROM recordings WHERE hash_prefix = ?", (hash_prefix,))
