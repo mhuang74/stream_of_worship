@@ -5,14 +5,17 @@ recordings, and viewing recording details.
 """
 
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import typer
+from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.syntax import Syntax
 from rich.table import Table
 
 from stream_of_worship.admin.config import AdminConfig
@@ -24,6 +27,7 @@ from stream_of_worship.admin.services.analysis import (
     JobInfo,
 )
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
+from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc
 from stream_of_worship.admin.services.r2 import R2Client
 from stream_of_worship.admin.services.youtube import YouTubeDownloader
 
@@ -1094,3 +1098,166 @@ def _force_sync_all_pending(
     console.print(f"[green]Force updated {updated} recording(s) to status '{status}'[/green]")
     if force_url:
         console.print(f"[dim]URL set: {force_url}[/dim]")
+
+
+@app.command("view-lrc")
+def view_lrc(
+    song_id: str = typer.Argument(..., help="Song ID to view LRC for"),
+    raw: bool = typer.Option(False, "--raw", "-r", help="Display raw LRC file"),
+    no_timestamps: bool = typer.Option(
+        False, "--no-timestamps", "-t", help="Show lyrics text only"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """View LRC (synchronized lyrics) contents for a recording."""
+    # Load config
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print(
+            "[red]Config file not found. Please create it using 'sow-admin config init'[/red]"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error loading config: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Validate database exists
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        console.print("[yellow]Run 'sow-admin catalog init' first[/yellow]")
+        raise typer.Exit(1)
+
+    # Get database client
+    db_client = DatabaseClient(config.db_path)
+
+    # Get recording
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for song ID: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    # Get song for display
+    song = db_client.get_song(recording.song_id)
+    if not song:
+        console.print(f"[red]No song found for ID: {recording.song_id}[/red]")
+        raise typer.Exit(1)
+
+    # Check LRC status
+    if recording.lrc_status == "pending":
+        console.print(f"[yellow]LRC not yet generated for {song_id}[/yellow]")
+        console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
+        raise typer.Exit(1)
+    elif recording.lrc_status == "processing":
+        console.print(f"[yellow]LRC generation in progress for {song_id}[/yellow]")
+        if recording.lrc_job_id:
+            console.print(f"[dim]Job ID: {recording.lrc_job_id}[/dim]")
+        console.print("[dim]Check status with 'sow-admin audio status'[/dim]")
+        raise typer.Exit(1)
+    elif recording.lrc_status == "failed":
+        console.print(f"[red]LRC generation failed for {song_id}[/red]")
+        console.print(f"[dim]Retry with 'sow-admin audio lrc {song_id} --force'[/dim]")
+        raise typer.Exit(1)
+    elif recording.lrc_status != "completed":
+        console.print(f"[red]Unknown LRC status: {recording.lrc_status}[/red]")
+        raise typer.Exit(1)
+
+    # Check R2 URL exists
+    if not recording.r2_lrc_url:
+        console.print(f"[red]LRC marked as completed but no R2 URL found[/red]")
+        console.print("[dim]This is a data integrity issue. Please contact support.[/dim]")
+        raise typer.Exit(1)
+
+    # Initialize R2 client
+    r2_client = R2Client(
+        bucket=config.r2_bucket,
+        endpoint_url=config.r2_endpoint_url,
+        region=config.r2_region,
+    )
+
+    # Parse S3 URL to get key
+    try:
+        _, s3_key = R2Client.parse_s3_url(recording.r2_lrc_url)
+    except ValueError as e:
+        console.print(f"[red]Error parsing R2 URL: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Download LRC file to temp location
+    temp_file = None
+    try:
+        temp_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".lrc", delete=False)
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+
+        # Download from R2
+        try:
+            r2_client.download_file(s3_key, temp_path)
+        except ClientError as e:
+            console.print(f"[red]Error downloading LRC from R2: {e}[/red]")
+            raise typer.Exit(1)
+
+        # Read content
+        content = temp_path.read_text(encoding="utf-8")
+
+        # Display based on mode
+        if raw:
+            # Raw mode: display with syntax highlighting
+            syntax = Syntax(content, "lrc", theme="monokai", line_numbers=True)
+            console.print(
+                Panel.fit(
+                    syntax, title=f"LRC Content: {song.title}", border_style="cyan"
+                )
+            )
+        elif no_timestamps:
+            # No timestamps mode: parse and display text only
+            try:
+                lrc_file = parse_lrc(content)
+                for line in lrc_file.lines:
+                    if line.text:  # Only show non-empty lines
+                        console.print(line.text)
+            except ValueError as e:
+                console.print(f"[red]Error parsing LRC file: {e}[/red]")
+                console.print("[dim]Try using --raw to view the file content[/dim]")
+                raise typer.Exit(1)
+        else:
+            # Default mode: parse and display in table
+            try:
+                lrc_file = parse_lrc(content)
+
+                # Display header info
+                info_lines = [
+                    f"[cyan]Song:[/cyan]     {song.title}",
+                    f"[cyan]Song ID:[/cyan]  {song_id}",
+                    f"[cyan]Hash:[/cyan]     {recording.hash_prefix}",
+                    f"[cyan]Lines:[/cyan]    {lrc_file.line_count}",
+                    f"[cyan]Duration:[/cyan] {format_duration(lrc_file.duration_seconds)}",
+                ]
+                info_panel = Panel(
+                    "\n".join(info_lines),
+                    title="LRC File Info",
+                    border_style="cyan",
+                )
+                console.print(info_panel)
+                console.print()
+
+                # Display lyrics table
+                table = Table(title="Synchronized Lyrics", show_header=True, header_style="bold")
+                table.add_column("Time", style="dim", width=12)
+                table.add_column("Lyrics")
+
+                for line in lrc_file.lines:
+                    table.add_row(line.raw_timestamp, line.text)
+
+                console.print(table)
+
+            except ValueError as e:
+                console.print(f"[red]Error parsing LRC file: {e}[/red]")
+                console.print("[dim]Try using --raw to view the file content[/dim]")
+                raise typer.Exit(1)
+
+    finally:
+        # Cleanup temp file
+        if temp_file and temp_path.exists():
+            temp_path.unlink()

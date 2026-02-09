@@ -131,3 +131,23 @@ class R2Client:
             return True
         except ClientError:
             return False
+
+    @staticmethod
+    def parse_s3_url(s3_url: str) -> tuple[str, str]:
+        """Parse S3 URL into bucket and key.
+
+        Args:
+            s3_url: S3 URL like "s3://bucket/abc123/lyrics.lrc"
+
+        Returns:
+            Tuple of (bucket, key)
+
+        Raises:
+            ValueError: If URL format is invalid
+        """
+        if not s3_url.startswith("s3://"):
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        parts = s3_url[5:].split("/", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        return parts[0], parts[1]
