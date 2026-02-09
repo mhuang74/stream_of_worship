@@ -188,6 +188,21 @@ def _delete_recording_and_files(
     db_client.delete_recording(recording.hash_prefix)
 
 
+def _format_size_mb(bytes: Optional[int]) -> str:
+    """Format bytes as MB with 2 decimal places.
+
+    Args:
+        bytes: Size in bytes
+
+    Returns:
+        Formatted string like "6.97 MB"
+    """
+    if bytes is None:
+        return "-- MB"
+    mb = bytes / (1024 * 1024)
+    return f"{mb:.2f} MB"
+
+
 def _format_duration(seconds: Optional[float]) -> str:
     """Format duration as MM:SS.
 
@@ -515,7 +530,7 @@ def download_audio(
 
     file_size = audio_path.stat().st_size
     console.print(f"[green]Downloaded: {audio_path.name}[/green]")
-    console.print(f"[dim]File size: {file_size:,} bytes[/dim]")
+    console.print(f"[dim]File size: {_format_size_mb(file_size)}[/dim]")
 
     # Compute content hash
     content_hash = compute_file_hash(audio_path)
@@ -630,7 +645,7 @@ def delete_recording(
         f"[cyan]Song Title:[/cyan] {song_title}",
         f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
         f"[cyan]Filename:[/cyan] {recording.original_filename}",
-        f"[cyan]Size:[/cyan] {recording.file_size_bytes:,} bytes" if recording.file_size_bytes else "[cyan]Size:[/cyan] Unknown",
+        f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}" if recording.file_size_bytes else "[cyan]Size:[/cyan] -- MB",
     ]
 
     # List R2 resources
@@ -720,13 +735,14 @@ def list_recordings(
             console.print(rec.song_id if rec.song_id else rec.hash_prefix)
     else:
         table = Table(title=f"Recordings ({len(recordings)} total)")
-        table.add_column("Song ID", style="cyan", no_wrap=True)
         table.add_column("Song Title", style="green")
-        table.add_column("Hash Prefix", style="dim", no_wrap=True)
-        table.add_column("Filename", style="yellow")
         table.add_column("Size", style="magenta", justify="right")
         table.add_column("Status", style="blue", justify="center")
+        table.add_column("Duration", style="cyan", no_wrap=True)
+        table.add_column("Song ID", style="dim", no_wrap=True)
         table.add_column("Job ID", style="dim", no_wrap=True)
+        table.add_column("Filename", style="yellow")
+        table.add_column("Hash Prefix", style="dim", no_wrap=True)
 
         for rec in recordings:
             song_id = rec.song_id or "-"
@@ -736,7 +752,7 @@ def list_recordings(
                 if song:
                     song_title = song.title
 
-            size_str = f"{rec.file_size_bytes:,}" if rec.file_size_bytes else "-"
+            size_str = _format_size_mb(rec.file_size_bytes) if rec.file_size_bytes else "-- MB"
 
             if rec.analysis_status == "completed":
                 status_text = f"[green]{rec.analysis_status}[/green]"
@@ -749,14 +765,18 @@ def list_recordings(
 
             job_id = rec.analysis_job_id or "-"
 
+            # Format duration if available (from analysis results)
+            duration_str = _format_duration(rec.duration_seconds) if rec.duration_seconds else "--:--"
+
             table.add_row(
-                song_id,
                 song_title,
-                rec.hash_prefix,
-                rec.original_filename,
                 size_str,
                 status_text,
+                duration_str,
+                song_id,
                 job_id,
+                rec.original_filename,
+                rec.hash_prefix,
             )
 
         console.print(table)
@@ -814,7 +834,8 @@ def show_recording(
 
     info_lines.extend([
         f"[cyan]Filename:[/cyan] {recording.original_filename}",
-        f"[cyan]Size:[/cyan] {recording.file_size_bytes:,} bytes",
+        f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}",
+        f"[cyan]Duration:[/cyan] {_format_duration(recording.duration_seconds)}",
         f"[cyan]Imported:[/cyan] {recording.imported_at}",
     ])
 
@@ -1442,13 +1463,13 @@ def check_status(
         return
 
     table = Table(title=f"Pending Recordings ({len(rows)} total)")
-    table.add_column("Song ID", style="cyan", no_wrap=True)
     table.add_column("Song Title", style="green")
-    table.add_column("Hash Prefix", style="dim", no_wrap=True)
     table.add_column("Analysis", style="magenta")
     table.add_column("Analysis Job", style="dim", no_wrap=True)
     table.add_column("LRC", style="blue")
     table.add_column("LRC Job", style="dim", no_wrap=True)
+    table.add_column("Song ID", style="dim", no_wrap=True)
+    table.add_column("Hash", style="dim", no_wrap=True)
 
     for row in rows:
         song_id = row[2] if row[2] else "-"
@@ -1460,13 +1481,13 @@ def check_status(
         lrc_job_id = row[22] if row[22] else "-"
 
         table.add_row(
-            song_id,
             song_title,
-            hash_prefix,
             _colorize_status(analysis_status),
             analysis_job_id,
             _colorize_status(lrc_status),
             lrc_job_id,
+            song_id,
+            hash_prefix,
         )
 
     console.print(table)
