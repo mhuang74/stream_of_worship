@@ -239,3 +239,35 @@ class TestFileExists:
         result = client.file_exists("abc123def456/lrc/nonexistent.lrc")
 
         assert result is False
+
+
+class TestDeleteFile:
+    """Tests for R2Client.delete_file."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_file_calls_delete_object(self, mock_boto_client, r2_env):
+        """delete_file calls delete_object with correct key."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        client.delete_file("abc123def456/audio.mp3")
+
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123def456/audio.mp3"
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_file_raises_on_error(self, mock_boto_client, r2_env):
+        """ClientError is raised when deletion fails."""
+        mock_s3 = MagicMock()
+        mock_s3.delete_object.side_effect = ClientError(
+            {"Error": {"Code": "403", "Message": "Access Denied"}},
+            "DeleteObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        with pytest.raises(ClientError):
+            client.delete_file("abc123def456/audio.mp3")

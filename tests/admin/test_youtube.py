@@ -162,3 +162,139 @@ class TestDownload:
         assert opts["quiet"] is True
         assert opts["postprocessors"][0]["key"] == "FFmpegExtractAudio"
         assert opts["postprocessors"][0]["preferredcodec"] == "mp3"
+
+
+class TestBuildSearchQueryWithSuffix:
+    """Tests for build_search_query with suffix parameter."""
+
+    @pytest.fixture
+    def downloader(self, tmp_path):
+        return YouTubeDownloader(output_dir=tmp_path)
+
+    def test_build_query_with_suffix(self, downloader):
+        """Appends suffix to query when provided."""
+        result = downloader.build_search_query(
+            "Song Title", composer="Artist", suffix="Official Lyrics MV"
+        )
+        assert result == "Song Title Artist Official Lyrics MV"
+
+    def test_build_query_without_suffix(self, downloader):
+        """Works without suffix parameter (backward compatibility)."""
+        result = downloader.build_search_query("Song Title", composer="Artist")
+        assert result == "Song Title Artist"
+
+    def test_build_query_empty_suffix(self, downloader):
+        """Empty suffix is handled correctly."""
+        result = downloader.build_search_query("Song Title", suffix="")
+        assert result == "Song Title"
+
+
+class TestPreviewVideo:
+    """Tests for the preview_video method."""
+
+    @pytest.fixture
+    def downloader(self, tmp_path):
+        return YouTubeDownloader(output_dir=tmp_path)
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_preview_video_success(self, mock_ydl_class, downloader):
+        """Returns correct video info dict."""
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {
+            "entries": [{
+                "id": "abc123",
+                "title": "Test Video",
+                "duration": 245,
+                "webpage_url": "https://youtube.com/watch?v=abc123",
+            }]
+        }
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = downloader.preview_video("Test Song")
+
+        assert result is not None
+        assert result["id"] == "abc123"
+        assert result["title"] == "Test Video"
+        assert result["duration"] == 245
+        assert result["webpage_url"] == "https://youtube.com/watch?v=abc123"
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_preview_video_no_results(self, mock_ydl_class, downloader):
+        """Returns None for no results."""
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = None
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = downloader.preview_video("nonexistent query")
+
+        assert result is None
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_preview_video_handles_direct_url(self, mock_ydl_class, downloader):
+        """Handles direct URL without ytsearch prefix."""
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {
+            "id": "xyz789",
+            "title": "Direct Video",
+            "duration": 180,
+            "webpage_url": "https://youtube.com/watch?v=xyz789",
+        }
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = downloader.preview_video("https://youtube.com/watch?v=xyz789")
+
+        assert result is not None
+        assert result["id"] == "xyz789"
+        # Verify URL was passed directly (not with ytsearch prefix)
+        mock_ydl.extract_info.assert_called_once_with(
+            "https://youtube.com/watch?v=xyz789", download=False
+        )
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_preview_video_wraps_download_error(self, mock_ydl_class, downloader):
+        """DownloadError is wrapped as RuntimeError."""
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.side_effect = yt_dlp.utils.DownloadError("network error")
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="Failed to preview video"):
+            downloader.preview_video("query")
+
+
+class TestDownloadByUrl:
+    """Tests for the download_by_url method."""
+
+    @pytest.fixture
+    def downloader(self, tmp_path):
+        return YouTubeDownloader(output_dir=tmp_path)
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_by_url_success(self, mock_ydl_class, tmp_path, downloader):
+        """Downloads from direct URL."""
+        mp3_file = tmp_path / "Test Song.mp3"
+        mp3_file.write_bytes(b"fake mp3 data")
+
+        mock_ydl = MagicMock()
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = downloader.download_by_url("https://youtube.com/watch?v=abc123")
+
+        assert result == mp3_file
+        # Verify URL was passed directly to download
+        mock_ydl.download.assert_called_once_with(["https://youtube.com/watch?v=abc123"])
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_by_url_error(self, mock_ydl_class, downloader):
+        """DownloadError is wrapped as RuntimeError."""
+        mock_ydl = MagicMock()
+        mock_ydl.download.side_effect = yt_dlp.utils.DownloadError("network error")
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="Download failed"):
+            downloader.download_by_url("https://youtube.com/watch?v=bad")

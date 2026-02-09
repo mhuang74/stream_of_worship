@@ -6,9 +6,13 @@ Provides search-based audio downloading from YouTube using song metadata
 
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yt_dlp
+
+# Constants for search and duration filtering
+OFFICIAL_LYRICS_SUFFIX = "官方歌詞版MV (Official Lyrics MV) - 讚美之泉敬拜讚美"
+DURATION_WARNING_THRESHOLD = 420  # 7 minutes in seconds
 
 
 class YouTubeDownloader:
@@ -33,6 +37,7 @@ class YouTubeDownloader:
         title: str,
         composer: Optional[str] = None,
         album: Optional[str] = None,
+        suffix: str = "",
     ) -> str:
         """Build a YouTube search query from song metadata.
 
@@ -40,6 +45,7 @@ class YouTubeDownloader:
             title: Song title (required)
             composer: Composer / artist name
             album: Album name
+            suffix: Optional suffix to append (e.g., for official lyrics videos)
 
         Returns:
             Space-joined search query string
@@ -49,7 +55,116 @@ class YouTubeDownloader:
             parts.append(composer)
         if album:
             parts.append(album)
+        if suffix:
+            parts.append(suffix)
         return " ".join(parts)
+
+    def preview_video(self, query: str) -> Optional[dict[str, Any]]:
+        """Preview a YouTube video without downloading.
+
+        Uses yt-dlp to extract metadata for the top search result.
+
+        Args:
+            query: YouTube search query or direct URL
+
+        Returns:
+            Dict with video info (id, title, duration, webpage_url) or None if not found
+
+        Raises:
+            RuntimeError: If extraction fails
+        """
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "quiet": True,
+            "extractor_args": {
+                "youtube": {
+                    "remote_components": "ejs:github",
+                }
+            },
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Determine if this is a direct URL or search query
+                if query.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
+                    info = ydl.extract_info(query, download=False)
+                else:
+                    info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+
+                if info is None:
+                    return None
+
+                # Handle ytsearch response structure (results in entries[0])
+                if "entries" in info and info["entries"]:
+                    video_info = info["entries"][0]
+                else:
+                    video_info = info
+
+                return {
+                    "id": video_info.get("id"),
+                    "title": video_info.get("title"),
+                    "duration": video_info.get("duration"),
+                    "webpage_url": video_info.get("webpage_url"),
+                }
+        except yt_dlp.utils.DownloadError as e:
+            raise RuntimeError(f"Failed to preview video: {e}") from e
+
+    def download_by_url(self, url: str) -> Path:
+        """Download audio from YouTube by direct URL.
+
+        Args:
+            url: Direct YouTube URL
+
+        Returns:
+            Path to the downloaded audio file
+
+        Raises:
+            RuntimeError: If download fails
+        """
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
+            "outtmpl": str(self.output_dir / "%(title)s.%(ext)s"),
+            "noplaylist": True,
+            "quiet": True,
+            "extractor_args": {
+                "youtube": {
+                    "remote_components": "ejs:github",
+                }
+            },
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+                # After download, find the actual output file
+                mp3_files = list(self.output_dir.glob("*.mp3"))
+                if mp3_files:
+                    return mp3_files[0]
+
+                # Fallback: check for any audio file
+                audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
+                for ext in audio_exts:
+                    files = list(self.output_dir.glob(f"*{ext}"))
+                    if files:
+                        return files[0]
+
+                # Debug: list all files in output directory
+                existing_files = list(self.output_dir.iterdir())
+                raise RuntimeError(
+                    f"Downloaded file not found. "
+                    f"Files in directory: {[f.name for f in existing_files]}"
+                )
+        except yt_dlp.utils.DownloadError as e:
+            raise RuntimeError(f"Download failed: {e}") from e
 
     def download(self, query: str) -> Path:
         """Download audio from YouTube by search query.

@@ -29,10 +29,163 @@ from stream_of_worship.admin.services.analysis import (
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
 from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc
 from stream_of_worship.admin.services.r2 import R2Client
-from stream_of_worship.admin.services.youtube import YouTubeDownloader
+from stream_of_worship.admin.services.youtube import (
+    DURATION_WARNING_THRESHOLD,
+    OFFICIAL_LYRICS_SUFFIX,
+    YouTubeDownloader,
+)
 
 console = Console()
 app = typer.Typer(help="Audio recording operations")
+
+
+# Helper functions for download flow
+
+
+def _format_duration_mmss(seconds: Optional[float]) -> str:
+    """Format seconds as MM:SS.
+
+    Args:
+        seconds: Duration in seconds
+
+    Returns:
+        Formatted string like "7:42"
+    """
+    if seconds is None:
+        return "Unknown"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{minutes}:{secs:02d}"
+
+
+def _display_video_preview(
+    video_info: dict, console: Console, threshold: int = DURATION_WARNING_THRESHOLD
+) -> None:
+    """Display video preview in Rich Panel with duration warning.
+
+    Args:
+        video_info: Dict with video metadata (title, duration, webpage_url)
+        console: Rich console instance
+        threshold: Duration threshold in seconds for warning
+    """
+    title = video_info.get("title", "Unknown")
+    duration = video_info.get("duration")
+    url = video_info.get("webpage_url", "Unknown")
+
+    duration_str = _format_duration_mmss(duration)
+    is_long = duration is not None and duration > threshold
+
+    # Build panel content
+    lines = [
+        f"[cyan]Title:[/cyan] {title}",
+        f"[cyan]Duration:[/cyan] {duration_str}",
+        f"[cyan]URL:[/cyan] {url}",
+    ]
+
+    if is_long:
+        lines.append("")
+        lines.append(f"[yellow bold]⚠ Warning: Video exceeds {threshold // 60} minutes[/yellow bold]")
+
+    border_style = "yellow" if is_long else "green"
+
+    console.print(
+        Panel.fit(
+            "\n".join(lines),
+            title="Video Preview",
+            border_style=border_style,
+        )
+    )
+
+
+def _prompt_confirmation(message: str) -> bool:
+    """Prompt for y/n confirmation, return True if accepted.
+
+    Args:
+        message: Prompt message to display
+
+    Returns:
+        True if user confirms (y), False otherwise
+    """
+    try:
+        response = input(f"{message} [y/n]: ").strip().lower()
+        return response in ("y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def _prompt_manual_url(max_attempts: int = 3) -> Optional[str]:
+    """Prompt for manual URL, validate format, return URL or None.
+
+    Args:
+        max_attempts: Maximum number of validation attempts
+
+    Returns:
+        Valid YouTube URL or None if cancelled
+    """
+    for attempt in range(max_attempts):
+        try:
+            url = input("Enter YouTube URL (or press Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        if not url:
+            return None
+
+        # Validate URL format (contains youtube.com or youtu.be)
+        if "youtube.com" in url or "youtu.be" in url:
+            return url
+
+        console.print("[yellow]Invalid YouTube URL. Please enter a valid YouTube URL.[/yellow]")
+
+    console.print("[red]Too many invalid attempts. Cancelling.[/red]")
+    return None
+
+
+def _delete_r2_object_safe(
+    r2_client: R2Client,
+    url: Optional[str],
+    description: str,
+    console: Console,
+) -> None:
+    """Safely delete R2 object, showing status and handling errors.
+
+    Args:
+        r2_client: R2 client instance
+        url: S3 URL of object to delete
+        description: Human-readable description for console output
+        console: Rich console instance
+    """
+    if not url:
+        return
+    try:
+        _, key = R2Client.parse_s3_url(url)
+        r2_client.delete_file(key)
+        console.print(f"[green]✓ Deleted {description}[/green]")
+    except Exception as e:
+        console.print(f"[yellow]⚠ Could not delete {description}: {e}[/yellow]")
+
+
+def _delete_recording_and_files(
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    recording: Recording,
+    console: Console,
+) -> None:
+    """Delete recording from DB and R2. Shared by delete command and --force flag.
+
+    Args:
+        db_client: Database client instance
+        r2_client: R2 client instance
+        recording: Recording to delete
+        console: Rich console instance
+    """
+    # Delete R2 files
+    _delete_r2_object_safe(r2_client, recording.r2_audio_url, "audio file", console)
+    _delete_r2_object_safe(r2_client, recording.r2_stems_url, "stems file", console)
+    _delete_r2_object_safe(r2_client, recording.r2_lrc_url, "LRC file", console)
+
+    # Delete DB record
+    db_client.delete_recording(recording.hash_prefix)
 
 
 def _format_duration(seconds: Optional[float]) -> str:
@@ -70,11 +223,141 @@ def _colorize_status(status: str) -> str:
         return f"[dim]{status}[/dim]"
 
 
+def _submit_analysis_job(
+    recording: Recording,
+    analysis_url: str,
+    db_client: DatabaseClient,
+    console: Console,
+    force: bool = False,
+    no_stems: bool = False,
+) -> Optional[str]:
+    """Submit analysis job for a recording.
+
+    Args:
+        recording: Recording to analyze
+        analysis_url: Analysis service URL
+        db_client: Database client for storing results
+        console: Rich console for output
+        force: Force re-analysis if already completed
+        no_stems: Skip stem separation
+
+    Returns:
+        Job ID if submission succeeded, None otherwise
+    """
+    try:
+        client = AnalysisClient(analysis_url)
+        job = client.submit_analysis(
+            audio_url=recording.r2_audio_url,
+            content_hash=recording.content_hash,
+            generate_stems=not no_stems,
+            force=force,
+        )
+
+        # Update DB
+        db_client.update_recording_status(
+            hash_prefix=recording.hash_prefix,
+            analysis_status="processing",
+            analysis_job_id=job.job_id,
+        )
+
+        console.print(f"[green]Analysis submitted (job: {job.job_id})[/green]")
+        return job.job_id
+    except AnalysisServiceError as e:
+        if e.status_code == 401:
+            console.print(f"[yellow]⚠ Authentication failed for analysis: {e}[/yellow]")
+        else:
+            console.print(f"[yellow]⚠ Failed to submit analysis: {e}[/yellow]")
+        return None
+    except ValueError as e:
+        console.print(f"[yellow]⚠ Analysis service not configured: {e}[/yellow]")
+        return None
+
+
+def _submit_lrc_job(
+    song_id: str,
+    recording: Recording,
+    analysis_url: str,
+    db_client: DatabaseClient,
+    console: Console,
+    force: bool = False,
+    whisper_model: str = "large-v3",
+    language: str = "zh",
+    no_vocals: bool = False,
+) -> Optional[str]:
+    """Submit LRC generation job for a recording.
+
+    Args:
+        song_id: Song ID for looking up lyrics
+        recording: Recording to generate LRC for
+        analysis_url: Analysis service URL
+        db_client: Database client for storing results
+        console: Rich console for output
+        force: Force re-generation if already completed
+        whisper_model: Whisper model to use
+        language: Language hint for Whisper
+        no_vocals: Don't use vocals stem
+
+    Returns:
+        Job ID if submission succeeded, None otherwise
+    """
+    # Look up song for lyrics
+    song = db_client.get_song(song_id)
+    if not song or not song.lyrics_raw:
+        console.print(f"[yellow]⚠ No lyrics found for song {song_id}, skipping LRC generation[/yellow]")
+        return None
+
+    try:
+        client = AnalysisClient(analysis_url)
+        job = client.submit_lrc(
+            audio_url=recording.r2_audio_url,
+            content_hash=recording.content_hash,
+            lyrics_text=song.lyrics_raw,
+            whisper_model=whisper_model,
+            language=language,
+            use_vocals_stem=not no_vocals,
+            force=force,
+        )
+
+        # Update DB
+        db_client.update_recording_status(
+            hash_prefix=recording.hash_prefix,
+            lrc_status="processing",
+            lrc_job_id=job.job_id,
+        )
+
+        console.print(f"[green]LRC job submitted (job: {job.job_id})[/green]")
+        return job.job_id
+    except AnalysisServiceError as e:
+        console.print(f"[yellow]⚠ Failed to submit LRC job: {e}[/yellow]")
+        return None
+    except ValueError as e:
+        console.print(f"[yellow]⚠ Analysis service not configured for LRC: {e}[/yellow]")
+        return None
+
+
 @app.command("download")
 def download_audio(
     song_id: str = typer.Argument(..., help="Song ID to download audio for"),
     dry_run: bool = typer.Option(
         False, "--dry-run", "-n", help="Preview without downloading"
+    ),
+    url: Optional[str] = typer.Option(
+        None, "--url", "-u", help="Direct YouTube URL (skip search)"
+    ),
+    skip_confirm: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation prompt"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Replace existing recording if it exists"
+    ),
+    analyze: bool = typer.Option(
+        False, "--analyze", "-a", help="Submit for analysis after download"
+    ),
+    lrc: bool = typer.Option(
+        False, "--lrc", "-l", help="Submit for LRC generation after download"
+    ),
+    all: bool = typer.Option(
+        False, "--all", "-A", help="Submit for both analysis and LRC after download"
     ),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to config file"
@@ -85,7 +368,15 @@ def download_audio(
     Searches YouTube using the song's title, composer and album, downloads
     the top result as MP3, hashes it, uploads to R2, and persists a
     recording entry in the local database.
+
+    Use --analyze, --lrc, or --all to automatically submit for processing
+    after successful download.
     """
+    # If --all is set, enable both analyze and lrc
+    if all:
+        analyze = True
+        lrc = True
+
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
     except FileNotFoundError:
@@ -110,32 +401,114 @@ def download_audio(
     if song.album_name:
         console.print(f"[cyan]Album:[/cyan] {song.album_name}")
 
-    # Abort if a recording already exists for this song
+    # Initialize R2 client early (needed for --force and upload)
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Check for existing recording
     existing = db_client.get_recording_by_song_id(song_id)
     if existing:
-        console.print(
-            f"[yellow]Recording already exists for this song "
-            f"(hash: {existing.hash_prefix})[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    # Build and display the YouTube search query
-    downloader = YouTubeDownloader()
-    query = downloader.build_search_query(
-        title=song.title,
-        composer=song.composer,
-        album=song.album_name,
-    )
-    console.print(f"[dim]Search query: {query}[/dim]")
+        if not force:
+            console.print(
+                f"[yellow]Recording already exists for this song "
+                f"(hash: {existing.hash_prefix}). Use --force to replace.[/yellow]"
+            )
+            raise typer.Exit(0)
+        else:
+            # Delete existing recording
+            console.print(f"[cyan]Deleting existing recording {existing.hash_prefix}...[/cyan]")
+            _delete_recording_and_files(db_client, r2_client, existing, console)
+            console.print("[green]Existing recording deleted. Proceeding with download...[/green]")
 
     if dry_run:
         console.print("[yellow]Dry run - no download will occur[/yellow]")
         return
 
-    # Download audio from YouTube
+    # Initialize downloader
+    downloader = YouTubeDownloader()
+
+    # Step 1: Determine URL or search query
+    if url:
+        # Use provided URL directly
+        search_or_url = url
+        console.print(f"[dim]Using provided URL: {url}[/dim]")
+    else:
+        # Build search query with official lyrics suffix
+        query = downloader.build_search_query(
+            title=song.title,
+            composer=song.composer,
+            album=song.album_name,
+            suffix=OFFICIAL_LYRICS_SUFFIX,
+        )
+        console.print(f"[dim]Search query: {query}[/dim]")
+        search_or_url = query
+
+    # Step 2: Preview video
+    console.print("[cyan]Previewing video...[/cyan]")
+    try:
+        video_info = downloader.preview_video(search_or_url)
+    except RuntimeError as e:
+        console.print(f"[red]Failed to preview video: {e}[/red]")
+        raise typer.Exit(1)
+
+    if video_info is None:
+        console.print("[red]No results found.[/red]")
+        console.print("[dim]Try using --url to provide a direct YouTube URL.[/dim]")
+        raise typer.Exit(1)
+
+    # Step 3: Display video preview
+    _display_video_preview(video_info, console)
+
+    # Step 4: Confirmation prompt
+    download_confirmed = skip_confirm
+    if not skip_confirm:
+        download_confirmed = _prompt_confirmation("Download this video?")
+
+    if not download_confirmed:
+        # Step 5: Manual URL fallback
+        console.print("[yellow]Auto-selected video rejected.[/yellow]")
+        manual_url = _prompt_manual_url()
+
+        if not manual_url:
+            console.print("[yellow]Download cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        # Re-preview the manual URL
+        console.print("[cyan]Previewing manual URL...[/cyan]")
+        try:
+            video_info = downloader.preview_video(manual_url)
+        except RuntimeError as e:
+            console.print(f"[red]Failed to preview video: {e}[/red]")
+            raise typer.Exit(1)
+
+        if video_info is None:
+            console.print("[red]No results found for manual URL.[/red]")
+            raise typer.Exit(1)
+
+        _display_video_preview(video_info, console)
+
+        # Confirm the manual URL
+        if not _prompt_confirmation("Download this video?"):
+            console.print("[yellow]Download cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        # Use the manual URL for download
+        search_or_url = manual_url
+
+    # Step 6: Download
     console.print("[cyan]Downloading audio from YouTube...[/cyan]")
     try:
-        audio_path = downloader.download(query)
+        if search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
+            audio_path = downloader.download_by_url(search_or_url)
+        else:
+            audio_path = downloader.download(search_or_url)
     except RuntimeError as e:
         console.print(f"[red]Download failed: {e}[/red]")
         raise typer.Exit(1)
@@ -152,16 +525,8 @@ def download_audio(
     # Upload to R2
     console.print("[cyan]Uploading to R2...[/cyan]")
     try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
         r2_url = r2_client.upload_audio(audio_path, prefix)
         console.print(f"[green]Uploaded: {r2_url}[/green]")
-    except ValueError as e:
-        console.print(f"[red]R2 configuration error: {e}[/red]")
-        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Upload failed: {e}[/red]")
         raise typer.Exit(1)
@@ -181,6 +546,133 @@ def download_audio(
 
     # Clean up temp file
     audio_path.unlink(missing_ok=True)
+
+    # Submit for analysis if requested
+    if analyze:
+        console.print("[cyan]Submitting for analysis...[/cyan]")
+        _submit_analysis_job(
+            recording=recording,
+            analysis_url=config.analysis_url,
+            db_client=db_client,
+            console=console,
+            force=False,
+            no_stems=False,
+        )
+
+    # Submit for LRC if requested
+    if lrc:
+        console.print("[cyan]Submitting for LRC generation...[/cyan]")
+        _submit_lrc_job(
+            song_id=song_id,
+            recording=recording,
+            analysis_url=config.analysis_url,
+            db_client=db_client,
+            console=console,
+            force=False,
+            whisper_model="large-v3",
+            language="zh",
+            no_vocals=False,
+        )
+
+
+@app.command("delete")
+def delete_recording(
+    song_id: str = typer.Argument(..., help="Song ID to delete recording for"),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation prompt"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Delete a recording and all associated R2 files.
+
+    Removes the recording from the database and deletes associated files
+    from R2 (audio, stems, LRC). Use this when the wrong audio was
+    downloaded and you want to re-download the correct version.
+    """
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for song: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    # Get song info for display
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+
+    # Initialize R2 client
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Display what will be deleted
+    info_lines = [
+        f"[cyan]Song ID:[/cyan] {song_id}",
+        f"[cyan]Song Title:[/cyan] {song_title}",
+        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
+        f"[cyan]Filename:[/cyan] {recording.original_filename}",
+        f"[cyan]Size:[/cyan] {recording.file_size_bytes:,} bytes" if recording.file_size_bytes else "[cyan]Size:[/cyan] Unknown",
+    ]
+
+    # List R2 resources
+    info_lines.append("")
+    info_lines.append("[bold]R2 Resources to delete:[/bold]")
+
+    if recording.r2_audio_url:
+        info_lines.append(f"  [green]✓[/green] Audio file: {recording.r2_audio_url}")
+    else:
+        info_lines.append("  [dim]✗ No audio file[/dim]")
+
+    if recording.r2_stems_url:
+        info_lines.append(f"  [green]✓[/green] Stems file: {recording.r2_stems_url}")
+    else:
+        info_lines.append("  [dim]✗ No stems file[/dim]")
+
+    if recording.r2_lrc_url:
+        info_lines.append(f"  [green]✓[/green] LRC file: {recording.r2_lrc_url}")
+    else:
+        info_lines.append("  [dim]✗ No LRC file[/dim]")
+
+    console.print(
+        Panel.fit(
+            "\n".join(info_lines),
+            title="Recording to Delete",
+            border_style="yellow",
+        )
+    )
+
+    # Confirmation prompt
+    if not yes:
+        console.print("[red bold]Warning: This action cannot be undone![/red bold]")
+        confirmed = _prompt_confirmation("Delete this recording and all associated files?")
+        if not confirmed:
+            console.print("[yellow]Deletion cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    # Perform deletion
+    console.print("[cyan]Deleting recording...[/cyan]")
+    _delete_recording_and_files(db_client, r2_client, recording, console)
+
+    console.print(f"[green]Recording {recording.hash_prefix} deleted successfully.[/green]")
 
 
 @app.command("list")
