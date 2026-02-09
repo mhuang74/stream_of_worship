@@ -262,3 +262,6 @@ poc_audio.tar.Z
 # local files
 tmp/
 .claude/
+
+# POC output directories at root level
+poc_output*/
