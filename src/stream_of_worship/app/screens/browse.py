@@ -20,6 +20,7 @@ class BrowseScreen(Screen):
 
     BINDINGS = [
         ("s", "add_to_songset", "Add to Songset"),
+        ("space", "toggle_playback", "Play/Stop"),
         ("f", "focus_search", "Search"),
         ("escape", "back", "Back"),
         ("q", "quit", "Quit"),
@@ -217,6 +218,31 @@ class BrowseScreen(Screen):
         """Preview selected song."""
         song = self._get_selected_song()
 
+        if not song:
+            self.notify("No song selected", severity="warning")
+            return
+
+        # Update state to reflect selection
+        self.state.select_song(song)
+
+        recording = song.recording
+        if not recording:
+            self.notify("No recording available for preview", severity="error")
+            return
+
+        # Download and play
+        audio_path = self.app.asset_cache.download_audio(recording.hash_prefix)
+        if audio_path:
+            self.app.playback.play(audio_path)
+
+    def action_toggle_playback(self) -> None:
+        """Toggle playback of the currently selected song with spacebar."""
+        if self.app.playback.is_playing:
+            self.app.playback.stop()
+            self.notify("Playback stopped")
+            return
+
+        song = self._get_selected_song()
         if not song:
             self.notify("No song selected", severity="warning")
             return

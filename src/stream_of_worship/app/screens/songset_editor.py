@@ -81,7 +81,7 @@ class SongsetEditorScreen(Screen):
                 yield Input(placeholder="Description (optional)", id="input_description")
 
             table = DataTable(id="items_table")
-            table.add_columns("#", "Song", "Key", "Duration", "Gap", "Transition")
+            table.add_columns("#", "Song", "Key", "Tempo", "Duration", "Gap", "Transition")
             table.cursor_type = "row"
             yield table
 
@@ -151,11 +151,13 @@ class SongsetEditorScreen(Screen):
         for i, item in enumerate(self.items):
             gap_text = f"{item.gap_beats} beats" if item.gap_beats else "No gap"
             transition_text = "Crossfade" if item.crossfade_enabled else "Gap"
+            tempo_text = f"{int(item.tempo_bpm)}" if item.tempo_bpm else "-"
 
             table.add_row(
                 str(i + 1),
                 item.song_title or "Unknown",
                 item.display_key or "-",
+                tempo_text,
                 item.formatted_duration,
                 gap_text,
                 transition_text,
