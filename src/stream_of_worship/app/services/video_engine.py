@@ -14,8 +14,12 @@ from typing import Callable, Optional
 from PIL import Image, ImageDraw, ImageFont
 
 from stream_of_worship.app.db.models import SongsetItem
+from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import ExportResult
+from stream_of_worship.core.paths import get_bundled_font_path
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -141,6 +145,8 @@ class VideoEngine:
 
         # Try to find a suitable font
         font_paths = [
+            # Bundled font (highest priority)
+            get_bundled_font_path(),
             # System fonts that support Chinese
             "/System/Library/Fonts/PingFang.ttc",  # macOS
             "/System/Library/Fonts/STHeiti Light.ttc",  # macOS
@@ -153,11 +159,15 @@ class VideoEngine:
 
         for font_path in font_paths:
             try:
-                return ImageFont.truetype(font_path, font_size)
-            except Exception:
+                font = ImageFont.truetype(str(font_path), font_size)
+                logger.debug(f"Successfully loaded font: {font_path}")
+                return font
+            except Exception as e:
+                logger.debug(f"Failed to load font {font_path}: {e}")
                 continue
 
         # Fallback to default font
+        logger.warning("All font paths failed, using PIL default font")
         return ImageFont.load_default()
 
     def _parse_lrc(self, lrc_content: str) -> list[LRCLine]:
