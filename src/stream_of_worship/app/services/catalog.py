@@ -283,7 +283,7 @@ class CatalogService:
         return result
 
     def search_songs_with_recordings(
-        self, query: str, field: str = "all", limit: int = 20
+        self, query: str, field: str = "all", limit: int = 20, only_with_lrc: bool = True
     ) -> list[SongWithRecording]:
         """Search songs with their recordings.
 
@@ -291,15 +291,86 @@ class CatalogService:
             query: Search query string
             field: Field to search (title, lyrics, composer, all)
             limit: Maximum number of results
+            only_with_lrc: Only return songs with LRC lyrics (default True)
 
         Returns:
             List of SongWithRecording
         """
-        songs = self.db_client.search_songs(query, field=field, limit=limit)
+        if not only_with_lrc:
+            songs = self.db_client.search_songs(query, field=field, limit=limit)
+            result = []
+            for song in songs:
+                recording = self.db_client.get_recording_by_song_id(song.id)
+                result.append(SongWithRecording(song=song, recording=recording))
+            return result
+
+        # When filtering by LRC, join with recordings table to ensure
+        # we only get songs that have completed LRC generation
+        return self._search_lrc_songs(query, field=field, limit=limit)
+
+    def _search_lrc_songs(
+        self, query: str, field: str = "all", limit: int = 20
+    ) -> list[SongWithRecording]:
+        """Search songs with LRC lyrics.
+
+        Queries through recordings to find songs matching the search query
+        that also have completed LRC generation.
+
+        Args:
+            query: Search query string
+            field: Field to search (title, lyrics, composer, all)
+            limit: Maximum number of results
+
+        Returns:
+            List of SongWithRecording with LRC lyrics
+        """
+        cursor = self.db_client.connection.cursor()
+
+        search_pattern = f"%{query}%"
+
+        # Build base query joining songs and recordings
+        base_sql = """
+            SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
+                   r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
+                   r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
+                   r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
+                   r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
+                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
+                   r.updated_at
+            FROM songs s
+            JOIN recordings r ON s.id = r.song_id
+            WHERE r.lrc_status = 'completed'
+            AND (
+        """
+
+        if field == "title":
+            where_clause = "s.title LIKE ? OR s.title_pinyin LIKE ?"
+            params = [search_pattern, search_pattern]
+        elif field == "lyrics":
+            where_clause = "s.lyrics_raw LIKE ?"
+            params = [search_pattern]
+        elif field == "composer":
+            where_clause = "s.composer LIKE ? OR s.lyricist LIKE ?"
+            params = [search_pattern, search_pattern]
+        else:  # all
+            where_clause = """
+                s.title LIKE ? OR s.title_pinyin LIKE ? OR
+                s.lyrics_raw LIKE ? OR s.composer LIKE ? OR s.lyricist LIKE ?
+            """
+            params = [search_pattern] * 5
+
+        sql = base_sql + where_clause + ") ORDER BY s.title LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(sql, params)
 
         result = []
-        for song in songs:
-            recording = self.db_client.get_recording_by_song_id(song.id)
+        for row in cursor.fetchall():
+            # Split row into song and recording parts
+            # Song has 16 columns (0-15), Recording has 25 columns (16-40)
+            row_tuple = tuple(row)
+            song = Song.from_row(row_tuple[0:16])
+            recording = Recording.from_row(row_tuple[16:])
             result.append(SongWithRecording(song=song, recording=recording))
 
         return result

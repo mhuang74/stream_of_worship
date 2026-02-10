@@ -45,6 +45,47 @@ class BrowseScreen(Screen):
         self.songset_client = songset_client
         self.songs: list[SongWithRecording] = []
 
+    def _parse_search_query(self, query: str) -> tuple[str, str]:
+        """Parse search query to extract field specifier.
+
+        Field specifier can be at the beginning or end of the query.
+        Examples: "field:all 讚美", "讚美 field:all", "field:lyrics:讚美"
+
+        Args:
+            query: Raw search query
+
+        Returns:
+            Tuple of (search_query, field)
+            field is one of: 'title', 'lyrics', 'composer', 'all'
+        """
+        query = query.strip()
+
+        import re
+
+        # Check if field: is at the beginning
+        if query.startswith("field:"):
+            rest = query[6:]  # Remove 'field:' prefix
+            # Match field name (word characters)
+            match = re.match(r"^(\w+)(?::|\s)?\s*", rest)
+            if match:
+                field = match.group(1).lower()
+                search_query = rest[match.end():].strip()
+                return search_query, field
+            # Just "field:" with no field name - treat as title search
+            return query, "title"
+
+        # Check if field: is at the end
+        if " field:" in query:
+            parts = query.rsplit(" field:", 1)
+            search_query = parts[0].strip()
+            field_part = parts[1].strip()
+            # Extract just the field name (ignore trailing colon if present)
+            field = field_part.rstrip(":").split()[0].lower()
+            if field in ("title", "lyrics", "composer", "all"):
+                return search_query, field
+
+        return query, "title"  # Default to title-only search
+
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
@@ -53,7 +94,10 @@ class BrowseScreen(Screen):
             yield Label("[bold]Browse Songs[/bold]", id="title")
 
             with Horizontal(id="search_row"):
-                yield Input(placeholder="Search songs...", id="search_input")
+                yield Input(
+                    placeholder="Search by title, or use field:<title|lyrics|composer|all> ...",
+                    id="search_input",
+                )
                 yield Button("Search", id="btn_search")
                 yield Button("Clear", id="btn_clear")
 
@@ -105,7 +149,10 @@ class BrowseScreen(Screen):
             query: Optional search query
         """
         if query:
-            self.songs = self.catalog.search_songs_with_recordings(query, limit=50)
+            search_query, field = self._parse_search_query(query)
+            self.songs = self.catalog.search_songs_with_recordings(
+                search_query, field=field, limit=50
+            )
         else:
             self.songs = self.catalog.list_songs_with_recordings(
                 only_with_lrc=True, limit=50
@@ -137,6 +184,11 @@ class BrowseScreen(Screen):
         """Handle search input changes."""
         if event.input.id == "search_input":
             self.state.set_search_query(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key in search input."""
+        if event.input.id == "search_input":
+            self._load_songs(event.value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
