@@ -42,6 +42,9 @@ async def lifespan(app: FastAPI):
         cache_dir=settings.CACHE_DIR,
     )
 
+    # Initialize persistent store and recover interrupted jobs
+    await job_queue.initialize()
+
     # Initialize R2 if configured
     if settings.SOW_R2_ENDPOINT_URL:
         job_queue.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
