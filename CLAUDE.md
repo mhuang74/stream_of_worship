@@ -82,4 +82,3 @@ The project consists of **four architecturally separate components**:
   - Use `run_in_background=True` for long-running analysis tasks.
   - Verify file existence before reading/processing.
 - Update `report/current_impl_status.md` and MEMORY after completion of each phase, typically triggered by git commit
-- run tests only using `uv`, remembering to set PYTHONPATH first. For example: `PYTHONPATH=src uv run --extra app pytest tests/app/services/test_video_engine.py -v`

@@ -20,8 +20,7 @@ class Settings(BaseSettings):
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
-    SOW_MAX_CONCURRENT_ANALYSIS_JOBS: int = 1  # Serialized (high memory/CPU usage)
-    SOW_MAX_CONCURRENT_LRC_JOBS: int = 2  # Configurable (lower memory with faster-whisper)
+    SOW_MAX_CONCURRENT_JOBS: int = 2
 
     # Demucs Configuration
     SOW_DEMUCS_MODEL: str = "htdemucs"

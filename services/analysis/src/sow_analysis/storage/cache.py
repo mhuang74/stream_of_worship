@@ -2,7 +2,6 @@
 
 import json
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -132,46 +131,6 @@ class CacheManager:
         cache_file = self.cache_dir / f"{hash_prefix}_lrc.json"
 
         cache_file.write_text(json.dumps(result, indent=2))
-        return cache_file
-
-    def get_whisper_transcription(self, content_hash: str) -> Optional[list]:
-        """Check if Whisper transcription exists in cache.
-
-        Args:
-            content_hash: Full SHA-256 content hash of the audio file
-
-        Returns:
-            List of transcription phrases (dicts with text, start, end) or None
-        """
-        hash_prefix = self._get_hash_prefix(content_hash)
-        cache_file = self.cache_dir / f"{hash_prefix}_whisper.json"
-
-        if cache_file.exists():
-            try:
-                data = json.loads(cache_file.read_text())
-                return data.get("phrases")
-            except (json.JSONDecodeError, IOError):
-                return None
-        return None
-
-    def save_whisper_transcription(self, content_hash: str, phrases: list) -> Path:
-        """Save Whisper transcription to cache.
-
-        Args:
-            content_hash: Full SHA-256 content hash of the audio file
-            phrases: List of transcription phrases (dicts with text, start, end)
-
-        Returns:
-            Path to saved cache file
-        """
-        hash_prefix = self._get_hash_prefix(content_hash)
-        cache_file = self.cache_dir / f"{hash_prefix}_whisper.json"
-
-        cache_data = {
-            "phrases": phrases,
-            "cached_at": datetime.now(timezone.utc).isoformat(),
-        }
-        cache_file.write_text(json.dumps(cache_data, indent=2))
         return cache_file
 
     def clear(self) -> None:

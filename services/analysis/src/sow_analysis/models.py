@@ -1,9 +1,8 @@
 """Pydantic models for API requests and responses."""
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -100,19 +99,3 @@ class JobResponse(BaseModel):
     stage: str = ""
     error_message: Optional[str] = None
     result: Optional[JobResult] = None
-
-
-@dataclass
-class Job:
-    """Represents a job in the queue."""
-
-    id: str
-    type: JobType
-    status: JobStatus
-    request: Union[AnalyzeJobRequest, LrcJobRequest]
-    result: Optional[JobResult] = None
-    error_message: Optional[str] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    progress: float = 0.0
-    stage: str = ""

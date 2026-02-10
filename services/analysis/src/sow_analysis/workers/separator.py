@@ -22,6 +22,7 @@ async def separate_stems(
     device: str = "cpu",
     cache_manager: Optional[CacheManager] = None,
     content_hash: Optional[str] = None,
+    force: bool = False,
 ) -> Path:
     """Separate audio into stems using Demucs.
 
@@ -39,15 +40,15 @@ async def separate_stems(
         device: Device to use (cuda or cpu)
         cache_manager: Optional cache manager for caching
         content_hash: Content hash for cache lookup
+        force: Re-process even if cached
 
     Returns:
         Path to directory containing stem files
     """
     # Check cache first
-    if cache_manager and content_hash:
+    if not force and cache_manager and content_hash:
         cached_dir = cache_manager.get_stems_dir(content_hash)
         if cached_dir:
-            logger.info(f"Cache hit for stems: {content_hash[:12]}...")
             # Copy cached stems to output_dir
             output_dir.mkdir(parents=True, exist_ok=True)
             for stem in ("bass", "drums", "other", "vocals"):
