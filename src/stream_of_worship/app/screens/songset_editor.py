@@ -29,6 +29,8 @@ class SongsetEditorScreen(Screen):
     BINDINGS = [
         ("a", "add_songs", "Add Songs"),
         ("r", "remove_song", "Remove"),
+        ("comma", "move_up", "Move Up"),
+        ("period", "move_down", "Move Down"),
         ("e", "edit_transition", "Edit Transition"),
         ("p", "preview", "Preview"),
         ("space", "toggle_playback", "Play/Stop"),
@@ -401,3 +403,58 @@ class SongsetEditorScreen(Screen):
         """Go back to songset list."""
         logger.info("Action: back (from songset editor)")
         self.app.navigate_back()
+
+    def action_move_up(self) -> None:
+        """Move selected song up in the list."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No song selected", severity="error")
+            return
+
+        # Find current index
+        try:
+            current_index = self.items.index(item)
+        except ValueError:
+            return
+
+        if current_index == 0:
+            self.notify("Already at the top", severity="info")
+            return
+
+        # Save reference to table
+        table = self.query_one("#items_table", DataTable)
+
+        # Reorder in database (new_position is current_index - 1)
+        success = self.songset_client.reorder_item(item.id, current_index - 1)
+        if success:
+            self._load_items()
+            table.move_cursor(row=current_index - 1)
+            self.notify(f"Moved '{item.song_title}' up")
+        else:
+            self.notify("Failed to move song", severity="error")
+
+    def action_move_down(self) -> None:
+        """Move selected song down in the list."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No song selected", severity="error")
+            return
+
+        try:
+            current_index = self.items.index(item)
+        except ValueError:
+            return
+
+        if current_index >= len(self.items) - 1:
+            self.notify("Already at the bottom", severity="info")
+            return
+
+        table = self.query_one("#items_table", DataTable)
+
+        success = self.songset_client.reorder_item(item.id, current_index + 1)
+        if success:
+            self._load_items()
+            table.move_cursor(row=current_index + 1)
+            self.notify(f"Moved '{item.song_title}' down")
+        else:
+            self.notify("Failed to move song", severity="error")
