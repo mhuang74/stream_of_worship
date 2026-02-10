@@ -5,7 +5,6 @@ import hashlib
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -37,6 +36,7 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str) -> str:
 
 from ..models import (
     AnalyzeJobRequest,
+    Job,
     JobResult,
     JobStatus,
     JobType,
@@ -44,6 +44,7 @@ from ..models import (
     Section,
 )
 from ..storage.cache import CacheManager
+from ..storage.db import JobStore
 from ..storage.r2 import R2Client
 # Optional imports for heavy dependencies
 try:
@@ -61,22 +62,6 @@ except ImportError:
     generate_lrc = None
 
 
-@dataclass
-class Job:
-    """Represents a job in the queue."""
-
-    id: str
-    type: JobType
-    status: JobStatus
-    request: Union[AnalyzeJobRequest, LrcJobRequest]
-    result: Optional[JobResult] = None
-    error_message: Optional[str] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    progress: float = 0.0
-    stage: str = ""
-
-
 class JobQueue:
     """In-memory job queue with concurrent execution control."""
 
@@ -85,6 +70,7 @@ class JobQueue:
         max_concurrent_analysis: int = 1,
         max_concurrent_lrc: int = 2,
         cache_dir: Path = Path("/cache"),
+        db_path: Optional[Path] = None,
     ):
         """Initialize job queue.
 
@@ -92,6 +78,7 @@ class JobQueue:
             max_concurrent_analysis: Maximum concurrent analysis jobs (1 = serialized)
             max_concurrent_lrc: Maximum concurrent LRC jobs
             cache_dir: Directory for caching results
+            db_path: Path to job database (default: cache_dir / "jobs.db")
         """
         self.max_concurrent_analysis = max_concurrent_analysis
         self.max_concurrent_lrc = max_concurrent_lrc
@@ -107,6 +94,10 @@ class JobQueue:
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
 
+        # Persistent job store
+        db_path = db_path if db_path is not None else cache_dir / "jobs.db"
+        self.job_store = JobStore(db_path)
+
     def initialize_r2(self, bucket: str, endpoint_url: str) -> None:
         """Initialize R2 client.
 
@@ -115,6 +106,39 @@ class JobQueue:
             endpoint_url: R2 endpoint URL
         """
         self.r2_client = R2Client(bucket, endpoint_url)
+        # Set cache manager on job store for job reconstruction
+        self.job_store.set_cache_manager(self.cache_manager)
+
+    async def initialize(self) -> None:
+        """Initialize persistent store and recover interrupted jobs."""
+        await self.job_store.initialize()
+
+        # Purge old completed/failed jobs
+        purged = await self.job_store.purge_old_jobs(max_age_days=7)
+        if purged:
+            logger.info(f"Purged {purged} old jobs from database")
+
+        # Recover interrupted jobs (were QUEUED or PROCESSING when service died)
+        interrupted = await self.job_store.get_interrupted_jobs()
+        for job in interrupted:
+            logger.info(f"Recovering interrupted job {job.id} (was {job.status})")
+            job.status = JobStatus.QUEUED
+            job.progress = 0.0
+            job.stage = "requeued"
+            job.updated_at = datetime.now(timezone.utc)
+
+            self._jobs[job.id] = job
+            await self._queue.put(job.id)
+            # Update DB to reflect requeued status
+            try:
+                await self.job_store.update_job(
+                    job.id, status="queued", progress=0.0, stage="requeued"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in DB during recovery: {e}")
+
+        if interrupted:
+            logger.info(f"Recovered {len(interrupted)} interrupted jobs")
 
     async def submit(
         self, job_type: JobType, request: Union[AnalyzeJobRequest, LrcJobRequest]
@@ -140,6 +164,12 @@ class JobQueue:
         self._jobs[job_id] = job
         await self._queue.put(job_id)
 
+        # Persist job to database
+        try:
+            await self.job_store.insert_job(job)
+        except Exception as e:
+            logger.error(f"Failed to persist job {job_id} to database: {e}")
+
         return job
 
     async def get_job(self, job_id: str) -> Optional[Job]:
@@ -151,7 +181,36 @@ class JobQueue:
         Returns:
             Job instance or None if not found
         """
-        return self._jobs.get(job_id)
+        # Try in-memory cache first (for active jobs with live progress)
+        job = self._jobs.get(job_id)
+        if job:
+            return job
+
+        # Fall back to DB for completed/failed jobs that may have been evicted from memory
+        try:
+            return await self.job_store.get_job(job_id)
+        except Exception as e:
+            logger.error(f"Failed to retrieve job {job_id} from database: {e}")
+            return None
+
+    async def list_jobs(
+        self, status: Optional[JobStatus] = None, job_type: Optional[JobType] = None, limit: int = 100
+    ) -> list[Job]:
+        """List jobs with optional filtering.
+
+        Args:
+            status: Filter by job status
+            job_type: Filter by job type
+            limit: Maximum number of jobs to return
+
+        Returns:
+            List of jobs matching filters
+        """
+        try:
+            return await self.job_store.list_jobs(status, job_type, limit)
+        except Exception as e:
+            logger.error(f"Failed to list jobs from database: {e}")
+            return []
 
     async def process_jobs(self) -> None:
         """Background task that processes queued jobs."""
@@ -184,6 +243,21 @@ class JobQueue:
             async with self._lrc_semaphore:
                 await self._process_lrc_job(job)
 
+        # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
+        if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+            asyncio.create_task(self._cleanup_finished_job(job.id))
+
+    async def _cleanup_finished_job(self, job_id: str, delay: float = 300.0):
+        """Remove finished job from in-memory cache after delay.
+
+        Args:
+            job_id: Job ID to clean up
+            delay: Delay in seconds before cleanup (default: 5 minutes)
+        """
+        await asyncio.sleep(delay)
+        self._jobs.pop(job_id, None)
+        logger.debug(f"Cleaned up finished job {job_id} from in-memory cache")
+
     async def _process_analysis_job(self, job: Job) -> None:
         """Process an analysis job.
 
@@ -198,11 +272,25 @@ class JobQueue:
         job.stage = "downloading"
         job.progress = 0.1
 
+        # Persist state change to database
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="downloading", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
         request = job.request
         if not isinstance(request, AnalyzeJobRequest):
             job.status = JobStatus.FAILED
             job.error_message = "Invalid request type for analysis job"
             job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
         # Check if analysis dependencies are available
@@ -213,6 +301,15 @@ class JobQueue:
             )
             job.stage = "missing_dependencies"
             job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="Analysis dependencies not available (librosa, allin1, demucs)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
         try:
@@ -310,11 +407,31 @@ class JobQueue:
                 total_elapsed = time.time() - job_start_time
                 logger.info(f"[{job.id}] Analysis job completed in {total_elapsed:.2f}s")
 
+                # Persist completion to database
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="completed",
+                        progress=1.0,
+                        stage="complete",
+                        result_json=job.result.model_dump_json() if job.result else None,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error_message = str(e)
             job.stage = "error"
             logger.error(f"[{job.id}] Analysis job failed: {e}")
+
+            # Persist failure to database
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", stage="error", error_message=str(e)
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
 
         finally:
             job.updated_at = datetime.now(timezone.utc)
@@ -336,11 +453,25 @@ class JobQueue:
         job.stage = "starting"
         job.progress = 0.1
 
+        # Persist state change to database
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="starting", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
         request = job.request
         if not isinstance(request, LrcJobRequest):
             job.status = JobStatus.FAILED
             job.error_message = "Invalid request type for LRC job"
             job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type for LRC job"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
         # Check if LRC dependencies are available
@@ -349,6 +480,15 @@ class JobQueue:
             job.error_message = "LRC dependencies not available (whisper, openai)"
             job.stage = "missing_dependencies"
             job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="LRC dependencies not available (whisper, openai)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
         # Compute composite cache key based on audio hash + lyrics hash
@@ -369,6 +509,19 @@ class JobQueue:
                     job.progress = 1.0
                     job.stage = "cached"
                     job.updated_at = datetime.now(timezone.utc)
+
+                    # Persist cache hit result
+                    try:
+                        await self.job_store.update_job(
+                            job.id,
+                            status="completed",
+                            progress=1.0,
+                            stage="cached",
+                            result_json=job.result.model_dump_json(),
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update job {job.id} in database: {e}")
+
                     return
 
             # Initialize R2 if not done
@@ -461,16 +614,47 @@ class JobQueue:
                 total_elapsed = time.time() - job_start_time
                 logger.info(f"[{job.id}] LRC job completed in {total_elapsed:.2f}s")
 
+                # Persist completion to database
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="completed",
+                        progress=1.0,
+                        stage="complete",
+                        result_json=job.result.model_dump_json(),
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
         except LRCWorkerError as e:
             job.status = JobStatus.FAILED
             job.error_message = str(e)
             job.stage = "lrc_error"
             logger.error(f"[{job.id}] LRC job failed: {e}")
+
+            # Persist failure to database
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", stage="lrc_error", error_message=str(e)
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error_message = f"Unexpected error: {e}"
             job.stage = "error"
             logger.error(f"[{job.id}] LRC job failed with unexpected error: {e}")
+
+            # Persist failure to database
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="error",
+                    error_message=f"Unexpected error: {e}",
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
 
         job.updated_at = datetime.now(timezone.utc)
 
@@ -478,6 +662,7 @@ class JobQueue:
         """Stop processing jobs."""
         self._running = False
         await self.stop_periodic_logging()
+        await self.job_store.close()
 
     def _log_queue_state(self) -> None:
         """Log current queue state statistics."""
