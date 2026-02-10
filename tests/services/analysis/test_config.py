@@ -22,7 +22,8 @@ class TestSettings:
             assert settings.SOW_R2_SECRET_ACCESS_KEY == ""
             assert settings.SOW_ANALYSIS_API_KEY == ""
             assert settings.CACHE_DIR == Path("/cache")
-            assert settings.SOW_MAX_CONCURRENT_JOBS == 2
+            assert settings.SOW_MAX_CONCURRENT_ANALYSIS_JOBS == 1
+            assert settings.SOW_MAX_CONCURRENT_LRC_JOBS == 2
             assert settings.SOW_DEMUCS_MODEL == "htdemucs"
             assert settings.SOW_DEMUCS_DEVICE == "cpu"
 
@@ -35,7 +36,8 @@ class TestSettings:
             "SOW_R2_SECRET_ACCESS_KEY": "secret-key",
             "SOW_ANALYSIS_API_KEY": "api-key",
             "CACHE_DIR": "/custom/cache",
-            "SOW_MAX_CONCURRENT_JOBS": "4",
+            "SOW_MAX_CONCURRENT_ANALYSIS_JOBS": "1",
+            "SOW_MAX_CONCURRENT_LRC_JOBS": "4",
             "SOW_DEMUCS_MODEL": "demucs",
             "SOW_DEMUCS_DEVICE": "cuda",
         }
@@ -49,7 +51,8 @@ class TestSettings:
             assert settings.SOW_R2_SECRET_ACCESS_KEY == "secret-key"
             assert settings.SOW_ANALYSIS_API_KEY == "api-key"
             assert settings.CACHE_DIR == Path("/custom/cache")
-            assert settings.SOW_MAX_CONCURRENT_JOBS == 4
+            assert settings.SOW_MAX_CONCURRENT_ANALYSIS_JOBS == 1
+            assert settings.SOW_MAX_CONCURRENT_LRC_JOBS == 4
             assert settings.SOW_DEMUCS_MODEL == "demucs"
             assert settings.SOW_DEMUCS_DEVICE == "cuda"
 

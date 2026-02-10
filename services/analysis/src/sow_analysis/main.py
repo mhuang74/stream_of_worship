@@ -37,9 +37,13 @@ async def lifespan(app: FastAPI):
 
     # Startup
     job_queue = JobQueue(
-        max_concurrent=settings.SOW_MAX_CONCURRENT_JOBS,
+        max_concurrent_analysis=settings.SOW_MAX_CONCURRENT_ANALYSIS_JOBS,
+        max_concurrent_lrc=settings.SOW_MAX_CONCURRENT_LRC_JOBS,
         cache_dir=settings.CACHE_DIR,
     )
+
+    # Initialize persistent store and recover interrupted jobs
+    await job_queue.initialize()
 
     # Initialize R2 if configured
     if settings.SOW_R2_ENDPOINT_URL:
@@ -54,7 +58,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    job_queue.stop()
+    await job_queue.stop()
     task.cancel()
     try:
         await task

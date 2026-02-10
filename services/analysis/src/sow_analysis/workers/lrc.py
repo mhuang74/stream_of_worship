@@ -1,7 +1,7 @@
 """LRC generation worker — Whisper transcription + LLM alignment.
 
 Generates timestamped LRC files by:
-1. Running Whisper transcription with word-level timestamps
+1. Running Whisper transcription with phrase-level timestamps
 2. Using LLM to align scraped lyrics with Whisper output
 3. Writing standard LRC format file
 """
@@ -34,7 +34,7 @@ class LLMConfigError(LRCWorkerError):
 
 
 class WhisperTranscriptionError(LRCWorkerError):
-    """Raised when Whisper transcription fails or returns no words."""
+    """Raised when Whisper transcription fails or returns no phrases."""
 
     pass
 
@@ -46,10 +46,10 @@ class LLMAlignmentError(LRCWorkerError):
 
 
 @dataclass
-class WhisperWord:
-    """A word with timing from Whisper transcription."""
+class WhisperPhrase:
+    """A phrase/segment with timing from Whisper transcription."""
 
-    word: str
+    text: str  # Full phrase text
     start: float  # seconds
     end: float  # seconds
 
@@ -68,13 +68,20 @@ class LRCLine:
         return f"[{minutes:02d}:{seconds:05.2f}] {self.text}"
 
 
+def _format_timestamp(seconds: float) -> str:
+    """Format seconds as [mm:ss.xx] timestamp."""
+    minutes = int(seconds // 60)
+    secs = seconds % 60
+    return f"[{minutes:02d}:{secs:05.2f}]"
+
+
 async def _run_whisper_transcription(
     audio_path: Path,
     model_name: str,
     language: str,
     device: str,
-) -> List[WhisperWord]:
-    """Run Whisper transcription with word-level timestamps.
+) -> List[WhisperPhrase]:
+    """Run Whisper transcription with phrase-level timestamps.
 
     Args:
         audio_path: Path to audio file
@@ -83,111 +90,162 @@ async def _run_whisper_transcription(
         device: Device to run on ("cpu" or "cuda")
 
     Returns:
-        List of WhisperWord with timing information
+        List of WhisperPhrase with timing information
 
     Raises:
-        WhisperTranscriptionError: If transcription fails or returns no words
+        WhisperTranscriptionError: If transcription fails or returns no phrases
     """
     loop = asyncio.get_event_loop()
 
     def _transcribe():
-        import whisper
+        from faster_whisper import WhisperModel
 
         # Ensure cache directory exists
         cache_dir = settings.SOW_WHISPER_CACHE_DIR
         cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Determine device
+        device_type = device if device else "cuda"
+        compute_type = "int8"  # Use int8 quantization for speed
+
         # Load model
-        logger.info(f"Loading Whisper model: {model_name} on {device}")
+        logger.info(f"Loading Whisper model: {model_name} on {device_type} with {compute_type}")
         model_load_start = time.time()
-        model = whisper.load_model(model_name, device=device, download_root=str(cache_dir))
+        model = WhisperModel(
+            model_name,
+            device=device_type,
+            compute_type=compute_type,
+            download_root=str(cache_dir),
+        )
         model_load_elapsed = time.time() - model_load_start
         logger.info(f"Whisper model loaded in {model_load_elapsed:.2f}s")
 
-        # Transcribe with word timestamps
+        # Transcribe with Chinese worship song optimizations
         logger.info(f"Running Whisper transcription: {audio_path}")
         transcribe_start = time.time()
-        result = model.transcribe(
+
+        # Initial prompt in Chinese for better recognition of worship song lyrics
+        initial_prompt = "这是一首中文敬拜歌的歌詞"
+
+        segments, info = model.transcribe(
             str(audio_path),
             language=language,
-            word_timestamps=True,
+            beam_size=5,
+            vad_filter=False,  # Disabled - audio is already vocal stem from Demucs
+            initial_prompt=initial_prompt,
         )
-        transcribe_elapsed = time.time() - transcribe_start
-        logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
 
-        # Extract words from segments
-        words = []
-        for segment in result.get("segments", []):
-            for word_info in segment.get("words", []):
-                words.append(
-                    WhisperWord(
-                        word=word_info["word"].strip(),
-                        start=word_info["start"],
-                        end=word_info["end"],
+        # Note: segments is a generator - transcription happens during iteration
+        # Extract phrases from segments (convert generator to list)
+        phrases = []
+        for segment in segments:
+            text = segment.text.strip()
+            if text:
+                phrases.append(
+                    WhisperPhrase(
+                        text=text,
+                        start=segment.start,
+                        end=segment.end,
                     )
                 )
 
-        return words
+        transcribe_elapsed = time.time() - transcribe_start
+        logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
+        logger.info(f"Detected language: {info.language}, probability: {info.language_probability:.2f}")
+
+        return phrases
 
     try:
-        words = await loop.run_in_executor(None, _transcribe)
+        phrases = await loop.run_in_executor(None, _transcribe)
     except Exception as e:
         raise WhisperTranscriptionError(f"Whisper transcription failed: {e}") from e
 
-    if not words:
-        raise WhisperTranscriptionError("Whisper returned no words")
+    if not phrases:
+        raise WhisperTranscriptionError("Whisper returned no phrases")
 
-    logger.info(f"Transcribed {len(words)} words")
-    return words
+    # Log transcribed phrases with timecodes
+    logger.info(f"Transcribed {len(phrases)} phrases")
+    logger.info("=" * 80)
+    logger.info("WHISPER TRANSCRIBED PHRASES (with timecodes)")
+    logger.info("=" * 80)
+    for phrase in phrases:
+        start_ts = _format_timestamp(phrase.start)
+        end_ts = _format_timestamp(phrase.end)
+        logger.info(f"{start_ts} - {end_ts}  {phrase.text}")
+    logger.info("=" * 80)
+
+    return phrases
 
 
-def _build_alignment_prompt(lyrics_text: str, whisper_words: List[WhisperWord]) -> str:
+def _build_alignment_prompt(lyrics_text: str, whisper_phrases: List[WhisperPhrase]) -> str:
     """Build the LLM prompt for lyrics alignment.
 
     Args:
         lyrics_text: Original lyrics text (gold standard)
-        whisper_words: Words with timestamps from Whisper
+        whisper_phrases: Phrases with timestamps from Whisper
 
     Returns:
         Prompt string for the LLM
     """
-    # Format whisper words as JSON for the prompt
-    words_json = json.dumps(
-        [{"word": w.word, "start": round(w.start, 2), "end": round(w.end, 2)}
-         for w in whisper_words],
+    # Format whisper phrases as JSON for the prompt
+    phrases_json = json.dumps(
+        [{"text": p.text, "start": round(p.start, 2), "end": round(p.end, 2)}
+         for p in whisper_phrases],
         ensure_ascii=False,
         indent=2,
     )
 
-    return f"""You are a lyrics alignment assistant. Your task is to align the original lyrics with Whisper transcription timestamps.
+    # Calculate total duration from whisper phrases
+    last_timestamp = max(p.end for p in whisper_phrases) if whisper_phrases else 0.0
 
-## Original Lyrics (Gold Standard Text)
+    return f"""You are a lyrics alignment assistant. Your task is to assign accurate timestamps to every line sung in the song.
+
+## Original Lyrics (Gold Standard Text - Use exactly as written)
 ```
 {lyrics_text}
 ```
 
-## Whisper Transcription (Words with Timestamps)
+## Whisper Transcription (Phrases with Timestamps)
 ```json
-{words_json}
+{phrases_json}
 ```
 
-## Instructions
-1. Use the original lyrics as the authoritative text - do NOT use Whisper's transcribed text
-2. Find the best matching timestamp for the START of each lyric line
-3. If Whisper missed some words, interpolate timestamps based on surrounding context
-4. Ensure timestamps are in chronological order
-5. Return ONLY a JSON array, no other text
+## Song Structure Information
+- Total audio duration: {last_timestamp:.2f} seconds
+- The Whisper transcription contains {len(whisper_phrases)} phrases
+
+## Critical Instructions
+
+1. **IMPORTANT**: Worship songs often repeat verses and choruses multiple times. The same lyric line may appear 3-5+ times throughout the song.
+
+2. **Process each Whisper phrase**: Go through the Whisper transcription in order. For EACH phrase, find the best matching lyric line from the original lyrics.
+
+3. **Allow repetitions**: The same lyric line CAN and SHOULD appear multiple times in your output with different timestamps if it was sung multiple times.
+
+4. **Output length**: Your output MUST have approximately {len(whisper_phrases)} entries (one per Whisper phrase). Do NOT consolidate repeated sections.
+
+5. **Text authority**: Use the exact text from "Original Lyrics", not the Whisper transcription (which may have errors).
+
+6. **Timestamp handling**: Use the start time of each Whisper phrase as the timestamp for the matched lyric line.
+
+7. **Chronological order**: Ensure all timestamps are in ascending order.
 
 ## Output Format
 Return a JSON array where each object has:
-- "time_seconds": float (start time of the line in seconds)
-- "text": string (the original lyric line, exactly as provided)
+- "time_seconds": float (start time from the corresponding Whisper phrase)
+- "text": string (the matched lyric line from Original Lyrics, exactly as provided)
 
-Example output:
+Example showing repeated chorus:
 ```json
 [
-  {{"time_seconds": 0.5, "text": "第一行歌詞"}},
-  {{"time_seconds": 4.2, "text": "第二行歌詞"}}
+  {{"time_seconds": 15.0, "text": "我要看見"}},
+  {{"time_seconds": 18.5, "text": "我要看見"}},
+  {{"time_seconds": 22.0, "text": "如同摩西看見祢的榮耀"}},
+  {{"time_seconds": 42.0, "text": "我要看見"}},
+  {{"time_seconds": 45.5, "text": "我要看見"}},
+  {{"time_seconds": 49.0, "text": "這世代要看見祢榮耀"}},
+  {{"time_seconds": 56.0, "text": "我要看見"}},
+  {{"time_seconds": 58.0, "text": "我要看見"}}
 ]
 ```
 
@@ -237,9 +295,60 @@ def _parse_llm_response(response_text: str) -> List[LRCLine]:
     return lines
 
 
+def _validate_alignment_coverage(
+    lrc_lines: List[LRCLine],
+    whisper_phrases: List[WhisperPhrase],
+    duration_threshold_seconds: float = 10.0,
+) -> None:
+    """Validate that LLM alignment covers the full duration of the audio.
+
+    Args:
+        lrc_lines: Aligned LRC lines from LLM
+        whisper_phrases: Original Whisper transcription phrases
+        duration_threshold_seconds: Threshold for duration coverage warning
+
+    Logs warnings if:
+        - LLM output has significantly fewer lines than Whisper phrases
+        - Last timestamp in LLM output is much earlier than last Whisper phrase
+    """
+    if not lrc_lines or not whisper_phrases:
+        logger.warning("Cannot validate alignment: empty LRC lines or Whisper phrases")
+        return
+
+    # Get last timestamps
+    last_lrc_time = max(line.time_seconds for line in lrc_lines)
+    last_whisper_time = max(p.end for p in whisper_phrases)
+
+    # Check duration coverage
+    duration_gap = last_whisper_time - last_lrc_time
+    if duration_gap > duration_threshold_seconds:
+        logger.warning(
+            f"LRC alignment may be incomplete: last LRC timestamp is {last_lrc_time:.2f}s, "
+            f"but audio continues until {last_whisper_time:.2f}s (gap: {duration_gap:.2f}s). "
+            f"The song may have repeated sections that were not properly aligned."
+        )
+
+    # Check line count ratio
+    expected_lines = len(whisper_phrases)
+    actual_lines = len(lrc_lines)
+    if actual_lines < expected_lines * 0.7:  # Less than 70% of expected lines
+        logger.warning(
+            f"LRC alignment may be missing repetitions: got {actual_lines} lines "
+            f"but Whisper detected {expected_lines} phrases. "
+            f"Repeated sections may have been consolidated incorrectly."
+        )
+
+    # Log coverage stats at info level
+    coverage_pct = (last_lrc_time / last_whisper_time * 100) if last_whisper_time > 0 else 0
+    logger.info(
+        f"Alignment coverage: {actual_lines}/{expected_lines} lines, "
+        f"{last_lrc_time:.2f}s/{last_whisper_time:.2f}s ({coverage_pct:.1f}%)"
+    )
+
+
 async def _llm_align(
     lyrics_text: str,
-    whisper_words: List[WhisperWord],
+    whisper_phrases: List[WhisperPhrase],
     llm_model: str,
     max_retries: int = 3,
 ) -> List[LRCLine]:
@@ -247,7 +356,7 @@ async def _llm_align(
 
     Args:
         lyrics_text: Original lyrics text
-        whisper_words: Words with timestamps from Whisper
+        whisper_phrases: Phrases with timestamps from Whisper
         llm_model: LLM model identifier (e.g., "openai/gpt-4o-mini"), falls back to SOW_LLM_MODEL
         max_retries: Maximum retry attempts on parse failure
 
@@ -280,7 +389,15 @@ async def _llm_align(
         )
 
     loop = asyncio.get_event_loop()
-    prompt = _build_alignment_prompt(lyrics_text, whisper_words)
+    prompt = _build_alignment_prompt(lyrics_text, whisper_phrases)
+
+    # Log the full LLM prompt
+    logger.info("=" * 80)
+    logger.info(f"LLM PROMPT (sent to model: {effective_model})")
+    logger.info("=" * 80)
+    for line in prompt.split("\n"):
+        logger.info(line)
+    logger.info("=" * 80)
 
     def _call_llm():
         from openai import OpenAI
@@ -311,10 +428,22 @@ async def _llm_align(
             response_text = await loop.run_in_executor(None, _call_llm)
             attempt_elapsed = time.time() - attempt_start
             logger.info(f"LLM call completed in {attempt_elapsed:.2f}s")
+
+            # Log the LLM response
+            logger.info("=" * 80)
+            logger.info(f"LLM RESPONSE (attempt {attempt + 1}/{max_retries})")
+            logger.info("=" * 80)
+            for line in response_text.split("\n"):
+                logger.info(line)
+            logger.info("=" * 80)
+
             lines = _parse_llm_response(response_text)
 
             if not lines:
                 raise ValueError("LLM returned empty alignment")
+
+            # Phase 2: Post-alignment validation
+            _validate_alignment_coverage(lines, whisper_phrases)
 
             total_llm_elapsed = time.time() - llm_start
             logger.info(f"Successfully aligned {len(lines)} lyric lines (total LLM time: {total_llm_elapsed:.2f}s)")
@@ -359,7 +488,8 @@ async def generate_lrc(
     lyrics_text: str,
     options: LrcOptions,
     output_path: Optional[Path] = None,
-) -> tuple[Path, int]:
+    cached_phrases: Optional[List[WhisperPhrase]] = None,
+) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
 
     Args:
@@ -367,9 +497,10 @@ async def generate_lrc(
         lyrics_text: Original lyrics text
         options: LRC generation options
         output_path: Where to write the LRC file (default: audio_path with .lrc extension)
+        cached_phrases: Optional cached Whisper transcription phrases to skip transcription
 
     Returns:
-        Tuple of (path to LRC file, number of lines)
+        Tuple of (path to LRC file, number of lines, transcription phrases)
 
     Raises:
         LLMConfigError: If LLM API key is not configured
@@ -379,20 +510,34 @@ async def generate_lrc(
     if output_path is None:
         output_path = audio_path.with_suffix(".lrc")
 
-    # Step 1: Run Whisper transcription
+    # Log scraped lyrics input
+    logger.info("=" * 80)
+    logger.info("SCRAPED LYRICS (Input)")
+    logger.info("=" * 80)
+    for line in lyrics_text.split("\n"):
+        logger.info(line)
+    logger.info("=" * 80)
+
+    # Step 1: Get Whisper transcription (use cache if available)
     logger.info(f"Starting LRC generation for {audio_path}")
     lrc_start = time.time()
-    whisper_words = await _run_whisper_transcription(
-        audio_path,
-        model_name=options.whisper_model,
-        language=options.language,
-        device=settings.SOW_WHISPER_DEVICE,
-    )
+
+    if cached_phrases is not None:
+        logger.info(f"Using cached Whisper transcription with {len(cached_phrases)} phrases")
+        whisper_phrases = cached_phrases
+    else:
+        logger.info("No cached transcription found, running Whisper...")
+        whisper_phrases = await _run_whisper_transcription(
+            audio_path,
+            model_name=options.whisper_model,
+            language=options.language,
+            device=settings.SOW_WHISPER_DEVICE,
+        )
 
     # Step 2: LLM alignment
     lrc_lines = await _llm_align(
         lyrics_text,
-        whisper_words,
+        whisper_phrases,
         llm_model=options.llm_model,
     )
 
@@ -401,4 +546,13 @@ async def generate_lrc(
     total_elapsed = time.time() - lrc_start
     logger.info(f"Wrote {line_count} lines to {output_path} (total LRC time: {total_elapsed:.2f}s)")
 
-    return output_path, line_count
+    # Log final LRC file contents
+    logger.info("=" * 80)
+    logger.info("FINAL LRC FILE CONTENTS")
+    logger.info("=" * 80)
+    with open(output_path, "r", encoding="utf-8") as f:
+        for lrc_line in f:
+            logger.info(lrc_line.rstrip("\n"))
+    logger.info("=" * 80)
+
+    return output_path, line_count, whisper_phrases

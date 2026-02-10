@@ -142,6 +142,29 @@ async def submit_lrc_job(
     return job_to_response(job)
 
 
+@router.get("/jobs", response_model=list[JobResponse])
+async def list_jobs(
+    status: Optional[JobStatus] = None,
+    job_type: Optional[JobType] = None,
+    api_key: str = Depends(verify_api_key),
+) -> list[JobResponse]:
+    """List jobs with optional status/type filtering.
+
+    Args:
+        status: Filter by job status (optional)
+        job_type: Filter by job type (optional)
+        api_key: Validated API key
+
+    Returns:
+        List of job responses
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    jobs = await job_queue.list_jobs(status, job_type)
+    return [job_to_response(job) for job in jobs]
+
+
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job_status(
     job_id: str,
