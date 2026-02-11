@@ -555,6 +555,7 @@ def download_audio(
         file_size_bytes=file_size,
         imported_at=datetime.now().isoformat(),
         r2_audio_url=r2_url,
+        youtube_url=video_info.get("webpage_url"),
     )
     db_client.insert_recording(recording)
     console.print(f"[green]Recording saved (hash_prefix: {prefix})[/green]")
@@ -841,6 +842,9 @@ def show_recording(
 
     if recording.r2_audio_url:
         info_lines.append(f"[cyan]Audio URL:[/cyan] {recording.r2_audio_url}")
+
+    if recording.youtube_url:
+        info_lines.append(f"[cyan]YouTube URL:[/cyan] {recording.youtube_url}")
 
     # Status
     info_lines.append("")

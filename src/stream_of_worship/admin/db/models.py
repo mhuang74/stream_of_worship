@@ -162,6 +162,7 @@ class Recording:
     r2_audio_url: Optional[str] = None
     r2_stems_url: Optional[str] = None
     r2_lrc_url: Optional[str] = None
+    youtube_url: Optional[str] = None
     duration_seconds: Optional[float] = None
     tempo_bpm: Optional[float] = None
     musical_key: Optional[str] = None
@@ -188,7 +189,23 @@ class Recording:
 
         Returns:
             Recording instance
+
+        Note:
+            Handles both old schema (25 columns, before youtube_url was added)
+            and new schema (26 columns, with youtube_url at the end).
         """
+        # Detect if row has the youtube_url column (26 items) or old schema (25 items)
+        # In both new and migrated schemas, youtube_url is at index 25 (the end)
+        has_youtube_url = len(row) == 26
+
+        if has_youtube_url:
+            # New schema: youtube_url is at the end (index 25)
+            youtube_url = row[25]
+        else:
+            # Old schema: no youtube_url
+            youtube_url = None
+
+        # Parse other fields (same indices for both schemas: 0-24)
         return cls(
             content_hash=row[0],
             hash_prefix=row[1],
@@ -199,6 +216,7 @@ class Recording:
             r2_audio_url=row[6],
             r2_stems_url=row[7],
             r2_lrc_url=row[8],
+            youtube_url=youtube_url,
             duration_seconds=row[9],
             tempo_bpm=row[10],
             musical_key=row[11],
@@ -233,6 +251,7 @@ class Recording:
             "r2_audio_url": self.r2_audio_url,
             "r2_stems_url": self.r2_stems_url,
             "r2_lrc_url": self.r2_lrc_url,
+            "youtube_url": self.youtube_url,
             "duration_seconds": self.duration_seconds,
             "tempo_bpm": self.tempo_bpm,
             "musical_key": self.musical_key,

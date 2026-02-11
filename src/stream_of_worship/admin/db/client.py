@@ -195,6 +195,13 @@ class DatabaseClient:
                     (key, value),
                 )
 
+            # Migration: add youtube_url column if it doesn't exist (idempotent)
+            try:
+                cursor.execute("ALTER TABLE recordings ADD COLUMN youtube_url TEXT")
+            except sqlite3.OperationalError:
+                # Column already exists - ignore
+                pass
+
     def reset_database(self) -> None:
         """Reset the database by dropping all tables.
 
@@ -414,8 +421,9 @@ class DatabaseClient:
                     r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
                     musical_mode, key_confidence, loudness_db, beats,
                     downbeats, sections, embeddings_shape, analysis_status,
-                    analysis_job_id, lrc_status, lrc_job_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    analysis_job_id, lrc_status, lrc_job_id, created_at, updated_at,
+                    youtube_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     recording.content_hash,
@@ -443,6 +451,7 @@ class DatabaseClient:
                     recording.lrc_job_id,
                     recording.created_at or datetime.now().isoformat(),
                     recording.updated_at or datetime.now().isoformat(),
+                    recording.youtube_url,
                 ),
             )
 

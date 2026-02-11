@@ -1,0 +1,72 @@
+You are a lyrics review assistant. Your task is to take a rough transcription of a song, compare to the published lyrics, and correct the lyrics transcription with the published lyrics. Music performance often repeat certain song sections, hence the transcribed lyrics should reflect the number of words sung, but may be transcribed incorrectly.
+
+Transcribed Lyrics
+```
+00:00:12
+With all my heart, I will give thanks and enter Your court.
+
+00:00:19
+Offering my praise to You, Lord; It’s the fruit of my lips.
+
+00:00:25
+In Your presence, free of worries, joy overflows.
+
+00:00:32
+Always grateful, always praying, my hope is in You!
+
+00:00:37
+My heart will praise You, Lord. I’ll dance before Your throne.
+
+00:00:44
+One day with You is better than a thousand elsewhere.
+
+00:00:50
+My heart will praise You, Lord. I’ll never stop praising Your name.
+
+00:00:57
+The righteous will declare Your victory!
+
+00:01:13
+With all my heart, I will give thanks and enter Your court.
+
+00:01:20
+Offering my praise to You, Lord; It’s the fruit of my lips.
+
+00:01:26
+In Your presence, free of worries, joy overflows.
+
+00:01:33
+Always grateful, always praying, my hope is in You!
+
+00:01:38
+My heart will praise You, Lord. I’ll dance before Your throne.
+
+00:01:45
+One day with You is better than a thousand elsewhere.
+
+00:01:51
+My heart will praise You, Lord. I’ll never stop praising Your name.
+
+00:01:58
+The righteous will declare Your victory!
+
+00:02:04
+My heart will praise You, Lord. I’ll dance before Your throne.
+
+00:02:10
+One day with You is better than a thousand elsewhere.
+
+00:02:16
+My heart will praise You, Lord. I’ll never stop praising Your name.
+
+00:02:23
+The righteous will declare Your victory!
+```
+
+Published Lyrics
+```
+ 全心感謝  全心讚美  進入祢的院
+ 全心頌讚  獻上為祭  是嘴唇的果子                                                                                                 在祢裡面  一無罣慮  喜樂滿溢                                                                                                    常常感謝  不住禱告  盼望在於祢                                                                                                   我要全心讚美  跳舞頌揚祢名                                                                                                      在祢殿中一日  勝過在世上千日                                                                                                     我要全心讚美  讚美還要讚美  不停                                                                                                 義人棚裡歡呼聲永不息
+```
+
+Only output the corrected transcription lyrics in plain format.

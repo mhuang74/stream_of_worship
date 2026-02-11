@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS recordings (
     lrc_job_id TEXT,
 
     created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+
+    -- YouTube URL (for transcript-based LRC generation)
+    youtube_url TEXT
 );
 """
 

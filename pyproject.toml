@@ -130,9 +130,16 @@ transcription_whisperx = [
     "whisperx==3.7.0",
 ]
 
+# YouTube transcript-based transcription dependencies
+transcription_youtube = [
+    "youtube-transcript-api>=0.6.0",
+    "openai>=1.0.0",
+    "typer>=0.12.0",
+]
+
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription,transcription_whisperx,admin,turso,app]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
 ]
 
 [project.scripts]
