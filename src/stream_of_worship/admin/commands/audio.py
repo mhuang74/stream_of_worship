@@ -1774,3 +1774,150 @@ def view_lrc(
         # Cleanup temp file
         if temp_file and temp_path.exists():
             temp_path.unlink()
+
+
+@app.command("cache")
+def cache_assets(
+    song_id: str = typer.Argument(..., help="Song ID to cache assets for"),
+    audio: bool = typer.Option(
+        True, "--audio/--no-audio", help="Download main audio file"
+    ),
+    stems: bool = typer.Option(
+        True, "--stems/--no-stems", help="Download stem files (vocals, drums, bass, other)"
+    ),
+    lrc: bool = typer.Option(
+        True, "--lrc/--no-lrc", help="Download LRC lyrics file"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-download even if files exist"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Download song assets from R2 to local cache.
+
+    Downloads audio, stems, and LRC files from R2 to the local cache directory
+    for offline use. This is useful for tools like the Whisper test driver
+    that need local access to audio files.
+    """
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for song: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    # Get song info for display
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+    hash_prefix = recording.hash_prefix
+
+    # Initialize R2 client
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Import AssetCache here to avoid circular imports
+    from stream_of_worship.app.services.asset_cache import AssetCache
+
+    # Use the app cache directory: ~/.config/sow-app/cache
+    cache_dir = Path.home() / ".config" / "sow-app" / "cache"
+    cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
+
+    console.print(f"[cyan]Caching assets for: {song_title}[/cyan]")
+    console.print(f"[dim]Hash prefix: {hash_prefix}[/dim]")
+    console.print()
+
+    downloaded = []
+    skipped = []
+    failed = []
+
+    # Download audio
+    if audio:
+        audio_path = cache.get_audio_path(hash_prefix)
+        if audio_path.exists() and not force:
+            skipped.append(f"Audio: {audio_path}")
+        else:
+            console.print("[cyan]Downloading audio...[/cyan]")
+            path = cache.download_audio(hash_prefix, force=force)
+            if path:
+                size_mb = path.stat().st_size / (1024 * 1024)
+                downloaded.append(f"Audio: {path.name} ({size_mb:.2f} MB)")
+                console.print(f"[green]  ✓ {path.name} ({size_mb:.2f} MB)[/green]")
+            else:
+                failed.append("Audio")
+                console.print("[red]  ✗ Failed to download audio[/red]")
+
+    # Download stems
+    if stems:
+        console.print("[cyan]Downloading stems...[/cyan]")
+        stem_names = ["vocals", "drums", "bass", "other"]
+        for stem_name in stem_names:
+            stem_path = cache.get_stem_path(hash_prefix, stem_name)
+            if stem_path.exists() and not force:
+                skipped.append(f"Stem '{stem_name}': {stem_path}")
+            else:
+                path = cache.download_stem(hash_prefix, stem_name, force=force)
+                if path:
+                    size_mb = path.stat().st_size / (1024 * 1024)
+                    downloaded.append(f"Stem '{stem_name}': {path.name} ({size_mb:.2f} MB)")
+                    console.print(f"[green]  ✓ {stem_name}.wav ({size_mb:.2f} MB)[/green]")
+                else:
+                    # Stems might not exist for all recordings
+                    console.print(f"[dim]  - {stem_name}.wav (not available)[/dim]")
+
+    # Download LRC
+    if lrc:
+        lrc_path = cache.get_lrc_path(hash_prefix)
+        if lrc_path.exists() and not force:
+            skipped.append(f"LRC: {lrc_path}")
+        else:
+            console.print("[cyan]Downloading LRC...[/cyan]")
+            # Check if LRC exists in R2
+            if recording.r2_lrc_url:
+                path = cache.download_lrc(hash_prefix, force=force)
+                if path:
+                    downloaded.append(f"LRC: {path.name}")
+                    console.print(f"[green]  ✓ {path.name}[/green]")
+                else:
+                    failed.append("LRC")
+                    console.print("[red]  ✗ Failed to download LRC[/red]")
+            else:
+                console.print("[yellow]  ! No LRC available (run 'sow-admin audio lrc' first)[/yellow]")
+
+    # Summary
+    console.print()
+    console.print("[bold]Cache Summary:[/bold]")
+    if downloaded:
+        console.print(f"[green]Downloaded: {len(downloaded)} file(s)[/green]")
+        for item in downloaded:
+            console.print(f"  [green]✓[/green] {item}")
+    if skipped:
+        console.print(f"[dim]Skipped (already cached): {len(skipped)} file(s)[/dim]")
+    if failed:
+        console.print(f"[red]Failed: {len(failed)} file(s)[/red]")
+        for item in failed:
+            console.print(f"  [red]✗[/red] {item}")
+
+    # Show cache location
+    cache_dir = cache.cache_dir / hash_prefix
+    console.print()
+    console.print(f"[dim]Cache location: {cache_dir}[/dim]")

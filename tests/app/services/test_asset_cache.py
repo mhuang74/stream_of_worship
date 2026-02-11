@@ -113,7 +113,7 @@ class TestDownloadOperations:
 
     def test_download_stem_creates_file(self, asset_cache, tmp_path, mock_r2_client):
         """Verify stem download works."""
-        dest_file = tmp_path / "cache" / "abc123def456" / "stems" / "vocals.mp3"
+        dest_file = tmp_path / "cache" / "abc123def456" / "stems" / "vocals.wav"
 
         def mock_download(s3_key, dest):
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ class TestCacheManagement:
 
         stems_dir = tmp_path / "cache" / "abc123def456" / "stems"
         stems_dir.mkdir(parents=True)
-        (stems_dir / "vocals.mp3").write_text("b" * 500)  # 500 bytes
+        (stems_dir / "vocals.wav").write_text("b" * 500)  # 500 bytes
 
         size = asset_cache.get_cache_size()
 

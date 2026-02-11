@@ -105,7 +105,7 @@ class AssetCache:
         Returns:
             Local cache path
         """
-        return self._get_cache_path(hash_prefix, "stems", f"{stem_name}.mp3")
+        return self._get_cache_path(hash_prefix, "stems", f"{stem_name}.wav")
 
     def get_lrc_path(self, hash_prefix: str) -> Path:
         """Get the local cache path for an LRC file.
@@ -179,7 +179,7 @@ class AssetCache:
         if not force and cache_path.exists():
             return cache_path
 
-        s3_key = self._get_s3_key(hash_prefix, "stems", f"{stem_name}.mp3")
+        s3_key = self._get_s3_key(hash_prefix, "stems", f"{stem_name}.wav")
 
         try:
             if not self.r2_client.file_exists(s3_key):
