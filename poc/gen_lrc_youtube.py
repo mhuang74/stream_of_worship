@@ -262,6 +262,13 @@ def main(
     # Build correction prompt
     prompt = build_correction_prompt(transcript_text, lyrics)
 
+    # Print the full prompt for transparency
+    typer.echo("\n" + "=" * 80, err=True)
+    typer.echo("LLM PROMPT:", err=True)
+    typer.echo("=" * 80, err=True)
+    typer.echo(prompt, err=True)
+    typer.echo("=" * 80 + "\n", err=True)
+
     # Call LLM
     typer.echo(f"Calling LLM: {llm_model}", err=True)
     client = OpenAI(
