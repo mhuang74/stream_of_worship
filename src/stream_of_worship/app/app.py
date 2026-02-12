@@ -36,6 +36,11 @@ class SowApp(App):
     TITLE = "Stream of Worship"
     SUB_TITLE = "Songset Manager"
 
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("s", "navigate_settings", "Settings"),
+    ]
+
     def __init__(self, config: AppConfig, *args, **kwargs):
         """Initialize the application.
 

@@ -12,9 +12,12 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
+from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import AudioEngine, ExportResult
 from stream_of_worship.app.services.video_engine import VideoEngine, VideoTemplate
+
+logger = get_logger(__name__)
 
 
 class ExportState(Enum):
@@ -234,6 +237,19 @@ class ExportService:
         """
         job_id = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+        logger.info("=" * 80)
+        logger.info(f"EXPORT STARTED: job_id={job_id}, songset_id={songset.id}, songset_name='{songset.name}'")
+        logger.info(f"Items to export: {len(items)}")
+
+        # Log each item with its key properties for debugging
+        for idx, item in enumerate(items):
+            logger.info(f"  Item {idx+1}/{len(items)}: song_title='{item.song_title}', "
+                       f"recording_hash_prefix='{item.recording_hash_prefix}', "
+                       f"tempo_bpm={item.tempo_bpm}, "
+                       f"gap_beats={item.gap_beats}, "
+                       f"crossfade_enabled={item.crossfade_enabled}, "
+                       f"crossfade_duration={item.crossfade_duration_seconds}")
+
         # Sanitize songset name for filename
         safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in songset.name)
 
@@ -286,6 +302,18 @@ class ExportService:
                 progress_callback=audio_progress,
             )
 
+            # Log segment timing details after audio generation
+            logger.info(f"AUDIO GENERATION COMPLETE: total_duration={job.audio_result.total_duration_seconds:.3f}s")
+            logger.info(f"Segment timing breakdown:")
+            for idx, segment in enumerate(job.audio_result.segments):
+                segment_end = segment.start_time_seconds + segment.duration_seconds
+                logger.info(f"  Segment {idx+1}: '{segment.item.song_title}'")
+                logger.info(f"    - gap_before: {segment.gap_before_seconds:.3f}s")
+                logger.info(f"    - start_time: {segment.start_time_seconds:.3f}s")
+                logger.info(f"    - end_time: {segment_end:.3f}s")
+                logger.info(f"    - duration: {segment.duration_seconds:.3f}s")
+                logger.info(f"    - recording: {segment.item.recording_hash_prefix}")
+
             if self._check_cancelled():
                 return job
 
@@ -318,6 +346,12 @@ class ExportService:
 
             # Complete
             job.completed_at = datetime.now()  # Track completion time
+            duration = (job.completed_at - job.started_at).total_seconds() if job.started_at else 0
+            logger.info(f"EXPORT COMPLETED: job_id={job_id}, duration={duration:.2f}s")
+            logger.info(f"  Audio: {job.output_audio_path}")
+            if include_video:
+                logger.info(f"  Video: {job.output_video_path}")
+            logger.info("=" * 80)
             self._update_state(
                 ExportState.COMPLETED,
                 total_steps,
@@ -329,6 +363,8 @@ class ExportService:
         except Exception as e:
             job.completed_at = datetime.now()  # Track completion time even on failure
             error_msg = str(e)
+            logger.error(f"EXPORT FAILED: job_id={job_id}, error={error_msg}")
+            logger.error("=" * 80)
             self._update_state(
                 ExportState.FAILED,
                 0,

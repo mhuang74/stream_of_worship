@@ -133,6 +133,12 @@ class VideoEngine:
         self.ffmpeg_path = ffmpeg_path
         self._font: Optional[ImageFont.FreeTypeFont] = None
 
+        # Track song/lyric state for detecting stuck lyrics
+        self._last_logged_song = None
+        self._last_logged_lyric_time = None
+        self._last_logged_lyric_text = None
+        self._stuck_frame_counter = 0
+
     def _get_font(self, size: Optional[int] = None) -> ImageFont.FreeTypeFont:
         """Get a font for rendering text.
 
@@ -228,14 +234,24 @@ class VideoEngine:
         Returns:
             List of LRC lines or None if not found
         """
-        lrc_path = self.asset_cache.download_lrc(hash_prefix)
+        logger.debug(f"LRC LOAD: hash_prefix={hash_prefix} (forced reload)")
+        lrc_path = self.asset_cache.download_lrc(hash_prefix, force=True)
         if not lrc_path:
+            logger.warning(f"LRC NOT FOUND: hash_prefix={hash_prefix}")
             return None
 
         try:
             content = lrc_path.read_text(encoding='utf-8')
-            return self._parse_lrc(content)
-        except Exception:
+            lines = self._parse_lrc(content)
+            logger.info(f"LRC LOADED: hash_prefix={hash_prefix}, lines={len(lines)}")
+            logger.info(f"LRC FULL CONTENT for hash_prefix={hash_prefix}:")
+            logger.info("-" * 80)
+            for line in content.split('\n'):
+                logger.info(f"  {line}")
+            logger.info("-" * 80)
+            return lines
+        except Exception as e:
+            logger.error(f"LRC PARSE ERROR: hash_prefix={hash_prefix}, error={e}")
             return None
 
     def _render_frame(
@@ -261,12 +277,24 @@ class VideoEngine:
 
         # Find current song based on segment timing
         current_title = ""
+        current_segment_start = None
+        current_segment_end = None
         for segment in segments:
             segment_start = segment.start_time_seconds
             segment_end = segment_start + segment.duration_seconds
             if segment_start <= current_time < segment_end:
                 current_title = segment.item.song_title or "Unknown"
+                current_segment_start = segment_start
+                current_segment_end = segment_end
                 break
+
+        # Log segment detection (less frequently to reduce log spam)
+        if int(current_time * 24) % 24 == 0:  # Log once per second (at 24fps)
+            if current_title:
+                logger.debug(f"FRAME: time={current_time:.3f}s -> segment '{current_title}' "
+                            f"[{current_segment_start:.3f}s - {current_segment_end:.3f}s]")
+            else:
+                logger.debug(f"FRAME: time={current_time:.3f}s -> NO SEGMENT MATCH")
 
         # Draw title at top (always show when song is playing)
         if current_title:
@@ -291,6 +319,20 @@ class VideoEngine:
             first_lyric_time = current_song_lyrics[0].global_time_seconds
             last_lyric_time = current_song_lyrics[-1].global_time_seconds
 
+            # Log lyric timing context (once per second)
+            if int(current_time * 24) % 24 == 0:
+                logger.debug(f"LYRICS_RANGE: song='{current_title}', "
+                            f"first_lyric={first_lyric_time:.3f}s, "
+                            f"last_lyric={last_lyric_time:.3f}s, "
+                            f"total_lines={len(current_song_lyrics)}")
+                # Log if we're outside the lyric range (potential bug indicator)
+                if current_time < first_lyric_time:
+                    logger.debug(f"LYRICS_OUT_OF_RANGE: time={current_time:.3f}s < first_lyric={first_lyric_time:.3f}s "
+                                f"(gap={first_lyric_time - current_time:.3f}s)")
+                elif current_time > last_lyric_time:
+                    logger.debug(f"LYRICS_OUT_OF_RANGE: time={current_time:.3f}s > last_lyric={last_lyric_time:.3f}s "
+                                f"(gap={current_time - last_lyric_time:.3f}s)")
+
             # Only render lyrics if we're within the lyric time range
             if first_lyric_time <= current_time <= last_lyric_time:
                 # Find current lyric index within this song's lyrics
@@ -301,10 +343,52 @@ class VideoEngine:
                     else:
                         break
 
+                # Log lyric selection (less frequently, once every 5 seconds)
+                if int(current_time * 24) % (24 * 5) == 0 and current_index >= 0:
+                    current_line = current_song_lyrics[current_index]
+                    logger.info(f"LYRIC_SELECTED: time={current_time:.3f}s -> "
+                               f"idx={current_index}/{len(current_song_lyrics)-1} "
+                               f"[local={current_line.local_time_seconds:.3f}s, "
+                               f"global={current_line.global_time_seconds:.3f}s], "
+                               f"text='{current_line.text}'")
+
                 # Draw current line: 2x larger font, centered vertically
                 if current_index >= 0:
                     current_line = current_song_lyrics[current_index]
                     current_font = self._get_font(int(self.template.font_size * 2))
+
+                    # Detect potentially stuck lyrics (same lyric for > 20 seconds)
+                    is_same_song = (self._last_logged_song == current_title)
+                    is_same_lyric_time = (self._last_logged_lyric_time == current_line.global_time_seconds)
+                    is_same_text = (self._last_logged_lyric_text == current_line.text)
+
+                    if is_same_song and (is_same_lyric_time or is_same_text):
+                        self._stuck_frame_counter += 1
+                        stuck_duration = self._stuck_frame_counter / 24.0  # at 24fps
+
+                        # Warn if same lyric stuck for > 20 seconds
+                        if self._stuck_frame_counter == 20 * 24:  # 20 seconds at 24fps
+                            logger.warning(
+                                f"LYRIC_STUCK_DETECTED: song='{current_title}', "
+                                f"time={current_time:.3f}s, "
+                                f"stuck_for={stuck_duration:.1f}s, "
+                                f"lyric_global_time={current_line.global_time_seconds:.3f}s, "
+                                f"text='{current_line.text}'"
+                            )
+                        # Also warn if outside lyric range
+                        elif current_time > last_lyric_time + 5:  # 5 seconds past last lyric
+                            logger.warning(
+                                f"LYRIC_PAST_END: song='{current_title}', "
+                                f"time={current_time:.3f}s > last_lyric={last_lyric_time:.3f}s, "
+                                f"past_end={current_time - last_lyric_time:.1f}s, "
+                                f"showing_lyric='{current_line.text}'"
+                            )
+                    else:
+                        # Reset counter when song or lyric changes
+                        self._stuck_frame_counter = 0
+                        self._last_logged_song = current_title
+                        self._last_logged_lyric_time = current_line.global_time_seconds
+                        self._last_logged_lyric_text = current_line.text
 
                     bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
                     text_width = bbox[2] - bbox[0]
@@ -356,12 +440,33 @@ class VideoEngine:
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Reset stuck detection counters for new export
+        self._last_logged_song = None
+        self._last_logged_lyric_time = None
+        self._last_logged_lyric_text = None
+        self._stuck_frame_counter = 0
+
+        logger.info("=" * 80)
+        logger.info(f"VIDEO GENERATION STARTED: duration={audio_result.total_duration_seconds:.3f}s, "
+                   f"segments={len(audio_result.segments)}, fps={fps}")
+
         # Collect all lyrics with global timing
         all_lyrics: list[GlobalLRCLine] = []
 
         for segment in audio_result.segments:
             lyrics = self._load_lrc(segment.item.recording_hash_prefix or "")
             if lyrics:
+                logger.info(f"LYRICS_GLOBAL_CONVERSION: song='{segment.item.song_title}', "
+                           f"segment_start={segment.start_time_seconds:.3f}s, "
+                           f"lyric_lines={len(lyrics)}")
+                # Log first and last lyric global times for verification
+                first_global = segment.start_time_seconds + lyrics[0].time_seconds
+                last_global = segment.start_time_seconds + lyrics[-1].time_seconds
+                logger.info(f"  First lyric: local={lyrics[0].time_seconds:.3f}s -> global={first_global:.3f}s, "
+                           f"text='{lyrics[0].text}'")
+                logger.info(f"  Last lyric: local={lyrics[-1].time_seconds:.3f}s -> global={last_global:.3f}s, "
+                           f"text='{lyrics[-1].text}'")
+
                 for line in lyrics:
                     all_lyrics.append(GlobalLRCLine(
                         global_time_seconds=segment.start_time_seconds + line.time_seconds,
@@ -369,12 +474,35 @@ class VideoEngine:
                         text=line.text,
                         title=segment.item.song_title or "Unknown",
                     ))
+            else:
+                logger.warning(f"LYRICS_GLOBAL_CONVERSION: song='{segment.item.song_title}' - NO LRC FOUND")
+
+        # Summary of lyric timeline for debugging
+        if all_lyrics:
+            logger.info("LYRIC_TIMELINE_SUMMARY:")
+            current_song = None
+            song_lyric_count = 0
+            for idx, lyric in enumerate(all_lyrics):
+                if lyric.title != current_song:
+                    if current_song:
+                        logger.info(f"  '{current_song}': {song_lyric_count} lyrics")
+                    current_song = lyric.title
+                    song_lyric_count = 0
+                song_lyric_count += 1
+                # Log every 50th lyric to keep output manageable
+                if idx % 50 == 0:
+                    logger.info(f"    [{idx}] t={lyric.global_time_seconds:.3f}s: '{lyric.text}'")
+            if current_song:
+                logger.info(f"  '{current_song}': {song_lyric_count} lyrics")
 
         if not all_lyrics:
             # No lyrics - generate blank video
+            logger.warning(f"VIDEO: NO LYRICS FOUND - generating blank video")
             return self._generate_blank_video(
                 audio_result.output_path, output_path, fps=fps
             )
+
+        logger.info(f"VIDEO: Total lyrics to render: {len(all_lyrics)}")
 
         # Generate frames and encode with FFmpeg
         total_frames = int(audio_result.total_duration_seconds * fps)
@@ -411,6 +539,11 @@ class VideoEngine:
             for frame in range(total_frames):
                 current_time = frame / fps
 
+                # Log periodic progress (every 5 seconds of video)
+                if frame % (fps * 5) == 0 and frame > 0:
+                    logger.info(f"VIDEO_PROGRESS: frame={frame}/{total_frames} "
+                               f"({frame/total_frames*100:.1f}%), time={current_time:.1f}s")
+
                 # Update progress
                 if progress_callback and frame % fps == 0:  # Update every second
                     progress_callback(frame, total_frames)
@@ -429,6 +562,10 @@ class VideoEngine:
 
         if progress_callback:
             progress_callback(total_frames, total_frames)
+
+        logger.info(f"VIDEO GENERATION COMPLETE: output='{output_path}', "
+                   f"total_frames={total_frames}, duration={audio_result.total_duration_seconds:.3f}s")
+        logger.info("=" * 80)
 
         return output_path
 

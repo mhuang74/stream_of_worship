@@ -25,6 +25,7 @@ class SongsetListScreen(Screen):
         ("e", "edit_songset", "Edit"),
         ("d", "delete_songset", "Delete"),
         ("enter", "edit_songset", "Edit"),
+        ("s", "navigate_settings", "Settings"),
         ("q", "quit", "Quit"),
     ]
 
@@ -198,3 +199,8 @@ class SongsetListScreen(Screen):
         """Quit the application."""
         logger.info("Action: quit (from songset list)")
         self.app.action_quit()
+
+    def action_navigate_settings(self) -> None:
+        """Navigate to settings screen."""
+        logger.info("Action: navigate_settings (from songset list)")
+        self.app.navigate_to(AppScreen.SETTINGS)
