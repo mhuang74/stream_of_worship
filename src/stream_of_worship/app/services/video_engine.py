@@ -4,6 +4,7 @@ Generates lyrics videos using Pillow for frame rendering and FFmpeg
 for video encoding. Supports multiple templates and resolutions.
 """
 
+import math
 import re
 import subprocess
 import sys
@@ -150,6 +151,10 @@ class VideoEngine:
         """
         font_size = size or self.template.font_size
 
+        # Return cached font if requesting default size
+        if font_size == self.template.font_size and self._font is not None:
+            return self._font
+
         # Try to find a suitable font
         font_paths = [
             # Bundled font (highest priority)
@@ -167,10 +172,12 @@ class VideoEngine:
         for font_path in font_paths:
             try:
                 font = ImageFont.truetype(str(font_path), font_size)
-                logger.debug(f"Successfully loaded font: {font_path}")
+                # Cache font at default size, log only once
+                if font_size == self.template.font_size:
+                    self._font = font
+                    logger.debug(f"Font cached: {font_path}")
                 return font
-            except Exception as e:
-                logger.debug(f"Failed to load font {font_path}: {e}")
+            except Exception:
                 continue
 
         # Fallback to default font
@@ -254,6 +261,57 @@ class VideoEngine:
             logger.error(f"LRC PARSE ERROR: hash_prefix={hash_prefix}, error={e}")
             return None
 
+    def _estimate_last_lyric_duration(
+        self, song_lyrics: list[GlobalLRCLine], tempo_bpm: Optional[float]
+    ) -> float:
+        """Estimate display duration for the last lyric line.
+
+        Uses two-tier approach:
+        1. Primary: Match previous occurrence of same text in song
+        2. Fallback: Character count + BPM estimation
+
+        Args:
+            song_lyrics: All lyrics for the current song
+            tempo_bpm: Song tempo in BPM (optional)
+
+        Returns:
+            Estimated duration in seconds (minimum 3s, no upper bound)
+        """
+        if not song_lyrics:
+            return 5.0
+
+        last_lyric = song_lyrics[-1]
+
+        # Primary approach: find previous occurrence of same text
+        for i in range(len(song_lyrics) - 2, -1, -1):
+            if song_lyrics[i].text == last_lyric.text:
+                # Use the duration from the previous occurrence
+                if i + 1 < len(song_lyrics):
+                    duration = song_lyrics[i + 1].global_time_seconds - song_lyrics[i].global_time_seconds
+                    # Only log once per unique lookup (cache could be added here if needed)
+                    return max(3.0, duration)
+
+        # Fallback approach: character count + BPM estimation
+        # Count Chinese characters (any Unicode char > 0x7F roughly works for Chinese)
+        # Non-whitespace ASCII counts as ~0.5 chars
+        text = last_lyric.text
+        char_count = 0
+        for char in text:
+            if ord(char) > 0x7F:
+                char_count += 1.0  # Chinese character
+            elif not char.isspace():
+                char_count += 0.5  # Non-space ASCII ~ half-width
+
+        bpm = 70.0
+        # Use tempo_bpm if it's a valid number, otherwise default to 70 BPM
+        if isinstance(tempo_bpm, (int, float)) and tempo_bpm > 0:
+            bpm = tempo_bpm
+        # Assume 2 beats per character for comfortable reading pace
+        beats_per_beat = 60.0 / bpm
+        duration = char_count * 2 * beats_per_beat
+
+        return max(3.0, duration)
+
     def _render_frame(
         self,
         lyrics: list[GlobalLRCLine],
@@ -325,16 +383,13 @@ class VideoEngine:
                             f"first_lyric={first_lyric_time:.3f}s, "
                             f"last_lyric={last_lyric_time:.3f}s, "
                             f"total_lines={len(current_song_lyrics)}")
-                # Log if we're outside the lyric range (potential bug indicator)
+                # Log if we're before the first lyric (gap at song start)
                 if current_time < first_lyric_time:
-                    logger.debug(f"LYRICS_OUT_OF_RANGE: time={current_time:.3f}s < first_lyric={first_lyric_time:.3f}s "
+                    logger.debug(f"LYRICS_BEFORE_FIRST: time={current_time:.3f}s < first_lyric={first_lyric_time:.3f}s "
                                 f"(gap={first_lyric_time - current_time:.3f}s)")
-                elif current_time > last_lyric_time:
-                    logger.debug(f"LYRICS_OUT_OF_RANGE: time={current_time:.3f}s > last_lyric={last_lyric_time:.3f}s "
-                                f"(gap={current_time - last_lyric_time:.3f}s)")
 
-            # Only render lyrics if we're within the lyric time range
-            if first_lyric_time <= current_time <= last_lyric_time:
+            # Render lyrics from first lyric time until song ends
+            if current_time >= first_lyric_time:
                 # Find current lyric index within this song's lyrics
                 current_index = -1
                 for i, line in enumerate(current_song_lyrics):
@@ -342,6 +397,10 @@ class VideoEngine:
                         current_index = i
                     else:
                         break
+
+                # If past all lyrics, continue showing the last one
+                if current_index == -1 and current_time > last_lyric_time:
+                    current_index = len(current_song_lyrics) - 1
 
                 # Log lyric selection (less frequently, once every 5 seconds)
                 if int(current_time * 24) % (24 * 5) == 0 and current_index >= 0:
@@ -357,60 +416,144 @@ class VideoEngine:
                     current_line = current_song_lyrics[current_index]
                     current_font = self._get_font(int(self.template.font_size * 2))
 
-                    # Detect potentially stuck lyrics (same lyric for > 20 seconds)
-                    is_same_song = (self._last_logged_song == current_title)
-                    is_same_lyric_time = (self._last_logged_lyric_time == current_line.global_time_seconds)
-                    is_same_text = (self._last_logged_lyric_text == current_line.text)
+                    # Check if this is the last lyric and handle fade-out
+                    is_last_lyric = current_index == len(current_song_lyrics) - 1
+                    fade_alpha = 255
+                    is_last_lyric_faded = False
 
-                    if is_same_song and (is_same_lyric_time or is_same_text):
-                        self._stuck_frame_counter += 1
-                        stuck_duration = self._stuck_frame_counter / 24.0  # at 24fps
+                    if is_last_lyric and current_index >= 0:
+                        # Get BPM from current segment for duration estimation
+                        tempo_bpm = None
+                        for segment in segments:
+                            segment_start = segment.start_time_seconds
+                            if segment_start <= current_time < segment_start + segment.duration_seconds:
+                                tempo_bpm = segment.item.tempo_bpm
+                                break
 
-                        # Warn if same lyric stuck for > 20 seconds
-                        if self._stuck_frame_counter == 20 * 24:  # 20 seconds at 24fps
-                            logger.warning(
-                                f"LYRIC_STUCK_DETECTED: song='{current_title}', "
-                                f"time={current_time:.3f}s, "
-                                f"stuck_for={stuck_duration:.1f}s, "
-                                f"lyric_global_time={current_line.global_time_seconds:.3f}s, "
-                                f"text='{current_line.text}'"
+                        # Estimate how long this lyric should display
+                        max_display = self._estimate_last_lyric_duration(current_song_lyrics, tempo_bpm)
+                        elapsed_since_last_lyric = current_time - current_line.global_time_seconds
+
+                        # Fade duration: 7 seconds, with 30% margin before fade starts
+                        FADE_DURATION = 7.0
+                        MARGIN = 1.3
+                        fade_start_threshold = max_display * MARGIN
+
+                        # Check if we should fade or skip rendering
+                        if elapsed_since_last_lyric > fade_start_threshold + FADE_DURATION:
+                            # Fully faded - skip rendering this lyric
+                            logger.info(
+                                f"LAST_LYRIC_FULLY_FADED: song='{current_title}', "
+                                f"elapsed={elapsed_since_last_lyric:.2f}s > threshold={fade_start_threshold + FADE_DURATION:.2f}s, "
+                                f"skipping render"
                             )
-                        # Also warn if outside lyric range
-                        elif current_time > last_lyric_time + 5:  # 5 seconds past last lyric
-                            logger.warning(
-                                f"LYRIC_PAST_END: song='{current_title}', "
-                                f"time={current_time:.3f}s > last_lyric={last_lyric_time:.3f}s, "
-                                f"past_end={current_time - last_lyric_time:.1f}s, "
-                                f"showing_lyric='{current_line.text}'"
+                            current_index = -1
+                            is_last_lyric_faded = True
+                        elif elapsed_since_last_lyric > fade_start_threshold:
+                            # In fade-out period (7 second fade with logarithmic curve)
+                            fade_progress = min(1.0, (elapsed_since_last_lyric - fade_start_threshold) / FADE_DURATION)
+                            # Logarithmic fade: starts fast, then lingers
+                            # At progress=0: alpha=255, at progress=1: alpha=0
+                            # Drops quickly at first, then slows down
+                            # Using 1 - sqrt(progress): steep initial drop, then lingers
+                            log_alpha = 1.0 - math.sqrt(fade_progress)
+                            fade_alpha = int(255 * log_alpha)
+                            is_last_lyric_faded = True
+
+                            logger.info(
+                                f"LAST_LYRIC_FADE: song='{current_title}', "
+                                f"elapsed={elapsed_since_last_lyric:.2f}s, "
+                                f"fade_start={fade_start_threshold:.2f}s, "
+                                f"progress={fade_progress:.2f}, log_alpha={log_alpha:.2f}, alpha={fade_alpha}"
                             )
-                    else:
-                        # Reset counter when song or lyric changes
-                        self._stuck_frame_counter = 0
-                        self._last_logged_song = current_title
-                        self._last_logged_lyric_time = current_line.global_time_seconds
-                        self._last_logged_lyric_text = current_line.text
+                        else:
+                            is_last_lyric_faded = False
+                            logger.info(
+                                f"LAST_LYRIC_NO_FADE: song='{current_title}', "
+                                f"elapsed={elapsed_since_last_lyric:.2f}s <= fade_start={fade_start_threshold:.2f}s"
+                            )
 
-                    bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
-                    text_width = bbox[2] - bbox[0]
-                    x = (width - text_width) // 2
-                    y = height // 2 - (bbox[3] - bbox[1]) // 2
+                    # Only render if not fully faded
+                    if current_index >= 0:
+                        # Detect potentially stuck lyrics (same lyric for > 20 seconds)
+                        is_same_song = (self._last_logged_song == current_title)
+                        is_same_lyric_time = (self._last_logged_lyric_time == current_line.global_time_seconds)
+                        is_same_text = (self._last_logged_lyric_text == current_line.text)
 
-                    draw.text((x, y), current_line.text, font=current_font, fill=self.template.highlight_color)
+                        if is_same_song and (is_same_lyric_time or is_same_text):
+                            self._stuck_frame_counter += 1
+                            stuck_duration = self._stuck_frame_counter / 24.0  # at 24fps
 
-                    # Next line: 50% transparent, pushed 200px lower
-                    next_index = current_index + 1
-                    if next_index < len(current_song_lyrics):
-                        next_line = current_song_lyrics[next_index]
-                        next_font = font
+                            # Warn if same lyric stuck for > 20 seconds
+                            if self._stuck_frame_counter == 20 * 24:  # 20 seconds at 24fps
+                                logger.warning(
+                                    f"LYRIC_STUCK_DETECTED: song='{current_title}', "
+                                    f"time={current_time:.3f}s, "
+                                    f"stuck_for={stuck_duration:.1f}s, "
+                                    f"lyric_global_time={current_line.global_time_seconds:.3f}s, "
+                                    f"text='{current_line.text}'"
+                                )
+                            # Log when continuing to show last lyric past its timestamp (debug only)
+                            elif current_time > last_lyric_time + 5:  # 5 seconds past last lyric
+                                logger.debug(
+                                    f"LYRIC_HOLDING_LAST: song='{current_title}', "
+                                    f"time={current_time:.3f}s > last_lyric={last_lyric_time:.3f}s, "
+                                    f"holding_for={current_time - last_lyric_time:.1f}s, "
+                                    f"showing_lyric='{current_line.text}'"
+                                )
+                        else:
+                            # Reset counter when song or lyric changes
+                            self._stuck_frame_counter = 0
+                            self._last_logged_song = current_title
+                            self._last_logged_lyric_time = current_line.global_time_seconds
+                            self._last_logged_lyric_text = current_line.text
 
-                        bbox = draw.textbbox((0, 0), next_line.text, font=next_font)
+                        bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
                         text_width = bbox[2] - bbox[0]
                         x = (width - text_width) // 2
-                        y = height // 2 + 200
+                        y = height // 2 - (bbox[3] - bbox[1]) // 2
 
-                        # 50% transparent: convert RGB to RGBA with alpha = 128
-                        next_color = (*self.template.text_color, 128)
-                        draw.text((x, y), next_line.text, font=next_font, fill=next_color)
+                        # Apply fade alpha to highlight color
+                        if fade_alpha < 255:
+                            # For fading, create a temporary layer for proper alpha blending
+                            text_layer = Image.new('RGBA', (text_width, bbox[3] - bbox[1]), (0, 0, 0, 0))
+                            text_draw = ImageDraw.Draw(text_layer)
+                            # Draw at (0, 0) - layer is sized to fit text exactly
+                            text_draw.text((0, 0), current_line.text, font=current_font,
+                                         fill=self.template.highlight_color + (fade_alpha,))
+                            img.paste(text_layer, (x, y + bbox[1]), text_layer)
+                        else:
+                            draw.text((x, y), current_line.text, font=current_font, fill=self.template.highlight_color)
+
+                    # Next line: 50% transparent, pushed 200px lower
+                    # Skip next line if last lyric is faded (would incorrectly show first lyric)
+                    if not is_last_lyric_faded:
+                        next_index = current_index + 1
+                        if next_index < len(current_song_lyrics):
+                            next_line = current_song_lyrics[next_index]
+                            next_font = font
+
+                            bbox = draw.textbbox((0, 0), next_line.text, font=next_font)
+                            text_width = bbox[2] - bbox[0]
+                            x = (width - text_width) // 2
+                            y = height // 2 + 200
+
+                            # If last lyric is fading, also fade next line from 50% to 0%
+                            if is_last_lyric and fade_alpha < 255:
+                                fade_progress = 1.0 - (fade_alpha / 255.0)
+                                next_alpha = int(128 * (1 - fade_progress))  # Start at 50%, fade to 0
+                            else:
+                                next_alpha = 128
+
+                            # Render with alpha using temporary layer
+                            if next_alpha < 255:
+                                text_layer = Image.new('RGBA', (text_width, bbox[3] - bbox[1]), (0, 0, 0, 0))
+                                text_draw = ImageDraw.Draw(text_layer)
+                                text_draw.text((0, 0), next_line.text, font=next_font,
+                                             fill=self.template.text_color + (next_alpha,))
+                                img.paste(text_layer, (x, y + bbox[1]), text_layer)
+                            else:
+                                draw.text((x, y), next_line.text, font=next_font, fill=self.template.text_color)
 
         return img
 
