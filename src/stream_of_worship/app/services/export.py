@@ -277,6 +277,21 @@ class ExportService:
             if self._check_cancelled():
                 return job
 
+            # Validate LRC files are available for video export
+            if include_video:
+                missing_lrc = []
+                for item in items:
+                    if not item.recording_hash_prefix:
+                        missing_lrc.append(f"{item.song_title} (no recording)")
+                    else:
+                        lrc_path = self.asset_cache.download_lrc(item.recording_hash_prefix)
+                        if not lrc_path:
+                            missing_lrc.append(f"{item.song_title} (no LRC file)")
+                if missing_lrc:
+                    error_msg = f"Cannot export video: missing lyrics for: {', '.join(missing_lrc)}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+
             # Step 2: Download assets and generate audio
             self._update_state(
                 ExportState.GENERATING_AUDIO,

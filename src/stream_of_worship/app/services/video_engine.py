@@ -842,8 +842,8 @@ class VideoEngine:
                 logger.info(f"  '{current_song}': {song_lyric_count} lyrics")
 
         if not all_lyrics:
-            # No lyrics - generate blank video
-            logger.warning(f"VIDEO: NO LYRICS FOUND - generating blank video")
+            # No lyrics - fail the export
+            raise ValueError("No lyrics (LRC) data available for any songs in the songset")
             return self._generate_blank_video(
                 audio_result.output_path, output_path, fps=fps
             )
