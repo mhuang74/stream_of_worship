@@ -80,6 +80,7 @@ async def _run_whisper_transcription(
     model_name: str,
     language: str,
     device: str,
+    lyrics_text: Optional[str] = None,
 ) -> List[WhisperPhrase]:
     """Run Whisper transcription with phrase-level timestamps.
 
@@ -124,14 +125,24 @@ async def _run_whisper_transcription(
         logger.info(f"Running Whisper transcription: {audio_path}")
         transcribe_start = time.time()
 
-        # Initial prompt in Chinese for better recognition of worship song lyrics
-        initial_prompt = "这是一首中文敬拜歌的歌詞"
+        # Build dynamic initial prompt with lyrics if available
+        if lyrics_text:
+            # Take first 50 lines and truncate to 2000 characters max
+            lyrics_truncated = "\n".join(lyrics_text.split("\n")[:50])
+            if len(lyrics_truncated) > 2000:
+                lyrics_truncated = lyrics_truncated[:2000]
+            initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
+            logger.info(f"Using lyrics-enhanced initial prompt ({len(lyrics_truncated)} chars)")
+        else:
+            initial_prompt = "这是一首中文敬拜歌的歌詞"
+            logger.info("Using default initial prompt (no lyrics provided)")
 
         segments, info = model.transcribe(
             str(audio_path),
             language=language,
             beam_size=5,
-            vad_filter=False,  # Disabled - audio is already vocal stem from Demucs
+            vad_filter=True,
+            condition_on_previous_text=True,
             initial_prompt=initial_prompt,
         )
 
@@ -532,6 +543,7 @@ async def generate_lrc(
             model_name=options.whisper_model,
             language=options.language,
             device=settings.SOW_WHISPER_DEVICE,
+            lyrics_text=lyrics_text,
         )
 
     # Step 2: LLM alignment
