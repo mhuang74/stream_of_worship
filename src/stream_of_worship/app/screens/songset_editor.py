@@ -243,18 +243,23 @@ class SongsetEditorScreen(Screen):
 
     def _get_selected_item(self) -> Optional[SongsetItem]:
         """Get the currently selected item, or the cursor row if none selected."""
-        if self.state.selected_item:
-            return self.state.selected_item
+        item_id = None
 
-        # If no explicit selection, use cursor row
-        table = self.query_one("#items_table", DataTable)
-        if table.cursor_row is not None:
-            rows = list(table.rows.keys())
-            if table.cursor_row < len(rows):
-                item_id = rows[table.cursor_row].value
-                for item in self.items:
-                    if item.id == item_id:
-                        return item
+        if self.state.selected_item:
+            item_id = self.state.selected_item.id
+        else:
+            # If no explicit selection, use cursor row
+            table = self.query_one("#items_table", DataTable)
+            if table.cursor_row is not None:
+                rows = list(table.rows.keys())
+                if table.cursor_row < len(rows):
+                    item_id = rows[table.cursor_row].value
+
+        # Always look up from current items list to avoid stale object references
+        if item_id is not None:
+            for item in self.items:
+                if item.id == item_id:
+                    return item
 
         return None
 
@@ -415,6 +420,7 @@ class SongsetEditorScreen(Screen):
         try:
             current_index = self.items.index(item)
         except ValueError:
+            self.notify("Selected song not found in list", severity="error")
             return
 
         if current_index == 0:
@@ -443,6 +449,7 @@ class SongsetEditorScreen(Screen):
         try:
             current_index = self.items.index(item)
         except ValueError:
+            self.notify("Selected song not found in list", severity="error")
             return
 
         if current_index >= len(self.items) - 1:

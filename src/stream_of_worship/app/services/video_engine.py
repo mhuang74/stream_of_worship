@@ -712,7 +712,7 @@ class VideoEngine:
                         text_width = bbox[2] - bbox[0]
                         text_height = bbox[3] - bbox[1]
                         x = (width - text_width) // 2
-                        y = height // 2 - text_height // 2
+                        y = int(height * 0.33) - text_height // 2
 
                         # Always use layer rendering for consistent positioning
                         padding = 10

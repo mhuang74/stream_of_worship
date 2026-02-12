@@ -61,6 +61,12 @@ class ExportProgressScreen(Screen):
         self.export_service.register_progress_callback(self._on_progress)
         self.export_service.register_completion_callback(self._on_complete)
 
+        # Check if already exporting - if so, just show existing progress
+        if self.export_service.is_exporting:
+            status_label = self.query_one("#status_label", Label)
+            status_label.update("[bold]Export already in progress...[/bold]")
+            return
+
         # Start export
         self._start_export()
 
