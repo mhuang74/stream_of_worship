@@ -92,6 +92,9 @@ class SongsetItem:
         tempo_bpm: Joined recording tempo (not in DB, populated by query)
         recording_key: Joined recording key (not in DB, populated by query)
         loudness_db: Joined recording loudness (not in DB, populated by query)
+        song_composer: Joined song composer (not in DB, populated by query)
+        song_lyricist: Joined song lyricist (not in DB, populated by query)
+        song_album_name: Joined song album name (not in DB, populated by query)
     """
 
     id: str
@@ -113,6 +116,9 @@ class SongsetItem:
     tempo_bpm: Optional[float] = None
     recording_key: Optional[str] = None
     loudness_db: Optional[float] = None
+    song_composer: Optional[str] = None
+    song_lyricist: Optional[str] = None
+    song_album_name: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: tuple, detailed: bool = False) -> "SongsetItem":
@@ -145,6 +151,9 @@ class SongsetItem:
                 tempo_bpm=row[14],
                 recording_key=row[15],
                 loudness_db=row[16] if len(row) > 16 else None,
+                song_composer=row[17] if len(row) > 17 else None,
+                song_lyricist=row[18] if len(row) > 18 else None,
+                song_album_name=row[19] if len(row) > 19 else None,
             )
         else:
             # Basic query
@@ -186,6 +195,9 @@ class SongsetItem:
             "tempo_bpm": self.tempo_bpm,
             "recording_key": self.recording_key,
             "loudness_db": self.loudness_db,
+            "song_composer": self.song_composer,
+            "song_lyricist": self.song_lyricist,
+            "song_album_name": self.song_album_name,
         }
 
     @classmethod

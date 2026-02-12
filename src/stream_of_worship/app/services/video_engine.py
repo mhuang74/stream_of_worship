@@ -312,6 +312,177 @@ class VideoEngine:
 
         return max(3.0, duration)
 
+    def _render_intro_info(
+        self,
+        segment: AudioSegmentInfo,
+        current_time: float,
+        first_lyric_time: float,
+        img: Image.Image,
+    ) -> int:
+        """Render song intro info during the gap before first lyric.
+
+        Displays song metadata (title, album, composer, lyricist) with Traditional
+        Chinese labels during the intro period, with a fade-out transition before
+        lyrics start.
+
+        Timeline:
+        - Transition window: info displayed (no header title)
+        - Fade-out period (4s): info fades out, header title still hidden
+        - Title-only period (3s): only header title shown
+        - After first lyric: normal lyrics display with header title
+
+        Short intro fallback (< 7s gap):
+        - < 3s gap: skip intro entirely, show header title only
+        - 3-7s gap: allocate 60% to info, 40% to fade, no title-only period
+
+        Args:
+            segment: Current audio segment with song metadata
+            current_time: Current playback time in seconds
+            first_lyric_time: Global time when first lyric appears
+            img: Image to render onto
+
+        Returns:
+            Alpha value (0-255) for the intro info layer, 0 if not in intro period
+        """
+        segment_start = segment.start_time_seconds
+        gap_duration = first_lyric_time - segment_start
+
+        # Not in intro period
+        if current_time >= first_lyric_time:
+            return 0
+
+        # Short intro: < 3s gap - skip intro entirely
+        if gap_duration < 3.0:
+            logger.debug(
+                f"INTRO_SKIP: song='{segment.item.song_title}', "
+                f"gap={gap_duration:.2f}s (< 3s), showing title only"
+            )
+            return 0
+
+        width, height = self.template.resolution
+        draw = ImageDraw.Draw(img)
+        font = self._get_font(int(self.template.font_size * 0.9))
+
+        # Calculate phases based on gap duration
+        if gap_duration < 7.0:
+            # Short intro: 60% info, 40% fade, no title-only period
+            info_duration = gap_duration * 0.6
+            fade_duration = gap_duration * 0.4
+            title_only_duration = 0.0
+            intro_mode = "short"
+        else:
+            # Normal intro: transition window + 4s fade + 3s title-only
+            fade_duration = 4.0
+            title_only_duration = 3.0
+            info_duration = gap_duration - fade_duration - title_only_duration
+            intro_mode = "normal"
+
+        time_into_gap = current_time - segment_start
+
+        # Log at the start of intro and at phase transitions
+        phase = None
+        if time_into_gap < info_duration:
+            phase = "info"
+        elif time_into_gap < info_duration + fade_duration:
+            phase = "fade"
+        else:
+            phase = "title_only"
+
+        # Log once per second during intro
+        if int(current_time * 24) % 24 == 0:
+            logger.info(
+                f"INTRO_PHASE: song='{segment.item.song_title}', "
+                f"mode={intro_mode}, phase={phase}, "
+                f"time_into_gap={time_into_gap:.2f}s, "
+                f"info_dur={info_duration:.2f}s, fade_dur={fade_duration:.2f}s, "
+                f"title_only_dur={title_only_duration:.2f}s"
+            )
+
+        # Title-only period: don't render intro info
+        if time_into_gap >= info_duration + fade_duration:
+            logger.debug(
+                f"INTRO_TITLE_ONLY: song='{segment.item.song_title}', "
+                f"time_into_gap={time_into_gap:.2f}s, showing header title"
+            )
+            return 0
+
+        # Build info lines with Traditional Chinese labels
+        info_lines = []
+        item = segment.item
+
+        if item.song_title:
+            info_lines.append(f"歌曲：{item.song_title}")
+        if item.song_album_name:
+            info_lines.append(f"專輯：{item.song_album_name}")
+        if item.song_composer:
+            info_lines.append(f"作曲：{item.song_composer}")
+        if item.song_lyricist:
+            info_lines.append(f"作詞：{item.song_lyricist}")
+        info_lines.append("讚美之泉音樂事工")
+
+        if not info_lines:
+            return 0
+
+        # Calculate alpha based on phase
+        alpha = 255
+        if time_into_gap >= info_duration:
+            # In fade-out period
+            fade_progress = (time_into_gap - info_duration) / fade_duration
+            # Use sqrt-based fade for smooth transition (similar to last lyric fade)
+            alpha = int(255 * (1.0 - math.sqrt(fade_progress)))
+            logger.info(
+                f"INTRO_FADE: song='{segment.item.song_title}', "
+                f"fade_progress={fade_progress:.2f}, alpha={alpha}, "
+                f"time_into_gap={time_into_gap:.2f}s, info_duration={info_duration:.2f}s"
+            )
+        elif int(current_time * 24) % 24 == 0:
+            # Log during info phase once per second
+            logger.info(
+                f"INTRO_INFO_DISPLAY: song='{segment.item.song_title}', "
+                f"alpha={alpha}, time_into_gap={time_into_gap:.2f}s"
+            )
+
+        # Calculate total block height
+        line_height = int(self.template.font_size * 1.3)
+        total_height = len(info_lines) * line_height
+
+        # Render each line left-aligned, block centered horizontally
+        base_y = height // 2 - total_height // 2
+
+        for i, line in enumerate(info_lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+
+            # Center horizontally
+            x = (width - text_width) // 2
+            y = base_y + i * line_height
+
+            # Use layer rendering for alpha support
+            padding = 10
+            text_layer = Image.new(
+                'RGBA',
+                (text_width + padding * 2, text_height + padding * 2),
+                (0, 0, 0, 0)
+            )
+            text_draw = ImageDraw.Draw(text_layer)
+            text_draw.text(
+                (padding - bbox[0], padding - bbox[1]),
+                line,
+                font=font,
+                fill=self.template.text_color + (alpha,)
+            )
+            img.paste(text_layer, (x - padding, y - padding), text_layer)
+
+        # Log completion of intro rendering
+        if int(current_time * 24) % 24 == 0:
+            logger.debug(
+                f"INTRO_RENDER_COMPLETE: song='{segment.item.song_title}', "
+                f"lines_rendered={len(info_lines)}, alpha={alpha}"
+            )
+
+        return alpha
+
     def _render_frame(
         self,
         lyrics: list[GlobalLRCLine],
@@ -335,6 +506,7 @@ class VideoEngine:
 
         # Find current song based on segment timing
         current_title = ""
+        current_segment: Optional[AudioSegmentInfo] = None
         current_segment_start = None
         current_segment_end = None
         for segment in segments:
@@ -342,6 +514,7 @@ class VideoEngine:
             segment_end = segment_start + segment.duration_seconds
             if segment_start <= current_time < segment_end:
                 current_title = segment.item.song_title or "Unknown"
+                current_segment = segment
                 current_segment_start = segment_start
                 current_segment_end = segment_end
                 break
@@ -354,14 +527,6 @@ class VideoEngine:
             else:
                 logger.debug(f"FRAME: time={current_time:.3f}s -> NO SEGMENT MATCH")
 
-        # Draw title at top (always show when song is playing)
-        if current_title:
-            title_font = self._get_font(int(self.template.font_size * 0.8))
-            bbox = draw.textbbox((0, 0), current_title, font=title_font)
-            text_width = bbox[2] - bbox[0]
-            x = (width - text_width) // 2
-            draw.text((x, 50), current_title, font=title_font, fill=self.template.text_color)
-
         # Group lyrics by title for easy lookup
         lyrics_by_song: dict[str, list[GlobalLRCLine]] = {}
         for line in lyrics:
@@ -371,6 +536,39 @@ class VideoEngine:
 
         # Find active lyrics only for the current song
         current_song_lyrics = lyrics_by_song.get(current_title, [])
+
+        # Track whether we're showing intro info (to suppress header title)
+        intro_info_alpha = 0
+
+        # Handle intro period before first lyric
+        if current_segment and current_song_lyrics:
+            first_lyric_time = current_song_lyrics[0].global_time_seconds
+
+            if current_time < first_lyric_time:
+                intro_info_alpha = self._render_intro_info(
+                    current_segment, current_time, first_lyric_time, img
+                )
+                if intro_info_alpha > 0 and int(current_time * 24) % 24 == 0:
+                    logger.info(
+                        f"FRAME_INTRO_ACTIVE: song='{current_title}', "
+                        f"time={current_time:.3f}s, intro_alpha={intro_info_alpha}, "
+                        f"header_title_suppressed=True"
+                    )
+            elif int(current_time * 24) % 24 == 0 and current_time < first_lyric_time + 1:
+                # Log when we've just passed the first lyric time (intro ended)
+                logger.info(
+                    f"INTRO_COMPLETE: song='{current_title}', "
+                    f"first_lyric_time={first_lyric_time:.3f}s, transitioning to lyrics"
+                )
+
+        # Draw title at top (show when song is playing, unless intro info is displayed)
+        # Show title if: no title, intro info has faded (alpha=0), or we're past the intro
+        if current_title and intro_info_alpha == 0:
+            title_font = self._get_font(int(self.template.font_size * 0.8))
+            bbox = draw.textbbox((0, 0), current_title, font=title_font)
+            text_width = bbox[2] - bbox[0]
+            x = (width - text_width) // 2
+            draw.text((x, 50), current_title, font=title_font, fill=self.template.text_color)
 
         # Only show lyrics if current time is within this song's lyric time range
         if current_song_lyrics:
@@ -460,12 +658,14 @@ class VideoEngine:
                             fade_alpha = int(255 * log_alpha)
                             is_last_lyric_faded = True
 
-                            logger.info(
-                                f"LAST_LYRIC_FADE: song='{current_title}', "
-                                f"elapsed={elapsed_since_last_lyric:.2f}s, "
-                                f"fade_start={fade_start_threshold:.2f}s, "
-                                f"progress={fade_progress:.2f}, log_alpha={log_alpha:.2f}, alpha={fade_alpha}"
-                            )
+                            # Log fade start once, then periodically
+                            if int(current_time * 24) % 24 == 0 or fade_progress < 0.05:
+                                logger.info(
+                                    f"LAST_LYRIC_FADE: song='{current_title}', "
+                                    f"elapsed={elapsed_since_last_lyric:.2f}s, "
+                                    f"fade_start={fade_start_threshold:.2f}s, "
+                                    f"progress={fade_progress:.2f}, log_alpha={log_alpha:.2f}, alpha={fade_alpha}"
+                                )
                         else:
                             is_last_lyric_faded = False
                             logger.info(
@@ -510,20 +710,18 @@ class VideoEngine:
 
                         bbox = draw.textbbox((0, 0), current_line.text, font=current_font)
                         text_width = bbox[2] - bbox[0]
+                        text_height = bbox[3] - bbox[1]
                         x = (width - text_width) // 2
-                        y = height // 2 - (bbox[3] - bbox[1]) // 2
+                        y = height // 2 - text_height // 2
 
-                        # Apply fade alpha to highlight color
-                        if fade_alpha < 255:
-                            # For fading, create a temporary layer for proper alpha blending
-                            text_layer = Image.new('RGBA', (text_width, bbox[3] - bbox[1]), (0, 0, 0, 0))
-                            text_draw = ImageDraw.Draw(text_layer)
-                            # Draw at (0, 0) - layer is sized to fit text exactly
-                            text_draw.text((0, 0), current_line.text, font=current_font,
-                                         fill=self.template.highlight_color + (fade_alpha,))
-                            img.paste(text_layer, (x, y + bbox[1]), text_layer)
-                        else:
-                            draw.text((x, y), current_line.text, font=current_font, fill=self.template.highlight_color)
+                        # Always use layer rendering for consistent positioning
+                        padding = 10
+                        text_layer = Image.new('RGBA', (text_width + padding*2, text_height + padding*2), (0, 0, 0, 0))
+                        text_draw = ImageDraw.Draw(text_layer)
+                        # Draw with bbox offset to match pillow's draw.text() positioning
+                        text_draw.text((padding - bbox[0], padding - bbox[1]), current_line.text, font=current_font,
+                                       fill=self.template.highlight_color + (fade_alpha,))
+                        img.paste(text_layer, (x - padding, y - padding), text_layer)
 
                     # Next line: 50% transparent, pushed 200px lower
                     # Skip next line if last lyric is faded (would incorrectly show first lyric)
@@ -535,6 +733,7 @@ class VideoEngine:
 
                             bbox = draw.textbbox((0, 0), next_line.text, font=next_font)
                             text_width = bbox[2] - bbox[0]
+                            text_height = bbox[3] - bbox[1]
                             x = (width - text_width) // 2
                             y = height // 2 + 200
 
@@ -542,18 +741,22 @@ class VideoEngine:
                             if is_last_lyric and fade_alpha < 255:
                                 fade_progress = 1.0 - (fade_alpha / 255.0)
                                 next_alpha = int(128 * (1 - fade_progress))  # Start at 50%, fade to 0
+                                if int(current_time * 24) % 24 == 0:
+                                    logger.info(
+                                        f"NEXT_LINE_FADE: song='{current_title}', "
+                                        f"next_alpha={next_alpha}, fade_progress={fade_progress:.2f}, "
+                                        f"last_lyric_fade_alpha={fade_alpha}"
+                                    )
                             else:
                                 next_alpha = 128
 
-                            # Render with alpha using temporary layer
-                            if next_alpha < 255:
-                                text_layer = Image.new('RGBA', (text_width, bbox[3] - bbox[1]), (0, 0, 0, 0))
-                                text_draw = ImageDraw.Draw(text_layer)
-                                text_draw.text((0, 0), next_line.text, font=next_font,
-                                             fill=self.template.text_color + (next_alpha,))
-                                img.paste(text_layer, (x, y + bbox[1]), text_layer)
-                            else:
-                                draw.text((x, y), next_line.text, font=next_font, fill=self.template.text_color)
+                            # Always use layer rendering for consistent positioning
+                            padding = 10
+                            text_layer = Image.new('RGBA', (text_width + padding*2, text_height + padding*2), (0, 0, 0, 0))
+                            text_draw = ImageDraw.Draw(text_layer)
+                            text_draw.text((padding - bbox[0], padding - bbox[1]), next_line.text, font=next_font,
+                                           fill=self.template.text_color + (next_alpha,))
+                            img.paste(text_layer, (x - padding, y - padding), text_layer)
 
         return img
 

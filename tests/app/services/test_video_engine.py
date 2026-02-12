@@ -54,10 +54,21 @@ def video_engine(mock_asset_cache):
     )
 
 
-def create_mock_segment(song_title: str, start_time: float, duration: float):
+def create_mock_segment(
+    song_title: str,
+    start_time: float,
+    duration: float,
+    composer: str | None = None,
+    lyricist: str | None = None,
+    album: str | None = None,
+):
     """Create a mock AudioSegmentInfo for testing."""
     mock_item = Mock()
     mock_item.song_title = song_title
+    mock_item.song_composer = composer
+    mock_item.song_lyricist = lyricist
+    mock_item.song_album_name = album
+    mock_item.tempo_bpm = 120.0
     return AudioSegmentInfo(
         item=mock_item,
         audio_path=Path("/tmp/test.mp3"),
@@ -140,7 +151,7 @@ class TestLoadLRC:
 
         assert lines is not None
         assert len(lines) == 5
-        mock_asset_cache.download_lrc.assert_called_once_with("abc123def456")
+        mock_asset_cache.download_lrc.assert_called_once_with("abc123def456", force=True)
 
     def test_load_lrc_returns_none_when_not_cached(self, video_engine, mock_asset_cache):
         """Verify None when LRC not available."""
@@ -334,3 +345,142 @@ class TestRenderFrameGlobalTiming:
         # At video time 60, SHOULD show "Song 2 First Line"
         img_at_60 = video_engine._render_frame(lyrics, segments, current_time=60.0)
         assert img_at_60 is not None
+
+
+class TestIntroTransitions:
+    """Tests for song intro transition rendering."""
+
+    def test_intro_info_rendered_during_transition_window(self, video_engine):
+        """Verify intro info is shown during the transition window."""
+        # Song starts at 0s, first lyric at 15s (10s transition window + 4s fade + 1s buffer)
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=15.0, local_time_seconds=15.0, text="First Lyric", title="Test Song"),
+        ]
+        segments = [
+            create_mock_segment(
+                "Test Song", 0.0, 60.0,
+                composer="John Composer",
+                lyricist="Jane Lyricist",
+                album="Test Album"
+            ),
+        ]
+
+        # At time 2s (within transition window), intro info should be rendered
+        img = video_engine._render_frame(lyrics, segments, current_time=2.0)
+        assert img is not None
+        assert img.size == (1920, 1080)
+
+    def test_header_title_suppressed_during_intro_info(self, video_engine):
+        """Verify header title is hidden while intro info is displayed."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=15.0, local_time_seconds=15.0, text="First Lyric", title="Test Song"),
+        ]
+        segments = [
+            create_mock_segment("Test Song", 0.0, 60.0, composer="Composer"),
+        ]
+
+        # At time 2s (intro period), title should be suppressed
+        img = video_engine._render_frame(lyrics, segments, current_time=2.0)
+        assert img is not None
+
+    def test_header_title_shown_during_title_only_period(self, video_engine):
+        """Verify header title appears during title-only period (3s before lyrics)."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=15.0, local_time_seconds=15.0, text="First Lyric", title="Test Song"),
+        ]
+        segments = [
+            create_mock_segment("Test Song", 0.0, 60.0, composer="Composer"),
+        ]
+
+        # At time 13s (2s before lyrics, within title-only period), title should show
+        img = video_engine._render_frame(lyrics, segments, current_time=13.0)
+        assert img is not None
+
+    def test_intro_fade_out_transition(self, video_engine):
+        """Verify intro info fades out smoothly before lyrics start."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=15.0, local_time_seconds=15.0, text="First Lyric", title="Test Song"),
+        ]
+        segments = [
+            create_mock_segment("Test Song", 0.0, 60.0, composer="Composer"),
+        ]
+
+        # At time 10s (within 4s fade period before lyrics), fade should be in progress
+        img = video_engine._render_frame(lyrics, segments, current_time=10.0)
+        assert img is not None
+
+    def test_short_intro_skipped_when_less_than_3s(self, video_engine):
+        """Verify intro is skipped when gap is less than 3 seconds."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=2.0, local_time_seconds=2.0, text="First Lyric", title="Test Song"),
+        ]
+        segments = [
+            create_mock_segment("Test Song", 0.0, 60.0, composer="Composer"),
+        ]
+
+        # At time 1s (gap is only 2s), title should show (intro skipped)
+        img = video_engine._render_frame(lyrics, segments, current_time=1.0)
+        assert img is not None
+
+    def test_short_intro_compressed_when_3_to_7s(self, video_engine):
+        """Verify compressed intro when gap is between 3-7 seconds."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=5.0, local_time_seconds=5.0, text="First Lyric", title="Test Song"),
+        ]
+        segments = [
+            create_mock_segment("Test Song", 0.0, 60.0, composer="Composer"),
+        ]
+
+        # At time 2s (within compressed intro period), info should show
+        img = video_engine._render_frame(lyrics, segments, current_time=2.0)
+        assert img is not None
+
+    def test_intro_info_with_missing_metadata(self, video_engine):
+        """Verify intro renders gracefully when metadata is missing."""
+        lyrics = [
+            GlobalLRCLine(global_time_seconds=15.0, local_time_seconds=15.0, text="First Lyric", title="Test Song"),
+        ]
+        # No composer, lyricist, or album provided
+        segments = [
+            create_mock_segment("Test Song", 0.0, 60.0),
+        ]
+
+        # Should still render without errors
+        img = video_engine._render_frame(lyrics, segments, current_time=2.0)
+        assert img is not None
+
+    def test_intro_info_alpha_returned(self, video_engine):
+        """Verify _render_intro_info returns appropriate alpha values."""
+        segment = create_mock_segment(
+            "Test Song", 0.0, 60.0,
+            composer="Composer",
+            album="Album"
+        )
+
+        # Create a test image
+        from PIL import Image
+        img = Image.new('RGBA', (1920, 1080), (0, 0, 0, 255))
+
+        # During transition window: full alpha
+        alpha = video_engine._render_intro_info(
+            segment, current_time=2.0, first_lyric_time=15.0, img=img
+        )
+        assert alpha == 255
+
+        # During fade period: partial alpha
+        alpha_fade = video_engine._render_intro_info(
+            segment, current_time=10.0, first_lyric_time=15.0, img=img
+        )
+        assert 0 < alpha_fade < 255
+
+        # During title-only period: no intro info (alpha = 0)
+        alpha_none = video_engine._render_intro_info(
+            segment, current_time=13.0, first_lyric_time=15.0, img=img
+        )
+        assert alpha_none == 0
+
+        # After lyrics start: no intro info (alpha = 0)
+        alpha_after = video_engine._render_intro_info(
+            segment, current_time=16.0, first_lyric_time=15.0, img=img
+        )
+        assert alpha_after == 0

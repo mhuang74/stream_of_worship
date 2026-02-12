@@ -91,7 +91,10 @@ SELECT
     r.duration_seconds,
     r.tempo_bpm,
     r.musical_key as recording_key,
-    r.loudness_db
+    r.loudness_db,
+    s.composer as song_composer,
+    s.lyricist as song_lyricist,
+    s.album_name as song_album_name
 FROM songset_items si
 JOIN songs s ON si.song_id = s.id
 LEFT JOIN recordings r ON si.recording_hash_prefix = r.hash_prefix
