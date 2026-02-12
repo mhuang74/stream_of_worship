@@ -538,7 +538,10 @@ async def generate_lrc(
 
     # Primary path: YouTube transcript + LLM correction
     if youtube_url:
-        logger.info(f"Trying YouTube transcript path for: {youtube_url}")
+        logger.info("=" * 80)
+        logger.info("LRC GENERATION: Attempting YouTube transcript path (primary)")
+        logger.info(f"YouTube URL: {youtube_url}")
+        logger.info("=" * 80)
         try:
             from .youtube_transcript import YouTubeTranscriptError, youtube_transcript_to_lrc
 
@@ -551,14 +554,17 @@ async def generate_lrc(
             # Write LRC file
             line_count = _write_lrc(lrc_lines, output_path)
             total_elapsed = time.time() - lrc_start
+            logger.info("=" * 80)
+            logger.info("LRC GENERATION: YouTube transcript path SUCCEEDED")
             logger.info(
-                f"YouTube transcript LRC: wrote {line_count} lines to {output_path} "
+                f"Wrote {line_count} lines to {output_path} "
                 f"(total time: {total_elapsed:.2f}s)"
             )
+            logger.info("=" * 80)
 
             # Log final LRC file contents
             logger.info("=" * 80)
-            logger.info("FINAL LRC FILE CONTENTS (YouTube path)")
+            logger.info("FINAL LRC FILE CONTENTS (via YouTube transcript)")
             logger.info("=" * 80)
             with open(output_path, "r", encoding="utf-8") as f:
                 for lrc_line in f:
@@ -569,9 +575,15 @@ async def generate_lrc(
             return output_path, line_count, []
 
         except (YouTubeTranscriptError, Exception) as e:
-            logger.warning(
-                f"YouTube transcript path failed, falling back to Whisper: {e}"
-            )
+            logger.warning("=" * 80)
+            logger.warning("LRC GENERATION: YouTube transcript path FAILED")
+            logger.warning(f"Reason: {e}")
+            logger.warning("Falling back to Whisper transcription + LLM alignment...")
+            logger.warning("=" * 80)
+    else:
+        logger.info("=" * 80)
+        logger.info("LRC GENERATION: No YouTube URL provided, using Whisper transcription directly")
+        logger.info("=" * 80)
 
     # Fallback path: Whisper transcription + LLM alignment
     logger.info(f"Starting Whisper LRC generation for {audio_path}")

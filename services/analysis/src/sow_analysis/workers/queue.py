@@ -491,6 +491,15 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
+        # Log LRC generation strategy
+        if request.youtube_url:
+            logger.info(
+                f"[{job.id}] YouTube URL provided: {request.youtube_url} "
+                f"— will try YouTube transcript first, Whisper as fallback"
+            )
+        else:
+            logger.info(f"[{job.id}] No YouTube URL — will use Whisper transcription directly")
+
         # Compute composite cache key based on audio hash + lyrics hash
         lrc_cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
         logger.info(f"[{job.id}] LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
