@@ -229,9 +229,6 @@ def main(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output file (default: stdout)"
     ),
-    offline: bool = typer.Option(
-        True, "--offline/--download", help="Only use cached files (default). Use --download to fetch from R2."
-    ),
     compute_type: str = typer.Option(
         "int8", "--compute-type", "-c", help="Compute type (int8/float16/float32)"
     ),
@@ -315,7 +312,7 @@ def main(
         if vocals_path.exists():
             audio_path = vocals_path
             typer.echo(f"Using cached vocals stem: {audio_path}", err=True)
-        elif not offline:
+        else:
             typer.echo("Downloading vocals stem...", err=True)
             audio_path = cache.download_stem(hash_prefix, "vocals")
             if audio_path:
@@ -327,7 +324,7 @@ def main(
         if main_audio_path.exists():
             audio_path = main_audio_path
             typer.echo(f"Using cached main audio: {audio_path}", err=True)
-        elif not offline:
+        else:
             typer.echo("Downloading main audio...", err=True)
             audio_path = cache.download_audio(hash_prefix)
             if audio_path:
