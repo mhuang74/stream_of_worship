@@ -735,7 +735,7 @@ class VideoEngine:
                             text_width = bbox[2] - bbox[0]
                             text_height = bbox[3] - bbox[1]
                             x = (width - text_width) // 2
-                            y = height // 2 + 200
+                            y = int(height * 0.33) + 200
 
                             # If last lyric is fading, also fade next line from 50% to 0%
                             if is_last_lyric and fade_alpha < 255:
