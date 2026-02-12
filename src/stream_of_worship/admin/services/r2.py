@@ -73,6 +73,22 @@ class R2Client:
         self._client.upload_file(str(file_path), self.bucket, s3_key)
         return f"s3://{self.bucket}/{s3_key}"
 
+    def upload_lrc(self, file_path: Path, hash_prefix: str) -> str:
+        """Upload an LRC file to R2 under the hash-prefix directory.
+
+        The file is stored at ``{hash_prefix}/lyrics.lrc`` inside the bucket.
+
+        Args:
+            file_path: Local path to the LRC file
+            hash_prefix: 12-character hash prefix (R2 directory name)
+
+        Returns:
+            S3-style URL of the uploaded object
+        """
+        s3_key = f"{hash_prefix}/lyrics.lrc"
+        self._client.upload_file(str(file_path), self.bucket, s3_key)
+        return f"s3://{self.bucket}/{s3_key}"
+
     def download_audio(self, hash_prefix: str, dest_path: Path) -> Path:
         """Download an audio file from R2.
 

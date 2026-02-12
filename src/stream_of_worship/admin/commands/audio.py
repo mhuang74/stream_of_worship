@@ -1925,3 +1925,124 @@ def cache_assets(
     cache_dir = cache.cache_dir / hash_prefix
     console.print()
     console.print(f"[dim]Cache location: {cache_dir}[/dim]")
+
+
+@app.command("upload-lrc")
+def upload_lrc(
+    song_id: str = typer.Argument(..., help="Song ID to upload LRC for"),
+    lrc_file: Path = typer.Argument(..., help="Path to LRC file", exists=True),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Upload a manually created LRC file to R2.
+
+    Use this when:
+    1. The LRC generation service failed
+    2. You have a manually crafted/corrected LRC file
+    3. You want to override an existing LRC file
+
+    The LRC file format will be validated before upload.
+    """
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for song: {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Get song info for display
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+
+    # Validate LRC file format
+    console.print(f"[cyan]Validating LRC file: {lrc_file.name}[/cyan]")
+    try:
+        content = lrc_file.read_text(encoding="utf-8")
+        lrc_data = parse_lrc(content)
+    except ValueError as e:
+        console.print(f"[red]Invalid LRC file: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error reading LRC file: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Display LRC info preview
+    info_lines = [
+        f"[cyan]Song ID:[/cyan]     {song_id}",
+        f"[cyan]Song Title:[/cyan]  {song_title}",
+        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
+        f"[cyan]LRC File:[/cyan]    {lrc_file}",
+        f"[cyan]Line Count:[/cyan]  {lrc_data.line_count}",
+        f"[cyan]Duration:[/cyan]    {format_duration(lrc_data.duration_seconds)}",
+    ]
+
+    # Show existing LRC status
+    if recording.r2_lrc_url:
+        info_lines.append("")
+        info_lines.append(f"[yellow]Existing LRC will be: {recording.r2_lrc_url}[/yellow]")
+    elif recording.lrc_status == "processing":
+        info_lines.append("")
+        info_lines.append(f"[yellow]Existing LRC job: {recording.lrc_job_id}[/yellow]")
+    elif recording.lrc_status == "failed":
+        info_lines.append("")
+        info_lines.append(f"[yellow]Previous LRC generation failed[/yellow]")
+
+    console.print(Panel.fit("\n".join(info_lines), title="LRC Upload Preview", border_style="cyan"))
+
+    # Confirm upload
+    if not _prompt_confirmation("Upload this LRC file?"):
+        console.print("[yellow]Upload cancelled.[/yellow]")
+        raise typer.Exit(0)
+
+    # Initialize R2 client
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Upload to R2
+    console.print(f"[cyan]Uploading LRC to R2...[/cyan]")
+    try:
+        r2_url = r2_client.upload_lrc(lrc_file, recording.hash_prefix)
+        console.print(f"[green]Uploaded: {r2_url}[/green]")
+    except Exception as e:
+        console.print(f"[red]Upload failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Update database
+    db_client.update_recording_lrc(
+        hash_prefix=recording.hash_prefix,
+        r2_lrc_url=r2_url,
+    )
+
+    # Display success summary
+    console.print()
+    console.print(Panel.fit(
+        f"[green]LRC uploaded successfully![/green]\n\n"
+        f"[cyan]Song:[/cyan] {song_title}\n"
+        f"[cyan]Lines:[/cyan] {lrc_data.line_count}\n"
+        f"[cyan]Duration:[/cyan] {format_duration(lrc_data.duration_seconds)}\n"
+        f"[cyan]R2 URL:[/cyan] {r2_url}",
+        title="Upload Complete",
+        border_style="green",
+    ))
