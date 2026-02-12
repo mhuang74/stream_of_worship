@@ -331,6 +331,7 @@ def _submit_lrc_job(
             language=language,
             use_vocals_stem=not no_vocals,
             force=force,
+            youtube_url=recording.youtube_url or "",
         )
 
         # Update DB
@@ -1155,6 +1156,7 @@ def lrc_recording(
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,
+                youtube_url=recording.youtube_url or "",
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")

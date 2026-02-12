@@ -500,8 +500,12 @@ async def generate_lrc(
     options: LrcOptions,
     output_path: Optional[Path] = None,
     cached_phrases: Optional[List[WhisperPhrase]] = None,
+    youtube_url: Optional[str] = None,
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
+
+    If a youtube_url is provided, tries YouTube transcript + LLM correction first.
+    Falls back to Whisper + LLM alignment on failure or when no URL is given.
 
     Args:
         audio_path: Path to audio file (or vocals stem)
@@ -509,6 +513,7 @@ async def generate_lrc(
         options: LRC generation options
         output_path: Where to write the LRC file (default: audio_path with .lrc extension)
         cached_phrases: Optional cached Whisper transcription phrases to skip transcription
+        youtube_url: Optional YouTube URL for transcript-based LRC (primary path)
 
     Returns:
         Tuple of (path to LRC file, number of lines, transcription phrases)
@@ -529,9 +534,47 @@ async def generate_lrc(
         logger.info(line)
     logger.info("=" * 80)
 
-    # Step 1: Get Whisper transcription (use cache if available)
-    logger.info(f"Starting LRC generation for {audio_path}")
     lrc_start = time.time()
+
+    # Primary path: YouTube transcript + LLM correction
+    if youtube_url:
+        logger.info(f"Trying YouTube transcript path for: {youtube_url}")
+        try:
+            from .youtube_transcript import YouTubeTranscriptError, youtube_transcript_to_lrc
+
+            lrc_lines = await youtube_transcript_to_lrc(
+                youtube_url=youtube_url,
+                lyrics_text=lyrics_text,
+                llm_model=options.llm_model,
+            )
+
+            # Write LRC file
+            line_count = _write_lrc(lrc_lines, output_path)
+            total_elapsed = time.time() - lrc_start
+            logger.info(
+                f"YouTube transcript LRC: wrote {line_count} lines to {output_path} "
+                f"(total time: {total_elapsed:.2f}s)"
+            )
+
+            # Log final LRC file contents
+            logger.info("=" * 80)
+            logger.info("FINAL LRC FILE CONTENTS (YouTube path)")
+            logger.info("=" * 80)
+            with open(output_path, "r", encoding="utf-8") as f:
+                for lrc_line in f:
+                    logger.info(lrc_line.rstrip("\n"))
+            logger.info("=" * 80)
+
+            # YouTube path doesn't produce Whisper phrases — return empty list
+            return output_path, line_count, []
+
+        except (YouTubeTranscriptError, Exception) as e:
+            logger.warning(
+                f"YouTube transcript path failed, falling back to Whisper: {e}"
+            )
+
+    # Fallback path: Whisper transcription + LLM alignment
+    logger.info(f"Starting Whisper LRC generation for {audio_path}")
 
     if cached_phrases is not None:
         logger.info(f"Using cached Whisper transcription with {len(cached_phrases)} phrases")

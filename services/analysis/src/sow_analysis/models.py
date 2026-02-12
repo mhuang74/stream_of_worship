@@ -56,6 +56,7 @@ class LrcJobRequest(BaseModel):
     audio_url: str
     content_hash: str
     lyrics_text: str
+    youtube_url: str = ""  # YouTube URL for transcript-based LRC (primary path)
     options: LrcOptions = Field(default_factory=LrcOptions)
 
 
