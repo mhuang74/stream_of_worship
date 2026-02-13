@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 3 of 5 complete → Phase 4 (Testing and Validation) in progress
-Plan: 2 of 3 — Phase 4 Plan 2: Qwen3 Regression Tests complete
-Status: Phase 3 complete, Phase 4 Plan 2 complete
-Last activity: 2026-02-14 — Completed Phase 4 Plan 2: Qwen3 Regression Tests
+Plan: 1 of 3 — Phase 4 Plan 1: map_segments_to_lines Unit Tests complete
+Status: Phase 3 complete, Phase 4 Plan 1 complete
+Last activity: 2026-02-14 — Completed Phase 4 Plan 1: map_segments_to_lines Unit Tests
 
-Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3 | [███░░░░░░░] 67% Phase 4
+Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3 | [██░░░░░░░░] 33% Phase 4
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 12
-- Average duration: 4.9 min
-- Total execution time: 0.98 hours
+- Average duration: 5.3 min
+- Total execution time: 1.06 hours
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [████████░░] 100% Phase 2 | [███████
 | Qwen3 Service Foundation | 4              | 4      | 7.3 min   | Complete |
 | Analysis Service Integration | 3              | 3      | 5.2 min   | Complete |
 | Fallback & Reliability | 3              | 3      | 2.7 min   | Complete |
-| Testing and Validation | 2              | 3      | 3.0 min   | In progress |
+| Testing and Validation | 1              | 3      | 5.4 min   | In progress |
 
 *Updated after each plan completion*
 | Phase 02-analysis-service-integration P01 | 5min | 2 tasks | 3 files |
@@ -40,8 +40,7 @@ Progress: [████████░░] 100% Phase 2 | [███████
 | Phase 03-fallback-reliability P01 | 2min | 2 tasks | 1 files |
 | Phase 03-fallback-reliability P02 | 2min | 2 tasks | 2 files |
 | Phase 03-fallback-reliability P03 | 4min | 6 tasks | 1 files |
-| Phase 04-testing-validation P01 | 1min | 0 tasks | 0 files |
-| Phase 04-testing-validation P02 | 3min | 2 tasks | 3 files |
+| Phase 04-testing-validation P01 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -66,6 +65,8 @@ Recent decisions affecting current work:
 - Phase 3 Plan 2: Duration calculated from Whisper phrases (max end time) - no need to re-analyze audio
 - Phase 3 Plan 3: Mock-based testing for Qwen3 fallback scenarios instead of integration tests
 - Phase 3 Plan 3: Capture mock objects from patch() context for proper assertion verification
+- Phase 4 Plan 1: Use pytest class-based organization for logical test grouping
+- Phase 4 Plan 1: normalize_text() removes whitespace/punctuation only, not Traditional/Simplified conversion
 - Phase 4 Plan 2: Use golden file comparison strategy for regression testing baseline
 - Phase 4 Plan 2: Mock Whisper transcription with realistic timing instead of actual transcription
 - Phase 4 Plan 2: Generate dummy audio file only for testing (transcription is mocked)
@@ -113,6 +114,10 @@ Recent decisions affecting current work:
 
 ### Phase 4 Deliverables
 
+- pytest configuration in qwen3 service (pyproject.toml)
+- Comprehensive unit tests for map_segments_to_lines() (34 test cases)
+- Coverage for: repeated choruses, empty lines, not found cases, Chinese worship lyrics
+- normalize_text() independently tested
 - Regression test framework comparing Qwen3 vs Whisper+LLM baseline (test_qwen3_regression.py)
 - parse_lrc_file() helper for LRC parsing into (time, text) tuples
 - Test fixtures: sample_lyrics.txt (worship song with repeated chorus)
@@ -132,5 +137,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed Phase 4 Plan 2 (Qwen3 Regression Tests) → Phase 4 Plan 2 complete
+Stopped at: Completed Phase 4 Plan 1 (map_segments_to_lines Unit Tests) → Phase 4 Plan 1 complete
 Resume file: None
