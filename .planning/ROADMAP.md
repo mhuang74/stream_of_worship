@@ -60,9 +60,9 @@ Plans:
 **Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 03-fallback-reliability-01-PLAN.md — Robust error handling and fallback logic for Qwen3 refinement
-- [ ] 03-fallback-reliability-02-PLAN.md — Duration validation to skip Qwen3 for long audio files
-- [ ] 03-fallback-reliability-03-PLAN.md — Mock Qwen3 service tests for all fallback scenarios
+- [x] 03-fallback-reliability-01-PLAN.md — Robust error handling and fallback logic for Qwen3 refinement
+- [x] 03-fallback-reliability-02-PLAN.md — Duration validation to skip Qwen3 for long audio files
+- [x] 03-fallback-reliability-03-PLAN.md — Mock Qwen3 service tests for all fallback scenarios
 
 #### Phase 4: Testing & Validation
 **Goal**: Verify through testing that Qwen3 improves timestamp accuracy
@@ -72,12 +72,12 @@ Plans:
   1. map_segments_to_lines() passes unit tests for repeated chorus scenarios
   2. Regression tests show Qwen3 output maintains or improves timing vs Whisper-only
   3. Integration test validates full LRC pipeline with Qwen3 enabled from end to end
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 04-01: Unit tests for map_segments_to_lines() edge cases
-- [ ] 04-02: Regression tests with golden LRC comparison
-- [ ] 04-03: End-to-end integration test with real audio/lyrics
+- [ ] 04-testing-validation-01-PLAN.md — Unit tests for map_segments_to_lines() with repeated chorus scenarios
+- [ ] 04-testing-validation-02-PLAN.md — Regression tests with golden LRC comparison
+- [ ] 04-testing-validation-03-PLAN.md — End-to-end integration test with Qwen3 enabled
 
 #### Phase 5: Performance & Production Readiness
 **Goal**: Optimize processing time and ensure production deployment readiness
@@ -102,6 +102,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|-----------|----------------|--------|-----------|
 | 1. Qwen3 Service Foundation | v1.1 | 4/4 | Complete | 2026-02-13 |
 | 2. Analysis Service Integration | v1.1 | 3/3 | Complete | 2026-02-13 |
-| 3. Fallback & Reliability | v1.1 | 0/3 | Not started | - |
+| 3. Fallback & Reliability | v1.1 | 3/3 | Complete | 2026-02-13 |
 | 4. Testing & Validation | v1.1 | 0/3 | Not started | - |
 | 5. Performance & Production Readiness | v1.1 | 0/3 | Not started | - |
