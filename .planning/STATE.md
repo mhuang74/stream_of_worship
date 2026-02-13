@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 3 of 5 complete → Phase 4 (Testing and Validation) in progress
-Plan: 1 of 3 — Phase 4 Plan 1: map_segments_to_lines Unit Tests complete
-Status: Phase 3 complete, Phase 4 Plan 1 complete
-Last activity: 2026-02-14 — Completed Phase 4 Plan 1: map_segments_to_lines Unit Tests
+Plan: 3 of 3 — Phase 4 Plan 3: LRC Pipeline Integration Tests complete
+Status: Phase 3 complete, Phase 4 Plan 3 complete
+Last activity: 2026-02-14 — Completed Phase 4 Plan 3: LRC Pipeline Integration Tests
 
-Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3 | [██░░░░░░░░] 33% Phase 4
+Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3 | [████████░░] 100% Phase 4
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 5.3 min
-- Total execution time: 1.06 hours
+- Total plans completed: 15
+- Average duration: 5.2 min
+- Total execution time: 1.3 hours
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [████████░░] 100% Phase 2 | [███████
 | Qwen3 Service Foundation | 4              | 4      | 7.3 min   | Complete |
 | Analysis Service Integration | 3              | 3      | 5.2 min   | Complete |
 | Fallback & Reliability | 3              | 3      | 2.7 min   | Complete |
-| Testing and Validation | 1              | 3      | 5.4 min   | In progress |
+| Testing and Validation | 3              | 3      | 4.4 min   | Complete |
 
 *Updated after each plan completion*
 | Phase 02-analysis-service-integration P01 | 5min | 2 tasks | 3 files |
@@ -41,6 +41,8 @@ Progress: [████████░░] 100% Phase 2 | [███████
 | Phase 03-fallback-reliability P02 | 2min | 2 tasks | 2 files |
 | Phase 03-fallback-reliability P03 | 4min | 6 tasks | 1 files |
 | Phase 04-testing-validation P01 | 5min | 2 tasks | 2 files |
+| Phase 04-testing-validation P02 | 5min | 2 tasks | 1 file |
+| Phase 04-testing-validation P03 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -70,6 +72,8 @@ Recent decisions affecting current work:
 - Phase 4 Plan 2: Use golden file comparison strategy for regression testing baseline
 - Phase 4 Plan 2: Mock Whisper transcription with realistic timing instead of actual transcription
 - Phase 4 Plan 2: Generate dummy audio file only for testing (transcription is mocked)
+- Phase 4 Plan 3: Use .wav format for test audio fixtures (mp3 in .gitignore)
+- Phase 4 Plan 3: Section headers in lyrics excluded from verification (not actual sung lines)
 
 ### Phase 1 Deliverables
 
@@ -125,6 +129,9 @@ Recent decisions affecting current work:
 - Mock Whisper phrases with realistic timing matching lyrics structure
 - Test cases: baseline generation, Qwen3 vs baseline comparison, precision improvement
 - Verification: Qwen3 has >= baseline lines, plausible timestamps, maintains all text
+- End-to-end integration test for full LRC pipeline with Qwen3 (test_lrc_integration_qwen3.py)
+- Integration test fixtures: integration_test_lyrics.txt (complete worship song structure)
+- E2E validation: Whisper -> LLM -> Qwen3 -> LRC file with repeated sections handling
 
 ### Pending Todos
 
@@ -137,5 +144,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed Phase 4 Plan 1 (map_segments_to_lines Unit Tests) → Phase 4 Plan 1 complete
+Stopped at: Completed Phase 4 Plan 3 (LRC Pipeline Integration Tests) → Phase 4 complete
 Resume file: None
