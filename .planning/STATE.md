@@ -57,6 +57,9 @@ Recent decisions affecting current work:
 - Model path: /models/qwen3-forced-aligner (volume mount)
 - Phase 3 Plan 1: Qwen3RefinementError exception to distinguish non-fatal failures
 - Phase 3 Plan 1: Multi-catch error handling for ConnectionError, TimeoutError, and generic Exception
+- Phase 3 Plan 2: Duration check at 300 seconds (5 min) matches Qwen3 service limit in align.py
+- Phase 3 Plan 2: Skip Qwen3 entirely for long audio (not just catch error) to avoid wasted bandwidth/time
+- Phase 3 Plan 2: Duration calculated from Whisper phrases (max end time) - no need to re-analyze audio
 
 ### Phase 1 Deliverables
 
@@ -90,6 +93,10 @@ Recent decisions affecting current work:
 - All Qwen3 failures fall back gracefully to LLM-aligned LRC without pipeline interruption
 - Empty LRC content from Qwen3 logs WARNING and falls back
 - Successful refinement logs INFO with line count
+- max_qwen3_duration option (default 300s) added to LrcOptions
+- Duration validation before Qwen3 HTTP request - skips for audio > 300 seconds
+- _get_audio_duration() helper calculates duration from Whisper phrases
+- Songs exceeding 5 minutes skip Qwen3 and use LLM-aligned LRC with WARNING log
 
 ### Pending Todos
 
@@ -102,5 +109,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed Phase 3 Plan 1 (Robust Qwen3 Fallback Error Handling) → Ready for Phase 3 Plan 2
+Stopped at: Completed Phase 3 Plan 2 (Duration-Based Qwen3 Skip) → Ready for Phase 3 Plan 3
 Resume file: None
