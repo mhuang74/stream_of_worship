@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 
 from . import __version__
 from .config import settings
+from .routes import health
+from .workers.aligner import Qwen3AlignerWrapper
 
-# Global aligner instance (will be initialized in plan 02)
-aligner: object | None = None
+# Global aligner instance (initialized in lifespan)
+aligner: Qwen3AlignerWrapper | None = None
 
 
 @asynccontextmanager
@@ -30,15 +32,32 @@ async def lifespan(app: FastAPI):
     Yields:
         None
     """
+    global aligner
+
     # Startup
-    # Initialize aligner (implemented in plan 02)
     logger.info("Qwen3 Alignment Service starting up")
+
+    # Initialize aligner instance
+    aligner = Qwen3AlignerWrapper(
+        model_path=settings.MODEL_PATH,
+        device=settings.DEVICE,
+        max_concurrent=settings.MAX_CONCURRENT,
+    )
+
+    # Load model (runs in thread pool to avoid blocking event loop)
+    await aligner.initialize()
+
+    # Set aligner in health router for health checks
+    health.set_aligner(lambda: aligner)
+
+    logger.info("Qwen3 Alignment Service ready")
 
     yield
 
     # Shutdown
-    # Clean up aligner (implemented in plan 02)
     logger.info("Qwen3 Alignment Service shutting down")
+    if aligner:
+        await aligner.cleanup()
 
 
 app = FastAPI(
@@ -47,7 +66,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Include routers (implemented in plans 02-03)
+# Include health router
+app.include_router(health.router)
 
 
 @app.get("/")
