@@ -49,7 +49,7 @@ Output:
 @.planning/ROADMAP.md
 @.planning/STATE.md
 
-# Reference: Phase 1 Qwen3 Service API contract
+# Reference: Phase 1 Qwen3 Service API contract (must match exactly)
 @services/qwen3/src/sow_qwen3/models.py
 
 # Reference: Existing LrcOptions model (add use_qwen3 field)
@@ -67,35 +67,41 @@ Output:
   <action>
     Create new file `services/analysis/src/sow_analysis/services/qwen3_client.py` with:
 
-    1. Pydantic models matching Qwen3 API contract:
-       - `AlignRequest` (audio_url: str, lyrics_text: str, output_format: str = "lrc")
-       - `AlignResponse` (output: str)
+    1. Pydantic models matching EXACT names from Qwen3 API contract (models.py):
+       - `AlignRequest` (audio_url: str, lyrics_text: str, language: str = "Chinese", format: OutputFormat = OutputFormat.LRC)
+       - `AlignResponse` (lrc_content: str | None, json_data: List[LyricLine] | None, line_count: int, duration_seconds: float)
+       - `OutputFormat` enum (LRC = "lrc", JSON = "json")
 
     2. `Qwen3Client` class with:
        - `__init__(base_url: str, api_key: Optional[str] = None)` - Store base URL and optional API key
-       - `async def align(audio_url: str, lyrics_text: str, output_format: str = "lrc") -> str` - Make POST request to /api/v1/align
+       - `async def align(audio_url: str, lyrics_text: str, language: str = "Chinese", format: OutputFormat = OutputFormat.LRC) -> AlignResponse` - Make POST request to /api/v1/align
          - Use httpx.AsyncClient for async HTTP calls (already in analysis service dependencies)
          - Set Authorization header if api_key is provided: {"Authorization": f"Bearer {self.api_key}"}
-         - Return response.text (direct LRC content)
+         - Parse JSON response into AlignResponse model
+         - Extract `lrc_content` field from response (not response.text)
          - Raise `Qwen3ClientError` on HTTP errors (custom exception at module level)
+         - Return AlignResponse object containing lrc_content
 
     3. Custom exception `Qwen3ClientError(Exception)`
 
-    4. Update `services/analysis/src/sow_analysis/services/__init__.py` to export: Qwen3Client, AlignRequest, AlignResponse
+    4. Update `services/analysis/src/sow_analysis/services/__init__.py` to export: Qwen3Client, AlignRequest, AlignResponse, OutputFormat
 
     5. In the services/__init__.py file, if it doesn't exist yet, create it to export the new client classes.
 
     IMPORTANT: Follow existing LLM calling pattern from lrc.py (use loop.run_in_executor, handle exceptions properly).
+    CRITICAL: Use exact field names from Phase 1 models.py: `format` (not output_format), `lrc_content` (not response.text)
   </action>
   <verify>
     Verify file exists with:
     - `ls services/analysis/src/sow_analysis/services/qwen3_client.py`
     - `grep -c "class Qwen3Client" services/analysis/src/sow_analysis/services/qwen3_client.py`
-    - `grep -c "AlignRequest\|AlignResponse" services/analysis/src/sow_analysis/services/qwen3_client.py`
+    - `grep -c "AlignRequest\|AlignResponse\|OutputFormat" services/analysis/src/sow_analysis/services/qwen3_client.py`
     - `grep -c "httpx.AsyncClient" services/analysis/src/sow_analysis/services/qwen3_client.py`
+    - `grep "format.*OutputFormat" services/analysis/src/sow_analysis/services/qwen3_client.py`
+    - `grep "lrc_content" services/analysis/src/sow_analysis/services/qwen3_client.py`
   </verify>
   <done>
-    Qwen3Client module exists with align() method, Pydantic models match Qwen3 API contract, exception handling defined.
+    Qwen3Client module exists with align() method, Pydantic models match EXACT Qwen3 API contract (format field, lrc_content field), exception handling defined.
   </done>
 </task>
 
@@ -129,9 +135,11 @@ Output:
 After plan completion, verify:
 1. Qwen3Client can be imported and instantiated
 2. LrcOptions has use_qwen3 field
-3. No linting errors in modified files
+3. AlignRequest uses `format` field (not output_format)
+4. AlignResponse extracts `lrc_content` field
+5. No linting errors in modified files
 
-Run: `PYTHONPATH=services/analysis/src uv run --extra test python -c "from sow_analysis.services import Qwen3Client, AlignRequest, AlignResponse; from sow_analysis.models import LrcOptions; print('Imports successful')"`
+Run: `PYTHONPATH=services/analysis/src uv run --extra test python -c "from sow_analysis.services import Qwen3Client, AlignRequest, AlignResponse, OutputFormat; from sow_analysis.models import LrcOptions; print('Imports successful')"`
 
 </verification>
 
@@ -139,7 +147,9 @@ Run: `PYTHONPATH=services/analysis/src uv run --extra test python -c "from sow_a
 
 Plan is successful when:
 - Qwen3Client module exists with async align() method calling http://qwen3:8000/api/v1/align
-- AlignRequest and AlignResponse Pydantic models match Qwen3 API contract
+- AlignRequest uses exact field names from Phase 1 models.py (`format`, not `output_format`)
+- AlignResponse extracts `lrc_content` field (not `response.text`)
+- OutputFormat enum matches Qwen3 API contract (LRC = "lrc", JSON = "json")
 - Qwen3ClientError exception defined
 - LrcOptions has use_qwen3: bool = True field
 - All imports verified without errors
