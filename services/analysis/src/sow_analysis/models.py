@@ -50,6 +50,7 @@ class LrcOptions(BaseModel):
     force: bool = False  # Re-generate even if cached
     force_whisper: bool = False  # Bypass Whisper transcription cache
     use_qwen3: bool = True  # Use Qwen3 service for timestamp refinement
+    max_qwen3_duration: int = 300  # 5 minutes in seconds (Qwen3 service limit)
 
 
 class LrcJobRequest(BaseModel):
