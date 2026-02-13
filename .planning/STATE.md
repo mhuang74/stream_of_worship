@@ -6,30 +6,30 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Users can seamlessly create worship songsets with accurate lyrics videos that display at exactly the right time — no more early or late lyrics.
 
-**Current focus:** Phase 2: Integration with Analysis Service
+**Current focus:** Phase 3: Fallback & Reliability
 
 ## Current Position
 
-Phase: 1 of 5 complete → Phase 2 (Integration) in progress
-Plan: 2 of 3 — Just completed: Integrate Qwen3 Refinement into LRC Worker
-Status: Ready for Plan 02-03
-Last activity: 2026-02-13 — Completed Phase 2 Plan 02: Add Qwen3 refinement to LRC worker Whisper path
+Phase: 2 of 5 complete → Phase 3 (Fallback & Reliability) ready
+Plan: 3 of 3 — Phase 2 Complete
+Status: Phase 2 complete, ready for Phase 3
+Last activity: 2026-02-13 — Completed Phase 2: Analysis Service Integration + CLI quick fix
 
-Progress: [████░░░░░] 66%
+Progress: [████████░░] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 6.2 min
-- Total execution time: 0.72 hours
+- Total plans completed: 8
+- Average duration: 6.0 min
+- Total execution time: 0.80 hours
 
 **By Phase:**
 
 | Phase          | Plans Complete | Total | Avg/Plan | Status |
 |----------------|----------------|-------|----------|--------|
 | Qwen3 Service Foundation | 4              | 4      | 7.3 min   | Complete |
-| Analysis Service Integration | 3              | 3      | 4.5 min   | In Progress |
+| Analysis Service Integration | 3              | 3      | 5.2 min   | Complete |
 
 *Updated after each plan completion*
 | Phase 02-analysis-service-integration P01 | 5min | 2 tasks | 3 files |
@@ -48,6 +48,7 @@ Recent decisions affecting current work:
 - Phase 2 Plan 1: Default use_qwen3=True to enable Qwen3 refinement when available
 - Phase 2 Plan 3: Use port 8001 for qwen3 service external access to avoid conflict with analysis:8000
 - Phase 2 Plan 3: Pass R2 credentials from common environment variables to both services
+- Phase 2: Added --no-qwen3 flag to admin CLI for optional Qwen3 bypass
 - qwen-asr version: Fixed to >=0.0.6 (latest available on PyPI)
 - Share aligner getter from health route instead of duplicating
 - Model path: /models/qwen3-forced-aligner (volume mount)
@@ -61,10 +62,12 @@ Recent decisions affecting current work:
 - Docker configuration with 8GB memory limit, 4 CPU cores, model volume mount
 - Complete service documentation with API reference
 
-### Phase 2 Progress (Plan 2 of 3)
+### Phase 2 Deliverables
 
-- Qwen3Client HTTP client with typed response models
+- Qwen3Client HTTP client with typed response models (services/analysis)
 - use_qwen3 flag added to LrcOptions model (default True)
+- use_qwen3 parameter added to admin CLI AnalysisClient.submit_lrc()
+- --no-qwen3 flag added to 'sow-admin audio lrc' command
 - qwen3 and qwen3-dev services added to docker-compose.yml
 - Services co-deploy with shared Docker networking on qwen3:8000
 - External port 8001 used for qwen3 to avoid conflict with analysis:8000
@@ -86,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 02-02 (Add Qwen3 refinement to LRC worker) → Ready for 02-03
+Stopped at: Completed Phase 2 (Analysis Service Integration) → Ready for Phase 3
 Resume file: None
