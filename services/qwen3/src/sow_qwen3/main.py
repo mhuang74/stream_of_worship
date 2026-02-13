@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 from . import __version__
 from .config import settings
-from .routes import health
+from .routes import align, health
 from .workers.aligner import Qwen3AlignerWrapper
 
 # Global aligner instance (initialized in lifespan)
@@ -66,8 +66,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Include health router
+# Include routers
 app.include_router(health.router)
+app.include_router(align.router)
 
 
 @app.get("/")
