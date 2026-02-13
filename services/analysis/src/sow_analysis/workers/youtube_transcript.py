@@ -166,7 +166,7 @@ async def fetch_youtube_transcript(
         YouTubeTranscriptError: If transcript cannot be fetched
     """
     if languages is None:
-        languages = ["zh-Hant", "zh-Hans", "zh", "en"]
+        languages = ["zh-Hant", "zh-Hans", "zh", "en-US", "en"]
 
     loop = asyncio.get_event_loop()
 

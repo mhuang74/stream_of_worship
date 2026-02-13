@@ -298,6 +298,7 @@ def _submit_lrc_job(
     whisper_model: str = "large-v3",
     language: str = "zh",
     no_vocals: bool = False,
+    no_youtube: bool = False,
 ) -> Optional[str]:
     """Submit LRC generation job for a recording.
 
@@ -311,6 +312,7 @@ def _submit_lrc_job(
         whisper_model: Whisper model to use
         language: Language hint for Whisper
         no_vocals: Don't use vocals stem
+        no_youtube: Skip YouTube transcript, use Whisper directly
 
     Returns:
         Job ID if submission succeeded, None otherwise
@@ -320,6 +322,8 @@ def _submit_lrc_job(
     if not song or not song.lyrics_raw:
         console.print(f"[yellow]⚠ No lyrics found for song {song_id}, skipping LRC generation[/yellow]")
         return None
+
+    youtube_url = "" if no_youtube else (recording.youtube_url or "")
 
     try:
         client = AnalysisClient(analysis_url)
@@ -331,7 +335,7 @@ def _submit_lrc_job(
             language=language,
             use_vocals_stem=not no_vocals,
             force=force,
-            youtube_url=recording.youtube_url or "",
+            youtube_url=youtube_url,
         )
 
         # Update DB
@@ -1071,6 +1075,9 @@ def lrc_recording(
     whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
     language: str = typer.Option("zh", "--lang", help="Language hint"),
     no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
+    no_youtube: bool = typer.Option(
+        False, "--no-youtube", help="Skip YouTube transcript, use Whisper directly"
+    ),
     wait: bool = typer.Option(
         False, "--wait", "-w", help="Wait for LRC generation to complete"
     ),
@@ -1080,8 +1087,9 @@ def lrc_recording(
 ) -> None:
     """Submit a recording for lyrics alignment (LRC generation).
 
-    Looks up the recording and its associated song lyrics, then submits
-    to the analysis service for Whisper-based alignment.
+    By default, tries YouTube transcript first (if a YouTube URL is stored),
+    then falls back to Whisper transcription. Use --no-youtube to skip the
+    YouTube path and use Whisper directly.
     """
     # Standard config/db boilerplate
     try:
@@ -1147,6 +1155,7 @@ def lrc_recording(
 
     # Submit LRC (unless we're polling an existing job)
     if not skip_submission:
+        youtube_url = "" if no_youtube else (recording.youtube_url or "")
         try:
             job = client.submit_lrc(
                 audio_url=recording.r2_audio_url,
@@ -1156,7 +1165,7 @@ def lrc_recording(
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,
-                youtube_url=recording.youtube_url or "",
+                youtube_url=youtube_url,
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")
