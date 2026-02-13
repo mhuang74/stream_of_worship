@@ -146,3 +146,50 @@ async def test_qwen3_timeout_fallback(
 
                 # Verify LLM alignment was called (Qwen3 failed but pipeline continued)
                 _llm_align.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_qwen3_http_error_fallback(
+    sample_audio_path: Path,
+    sample_lyrics: str,
+    mock_whisper_phrases: list,
+    mock_llm_align_response: list,
+) -> None:
+    """Test that Qwen3 HTTP errors fall back to LLM-aligned LRC."""
+    from sow_analysis.workers.lrc import _llm_align
+
+    options = LrcOptions(use_qwen3=True)
+
+    with patch(
+        "sow_analysis.workers.lrc._run_whisper_transcription",
+        return_value=mock_whisper_phrases,
+    ):
+        with patch(
+            "sow_analysis.workers.lrc._llm_align",
+            new_callable=AsyncMock,
+            return_value=mock_llm_align_response,
+        ):
+            # Mock client that raises Qwen3ClientError
+            mock_client = AsyncMock()
+            mock_client.align.side_effect = Qwen3ClientError(
+                "Qwen3 service error: 500 - Internal Server Error"
+            )
+
+            with patch(
+                "sow_analysis.workers.lrc.Qwen3Client",
+                return_value=mock_client,
+            ):
+                lrc_path, line_count, phrases = await generate_lrc(
+                    audio_path=sample_audio_path,
+                    lyrics_text=sample_lyrics,
+                    options=options,
+                    output_path=sample_audio_path.with_suffix(".lrc"),
+                    content_hash="ghi789",
+                )
+
+                # Verify LRC file was created
+                assert lrc_path.exists()
+                assert line_count == len(mock_llm_align_response)
+
+                # Verify LLM alignment was called (Qwen3 error did not stop pipeline)
+                _llm_align.assert_called_once()
