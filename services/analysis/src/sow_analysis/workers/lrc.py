@@ -574,6 +574,25 @@ async def _qwen3_refine(hash_prefix: str, lyrics_text: str) -> str:
     return response.lrc_content
 
 
+def _get_audio_duration(whisper_phrases: List[WhisperPhrase]) -> float:
+    """Calculate audio duration from Whisper transcription phrases.
+
+    Args:
+        whisper_phrases: List of WhisperPhrase with timing information
+
+    Returns:
+        Maximum end time in seconds (audio duration)
+
+    Raises:
+        ValueError: If whisper_phrases is empty
+    """
+    if not whisper_phrases:
+        raise ValueError("Cannot calculate duration: no Whisper phrases available")
+
+    # Duration is the maximum end time of all phrases
+    return max(p.end for p in whisper_phrases)
+
+
 async def generate_lrc(
     audio_path: Path,
     lyrics_text: str,
@@ -704,11 +723,29 @@ async def generate_lrc(
             refined_lines = _parse_qwen3_lrc(refined_lrc_text)
             if refined_lines:
                 lrc_lines = refined_lines
-                logger.info(f"Qwen3 refinement completed: {len(lrc_lines)} lines")
+                logger.info(
+                    f"Qwen3 refinement successful: {len(lrc_lines)} lines "
+                    f"replaced LLM-aligned timestamps"
+                )
             else:
-                logger.warning("Qwen3 returned empty LRC, using LLM timestamps")
+                logger.warning(
+                    "Qwen3 returned empty LRC content, using LLM-aligned timestamps"
+                )
+        except ConnectionError as e:
+            logger.warning(
+                f"Qwen3 service unavailable (connection error): {e}, "
+                f"using LLM-aligned timestamps"
+            )
+        except asyncio.TimeoutError as e:
+            logger.warning(
+                f"Qwen3 service request timed out: {e}, "
+                f"using LLM-aligned timestamps"
+            )
         except Exception as e:
-            logger.warning(f"Qwen3 refinement failed: {e}, using LLM timestamps")
+            # Catch Qwen3ClientError and any other exceptions
+            logger.warning(
+                f"Qwen3 refinement failed: {e}, using LLM-aligned timestamps"
+            )
 
     # Step 3: Write LRC file
     line_count = _write_lrc(lrc_lines, output_path)
