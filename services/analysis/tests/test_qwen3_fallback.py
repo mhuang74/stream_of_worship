@@ -67,8 +67,6 @@ async def test_qwen3_service_unavailable_fallback(
     mock_llm_align_response: list,
 ) -> None:
     """Test that Qwen3 service unavailability falls back to LLM-aligned LRC."""
-    from sow_analysis.workers.lrc import WhisperPhrase, _llm_align
-
     options = LrcOptions(use_qwen3=True)
 
     # Mock Whisper transcription
@@ -81,7 +79,7 @@ async def test_qwen3_service_unavailable_fallback(
             "sow_analysis.workers.lrc._llm_align",
             new_callable=AsyncMock,
             return_value=mock_llm_align_response,
-        ):
+        ) as mock_llm_align:
             # Mock Qwen3Client to raise ConnectionError (service unavailable)
             with patch(
                 "sow_analysis.workers.lrc.Qwen3Client",
@@ -100,7 +98,7 @@ async def test_qwen3_service_unavailable_fallback(
                 assert line_count == len(mock_llm_align_response)
 
                 # Verify LLM alignment was called (fallback worked)
-                _llm_align.assert_called_once()
+                mock_llm_align.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -111,8 +109,6 @@ async def test_qwen3_timeout_fallback(
     mock_llm_align_response: list,
 ) -> None:
     """Test that Qwen3 timeout falls back to LLM-aligned LRC."""
-    from sow_analysis.workers.lrc import _llm_align
-
     options = LrcOptions(use_qwen3=True)
 
     with patch(
@@ -123,7 +119,7 @@ async def test_qwen3_timeout_fallback(
             "sow_analysis.workers.lrc._llm_align",
             new_callable=AsyncMock,
             return_value=mock_llm_align_response,
-        ):
+        ) as mock_llm_align:
             # Create a mock client that raises TimeoutError
             mock_client = AsyncMock()
             mock_client.align.side_effect = asyncio.TimeoutError("Qwen3 timed out")
@@ -145,7 +141,7 @@ async def test_qwen3_timeout_fallback(
                 assert line_count == len(mock_llm_align_response)
 
                 # Verify LLM alignment was called (Qwen3 failed but pipeline continued)
-                _llm_align.assert_called_once()
+                mock_llm_align.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -156,8 +152,6 @@ async def test_qwen3_http_error_fallback(
     mock_llm_align_response: list,
 ) -> None:
     """Test that Qwen3 HTTP errors fall back to LLM-aligned LRC."""
-    from sow_analysis.workers.lrc import _llm_align
-
     options = LrcOptions(use_qwen3=True)
 
     with patch(
@@ -168,7 +162,7 @@ async def test_qwen3_http_error_fallback(
             "sow_analysis.workers.lrc._llm_align",
             new_callable=AsyncMock,
             return_value=mock_llm_align_response,
-        ):
+        ) as mock_llm_align:
             # Mock client that raises Qwen3ClientError
             mock_client = AsyncMock()
             mock_client.align.side_effect = Qwen3ClientError(
@@ -192,7 +186,7 @@ async def test_qwen3_http_error_fallback(
                 assert line_count == len(mock_llm_align_response)
 
                 # Verify LLM alignment was called (Qwen3 error did not stop pipeline)
-                _llm_align.assert_called_once()
+                mock_llm_align.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -203,8 +197,6 @@ async def test_qwen3_skip_long_audio(
     mock_llm_align_response: list,
 ) -> None:
     """Test that audio exceeding max duration skips Qwen3 refinement."""
-    from sow_analysis.workers.lrc import _llm_align
-
     # Set max_qwen3_duration to 60 seconds (1 minute) for testing
     options = LrcOptions(use_qwen3=True, max_qwen3_duration=60)
 
@@ -216,7 +208,7 @@ async def test_qwen3_skip_long_audio(
             "sow_analysis.workers.lrc._llm_align",
             new_callable=AsyncMock,
             return_value=mock_llm_align_response,
-        ):
+        ) as mock_llm_align:
             # Qwen3Client should NOT be called (duration check skips it)
             with patch(
                 "sow_analysis.workers.lrc.Qwen3Client"
@@ -237,7 +229,7 @@ async def test_qwen3_skip_long_audio(
                 mock_qwen3_client.assert_not_called()
 
                 # Verify LLM alignment was called (used as fallback)
-                _llm_align.assert_called_once()
+                mock_llm_align.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -247,7 +239,7 @@ async def test_qwen3_successful_refinement(
     mock_whisper_phrases: list,
 ) -> None:
     """Test that successful Qwen3 refinement updates LRC lines."""
-    from sow_analysis.models import AlignResponse
+    from sow_analysis.services.qwen3_client import AlignResponse
     from sow_analysis.workers.lrc import WhisperPhrase
 
     options = LrcOptions(use_qwen3=True)
