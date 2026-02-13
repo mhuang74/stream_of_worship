@@ -3,7 +3,7 @@ phase: 01-qwen3-service-foundation
 plan: 03
 type: execute
 wave: 3
-depends_on: ["01-qwen3-service-foundation-02"]
+depends_on: ["02"]
 files_modified: [services/qwen3/src/sow_qwen3/models.py, services/qwen3/src/sow_qwen3/storage/audio.py, services/qwen3/src/sow_qwen3/routes/align.py, services/qwen3/src/sow_qwen3/main.py]
 autonomous: true
 

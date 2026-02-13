@@ -3,7 +3,7 @@ phase: 01-qwen3-service-foundation
 plan: 04
 type: execute
 wave: 4
-depends_on: ["01-qwen3-service-foundation-01", "01-qwen3-service-foundation-02", "01-qwen3-service-foundation-03"]
+depends_on: ["01", "02", "03"]
 files_modified: [services/qwen3/Dockerfile, services/qwen3/docker-compose.yml, services/qwen3/README.md]
 autonomous: true
 
@@ -20,7 +20,7 @@ must_haves:
       contains: "FROM python:3.11-slim", "qwen-asr", "uvicorn"
     - path: "services/qwen3/docker-compose.yml"
       provides: "Orchestration with resource constraints"
-      contains: "mem_limit: 8g", "cpus: '4'", "volumes"
+      contains: "memory: 8g", "cpus: '4'", "volumes"
     - path: "services/qwen3/README.md"
       provides: "Service documentation"
       contains: "Qwen3 Alignment Service", "/api/v1/align"
@@ -191,7 +191,7 @@ Following Analysis Service docker-compose.yml pattern but with Qwen3-specific en
 DO NOT include: GPU deployment section (out of scope for initial implementationAnalysis Service specific).
   </action>
   <verify>
-grep -q "mem_limit: 8g" services/qwen3/docker-compose.yml && grep -q "cpus: '4'" services/qwen3/docker-compose.yml
+grep -q "memory: 8g" services/qwen3/docker-compose.yml && grep -q "cpus: '4'" services/qwen3/docker-compose.yml
   </verify>
   <done>
 docker-compose.yml created with 8GB memory limit and 4 CPU limit, model volume mount
@@ -310,8 +310,8 @@ docker compose up qwen3-dev
 
 ```bash
 cd services/qwen3
-poetry install
-poetry run sow-qwen3
+uv sync --extra service
+uv run sow-qwen3
 ```
 
 ## Model Setup
@@ -355,7 +355,7 @@ README.md created with API documentation, configuration, usage instructions
 <verification>
 - Verify Dockerfile builds: docker-compose build qwen3
 - Verify docker-compose syntax: docker-compose config
-- Verify resource constraints: check docker-compose.yml for mem_limit and cpus
+- Verify resource constraints: check docker-compose.yml for memory and cpus
 - Verify README completeness: API docs, configuration, usage sections all present
 </verification>
 

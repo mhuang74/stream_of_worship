@@ -3,7 +3,7 @@ phase: 01-qwen3-service-foundation
 plan: 02
 type: execute
 wave: 2
-depends_on: ["01-qwen3-service-foundation-01"]
+depends_on: ["01"]
 files_modified: [services/qwen3/src/sow_qwen3/workers/aligner.py, services/qwen3/src/sow_qwen3/routes/health.py, services/qwen3/src/sow_qwen3/main.py]
 autonomous: true
 
@@ -184,7 +184,7 @@ Update services/qwen3/src/sow_qwen3/main.py to integrate aligner:
 
 5. After app creation, import and include health router:
    - from .routes import health
-   - app.include_router(health.router, prefix="/api/v1")
+   - app.include_router(health.router)  # No prefix - /health as per user decision
 
 6. In routes/health.py, update get_aligner():
    - Define global aligner variable imported from main
@@ -200,7 +200,7 @@ Alternative: Create set_aligner function in health.py that main.py calls during 
 Following the Analysis Service pattern for global state management (JobQueue + set_job_queue).
   </action>
   <verify>
-cd services/qwen3 && PYTHONPATH=src python3 -c "from sow_qwen3.main import app; from fastapi.testclient import TestClient; tc = TestClient(app); assert '/api/v1/health' in [route.path for route in app.routes]"
+cd services/qwen3 && PYTHONPATH=src python3 -c "from sow_qwen3.main import app; from fastapi.testclient import TestClient; tc = TestClient(app); assert '/health' in [route.path for route in app.routes]"
   </verify>
   <done>
 main.py lifespan loads and cleans up aligner, health router included, /api/v1/health endpoint accessible
@@ -218,7 +218,7 @@ main.py lifespan loads and cleans up aligner, health router included, /api/v1/he
 <success_criteria>
 - Qwen3AlignerWrapper class created with initialize/cleanup/align methods and is_ready property
 - main.py lifespan loads model at startup and cleans up at shutdown
-- /api/v1/health endpoint returns 503 "Model not loaded" before model loads, 200 with "model": "ready" after
+- /health endpoint returns 503 "Model not loaded" before model loads, 200 with "model": "ready" after
 - Semaphore limits concurrent alignment requests to MAX_CONCURRENT
 - No blocking operations in async context (model loading in thread pool)
 </success_criteria>
