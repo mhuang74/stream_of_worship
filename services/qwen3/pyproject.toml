@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 service = ["python-multipart>=0.0.6"]
+dev = ["pytest>=7.4.0", "pytest-asyncio>=0.23.0"]
 
 [project.scripts]
 sow-qwen3 = "sow_qwen3.main:main"
@@ -25,3 +26,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
