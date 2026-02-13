@@ -22,13 +22,13 @@
   3. Service returns character-level timestamps mapped to lyric lines
   4. Service rejects audio files >5 minutes with clear error message
   5. Service runs in isolated Docker environment without PyTorch conflicts
-**Plans**: 4 plans in 4 waves
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-qwen3-service-foundation-01-PLAN.md — Project structure, dependencies, and configuration
-- [ ] 01-qwen3-service-foundation-02-PLAN.md — Model loading with lifespan and health check
-- [ ] 01-qwen3-service-foundation-03-PLAN.md — Align API endpoint with audio download and validation
-- [ ] 01-qwen3-service-foundation-04-PLAN.md — Docker configuration with resource constraints
+- [x] 01-qwen3-service-foundation-01-PLAN.md — Qwen3 service foundation with pydantic-settings configuration
+- [x] 01-qwen3-service-foundation-02-PLAN.md — Model loading with lifespan and health check
+- [x] 01-qwen3-service-foundation-03-PLAN.md — Align API endpoint with audio download and validation
+- [x] 01-qwen3-service-foundation-04-PLAN.md — Docker configuration with resource constraints
 
 #### Phase 2: Analysis Service Integration
 **Goal**: Connect Qwen3 service to existing LRC pipeline
@@ -40,12 +40,12 @@ Plans:
   3. LRC pipeline with YouTube source produces accurate LRC files (skip Qwen3)
   4. LrcOptions has use_qwen3 flag accessible in admin CLI
   5. Qwen3 service is included in docker-compose.yml with proper networking
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 02-01: Qwen3Client HTTP client implementation
-- [ ] 02-02: LRC worker integration with dual-path logic
-- [ ] 02-03: Docker compose configuration
+- [ ] 02-analysis-service-integration-01-PLAN.md — Qwen3Client HTTP client and use_qwen3 flag
+- [ ] 02-analysis-service-integration-02-PLAN.md — LRC worker integration with dual-path logic
+- [ ] 02-analysis-service-integration-03-PLAN.md — Docker compose configuration
 
 #### Phase 3: Fallback & Reliability
 **Goal**: Implement graceful degradation when Qwen3 fails
@@ -100,8 +100,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Qwen3 Service Foundation | v1.1 | 0/4 | Ready to execute | - |
-| 2. Analysis Service Integration | v1.1 | 0/3 | Not started | - |
+| 1. Qwen3 Service Foundation | v1.1 | 4/4 | Complete | 2026-02-13 |
+| 2. Analysis Service Integration | v1.1 | 0/3 | Ready to execute | - |
 | 3. Fallback & Reliability | v1.1 | 0/3 | Not started | - |
 | 4. Testing & Validation | v1.1 | 0/3 | Not started | - |
 | 5. Performance & Production Readiness | v1.1 | 0/3 | Not started | - |
