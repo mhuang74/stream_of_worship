@@ -44,13 +44,16 @@ async def lifespan(app: FastAPI):
         max_concurrent=settings.MAX_CONCURRENT,
     )
 
-    # Load model (runs in thread pool to avoid blocking event loop)
-    await aligner.initialize()
+    # Load model with graceful failure handling (service can start even if loading fails)
+    try:
+        await aligner.initialize()
+        logger.info("Qwen3 Alignment Service ready")
+    except Exception as e:
+        logger.error(f"Failed to load model on startup: {e}")
+        logger.warning("Service will start with model NOT ready (health check will return 503)")
 
     # Set aligner in health router for health checks
     health.set_aligner(lambda: aligner)
-
-    logger.info("Qwen3 Alignment Service ready")
 
     yield
 

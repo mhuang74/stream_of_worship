@@ -98,7 +98,10 @@ class Qwen3AlignerWrapper:
             logger.info("Qwen3ForcedAligner loaded and ready")
         except Exception as e:
             logger.error(f"Failed to load Qwen3ForcedAligner: {e}")
-            raise RuntimeError(f"Failed to load model: {e}") from e
+            # Don't raise - allow service to start with model NOT ready
+            # Health check will return 503 until model is successfully loaded
+            self._ready = False
+            self._model = None
 
     async def align(
         self,
