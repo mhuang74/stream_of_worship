@@ -238,3 +238,64 @@ async def test_qwen3_skip_long_audio(
 
                 # Verify LLM alignment was called (used as fallback)
                 _llm_align.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_qwen3_successful_refinement(
+    sample_audio_path: Path,
+    sample_lyrics: str,
+    mock_whisper_phrases: list,
+) -> None:
+    """Test that successful Qwen3 refinement updates LRC lines."""
+    from sow_analysis.models import AlignResponse
+    from sow_analysis.workers.lrc import WhisperPhrase
+
+    options = LrcOptions(use_qwen3=True)
+
+    # Qwen3-refined LRC content (different from LLM output)
+    refined_lrc_content = "[00:00.00] Verse 1\n[00:04.50] Chorus lyrics\n[00:09.80] Verse 2\n[00:14.70] Chorus lyrics again"
+
+    with patch(
+        "sow_analysis.workers.lrc._run_whisper_transcription",
+        return_value=mock_whisper_phrases,
+    ):
+        # Mock LLM alignment (will be replaced by Qwen3)
+        llm_aligned = AsyncMock(return_value=[
+            WhisperPhrase(text="Verse 1", start=0.0, end=5.0),
+            WhisperPhrase(text="Chorus", start=5.0, end=10.0),
+            WhisperPhrase(text="Verse 2", start=10.0, end=15.0),
+            WhisperPhrase(text="Chorus", start=15.0, end=20.0),
+        ])
+        with patch("sow_analysis.workers.lrc._llm_align", llm_aligned):
+            # Mock successful Qwen3 response
+            mock_client = AsyncMock()
+            mock_client.align.return_value = AlignResponse(
+                lrc_content=refined_lrc_content,
+                json_data=None,
+                line_count=4,
+                duration_seconds=20.0,
+            )
+
+            with patch(
+                "sow_analysis.workers.lrc.Qwen3Client",
+                return_value=mock_client,
+            ):
+                lrc_path, line_count, phrases = await generate_lrc(
+                    audio_path=sample_audio_path,
+                    lyrics_text=sample_lyrics,
+                    options=options,
+                    output_path=sample_audio_path.with_suffix(".lrc"),
+                    content_hash="mno345",
+                )
+
+                # Verify LRC file was created
+                assert lrc_path.exists()
+                assert line_count == 4
+
+                # Verify Qwen3 was called
+                mock_client.align.assert_called_once()
+
+                # Verify LRC contains Qwen3-timestamped content (not LLM)
+                lrc_text = lrc_path.read_text(encoding="utf-8")
+                assert "00:04.50" in lrc_text  # Qwen3's precise timestamp
+                assert "00:09.80" in lrc_text
