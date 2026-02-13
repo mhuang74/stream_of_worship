@@ -22,12 +22,13 @@
   3. Service returns character-level timestamps mapped to lyric lines
   4. Service rejects audio files >5 minutes with clear error message
   5. Service runs in isolated Docker environment without PyTorch conflicts
-**Plans**: TBD
+**Plans**: 4 plans in 4 waves
 
 Plans:
-- [ ] 01-01: FastAPI service structure and Dockerfile
-- [ ] 01-02: Qwen3 model loading and device detection
-- [ ] 01-03: Alignment endpoint with duration validation
+- [ ] 01-qwen3-service-foundation-01-PLAN.md — Project structure, dependencies, and configuration
+- [ ] 01-qwen3-service-foundation-02-PLAN.md — Model loading with lifespan and health check
+- [ ] 01-qwen3-service-foundation-03-PLAN.md — Align API endpoint with audio download and validation
+- [ ] 01-qwen3-service-foundation-04-PLAN.md — Docker configuration with resource constraints
 
 #### Phase 2: Analysis Service Integration
 **Goal**: Connect Qwen3 service to existing LRC pipeline
@@ -99,7 +100,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Qwen3 Service Foundation | v1.1 | 0/3 | Not started | - |
+| 1. Qwen3 Service Foundation | v1.1 | 0/4 | Ready to execute | - |
 | 2. Analysis Service Integration | v1.1 | 0/3 | Not started | - |
 | 3. Fallback & Reliability | v1.1 | 0/3 | Not started | - |
 | 4. Testing & Validation | v1.1 | 0/3 | Not started | - |
