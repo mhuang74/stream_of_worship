@@ -57,12 +57,12 @@ Plans:
   3. Qwen3 failures are logged as WARNING without breaking LRC pipeline
   4. Successful Qwen3 refinement is logged at INFO level
   5. Mock Qwen3 service tests verify fallback to LLM-aligned LRC
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 03-01: Error handling and fallback logic in LRC worker
-- [ ] 03-02: Duration validation with skip logic
-- [ ] 03-03: Logging strategy for success/skip/failure cases
+- [ ] 03-fallback-reliability-01-PLAN.md — Robust error handling and fallback logic for Qwen3 refinement
+- [ ] 03-fallback-reliability-02-PLAN.md — Duration validation to skip Qwen3 for long audio files
+- [ ] 03-fallback-reliability-03-PLAN.md — Mock Qwen3 service tests for all fallback scenarios
 
 #### Phase 4: Testing & Validation
 **Goal**: Verify through testing that Qwen3 improves timestamp accuracy
