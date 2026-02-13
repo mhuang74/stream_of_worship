@@ -94,12 +94,12 @@ Requirements for Qwen3 ForcedAligner integration milestone.
 | FALLBK-03 | Phase 3 | Pending |
 | FALLBK-04 | Phase 3 | Pending |
 | FALLBK-05 | Phase 3 | Pending |
-| TEST-01 | Phase 3 | Pending |
-| TEST-02 | Phase 3 | Pending |
-| TEST-03 | Phase 3 | Pending |
 | TEST-04 | Phase 3 | Pending |
-| PERF-01 | Phase 4 | Pending |
-| PERF-02 | Phase 4 | Pending |
+| TEST-01 | Phase 4 | Pending |
+| TEST-02 | Phase 4 | Pending |
+| TEST-03 | Phase 4 | Pending |
+| PERF-01 | Phase 5 | Pending |
+| PERF-02 | Phase 5 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 23 total
@@ -108,4 +108,4 @@ Requirements for Qwen3 ForcedAligner integration milestone.
 
 ---
 *Requirements defined: 2026-02-13*
-*Last updated: 2026-02-13 after pipeline clarification (YouTube skip, LLM→Qwen3 flow)*
+*Last updated: 2026-02-13 after roadmap creation*
