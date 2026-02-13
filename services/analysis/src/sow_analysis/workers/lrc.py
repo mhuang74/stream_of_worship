@@ -47,6 +47,12 @@ class LLMAlignmentError(LRCWorkerError):
     pass
 
 
+class Qwen3RefinementError(LRCWorkerError):
+    """Raised when Qwen3 refinement fails (non-blocking, falls back to LLM)."""
+
+    pass
+
+
 @dataclass
 class WhisperPhrase:
     """A phrase/segment with timing from Whisper transcription."""
