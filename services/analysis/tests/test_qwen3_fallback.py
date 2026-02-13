@@ -193,3 +193,48 @@ async def test_qwen3_http_error_fallback(
 
                 # Verify LLM alignment was called (Qwen3 error did not stop pipeline)
                 _llm_align.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_qwen3_skip_long_audio(
+    sample_audio_path: Path,
+    sample_lyrics: str,
+    long_audio_phrases: list,
+    mock_llm_align_response: list,
+) -> None:
+    """Test that audio exceeding max duration skips Qwen3 refinement."""
+    from sow_analysis.workers.lrc import _llm_align
+
+    # Set max_qwen3_duration to 60 seconds (1 minute) for testing
+    options = LrcOptions(use_qwen3=True, max_qwen3_duration=60)
+
+    with patch(
+        "sow_analysis.workers.lrc._run_whisper_transcription",
+        return_value=long_audio_phrases,  # 310 seconds
+    ):
+        with patch(
+            "sow_analysis.workers.lrc._llm_align",
+            new_callable=AsyncMock,
+            return_value=mock_llm_align_response,
+        ):
+            # Qwen3Client should NOT be called (duration check skips it)
+            with patch(
+                "sow_analysis.workers.lrc.Qwen3Client"
+            ) as mock_qwen3_client:
+                lrc_path, line_count, phrases = await generate_lrc(
+                    audio_path=sample_audio_path,
+                    lyrics_text=sample_lyrics,
+                    options=options,
+                    output_path=sample_audio_path.with_suffix(".lrc"),
+                    content_hash="jkl012",
+                )
+
+                # Verify LRC file was created
+                assert lrc_path.exists()
+                assert line_count == len(mock_llm_align_response)
+
+                # Verify Qwen3Client was NOT instantiated (skipped due to duration)
+                mock_qwen3_client.assert_not_called()
+
+                # Verify LLM alignment was called (used as fallback)
+                _llm_align.assert_called_once()
