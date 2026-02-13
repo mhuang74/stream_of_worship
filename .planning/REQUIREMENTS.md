@@ -20,17 +20,20 @@ Requirements for Qwen3 ForcedAligner integration milestone.
 ### Analysis Service Integration
 
 - [ ] **INTG-01**: Analysis Service has Qwen3Client HTTP client for calling Qwen3 service
-- [ ] **INTG-02**: LRC worker uses hierarchical fallback: YouTube → Whisper → Qwen3 → LLM
+- [ ] **INTG-02**: Both sources produce accurate Chinese LRC files (different refinement paths)
 - [ ] **INTG-03**: LrcOptions dataclass has use_qwen3 flag (default: true when available)
 - [ ] **INTG-04**: docker-compose.yml includes qwen3_align service with proper networking
-- [ ] **INTG-05**: LRC worker logs each fallback path with clear WARNING messages
+- [ ] **INTG-05**: YouTube path: transcript → LLM fix-up (translate/adjust) → **LRC** (skip Qwen3, timestamps accurate)
+- [ ] **INTG-06**: Whisper path: transcription → LLM fix-up (correct characters) → Qwen3 refinement → **LRC**
+- [ ] **INTG-07**: LRC worker skips Qwen3 for YouTube sources (timestamps already accurate)
 
 ### Fallback & Reliability
 
-- [ ] **FALLBK-01**: When Qwen3 fails (service down, 5-min limit, error), LRC falls back to LLM alignment
-- [ ] **FALLBK-02**: Duration validation happens before calling Qwen3 (skip if >5min, log reason)
+- [ ] **FALLBK-01**: Qwen3 is optional enhancement — if it fails, use LLM-aligned LRC (no further refinement)
+- [ ] **FALLBK-02**: Duration validation happens before calling Qwen3 (skip if >5min, use LLM-aligned LRC)
 - [ ] **FALLBK-03**: All Qwen3 errors are caught and logged without breaking the LRC pipeline
-- [ ] **FALLBK-04**: Songs exceeding 5 minutes use Whisper+LLM path (no degradation in output quality)
+- [ ] **FALLBK-04**: Songs exceeding 5 minutes skip Qwen3 (LLM-aligned LRC is the result)
+- [ ] **FALLBK-05**: INFO-level logging when Qwen3 refinement succeeds; WARNING when skipped/fails
 
 ### Testing & Validation
 
@@ -84,10 +87,13 @@ Requirements for Qwen3 ForcedAligner integration milestone.
 | INTG-03 | Phase 2 | Pending |
 | INTG-04 | Phase 2 | Pending |
 | INTG-05 | Phase 2 | Pending |
+| INTG-06 | Phase 2 | Pending |
+| INTG-07 | Phase 2 | Pending |
 | FALLBK-01 | Phase 3 | Pending |
 | FALLBK-02 | Phase 3 | Pending |
 | FALLBK-03 | Phase 3 | Pending |
 | FALLBK-04 | Phase 3 | Pending |
+| FALLBK-05 | Phase 3 | Pending |
 | TEST-01 | Phase 3 | Pending |
 | TEST-02 | Phase 3 | Pending |
 | TEST-03 | Phase 3 | Pending |
@@ -96,10 +102,10 @@ Requirements for Qwen3 ForcedAligner integration milestone.
 | PERF-02 | Phase 4 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 21 total
-- Mapped to phases: 21
+- v1.1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-02-13*
-*Last updated: 2026-02-13 after research synthesis*
+*Last updated: 2026-02-13 after pipeline clarification (YouTube skip, LLM→Qwen3 flow)*
