@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 2 of 5 complete → Phase 3 (Fallback & Reliability) in progress
-Plan: 2 of 3 — Phase 3 Plan 2: Duration-Based Qwen3 Skip complete
-Status: Phase 3 Plan 2 complete, proceeding to Plan 3
-Last activity: 2026-02-13 — Completed Phase 3 Plan 2: Duration-Based Qwen3 Skip
+Phase: 2 of 5 complete → Phase 3 (Fallback & Reliability) complete
+Plan: 3 of 3 — Phase 3 Plan 3: Mock Qwen3 Service Tests complete
+Status: Phase 3 complete, all fallback and reliability features delivered
+Last activity: 2026-02-13 — Completed Phase 3 Plan 3: Mock Qwen3 Service Tests
 
-Progress: [████████░░] 100% Phase 2 | [██████░░░] 67% Phase 3
+Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 5.3 min
-- Total execution time: 0.89 hours
+- Total plans completed: 11
+- Average duration: 5.1 min
+- Total execution time: 0.94 hours
 
 **By Phase:**
 
@@ -30,7 +30,7 @@ Progress: [████████░░] 100% Phase 2 | [██████░
 |----------------|----------------|-------|----------|--------|
 | Qwen3 Service Foundation | 4              | 4      | 7.3 min   | Complete |
 | Analysis Service Integration | 3              | 3      | 5.2 min   | Complete |
-| Fallback & Reliability | 2              | 3      | 2.0 min   | In Progress |
+| Fallback & Reliability | 3              | 3      | 2.7 min   | Complete |
 
 *Updated after each plan completion*
 | Phase 02-analysis-service-integration P01 | 5min | 2 tasks | 3 files |
@@ -38,6 +38,7 @@ Progress: [████████░░] 100% Phase 2 | [██████░
 | Phase 02-analysis-service-integration P02 | 8min | 2 tasks | 3 files |
 | Phase 03-fallback-reliability P01 | 2min | 2 tasks | 1 files |
 | Phase 03-fallback-reliability P02 | 2min | 2 tasks | 2 files |
+| Phase 03-fallback-reliability P03 | 4min | 6 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,8 @@ Recent decisions affecting current work:
 - Phase 3 Plan 2: Duration check at 300 seconds (5 min) matches Qwen3 service limit in align.py
 - Phase 3 Plan 2: Skip Qwen3 entirely for long audio (not just catch error) to avoid wasted bandwidth/time
 - Phase 3 Plan 2: Duration calculated from Whisper phrases (max end time) - no need to re-analyze audio
+- Phase 3 Plan 3: Mock-based testing for Qwen3 fallback scenarios instead of integration tests
+- Phase 3 Plan 3: Capture mock objects from patch() context for proper assertion verification
 
 ### Phase 1 Deliverables
 
@@ -97,6 +100,10 @@ Recent decisions affecting current work:
 - Duration validation before Qwen3 HTTP request - skips for audio > 300 seconds
 - _get_audio_duration() helper calculates duration from Whisper phrases
 - Songs exceeding 5 minutes skip Qwen3 and use LLM-aligned LRC with WARNING log
+- Comprehensive mock tests for Qwen3 fallback behavior (test_qwen3_fallback.py)
+- Tests for ConnectionError, TimeoutError, and Qwen3ClientError fallback scenarios
+- Test for duration-based Qwen3 skip for long audio
+- Test for successful Qwen3 refinement with precise timestamps
 
 ### Pending Todos
 
@@ -109,5 +116,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed Phase 3 Plan 2 (Duration-Based Qwen3 Skip) → Ready for Phase 3 Plan 3
+Stopped at: Completed Phase 3 Plan 3 (Mock Qwen3 Service Tests) → Phase 3 complete
 Resume file: None
