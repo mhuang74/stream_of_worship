@@ -57,3 +57,47 @@ def mock_llm_align_response() -> list:
         LRCLine(time_seconds=10.0, text="Verse 2"),
         LRCLine(time_seconds=15.0, text="Chorus lyrics again"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_qwen3_service_unavailable_fallback(
+    sample_audio_path: Path,
+    sample_lyrics: str,
+    mock_whisper_phrases: list,
+    mock_llm_align_response: list,
+) -> None:
+    """Test that Qwen3 service unavailability falls back to LLM-aligned LRC."""
+    from sow_analysis.workers.lrc import WhisperPhrase, _llm_align
+
+    options = LrcOptions(use_qwen3=True)
+
+    # Mock Whisper transcription
+    with patch(
+        "sow_analysis.workers.lrc._run_whisper_transcription",
+        return_value=mock_whisper_phrases,
+    ):
+        # Mock LLM alignment
+        with patch(
+            "sow_analysis.workers.lrc._llm_align",
+            new_callable=AsyncMock,
+            return_value=mock_llm_align_response,
+        ):
+            # Mock Qwen3Client to raise ConnectionError (service unavailable)
+            with patch(
+                "sow_analysis.workers.lrc.Qwen3Client",
+                side_effect=ConnectionError("Cannot connect to Qwen3 service"),
+            ):
+                lrc_path, line_count, phrases = await generate_lrc(
+                    audio_path=sample_audio_path,
+                    lyrics_text=sample_lyrics,
+                    options=options,
+                    output_path=sample_audio_path.with_suffix(".lrc"),
+                    content_hash="abc123",  # Enable Qwen3
+                )
+
+                # Verify LRC file was created (from LLM alignment, not Qwen3)
+                assert lrc_path.exists()
+                assert line_count == len(mock_llm_align_response)
+
+                # Verify LLM alignment was called (fallback worked)
+                _llm_align.assert_called_once()
