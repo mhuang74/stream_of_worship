@@ -48,6 +48,7 @@ class LrcOptions(BaseModel):
     use_vocals_stem: bool = True  # Prefer vocals stem for cleaner transcription
     language: str = "zh"  # Whisper language hint
     force: bool = False  # Re-generate even if cached
+    force_whisper: bool = False  # Bypass Whisper transcription cache
 
 
 class LrcJobRequest(BaseModel):

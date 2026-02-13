@@ -568,14 +568,17 @@ class JobQueue:
 
                 # Check for cached Whisper transcription (audio hash only, not lyrics)
                 cached_phrases = None
-                cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
-                if cached_data:
-                    from .lrc import WhisperPhrase
-                    cached_phrases = [WhisperPhrase(**p) for p in cached_data]
-                    logger.info(f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases")
-                    job.stage = "transcription_cached"
+                if request.options.force_whisper:
+                    logger.info(f"[{job.id}] Whisper cache bypassed (force_whisper=True)")
                 else:
-                    logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
+                    cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
+                    if cached_data:
+                        from .lrc import WhisperPhrase
+                        cached_phrases = [WhisperPhrase(**p) for p in cached_data]
+                        logger.info(f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases")
+                        job.stage = "transcription_cached"
+                    else:
+                        logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
 
                 # Run Whisper transcription (or use cached)
                 job.stage = "transcribing"

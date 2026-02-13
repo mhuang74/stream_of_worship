@@ -299,6 +299,7 @@ def _submit_lrc_job(
     language: str = "zh",
     no_vocals: bool = False,
     no_youtube: bool = False,
+    no_whisper_cache: bool = False,
 ) -> Optional[str]:
     """Submit LRC generation job for a recording.
 
@@ -313,6 +314,7 @@ def _submit_lrc_job(
         language: Language hint for Whisper
         no_vocals: Don't use vocals stem
         no_youtube: Skip YouTube transcript, use Whisper directly
+        no_whisper_cache: Bypass Whisper transcription cache
 
     Returns:
         Job ID if submission succeeded, None otherwise
@@ -335,6 +337,7 @@ def _submit_lrc_job(
             language=language,
             use_vocals_stem=not no_vocals,
             force=force,
+            force_whisper=no_whisper_cache,
             youtube_url=youtube_url,
         )
 
@@ -1078,6 +1081,9 @@ def lrc_recording(
     no_youtube: bool = typer.Option(
         False, "--no-youtube", help="Skip YouTube transcript, use Whisper directly"
     ),
+    no_whisper_cache: bool = typer.Option(
+        False, "--no-whisper-cache", help="Bypass cached Whisper transcription, re-run Whisper"
+    ),
     wait: bool = typer.Option(
         False, "--wait", "-w", help="Wait for LRC generation to complete"
     ),
@@ -1165,6 +1171,7 @@ def lrc_recording(
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,
+                force_whisper=no_whisper_cache,
                 youtube_url=youtube_url,
             )
         except AnalysisServiceError as e:

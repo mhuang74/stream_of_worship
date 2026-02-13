@@ -212,6 +212,7 @@ class AnalysisClient:
         language: str = "zh",
         use_vocals_stem: bool = True,
         force: bool = False,
+        force_whisper: bool = False,
         youtube_url: str = "",
     ) -> JobInfo:
         """Submit an audio file for LRC generation.
@@ -224,6 +225,7 @@ class AnalysisClient:
             language: Language hint for transcription
             use_vocals_stem: Whether to use vocals stem for better alignment
             force: Whether to force re-generation
+            force_whisper: Bypass Whisper transcription cache
             youtube_url: YouTube URL for transcript-based LRC (primary path)
 
         Returns:
@@ -242,6 +244,7 @@ class AnalysisClient:
                 "language": language,
                 "use_vocals_stem": use_vocals_stem,
                 "force": force,
+                "force_whisper": force_whisper,
             },
         }
 
