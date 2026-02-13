@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     DTYPE: str = "float32"  # bfloat16/float16/float32
 
     # Concurrency
-    MAX_CONCURRENT: int = 1  # Max concurrent alignments
+    MAX_CONCURRENT: int = 2  # Max concurrent alignments (2=balance throughput/memory, 3=higher throughput if memory permits)
 
     # R2 Configuration
     R2_BUCKET: str = ""
