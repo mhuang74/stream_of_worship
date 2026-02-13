@@ -6,23 +6,23 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Users can seamlessly create worship songsets with accurate lyrics videos that display at exactly the right time — no more early or late lyrics.
 
-**Current focus:** Phase 3: Fallback & Reliability
+**Current focus:** Phase 4: Testing and Validation
 
 ## Current Position
 
-Phase: 2 of 5 complete → Phase 3 (Fallback & Reliability) complete
-Plan: 3 of 3 — Phase 3 Plan 3: Mock Qwen3 Service Tests complete
-Status: Phase 3 complete, all fallback and reliability features delivered
-Last activity: 2026-02-13 — Completed Phase 3 Plan 3: Mock Qwen3 Service Tests
+Phase: 3 of 5 complete → Phase 4 (Testing and Validation) in progress
+Plan: 2 of 3 — Phase 4 Plan 2: Qwen3 Regression Tests complete
+Status: Phase 3 complete, Phase 4 Plan 2 complete
+Last activity: 2026-02-14 — Completed Phase 4 Plan 2: Qwen3 Regression Tests
 
-Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3
+Progress: [████████░░] 100% Phase 2 | [████████░░] 100% Phase 3 | [███░░░░░░░] 67% Phase 4
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 5.1 min
-- Total execution time: 0.94 hours
+- Total plans completed: 12
+- Average duration: 4.9 min
+- Total execution time: 0.98 hours
 
 **By Phase:**
 
@@ -31,6 +31,7 @@ Progress: [████████░░] 100% Phase 2 | [███████
 | Qwen3 Service Foundation | 4              | 4      | 7.3 min   | Complete |
 | Analysis Service Integration | 3              | 3      | 5.2 min   | Complete |
 | Fallback & Reliability | 3              | 3      | 2.7 min   | Complete |
+| Testing and Validation | 2              | 3      | 3.0 min   | In progress |
 
 *Updated after each plan completion*
 | Phase 02-analysis-service-integration P01 | 5min | 2 tasks | 3 files |
@@ -39,6 +40,8 @@ Progress: [████████░░] 100% Phase 2 | [███████
 | Phase 03-fallback-reliability P01 | 2min | 2 tasks | 1 files |
 | Phase 03-fallback-reliability P02 | 2min | 2 tasks | 2 files |
 | Phase 03-fallback-reliability P03 | 4min | 6 tasks | 1 files |
+| Phase 04-testing-validation P01 | 1min | 0 tasks | 0 files |
+| Phase 04-testing-validation P02 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -63,6 +66,9 @@ Recent decisions affecting current work:
 - Phase 3 Plan 2: Duration calculated from Whisper phrases (max end time) - no need to re-analyze audio
 - Phase 3 Plan 3: Mock-based testing for Qwen3 fallback scenarios instead of integration tests
 - Phase 3 Plan 3: Capture mock objects from patch() context for proper assertion verification
+- Phase 4 Plan 2: Use golden file comparison strategy for regression testing baseline
+- Phase 4 Plan 2: Mock Whisper transcription with realistic timing instead of actual transcription
+- Phase 4 Plan 2: Generate dummy audio file only for testing (transcription is mocked)
 
 ### Phase 1 Deliverables
 
@@ -105,6 +111,16 @@ Recent decisions affecting current work:
 - Test for duration-based Qwen3 skip for long audio
 - Test for successful Qwen3 refinement with precise timestamps
 
+### Phase 4 Deliverables
+
+- Regression test framework comparing Qwen3 vs Whisper+LLM baseline (test_qwen3_regression.py)
+- parse_lrc_file() helper for LRC parsing into (time, text) tuples
+- Test fixtures: sample_lyrics.txt (worship song with repeated chorus)
+- Golden baseline LRC fixture (golden_llm_lrc.txt) for reproducible testing
+- Mock Whisper phrases with realistic timing matching lyrics structure
+- Test cases: baseline generation, Qwen3 vs baseline comparison, precision improvement
+- Verification: Qwen3 has >= baseline lines, plausible timestamps, maintains all text
+
 ### Pending Todos
 
 None yet.
@@ -115,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: Completed Phase 3 Plan 3 (Mock Qwen3 Service Tests) → Phase 3 complete
+Last session: 2026-02-14
+Stopped at: Completed Phase 4 Plan 2 (Qwen3 Regression Tests) → Phase 4 Plan 2 complete
 Resume file: None
