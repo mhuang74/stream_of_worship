@@ -49,6 +49,7 @@ class LrcOptions(BaseModel):
     language: str = "zh"  # Whisper language hint
     force: bool = False  # Re-generate even if cached
     force_whisper: bool = False  # Bypass Whisper transcription cache
+    use_qwen3: bool = True  # Use Qwen3 service for timestamp refinement
 
 
 class LrcJobRequest(BaseModel):
