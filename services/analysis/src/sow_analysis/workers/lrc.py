@@ -714,37 +714,58 @@ async def generate_lrc(
         logger.info("=" * 80)
         logger.info("LRC GENERATION: Running Qwen3 timestamp refinement")
         logger.info("=" * 80)
+
+        # Calculate audio duration from Whisper phrases
         try:
-            refined_lrc_text = await _qwen3_refine(
-                hash_prefix=content_hash,
-                lyrics_text=lyrics_text,
-            )
-            # Parse refined LRC to update lrc_lines
-            refined_lines = _parse_qwen3_lrc(refined_lrc_text)
-            if refined_lines:
-                lrc_lines = refined_lines
-                logger.info(
-                    f"Qwen3 refinement successful: {len(lrc_lines)} lines "
-                    f"replaced LLM-aligned timestamps"
+            audio_duration = _get_audio_duration(whisper_phrases)
+            logger.info(f"Audio duration: {audio_duration:.2f} seconds")
+
+            # Skip Qwen3 if audio exceeds max duration
+            if audio_duration > options.max_qwen3_duration:
+                logger.warning(
+                    f"Audio duration ({audio_duration:.2f}s) exceeds Qwen3 limit "
+                    f"({options.max_qwen3_duration}s), skipping Qwen3 refinement. "
+                    f"Using LLM-aligned timestamps."
                 )
             else:
-                logger.warning(
-                    "Qwen3 returned empty LRC content, using LLM-aligned timestamps"
-                )
-        except ConnectionError as e:
+                # Proceed with Qwen3 refinement
+                try:
+                    refined_lrc_text = await _qwen3_refine(
+                        hash_prefix=content_hash,
+                        lyrics_text=lyrics_text,
+                    )
+                    # Parse refined LRC to update lrc_lines
+                    refined_lines = _parse_qwen3_lrc(refined_lrc_text)
+                    if refined_lines:
+                        lrc_lines = refined_lines
+                        logger.info(
+                            f"Qwen3 refinement successful: {len(lrc_lines)} lines "
+                            f"replaced LLM-aligned timestamps"
+                        )
+                    else:
+                        logger.warning(
+                            "Qwen3 returned empty LRC content, using LLM-aligned timestamps"
+                        )
+                except ConnectionError as e:
+                    logger.warning(
+                        f"Qwen3 service unavailable (connection error): {e}, "
+                        f"using LLM-aligned timestamps"
+                    )
+                except asyncio.TimeoutError as e:
+                    logger.warning(
+                        f"Qwen3 service request timed out: {e}, "
+                        f"using LLM-aligned timestamps"
+                    )
+                except Exception as e:
+                    # Catch Qwen3ClientError and any other exceptions
+                    logger.warning(
+                        f"Qwen3 refinement failed: {e}, using LLM-aligned timestamps"
+                    )
+        except ValueError as e:
+            # Fallback if duration calculation fails
             logger.warning(
-                f"Qwen3 service unavailable (connection error): {e}, "
+                f"Cannot calculate audio duration for Qwen3 validation: {e}, "
                 f"using LLM-aligned timestamps"
-            )
-        except asyncio.TimeoutError as e:
-            logger.warning(
-                f"Qwen3 service request timed out: {e}, "
-                f"using LLM-aligned timestamps"
-            )
-        except Exception as e:
-            # Catch Qwen3ClientError and any other exceptions
-            logger.warning(
-                f"Qwen3 refinement failed: {e}, using LLM-aligned timestamps"
             )
 
     # Step 3: Write LRC file
