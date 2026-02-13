@@ -67,5 +67,70 @@ services:
     # deploy:
     #   <<: *gpu-deploy
 
+  # Qwen3 Alignment Service for LRC timestamp refinement
+  qwen3:
+    build:
+      context: ../qwen3
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=false
+    ports:
+      - "8001:8000"  # Different port to avoid conflict with analysis service
+    environment:
+      SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
+      SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
+      SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
+      SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
+      SOW_QWEN3_CACHE_DIR: /cache
+      SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
+      # R2 credentials (reuse from common env)
+      SOW_QWEN3_R2_BUCKET: ${SOW_R2_BUCKET}
+      SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
+      SOW_QWEN3_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
+      SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
+    volumes:
+      - qwen3-cache:/cache
+      - ${SOW_QWEN3_MODEL_VOLUME}:/models/qwen3-forced-aligner:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: '4'
+
+  # Qwen3 Development mode with code mount
+  qwen3-dev:
+    build:
+      context: ../qwen3
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=true
+    ports:
+      - "8001:8000"
+    environment:
+      SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
+      SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
+      SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
+      SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
+      SOW_QWEN3_CACHE_DIR: /cache
+      SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
+      DEV_MODE: "true"
+      # R2 credentials (reuse from common env)
+      SOW_QWEN3_R2_BUCKET: ${SOW_R2_BUCKET}
+      SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
+      SOW_QWEN3_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
+      SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
+    volumes:
+      - qwen3-cache:/cache
+      - ${SOW_QWEN3_MODEL_VOLUME}:/models/qwen3-forced-aligner:ro
+      - ../qwen3/src:/workspace/src:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: '4'
+
 volumes:
   analysis-cache:
+  qwen3-cache:
