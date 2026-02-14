@@ -214,6 +214,7 @@ class AnalysisClient:
         force: bool = False,
         force_whisper: bool = False,
         youtube_url: str = "",
+        use_qwen3: bool = True,
     ) -> JobInfo:
         """Submit an audio file for LRC generation.
 
@@ -227,6 +228,7 @@ class AnalysisClient:
             force: Whether to force re-generation
             force_whisper: Bypass Whisper transcription cache
             youtube_url: YouTube URL for transcript-based LRC (primary path)
+            use_qwen3: Whether to use Qwen3 for timestamp refinement (Whisper path only)
 
         Returns:
             JobInfo for the submitted job
@@ -245,6 +247,7 @@ class AnalysisClient:
                 "use_vocals_stem": use_vocals_stem,
                 "force": force,
                 "force_whisper": force_whisper,
+                "use_qwen3": use_qwen3,
             },
         }
 

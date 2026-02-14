@@ -37,5 +37,9 @@ class Settings(BaseSettings):
     SOW_WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
     SOW_WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
 
+    # Qwen3 Alignment Service Configuration
+    SOW_QWEN3_BASE_URL: str = "http://qwen3:8000"  # Base URL for Qwen3 Alignment Service
+    SOW_QWEN3_API_KEY: str = ""  # Optional API key for Qwen3 service authentication
+
 
 settings = Settings()

@@ -17,6 +17,8 @@ from typing import List, Optional
 
 from ..config import settings
 from ..models import LrcOptions
+from ..services import Qwen3Client
+from ..services.qwen3_client import OutputFormat
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,12 @@ class WhisperTranscriptionError(LRCWorkerError):
 
 class LLMAlignmentError(LRCWorkerError):
     """Raised when LLM alignment fails after retries."""
+
+    pass
+
+
+class Qwen3RefinementError(LRCWorkerError):
+    """Raised when Qwen3 refinement fails (non-blocking, falls back to LLM)."""
 
     pass
 
@@ -494,6 +502,97 @@ def _write_lrc(lines: List[LRCLine], output_path: Path) -> int:
     return len(lines)
 
 
+def _parse_qwen3_lrc(lrc_content: str) -> List[LRCLine]:
+    """Parse Qwen3 LRC output into LRCLine objects.
+
+    Args:
+        lrc_content: Raw LRC format string from Qwen3 service
+
+    Returns:
+        List of LRCLine objects
+    """
+    lines = []
+    # Pattern: [mm:ss.xx] text
+    pattern = r"\[(\d{2}):(\d{2}\.\d{2})\](.*)"  # [MM:SS.ms] text
+
+    for line in lrc_content.strip().split("\n"):
+        match = re.match(pattern, line)
+        if match:
+            minutes = int(match.group(1))
+            seconds = float(match.group(2))
+            text = match.group(3).strip()
+            time_seconds = minutes * 60 + seconds
+            if text:  # Skip empty lines
+                lines.append(LRCLine(time_seconds=time_seconds, text=text))
+
+    if not lines:
+        logger.warning("No valid LRC lines parsed from Qwen3 output")
+        logger.debug(f"Qwen3 LRC content: {lrc_content}")
+
+    return lines
+
+
+async def _qwen3_refine(hash_prefix: str, lyrics_text: str) -> str:
+    """Run Qwen3 forced alignment for timestamp refinement.
+
+    Args:
+        hash_prefix: Audio file hash prefix for R2 URL construction
+        lyrics_text: Lyrics text to align with audio
+
+    Returns:
+        Refined LRC content string
+
+    Raises:
+        Exception: If Qwen3 service call fails
+    """
+    # Construct R2 URL in s3:// format
+    audio_url = f"s3://{settings.SOW_R2_BUCKET}/audio/{hash_prefix}.mp3"
+    logger.info(f"Constructing R2 audio URL: {audio_url}")
+
+    # Instantiate Qwen3 client
+    client = Qwen3Client(
+        base_url=settings.SOW_QWEN3_BASE_URL,
+        api_key=settings.SOW_QWEN3_API_KEY or None,
+    )
+
+    # Request alignment from Qwen3 service
+    response = await client.align(
+        audio_url=audio_url,
+        lyrics_text=lyrics_text,
+        language="Chinese",
+        format=OutputFormat.LRC,
+    )
+
+    logger.info(
+        f"Qwen3 alignment received: {response.line_count} lines, "
+        f"{response.duration_seconds:.2f}s duration"
+    )
+
+    if response.lrc_content is None:
+        raise ValueError("Qwen3 service returned empty LRC content")
+
+    return response.lrc_content
+
+
+def _get_audio_duration(whisper_phrases: List[WhisperPhrase]) -> float:
+    """Calculate audio duration from Whisper transcription phrases.
+
+    Args:
+        whisper_phrases: List of WhisperPhrase with timing information
+
+    Returns:
+        Maximum end time in seconds (audio duration)
+
+    Raises:
+        ValueError: If whisper_phrases is empty
+    """
+    if not whisper_phrases:
+        raise ValueError("Cannot calculate duration: no Whisper phrases available")
+
+    # Duration is the maximum end time of all phrases
+    return max(p.end for p in whisper_phrases)
+
+
 async def generate_lrc(
     audio_path: Path,
     lyrics_text: str,
@@ -501,6 +600,7 @@ async def generate_lrc(
     output_path: Optional[Path] = None,
     cached_phrases: Optional[List[WhisperPhrase]] = None,
     youtube_url: Optional[str] = None,
+    content_hash: Optional[str] = None,
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
 
@@ -514,6 +614,7 @@ async def generate_lrc(
         output_path: Where to write the LRC file (default: audio_path with .lrc extension)
         cached_phrases: Optional cached Whisper transcription phrases to skip transcription
         youtube_url: Optional YouTube URL for transcript-based LRC (primary path)
+        content_hash: Optional content hash for Qwen3 audio URL construction (s3://{bucket}/audio/{hash}.mp3)
 
     Returns:
         Tuple of (path to LRC file, number of lines, transcription phrases)
@@ -607,6 +708,65 @@ async def generate_lrc(
         whisper_phrases,
         llm_model=options.llm_model,
     )
+
+    # Step 2.5: Qwen3 refinement (improve timestamp precision)
+    if options.use_qwen3 and content_hash:
+        logger.info("=" * 80)
+        logger.info("LRC GENERATION: Running Qwen3 timestamp refinement")
+        logger.info("=" * 80)
+
+        # Calculate audio duration from Whisper phrases
+        try:
+            audio_duration = _get_audio_duration(whisper_phrases)
+            logger.info(f"Audio duration: {audio_duration:.2f} seconds")
+
+            # Skip Qwen3 if audio exceeds max duration
+            if audio_duration > options.max_qwen3_duration:
+                logger.warning(
+                    f"Audio duration ({audio_duration:.2f}s) exceeds Qwen3 limit "
+                    f"({options.max_qwen3_duration}s), skipping Qwen3 refinement. "
+                    f"Using LLM-aligned timestamps."
+                )
+            else:
+                # Proceed with Qwen3 refinement
+                try:
+                    refined_lrc_text = await _qwen3_refine(
+                        hash_prefix=content_hash,
+                        lyrics_text=lyrics_text,
+                    )
+                    # Parse refined LRC to update lrc_lines
+                    refined_lines = _parse_qwen3_lrc(refined_lrc_text)
+                    if refined_lines:
+                        lrc_lines = refined_lines
+                        logger.info(
+                            f"Qwen3 refinement successful: {len(lrc_lines)} lines "
+                            f"replaced LLM-aligned timestamps"
+                        )
+                    else:
+                        logger.warning(
+                            "Qwen3 returned empty LRC content, using LLM-aligned timestamps"
+                        )
+                except ConnectionError as e:
+                    logger.warning(
+                        f"Qwen3 service unavailable (connection error): {e}, "
+                        f"using LLM-aligned timestamps"
+                    )
+                except asyncio.TimeoutError as e:
+                    logger.warning(
+                        f"Qwen3 service request timed out: {e}, "
+                        f"using LLM-aligned timestamps"
+                    )
+                except Exception as e:
+                    # Catch Qwen3ClientError and any other exceptions
+                    logger.warning(
+                        f"Qwen3 refinement failed: {e}, using LLM-aligned timestamps"
+                    )
+        except ValueError as e:
+            # Fallback if duration calculation fails
+            logger.warning(
+                f"Cannot calculate audio duration for Qwen3 validation: {e}, "
+                f"using LLM-aligned timestamps"
+            )
 
     # Step 3: Write LRC file
     line_count = _write_lrc(lrc_lines, output_path)

@@ -593,6 +593,7 @@ class JobQueue:
                     output_path=lrc_path,
                     cached_phrases=cached_phrases,
                     youtube_url=request.youtube_url or None,
+                    content_hash=request.content_hash,
                 )
 
                 # Cache the Whisper transcription for future use (if not using cache)

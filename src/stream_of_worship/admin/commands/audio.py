@@ -300,6 +300,7 @@ def _submit_lrc_job(
     no_vocals: bool = False,
     no_youtube: bool = False,
     no_whisper_cache: bool = False,
+    use_qwen3: bool = True,
 ) -> Optional[str]:
     """Submit LRC generation job for a recording.
 
@@ -315,6 +316,7 @@ def _submit_lrc_job(
         no_vocals: Don't use vocals stem
         no_youtube: Skip YouTube transcript, use Whisper directly
         no_whisper_cache: Bypass Whisper transcription cache
+        use_qwen3: Use Qwen3 for timestamp refinement (Whisper path only)
 
     Returns:
         Job ID if submission succeeded, None otherwise
@@ -339,6 +341,7 @@ def _submit_lrc_job(
             force=force,
             force_whisper=no_whisper_cache,
             youtube_url=youtube_url,
+            use_qwen3=use_qwen3,
         )
 
         # Update DB
@@ -596,6 +599,7 @@ def download_audio(
             whisper_model="large-v3",
             language="zh",
             no_vocals=False,
+            use_qwen3=True,
         )
 
 
@@ -1084,6 +1088,9 @@ def lrc_recording(
     no_whisper_cache: bool = typer.Option(
         False, "--no-whisper-cache", help="Bypass cached Whisper transcription, re-run Whisper"
     ),
+    no_qwen3: bool = typer.Option(
+        False, "--no-qwen3", help="Skip Qwen3 timestamp refinement (use LLM alignment only)"
+    ),
     wait: bool = typer.Option(
         False, "--wait", "-w", help="Wait for LRC generation to complete"
     ),
@@ -1094,8 +1101,9 @@ def lrc_recording(
     """Submit a recording for lyrics alignment (LRC generation).
 
     By default, tries YouTube transcript first (if a YouTube URL is stored),
-    then falls back to Whisper transcription. Use --no-youtube to skip the
-    YouTube path and use Whisper directly.
+    then falls back to Whisper transcription with Qwen3 timestamp refinement.
+    Use --no-youtube to skip the YouTube path and use Whisper directly.
+    Use --no-qwen3 to skip Qwen3 refinement and use LLM alignment only.
     """
     # Standard config/db boilerplate
     try:
@@ -1173,6 +1181,7 @@ def lrc_recording(
                 force=force,
                 force_whisper=no_whisper_cache,
                 youtube_url=youtube_url,
+                use_qwen3=not no_qwen3,
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")

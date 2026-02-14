@@ -1,0 +1,32 @@
+[project]
+name = "sow-qwen3"
+version = "0.1.0"
+description = "Qwen3 alignment service for Stream of Worship"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "qwen-asr>=0.0.6",
+    "pydub>=0.25.0",
+    "boto3>=1.34.0",
+]
+
+[project.optional-dependencies]
+service = ["python-multipart>=0.0.6"]
+dev = ["pytest>=7.4.0", "pytest-asyncio>=0.23.0"]
+
+[project.scripts]
+sow-qwen3 = "sow_qwen3.main:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,66 @@
+# Qwen3 Alignment Service Docker Compose Configuration
+version: '3.8'
+
+# Common environment variables (YAML anchor for reuse)
+x-common-env: &common-env
+  SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
+  SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
+  SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
+  SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
+  SOW_QWEN3_CACHE_DIR: /cache
+  SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
+  SOW_QWEN3_R2_BUCKET: ${SOW_QWEN3_R2_BUCKET:-}
+  SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_QWEN3_R2_ENDPOINT_URL:-}
+  SOW_QWEN3_R2_ACCESS_KEY_ID: ${SOW_QWEN3_R2_ACCESS_KEY_ID:-}
+  SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_QWEN3_R2_SECRET_ACCESS_KEY:-}
+
+services:
+  # Production service
+  qwen3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=false
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+    volumes:
+      # Cache volume for downloaded audio
+      - qwen3-cache:/cache
+      # Model volume (pre-downloaded Qwen3 model)
+      - ${SOW_QWEN3_MODEL_VOLUME}:/models/qwen3-forced-aligner:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: '4'
+
+  # Development mode with code mount for hot-reload
+  qwen3-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=true
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+      DEV_MODE: "true"
+    volumes:
+      - qwen3-cache:/cache
+      - ${SOW_QWEN3_MODEL_VOLUME}:/models/qwen3-forced-aligner:ro
+      # Mount local code for hot-reload
+      - ./src:/workspace/src:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: '4'
+
+volumes:
+  qwen3-cache:

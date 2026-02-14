@@ -1,0 +1,59 @@
+# Qwen3 Alignment Service - Production Docker Compose Configuration
+# This is a standalone production configuration for deploying the Qwen3 service
+# For integrated deployment with analysis service, use services/analysis/docker-compose.yml
+version: "3.8"
+
+# Common environment variables using YAML anchor for reuse
+x-common-env: &common-env
+  SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
+  SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
+  SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
+  SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-2}
+  SOW_QWEN3_CACHE_DIR: /cache
+  SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
+  SOW_QWEN3_R2_BUCKET: ${SOW_QWEN3_R2_BUCKET:-}
+  SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_QWEN3_R2_ENDPOINT_URL:-}
+  SOW_QWEN3_R2_ACCESS_KEY_ID: ${SOW_QWEN3_R2_ACCESS_KEY_ID:-}
+  SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_QWEN3_R2_SECRET_ACCESS_KEY:-}
+
+services:
+  qwen3:
+    build:
+      context: ../services/qwen3
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=false
+    container_name: sow-qwen3
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+    volumes:
+      # Model files mounted read-only for security
+      - ./models:/models/qwen3-forced-aligner:ro
+      # Cache volume for downloaded audio and temporary data
+      - qwen3-cache:/cache
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+        reservations:
+          cpus: "2.0"
+          memory: 4G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s  # Allow time for model loading at startup
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  qwen3-cache:
