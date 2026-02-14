@@ -75,9 +75,9 @@ Plans:
 **Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 04-testing-validation-01-PLAN.md — Unit tests for map_segments_to_lines() with repeated chorus scenarios
-- [ ] 04-testing-validation-02-PLAN.md — Regression tests with golden LRC comparison
-- [ ] 04-testing-validation-03-PLAN.md — End-to-end integration test with Qwen3 enabled
+- [x] 04-testing-validation-01-PLAN.md — Unit tests for map_segments_to_lines() with repeated chorus scenarios
+- [x] 04-testing-validation-02-PLAN.md — Regression tests with golden LRC comparison
+- [x] 04-testing-validation-03-PLAN.md — End-to-end integration test with Qwen3 enabled
 
 #### Phase 5: Performance & Production Readiness
 **Goal**: Optimize processing time and ensure production deployment readiness
@@ -86,12 +86,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Qwen3 service loads model once at startup (not per-request)
   2. LRC generation with Qwen3 completes within 2x time of Whisper+LLM path
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 05-01: Model singleton cache implementation
-- [ ] 05-02: Performance benchmarking and validation
-- [ ] 05-03: Production configuration documentation
+- [x] 05-performance-production-readiness-01-PLAN.md — Model singleton cache implementation and concurrency tuning
+- [x] 05-performance-production-readiness-02-PLAN.md — Performance benchmarking and 2x time validation
+- [x] 05-performance-production-readiness-03-PLAN.md — Production configuration documentation
 
 ## Progress
 
@@ -103,5 +103,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Qwen3 Service Foundation | v1.1 | 4/4 | Complete | 2026-02-13 |
 | 2. Analysis Service Integration | v1.1 | 3/3 | Complete | 2026-02-13 |
 | 3. Fallback & Reliability | v1.1 | 3/3 | Complete | 2026-02-13 |
-| 4. Testing & Validation | v1.1 | 0/3 | Not started | - |
-| 5. Performance & Production Readiness | v1.1 | 0/3 | Not started | - |
+| 4. Testing & Validation | v1.1 | 3/3 | Complete | 2026-02-14 |
+| 5. Performance & Production Readiness | v1.1 | 3/3 | Complete | 2026-02-14 |
