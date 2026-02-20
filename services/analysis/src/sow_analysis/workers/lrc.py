@@ -532,11 +532,11 @@ def _parse_qwen3_lrc(lrc_content: str) -> List[LRCLine]:
     return lines
 
 
-async def _qwen3_refine(hash_prefix: str, lyrics_text: str) -> str:
+async def _qwen3_refine(content_hash: str, lyrics_text: str) -> str:
     """Run Qwen3 forced alignment for timestamp refinement.
 
     Args:
-        hash_prefix: Audio file hash prefix for R2 URL construction
+        content_hash: Full content hash (will be truncated to 12-char prefix)
         lyrics_text: Lyrics text to align with audio
 
     Returns:
@@ -546,7 +546,9 @@ async def _qwen3_refine(hash_prefix: str, lyrics_text: str) -> str:
         Exception: If Qwen3 service call fails
     """
     # Construct R2 URL in s3:// format
-    audio_url = f"s3://{settings.SOW_R2_BUCKET}/audio/{hash_prefix}.mp3"
+    # Audio files are stored at: s3://{bucket}/{12-char-hash-prefix}/audio.mp3
+    hash_prefix = content_hash[:12]
+    audio_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/audio.mp3"
     logger.info(f"Constructing R2 audio URL: {audio_url}")
 
     # Instantiate Qwen3 client
@@ -731,7 +733,7 @@ async def generate_lrc(
                 # Proceed with Qwen3 refinement
                 try:
                     refined_lrc_text = await _qwen3_refine(
-                        hash_prefix=content_hash,
+                        content_hash=content_hash,
                         lyrics_text=lyrics_text,
                     )
                     # Parse refined LRC to update lrc_lines
