@@ -13,7 +13,12 @@ from typing import Generator, Optional, Union
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
-    ALL_SCHEMA_STATEMENTS,
+    CREATE_INDEXES,
+    CREATE_RECORDINGS_TABLE,
+    CREATE_RECORDINGS_UPDATE_TRIGGER,
+    CREATE_SONGS_TABLE,
+    CREATE_SONGS_UPDATE_TRIGGER,
+    CREATE_SYNC_METADATA_TABLE,
     DEFAULT_SYNC_METADATA,
     FOREIGN_KEYS_QUERY,
     INTEGRITY_CHECK_QUERY,
@@ -179,22 +184,17 @@ class DatabaseClient:
         """Initialize the database schema.
 
         Creates all tables, indexes, and triggers if they don't exist.
+        Runs migrations before creating indexes to handle column additions.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
-            for statement in ALL_SCHEMA_STATEMENTS:
-                cursor.execute(statement)
 
-            # Initialize sync metadata if empty
-            for key, value in DEFAULT_SYNC_METADATA.items():
-                cursor.execute(
-                    """
-                    INSERT OR IGNORE INTO sync_metadata (key, value)
-                    VALUES (?, ?)
-                    """,
-                    (key, value),
-                )
+            # First, create tables if they don't exist
+            cursor.execute(CREATE_SONGS_TABLE)
+            cursor.execute(CREATE_RECORDINGS_TABLE)
+            cursor.execute(CREATE_SYNC_METADATA_TABLE)
 
+            # Run column migrations BEFORE creating indexes (indexes may reference new columns)
             # Migration: add youtube_url column if it doesn't exist (idempotent)
             try:
                 cursor.execute("ALTER TABLE recordings ADD COLUMN youtube_url TEXT")
@@ -213,6 +213,24 @@ class DatabaseClient:
             except sqlite3.OperationalError:
                 # Column already exists - ignore
                 pass
+
+            # Now create indexes (they can reference migrated columns)
+            for statement in CREATE_INDEXES:
+                cursor.execute(statement)
+
+            # Create triggers
+            cursor.execute(CREATE_SONGS_UPDATE_TRIGGER)
+            cursor.execute(CREATE_RECORDINGS_UPDATE_TRIGGER)
+
+            # Initialize sync metadata if empty
+            for key, value in DEFAULT_SYNC_METADATA.items():
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO sync_metadata (key, value)
+                    VALUES (?, ?)
+                    """,
+                    (key, value),
+                )
 
     def reset_database(self) -> None:
         """Reset the database by dropping all tables.
