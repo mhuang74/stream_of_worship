@@ -78,12 +78,13 @@ services:
     ports:
       - "8001:8000"  # Different port to avoid conflict with analysis service
     environment:
-      SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
       SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
       SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
       SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
       SOW_QWEN3_CACHE_DIR: /cache
       SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
+      # Model path inside container - points to snapshot within the mounted HF cache
+      SOW_QWEN3_MODEL_PATH: /models/hf-model/snapshots/${SOW_QWEN3_MODEL_SNAPSHOT}
       # R2 credentials (reuse from common env)
       SOW_QWEN3_R2_BUCKET: ${SOW_R2_BUCKET}
       SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
@@ -91,7 +92,8 @@ services:
       SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
     volumes:
       - qwen3-cache:/cache
-      - ${SOW_QWEN3_MODEL_VOLUME}:/models/qwen3-forced-aligner:ro
+      # Mount entire HuggingFace model directory to preserve symlink structure
+      - ${SOW_QWEN3_MODEL_ROOT}:/models/hf-model:ro
     deploy:
       resources:
         limits:
@@ -108,14 +110,19 @@ services:
         - DEV_MODE=true
     ports:
       - "8001:8000"
+    networks:
+      default:
+        aliases:
+          - qwen3  # Allow analysis service to connect via "qwen3" hostname
     environment:
-      SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
       SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
       SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
       SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
       SOW_QWEN3_CACHE_DIR: /cache
       SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
       DEV_MODE: "true"
+      # Model path inside container - points to snapshot within the mounted HF cache
+      SOW_QWEN3_MODEL_PATH: /models/hf-model/snapshots/${SOW_QWEN3_MODEL_SNAPSHOT}
       # R2 credentials (reuse from common env)
       SOW_QWEN3_R2_BUCKET: ${SOW_R2_BUCKET}
       SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
@@ -123,7 +130,8 @@ services:
       SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
     volumes:
       - qwen3-cache:/cache
-      - ${SOW_QWEN3_MODEL_VOLUME}:/models/qwen3-forced-aligner:ro
+      # Mount entire HuggingFace model directory to preserve symlink structure
+      - ${SOW_QWEN3_MODEL_ROOT}:/models/hf-model:ro
       - ../qwen3/src:/workspace/src:ro
     deploy:
       resources:
