@@ -194,18 +194,19 @@ class Recording:
         Note:
             Handles schema versions:
             - 25 columns: before youtube_url was added
-            - 26 columns: with youtube_url at the end (legacy)
-            - 27 columns: with visibility_status at index 23, youtube_url at the end
+            - 26 columns: with youtube_url at the end, no visibility_status
+            - 27 columns: with visibility_status at the end (after youtube_url)
         """
         row_len = len(row)
 
         # Determine schema version and parse accordingly
         if row_len == 27:
-            # New schema with visibility_status at index 23
-            visibility_status = row[23]
-            created_at = row[24]
-            updated_at = row[25]
-            youtube_url = row[26]
+            # Schema with visibility_status at the end (ALTER TABLE adds columns at end)
+            # Column order: created_at (23), updated_at (24), youtube_url (25), visibility_status (26)
+            created_at = row[23]
+            updated_at = row[24]
+            youtube_url = row[25]
+            visibility_status = row[26]
         elif row_len == 26:
             # Legacy schema: youtube_url at end, no visibility_status
             visibility_status = None

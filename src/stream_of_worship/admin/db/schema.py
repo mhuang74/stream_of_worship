@@ -59,14 +59,14 @@ CREATE TABLE IF NOT EXISTS recordings (
     lrc_status TEXT DEFAULT 'pending',
     lrc_job_id TEXT,
 
-    -- Visibility status for User App (published, review, hold)
-    visibility_status TEXT DEFAULT NULL,
-
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
 
     -- YouTube URL (for transcript-based LRC generation)
-    youtube_url TEXT
+    youtube_url TEXT,
+
+    -- Visibility status for User App (published, review, hold)
+    visibility_status TEXT DEFAULT NULL
 );
 """
 
