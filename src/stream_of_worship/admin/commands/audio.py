@@ -21,12 +21,13 @@ from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
-from stream_of_worship.admin.db.models import Recording
+from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
     AnalysisServiceError,
@@ -1741,56 +1742,39 @@ def _force_sync_all_pending(
         console.print(f"[dim]URL set: {force_url}[/dim]")
 
 
-@app.command("view-lrc")
-def view_lrc(
-    song_id: str = typer.Argument(..., help="Song ID to view LRC for"),
-    raw: bool = typer.Option(False, "--raw", "-r", help="Display raw LRC file"),
-    no_timestamps: bool = typer.Option(
-        False, "--no-timestamps", "-t", help="Show lyrics text only"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
-) -> None:
-    """View LRC (synchronized lyrics) contents for a recording."""
-    # Load config
-    try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
-    except FileNotFoundError:
-        console.print(
-            "[red]Config file not found. Please create it using 'sow-admin config init'[/red]"
-        )
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1)
+def _display_lrc(
+    console: Console,
+    song: Song,
+    recording: Recording,
+    song_id: str,
+    raw: bool,
+    no_timestamps: bool,
+) -> bool:
+    """Display LRC content for a single recording.
 
-    # Validate database exists
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        console.print("[yellow]Run 'sow-admin catalog init' first[/yellow]")
-        raise typer.Exit(1)
+    Args:
+        console: Rich console for output
+        song: Song object for display
+        recording: Recording object with LRC URL
+        song_id: Song ID string
+        raw: Display raw LRC file
+        no_timestamps: Show lyrics text only
 
-    # Get database client
-    db_client = DatabaseClient(config.db_path)
-
-    # Get recording
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(f"[red]No recording found for song ID: {song_id}[/red]")
-        raise typer.Exit(1)
-
-    # Get song for display
-    song = db_client.get_song(recording.song_id)
-    if not song:
-        console.print(f"[red]No song found for ID: {recording.song_id}[/red]")
-        raise typer.Exit(1)
-
+    Returns:
+        True if successful, False if error occurred
+    """
     # Check R2 URL exists
     if not recording.r2_lrc_url:
         console.print(f"[red]No LRC URL found for {song_id}[/red]")
         console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
-        raise typer.Exit(1)
+        return False
+
+    # Get config for R2 access
+    try:
+        config = AdminConfig.load()
+    except Exception as e:
+        console.print(f"[red]Error loading config: {e}[/red]")
+        return False
 
     # Initialize R2 client
     r2_client = R2Client(
@@ -1804,21 +1788,20 @@ def view_lrc(
         _, s3_key = R2Client.parse_s3_url(recording.r2_lrc_url)
     except ValueError as e:
         console.print(f"[red]Error parsing R2 URL: {e}[/red]")
-        raise typer.Exit(1)
+        return False
 
     # Download LRC file to temp location
-    temp_file = None
+    temp_path: Optional[Path] = None
     try:
-        temp_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".lrc", delete=False)
-        temp_path = Path(temp_file.name)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".lrc", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
 
         # Download from R2
         try:
             r2_client.download_file(s3_key, temp_path)
         except ClientError as e:
             console.print(f"[red]Error downloading LRC from R2: {e}[/red]")
-            raise typer.Exit(1)
+            return False
 
         # Read content
         content = temp_path.read_text(encoding="utf-8")
@@ -1842,7 +1825,7 @@ def view_lrc(
             except ValueError as e:
                 console.print(f"[red]Error parsing LRC file: {e}[/red]")
                 console.print("[dim]Try using --raw to view the file content[/dim]")
-                raise typer.Exit(1)
+                return False
         else:
             # Default mode: parse and display in table
             try:
@@ -1877,12 +1860,99 @@ def view_lrc(
             except ValueError as e:
                 console.print(f"[red]Error parsing LRC file: {e}[/red]")
                 console.print("[dim]Try using --raw to view the file content[/dim]")
-                raise typer.Exit(1)
+                return False
+
+        return True
 
     finally:
         # Cleanup temp file
-        if temp_file and temp_path.exists():
+        if temp_path and temp_path.exists():
             temp_path.unlink()
+
+
+@app.command("view-lrc")
+def view_lrc(
+    song_id: list[str] = typer.Argument(..., help="Song ID(s) to view LRC for"),
+    raw: bool = typer.Option(False, "--raw", "-r", help="Display raw LRC file"),
+    no_timestamps: bool = typer.Option(
+        False, "--no-timestamps", "-t", help="Show lyrics text only"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """View LRC (synchronized lyrics) contents for one or more recordings.
+
+    Accepts multiple song IDs to view LRC for multiple recordings:
+
+        sow-admin audio view-lrc song_001 song_002 song_003
+
+    Or pipe from audio list:
+
+        sow-admin audio list --visibility published --format ids | xargs sow-admin audio view-lrc
+    """
+    # Load config
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print(
+            "[red]Config file not found. Please create it using 'sow-admin config init'[/red]"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error loading config: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Validate database exists
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        console.print("[yellow]Run 'sow-admin catalog init' first[/yellow]")
+        raise typer.Exit(1)
+
+    # Get database client
+    db_client = DatabaseClient(config.db_path)
+
+    # Track success/failure counts
+    success_count = 0
+    error_count = 0
+
+    # Process each song ID
+    for idx, sid in enumerate(song_id):
+        # Add separator between songs (but not before first)
+        if idx > 0:
+            console.print()
+            console.print(Rule(style="dim"))
+            console.print()
+
+        # Get recording
+        recording = db_client.get_recording_by_song_id(sid)
+        if not recording:
+            console.print(f"[red]No recording found for song ID: {sid}[/red]")
+            error_count += 1
+            continue
+
+        # Get song for display
+        song = db_client.get_song(recording.song_id)
+        if not song:
+            console.print(f"[red]No song found for ID: {recording.song_id}[/red]")
+            error_count += 1
+            continue
+
+        # Display LRC
+        if _display_lrc(console, song, recording, sid, raw, no_timestamps):
+            success_count += 1
+        else:
+            error_count += 1
+
+    # Summary
+    if len(song_id) > 1:
+        console.print()
+        console.print(Rule(style="dim"))
+        if error_count == 0:
+            console.print(f"[green]✓ Successfully displayed LRC for {success_count} recording(s)[/green]")
+        else:
+            console.print(f"[yellow]Completed: {success_count} succeeded, {error_count} failed[/yellow]")
+            raise typer.Exit(1)
 
 
 @app.command("cache")
