@@ -1786,29 +1786,10 @@ def view_lrc(
         console.print(f"[red]No song found for ID: {recording.song_id}[/red]")
         raise typer.Exit(1)
 
-    # Check LRC status
-    if recording.lrc_status == "pending":
-        console.print(f"[yellow]LRC not yet generated for {song_id}[/yellow]")
-        console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
-        raise typer.Exit(1)
-    elif recording.lrc_status == "processing":
-        console.print(f"[yellow]LRC generation in progress for {song_id}[/yellow]")
-        if recording.lrc_job_id:
-            console.print(f"[dim]Job ID: {recording.lrc_job_id}[/dim]")
-        console.print("[dim]Check status with 'sow-admin audio status'[/dim]")
-        raise typer.Exit(1)
-    elif recording.lrc_status == "failed":
-        console.print(f"[red]LRC generation failed for {song_id}[/red]")
-        console.print(f"[dim]Retry with 'sow-admin audio lrc {song_id} --force'[/dim]")
-        raise typer.Exit(1)
-    elif recording.lrc_status != "completed":
-        console.print(f"[red]Unknown LRC status: {recording.lrc_status}[/red]")
-        raise typer.Exit(1)
-
     # Check R2 URL exists
     if not recording.r2_lrc_url:
-        console.print(f"[red]LRC marked as completed but no R2 URL found[/red]")
-        console.print("[dim]This is a data integrity issue. Please contact support.[/dim]")
+        console.print(f"[red]No LRC URL found for {song_id}[/red]")
+        console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
         raise typer.Exit(1)
 
     # Initialize R2 client
