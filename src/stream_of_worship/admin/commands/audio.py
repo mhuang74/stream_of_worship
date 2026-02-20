@@ -736,6 +736,12 @@ def list_recordings(
         "-s",
         help="Filter by analysis status (pending|processing|completed|failed)",
     ),
+    visibility: Optional[str] = typer.Option(
+        None,
+        "--visibility",
+        "-v",
+        help="Filter by visibility status (published|review|hold)",
+    ),
     format: str = typer.Option(
         "table", "--format", "-f", help="Output format (table|ids)"
     ),
@@ -761,8 +767,17 @@ def list_recordings(
         console.print(f"[red]Database not found at {config.db_path}[/red]")
         raise typer.Exit(1)
 
+    # Validate visibility filter
+    if visibility:
+        valid_visibilities = {"published", "review", "hold"}
+        if visibility not in valid_visibilities:
+            console.print(
+                f"[red]Invalid visibility: {visibility}. Must be one of: {', '.join(valid_visibilities)}[/red]"
+            )
+            raise typer.Exit(1)
+
     db_client = DatabaseClient(config.db_path)
-    recordings = db_client.list_recordings(status=status, limit=limit)
+    recordings = db_client.list_recordings(status=status, visibility=visibility, limit=limit)
 
     if not recordings:
         console.print("[yellow]No recordings found.[/yellow]")
@@ -772,7 +787,14 @@ def list_recordings(
         for rec in recordings:
             console.print(rec.song_id if rec.song_id else rec.hash_prefix)
     else:
-        table = Table(title=f"Recordings ({len(recordings)} total)")
+        # Build title with filters
+        filter_parts = []
+        if status:
+            filter_parts.append(f"status={status}")
+        if visibility:
+            filter_parts.append(f"visibility={visibility}")
+        filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
+        table = Table(title=f"Recordings ({len(recordings)} total){filter_str}")
         table.add_column("Song Title", style="green")
         table.add_column("Visibility", justify="center")
         table.add_column("Size", style="magenta", justify="right")
