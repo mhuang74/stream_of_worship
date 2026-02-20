@@ -5,7 +5,12 @@ recordings, and viewing recording details.
 """
 
 import json
+import select
+import sys
 import tempfile
+import termios
+import time
+import tty
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -13,6 +18,7 @@ from typing import Any, Optional
 import typer
 from botocore.exceptions import ClientError
 from rich.console import Console
+from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
@@ -2073,3 +2079,207 @@ def upload_lrc(
         title="Upload Complete",
         border_style="green",
     ))
+
+
+def _read_key_nonblocking() -> Optional[str]:
+    """Read a key press without blocking.
+
+    Returns:
+        Key name ('left', 'right', 'q', etc.) or None if no key pressed.
+    """
+    # Check if input is available
+    if not select.select([sys.stdin], [], [], 0)[0]:
+        return None
+
+    # Read the key
+    ch = sys.stdin.read(1)
+
+    # Handle escape sequences (arrow keys)
+    if ch == "\x1b":
+        # Check for more characters in the sequence
+        if select.select([sys.stdin], [], [], 0.05)[0]:
+            ch2 = sys.stdin.read(1)
+            if ch2 == "[":
+                if select.select([sys.stdin], [], [], 0.05)[0]:
+                    ch3 = sys.stdin.read(1)
+                    if ch3 == "C":
+                        return "right"
+                    elif ch3 == "D":
+                        return "left"
+                    elif ch3 == "A":
+                        return "up"
+                    elif ch3 == "B":
+                        return "down"
+        return "escape"
+
+    return ch
+
+
+def _drain_input_buffer() -> None:
+    """Drain any buffered input to prevent key lag."""
+    while select.select([sys.stdin], [], [], 0)[0]:
+        sys.stdin.read(1)
+
+
+@app.command("playback")
+def playback_audio(
+    song_id: str = typer.Argument(..., help="Song ID to play"),
+    start: float = typer.Option(0.0, "--start", "-s", help="Start position in seconds"),
+    volume: float = typer.Option(0.8, "--volume", "-v", help="Volume (0.0-1.0)"),
+    force_download: bool = typer.Option(False, "--force", "-f", help="Re-download audio"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Play audio for a song directly from the terminal.
+
+    Downloads audio from R2 if not cached locally, then plays it using
+    miniaudio. Shows a progress bar during playback.
+
+    Controls: Left/Right arrows to skip -/+5s, Ctrl+C to stop.
+    """
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for song: {song_id}[/red]")
+        console.print(f"[dim]Run 'sow-admin audio download {song_id}' first.[/dim]")
+        raise typer.Exit(1)
+
+    # Get song info for display
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+    artist = song.composer if song else "Unknown"
+
+    # Initialize R2 client
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Initialize asset cache
+    from stream_of_worship.app.services.asset_cache import AssetCache
+
+    cache_dir = Path.home() / ".config" / "sow-app" / "cache"
+    cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
+
+    hash_prefix = recording.hash_prefix
+
+    # Check local cache and download if needed
+    audio_path = cache.get_audio_path(hash_prefix)
+    if not audio_path.exists() or force_download:
+        console.print("[cyan]Downloading audio from R2...[/cyan]")
+        downloaded_path = cache.download_audio(hash_prefix, force=force_download)
+        if not downloaded_path:
+            console.print("[red]Failed to download audio from R2.[/red]")
+            raise typer.Exit(1)
+        audio_path = downloaded_path
+        size_mb = audio_path.stat().st_size / (1024 * 1024)
+        console.print(f"[green]Downloaded: {audio_path.name} ({size_mb:.2f} MB)[/green]")
+
+    # Initialize playback service
+    from stream_of_worship.app.services.playback import PlaybackService
+
+    playback = PlaybackService(volume=volume)
+
+    # Load the audio file
+    if not playback.load(audio_path):
+        console.print(f"[red]Failed to load audio file: {audio_path}[/red]")
+        raise typer.Exit(1)
+
+    # Validate start position
+    if start >= playback.duration_seconds:
+        console.print(f"[red]Start position ({start:.1f}s) exceeds duration ({playback.duration_seconds:.1f}s)[/red]")
+        raise typer.Exit(1)
+
+    # Start playback
+    if not playback.play(start_seconds=start):
+        console.print("[red]Failed to start playback.[/red]")
+        raise typer.Exit(1)
+
+    # Display progress using Rich Live
+    def format_time(seconds: float) -> str:
+        """Format seconds as MM:SS."""
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}:{secs:02d}"
+
+    def create_display(current: float, total: float) -> Panel:
+        """Create the playback display panel."""
+        # Calculate progress
+        progress_pct = (current / total * 100) if total > 0 else 0
+        bar_width = 40
+        filled = int(bar_width * progress_pct / 100)
+        empty = bar_width - filled
+
+        # Build progress bar
+        progress_bar = f"[green]{'█' * filled}[/green][dim]{'░' * empty}[/dim]"
+
+        # Build display text
+        lines = [
+            f"[bold cyan]Playing:[/bold cyan] {song_title} - {artist}",
+            f"{progress_bar} {format_time(current)} / {format_time(total)}",
+            "",
+            "[dim]← -5s | → +5s | Ctrl+C stop[/dim]",
+        ]
+
+        return Panel(
+            "\n".join(lines),
+            border_style="cyan",
+            padding=(0, 1),
+        )
+
+    stopped_by_user = False
+    total_duration = playback.duration_seconds
+
+    # Save terminal settings and switch to raw mode for key input
+    old_settings = termios.tcgetattr(sys.stdin)
+    try:
+        tty.setcbreak(sys.stdin.fileno())
+
+        with Live(
+            create_display(start, total_duration),
+            console=console,
+            refresh_per_second=4,
+            transient=True,
+        ) as live:
+            while playback.is_playing:
+                # Check for key input
+                key = _read_key_nonblocking()
+                if key == "right":
+                    playback.skip_forward(5.0)
+                    _drain_input_buffer()  # Clear buffered keys after skip
+                elif key == "left":
+                    playback.skip_backward(5.0)
+                    _drain_input_buffer()  # Clear buffered keys after skip
+
+                # Update display
+                current = playback.position_seconds
+                live.update(create_display(current, total_duration))
+                time.sleep(0.05)
+
+    except KeyboardInterrupt:
+        stopped_by_user = True
+    finally:
+        # Restore terminal settings
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        playback.stop()
+
+    if stopped_by_user:
+        console.print("[yellow]Playback stopped.[/yellow]")
+    else:
+        console.print("[green]Playback finished.[/green]")
