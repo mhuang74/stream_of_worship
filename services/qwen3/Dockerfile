@@ -20,8 +20,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 
+# Install CPU-only PyTorch first to avoid CUDA dependencies
+# (qwen3 service typically runs on CPU-only hosts)
+RUN uv pip install --no-cache torch --index-url https://download.pytorch.org/whl/cpu
+
 # Copy and install service dependencies
-# qwen-asr includes PyTorch as a dependency
+# qwen-asr includes PyTorch as a dependency - CPU version already installed above
 COPY pyproject.toml .
 RUN uv pip install --no-cache --no-build-isolation -e ".[service]"
 

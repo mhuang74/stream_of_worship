@@ -3,7 +3,6 @@ version: '3.8'
 
 # Common environment variables (YAML anchor for reuse)
 x-common-env: &common-env
-  SOW_QWEN3_MODEL_PATH: /models/qwen3-forced-aligner
   SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
   SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
   SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
@@ -48,6 +47,10 @@ services:
         - DEV_MODE=true
     ports:
       - "8000:8000"
+    networks:
+      default:
+        aliases:
+          - qwen3  # Allow clients to connect via "qwen3" hostname
     environment:
       <<: *common-env
       DEV_MODE: "true"
