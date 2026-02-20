@@ -1872,7 +1872,7 @@ def _display_lrc(
 
 @app.command("view-lrc")
 def view_lrc(
-    song_id: list[str] = typer.Argument(..., help="Song ID(s) to view LRC for"),
+    song_id: list[str] = typer.Argument(..., help="Song ID(s) to view LRC for. Use '-' to read from stdin."),
     raw: bool = typer.Option(False, "--raw", "-r", help="Display raw LRC file"),
     no_timestamps: bool = typer.Option(
         False, "--no-timestamps", "-t", help="Show lyrics text only"
@@ -1887,10 +1887,12 @@ def view_lrc(
 
         sow-admin audio view-lrc song_001 song_002 song_003
 
-    Or pipe from audio list:
+    Or pipe from audio list using '-' to read from stdin:
 
-        sow-admin audio list --visibility published --format ids | xargs sow-admin audio view-lrc
+        sow-admin audio list --visibility published --format ids | sow-admin audio view-lrc -
     """
+    import sys
+
     # Load config
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
@@ -1912,12 +1914,22 @@ def view_lrc(
     # Get database client
     db_client = DatabaseClient(config.db_path)
 
+    # Handle stdin input if '-' is provided
+    song_ids = song_id
+    if song_id == ["-"]:
+        # Read song IDs from stdin
+        lines = sys.stdin.read().strip().split('\n')
+        song_ids = [line.strip() for line in lines if line.strip()]
+        if not song_ids:
+            console.print("[yellow]No song IDs provided via stdin[/yellow]")
+            raise typer.Exit(0)
+
     # Track success/failure counts
     success_count = 0
     error_count = 0
 
     # Process each song ID
-    for idx, sid in enumerate(song_id):
+    for idx, sid in enumerate(song_ids):
         # Add separator between songs (but not before first)
         if idx > 0:
             console.print()
