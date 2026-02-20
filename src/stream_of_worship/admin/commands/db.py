@@ -70,16 +70,18 @@ def init_db(
 
     db_path = config.db_path
 
-    if db_path.exists() and not force:
-        console.print(f"[yellow]Database already exists at {db_path}[/yellow]")
-        console.print("Use --force to re-initialize (this will delete all data)")
-        raise typer.Exit(1)
-
     if force and db_path.exists():
         console.print(f"[red]Resetting database at {db_path}...[/red]")
         client = DatabaseClient(db_path)
         client.reset_database()
         console.print("[green]Database reset and re-initialized successfully![/green]")
+    elif db_path.exists():
+        # Database exists, run migrations to apply any schema updates
+        console.print(f"[yellow]Database already exists at {db_path}[/yellow]")
+        console.print("Running migrations...")
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+        console.print("[green]Migrations applied successfully![/green]")
     else:
         console.print(f"Creating database at {db_path}...")
         client = DatabaseClient(db_path)
