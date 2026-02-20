@@ -150,8 +150,13 @@ class PlaybackService:
         Returns:
             PlaybackPosition with current state
         """
+        # Calculate position inline to avoid nested lock (position_seconds also uses _lock)
         with self._lock:
-            current = self.position_seconds
+            if self._state == PlaybackState.PLAYING and self._start_time:
+                elapsed = time.time() - self._start_time
+                current = min(self._position_seconds + elapsed, self._duration_seconds)
+            else:
+                current = self._position_seconds
             total = self._duration_seconds
             progress = (current / total * 100) if total > 0 else 0
             return PlaybackPosition(
@@ -186,7 +191,7 @@ class PlaybackService:
         Returns:
             True if loaded successfully
         """
-        self.stop()
+        self.stop(clear_source=True)
 
         if not file_path.exists():
             logger.error(f"Audio file not found: {file_path}")
@@ -306,14 +311,14 @@ class PlaybackService:
             target_position = start_seconds
             target_file = self._current_file
 
-        # Stop any existing playback first
-        self.stop()
+        # Stop any existing playback, but preserve decoded source for fast seeking
+        self.stop(clear_source=False)
 
         # Restore current file after stop
         with self._lock:
             self._current_file = target_file
 
-        # Load if needed (load() will reset position to 0, so we'll restore it after)
+        # Load if needed (when new file or source was cleared)
         if file_path or not self._source:
             if not self.load(self._current_file):
                 return False
@@ -404,8 +409,13 @@ class PlaybackService:
         self._set_state(PlaybackState.PLAYING)
         return True
 
-    def stop(self) -> None:
-        """Stop playback and reset position."""
+    def stop(self, clear_source: bool = True) -> None:
+        """Stop playback and reset position.
+
+        Args:
+            clear_source: If True, clear the decoded audio source (default).
+                          Set to False when seeking to avoid re-decoding.
+        """
         self._stop_event.set()
 
         # Close generator first
@@ -425,16 +435,17 @@ class PlaybackService:
                 pass
             self._device = None
 
-        # Wait for position thread to finish
+        # Wait for position thread to finish (short timeout for responsiveness)
         if self._position_thread and self._position_thread.is_alive():
-            self._position_thread.join(timeout=1.0)
+            self._position_thread.join(timeout=0.1)
 
         with self._lock:
             self._state = PlaybackState.STOPPED
             self._position_seconds = 0.0
             self._start_time = None
             self._paused_at = None
-            self._source = None
+            if clear_source:
+                self._source = None
 
         if self._on_state_changed:
             self._on_state_changed(PlaybackState.STOPPED)
