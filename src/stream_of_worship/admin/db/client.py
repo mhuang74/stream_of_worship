@@ -529,12 +529,14 @@ class DatabaseClient:
     def list_recordings(
         self,
         status: Optional[str] = None,
+        visibility: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> list[Recording]:
         """List recordings with optional filters.
 
         Args:
             status: Filter by analysis status
+            visibility: Filter by visibility status (published|review|hold)
             limit: Maximum number of results
 
         Returns:
@@ -548,6 +550,10 @@ class DatabaseClient:
         if status:
             query += " AND analysis_status = ?"
             params.append(status)
+
+        if visibility:
+            query += " AND visibility_status = ?"
+            params.append(visibility)
 
         query += " ORDER BY imported_at DESC"
 
