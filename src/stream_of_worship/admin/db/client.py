@@ -202,6 +202,18 @@ class DatabaseClient:
                 # Column already exists - ignore
                 pass
 
+            # Migration: add visibility_status column if it doesn't exist (idempotent)
+            try:
+                cursor.execute("ALTER TABLE recordings ADD COLUMN visibility_status TEXT")
+                # Migrate existing completed LRC recordings to 'published'
+                cursor.execute("""
+                    UPDATE recordings SET visibility_status = 'published'
+                    WHERE lrc_status = 'completed' AND visibility_status IS NULL
+                """)
+            except sqlite3.OperationalError:
+                # Column already exists - ignore
+                pass
+
     def reset_database(self) -> None:
         """Reset the database by dropping all tables.
 
@@ -421,9 +433,9 @@ class DatabaseClient:
                     r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
                     musical_mode, key_confidence, loudness_db, beats,
                     downbeats, sections, embeddings_shape, analysis_status,
-                    analysis_job_id, lrc_status, lrc_job_id, created_at, updated_at,
-                    youtube_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    analysis_job_id, lrc_status, lrc_job_id, visibility_status,
+                    created_at, updated_at, youtube_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     recording.content_hash,
@@ -449,6 +461,7 @@ class DatabaseClient:
                     recording.analysis_job_id,
                     recording.lrc_status,
                     recording.lrc_job_id,
+                    recording.visibility_status,
                     recording.created_at or datetime.now().isoformat(),
                     recording.updated_at or datetime.now().isoformat(),
                     recording.youtube_url,
@@ -686,6 +699,10 @@ class DatabaseClient:
     ) -> None:
         """Update recording with LRC results.
 
+        Auto-publishes the recording when visibility_status is NULL (first-time LRC).
+        When visibility is already set (review/hold), keeps current status so user
+        can explicitly publish after reviewing/fixing.
+
         Args:
             hash_prefix: The hash prefix of the recording
             r2_lrc_url: R2 URL for the generated LRC file
@@ -693,15 +710,55 @@ class DatabaseClient:
         with self.transaction() as conn:
             cursor = conn.cursor()
 
+            # Auto-publish only when visibility_status is NULL (first-time LRC)
+            # COALESCE keeps existing status if already set (review/hold)
             sql = """
                 UPDATE recordings SET
                     r2_lrc_url = ?,
                     lrc_status = 'completed',
+                    visibility_status = COALESCE(visibility_status, 'published'),
                     updated_at = datetime('now')
                 WHERE hash_prefix = ?
             """
 
             cursor.execute(sql, (r2_lrc_url, hash_prefix))
+
+    def update_recording_visibility(
+        self,
+        hash_prefix: str,
+        visibility_status: str,
+    ) -> bool:
+        """Update recording visibility status.
+
+        Args:
+            hash_prefix: The hash prefix of the recording
+            visibility_status: New visibility status (published, review, hold)
+
+        Returns:
+            True if recording was updated, False if not found
+
+        Raises:
+            ValueError: If visibility_status is not valid
+        """
+        valid_statuses = {"published", "review", "hold"}
+        if visibility_status not in valid_statuses:
+            raise ValueError(
+                f"Invalid visibility_status: {visibility_status}. "
+                f"Must be one of: {', '.join(valid_statuses)}"
+            )
+
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+
+            sql = """
+                UPDATE recordings SET
+                    visibility_status = ?,
+                    updated_at = datetime('now')
+                WHERE hash_prefix = ?
+            """
+
+            cursor.execute(sql, (visibility_status, hash_prefix))
+            return cursor.rowcount > 0
 
     def delete_recording(self, hash_prefix: str) -> None:
         """Delete a recording by hash_prefix.

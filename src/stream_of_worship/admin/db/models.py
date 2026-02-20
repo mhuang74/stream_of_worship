@@ -177,6 +177,7 @@ class Recording:
     analysis_job_id: Optional[str] = None
     lrc_status: str = "pending"
     lrc_job_id: Optional[str] = None
+    visibility_status: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -191,21 +192,33 @@ class Recording:
             Recording instance
 
         Note:
-            Handles both old schema (25 columns, before youtube_url was added)
-            and new schema (26 columns, with youtube_url at the end).
+            Handles schema versions:
+            - 25 columns: before youtube_url was added
+            - 26 columns: with youtube_url at the end (legacy)
+            - 27 columns: with visibility_status at index 23, youtube_url at the end
         """
-        # Detect if row has the youtube_url column (26 items) or old schema (25 items)
-        # In both new and migrated schemas, youtube_url is at index 25 (the end)
-        has_youtube_url = len(row) == 26
+        row_len = len(row)
 
-        if has_youtube_url:
-            # New schema: youtube_url is at the end (index 25)
+        # Determine schema version and parse accordingly
+        if row_len == 27:
+            # New schema with visibility_status at index 23
+            visibility_status = row[23]
+            created_at = row[24]
+            updated_at = row[25]
+            youtube_url = row[26]
+        elif row_len == 26:
+            # Legacy schema: youtube_url at end, no visibility_status
+            visibility_status = None
+            created_at = row[23]
+            updated_at = row[24]
             youtube_url = row[25]
         else:
-            # Old schema: no youtube_url
+            # Oldest schema: no youtube_url, no visibility_status
+            visibility_status = None
+            created_at = row[23] if row_len > 23 else None
+            updated_at = row[24] if row_len > 24 else None
             youtube_url = None
 
-        # Parse other fields (same indices for both schemas: 0-24)
         return cls(
             content_hash=row[0],
             hash_prefix=row[1],
@@ -231,8 +244,9 @@ class Recording:
             analysis_job_id=row[20],
             lrc_status=row[21],
             lrc_job_id=row[22],
-            created_at=row[23],
-            updated_at=row[24],
+            visibility_status=visibility_status,
+            created_at=created_at,
+            updated_at=updated_at,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -266,6 +280,7 @@ class Recording:
             "analysis_job_id": self.analysis_job_id,
             "lrc_status": self.lrc_status,
             "lrc_job_id": self.lrc_job_id,
+            "visibility_status": self.visibility_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -287,6 +302,15 @@ class Recording:
             True if lrc_status is 'completed'
         """
         return self.lrc_status == "completed"
+
+    @property
+    def is_published(self) -> bool:
+        """Check if the recording is published for user visibility.
+
+        Returns:
+            True if visibility_status is 'published'
+        """
+        return self.visibility_status == "published"
 
     @property
     def beats_list(self) -> list[float]:
