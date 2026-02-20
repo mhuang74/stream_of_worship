@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS recordings (
     lrc_status TEXT DEFAULT 'pending',
     lrc_job_id TEXT,
 
+    -- Visibility status for User App (published, review, hold)
+    visibility_status TEXT DEFAULT NULL,
+
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
 
@@ -97,6 +100,10 @@ CREATE_INDEXES = [
     """
     CREATE INDEX IF NOT EXISTS idx_songs_title_pinyin
     ON songs(title_pinyin);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recordings_visibility_status
+    ON recordings(visibility_status);
     """,
 ]
 

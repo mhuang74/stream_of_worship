@@ -244,6 +244,25 @@ def _colorize_status(status: str) -> str:
         return f"[dim]{status}[/dim]"
 
 
+def _colorize_visibility(visibility: Optional[str]) -> str:
+    """Get Rich markup for visibility status.
+
+    Args:
+        visibility: Visibility status string
+
+    Returns:
+        Rich markup string with visual indicator
+    """
+    if visibility == "published":
+        return "[green]● published[/green]"
+    elif visibility == "review":
+        return "[yellow]◐ review[/yellow]"
+    elif visibility == "hold":
+        return "[dim]○ hold[/dim]"
+    else:
+        return "[dim]- none[/dim]"
+
+
 def _submit_analysis_job(
     recording: Recording,
     analysis_url: str,
@@ -755,11 +774,11 @@ def list_recordings(
     else:
         table = Table(title=f"Recordings ({len(recordings)} total)")
         table.add_column("Song Title", style="green")
+        table.add_column("Visibility", justify="center")
         table.add_column("Size", style="magenta", justify="right")
-        table.add_column("Status", style="blue", justify="center")
+        table.add_column("LRC", justify="center")
         table.add_column("Duration", style="cyan", no_wrap=True)
         table.add_column("Song ID", style="dim", no_wrap=True)
-        table.add_column("Job ID", style="dim", no_wrap=True)
         table.add_column("Filename", style="yellow")
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
 
@@ -773,27 +792,22 @@ def list_recordings(
 
             size_str = _format_size_mb(rec.file_size_bytes) if rec.file_size_bytes else "-- MB"
 
-            if rec.analysis_status == "completed":
-                status_text = f"[green]{rec.analysis_status}[/green]"
-            elif rec.analysis_status == "failed":
-                status_text = f"[red]{rec.analysis_status}[/red]"
-            elif rec.analysis_status == "processing":
-                status_text = f"[yellow]{rec.analysis_status}[/yellow]"
-            else:
-                status_text = rec.analysis_status
+            # Visibility status with visual indicator
+            visibility_text = _colorize_visibility(rec.visibility_status)
 
-            job_id = rec.analysis_job_id or "-"
+            # LRC status
+            lrc_text = _colorize_status(rec.lrc_status)
 
             # Format duration if available (from analysis results)
             duration_str = _format_duration(rec.duration_seconds) if rec.duration_seconds else "--:--"
 
             table.add_row(
                 song_title,
+                visibility_text,
                 size_str,
-                status_text,
+                lrc_text,
                 duration_str,
                 song_id,
-                job_id,
                 rec.original_filename,
                 rec.hash_prefix,
             )
@@ -872,6 +886,7 @@ def show_recording(
     info_lines.append(f"[cyan]LRC Status:[/cyan] {recording.lrc_status}")
     if recording.lrc_job_id:
         info_lines.append(f"[cyan]LRC Job:[/cyan] {recording.lrc_job_id}")
+    info_lines.append(f"[cyan]Visibility:[/cyan] {_colorize_visibility(recording.visibility_status)}")
 
     # Analysis results (only shown when analysis is complete)
     if recording.has_analysis:
@@ -895,6 +910,60 @@ def show_recording(
         title=f"Recording: {song_id}",
         border_style="green",
     ))
+
+
+@app.command("set-visibility")
+def set_visibility(
+    song_id: str = typer.Argument(..., help="Song ID to update visibility for"),
+    status: str = typer.Option(..., "--status", "-s", help="Visibility status (published|review|hold)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Set the visibility status for a recording.
+
+    Controls whether a recording appears in the User App browse list.
+    - published: Visible to users (auto-set when LRC completes)
+    - review: Hidden, needs manual review
+    - hold: Hidden, on hold
+    """
+    # Standard config/db boilerplate
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Validate status
+    valid_statuses = {"published", "review", "hold"}
+    if status not in valid_statuses:
+        console.print(
+            f"[red]Invalid status: {status}. Must be one of: {', '.join(valid_statuses)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Update visibility
+    try:
+        db_client.update_recording_visibility(recording.hash_prefix, status)
+        console.print(
+            f"[green]Updated visibility for {song_id}: {_colorize_visibility(status)}[/green]"
+        )
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command("analyze")

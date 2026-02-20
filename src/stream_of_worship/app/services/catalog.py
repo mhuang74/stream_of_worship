@@ -243,11 +243,11 @@ class CatalogService:
                    r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
                    r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
                    r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
-                   r.updated_at
+                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.visibility_status,
+                   r.created_at, r.updated_at
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
-            WHERE r.lrc_status = 'completed'
+            WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
         """
         params: list = []
 
@@ -272,8 +272,8 @@ class CatalogService:
         result = []
         for row in cursor.fetchall():
             # Split row into song and recording parts
-            # Song has 16 columns (0-15), Recording has 25 columns (16-40)
-            # Total: 41 columns in the JOIN result
+            # Song has 16 columns (0-15), Recording has 26 columns (16-41)
+            # Total: 42 columns in the JOIN result
             row_tuple = tuple(row)
             song = Song.from_row(row_tuple[0:16])
             # Recording columns start at 16 (content_hash)
@@ -335,11 +335,11 @@ class CatalogService:
                    r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
                    r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
                    r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
-                   r.updated_at
+                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.visibility_status,
+                   r.created_at, r.updated_at
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
-            WHERE r.lrc_status = 'completed'
+            WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
             AND (
         """
 
@@ -367,7 +367,7 @@ class CatalogService:
         result = []
         for row in cursor.fetchall():
             # Split row into song and recording parts
-            # Song has 16 columns (0-15), Recording has 25 columns (16-40)
+            # Song has 16 columns (0-15), Recording has 26 columns (16-41)
             row_tuple = tuple(row)
             song = Song.from_row(row_tuple[0:16])
             recording = Recording.from_row(row_tuple[16:])
