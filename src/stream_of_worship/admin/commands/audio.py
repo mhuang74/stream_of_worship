@@ -1763,12 +1763,6 @@ def _display_lrc(
     Returns:
         True if successful, False if error occurred
     """
-    # Check R2 URL exists
-    if not recording.r2_lrc_url:
-        console.print(f"[red]No LRC URL found for {song_id}[/red]")
-        console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
-        return False
-
     # Get config for R2 access
     try:
         config = AdminConfig.load()
@@ -1783,12 +1777,16 @@ def _display_lrc(
         region=config.r2_region,
     )
 
-    # Parse S3 URL to get key
-    try:
-        _, s3_key = R2Client.parse_s3_url(recording.r2_lrc_url)
-    except ValueError as e:
-        console.print(f"[red]Error parsing R2 URL: {e}[/red]")
-        return False
+    # Determine S3 key - use cached URL if available, otherwise construct from hash_prefix
+    if recording.r2_lrc_url:
+        try:
+            _, s3_key = R2Client.parse_s3_url(recording.r2_lrc_url)
+        except ValueError as e:
+            console.print(f"[red]Error parsing R2 URL: {e}[/red]")
+            return False
+    else:
+        # Construct S3 key directly from hash_prefix (predictable naming convention)
+        s3_key = f"{recording.hash_prefix}/lyrics.lrc"
 
     # Download LRC file to temp location
     temp_path: Optional[Path] = None
@@ -1800,7 +1798,12 @@ def _display_lrc(
         try:
             r2_client.download_file(s3_key, temp_path)
         except ClientError as e:
-            console.print(f"[red]Error downloading LRC from R2: {e}[/red]")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "404" or error_code == "NoSuchKey":
+                console.print(f"[yellow]No LRC file found in R2 for {song_id}[/yellow]")
+                console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
+            else:
+                console.print(f"[red]Error downloading LRC from R2: {e}[/red]")
             return False
 
         # Read content
