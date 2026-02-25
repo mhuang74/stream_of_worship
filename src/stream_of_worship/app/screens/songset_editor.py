@@ -18,6 +18,7 @@ from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.playback import PlaybackService
+from stream_of_worship.app.screens.lyrics_preview import LyricsPreviewScreen
 from stream_of_worship.app.state import AppScreen, AppState
 
 logger = get_logger(__name__)
@@ -33,6 +34,7 @@ class SongsetEditorScreen(Screen):
         ("period", "move_down", "Move Down"),
         ("e", "edit_transition", "Edit Transition"),
         ("p", "preview", "Preview"),
+        ("shift+p", "lyrics_preview", "Lyrics Preview"),
         ("space", "toggle_playback", "Play/Stop"),
         ("left", "skip_backward", "Skip -10s"),
         ("right", "skip_forward", "Skip +10s"),
@@ -339,6 +341,31 @@ class SongsetEditorScreen(Screen):
         except Exception as e:
             logger.error(f"Error generating preview: {e}")
             self.notify(f"Error generating preview: {e}", severity="error")
+
+    def action_lyrics_preview(self) -> None:
+        """Open lyrics preview for the selected song."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No song selected", severity="warning")
+            return
+
+        if not item.recording_hash_prefix:
+            self.notify("Song has no recording", severity="warning")
+            return
+
+        # Check if LRC exists by attempting download
+        lrc_path = self.asset_cache.download_lrc(item.recording_hash_prefix)
+        if not lrc_path:
+            self.notify("No lyrics available for this song", severity="warning")
+            return
+
+        self.app.push_screen(
+            LyricsPreviewScreen(
+                item=item,
+                playback=self.playback,
+                asset_cache=self.asset_cache,
+            )
+        )
 
     def action_toggle_playback(self) -> None:
         """Toggle playback of the currently selected song with spacebar."""
