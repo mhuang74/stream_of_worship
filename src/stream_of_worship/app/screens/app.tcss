@@ -173,6 +173,67 @@ Horizontal {
     margin: 1 0;
 }
 
+/* Lyrics Preview Screen */
+#lyrics_panel {
+    width: 2fr;
+    align: center middle;
+    padding: 1 2;
+}
+
+#debug_panel {
+    width: 1fr;
+    border-left: solid $primary;
+    padding: 1;
+}
+
+#current_lyric {
+    text-align: center;
+    text-style: bold;
+    content-align: center middle;
+    height: 3;
+}
+
+#next_lyric {
+    text-align: center;
+    color: $text-muted;
+    content-align: center middle;
+    height: 2;
+}
+
+#progress_bar {
+    text-align: center;
+    content-align: center middle;
+    height: 1;
+    margin-top: 1;
+}
+
+#metadata_section {
+    height: auto;
+    border-bottom: solid $primary;
+    padding-bottom: 1;
+    margin-bottom: 1;
+}
+
+#song_title {
+    text-style: bold;
+    height: auto;
+}
+
+#song_details {
+    color: $text-muted;
+    height: auto;
+    margin-top: 1;
+}
+
+#song_album {
+    color: $text-muted;
+    height: auto;
+}
+
+#lrc_table {
+    height: 1fr;
+}
+
 /* Hidden class utility */
 .hidden {
     display: none;
