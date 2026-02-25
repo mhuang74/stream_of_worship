@@ -49,6 +49,12 @@ song_analysis = [
     "numpy>=1.24.0",
 ]
 
+# Stem separation dependencies (vocal extraction, de-reverb)
+stem_separation = [
+    "audio-separator>=0.30.0",
+    "onnxruntime>=1.17.0",
+]
+
 # Transcription dependencies
 # LRC generation dependencies (Whisper + LLM)
 # Note: torchaudio 2.9.0+ removed AudioMetaData which pyannote.audio requires
@@ -139,7 +145,7 @@ transcription_youtube = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
 ]
 
 [project.scripts]
