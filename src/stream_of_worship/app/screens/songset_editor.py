@@ -34,7 +34,7 @@ class SongsetEditorScreen(Screen):
         ("period", "move_down", "Move Down"),
         ("e", "edit_transition", "Edit Transition"),
         ("p", "preview", "Preview"),
-        ("shift+p", "lyrics_preview", "Lyrics Preview"),
+        ("shift+P", "lyrics_preview", "Lyrics Preview"),
         ("space", "toggle_playback", "Play/Stop"),
         ("left", "skip_backward", "Skip -10s"),
         ("right", "skip_forward", "Skip +10s"),
@@ -94,6 +94,7 @@ class SongsetEditorScreen(Screen):
                 yield Button("Remove", id="btn_remove")
                 yield Button("Edit Transition", id="btn_edit")
                 yield Button("Preview", id="btn_preview")
+                yield Button("Lyrics", id="btn_lyrics")
                 yield Button("Export", id="btn_export", variant="success")
                 yield Button("Back", id="btn_back")
 
@@ -180,6 +181,8 @@ class SongsetEditorScreen(Screen):
             self.action_edit_transition()
         elif button_id == "btn_preview":
             self.action_preview()
+        elif button_id == "btn_lyrics":
+            self.action_lyrics_preview()
         elif button_id == "btn_export":
             self.action_export()
         elif button_id == "btn_back":
