@@ -118,7 +118,12 @@ class LyricsPreviewScreen(Screen):
             on_finished=self._on_finished,
         )
 
-        # Start playback if audio is available
+        # Start playback if audio is available (deferred to ensure screen is ready)
+        if self._audio_path:
+            self.call_after_refresh(self._start_playback)
+
+    def _start_playback(self) -> None:
+        """Start audio playback."""
         if self._audio_path:
             self.playback.play(self._audio_path)
 
@@ -258,16 +263,20 @@ class LyricsPreviewScreen(Screen):
         Args:
             position: Current playback position information
         """
-        # Update current line index
-        new_index = self._find_current_line(position.current_seconds)
+        # Schedule UI update on main thread (callbacks run in background thread)
+        def _update():
+            # Update current line index
+            new_index = self._find_current_line(position.current_seconds)
 
-        if new_index != self.current_line_index:
-            self.current_line_index = new_index
-            self._update_lyrics_display()
-            self._highlight_lrc_row()
+            if new_index != self.current_line_index:
+                self.current_line_index = new_index
+                self._update_lyrics_display()
+                self._highlight_lrc_row()
 
-        # Update progress bar
-        self._update_progress_bar(position)
+            # Update progress bar
+            self._update_progress_bar(position)
+
+        self.call_after_refresh(_update)
 
     def _update_lyrics_display(self) -> None:
         """Update the current and next lyric display."""
@@ -326,15 +335,24 @@ class LyricsPreviewScreen(Screen):
         Args:
             state: New playback state
         """
-        # Update progress bar to reflect new state icon
-        position = self.playback.get_position()
-        self._update_progress_bar(position)
+        # Schedule UI update on main thread (callbacks run in background thread)
+        def _update():
+            # Update progress bar to reflect new state icon
+            position = self.playback.get_position()
+            self._update_progress_bar(position)
+
+        self.call_after_refresh(_update)
 
     def _on_finished(self) -> None:
         """Handle playback finished."""
         logger.info("Playback finished")
-        self.current_line_index = -1
-        self._update_lyrics_display()
+
+        # Schedule UI update on main thread (callbacks run in background thread)
+        def _update():
+            self.current_line_index = -1
+            self._update_lyrics_display()
+
+        self.call_after_refresh(_update)
 
     def action_toggle_playback(self) -> None:
         """Toggle playback with spacebar."""
