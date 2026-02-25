@@ -74,7 +74,7 @@ class PlaybackService:
         self._source: Optional[miniaudio.DecodedSoundFile] = None
         self._generator: Optional[Generator] = None
 
-        self._lock = threading.RLock()  # RLock allows nested acquisition by same thread
+        self._lock = threading.Lock()
         self._stop_event = threading.Event()
 
         # Callbacks
@@ -387,8 +387,14 @@ class PlaybackService:
             if self._state != PlaybackState.PLAYING:
                 return False
 
-            # Save current position before stopping
-            self._position_seconds = self.position_seconds
+            # Save current position before stopping (avoid nested lock in position_seconds).
+            if self._start_time:
+                elapsed = time.time() - self._start_time
+                current = min(self._position_seconds + elapsed, self._duration_seconds)
+            else:
+                current = self._position_seconds
+
+            self._position_seconds = current
             self._paused_at = time.time()
 
         # Actually stop the audio device (but preserve source for resume)
