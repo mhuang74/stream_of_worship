@@ -403,16 +403,16 @@ class PlaybackService:
         if self._generator:
             try:
                 self._generator.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing generator on pause: {e}")
             self._generator = None
 
         if self._device:
             try:
                 self._device.stop()
                 self._device.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing device on pause: {e}")
             self._device = None
 
         self._set_state(PlaybackState.PAUSED)
