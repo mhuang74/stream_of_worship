@@ -23,6 +23,7 @@ def extract_vocals_two_stage(
     output_dir: Path,
     vocal_model: str = "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
     dereverb_model: str = "UVR-De-Echo-Normal.pth",
+    reuse_stage1: bool = False,
 ) -> dict:
     """
     Two-stage vocal extraction pipeline.
@@ -55,32 +56,61 @@ def extract_vocals_two_stage(
     stage1_dir = output_dir / "stage1_vocal_separation"
     stage1_dir.mkdir(exist_ok=True)
 
-    separator = Separator(
-        output_dir=str(stage1_dir),
-        output_format="FLAC",
-    )
+    def _find_stage1_stems(directory: Path) -> tuple[Path | None, Path | None, list[str]]:
+        vocals = None
+        instrumental = None
+        outputs = []
+        for output_path in sorted(directory.glob("*")):
+            if not output_path.is_file():
+                continue
+            name = output_path.name
+            outputs.append(str(output_path))
+            if "Vocals" in name or "vocals" in name:
+                vocals = output_path
+            elif "Instrumental" in name or "instrumental" in name:
+                instrumental = output_path
+        return vocals, instrumental, outputs
 
-    print(f"Loading model: {vocal_model}")
-    start_time = time.time()
-    separator.load_model(model_filename=vocal_model)
-    load_time = time.time() - start_time
-    print(f"Model loaded in {load_time:.1f}s")
+    if reuse_stage1:
+        vocals_file, instrumental_file, stage1_outputs = _find_stage1_stems(stage1_dir)
+        if vocals_file:
+            print("Reusing existing Stage 1 outputs in output dir.")
+            load_time = 0.0
+            process_time = 0.0
+        else:
+            print("No existing Stage 1 vocals found; running separation.")
+            reuse_stage1 = False
 
-    print(f"Processing: {input_path.name}")
-    start_time = time.time()
-    stage1_outputs = separator.separate(str(input_path))
-    process_time = time.time() - start_time
-    print(f"Separation completed in {process_time:.1f}s")
+    if not reuse_stage1:
+        separator = Separator(
+            output_dir=str(stage1_dir),
+            output_format="FLAC",
+        )
+
+        print(f"Loading model: {vocal_model}")
+        start_time = time.time()
+        separator.load_model(model_filename=vocal_model)
+        load_time = time.time() - start_time
+        print(f"Model loaded in {load_time:.1f}s")
+
+        print(f"Processing: {input_path.name}")
+        start_time = time.time()
+        stage1_outputs = separator.separate(str(input_path))
+        process_time = time.time() - start_time
+        print(f"Separation completed in {process_time:.1f}s")
 
     # Find the vocals output file
-    vocals_file = None
-    instrumental_file = None
-    for output_file in stage1_outputs:
-        output_path = Path(output_file)
-        if "Vocals" in output_path.name or "vocals" in output_path.name:
-            vocals_file = output_path
-        elif "Instrumental" in output_path.name or "instrumental" in output_path.name:
-            instrumental_file = output_path
+    if not reuse_stage1:
+        vocals_file = None
+        instrumental_file = None
+        for output_file in stage1_outputs:
+            output_path = Path(output_file)
+            if not output_path.is_absolute():
+                output_path = stage1_dir / output_path
+            if "Vocals" in output_path.name or "vocals" in output_path.name:
+                vocals_file = output_path
+            elif "Instrumental" in output_path.name or "instrumental" in output_path.name:
+                instrumental_file = output_path
 
     results["stages"]["stage1"] = {
         "model": vocal_model,
@@ -130,6 +160,8 @@ def extract_vocals_two_stage(
     reverb_file = None
     for output_file in stage2_outputs:
         output_path = Path(output_file)
+        if not output_path.is_absolute():
+            output_path = stage2_dir / output_path
         name_lower = output_path.name.lower()
         # De-Echo models typically output "No Echo" and "Echo" stems
         if "no echo" in name_lower or "dry" in name_lower or "no_echo" in name_lower:
@@ -216,6 +248,11 @@ Available de-reverb models:
         default="UVR-De-Echo-Normal.pth",
         help="Model for echo/reverb removal (default: UVR-De-Echo-Normal)",
     )
+    parser.add_argument(
+        "--reuse-stage1",
+        action="store_true",
+        help="Reuse existing Stage 1 outputs if found in output dir",
+    )
 
     args = parser.parse_args()
 
@@ -239,6 +276,7 @@ Available de-reverb models:
         output_dir=args.output_dir,
         vocal_model=args.vocal_model,
         dereverb_model=args.dereverb_model,
+        reuse_stage1=args.reuse_stage1,
     )
 
     # Save results summary as JSON

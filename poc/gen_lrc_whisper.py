@@ -199,7 +199,9 @@ def phrases_to_lrc(phrases: list[tuple[float, float, str]]) -> str:
 
 @app.command()
 def main(
-    song_id: str = typer.Argument(..., help="Song ID (e.g., wo_yao_quan_xin_zan_mei_244)"),
+    song_id: str = typer.Argument(
+        ..., help="Song ID (e.g., wo_yao_quan_xin_zan_mei_244) or path to audio file"
+    ),
     device: str = typer.Option("cpu", "--device", "-d", help="Device to run on (cpu/cuda)"),
     model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model name"),
     use_vocals: bool = typer.Option(
@@ -229,97 +231,102 @@ def main(
     By default, the entire song is transcribed. Use --start and --end to
     transcribe a specific segment.
     """
-    # Load config
-    try:
-        config = AppConfig.load()
-    except FileNotFoundError:
-        typer.echo(
-            "Error: Config file not found. Please run 'sow-app' first to create config.",
-            err=True,
-        )
-        raise typer.Exit(1)
-
-    # Initialize database client
-    db_client = ReadOnlyClient(config.db_path)
-    catalog = CatalogService(db_client)
-
-    # Look up song and recording
-    song_with_recording = catalog.get_song_with_recording(song_id)
-    if not song_with_recording:
-        typer.echo(f"Error: Song not found: {song_id}", err=True)
-        raise typer.Exit(1)
-
-    if not song_with_recording.recording:
-        typer.echo(f"Error: No recording found for song: {song_id}", err=True)
-        raise typer.Exit(1)
-
-    song = song_with_recording.song
-    recording = song_with_recording.recording
-    hash_prefix = recording.hash_prefix
-
-    typer.echo(f"Song: {song.title}", err=True)
-    typer.echo(f"Recording: {hash_prefix}", err=True)
-
-    # Build initial prompt from song lyrics
-    lyrics = song.lyrics_list
-    if lyrics:
-        # Join lyrics with newlines, limit to ~2000 chars to stay within Whisper's context
-        lyrics_text = "\n".join(lyrics[:50])  # First 50 lines
-        if len(lyrics_text) > 2000:
-            lyrics_text = lyrics_text[:2000]
-        initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_text}"
-        typer.echo(f"Using lyrics as initial prompt ({len(lyrics)} lines)", err=True)
-    else:
-        initial_prompt = "这是一首中文敬拜诗歌"
-        typer.echo("No lyrics found, using default prompt", err=True)
-
-    # Initialize R2 client and asset cache
-    try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
-    except ValueError as e:
-        typer.echo(f"Error: R2 credentials not configured: {e}", err=True)
-        raise typer.Exit(1)
-
-    cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
-
-    # Determine audio path
+    # Allow direct path to audio to skip catalog/cache.
+    input_path = Path(song_id).expanduser()
     audio_path: Optional[Path] = None
+    initial_prompt = "这是一首中文敬拜诗歌"
+    if input_path.exists():
+        audio_path = input_path
+        typer.echo(f"Using direct audio path: {audio_path}", err=True)
+        typer.echo("No lyrics lookup for direct file input; using default prompt", err=True)
+    else:
+        # Load config
+        try:
+            config = AppConfig.load()
+        except FileNotFoundError:
+            typer.echo(
+                "Error: Config file not found. Please run 'sow-app' first to create config.",
+                err=True,
+            )
+            raise typer.Exit(1)
 
-    # Try vocals stem first if requested
-    if use_vocals:
-        vocals_path = cache.get_stem_path(hash_prefix, "vocals")
-        if vocals_path.exists():
-            audio_path = vocals_path
-            typer.echo(f"Using cached vocals stem: {audio_path}", err=True)
+        # Initialize database client
+        db_client = ReadOnlyClient(config.db_path)
+        catalog = CatalogService(db_client)
+
+        # Look up song and recording
+        song_with_recording = catalog.get_song_with_recording(song_id)
+        if not song_with_recording:
+            typer.echo(f"Error: Song not found: {song_id}", err=True)
+            raise typer.Exit(1)
+
+        if not song_with_recording.recording:
+            typer.echo(f"Error: No recording found for song: {song_id}", err=True)
+            raise typer.Exit(1)
+
+        song = song_with_recording.song
+        recording = song_with_recording.recording
+        hash_prefix = recording.hash_prefix
+
+        typer.echo(f"Song: {song.title}", err=True)
+        typer.echo(f"Recording: {hash_prefix}", err=True)
+
+        # Build initial prompt from song lyrics
+        lyrics = song.lyrics_list
+        if lyrics:
+            # Join lyrics with newlines, limit to ~2000 chars to stay within Whisper's context
+            lyrics_text = "\n".join(lyrics[:50])  # First 50 lines
+            if len(lyrics_text) > 2000:
+                lyrics_text = lyrics_text[:2000]
+            initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_text}"
+            typer.echo(f"Using lyrics as initial prompt ({len(lyrics)} lines)", err=True)
         else:
-            typer.echo("Downloading vocals stem...", err=True)
-            audio_path = cache.download_stem(hash_prefix, "vocals")
-            if audio_path:
-                typer.echo(f"Downloaded vocals stem: {audio_path}", err=True)
+            typer.echo("No lyrics found, using default prompt", err=True)
 
-    # Fall back to main audio
-    if audio_path is None:
-        main_audio_path = cache.get_audio_path(hash_prefix)
-        if main_audio_path.exists():
-            audio_path = main_audio_path
-            typer.echo(f"Using cached main audio: {audio_path}", err=True)
-        else:
-            typer.echo("Downloading main audio...", err=True)
-            audio_path = cache.download_audio(hash_prefix)
-            if audio_path:
-                typer.echo(f"Downloaded main audio: {audio_path}", err=True)
+        # Initialize R2 client and asset cache
+        try:
+            r2_client = R2Client(
+                bucket=config.r2_bucket,
+                endpoint_url=config.r2_endpoint_url,
+                region=config.r2_region,
+            )
+        except ValueError as e:
+            typer.echo(f"Error: R2 credentials not configured: {e}", err=True)
+            raise typer.Exit(1)
 
-    if audio_path is None:
-        typer.echo("Error: Could not find or download audio", err=True)
-        raise typer.Exit(1)
+        cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
 
-    if not audio_path.exists():
-        typer.echo(f"Error: Audio file not found: {audio_path}", err=True)
-        raise typer.Exit(1)
+        # Try vocals stem first if requested
+        if use_vocals:
+            vocals_path = cache.get_stem_path(hash_prefix, "vocals")
+            if vocals_path.exists():
+                audio_path = vocals_path
+                typer.echo(f"Using cached vocals stem: {audio_path}", err=True)
+            else:
+                typer.echo("Downloading vocals stem...", err=True)
+                audio_path = cache.download_stem(hash_prefix, "vocals")
+                if audio_path:
+                    typer.echo(f"Downloaded vocals stem: {audio_path}", err=True)
+
+        # Fall back to main audio
+        if audio_path is None:
+            main_audio_path = cache.get_audio_path(hash_prefix)
+            if main_audio_path.exists():
+                audio_path = main_audio_path
+                typer.echo(f"Using cached main audio: {audio_path}", err=True)
+            else:
+                typer.echo("Downloading main audio...", err=True)
+                audio_path = cache.download_audio(hash_prefix)
+                if audio_path:
+                    typer.echo(f"Downloaded main audio: {audio_path}", err=True)
+
+        if audio_path is None:
+            typer.echo("Error: Could not find or download audio", err=True)
+            raise typer.Exit(1)
+
+        if not audio_path.exists():
+            typer.echo(f"Error: Audio file not found: {audio_path}", err=True)
+            raise typer.Exit(1)
 
     # Determine time range
     # end=None means transcribe full song
