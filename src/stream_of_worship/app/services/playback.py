@@ -387,8 +387,33 @@ class PlaybackService:
             if self._state != PlaybackState.PLAYING:
                 return False
 
-            self._position_seconds = self.position_seconds
+            # Save current position before stopping (avoid nested lock in position_seconds).
+            if self._start_time:
+                elapsed = time.time() - self._start_time
+                current = min(self._position_seconds + elapsed, self._duration_seconds)
+            else:
+                current = self._position_seconds
+
+            self._position_seconds = current
             self._paused_at = time.time()
+
+        # Actually stop the audio device (but preserve source for resume)
+        self._stop_event.set()
+
+        if self._generator:
+            try:
+                self._generator.close()
+            except Exception as e:
+                logger.warning(f"Error closing generator on pause: {e}")
+            self._generator = None
+
+        if self._device:
+            try:
+                self._device.stop()
+                self._device.close()
+            except Exception as e:
+                logger.warning(f"Error closing device on pause: {e}")
+            self._device = None
 
         self._set_state(PlaybackState.PAUSED)
         return True
@@ -403,11 +428,14 @@ class PlaybackService:
             if self._state != PlaybackState.PAUSED:
                 return False
 
-            self._start_time = time.time() - self._position_seconds
-            self._paused_at = None
+            saved_position = self._position_seconds
+            current_file = self._current_file
 
-        self._set_state(PlaybackState.PLAYING)
-        return True
+        if not current_file:
+            return False
+
+        # Restart playback from saved position
+        return self.play(start_seconds=saved_position)
 
     def stop(self, clear_source: bool = True) -> None:
         """Stop playback and reset position.

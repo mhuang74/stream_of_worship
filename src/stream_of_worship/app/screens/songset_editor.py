@@ -7,6 +7,7 @@ from typing import Optional
 
 from textual import events
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
@@ -33,14 +34,17 @@ class SongsetEditorScreen(Screen):
         ("comma", "move_up", "Move Up"),
         ("period", "move_down", "Move Down"),
         ("e", "edit_transition", "Edit Transition"),
-        ("p", "preview", "Preview"),
-        ("shift+P", "lyrics_preview", "Lyrics Preview"),
+        ("t", "preview", "Transition Preview"),
+        ("l", "lyrics_preview", "Lyrics"),
         ("space", "toggle_playback", "Play/Stop"),
         ("left", "skip_backward", "Skip -10s"),
         ("right", "skip_forward", "Skip +10s"),
         ("x", "export", "Export"),
         ("i", "edit_info", "Edit Info"),
         ("escape", "back", "Back"),
+        # Override app-level bindings to disable them on this screen
+        Binding("q", "noop", "Quit", show=False),
+        Binding("s", "noop", "Settings", show=False),
     ]
 
     def __init__(
@@ -495,3 +499,7 @@ class SongsetEditorScreen(Screen):
             self.notify(f"Moved '{item.song_title}' down")
         else:
             self.notify("Failed to move song", severity="error")
+
+    def action_noop(self) -> None:
+        """No-op action to disable inherited bindings."""
+        pass

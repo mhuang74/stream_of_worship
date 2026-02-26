@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Static
@@ -43,6 +44,9 @@ class LyricsPreviewScreen(Screen):
         ("left", "skip_backward", "Skip -10s"),
         ("right", "skip_forward", "Skip +10s"),
         ("escape", "back", "Back"),
+        # Override app-level bindings to disable them on this screen
+        Binding("q", "noop", "Quit", show=False),
+        Binding("s", "noop", "Settings", show=False),
     ]
 
     def __init__(
@@ -198,10 +202,11 @@ class LyricsPreviewScreen(Screen):
         title = self.item.song_title or "Unknown Song"
         title_widget.update(f"[bold]{title}[/bold]")
 
-        # Key and Tempo
+        # Key, Tempo, and Duration
         key = self.item.display_key or "?"
         tempo = f"{int(self.item.tempo_bpm)} BPM" if self.item.tempo_bpm else "? BPM"
-        details_widget.update(f"Key: {key}  |  Tempo: {tempo}")
+        duration = self.item.formatted_duration
+        details_widget.update(f"Key: {key}  |  Tempo: {tempo}  |  Duration: {duration}")
 
         # Album
         album = self.item.song_album_name or ""
@@ -358,38 +363,29 @@ class LyricsPreviewScreen(Screen):
         """Toggle playback with spacebar."""
         if self.playback.is_playing:
             self.playback.pause()
-            self.notify("Paused")
         elif self.playback.is_paused:
             self.playback.resume()
-            self.notify("Resumed")
         elif self._audio_path:
             self.playback.play(self._audio_path)
-            self.notify(f"Playing: {self.item.song_title}")
         else:
             self.notify("No audio available", severity="error")
 
     def action_skip_forward(self) -> None:
         """Skip forward 10 seconds."""
-        if not self.playback.is_playing and not self.playback.is_paused:
-            self.notify("No audio playing", severity="warning")
-            return
-
-        if self.playback.skip_forward(10.0):
-            position = self.playback.get_position()
-            self.notify(f"⏩ {self._format_timestamp(position.current_seconds)}")
+        if self.playback.is_playing or self.playback.is_paused:
+            self.playback.skip_forward(10.0)
 
     def action_skip_backward(self) -> None:
         """Skip backward 10 seconds."""
-        if not self.playback.is_playing and not self.playback.is_paused:
-            self.notify("No audio playing", severity="warning")
-            return
-
-        if self.playback.skip_backward(10.0):
-            position = self.playback.get_position()
-            self.notify(f"⏪ {self._format_timestamp(position.current_seconds)}")
+        if self.playback.is_playing or self.playback.is_paused:
+            self.playback.skip_backward(10.0)
 
     def action_back(self) -> None:
         """Go back to songset editor."""
         logger.info("Action: back from lyrics preview")
         self.playback.stop()
         self.app.pop_screen()
+
+    def action_noop(self) -> None:
+        """No-op action to disable inherited bindings."""
+        pass
