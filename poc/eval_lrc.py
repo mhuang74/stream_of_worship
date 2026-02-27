@@ -516,17 +516,19 @@ def transcribe_with_sensevoice(
 
 def transcribe_with_paraformer(
     audio_path: Path,
-    model_name: str = "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    model_name: str = "paraformer-zh",
     device: str = "cpu",
     **kwargs,
 ) -> list[PinyinWord]:
     """Transcribe audio using FunASR Paraformer model with timestamps.
 
     Paraformer is a fast non-autoregressive model optimized for Chinese ASR.
+    Uses paraformer-zh with VAD for better speech detection and character-level
+    timestamps.
 
     Args:
         audio_path: Path to audio file
-        model_name: Paraformer model ID
+        model_name: Paraformer model ID (default: paraformer-zh)
         device: Device to run on (cpu/cuda)
         **kwargs: Additional arguments (ignored for compatibility)
 
@@ -536,11 +538,15 @@ def transcribe_with_paraformer(
     from funasr import AutoModel
 
     console = Console(stderr=True)
-    console.print(f"[paraformer] Loading model on {device}", style="dim")
+    console.print(f"[paraformer] Loading model: {model_name} on {device}", style="dim")
 
-    # Use Paraformer with timestamp prediction
+    # Use Paraformer-zh with VAD for better speech detection
+    # The VAD model segments the audio and helps detect speech regions
     model = AutoModel(
         model=model_name,
+        model_revision="v2.0.4",
+        vad_model="fsmn-vad",
+        vad_model_revision="v2.0.4",
         device=device,
     )
 
@@ -573,13 +579,13 @@ def transcribe_with_paraformer(
                     for py in pinyin_list:
                         result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
             else:
-                # Fallback: interpolate timestamps
-                segment_start = 0.0
-                segment_end = 5.0  # Default duration
+                # Fallback: interpolate timestamps based on segment boundaries
+                segment_start = item.get("start", 0) / 1000.0 if "start" in item else 0.0
+                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + 5.0
 
                 if chars:
                     duration = segment_end - segment_start
-                    time_per_char = duration / len(chars)
+                    time_per_char = duration / len(chars) if len(chars) > 0 else 0.2
 
                     for i, char in enumerate(chars):
                         time_sec = segment_start + i * time_per_char
@@ -626,7 +632,7 @@ def transcribe_audio(
     elif engine == "paraformer":
         return transcribe_with_paraformer(
             audio_path,
-            model_name=model_name or "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+            model_name=model_name or "paraformer-zh",
             device=device,
         )
     else:
