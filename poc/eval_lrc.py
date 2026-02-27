@@ -1026,6 +1026,7 @@ def format_json_report(result: EvaluationResult, song_title: Optional[str] = Non
 def format_line_diff_report(
     result: EvaluationResult,
     lrc_lines: list[tuple[float, str]],
+    audio_words: list[PinyinWord],
     song_title: Optional[str] = None,
     song_id: Optional[str] = None,
 ) -> str:
@@ -1037,6 +1038,7 @@ def format_line_diff_report(
     Args:
         result: Evaluation result
         lrc_lines: Original LRC lines as (timestamp, text) tuples
+        audio_words: Raw transcribed words from ASR engine
         song_title: Optional song title for header
         song_id: Optional song ID for header
 
@@ -1130,22 +1132,41 @@ def format_line_diff_report(
             lines.append(f"[{format_timestamp(ts)}] {text}")
     lines.append("")
 
-    # --- Transcribed Lyrics section ---
-    lines.append("--- Transcribed Lyrics ---")
+    # --- Raw Transcription section ---
+    # Show the raw ASR output with original timestamps (before any alignment)
+    lines.append("--- Raw Transcription (from ASR) ---")
     lines.append("")
-    for line_idx, (start_ts, _, _) in enumerate(line_boundaries):
-        entries = diff_by_line.get(line_idx, [])
-        # Collect audio text from equal and insert entries
-        audio_text_parts = []
-        for entry in entries:
-            if entry.op == "equal" and entry.audio_text:
-                audio_text_parts.append(entry.audio_text)
-            elif entry.op == "insert" and entry.audio_text:
-                audio_text_parts.append(entry.audio_text)
-        if audio_text_parts:
-            # Join characters (no space for Chinese)
-            audio_line = "".join(audio_text_parts)
-            lines.append(f"[{format_timestamp(start_ts)}] {audio_line}")
+    if audio_words:
+        # Group consecutive characters into lines based on time gaps
+        # A gap > 1 second suggests a new phrase/line
+        current_line_chars = []
+        current_line_start = None
+        GAP_THRESHOLD = 1.0  # seconds
+
+        for i, word in enumerate(audio_words):
+            if current_line_start is None:
+                current_line_start = word.time_seconds
+                current_line_chars.append(word.text)
+            else:
+                # Check time gap from previous word
+                prev_time = audio_words[i - 1].time_seconds
+                gap = word.time_seconds - prev_time
+
+                if gap > GAP_THRESHOLD:
+                    # Output current line and start new one
+                    line_text = "".join(current_line_chars)
+                    lines.append(f"[{format_timestamp(current_line_start)}] {line_text}")
+                    current_line_chars = [word.text]
+                    current_line_start = word.time_seconds
+                else:
+                    current_line_chars.append(word.text)
+
+        # Output final line
+        if current_line_chars:
+            line_text = "".join(current_line_chars)
+            lines.append(f"[{format_timestamp(current_line_start)}] {line_text}")
+    else:
+        lines.append("(No transcription data)")
     lines.append("")
 
     # Line-by-line diff section
@@ -1512,7 +1533,9 @@ def main(
         report = format_json_report(result, song_title=song_title, song_id=song_id)
     elif verbose:
         # Use line-by-line diff format for verbose mode
-        report = format_line_diff_report(result, lrc_lines, song_title=song_title, song_id=song_id)
+        report = format_line_diff_report(
+            result, lrc_lines, audio_words, song_title=song_title, song_id=song_id
+        )
     else:
         report = format_diff_report(result, song_title=song_title, song_id=song_id, verbose=False)
 
