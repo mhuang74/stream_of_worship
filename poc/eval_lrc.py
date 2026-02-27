@@ -79,8 +79,9 @@ class EvaluationStats:
         matched_count: Number of matched words
         missing_count: Words in LRC not found in audio
         extra_count: Words in audio not found in LRC
-        rms_error_ms: RMS timing error in milliseconds
-        max_error_ms: Maximum timing error in milliseconds
+        rms_error_ms: RMS timing error in milliseconds (after offset normalization)
+        max_error_ms: Maximum timing error in milliseconds (after offset normalization)
+        time_offset_ms: Detected global time offset in milliseconds (audio - LRC)
     """
 
     lrc_word_count: int
@@ -90,6 +91,7 @@ class EvaluationStats:
     extra_count: int
     rms_error_ms: float
     max_error_ms: float
+    time_offset_ms: float = 0.0
 
 
 @dataclass
@@ -750,6 +752,75 @@ def align_sequences(
 
 
 # --------------------------------------------------------------------------
+# Time Offset Normalization
+# --------------------------------------------------------------------------
+
+
+def calculate_time_offset(diff: list[DiffEntry]) -> float:
+    """Calculate the global time offset between audio and LRC timestamps.
+
+    Uses median of time differences from matched words to be robust against outliers.
+    This offset is typically caused by VAD detecting speech start at different times
+    than the LRC timestamps (e.g., isolated vocals vs original mix).
+
+    Args:
+        diff: List of diff entries from alignment
+
+    Returns:
+        Median time offset in seconds (audio_time - lrc_time)
+    """
+    matched = [d for d in diff if d.op == "equal" and d.time_diff is not None]
+
+    if not matched:
+        return 0.0
+
+    # Use median for robustness against outliers
+    time_diffs = sorted([d.time_diff for d in matched])
+    n = len(time_diffs)
+    if n % 2 == 0:
+        median = (time_diffs[n // 2 - 1] + time_diffs[n // 2]) / 2
+    else:
+        median = time_diffs[n // 2]
+
+    return median
+
+
+def normalize_time_offset(diff: list[DiffEntry], offset: float) -> list[DiffEntry]:
+    """Normalize diff entries by subtracting the global time offset.
+
+    This removes the penalty for VAD-induced timing shifts, allowing
+    evaluation of relative timing accuracy.
+
+    Args:
+        diff: List of diff entries
+        offset: Time offset in seconds to subtract from time_diff
+
+    Returns:
+        New list of DiffEntry with normalized time_diff values
+    """
+    normalized = []
+    for entry in diff:
+        if entry.op == "equal" and entry.time_diff is not None:
+            # Create new entry with normalized time_diff
+            normalized.append(
+                DiffEntry(
+                    op=entry.op,
+                    lrc_text=entry.lrc_text,
+                    audio_text=entry.audio_text,
+                    lrc_pinyin=entry.lrc_pinyin,
+                    audio_pinyin=entry.audio_pinyin,
+                    lrc_time=entry.lrc_time,
+                    audio_time=entry.audio_time,
+                    time_diff=entry.time_diff - offset,
+                )
+            )
+        else:
+            normalized.append(entry)
+
+    return normalized
+
+
+# --------------------------------------------------------------------------
 # Scoring
 # --------------------------------------------------------------------------
 
@@ -879,6 +950,7 @@ def format_diff_report(
     lines.append("")
 
     lines.append("--- Timing ---")
+    lines.append(f"Global offset:  {stats.time_offset_ms:+.0f} ms (auto-corrected)")
     lines.append(f"RMS error:      {stats.rms_error_ms:5.1f} ms  |  Max: {stats.max_error_ms:.1f} ms")
     lines.append("")
 
@@ -936,6 +1008,7 @@ def format_json_report(result: EvaluationResult, song_title: Optional[str] = Non
             "matched_count": result.stats.matched_count,
             "missing_count": result.stats.missing_count,
             "extra_count": result.stats.extra_count,
+            "time_offset_ms": round(result.stats.time_offset_ms, 2),
             "rms_error_ms": round(result.stats.rms_error_ms, 2),
             "max_error_ms": round(result.stats.max_error_ms, 2),
         }
@@ -994,6 +1067,7 @@ def format_line_diff_report(
     lines.append("")
 
     lines.append("--- Timing ---")
+    lines.append(f"Global offset:  {stats.time_offset_ms:+.0f} ms (auto-corrected)")
     lines.append(f"RMS error:      {stats.rms_error_ms:5.1f} ms  |  Max: {stats.max_error_ms:.1f} ms")
     lines.append("")
 
@@ -1182,9 +1256,16 @@ def evaluate_lrc(
     missing_count = sum(1 for d in diff if d.op == "delete")
     extra_count = sum(1 for d in diff if d.op == "insert")
 
-    # Calculate scores
-    text_score = calculate_text_score(diff)
-    timing_score, rms_error_ms, max_error_ms = calculate_timing_score(diff, timing_threshold_ms)
+    # Calculate and apply time offset normalization
+    # This removes penalty for VAD-induced global timing shifts
+    time_offset = calculate_time_offset(diff)
+    normalized_diff = normalize_time_offset(diff, time_offset)
+
+    # Calculate scores using normalized diff for timing
+    text_score = calculate_text_score(diff)  # Text score doesn't depend on timing
+    timing_score, rms_error_ms, max_error_ms = calculate_timing_score(
+        normalized_diff, timing_threshold_ms
+    )
     final_score = calculate_final_score(text_score, timing_score, text_weight, timing_weight)
 
     stats = EvaluationStats(
@@ -1195,6 +1276,7 @@ def evaluate_lrc(
         extra_count=extra_count,
         rms_error_ms=rms_error_ms,
         max_error_ms=max_error_ms,
+        time_offset_ms=time_offset * 1000,  # Convert to ms
     )
 
     scores = EvaluationScores(
@@ -1209,7 +1291,7 @@ def evaluate_lrc(
         success=True,
         stats=stats,
         scores=scores,
-        diff_entries=diff,
+        diff_entries=normalized_diff,  # Return normalized diff for reporting
     )
 
 
