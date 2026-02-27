@@ -134,6 +134,13 @@ class EvaluationResult:
 # Pinyin Conversion
 # --------------------------------------------------------------------------
 
+# Custom pinyin overrides for characters with context-dependent pronunciations.
+# pypinyin defaults may be incorrect for worship song contexts.
+PINYIN_OVERRIDES = {
+    "祢": "ni",  # Respectful "You" (God) - not surname "mi"
+    "禰": "ni",  # Variant of 祢
+}
+
 
 def chinese_to_pinyin(text: str) -> list[str]:
     """Convert Chinese text to pinyin without tones.
@@ -153,7 +160,16 @@ def chinese_to_pinyin(text: str) -> list[str]:
 
     # Convert to pinyin (lazy_pinyin returns no tones by default)
     result = lazy_pinyin("".join(chinese_chars))
-    return [p.lower() for p in result if p]
+
+    # Apply custom overrides for worship song context
+    final_result = []
+    for i, char in enumerate(chinese_chars):
+        if char in PINYIN_OVERRIDES:
+            final_result.append(PINYIN_OVERRIDES[char])
+        elif i < len(result):
+            final_result.append(result[i].lower())
+
+    return [p for p in final_result if p]
 
 
 def normalize_pinyin(pinyin: str) -> str:
