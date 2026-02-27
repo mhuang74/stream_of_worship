@@ -1124,18 +1124,12 @@ def format_line_diff_report(
                     closest_idx = i
             diff_by_line[closest_idx].append(entry)
 
-    # --- Original LRC Lyrics section ---
-    lines.append("--- Original LRC Lyrics ---")
-    lines.append("")
-    for ts, text in lrc_lines:
-        if text.strip():
-            lines.append(f"[{format_timestamp(ts)}] {text}")
+    # --- Side-by-side comparison: LRC vs Raw Transcription ---
+    lines.append("--- LRC vs Raw Transcription (side-by-side) ---")
     lines.append("")
 
-    # --- Raw Transcription section ---
-    # Show the raw ASR output with original timestamps (before any alignment)
-    lines.append("--- Raw Transcription (from ASR) ---")
-    lines.append("")
+    # First, build raw transcription lines from audio_words
+    raw_transcription_lines = []
     if audio_words:
         # Group consecutive characters into lines based on time gaps
         # A gap > 1 second suggests a new phrase/line
@@ -1153,20 +1147,52 @@ def format_line_diff_report(
                 gap = word.time_seconds - prev_time
 
                 if gap > GAP_THRESHOLD:
-                    # Output current line and start new one
+                    # Save current line and start new one
                     line_text = "".join(current_line_chars)
-                    lines.append(f"[{format_timestamp(current_line_start)}] {line_text}")
+                    raw_transcription_lines.append((current_line_start, line_text))
                     current_line_chars = [word.text]
                     current_line_start = word.time_seconds
                 else:
                     current_line_chars.append(word.text)
 
-        # Output final line
+        # Save final line
         if current_line_chars:
             line_text = "".join(current_line_chars)
-            lines.append(f"[{format_timestamp(current_line_start)}] {line_text}")
-    else:
-        lines.append("(No transcription data)")
+            raw_transcription_lines.append((current_line_start, line_text))
+
+    # Format side-by-side with fixed column width
+    col_width = 35
+    lines.append(f"{'LRC Lyrics':<{col_width}} | {'Raw Transcription (ASR)'}")
+    lines.append(f"{'-' * col_width}-+-{'-' * col_width}")
+
+    # Get LRC lines (filter empty)
+    lrc_display = [(ts, text) for ts, text in lrc_lines if text.strip()]
+
+    # Print side by side
+    max_lines = max(len(lrc_display), len(raw_transcription_lines))
+    for i in range(max_lines):
+        # LRC column
+        if i < len(lrc_display):
+            ts, text = lrc_display[i]
+            lrc_col = f"[{format_timestamp(ts)}] {text}"
+        else:
+            lrc_col = ""
+
+        # Transcription column
+        if i < len(raw_transcription_lines):
+            ts, text = raw_transcription_lines[i]
+            asr_col = f"[{format_timestamp(ts)}] {text}"
+        else:
+            asr_col = ""
+
+        # Truncate if too long
+        if len(lrc_col) > col_width:
+            lrc_col = lrc_col[: col_width - 1] + "…"
+        if len(asr_col) > col_width:
+            asr_col = asr_col[: col_width - 1] + "…"
+
+        lines.append(f"{lrc_col:<{col_width}} | {asr_col}")
+
     lines.append("")
 
     # Line-by-line diff section
