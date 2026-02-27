@@ -101,16 +101,7 @@ def extract_vocals_two_stage(
 
     # Find the vocals output file
     if not reuse_stage1:
-        vocals_file = None
-        instrumental_file = None
-        for output_file in stage1_outputs:
-            output_path = Path(output_file)
-            if not output_path.is_absolute():
-                output_path = stage1_dir / output_path
-            if "Vocals" in output_path.name or "vocals" in output_path.name:
-                vocals_file = output_path
-            elif "Instrumental" in output_path.name or "instrumental" in output_path.name:
-                instrumental_file = output_path
+        vocals_file, instrumental_file, _ = _find_stage1_stems(stage1_dir)
 
     results["stages"]["stage1"] = {
         "model": vocal_model,

@@ -8,29 +8,15 @@ and aligns them precisely to the audio timing.
 Note: Maximum audio length is 5 minutes (model limitation).
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from stream_of_worship.app.config import AppConfig
-from stream_of_worship.app.db.read_client import ReadOnlyClient
-from stream_of_worship.app.services.catalog import CatalogService
-from stream_of_worship.app.services.asset_cache import AssetCache
-from stream_of_worship.admin.services.r2 import R2Client
+# Import shared utilities
+from poc.utils import format_timestamp, resolve_song_audio_path
 
 app = typer.Typer(help="Qwen3 Forced Aligner LRC generation")
-
-
-def format_timestamp(seconds: float) -> str:
-    """Format seconds as [mm:ss.xx] timestamp."""
-    minutes = int(seconds // 60)
-    secs = seconds % 60
-    return f"[{minutes:02d}:{secs:05.2f}]"
 
 
 def get_audio_duration(audio_path: Path) -> float:
@@ -367,15 +353,27 @@ def main(
 
     Maximum audio length is 5 minutes.
     """
-    # Allow direct path to audio to skip catalog/cache.
+    # Add src to path for imports (needed for offline mode handling)
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+    from stream_of_worship.app.config import AppConfig
+    from stream_of_worship.app.db.read_client import ReadOnlyClient
+    from stream_of_worship.app.services.catalog import CatalogService
+    from stream_of_worship.app.services.asset_cache import AssetCache
+    from stream_of_worship.admin.services.r2 import R2Client
+
     input_path = Path(song_id).expanduser()
     audio_path: Optional[Path] = None
     lyrics: list[str] = []
+
+    # Handle direct audio file path
     if input_path.exists():
         audio_path = input_path
         typer.echo(f"Using direct audio path: {audio_path}", err=True)
     else:
-        # Load config
+        # Load config for song lookup
         try:
             config = AppConfig.load()
         except FileNotFoundError:
@@ -450,7 +448,7 @@ def main(
             )
             raise typer.Exit(1)
 
-        # Initialize R2 client and asset cache
+        # Initialize R2 client and asset cache (with offline mode support)
         try:
             r2_client = R2Client(
                 bucket=config.r2_bucket,

@@ -5,81 +5,15 @@ Runs SenseVoice transcription on a song from the local cache or a direct
 file path, enabling quick experimentation to diagnose transcription accuracy.
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from stream_of_worship.app.config import AppConfig
-from stream_of_worship.app.db.read_client import ReadOnlyClient
-from stream_of_worship.app.services.catalog import CatalogService
-from stream_of_worship.app.services.asset_cache import AssetCache
-from stream_of_worship.admin.services.r2 import R2Client
+# Import shared utilities
+from poc.utils import extract_audio_segment, format_timestamp, resolve_song_audio_path
 
 app = typer.Typer(help="SenseVoice transcription driver")
-
-
-def format_timestamp(seconds: float) -> str:
-    """Format seconds as [mm:ss.xx] timestamp."""
-    minutes = int(seconds // 60)
-    secs = seconds % 60
-    return f"[{minutes:02d}:{secs:05.2f}]"
-
-
-def extract_audio_segment(
-    audio_path: Path,
-    start_seconds: float,
-    end_seconds: float,
-) -> Path:
-    """Extract a segment of audio to a temporary file.
-
-    Args:
-        audio_path: Path to source audio file
-        start_seconds: Start time in seconds
-        end_seconds: End time in seconds
-
-    Returns:
-        Path to temporary file containing the segment
-    """
-    from pydub import AudioSegment
-
-    # Load audio
-    audio = AudioSegment.from_file(str(audio_path))
-
-    # Calculate duration
-    duration_ms = len(audio)
-    start_ms = int(start_seconds * 1000)
-    end_ms = int(end_seconds * 1000)
-
-    # Clamp to valid range
-    start_ms = max(0, start_ms)
-    end_ms = min(duration_ms, end_ms)
-
-    if start_ms >= end_ms:
-        raise ValueError(f"Invalid segment: start ({start_seconds}s) >= end ({end_seconds}s)")
-
-    # Extract segment
-    segment = audio[start_ms:end_ms]
-
-    # Write to temp file (preserve original format)
-    import tempfile
-
-    # Match source file format (wav for stems, mp3 for main audio)
-    source_suffix = audio_path.suffix.lower()
-    if source_suffix not in (".wav", ".mp3"):
-        source_suffix = ".wav"  # Default to wav for other formats
-
-    temp_file = tempfile.NamedTemporaryFile(suffix=source_suffix, delete=False)
-    temp_path = Path(temp_file.name)
-    temp_file.close()
-
-    export_format = source_suffix.lstrip(".")
-    segment.export(str(temp_path), format=export_format)
-    return temp_path
 
 
 def merge_vad_segments(
@@ -444,88 +378,7 @@ def main(
     By default, the entire song is transcribed. Use --start and --end to
     transcribe a specific segment.
     """
-    # Allow direct path to audio to skip catalog/cache.
-    input_path = Path(song_id).expanduser()
-    audio_path: Optional[Path] = None
-    if input_path.exists():
-        audio_path = input_path
-        typer.echo(f"Using direct audio path: {audio_path}", err=True)
-    else:
-        # Load config
-        try:
-            config = AppConfig.load()
-        except FileNotFoundError:
-            typer.echo(
-                "Error: Config file not found. Please run 'sow-app' first to create config.",
-                err=True,
-            )
-            raise typer.Exit(1)
-
-        # Initialize database client
-        db_client = ReadOnlyClient(config.db_path)
-        catalog = CatalogService(db_client)
-
-        # Look up song and recording
-        song_with_recording = catalog.get_song_with_recording(song_id)
-        if not song_with_recording:
-            typer.echo(f"Error: Song not found: {song_id}", err=True)
-            raise typer.Exit(1)
-
-        if not song_with_recording.recording:
-            typer.echo(f"Error: No recording found for song: {song_id}", err=True)
-            raise typer.Exit(1)
-
-        song = song_with_recording.song
-        recording = song_with_recording.recording
-        hash_prefix = recording.hash_prefix
-
-        typer.echo(f"Song: {song.title}", err=True)
-        typer.echo(f"Recording: {hash_prefix}", err=True)
-
-        # Initialize R2 client and asset cache
-        try:
-            r2_client = R2Client(
-                bucket=config.r2_bucket,
-                endpoint_url=config.r2_endpoint_url,
-                region=config.r2_region,
-            )
-        except ValueError as e:
-            typer.echo(f"Error: R2 credentials not configured: {e}", err=True)
-            raise typer.Exit(1)
-
-        cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
-
-        # Try vocals stem first if requested
-        if use_vocals:
-            vocals_path = cache.get_stem_path(hash_prefix, "vocals")
-            if vocals_path.exists():
-                audio_path = vocals_path
-                typer.echo(f"Using cached vocals stem: {audio_path}", err=True)
-            else:
-                typer.echo("Downloading vocals stem...", err=True)
-                audio_path = cache.download_stem(hash_prefix, "vocals")
-                if audio_path:
-                    typer.echo(f"Downloaded vocals stem: {audio_path}", err=True)
-
-        # Fall back to main audio
-        if audio_path is None:
-            main_audio_path = cache.get_audio_path(hash_prefix)
-            if main_audio_path.exists():
-                audio_path = main_audio_path
-                typer.echo(f"Using cached main audio: {audio_path}", err=True)
-            else:
-                typer.echo("Downloading main audio...", err=True)
-                audio_path = cache.download_audio(hash_prefix)
-                if audio_path:
-                    typer.echo(f"Downloaded main audio: {audio_path}", err=True)
-
-        if audio_path is None:
-            typer.echo("Error: Could not find or download audio", err=True)
-            raise typer.Exit(1)
-
-        if not audio_path.exists():
-            typer.echo(f"Error: Audio file not found: {audio_path}", err=True)
-            raise typer.Exit(1)
+    audio_path, _ = resolve_song_audio_path(song_id, use_vocals=use_vocals)
 
     # Determine time range
     effective_end: Optional[float] = end if end and end > 0 else None
