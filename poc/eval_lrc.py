@@ -1078,14 +1078,7 @@ def format_line_diff_report(
     lines.append(f"Final score:     {scores.final_score:5.1f} / 100")
     lines.append("")
 
-    # Line-by-line diff section
-    lines.append("--- Line-by-Line Diff ---")
-    lines.append("")
-    lines.append("Legend: = matched | - missing from audio | + extra in audio")
-    lines.append("        [LRC time] → [Audio time] (diff)")
-    lines.append("")
-
-    # Group diff entries by approximate LRC line boundaries
+    # Check for data availability early
     if not result.diff_entries or not lrc_lines:
         lines.append("(No diff data available)")
         return "\n".join(lines)
@@ -1101,9 +1094,13 @@ def format_line_diff_report(
     unassigned: list[DiffEntry] = []
 
     for entry in result.diff_entries:
-        # Use LRC time for equal/delete, audio time for insert
-        ref_time = entry.lrc_time if entry.lrc_time is not None else entry.audio_time
-        if ref_time is None:
+        # Use LRC time for equal/delete, audio time (offset-adjusted) for insert
+        if entry.lrc_time is not None:
+            ref_time = entry.lrc_time
+        elif entry.audio_time is not None:
+            # Adjust audio time by offset to align with LRC timeline
+            ref_time = entry.audio_time - (stats.time_offset_ms / 1000.0)
+        else:
             unassigned.append(entry)
             continue
 
@@ -1125,8 +1122,40 @@ def format_line_diff_report(
                     closest_idx = i
             diff_by_line[closest_idx].append(entry)
 
+    # --- Original LRC Lyrics section ---
+    lines.append("--- Original LRC Lyrics ---")
+    lines.append("")
+    for ts, text in lrc_lines:
+        if text.strip():
+            lines.append(f"[{format_timestamp(ts)}] {text}")
+    lines.append("")
+
+    # --- Transcribed Lyrics section ---
+    lines.append("--- Transcribed Lyrics ---")
+    lines.append("")
+    for line_idx, (start_ts, _, _) in enumerate(line_boundaries):
+        entries = diff_by_line.get(line_idx, [])
+        # Collect audio text from equal and insert entries
+        audio_text_parts = []
+        for entry in entries:
+            if entry.op == "equal" and entry.audio_text:
+                audio_text_parts.append(entry.audio_text)
+            elif entry.op == "insert" and entry.audio_text:
+                audio_text_parts.append(entry.audio_text)
+        if audio_text_parts:
+            # Join characters (no space for Chinese)
+            audio_line = "".join(audio_text_parts)
+            lines.append(f"[{format_timestamp(start_ts)}] {audio_line}")
+    lines.append("")
+
+    # Line-by-line diff section
+    lines.append("--- Line-by-Line Diff ---")
+    lines.append("")
+    lines.append("Legend: = matched | - missing from audio | + extra in audio")
+    lines.append("        [LRC time] → [Audio time] (diff)")
+    lines.append("")
+
     # Format each line
-    col_width = 45
 
     for line_idx, (start_ts, _, original_text) in enumerate(line_boundaries):
         entries = diff_by_line.get(line_idx, [])
