@@ -82,6 +82,9 @@ class EvaluationStats:
         rms_error_ms: RMS timing error in milliseconds (after offset normalization)
         max_error_ms: Maximum timing error in milliseconds (after offset normalization)
         time_offset_ms: Detected global time offset in milliseconds (audio - LRC)
+        exact_matches: Number of exact character matches
+        homophone_matches: Number of homophone (same pinyin, different char) matches
+        pinyin_accuracy: Accuracy based on pinyin matching (includes homophones)
     """
 
     lrc_word_count: int
@@ -92,6 +95,9 @@ class EvaluationStats:
     rms_error_ms: float
     max_error_ms: float
     time_offset_ms: float = 0.0
+    exact_matches: int = 0
+    homophone_matches: int = 0
+    pinyin_accuracy: float = 0.0
 
 
 @dataclass
@@ -466,6 +472,11 @@ def transcribe_with_sensevoice(
     model_name: str = "iic/SenseVoiceSmall",
     device: str = "cpu",
     batch_size_s: int = 60,
+    use_itn: bool = False,
+    disable_vad: bool = False,
+    vad_max_silence: int = 1000,
+    vad_threshold: float = 0.5,
+    debug: bool = False,
     **kwargs,
 ) -> list[PinyinWord]:
     """Transcribe audio using FunASR SenseVoice model.
@@ -477,6 +488,11 @@ def transcribe_with_sensevoice(
         model_name: SenseVoice model ID (default: iic/SenseVoiceSmall)
         device: Device to run on (cpu/cuda)
         batch_size_s: Batch size in seconds for processing (default: 60)
+        use_itn: Use inverse text normalization (default: False for better alignment)
+        disable_vad: Disable internal VAD (default: False)
+        vad_max_silence: VAD max end silence in ms (default: 1000)
+        vad_threshold: VAD speech/noise threshold 0-1 (default: 0.5)
+        debug: Enable debug output (default: False)
         **kwargs: Additional arguments (ignored for compatibility)
 
     Returns:
@@ -487,75 +503,130 @@ def transcribe_with_sensevoice(
     console = Console(stderr=True)
     console.print(f"[sensevoice] Loading model: {model_name} on {device}", style="dim")
 
-    # SenseVoice model with VAD for better segmentation
-    model = AutoModel(
-        model=model_name,
-        trust_remote_code=True,
-        device=device,
-    )
+    # SenseVoice model with configurable VAD
+    if disable_vad:
+        model = AutoModel(
+            model=model_name,
+            trust_remote_code=True,
+            device=device,
+        )
+    else:
+        vad_kwargs = {
+            "max_end_silence": vad_max_silence,
+            "speech_noise_thres": vad_threshold,
+        }
+        model = AutoModel(
+            model=model_name,
+            trust_remote_code=True,
+            device=device,
+            vad_model="fsmn-vad",
+            vad_kwargs=vad_kwargs,
+        )
 
     console.print(f"[sensevoice] Transcribing: {audio_path}", style="dim")
+    if debug:
+        console.print(
+            f"[sensevoice] Parameters: use_itn={use_itn}, disable_vad={disable_vad}, "
+            f"vad_max_silence={vad_max_silence}, vad_threshold={vad_threshold}",
+            style="dim"
+        )
 
     # SenseVoice inference
-    res = model.generate(
-        input=str(audio_path),
-        cache={},
-        language="zh",
-        use_itn=True,
-        batch_size_s=batch_size_s,
-    )
+    gen_kwargs = {
+        "input": str(audio_path),
+        "cache": {},
+        "language": "zh",
+        "batch_size_s": batch_size_s,
+    }
+    if use_itn:
+        gen_kwargs["use_itn"] = True
+
+    res = model.generate(**gen_kwargs)
 
     result = []
-    raw_transcription = ""  # For debug output
+    raw_transcription = []  # For debug output
 
-    for item in res:
+    # Patterns to remove from SenseVoice output
+    event_patterns = [
+        r"<\|[^|]+\|>",      # <|HAPPY|>, <|EMOTION|>, etc.
+        r"\|[^|]+\|",         # |zh|, |en|, language tags
+        r"<[^>]+>",           # Any other tags
+        r"\[.*?\]",           # Bracketed content
+    ]
+
+    for i, item in enumerate(res):
         # SenseVoice returns sentence-level results
-        # Extract text and try to get timestamps if available
         text = item.get("text", "")
         timestamp = item.get("timestamp", [])
 
+        if debug and i < 5:
+            console.print(f"[sensevoice DEBUG] Segment {i}: text='{text[:100]}'", style="dim")
+            if timestamp:
+                console.print(f"[sensevoice DEBUG] Segment {i}: first 3 timestamps={timestamp[:3]}", style="dim")
+
         if text:
-            # Clean up SenseVoice output (may have emotion tags like <|HAPPY|>)
-            clean_text = re.sub(r"<\|[^|]+\|>", "", text).strip()
-            raw_transcription += clean_text + " "
+            # Clean up SenseVoice output comprehensively
+            clean_text = text
+            for pattern in event_patterns:
+                clean_text = re.sub(pattern, "", clean_text)
+            clean_text = clean_text.strip()
+            raw_transcription.append(clean_text)
 
-            if timestamp and len(timestamp) > 0:
+            # Extract Chinese characters
+            chars = [c for c in clean_text if '\u4e00' <= c <= '\u9fff']
+
+            if timestamp and len(timestamp) > 0 and len(chars) > 0:
                 # Has word-level timestamps: [[start_ms, end_ms], ...]
-                chars = list(re.findall(r"[\u4e00-\u9fff]", clean_text))
-                for i, char in enumerate(chars):
-                    if i < len(timestamp):
-                        start_ms = timestamp[i][0]
+                if len(chars) <= len(timestamp):
+                    for j, char in enumerate(chars):
+                        start_ms = timestamp[j][0]
                         time_sec = start_ms / 1000.0
-                    else:
-                        # Fallback: estimate from previous
-                        time_sec = result[-1].time_seconds + 0.2 if result else 0.0
-
-                    pinyin_list = chinese_to_pinyin(char)
-                    for py in pinyin_list:
-                        result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
-            else:
-                # No timestamps - use segment start time and interpolate
-                segment_start = item.get("start", 0) / 1000.0 if "start" in item else 0.0
-                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + 5.0
-
-                chars = list(re.findall(r"[\u4e00-\u9fff]", clean_text))
-                if chars:
-                    duration = segment_end - segment_start
-                    time_per_char = duration / len(chars) if len(chars) > 0 else 0.2
-
-                    for i, char in enumerate(chars):
-                        time_sec = segment_start + i * time_per_char
                         pinyin_list = chinese_to_pinyin(char)
                         for py in pinyin_list:
                             result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
+                else:
+                    # Fewer timestamps than characters - interpolate
+                    num_chars = len(chars)
+                    num_ts = len(timestamp)
+                    first_ts = timestamp[0][0] / 1000.0
+                    last_ts = timestamp[-1][0] / 1000.0
+                    time_span = last_ts - first_ts
 
-    console.print(f"[sensevoice] Transcribed {len(result)} pinyin syllables", style="dim")
+                    for j, char in enumerate(chars):
+                        if num_ts > 1:
+                            ratio = j / (num_chars - 1) if num_chars > 1 else 0
+                            time_sec = first_ts + (time_span * ratio)
+                        else:
+                            time_sec = first_ts
+                        pinyin_list = chinese_to_pinyin(char)
+                        for py in pinyin_list:
+                            result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
+            elif chars:
+                # No timestamps - use segment start time and interpolate
+                segment_start = item.get("start", 0) / 1000.0 if "start" in item else 0.0
+                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + 5.0
+                duration = segment_end - segment_start
+                time_per_char = duration / len(chars) if len(chars) > 0 else 0.2
+
+                for j, char in enumerate(chars):
+                    time_sec = segment_start + j * time_per_char
+                    pinyin_list = chinese_to_pinyin(char)
+                    for py in pinyin_list:
+                        result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
+
+    console.print(f"[sensevoice] Transcribed {len(result)} pinyin syllables from {len(raw_transcription)} segments", style="dim")
+
+    # Debug output
+    full_raw = " ".join(raw_transcription)
+    if debug:
+        console.print(f"[sensevoice DEBUG] Raw transcription length: {len(full_raw)} chars", style="dim")
+        console.print(f"[sensevoice DEBUG] First 500 chars: {full_raw[:500]}", style="dim")
 
     # Warn if no Chinese content was detected
-    if len(result) == 0 and raw_transcription.strip():
+    if len(result) == 0 and full_raw.strip():
         console.print(
             f"[sensevoice] Warning: No Chinese characters detected. Raw transcription:\n"
-            f"  {raw_transcription[:200]}{'...' if len(raw_transcription) > 200 else ''}",
+            f"  {full_raw[:200]}{'...' if len(full_raw) > 200 else ''}",
             style="yellow"
         )
 
@@ -567,6 +638,10 @@ def transcribe_with_paraformer(
     model_name: str = "paraformer-zh",
     device: str = "cpu",
     batch_size_s: int = 60,
+    disable_vad: bool = False,
+    vad_max_silence: int = 1000,
+    vad_threshold: float = 0.5,
+    debug: bool = False,
     **kwargs,
 ) -> list[PinyinWord]:
     """Transcribe audio using FunASR Paraformer model with timestamps.
@@ -580,6 +655,10 @@ def transcribe_with_paraformer(
         model_name: Paraformer model ID (default: paraformer-zh)
         device: Device to run on (cpu/cuda)
         batch_size_s: Batch size in seconds for processing (default: 60)
+        disable_vad: Disable internal VAD (default: False)
+        vad_max_silence: VAD max end silence in ms (default: 1000)
+        vad_threshold: VAD speech/noise threshold 0-1 (default: 0.5)
+        debug: Enable debug output (default: False)
         **kwargs: Additional arguments (ignored for compatibility)
 
     Returns:
@@ -590,17 +669,34 @@ def transcribe_with_paraformer(
     console = Console(stderr=True)
     console.print(f"[paraformer] Loading model: {model_name} on {device}", style="dim")
 
-    # Use Paraformer-zh with VAD for better speech detection
-    # The VAD model segments the audio and helps detect speech regions
-    model = AutoModel(
-        model=model_name,
-        model_revision="v2.0.4",
-        vad_model="fsmn-vad",
-        vad_model_revision="v2.0.4",
-        device=device,
-    )
+    # Use Paraformer-zh with configurable VAD
+    if disable_vad:
+        model = AutoModel(
+            model=model_name,
+            model_revision="v2.0.4",
+            device=device,
+        )
+    else:
+        vad_kwargs = {
+            "max_end_silence": vad_max_silence,
+            "speech_noise_thres": vad_threshold,
+        }
+        model = AutoModel(
+            model=model_name,
+            model_revision="v2.0.4",
+            vad_model="fsmn-vad",
+            vad_model_revision="v2.0.4",
+            vad_kwargs=vad_kwargs,
+            device=device,
+        )
 
     console.print(f"[paraformer] Transcribing: {audio_path}", style="dim")
+    if debug:
+        console.print(
+            f"[paraformer] Parameters: disable_vad={disable_vad}, "
+            f"vad_max_silence={vad_max_silence}, vad_threshold={vad_threshold}",
+            style="dim"
+        )
 
     # Paraformer inference with timestamps
     res = model.generate(
@@ -609,18 +705,21 @@ def transcribe_with_paraformer(
     )
 
     result = []
-    for item in res:
+    for i, item in enumerate(res):
         text = item.get("text", "")
         timestamp = item.get("timestamp", [])
+
+        if debug and i < 5:
+            console.print(f"[paraformer DEBUG] Segment {i}: text='{text[:100] if text else ''}'", style="dim")
 
         if text:
             chars = list(re.findall(r"[\u4e00-\u9fff]", text))
 
             if timestamp and len(timestamp) > 0:
                 # Has character-level timestamps
-                for i, char in enumerate(chars):
-                    if i < len(timestamp):
-                        start_ms = timestamp[i][0]
+                for j, char in enumerate(chars):
+                    if j < len(timestamp):
+                        start_ms = timestamp[j][0]
                         time_sec = start_ms / 1000.0
                     else:
                         time_sec = result[-1].time_seconds + 0.2 if result else 0.0
@@ -637,8 +736,8 @@ def transcribe_with_paraformer(
                     duration = segment_end - segment_start
                     time_per_char = duration / len(chars) if len(chars) > 0 else 0.2
 
-                    for i, char in enumerate(chars):
-                        time_sec = segment_start + i * time_per_char
+                    for j, char in enumerate(chars):
+                        time_sec = segment_start + j * time_per_char
                         pinyin_list = chinese_to_pinyin(char)
                         for py in pinyin_list:
                             result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
@@ -654,6 +753,17 @@ def transcribe_audio(
     device: str = "cpu",
     compute_type: str = "int8",
     batch_size_s: int = 60,
+    # SenseVoice-specific
+    use_itn: bool = False,
+    sensevoice_disable_vad: bool = False,
+    sensevoice_vad_max_silence: int = 1000,
+    sensevoice_vad_threshold: float = 0.5,
+    # Paraformer-specific
+    paraformer_disable_vad: bool = False,
+    paraformer_vad_max_silence: int = 1000,
+    paraformer_vad_threshold: float = 0.5,
+    # Debug
+    debug: bool = False,
 ) -> list[PinyinWord]:
     """Transcribe audio using the specified engine.
 
@@ -664,6 +774,14 @@ def transcribe_audio(
         device: Device to run on
         compute_type: Compute type (whisper only)
         batch_size_s: Batch size in seconds for processing (default: 60)
+        use_itn: Use ITN for SenseVoice (default: False)
+        sensevoice_disable_vad: Disable internal VAD for SenseVoice
+        sensevoice_vad_max_silence: VAD max silence for SenseVoice
+        sensevoice_vad_threshold: VAD threshold for SenseVoice
+        paraformer_disable_vad: Disable internal VAD for Paraformer
+        paraformer_vad_max_silence: VAD max silence for Paraformer
+        paraformer_vad_threshold: VAD threshold for Paraformer
+        debug: Enable debug output
 
     Returns:
         List of PinyinWord with pinyin and timestamps
@@ -681,6 +799,11 @@ def transcribe_audio(
             model_name=model_name or "iic/SenseVoiceSmall",
             device=device,
             batch_size_s=batch_size_s,
+            use_itn=use_itn,
+            disable_vad=sensevoice_disable_vad,
+            vad_max_silence=sensevoice_vad_max_silence,
+            vad_threshold=sensevoice_vad_threshold,
+            debug=debug,
         )
     elif engine == "paraformer":
         return transcribe_with_paraformer(
@@ -688,6 +811,10 @@ def transcribe_audio(
             model_name=model_name or "paraformer-zh",
             device=device,
             batch_size_s=batch_size_s,
+            disable_vad=paraformer_disable_vad,
+            vad_max_silence=paraformer_vad_max_silence,
+            vad_threshold=paraformer_vad_threshold,
+            debug=debug,
         )
     else:
         raise ValueError(f"Unknown engine: {engine}. Supported: {ENGINES}")
@@ -832,6 +959,17 @@ def transcribe_segment(
     device: str = "cpu",
     compute_type: str = "int8",
     batch_size_s: int = 60,
+    # SenseVoice-specific
+    use_itn: bool = False,
+    sensevoice_disable_vad: bool = False,
+    sensevoice_vad_max_silence: int = 1000,
+    sensevoice_vad_threshold: float = 0.5,
+    # Paraformer-specific
+    paraformer_disable_vad: bool = False,
+    paraformer_vad_max_silence: int = 1000,
+    paraformer_vad_threshold: float = 0.5,
+    # Debug
+    debug: bool = False,
 ) -> list[PinyinWord]:
     """Transcribe a single audio segment and adjust timestamps.
 
@@ -843,6 +981,14 @@ def transcribe_segment(
         device: Device to run on
         compute_type: Compute type (whisper only)
         batch_size_s: Batch size in seconds
+        use_itn: Use ITN for SenseVoice
+        sensevoice_disable_vad: Disable internal VAD for SenseVoice
+        sensevoice_vad_max_silence: VAD max silence for SenseVoice
+        sensevoice_vad_threshold: VAD threshold for SenseVoice
+        paraformer_disable_vad: Disable internal VAD for Paraformer
+        paraformer_vad_max_silence: VAD max silence for Paraformer
+        paraformer_vad_threshold: VAD threshold for Paraformer
+        debug: Enable debug output
 
     Returns:
         List of PinyinWord with timestamps adjusted by segment offset
@@ -863,6 +1009,14 @@ def transcribe_segment(
             device=device,
             compute_type=compute_type,
             batch_size_s=batch_size_s,
+            use_itn=use_itn,
+            sensevoice_disable_vad=sensevoice_disable_vad,
+            sensevoice_vad_max_silence=sensevoice_vad_max_silence,
+            sensevoice_vad_threshold=sensevoice_vad_threshold,
+            paraformer_disable_vad=paraformer_disable_vad,
+            paraformer_vad_max_silence=paraformer_vad_max_silence,
+            paraformer_vad_threshold=paraformer_vad_threshold,
+            debug=debug,
         )
 
         # Adjust timestamps by segment offset
@@ -881,24 +1035,72 @@ def transcribe_segment(
             segment_path.unlink()
 
 
-def transcribe_with_vad(
+def build_lrc_segments(lrc_lines: list[tuple[float, str]]) -> list[VADSegment]:
+    """Build segments from LRC line timestamps.
+
+    Args:
+        lrc_lines: List of (timestamp, text) tuples from LRC
+
+    Returns:
+        List of VADSegment based on LRC line boundaries
+    """
+    if not lrc_lines:
+        return []
+
+    segments = []
+    for i, (timestamp, text) in enumerate(lrc_lines):
+        # Skip empty lines
+        if not text.strip():
+            continue
+
+        # Determine segment end (next line's start or timestamp + default duration)
+        if i + 1 < len(lrc_lines):
+            segment_end = lrc_lines[i + 1][0]
+        else:
+            segment_end = timestamp + 5.0  # Default 5s for last line
+
+        # Skip very short segments
+        if segment_end - timestamp < 0.1:
+            continue
+
+        segments.append(VADSegment(
+            start_ms=int(timestamp * 1000),
+            end_ms=int(segment_end * 1000),
+        ))
+
+    return segments
+
+
+def transcribe_with_segmentation(
     audio_path: Path,
     engine: str = "whisper",
     model_name: Optional[str] = None,
     device: str = "cpu",
     compute_type: str = "int8",
     batch_size_s: int = 60,
-    use_vad: bool = True,
+    segment_mode: str = "vad",
+    lrc_lines: Optional[list[tuple[float, str]]] = None,
     merge_segments: bool = True,
     merge_length_s: int = 15,
     split_on_silence: bool = False,
     silence_gap_ms: int = 500,
     silence_thresh_db: float = -40.0,
+    # SenseVoice-specific
+    use_itn: bool = False,
+    sensevoice_disable_vad: bool = False,
+    sensevoice_vad_max_silence: int = 1000,
+    sensevoice_vad_threshold: float = 0.5,
+    # Paraformer-specific
+    paraformer_disable_vad: bool = False,
+    paraformer_vad_max_silence: int = 1000,
+    paraformer_vad_threshold: float = 0.5,
+    # Debug
+    debug: bool = False,
 ) -> list[PinyinWord]:
-    """Transcribe audio with optional VAD pre-processing.
+    """Transcribe audio with optional segmentation pre-processing.
 
-    Orchestrates VAD segmentation, optional merging/splitting, and per-segment
-    transcription with timestamp adjustment.
+    Orchestrates segmentation (VAD or LRC-based), optional merging/splitting,
+    and per-segment transcription with timestamp adjustment.
 
     Args:
         audio_path: Path to audio file
@@ -907,20 +1109,29 @@ def transcribe_with_vad(
         device: Device to run on
         compute_type: Compute type (whisper only)
         batch_size_s: Batch size in seconds for processing
-        use_vad: Enable VAD pre-processing (default: True)
+        segment_mode: Segmentation mode: "vad", "lrc", or "none"
+        lrc_lines: LRC lines for "lrc" segment mode
         merge_segments: Merge adjacent VAD segments (default: True)
         merge_length_s: Maximum merged segment length in seconds (default: 15)
         split_on_silence: Split segments on silence gaps (default: False)
         silence_gap_ms: Minimum silence gap to split (ms) (default: 500)
         silence_thresh_db: Silence threshold in dBFS (default: -40.0)
+        use_itn: Use ITN for SenseVoice
+        sensevoice_disable_vad: Disable internal VAD for SenseVoice
+        sensevoice_vad_max_silence: VAD max silence for SenseVoice
+        sensevoice_vad_threshold: VAD threshold for SenseVoice
+        paraformer_disable_vad: Disable internal VAD for Paraformer
+        paraformer_vad_max_silence: VAD max silence for Paraformer
+        paraformer_vad_threshold: VAD threshold for Paraformer
+        debug: Enable debug output
 
     Returns:
         List of PinyinWord with pinyin and timestamps
     """
     console = Console(stderr=True)
 
-    # If VAD disabled, use direct transcription
-    if not use_vad:
+    # If segment mode is "none", use direct transcription
+    if segment_mode == "none":
         return transcribe_audio(
             audio_path=audio_path,
             engine=engine,
@@ -928,40 +1139,83 @@ def transcribe_with_vad(
             device=device,
             compute_type=compute_type,
             batch_size_s=batch_size_s,
+            use_itn=use_itn,
+            sensevoice_disable_vad=sensevoice_disable_vad,
+            sensevoice_vad_max_silence=sensevoice_vad_max_silence,
+            sensevoice_vad_threshold=sensevoice_vad_threshold,
+            paraformer_disable_vad=paraformer_disable_vad,
+            paraformer_vad_max_silence=paraformer_vad_max_silence,
+            paraformer_vad_threshold=paraformer_vad_threshold,
+            debug=debug,
         )
 
-    # Run VAD segmentation
-    segments = run_vad_segmentation(audio_path, device=device)
+    # Get segments based on mode
+    segments: list[VADSegment] = []
 
-    if not segments:
-        console.print("[vad] No speech segments found, falling back to direct transcription", style="yellow")
-        return transcribe_audio(
-            audio_path=audio_path,
-            engine=engine,
-            model_name=model_name,
-            device=device,
-            compute_type=compute_type,
-            batch_size_s=batch_size_s,
-        )
+    if segment_mode == "lrc":
+        if not lrc_lines:
+            console.print("[lrc] No LRC lines provided, falling back to direct transcription", style="yellow")
+            return transcribe_audio(
+                audio_path=audio_path,
+                engine=engine,
+                model_name=model_name,
+                device=device,
+                compute_type=compute_type,
+                batch_size_s=batch_size_s,
+                use_itn=use_itn,
+                sensevoice_disable_vad=sensevoice_disable_vad,
+                sensevoice_vad_max_silence=sensevoice_vad_max_silence,
+                sensevoice_vad_threshold=sensevoice_vad_threshold,
+                paraformer_disable_vad=paraformer_disable_vad,
+                paraformer_vad_max_silence=paraformer_vad_max_silence,
+                paraformer_vad_threshold=paraformer_vad_threshold,
+                debug=debug,
+            )
+        segments = build_lrc_segments(lrc_lines)
+        console.print(f"[lrc] Built {len(segments)} segments from LRC lines", style="dim")
+    elif segment_mode == "vad":
+        # Run VAD segmentation
+        segments = run_vad_segmentation(audio_path, device=device)
+        if not segments:
+            console.print("[vad] No speech segments found, falling back to direct transcription", style="yellow")
+            return transcribe_audio(
+                audio_path=audio_path,
+                engine=engine,
+                model_name=model_name,
+                device=device,
+                compute_type=compute_type,
+                batch_size_s=batch_size_s,
+                use_itn=use_itn,
+                sensevoice_disable_vad=sensevoice_disable_vad,
+                sensevoice_vad_max_silence=sensevoice_vad_max_silence,
+                sensevoice_vad_threshold=sensevoice_vad_threshold,
+                paraformer_disable_vad=paraformer_disable_vad,
+                paraformer_vad_max_silence=paraformer_vad_max_silence,
+                paraformer_vad_threshold=paraformer_vad_threshold,
+                debug=debug,
+            )
+    else:
+        raise ValueError(f"Unknown segment_mode: {segment_mode}. Supported: vad, lrc, none")
 
-    # Merge segments if enabled
-    if merge_segments:
+    # Merge segments if enabled (VAD mode only)
+    if merge_segments and segment_mode == "vad":
         segments = merge_vad_segments(segments, max_len_s=merge_length_s)
         console.print(f"[vad] Merged to {len(segments)} segments", style="dim")
 
-    # Split on silence if enabled
-    if split_on_silence and silence_gap_ms > 0:
+    # Split on silence if enabled (VAD mode only)
+    if split_on_silence and silence_gap_ms > 0 and segment_mode == "vad":
         segments = refine_vad_segments_with_silence(
             audio_path, segments, silence_gap_ms=silence_gap_ms, silence_thresh_db=silence_thresh_db
         )
 
     # Transcribe each segment
-    console.print(f"[vad] Transcribing {len(segments)} segments...", style="dim")
+    mode_label = segment_mode
+    console.print(f"[{mode_label}] Transcribing {len(segments)} segments...", style="dim")
     all_words: list[PinyinWord] = []
 
     for i, segment in enumerate(segments):
         console.print(
-            f"[vad] Segment {i+1}/{len(segments)}: {segment.start_seconds:.2f}s - {segment.end_seconds:.2f}s",
+            f"[{mode_label}] Segment {i+1}/{len(segments)}: {segment.start_seconds:.2f}s - {segment.end_seconds:.2f}s",
             style="dim",
         )
         words = transcribe_segment(
@@ -972,10 +1226,18 @@ def transcribe_with_vad(
             device=device,
             compute_type=compute_type,
             batch_size_s=batch_size_s,
+            use_itn=use_itn,
+            sensevoice_disable_vad=sensevoice_disable_vad,
+            sensevoice_vad_max_silence=sensevoice_vad_max_silence,
+            sensevoice_vad_threshold=sensevoice_vad_threshold,
+            paraformer_disable_vad=paraformer_disable_vad,
+            paraformer_vad_max_silence=paraformer_vad_max_silence,
+            paraformer_vad_threshold=paraformer_vad_threshold,
+            debug=debug,
         )
         all_words.extend(words)
 
-    console.print(f"[vad] Total transcribed: {len(all_words)} pinyin syllables", style="dim")
+    console.print(f"[{mode_label}] Total transcribed: {len(all_words)} pinyin syllables", style="dim")
     return all_words
 
 
@@ -1389,6 +1651,62 @@ def calculate_final_score(
     return text_score * text_weight + timing_score * timing_weight
 
 
+def calculate_pinyin_accuracy(
+    lrc_words: list[PinyinWord], audio_words: list[PinyinWord]
+) -> dict:
+    """Calculate pinyin-level accuracy with homophone analysis.
+
+    This compares pinyin representations and categorizes matches as:
+    - exact: Same character and pinyin
+    - homophone: Same pinyin but different character (Chinese homophone)
+    - mismatch: Different pinyin
+
+    Args:
+        lrc_words: LRC pinyin words
+        audio_words: Audio pinyin words
+
+    Returns:
+        Dictionary with accuracy statistics
+    """
+    # Build pinyin-to-words mapping for both lists
+    lrc_pinyin_list = [w.pinyin for w in lrc_words]
+    audio_pinyin_list = [w.pinyin for w in audio_words]
+
+    # Use sequence matcher on pinyin
+    matcher = SequenceMatcher(None, lrc_pinyin_list, audio_pinyin_list)
+    opcodes = matcher.get_opcodes()
+
+    exact_matches = 0
+    homophone_matches = 0
+    total_lrc = len(lrc_words)
+    total_audio = len(audio_words)
+
+    for op, lrc_start, lrc_end, audio_start, audio_end in opcodes:
+        if op == "equal":
+            # Pinyin matches - check if characters are the same
+            for i, j in zip(range(lrc_start, lrc_end), range(audio_start, audio_end)):
+                if lrc_words[i].text == audio_words[j].text:
+                    exact_matches += 1
+                else:
+                    homophone_matches += 1
+
+    # Calculate metrics
+    total_matched_pinyin = exact_matches + homophone_matches
+
+    metrics = {
+        "exact_matches": exact_matches,
+        "homophone_matches": homophone_matches,
+        "total_pinyin_matches": total_matched_pinyin,
+        "lrc_count": total_lrc,
+        "audio_count": total_audio,
+        "exact_accuracy": (exact_matches / total_lrc * 100) if total_lrc > 0 else 0,
+        "pinyin_accuracy": (total_matched_pinyin / total_lrc * 100) if total_lrc > 0 else 0,
+        "coverage": (total_matched_pinyin / total_audio * 100) if total_audio > 0 else 0,
+    }
+
+    return metrics
+
+
 # --------------------------------------------------------------------------
 # Report Formatting
 # --------------------------------------------------------------------------
@@ -1437,6 +1755,13 @@ def format_diff_report(
     lines.append(f"LRC words:      {stats.lrc_word_count:5}    |  Audio words:    {stats.audio_word_count:5}")
     lines.append(f"Matched:        {stats.matched_count:5}    |  Missing: {stats.missing_count}  |  Extra: {stats.extra_count}")
     lines.append("")
+
+    # Show pinyin accuracy breakdown if available
+    if stats.pinyin_accuracy > 0:
+        lines.append("--- Pinyin Analysis ---")
+        lines.append(f"Exact matches:   {stats.exact_matches:5}    |  Homophones: {stats.homophone_matches}")
+        lines.append(f"Pinyin accuracy: {stats.pinyin_accuracy:5.1f}% (includes homophones)")
+        lines.append("")
 
     lines.append("--- Timing ---")
     lines.append(f"Global offset:  {stats.time_offset_ms:+.0f} ms (auto-corrected)")
@@ -1500,6 +1825,9 @@ def format_json_report(result: EvaluationResult, song_title: Optional[str] = Non
             "time_offset_ms": round(result.stats.time_offset_ms, 2),
             "rms_error_ms": round(result.stats.rms_error_ms, 2),
             "max_error_ms": round(result.stats.max_error_ms, 2),
+            "exact_matches": result.stats.exact_matches,
+            "homophone_matches": result.stats.homophone_matches,
+            "pinyin_accuracy": round(result.stats.pinyin_accuracy, 2),
         }
         data["scores"] = {
             "text_accuracy": round(result.scores.text_accuracy, 2),
@@ -1802,6 +2130,7 @@ def evaluate_lrc(
     timing_threshold_ms: float = 500.0,
     lrc_lines: Optional[list[tuple[float, str]]] = None,
     use_per_line_alignment: bool = True,
+    pinyin_mode: bool = True,
 ) -> EvaluationResult:
     """Run full LRC evaluation.
 
@@ -1813,6 +2142,7 @@ def evaluate_lrc(
         timing_threshold_ms: Threshold for timing score calculation
         lrc_lines: Original LRC lines for per-line alignment
         use_per_line_alignment: Use per-line alignment instead of global
+        pinyin_mode: Use pinyin accuracy (includes homophones) instead of character accuracy
 
     Returns:
         EvaluationResult with stats, scores, and diff
@@ -1828,6 +2158,9 @@ def evaluate_lrc(
     missing_count = sum(1 for d in diff if d.op == "delete")
     extra_count = sum(1 for d in diff if d.op == "insert")
 
+    # Calculate pinyin-level accuracy (includes homophones)
+    pinyin_metrics = calculate_pinyin_accuracy(lrc_words, audio_words)
+
     # Calculate and apply time offset normalization
     # This removes penalty for VAD-induced global timing shifts
     time_offset = calculate_time_offset(diff)
@@ -1835,6 +2168,11 @@ def evaluate_lrc(
 
     # Calculate scores using normalized diff for timing
     text_score = calculate_text_score(diff)  # Text score doesn't depend on timing
+
+    # In pinyin mode, use pinyin accuracy (includes homophones) as the text score
+    if pinyin_mode:
+        text_score = pinyin_metrics["pinyin_accuracy"]
+
     timing_score, rms_error_ms, max_error_ms = calculate_timing_score(
         normalized_diff, timing_threshold_ms
     )
@@ -1849,6 +2187,9 @@ def evaluate_lrc(
         rms_error_ms=rms_error_ms,
         max_error_ms=max_error_ms,
         time_offset_ms=time_offset * 1000,  # Convert to ms
+        exact_matches=pinyin_metrics["exact_matches"],
+        homophone_matches=pinyin_metrics["homophone_matches"],
+        pinyin_accuracy=pinyin_metrics["pinyin_accuracy"],
     )
 
     scores = EvaluationScores(
@@ -1895,16 +2236,30 @@ def main(
     device: str = typer.Option("cpu", "--device", "-d", help="Device to run on (cpu/cuda/mps)"),
     compute_type: str = typer.Option("int8", "--compute-type", "-c", help="Compute type (int8/float16, whisper only)"),
     batch_size_s: int = typer.Option(60, "--batch-size-s", help="Batch size in seconds for transcription"),
-    use_vad: bool = typer.Option(True, "--use-vad/--no-use-vad", help="Enable VAD pre-processing"),
-    merge_vad: bool = typer.Option(True, "--merge-vad/--no-merge-vad", help="Merge adjacent VAD segments"),
-    split_on_silence: bool = typer.Option(False, "--split-on-silence/--no-split-on-silence", help="Split segments on silence"),
+    # Segmentation options
+    segment_mode: str = typer.Option("vad", "--segment-mode", help="Segmentation mode: vad, lrc, or none"),
+    merge_vad: bool = typer.Option(True, "--merge-vad/--no-merge-vad", help="Merge adjacent VAD segments (vad mode)"),
+    split_on_silence: bool = typer.Option(False, "--split-on-silence/--no-split-on-silence", help="Split segments on silence (vad mode)"),
+    # Alignment and scoring options
     per_line_align: bool = typer.Option(True, "--per-line-align/--no-per-line-align", help="Use per-line alignment"),
+    pinyin_mode: bool = typer.Option(True, "--pinyin-mode/--no-pinyin-mode", help="Use pinyin accuracy (includes homophones)"),
     text_weight: float = typer.Option(0.6, "--text-weight", help="Text accuracy weight"),
     timing_weight: float = typer.Option(0.4, "--timing-weight", help="Timing accuracy weight"),
     timing_threshold: float = typer.Option(500.0, "--timing-threshold", help="RMS threshold for 0 timing score (ms)"),
+    # SenseVoice-specific options
+    use_itn: bool = typer.Option(False, "--use-itn/--no-use-itn", help="Use inverse text normalization (SenseVoice)"),
+    sensevoice_disable_vad: bool = typer.Option(False, "--sensevoice-disable-vad", help="Disable internal VAD (SenseVoice)"),
+    sensevoice_vad_max_silence: int = typer.Option(1000, "--sensevoice-vad-max-silence", help="VAD max silence in ms (SenseVoice)"),
+    sensevoice_vad_threshold: float = typer.Option(0.5, "--sensevoice-vad-threshold", help="VAD threshold 0-1 (SenseVoice)"),
+    # Paraformer-specific options
+    paraformer_disable_vad: bool = typer.Option(False, "--paraformer-disable-vad", help="Disable internal VAD (Paraformer)"),
+    paraformer_vad_max_silence: int = typer.Option(1000, "--paraformer-vad-max-silence", help="VAD max silence in ms (Paraformer)"),
+    paraformer_vad_threshold: float = typer.Option(0.5, "--paraformer-vad-threshold", help="VAD threshold 0-1 (Paraformer)"),
+    # Output options
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file (default: stdout)"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show word-by-word diff"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug output"),
 ):
     """Evaluate LRC lyrics file accuracy against audio transcription.
 
@@ -1912,6 +2267,11 @@ def main(
     - whisper: OpenAI Whisper via faster-whisper (default)
     - sensevoice: FunASR SenseVoice (Chinese-optimized)
     - paraformer: FunASR Paraformer (fast, Chinese-optimized)
+
+    Segmentation modes:
+    - vad: Use Voice Activity Detection to split audio (default)
+    - lrc: Use LRC line timestamps to split audio
+    - none: Transcribe full audio without segmentation
 
     Usage examples:
 
@@ -1923,7 +2283,13 @@ def main(
        uv run --extra lrc_eval poc/eval_lrc.py <song_id> --engine sensevoice
        uv run --extra lrc_eval poc/eval_lrc.py <song_id> --engine paraformer
 
-    3. Local file mode:
+    3. LRC-based segmentation:
+       uv run --extra lrc_eval poc/eval_lrc.py <song_id> -e sensevoice --segment-mode lrc
+
+    4. Disable pinyin mode (character-exact matching):
+       uv run --extra lrc_eval poc/eval_lrc.py <song_id> --no-pinyin-mode
+
+    5. Local file mode:
        uv run --extra lrc_eval poc/eval_lrc.py --lrc lyrics.lrc --audio vocals.wav -e sensevoice
     """
     console = Console(stderr=True)
@@ -2034,25 +2400,41 @@ def main(
         console.print(f"Error: Unknown engine '{engine}'. Supported: {ENGINES}", style="red")
         raise typer.Exit(1)
 
-    console.print(f"Engine: {engine}", style="dim")
-    console.print(f"VAD: {use_vad}, merge: {merge_vad}, split_on_silence: {split_on_silence}", style="dim")
-    console.print(f"Per-line alignment: {per_line_align}, batch_size_s: {batch_size_s}", style="dim")
+    # Validate segment mode
+    if segment_mode not in ["vad", "lrc", "none"]:
+        console.print(f"Error: Unknown segment mode '{segment_mode}'. Supported: vad, lrc, none", style="red")
+        raise typer.Exit(1)
 
-    # Transcribe audio (with optional VAD pre-processing)
-    audio_words = transcribe_with_vad(
+    console.print(f"Engine: {engine}", style="dim")
+    console.print(f"Segment mode: {segment_mode}, merge: {merge_vad}, split_on_silence: {split_on_silence}", style="dim")
+    console.print(f"Per-line alignment: {per_line_align}, pinyin_mode: {pinyin_mode}, batch_size_s: {batch_size_s}", style="dim")
+
+    # Transcribe audio (with optional segmentation pre-processing)
+    audio_words = transcribe_with_segmentation(
         audio_path=audio_path,
         engine=engine,
         model_name=model,
         device=device,
         compute_type=compute_type,
         batch_size_s=batch_size_s,
-        use_vad=use_vad,
+        segment_mode=segment_mode,
+        lrc_lines=lrc_lines if segment_mode == "lrc" else None,
         merge_segments=merge_vad,
         split_on_silence=split_on_silence,
+        use_itn=use_itn,
+        sensevoice_disable_vad=sensevoice_disable_vad,
+        sensevoice_vad_max_silence=sensevoice_vad_max_silence,
+        sensevoice_vad_threshold=sensevoice_vad_threshold,
+        paraformer_disable_vad=paraformer_disable_vad,
+        paraformer_vad_max_silence=paraformer_vad_max_silence,
+        paraformer_vad_threshold=paraformer_vad_threshold,
+        debug=debug,
     )
 
     # Run evaluation
     console.print("Running evaluation...", style="dim")
+    if pinyin_mode:
+        console.print("Pinyin mode: Scoring based on pronunciation accuracy (includes homophones)", style="dim")
     result = evaluate_lrc(
         lrc_words=lrc_words,
         audio_words=audio_words,
@@ -2061,6 +2443,7 @@ def main(
         timing_threshold_ms=timing_threshold,
         lrc_lines=lrc_lines,
         use_per_line_alignment=per_line_align,
+        pinyin_mode=pinyin_mode,
     )
 
     # Format output
