@@ -22,6 +22,8 @@ from rich.table import Table
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add poc directory to path for local utility imports
+sys.path.insert(0, str(Path(__file__).parent))
 
 
 # --------------------------------------------------------------------------
@@ -1013,7 +1015,7 @@ def transcribe_segment(
     Returns:
         List of PinyinWord with timestamps adjusted by segment offset
     """
-    from poc.utils import extract_audio_segment
+    from utils import extract_audio_segment
 
     # Extract segment to temp file
     segment_path = extract_audio_segment(
