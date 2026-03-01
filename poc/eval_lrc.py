@@ -418,10 +418,11 @@ ENGINES = ["whisper", "sensevoice", "paraformer"]
 
 def transcribe_with_whisper(
     audio_path: Path,
-    model_name: str = "large-v3",
+    model_name: str = "large-v2",
     device: str = "cpu",
     compute_type: str = "int8",
     language: str = "zh",
+    lyrics_text: Optional[str] = None,
 ) -> list[PinyinWord]:
     """Transcribe audio using faster-whisper with word-level timestamps.
 
@@ -431,6 +432,7 @@ def transcribe_with_whisper(
         device: Device to run on (cpu/cuda/mps)
         compute_type: Compute type (int8/float16/int8_float16)
         language: Language hint
+        lyrics_text: Optional published lyrics to improve transcription accuracy
 
     Returns:
         List of PinyinWord with pinyin and timestamps
@@ -444,12 +446,23 @@ def transcribe_with_whisper(
 
     console.print(f"[whisper] Transcribing: {audio_path}", style="dim")
 
+    # Build dynamic initial prompt with lyrics if available
+    if lyrics_text:
+        # Take first 50 lines and truncate to 2000 characters max
+        lyrics_truncated = "\n".join(lyrics_text.split("\n")[:50])
+        if len(lyrics_truncated) > 2000:
+            lyrics_truncated = lyrics_truncated[:2000]
+        initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
+        console.print(f"[whisper] Using lyrics-enhanced prompt ({len(lyrics_truncated)} chars)", style="dim")
+    else:
+        initial_prompt = "这是一首中文敬拜诗歌"
+
     segments, info = model.transcribe(
         str(audio_path),
         language=language,
         beam_size=5,
         word_timestamps=True,
-        initial_prompt="这是一首中文敬拜诗歌",
+        initial_prompt=initial_prompt,
         vad_filter=True,
     )
 
@@ -762,6 +775,8 @@ def transcribe_audio(
     paraformer_disable_vad: bool = False,
     paraformer_vad_max_silence: int = 1000,
     paraformer_vad_threshold: float = 0.5,
+    # Whisper-specific
+    lyrics_text: Optional[str] = None,
     # Debug
     debug: bool = False,
 ) -> list[PinyinWord]:
@@ -781,6 +796,7 @@ def transcribe_audio(
         paraformer_disable_vad: Disable internal VAD for Paraformer
         paraformer_vad_max_silence: VAD max silence for Paraformer
         paraformer_vad_threshold: VAD threshold for Paraformer
+        lyrics_text: Optional lyrics text to improve Whisper transcription
         debug: Enable debug output
 
     Returns:
@@ -789,9 +805,10 @@ def transcribe_audio(
     if engine == "whisper":
         return transcribe_with_whisper(
             audio_path,
-            model_name=model_name or "large-v3",
+            model_name=model_name or "large-v2",
             device=device,
             compute_type=compute_type,
+            lyrics_text=lyrics_text,
         )
     elif engine == "sensevoice":
         return transcribe_with_sensevoice(
@@ -968,6 +985,8 @@ def transcribe_segment(
     paraformer_disable_vad: bool = False,
     paraformer_vad_max_silence: int = 1000,
     paraformer_vad_threshold: float = 0.5,
+    # Whisper-specific
+    lyrics_text: Optional[str] = None,
     # Debug
     debug: bool = False,
 ) -> list[PinyinWord]:
@@ -988,6 +1007,7 @@ def transcribe_segment(
         paraformer_disable_vad: Disable internal VAD for Paraformer
         paraformer_vad_max_silence: VAD max silence for Paraformer
         paraformer_vad_threshold: VAD threshold for Paraformer
+        lyrics_text: Optional lyrics text to improve Whisper transcription
         debug: Enable debug output
 
     Returns:
@@ -1016,6 +1036,7 @@ def transcribe_segment(
             paraformer_disable_vad=paraformer_disable_vad,
             paraformer_vad_max_silence=paraformer_vad_max_silence,
             paraformer_vad_threshold=paraformer_vad_threshold,
+            lyrics_text=lyrics_text,
             debug=debug,
         )
 
@@ -1094,6 +1115,8 @@ def transcribe_with_segmentation(
     paraformer_disable_vad: bool = False,
     paraformer_vad_max_silence: int = 1000,
     paraformer_vad_threshold: float = 0.5,
+    # Whisper-specific
+    lyrics_text: Optional[str] = None,
     # Debug
     debug: bool = False,
 ) -> list[PinyinWord]:
@@ -1123,6 +1146,7 @@ def transcribe_with_segmentation(
         paraformer_disable_vad: Disable internal VAD for Paraformer
         paraformer_vad_max_silence: VAD max silence for Paraformer
         paraformer_vad_threshold: VAD threshold for Paraformer
+        lyrics_text: Optional lyrics text to improve Whisper transcription
         debug: Enable debug output
 
     Returns:
@@ -1146,6 +1170,7 @@ def transcribe_with_segmentation(
             paraformer_disable_vad=paraformer_disable_vad,
             paraformer_vad_max_silence=paraformer_vad_max_silence,
             paraformer_vad_threshold=paraformer_vad_threshold,
+            lyrics_text=lyrics_text,
             debug=debug,
         )
 
@@ -1169,6 +1194,7 @@ def transcribe_with_segmentation(
                 paraformer_disable_vad=paraformer_disable_vad,
                 paraformer_vad_max_silence=paraformer_vad_max_silence,
                 paraformer_vad_threshold=paraformer_vad_threshold,
+                lyrics_text=lyrics_text,
                 debug=debug,
             )
         segments = build_lrc_segments(lrc_lines)
@@ -1192,6 +1218,7 @@ def transcribe_with_segmentation(
                 paraformer_disable_vad=paraformer_disable_vad,
                 paraformer_vad_max_silence=paraformer_vad_max_silence,
                 paraformer_vad_threshold=paraformer_vad_threshold,
+                lyrics_text=lyrics_text,
                 debug=debug,
             )
     else:
@@ -1213,7 +1240,30 @@ def transcribe_with_segmentation(
     console.print(f"[{mode_label}] Transcribing {len(segments)} segments...", style="dim")
     all_words: list[PinyinWord] = []
 
+    # Build segment-specific lyrics for LRC mode (1:1 mapping with non-empty lines)
+    segment_lyrics: list[Optional[str]] = []
+    if segment_mode == "lrc" and lrc_lines:
+        segment_lyrics = [text for _, text in lrc_lines if text.strip()]
+        if engine == "whisper":
+            console.print(f"[{mode_label}] Using segment-specific lyrics for Whisper prompting", style="dim")
+    elif segment_mode == "vad":
+        # VAD mode: no lyrics (we don't know which lyrics correspond to which segment)
+        segment_lyrics = [None] * len(segments)
+        if engine == "whisper":
+            console.print(f"[{mode_label}] VAD mode: no lyrics prompting (segment-lyrics mapping unknown)", style="dim")
+
     for i, segment in enumerate(segments):
+        # Determine lyrics for this segment
+        if segment_mode == "lrc" and i < len(segment_lyrics):
+            # LRC mode: use segment-specific lyrics line
+            seg_lyrics = segment_lyrics[i]
+        elif segment_mode == "vad":
+            # VAD mode: no lyrics guidance
+            seg_lyrics = None
+        else:
+            # Fallback: no lyrics
+            seg_lyrics = None
+
         console.print(
             f"[{mode_label}] Segment {i+1}/{len(segments)}: {segment.start_seconds:.2f}s - {segment.end_seconds:.2f}s",
             style="dim",
@@ -1233,6 +1283,7 @@ def transcribe_with_segmentation(
             paraformer_disable_vad=paraformer_disable_vad,
             paraformer_vad_max_silence=paraformer_vad_max_silence,
             paraformer_vad_threshold=paraformer_vad_threshold,
+            lyrics_text=seg_lyrics,
             debug=debug,
         )
         all_words.extend(words)
@@ -2231,13 +2282,13 @@ def main(
         None,
         "--model",
         "-m",
-        help="Model name (default: large-v3 for whisper, SenseVoiceSmall for sensevoice)",
+        help="Model name (default: large-v2 for whisper, SenseVoiceSmall for sensevoice)",
     ),
     device: str = typer.Option("cpu", "--device", "-d", help="Device to run on (cpu/cuda/mps)"),
     compute_type: str = typer.Option("int8", "--compute-type", "-c", help="Compute type (int8/float16, whisper only)"),
     batch_size_s: int = typer.Option(60, "--batch-size-s", help="Batch size in seconds for transcription"),
     # Segmentation options
-    segment_mode: str = typer.Option("vad", "--segment-mode", help="Segmentation mode: vad, lrc, or none"),
+    segment_mode: str = typer.Option("lrc", "--segment-mode", help="Segmentation mode: lrc, vad, or none"),
     merge_vad: bool = typer.Option(True, "--merge-vad/--no-merge-vad", help="Merge adjacent VAD segments (vad mode)"),
     split_on_silence: bool = typer.Option(False, "--split-on-silence/--no-split-on-silence", help="Split segments on silence (vad mode)"),
     # Alignment and scoring options
@@ -2269,9 +2320,9 @@ def main(
     - paraformer: FunASR Paraformer (fast, Chinese-optimized)
 
     Segmentation modes:
-    - vad: Use Voice Activity Detection to split audio (default)
-    - lrc: Use LRC line timestamps to split audio
-    - none: Transcribe full audio without segmentation
+    - lrc: Use LRC line timestamps to split audio (default, enables segment-specific lyrics prompting for Whisper)
+    - vad: Use Voice Activity Detection to split audio
+    - none: Transcribe full audio without segmentation (uses full lyrics for Whisper prompting)
 
     Usage examples:
 
@@ -2283,8 +2334,8 @@ def main(
        uv run --extra lrc_eval poc/eval_lrc.py <song_id> --engine sensevoice
        uv run --extra lrc_eval poc/eval_lrc.py <song_id> --engine paraformer
 
-    3. LRC-based segmentation:
-       uv run --extra lrc_eval poc/eval_lrc.py <song_id> -e sensevoice --segment-mode lrc
+    3. VAD-based segmentation (instead of default LRC):
+       uv run --extra lrc_eval poc/eval_lrc.py <song_id> -e paraformer --segment-mode vad
 
     4. Disable pinyin mode (character-exact matching):
        uv run --extra lrc_eval poc/eval_lrc.py <song_id> --no-pinyin-mode
@@ -2393,6 +2444,8 @@ def main(
     lrc_content = lrc_path.read_text(encoding="utf-8")
     lrc_words = parse_lrc_file(lrc_content)
     lrc_lines = extract_lrc_lines(lrc_content)  # For line-by-line diff
+    # Extract raw lyrics text (without timestamps) for whisper prompting
+    lyrics_text = "\n".join(text for _, text in lrc_lines if text.strip())
     console.print(f"Parsed {len(lrc_words)} pinyin syllables from LRC ({len(lrc_lines)} lines)", style="dim")
 
     # Validate engine
@@ -2428,6 +2481,7 @@ def main(
         paraformer_disable_vad=paraformer_disable_vad,
         paraformer_vad_max_silence=paraformer_vad_max_silence,
         paraformer_vad_threshold=paraformer_vad_threshold,
+        lyrics_text=lyrics_text if engine == "whisper" else None,
         debug=debug,
     )
 
