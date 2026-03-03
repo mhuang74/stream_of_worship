@@ -144,6 +144,22 @@ transcription_youtube = [
     "typer>=0.12.0",
 ]
 
+# LRC evaluation dependencies (POC script)
+# Includes admin extra for AssetCache and app config imports
+# Supports multiple transcription engines: whisper, sensevoice, paraformer
+lrc_eval = [
+    "stream-of-worship[admin]",
+    "faster-whisper>=1.0.0",
+    "funasr>=1.3.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "modelscope>=1.34.0",
+    "pypinyin>=0.52.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "pydub>=0.25.0",
+]
+
 # All dependencies together
 all = [
     "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
