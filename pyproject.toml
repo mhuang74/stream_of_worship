@@ -150,6 +150,15 @@ transcription_youtube = [
     "typer>=0.12.0",
 ]
 
+# Qwen3-ASR local MLX dependencies (Apple Silicon only)
+poc_qwen3_local = [
+    "mlx",
+    "mlx-qwen3-asr>=0.1.0",
+    "mlx-audio>=0.1.0",
+    "rapidfuzz>=3.0.0",
+    "huggingface-hub>=0.20.0",
+]
+
 # All dependencies together
 all = [
     "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
