@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Qwen3-ASR local MLX transcription POC script.
 
-Uses mlx-qwen3-asr or mlx-audio for local transcription on Apple Silicon
+Uses mlx-qwen3-asr for local transcription on Apple Silicon
 with context biasing and canonical-line fuzzy snap to produce LRC files.
 
 This script mirrors the cloud variant but runs entirely locally.
+
+Note: mlx-audio backend support is pending - current version does not include
+Qwen3-ASR models. Only mlx-qwen3-asr is currently supported.
 """
 
 import json
@@ -60,35 +63,39 @@ def transcribe_mlx_qwen3_asr(
     return result
 
 
-def transcribe_mlx_audio(
-    audio_path: Path,
-    model: str = "1.7B",
-) -> any:
-    """Run transcription using mlx-audio backend.
-
-    Uses quantized 8-bit models from mlx-community.
-    Note: mlx-audio does not support context biasing.
-
-    Args:
-        audio_path: Path to audio file
-        model: Model size (0.6B or 1.7B)
-
-    Returns:
-        Raw transcription result object with .segments attribute
-    """
-    from mlx_audio.stt.generate import generate_transcription
-
-    model_name = f"mlx-community/Qwen3-ASR-{model}-8bit"
-    typer.echo(f"Loading mlx-audio ({model_name})...", err=True)
-
-    typer.echo(f"Transcribing: {audio_path}", err=True)
-
-    result = generate_transcription(
-        model=model_name,
-        audio_path=str(audio_path),
-    )
-
-    return result
+# NOTE: mlx-audio backend not yet supported - current version 0.2.9 does not include
+# Qwen3-ASR models. Available model types: parakeet, voxtral, wav2vec, glmasr, whisper
+# when Qwen3-ASR support is added in mlx-audio, this function can be enabled:
+#
+# def transcribe_mlx_audio(
+#     audio_path: Path,
+#     model: str = "1.7B",
+# ) -> any:
+#     """Run transcription using mlx-audio backend.
+#
+#     Uses quantized 8-bit models from mlx-community.
+#     Note: mlx-audio does not support context biasing.
+#
+#     Args:
+#         audio_path: Path to audio file
+#         model: Model size (0.6B or 1.7B)
+#
+#     Returns:
+#         Raw transcription result object with .segments attribute
+#     """
+#     from mlx_audio.stt.generate import generate_transcription
+#
+#     model_name = f"mlx-community/Qwen3-ASR-{model}-8bit"
+#     typer.echo(f"Loading mlx-audio ({model_name})...", err=True)
+#
+#     typer.echo(f"Transcribing: {audio_path}", err=True)
+#
+#     result = generate_transcription(
+#         model=model_name,
+#         audio_path=str(audio_path),
+#     )
+#
+#     return result
 
 
 def extract_segments(result) -> list[dict]:
@@ -454,9 +461,7 @@ def main(
         None, "--output", "-o", help="Output file (default: stdout)"
     ),
     model: str = typer.Option("1.7B", "--model", help="Model size (0.6B or 1.7B)"),
-    backend: str = typer.Option(
-        "mlx-qwen3-asr", "--backend", help="MLX backend (mlx-qwen3-asr or mlx-audio)"
-    ),
+    backend: str = typer.Option("mlx-qwen3-asr", "--backend", help="MLX backend (mlx-qwen3-asr)"),
     snap: bool = typer.Option(True, "--snap/--no-snap", help="Enable canonical-line fuzzy snap"),
     snap_threshold: float = typer.Option(
         0.60, "--snap-threshold", help="Minimum fuzzy score to snap (0-1)"
@@ -504,15 +509,12 @@ def main(
         raise typer.Exit(1)
 
     # Validate backend
-    if backend not in ("mlx-qwen3-asr", "mlx-audio"):
+    if backend != "mlx-qwen3-asr":
         typer.echo(
-            f"Error: Invalid backend '{backend}'. Use 'mlx-qwen3-asr' or 'mlx-audio'.",
+            f"Error: Backend '{backend}' not yet supported. Only 'mlx-qwen3-asr' is currently supported.",
             err=True,
         )
         raise typer.Exit(1)
-
-    # Warn if context requested but using mlx-audio backend
-    if lyrics_context and backend == "mlx-audio":
         typer.echo(
             "Warning: mlx-audio backend does not support context biasing. "
             "Use --backend mlx-qwen3-asr for context support.",
@@ -571,24 +573,18 @@ def main(
         try:
             # Build context
             context = None
-            if lyrics_context and backend == "mlx-qwen3-asr":
+            if lyrics_context:
                 context = lyrics_text
                 if len(context) > context_max_chars:
                     context = context[:context_max_chars]
                     typer.echo(f"Context truncated to {context_max_chars} chars", err=True)
 
-            # Transcribe
-            if backend == "mlx-qwen3-asr":
-                result = transcribe_mlx_qwen3_asr(
-                    audio_path=transcribe_path,
-                    model=model,
-                    context=context,
-                )
-            else:  # mlx-audio
-                result = transcribe_mlx_audio(
-                    audio_path=transcribe_path,
-                    model=model,
-                )
+            # Transcribe (only mlx-qwen3-asr currently supported)
+            result = transcribe_mlx_qwen3_asr(
+                audio_path=transcribe_path,
+                model=model,
+                context=context,
+            )
 
             wall_time = time.time() - wall_time_start
             typer.echo(f"Transcription completed in {wall_time:.2f}s", err=True)
