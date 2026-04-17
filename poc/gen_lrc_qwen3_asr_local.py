@@ -60,33 +60,6 @@ def transcribe_mlx_qwen3_asr(
     return result
 
 
-def transcribe_mlx_audio(
-    audio_path: Path,
-    model: str = "1.7B",
-) -> dict:
-    """Run transcription using mlx-audio backend.
-
-    Args:
-        audio_path: Path to audio file
-        model: Model size (0.6B or 1.7B)
-
-    Returns:
-        Raw transcription result as dict
-    """
-    from mlx_audio.stt import load
-
-    model_name = f"mlx-community/Qwen3-ASR-{model}-8bit"
-    typer.echo(f"Loading mlx-audio ({model_name})...", err=True)
-
-    session = load(model_name)
-
-    typer.echo(f"Transcribing: {audio_path}", err=True)
-
-    result = session.generate(str(audio_path), language="Chinese")
-
-    return result
-
-
 def extract_segments(result) -> list[dict]:
     """Extract segments from MLX output.
 
@@ -97,27 +70,36 @@ def extract_segments(result) -> list[dict]:
         List of segment dicts with 'start', 'end', 'text' keys
     """
     segments = []
+    empty_count = 0
 
     try:
         if hasattr(result, "segments"):
             for seg in result.segments:
-                segments.append(
-                    {
-                        "start": getattr(seg, "start", 0),
-                        "end": getattr(seg, "end", 0),
-                        "text": getattr(seg, "text", "").strip(),
-                    }
-                )
+                text = getattr(seg, "text", "").strip()
+                if text:
+                    segments.append(
+                        {
+                            "start": getattr(seg, "start", 0),
+                            "end": getattr(seg, "end", 0),
+                            "text": text,
+                        }
+                    )
+                else:
+                    empty_count += 1
         elif isinstance(result, dict):
             raw_segments = result.get("segments", [])
             for seg in raw_segments:
-                segments.append(
-                    {
-                        "start": seg.get("start", 0),
-                        "end": seg.get("end", 0),
-                        "text": seg.get("text", "").strip(),
-                    }
-                )
+                text = seg.get("text", "").strip()
+                if text:
+                    segments.append(
+                        {
+                            "start": seg.get("start", 0),
+                            "end": seg.get("end", 0),
+                            "text": text,
+                        }
+                    )
+                else:
+                    empty_count += 1
     except Exception as e:
         typer.echo(f"Error parsing segments: {e}", err=True)
         typer.echo(f"Result type: {type(result)}", err=True)
@@ -128,7 +110,15 @@ def extract_segments(result) -> list[dict]:
         raise
 
     if not segments:
-        typer.echo(f"Warning: No segments extracted from result", err=True)
+        typer.echo(
+            f"Error: No valid text segments extracted (found {empty_count} empty segments)",
+            err=True,
+        )
+    elif empty_count > 0:
+        typer.echo(
+            f"Warning: Filtered out {empty_count} empty segments, kept {len(segments)} valid",
+            err=True,
+        )
 
     return segments
 
@@ -151,7 +141,7 @@ def cache_file_name(
         Path to cache file
     """
     safe_song_id = song_id.replace("/", "_").replace("\\", "_")
-    filename = f"{safe_song_id}_{model}_{backend}_transcription.json"
+    filename = f"{safe_song_id}_{model}_transcription.json"
     return cache_dir / filename
 
 
@@ -174,14 +164,30 @@ def load_cached_transcription(cache_path: Path) -> Optional[list[dict]]:
         if not segments:
             return None
 
-        # Validate segments have required fields
+        # Validate segments have required fields and non-empty text
+        valid_segments = []
         for seg in segments:
             if not all(k in seg for k in ("start", "end", "text")):
                 typer.echo("Warning: Cache file has invalid segment structure, ignoring", err=True)
                 return None
+            if seg.get("text", "").strip():
+                valid_segments.append(seg)
 
-        typer.echo(f"Loaded {len(segments)} segments from cache: {cache_path}", err=True)
-        return segments
+        # Reject cache if most segments are empty (indicates failed transcription)
+        if valid_segments == 0:
+            typer.echo("Warning: Cache file has no valid text segments, ignoring", err=True)
+            return None
+
+        if len(valid_segments) < len(segments) * 0.5:
+            typer.echo(
+                f"Warning: Cache file has {len(valid_segments)} valid segments out of {len(segments)} total, "
+                "ignoring and will rerun",
+                err=True,
+            )
+            return None
+
+        typer.echo(f"Loaded {len(valid_segments)} segments from cache: {cache_path}", err=True)
+        return valid_segments
     except Exception as e:
         typer.echo(f"Warning: Cache file invalid, ignoring: {e}", err=True)
         return None
@@ -417,9 +423,6 @@ def main(
         None, "--output", "-o", help="Output file (default: stdout)"
     ),
     model: str = typer.Option("1.7B", "--model", help="Model size (0.6B or 1.7B)"),
-    backend: str = typer.Option(
-        "mlx-qwen3-asr", "--backend", help="MLX backend (mlx-qwen3-asr or mlx-audio)"
-    ),
     snap: bool = typer.Option(True, "--snap/--no-snap", help="Enable canonical-line fuzzy snap"),
     snap_threshold: float = typer.Option(
         0.60, "--snap-threshold", help="Minimum fuzzy score to snap (0-1)"
@@ -455,20 +458,12 @@ def main(
 ):
     """Run Qwen3-ASR local MLX transcription on a song and output LRC format.
 
-    By default, transcription uses mlx-qwen3-asr with context biasing and
-    canonical-line snap enabled. Use --backend mlx-audio for 8-bit quantized
-    but no context support.
+    Transcription uses mlx-qwen3-asr with context biasing and canonical-line
+    snap enabled by default.
 
     Transcription results are cached and reused by default. Use --force-rerun
     to ignore the cache.
     """
-    # Validate backend
-    if backend not in ("mlx-qwen3-asr", "mlx-audio"):
-        typer.echo(
-            f"Error: Invalid backend '{backend}'. Use 'mlx-qwen3-asr' or 'mlx-audio'.", err=True
-        )
-        raise typer.Exit(1)
-
     # Validate model
     if model not in ("0.6B", "1.7B"):
         typer.echo(f"Error: Invalid model '{model}'. Use '0.6B' or '1.7B'.", err=True)
