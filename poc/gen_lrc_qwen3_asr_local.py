@@ -60,6 +60,39 @@ def transcribe_mlx_qwen3_asr(
     return result
 
 
+def transcribe_mlx_audio(
+    audio_path: Path,
+    model: str = "1.7B",
+) -> any:
+    """Run transcription using mlx-audio backend.
+
+    Uses quantized 8-bit models from mlx-community.
+    Note: mlx-audio does not support context biasing.
+
+    Args:
+        audio_path: Path to audio file
+        model: Model size (0.6B or 1.7B)
+
+    Returns:
+        Raw transcription result object with .segments attribute
+    """
+    from mlx_audio.stt import load
+
+    model_name = f"mlx-community/Qwen3-ASR-{model}-8bit"
+    typer.echo(f"Loading mlx-audio ({model_name})...", err=True)
+
+    session = load(model_name)
+
+    typer.echo(f"Transcribing: {audio_path}", err=True)
+
+    result = session.generate(
+        str(audio_path),
+        language="Chinese",
+    )
+
+    return result
+
+
 def extract_segments(result) -> list[dict]:
     """Extract segments from MLX output.
 
@@ -423,6 +456,9 @@ def main(
         None, "--output", "-o", help="Output file (default: stdout)"
     ),
     model: str = typer.Option("1.7B", "--model", help="Model size (0.6B or 1.7B)"),
+    backend: str = typer.Option(
+        "mlx-qwen3-asr", "--backend", help="MLX backend (mlx-qwen3-asr or mlx-audio)"
+    ),
     snap: bool = typer.Option(True, "--snap/--no-snap", help="Enable canonical-line fuzzy snap"),
     snap_threshold: float = typer.Option(
         0.60, "--snap-threshold", help="Minimum fuzzy score to snap (0-1)"
@@ -467,6 +503,14 @@ def main(
     # Validate model
     if model not in ("0.6B", "1.7B"):
         typer.echo(f"Error: Invalid model '{model}'. Use '0.6B' or '1.7B'.", err=True)
+        raise typer.Exit(1)
+
+    # Validate backend
+    if backend not in ("mlx-qwen3-asr", "mlx-audio"):
+        typer.echo(
+            f"Error: Invalid backend '{backend}'. Use 'mlx-qwen3-asr' or 'mlx-audio'.",
+            err=True,
+        )
         raise typer.Exit(1)
 
     # Warn if context requested but using mlx-audio backend
