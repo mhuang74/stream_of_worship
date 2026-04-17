@@ -174,6 +174,12 @@ def load_cached_transcription(cache_path: Path) -> Optional[list[dict]]:
         if not segments:
             return None
 
+        # Validate segments have required fields
+        for seg in segments:
+            if not all(k in seg for k in ("start", "end", "text")):
+                typer.echo("Warning: Cache file has invalid segment structure, ignoring", err=True)
+                return None
+
         typer.echo(f"Loaded {len(segments)} segments from cache: {cache_path}", err=True)
         return segments
     except Exception as e:
@@ -359,9 +365,12 @@ def write_diagnostic(
     if segments:
         duration = segments[-1]["end"] - segments[0]["start"]
         lines.append(f"Audio duration: {duration:.2f}s\n")
-        lines.append(f"Segments per second: {len(segments) / duration:.2f}\n")
-        lines.append(f"Wall-clock time: {wall_time:.2f}s\n")
-        lines.append(f"Real-time factor: {wall_time / duration:.2f}x\n")
+        if duration > 0:
+            lines.append(f"Segments per second: {len(segments) / duration:.2f}\n")
+            lines.append(f"Wall-clock time: {wall_time:.2f}s\n")
+            lines.append(f"Real-time factor: {wall_time / duration:.2f}x\n")
+        else:
+            lines.append("Warning: Invalid duration (0 or negative)\n")
 
     # Get RAM peak if available
     try:
