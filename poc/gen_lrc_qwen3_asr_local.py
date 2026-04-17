@@ -87,11 +87,11 @@ def transcribe_mlx_audio(
     return result
 
 
-def extract_segments(result: dict) -> list[dict]:
+def extract_segments(result) -> list[dict]:
     """Extract segments from MLX output.
 
     Args:
-        result: Raw MLX output
+        result: Raw MLX output (TranscriptionResult object or dict)
 
     Returns:
         List of segment dicts with 'start', 'end', 'text' keys
@@ -99,18 +99,32 @@ def extract_segments(result: dict) -> list[dict]:
     segments = []
 
     try:
-        raw_segments = result.get("segments", [])
-        for seg in raw_segments:
-            segments.append(
-                {
-                    "start": seg.get("start", 0),
-                    "end": seg.get("end", 0),
-                    "text": seg.get("text", "").strip(),
-                }
-            )
+        if hasattr(result, "segments"):
+            for seg in result.segments:
+                segments.append(
+                    {
+                        "start": getattr(seg, "start", 0),
+                        "end": getattr(seg, "end", 0),
+                        "text": getattr(seg, "text", "").strip(),
+                    }
+                )
+        elif isinstance(result, dict):
+            raw_segments = result.get("segments", [])
+            for seg in raw_segments:
+                segments.append(
+                    {
+                        "start": seg.get("start", 0),
+                        "end": seg.get("end", 0),
+                        "text": seg.get("text", "").strip(),
+                    }
+                )
     except Exception as e:
         typer.echo(f"Error parsing segments: {e}", err=True)
-        typer.echo(f"Result keys: {list(result.keys())}", err=True)
+        typer.echo(f"Result type: {type(result)}", err=True)
+        if hasattr(result, "__dict__"):
+            typer.echo(f"Result attributes: {list(result.__dict__.keys())}", err=True)
+        if isinstance(result, dict):
+            typer.echo(f"Result keys: {list(result.keys())}", err=True)
         raise
 
     if not segments:
@@ -367,7 +381,12 @@ def main(
         if save_raw:
             save_raw.mkdir(parents=True, exist_ok=True)
             raw_file = save_raw / "asr_raw.json"
-            raw_file.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+            result_dict = {}
+            if hasattr(result, "__dict__"):
+                result_dict = result.__dict__
+            elif isinstance(result, dict):
+                result_dict = result
+            raw_file.write_text(json.dumps(result_dict, ensure_ascii=False, indent=2, default=str))
             typer.echo(f"Saved raw ASR result to: {raw_file}", err=True)
 
         # Extract segments
