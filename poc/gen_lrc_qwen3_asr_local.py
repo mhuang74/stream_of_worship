@@ -76,18 +76,16 @@ def transcribe_mlx_audio(
     Returns:
         Raw transcription result object with .segments attribute
     """
-    from mlx_audio.stt import load
+    from mlx_audio.stt.generate import generate_transcription
 
     model_name = f"mlx-community/Qwen3-ASR-{model}-8bit"
     typer.echo(f"Loading mlx-audio ({model_name})...", err=True)
 
-    session = load(model_name)
-
     typer.echo(f"Transcribing: {audio_path}", err=True)
 
-    result = session.generate(
-        str(audio_path),
-        language="Chinese",
+    result = generate_transcription(
+        model=model_name,
+        audio_path=str(audio_path),
     )
 
     return result
