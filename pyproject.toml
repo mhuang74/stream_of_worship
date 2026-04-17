@@ -101,6 +101,8 @@ admin = [
     "pypinyin>=0.55.0",
     "yt-dlp>=2024.1.1",
     "boto3>=1.34.0",
+    "audio-separator>=0.30.0",
+    "onnxruntime>=1.17.0",
 ]
 
 # User App (TUI) dependencies

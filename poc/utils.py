@@ -158,16 +158,19 @@ def resolve_song_audio_path(
         audio_path: Optional[Path] = None
 
         # Try vocals stem first if requested
+        # Preference: vocals_clean > vocals
         if use_vocals:
-            vocals_path = cache.get_stem_path(hash_prefix, "vocals")
-            if vocals_path.exists():
-                audio_path = vocals_path
-                typer.echo(f"Using cached vocals stem: {audio_path}", err=True)
-            else:
-                typer.echo("Downloading vocals stem...", err=True)
-                audio_path = cache.download_stem(hash_prefix, "vocals")
-                if audio_path:
-                    typer.echo(f"Downloaded vocals stem: {audio_path}", err=True)
+            for stem_name in ["vocals_clean", "vocals"]:
+                stem_path = cache.get_stem_path(hash_prefix, stem_name)
+                if stem_path.exists():
+                    audio_path = stem_path
+                    typer.echo(f"Using cached {stem_name} stem: {audio_path}", err=True)
+                    break
+                downloaded = cache.download_stem(hash_prefix, stem_name)
+                if downloaded:
+                    audio_path = downloaded
+                    typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
+                    break
 
         # Fall back to main audio
         if audio_path is None:
