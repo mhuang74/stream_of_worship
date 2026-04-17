@@ -105,7 +105,7 @@ def map_segments_to_lines(
         import re
 
         # Remove whitespace and common punctuation for matching
-        return re.sub(r"[\s。，！？、；：\"''""''""''（）【】「」『』 ]+", "", text)
+        return re.sub(r"[\s。，！？、；：\"''" "''" "''（）【】「」『』 ]+", "", text)
 
     # Build normalized aligned text
     aligned_normalized = normalize(aligned_text)
@@ -137,11 +137,9 @@ def map_segments_to_lines(
                 est_start = segments[0][0] if segments else 0.0
                 est_end = segments[-1][1] if segments else 0.0
                 duration = est_end - est_start
-                line_alignments.append((
-                    est_start + ratio * duration,
-                    est_start + ratio * duration,
-                    line
-                ))
+                line_alignments.append(
+                    (est_start + ratio * duration, est_start + ratio * duration, line)
+                )
             continue
 
         line_end = line_start + len(normalized_line)
@@ -149,7 +147,13 @@ def map_segments_to_lines(
 
         # Find all segments that overlap with this line
         overlapping_segments = []
-        for seg_start_char, seg_end_char, seg_start_time, seg_end_time, seg_text in segment_positions:
+        for (
+            seg_start_char,
+            seg_end_char,
+            seg_start_time,
+            seg_end_time,
+            seg_text,
+        ) in segment_positions:
             # Check overlap
             if seg_end_char > line_start and seg_start_char < line_end:
                 overlapping_segments.append((seg_start_time, seg_end_time))
@@ -165,11 +169,13 @@ def map_segments_to_lines(
             est_start = segments[0][0] if segments else 0.0
             est_end = segments[-1][1] if segments else 0.0
             duration = est_end - est_start
-            line_alignments.append((
-                est_start + ratio * duration,
-                est_start + ratio * duration + (duration / len(original_lines)),
-                line
-            ))
+            line_alignments.append(
+                (
+                    est_start + ratio * duration,
+                    est_start + ratio * duration + (duration / len(original_lines)),
+                    line,
+                )
+            )
 
     return line_alignments
 
@@ -208,8 +214,7 @@ def align_lyrics(
     audio_duration = get_audio_duration(audio_path)
     if audio_duration > 300:
         raise ValueError(
-            f"Audio duration ({audio_duration:.1f}s) exceeds 5 minute limit "
-            f"of Qwen3ForcedAligner"
+            f"Audio duration ({audio_duration:.1f}s) exceeds 5 minute limit of Qwen3ForcedAligner"
         )
 
     if not lyrics_lines:
@@ -314,9 +319,7 @@ def main(
         ..., help="Song ID (e.g., wo_yao_quan_xin_zan_mei_244) or path to audio file"
     ),
     device: str = typer.Option("auto", "--device", "-d", help="Device (auto/mps/cuda/cpu)"),
-    dtype: str = typer.Option(
-        "float32", "--dtype", help="Data type (bfloat16/float16/float32)"
-    ),
+    dtype: str = typer.Option("float32", "--dtype", help="Data type (bfloat16/float16/float32)"),
     use_vocals: bool = typer.Option(
         True, "--use-vocals/--no-use-vocals", help="Use vocals stem if available"
     ),
@@ -326,7 +329,7 @@ def main(
     offline: bool = typer.Option(
         True,
         "--offline/--download",
-        help="Only use cached files (default). Use --download to fetch from R2.",
+        help="Deprecated: Always downloads from R2 if cache misses; parameter is kept for compatibility.",
     ),
     language: str = typer.Option("Chinese", "--language", "-l", help="Language hint"),
     model_cache_dir: Optional[Path] = typer.Option(
@@ -353,7 +356,6 @@ def main(
 
     Maximum audio length is 5 minutes.
     """
-    # Add src to path for imports (needed for offline mode handling)
     import sys
 
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -361,8 +363,6 @@ def main(
     from stream_of_worship.app.config import AppConfig
     from stream_of_worship.app.db.read_client import ReadOnlyClient
     from stream_of_worship.app.services.catalog import CatalogService
-    from stream_of_worship.app.services.asset_cache import AssetCache
-    from stream_of_worship.admin.services.r2 import R2Client
 
     input_path = Path(song_id).expanduser()
     audio_path: Optional[Path] = None
@@ -448,50 +448,8 @@ def main(
             )
             raise typer.Exit(1)
 
-        # Initialize R2 client and asset cache (with offline mode support)
-        try:
-            r2_client = R2Client(
-                bucket=config.r2_bucket,
-                endpoint_url=config.r2_endpoint_url,
-                region=config.r2_region,
-            )
-        except ValueError as e:
-            typer.echo(f"Error: R2 credentials not configured: {e}", err=True)
-            raise typer.Exit(1)
-
-        cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
-
-        # Try vocals stem first if requested
-        if use_vocals:
-            vocals_path = cache.get_stem_path(hash_prefix, "vocals")
-            if vocals_path.exists():
-                audio_path = vocals_path
-                typer.echo(f"Using cached vocals stem: {audio_path}", err=True)
-            elif not offline:
-                typer.echo("Downloading vocals stem...", err=True)
-                audio_path = cache.download_stem(hash_prefix, "vocals")
-                if audio_path:
-                    typer.echo(f"Downloaded vocals stem: {audio_path}", err=True)
-
-        # Fall back to main audio
-        if audio_path is None:
-            main_audio_path = cache.get_audio_path(hash_prefix)
-            if main_audio_path.exists():
-                audio_path = main_audio_path
-                typer.echo(f"Using cached main audio: {audio_path}", err=True)
-            elif not offline:
-                typer.echo("Downloading main audio...", err=True)
-                audio_path = cache.download_audio(hash_prefix)
-                if audio_path:
-                    typer.echo(f"Downloaded main audio: {audio_path}", err=True)
-
-        if audio_path is None:
-            typer.echo("Error: Could not find or download audio", err=True)
-            raise typer.Exit(1)
-
-        if not audio_path.exists():
-            typer.echo(f"Error: Audio file not found: {audio_path}", err=True)
-            raise typer.Exit(1)
+        # Resolve audio path using shared utility
+        audio_path, _ = resolve_song_audio_path(song_id, use_vocals=use_vocals)
 
     # Lyrics are required for Qwen3 forced alignment
     if not lyrics:

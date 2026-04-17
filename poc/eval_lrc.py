@@ -1,11 +1,76 @@
 #!/usr/bin/env python3
 """LRC lyrics file accuracy evaluation tool.
 
-Compares LRC lyrics with Whisper transcription to identify:
-- Missing/extra words
-- Timing errors
+This script evaluates the accuracy of synchronized lyrics (LRC format) against
+actual audio transcription using multiple ASR (Automatic Speech Recognition)
+engines. It compares the reference LRC file with transcribed audio from vocals
+stems to assess both text and timing accuracy.
 
-Outputs a detailed diff report and configurable 0-100 accuracy score.
+INPUT FILES:
+-----------
+1. LRC file:
+   - Standard lyrics synchronization format with timestamps [mm:ss.xx]
+   - Supports word-level timestamps: [mm:ss.xx]text1<mm:ss.xx>text2<mm:ss.xx>text3
+   - Character-level timestamps for Chinese pinyin evaluation
+
+2. Audio file:
+   - Typically vocals stem (isolated vocal track) for better transcription accuracy
+   - Supported formats: WAV, MP3, etc.
+   - Full mix audio can also be used but may have lower accuracy
+
+OUTPUT FILES:
+------------
+1. Evaluation report (stdout or file):
+   - Summary statistics: word counts, matches, missing, extra
+   - Timing metrics: RMS error, max error, global offset (auto-detected and corrected)
+   - Accuracy scores: text accuracy, timing accuracy, final weighted score (0-100)
+   - Optional verbse mode: word-by-word diff showing alignment
+
+2. JSON output (--json):
+   - Machine-readable format with all metrics and scores
+   - Useful for programmatic processing and batch evaluation
+
+SCORING:
+--------
+- Text accuracy: F1-like score based on pinyin matching (includes homophones)
+- Timing accuracy: Score based on RMS timing error (500ms threshold for zero score)
+- Final score: Weighted average (default: 60% text, 40% timing)
+
+FEATURES:
+---------
+- Multiple ASR engines: Whisper, SenseVoice, Paraformer
+- Segmentation modes: LRC-based (default), VAD-based, none
+- Per-line alignment (reduces cascading errors in global alignment)
+- Pinyin mode (includes homophones for Chinese worship songs)
+- Auto-correction of global time offsets (VAD-induced timing shifts)
+
+SUPPORTED ENGINES:
+------------------
+- whisper: OpenAI Whisper via faster-whisper (default, large-v2 model)
+- sensevoice: FunASR SenseVoice (Chinese-optimized, emotion detection)
+- paraformer: FunASR Paraformer (fast non-autoregressive, Chinese-optimized)
+
+SEGMENTATION MODES:
+-------------------
+- lrc: Use LRC line timestamps to split audio (default, enables segment-specific
+     lyrics prompting for Whisper for better precision)
+- vad: Use Voice Activity Detection to split audio into speech segments
+- none: Transcribe full audio without segmentation (uses full lyrics for Whisper
+     prompting)
+
+USAGE EXAMPLES:
+---------------
+# Song ID mode (uses cached/downloaded LRC and vocals from database)
+uv run --extra lrc_eval poc/eval_lrc.py wo_yao_quan_xin_zan_mei_244
+
+# Local file mode
+uv run --extra lrc_eval poc/eval_lrc.py --lrc lyrics.lrc --audio vocals.wav -e sensevoice
+
+# VAD-based segmentation + verbose output
+uv run --extra lrc_eval poc/eval_lrc.py <song_id> -e paraformer --segment-mode vad --verbose
+
+# JSON output for batch processing
+uv run --extra lrc_eval poc/eval_lrc.py <song_id> --json --output results.json
 """
 
 import math
@@ -29,6 +94,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 # --------------------------------------------------------------------------
 # Data Classes
 # --------------------------------------------------------------------------
+# Core data structures for representing:
+# - PinyinWord: Chinese character with its pinyin pronunciation and timestamp
+# - DiffEntry: Single alignment result (matched/missing/extra)
+# - EvaluationStats: Statistical summary of evaluation results
+# - EvaluationScores: Accuracy scores (text, timing, final)
+# - EvaluationResult: Complete evaluation result container
+# - VADSegment: Speech segment boundaries for audio segmentation
 
 
 @dataclass
@@ -171,6 +243,9 @@ class VADSegment:
 # --------------------------------------------------------------------------
 # Pinyin Conversion
 # --------------------------------------------------------------------------
+# Chinese text to pinyin conversion with context-aware overrides for worship songs.
+# Uses pypinyin library with custom pronunciations for specific characters
+# (e.g., 禰/祢 should be "ni" for "You" in worship context, not "mi" for surname).
 
 # Custom pinyin overrides for characters with context-dependent pronunciations.
 # pypinyin defaults may be incorrect for worship song contexts.
@@ -225,6 +300,10 @@ def normalize_pinyin(pinyin: str) -> str:
 # --------------------------------------------------------------------------
 # LRC Parsing with Word-Level Support
 # --------------------------------------------------------------------------
+# Parse LRC file format which contains timestamped lyrics.
+# Supports both standard line-level timestamps and word-level embedded timestamps.
+# Interpolates character-level timestamps for timing evaluation when word-level
+# timestamps are not provided in the LRC file.
 
 
 @dataclass
@@ -308,9 +387,7 @@ def parse_enhanced_lrc_line(line: str) -> Optional[tuple[float, str, list[LRCWor
         return (line_start, "", [])
 
 
-def interpolate_word_times(
-    words: list[str], line_start: float, line_end: float
-) -> list[LRCWord]:
+def interpolate_word_times(words: list[str], line_start: float, line_end: float) -> list[LRCWord]:
     """Interpolate timestamps for words in a line.
 
     Distributes time evenly across words based on character count.
@@ -381,7 +458,9 @@ def parse_lrc_file(content: str) -> list[PinyinWord]:
                 for w in interpolated:
                     pinyin_list = chinese_to_pinyin(w.text)
                     for py in pinyin_list:
-                        result.append(PinyinWord(text=w.text, pinyin=py, time_seconds=w.time_seconds))
+                        result.append(
+                            PinyinWord(text=w.text, pinyin=py, time_seconds=w.time_seconds)
+                        )
         else:
             # Already have word-level or character-level
             for w in words:
@@ -413,6 +492,9 @@ def extract_lrc_lines(content: str) -> list[tuple[float, str]]:
 # --------------------------------------------------------------------------
 # Audio Transcription Engines
 # --------------------------------------------------------------------------
+# Multiple ASR engine wrappers for transcribing audio to text with timestamps.
+# Each engine returns PinyinWord objects with Chinese characters, pinyin, and
+# timing information for alignment with LRC reference.
 
 # Supported transcription engines
 ENGINES = ["whisper", "sensevoice", "paraformer"]
@@ -455,7 +537,9 @@ def transcribe_with_whisper(
         if len(lyrics_truncated) > 2000:
             lyrics_truncated = lyrics_truncated[:2000]
         initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
-        console.print(f"[whisper] Using lyrics-enhanced prompt ({len(lyrics_truncated)} chars)", style="dim")
+        console.print(
+            f"[whisper] Using lyrics-enhanced prompt ({len(lyrics_truncated)} chars)", style="dim"
+        )
     else:
         initial_prompt = "这是一首中文敬拜诗歌"
 
@@ -543,7 +627,7 @@ def transcribe_with_sensevoice(
         console.print(
             f"[sensevoice] Parameters: use_itn={use_itn}, disable_vad={disable_vad}, "
             f"vad_max_silence={vad_max_silence}, vad_threshold={vad_threshold}",
-            style="dim"
+            style="dim",
         )
 
     # SenseVoice inference
@@ -563,10 +647,10 @@ def transcribe_with_sensevoice(
 
     # Patterns to remove from SenseVoice output
     event_patterns = [
-        r"<\|[^|]+\|>",      # <|HAPPY|>, <|EMOTION|>, etc.
-        r"\|[^|]+\|",         # |zh|, |en|, language tags
-        r"<[^>]+>",           # Any other tags
-        r"\[.*?\]",           # Bracketed content
+        r"<\|[^|]+\|>",  # <|HAPPY|>, <|EMOTION|>, etc.
+        r"\|[^|]+\|",  # |zh|, |en|, language tags
+        r"<[^>]+>",  # Any other tags
+        r"\[.*?\]",  # Bracketed content
     ]
 
     for i, item in enumerate(res):
@@ -577,7 +661,10 @@ def transcribe_with_sensevoice(
         if debug and i < 5:
             console.print(f"[sensevoice DEBUG] Segment {i}: text='{text[:100]}'", style="dim")
             if timestamp:
-                console.print(f"[sensevoice DEBUG] Segment {i}: first 3 timestamps={timestamp[:3]}", style="dim")
+                console.print(
+                    f"[sensevoice DEBUG] Segment {i}: first 3 timestamps={timestamp[:3]}",
+                    style="dim",
+                )
 
         if text:
             # Clean up SenseVoice output comprehensively
@@ -588,7 +675,7 @@ def transcribe_with_sensevoice(
             raw_transcription.append(clean_text)
 
             # Extract Chinese characters
-            chars = [c for c in clean_text if '\u4e00' <= c <= '\u9fff']
+            chars = [c for c in clean_text if "\u4e00" <= c <= "\u9fff"]
 
             if timestamp and len(timestamp) > 0 and len(chars) > 0:
                 # Has word-level timestamps: [[start_ms, end_ms], ...]
@@ -629,12 +716,17 @@ def transcribe_with_sensevoice(
                     for py in pinyin_list:
                         result.append(PinyinWord(text=char, pinyin=py, time_seconds=time_sec))
 
-    console.print(f"[sensevoice] Transcribed {len(result)} pinyin syllables from {len(raw_transcription)} segments", style="dim")
+    console.print(
+        f"[sensevoice] Transcribed {len(result)} pinyin syllables from {len(raw_transcription)} segments",
+        style="dim",
+    )
 
     # Debug output
     full_raw = " ".join(raw_transcription)
     if debug:
-        console.print(f"[sensevoice DEBUG] Raw transcription length: {len(full_raw)} chars", style="dim")
+        console.print(
+            f"[sensevoice DEBUG] Raw transcription length: {len(full_raw)} chars", style="dim"
+        )
         console.print(f"[sensevoice DEBUG] First 500 chars: {full_raw[:500]}", style="dim")
 
     # Warn if no Chinese content was detected
@@ -642,7 +734,7 @@ def transcribe_with_sensevoice(
         console.print(
             f"[sensevoice] Warning: No Chinese characters detected. Raw transcription:\n"
             f"  {full_raw[:200]}{'...' if len(full_raw) > 200 else ''}",
-            style="yellow"
+            style="yellow",
         )
 
     return result
@@ -710,7 +802,7 @@ def transcribe_with_paraformer(
         console.print(
             f"[paraformer] Parameters: disable_vad={disable_vad}, "
             f"vad_max_silence={vad_max_silence}, vad_threshold={vad_threshold}",
-            style="dim"
+            style="dim",
         )
 
     # Paraformer inference with timestamps
@@ -725,7 +817,9 @@ def transcribe_with_paraformer(
         timestamp = item.get("timestamp", [])
 
         if debug and i < 5:
-            console.print(f"[paraformer DEBUG] Segment {i}: text='{text[:100] if text else ''}'", style="dim")
+            console.print(
+                f"[paraformer DEBUG] Segment {i}: text='{text[:100] if text else ''}'", style="dim"
+            )
 
         if text:
             chars = list(re.findall(r"[\u4e00-\u9fff]", text))
@@ -842,6 +936,9 @@ def transcribe_audio(
 # --------------------------------------------------------------------------
 # VAD Pre-processing
 # --------------------------------------------------------------------------
+# Voice Activity Detection (VAD) segmentation for splitting audio into speech
+# segments. Improves transcription accuracy by processing each speech segment
+# separately and adjusting timestamps by segment offsets.
 
 
 def run_vad_segmentation(
@@ -867,7 +964,6 @@ def run_vad_segmentation(
     vad_model = AutoModel(
         model="fsmn-vad",
         trust_remote_code=True,
-        remote_code="./model.py",
         device=device,
     )
 
@@ -945,13 +1041,15 @@ def refine_vad_segments_with_silence(
     from pydub.silence import detect_silence
 
     console = Console(stderr=True)
-    console.print(f"[vad] Refining segments with silence detection (gap={silence_gap_ms}ms)", style="dim")
+    console.print(
+        f"[vad] Refining segments with silence detection (gap={silence_gap_ms}ms)", style="dim"
+    )
 
     audio = AudioSegment.from_file(str(audio_path))
     out: list[VADSegment] = []
 
     for seg in segments:
-        segment_audio = audio[seg.start_ms:seg.end_ms]
+        segment_audio = audio[seg.start_ms : seg.end_ms]
         silences = detect_silence(
             segment_audio,
             min_silence_len=silence_gap_ms,
@@ -1018,9 +1116,7 @@ def transcribe_segment(
     from utils import extract_audio_segment
 
     # Extract segment to temp file
-    segment_path = extract_audio_segment(
-        audio_path, segment.start_seconds, segment.end_seconds
-    )
+    segment_path = extract_audio_segment(audio_path, segment.start_seconds, segment.end_seconds)
 
     try:
         # Transcribe segment
@@ -1086,10 +1182,12 @@ def build_lrc_segments(lrc_lines: list[tuple[float, str]]) -> list[VADSegment]:
         if segment_end - timestamp < 0.1:
             continue
 
-        segments.append(VADSegment(
-            start_ms=int(timestamp * 1000),
-            end_ms=int(segment_end * 1000),
-        ))
+        segments.append(
+            VADSegment(
+                start_ms=int(timestamp * 1000),
+                end_ms=int(segment_end * 1000),
+            )
+        )
 
     return segments
 
@@ -1181,7 +1279,9 @@ def transcribe_with_segmentation(
 
     if segment_mode == "lrc":
         if not lrc_lines:
-            console.print("[lrc] No LRC lines provided, falling back to direct transcription", style="yellow")
+            console.print(
+                "[lrc] No LRC lines provided, falling back to direct transcription", style="yellow"
+            )
             return transcribe_audio(
                 audio_path=audio_path,
                 engine=engine,
@@ -1205,7 +1305,10 @@ def transcribe_with_segmentation(
         # Run VAD segmentation
         segments = run_vad_segmentation(audio_path, device=device)
         if not segments:
-            console.print("[vad] No speech segments found, falling back to direct transcription", style="yellow")
+            console.print(
+                "[vad] No speech segments found, falling back to direct transcription",
+                style="yellow",
+            )
             return transcribe_audio(
                 audio_path=audio_path,
                 engine=engine,
@@ -1247,12 +1350,17 @@ def transcribe_with_segmentation(
     if segment_mode == "lrc" and lrc_lines:
         segment_lyrics = [text for _, text in lrc_lines if text.strip()]
         if engine == "whisper":
-            console.print(f"[{mode_label}] Using segment-specific lyrics for Whisper prompting", style="dim")
+            console.print(
+                f"[{mode_label}] Using segment-specific lyrics for Whisper prompting", style="dim"
+            )
     elif segment_mode == "vad":
         # VAD mode: no lyrics (we don't know which lyrics correspond to which segment)
         segment_lyrics = [None] * len(segments)
         if engine == "whisper":
-            console.print(f"[{mode_label}] VAD mode: no lyrics prompting (segment-lyrics mapping unknown)", style="dim")
+            console.print(
+                f"[{mode_label}] VAD mode: no lyrics prompting (segment-lyrics mapping unknown)",
+                style="dim",
+            )
 
     for i, segment in enumerate(segments):
         # Determine lyrics for this segment
@@ -1267,7 +1375,7 @@ def transcribe_with_segmentation(
             seg_lyrics = None
 
         console.print(
-            f"[{mode_label}] Segment {i+1}/{len(segments)}: {segment.start_seconds:.2f}s - {segment.end_seconds:.2f}s",
+            f"[{mode_label}] Segment {i + 1}/{len(segments)}: {segment.start_seconds:.2f}s - {segment.end_seconds:.2f}s",
             style="dim",
         )
         words = transcribe_segment(
@@ -1290,18 +1398,24 @@ def transcribe_with_segmentation(
         )
         all_words.extend(words)
 
-    console.print(f"[{mode_label}] Total transcribed: {len(all_words)} pinyin syllables", style="dim")
+    console.print(
+        f"[{mode_label}] Total transcribed: {len(all_words)} pinyin syllables", style="dim"
+    )
     return all_words
 
 
 # --------------------------------------------------------------------------
 # Sequence Alignment
 # --------------------------------------------------------------------------
+# Align LRC pinyin sequence with audio transcription pinyin sequence to identify:
+# - Matched words (present in both with same timing)
+# - Missing words (in LRC but not detected in audio)
+# - Extra words (detected in audio but not in LRC)
+# Uses SequenceMatcher (difflib) for optimal alignment, with optional per-line
+# alignment mode to reduce cascading errors.
 
 
-def align_sequences(
-    lrc_words: list[PinyinWord], audio_words: list[PinyinWord]
-) -> list[DiffEntry]:
+def align_sequences(lrc_words: list[PinyinWord], audio_words: list[PinyinWord]) -> list[DiffEntry]:
     """Align LRC and audio word sequences using SequenceMatcher.
 
     Args:
@@ -1414,7 +1528,9 @@ def align_sequences_per_line(
     result: list[DiffEntry] = []
 
     # Build line boundaries
-    line_boundaries: list[tuple[float, float, int, int]] = []  # (start, end, lrc_start_idx, lrc_end_idx)
+    line_boundaries: list[
+        tuple[float, float, int, int]
+    ] = []  # (start, end, lrc_start_idx, lrc_end_idx)
 
     # First, map each LRC word to its line based on timestamp
     lrc_word_idx = 0
@@ -1558,6 +1674,10 @@ def align_sequences_per_line(
 # --------------------------------------------------------------------------
 # Time Offset Normalization
 # --------------------------------------------------------------------------
+# Detect and correct global timing offset between audio transcription and LRC file.
+# VAD often detects speech start at slightly different times than LRC timestamps,
+# especially with isolated vocals vs original full mix. Uses median time difference
+# of matched words to robustly calculate and remove this offset.
 
 
 def calculate_time_offset(diff: list[DiffEntry]) -> float:
@@ -1626,7 +1746,11 @@ def normalize_time_offset(diff: list[DiffEntry], offset: float) -> list[DiffEntr
 
 # --------------------------------------------------------------------------
 # Scoring
-# --------------------------------------------------------------------------
+# ----------
+# Calculate accuracy scores from aligned diff results.
+# Text accuracy: F1-like score based on pinyin matching (includes homophones)
+# Timing accuracy: Score based on RMS timing error (500ms threshold for zero score)
+# Final score: Weighted average of text and timing scores (default: 60% text, 40% timing)
 
 
 def calculate_text_score(diff: list[DiffEntry]) -> float:
@@ -1659,7 +1783,9 @@ def calculate_text_score(diff: list[DiffEntry]) -> float:
     return f1 * 100
 
 
-def calculate_timing_score(diff: list[DiffEntry], threshold_ms: float = 500.0) -> tuple[float, float, float]:
+def calculate_timing_score(
+    diff: list[DiffEntry], threshold_ms: float = 500.0
+) -> tuple[float, float, float]:
     """Calculate timing accuracy score.
 
     Args:
@@ -1704,9 +1830,7 @@ def calculate_final_score(
     return text_score * text_weight + timing_score * timing_weight
 
 
-def calculate_pinyin_accuracy(
-    lrc_words: list[PinyinWord], audio_words: list[PinyinWord]
-) -> dict:
+def calculate_pinyin_accuracy(lrc_words: list[PinyinWord], audio_words: list[PinyinWord]) -> dict:
     """Calculate pinyin-level accuracy with homophone analysis.
 
     This compares pinyin representations and categorizes matches as:
@@ -1762,7 +1886,13 @@ def calculate_pinyin_accuracy(
 
 # --------------------------------------------------------------------------
 # Report Formatting
-# --------------------------------------------------------------------------
+# ----------
+# Format evaluation results as human-readable text reports or machine-readable JSON.
+# Supports multiple output formats:
+# - Standard report: Summary statistics and scores
+# - Verbose report: Word-by-word diff showing alignment
+# - Line-by-line report: Side-by-side comparison of LRC vs transcription
+# - JSON: Structured data for programmatic processing
 
 
 def format_timestamp(seconds: float) -> str:
@@ -1773,7 +1903,10 @@ def format_timestamp(seconds: float) -> str:
 
 
 def format_diff_report(
-    result: EvaluationResult, song_title: Optional[str] = None, song_id: Optional[str] = None, verbose: bool = False
+    result: EvaluationResult,
+    song_title: Optional[str] = None,
+    song_id: Optional[str] = None,
+    verbose: bool = False,
 ) -> str:
     """Format evaluation result as a text report.
 
@@ -1805,25 +1938,37 @@ def format_diff_report(
     scores = result.scores
 
     lines.append("--- Statistics ---")
-    lines.append(f"LRC words:      {stats.lrc_word_count:5}    |  Audio words:    {stats.audio_word_count:5}")
-    lines.append(f"Matched:        {stats.matched_count:5}    |  Missing: {stats.missing_count}  |  Extra: {stats.extra_count}")
+    lines.append(
+        f"LRC words:      {stats.lrc_word_count:5}    |  Audio words:    {stats.audio_word_count:5}"
+    )
+    lines.append(
+        f"Matched:        {stats.matched_count:5}    |  Missing: {stats.missing_count}  |  Extra: {stats.extra_count}"
+    )
     lines.append("")
 
     # Show pinyin accuracy breakdown if available
     if stats.pinyin_accuracy > 0:
         lines.append("--- Pinyin Analysis ---")
-        lines.append(f"Exact matches:   {stats.exact_matches:5}    |  Homophones: {stats.homophone_matches}")
+        lines.append(
+            f"Exact matches:   {stats.exact_matches:5}    |  Homophones: {stats.homophone_matches}"
+        )
         lines.append(f"Pinyin accuracy: {stats.pinyin_accuracy:5.1f}% (includes homophones)")
         lines.append("")
 
     lines.append("--- Timing ---")
     lines.append(f"Global offset:  {stats.time_offset_ms:+.0f} ms (auto-corrected)")
-    lines.append(f"RMS error:      {stats.rms_error_ms:5.1f} ms  |  Max: {stats.max_error_ms:.1f} ms")
+    lines.append(
+        f"RMS error:      {stats.rms_error_ms:5.1f} ms  |  Max: {stats.max_error_ms:.1f} ms"
+    )
     lines.append("")
 
     lines.append("--- Scores ---")
-    lines.append(f"Text accuracy:   {scores.text_accuracy:5.1f} / 100  (weight: {scores.text_weight})")
-    lines.append(f"Timing accuracy: {scores.timing_accuracy:5.1f} / 100  (weight: {scores.timing_weight})")
+    lines.append(
+        f"Text accuracy:   {scores.text_accuracy:5.1f} / 100  (weight: {scores.text_weight})"
+    )
+    lines.append(
+        f"Timing accuracy: {scores.timing_accuracy:5.1f} / 100  (weight: {scores.timing_weight})"
+    )
     lines.append("─" * 35)
     lines.append(f"Final score:     {scores.final_score:5.1f} / 100")
 
@@ -1847,7 +1992,9 @@ def format_diff_report(
     return "\n".join(lines)
 
 
-def format_json_report(result: EvaluationResult, song_title: Optional[str] = None, song_id: Optional[str] = None) -> str:
+def format_json_report(
+    result: EvaluationResult, song_title: Optional[str] = None, song_id: Optional[str] = None
+) -> str:
     """Format evaluation result as JSON.
 
     Args:
@@ -1934,18 +2081,28 @@ def format_line_diff_report(
     scores = result.scores
 
     lines.append("--- Statistics ---")
-    lines.append(f"LRC words:      {stats.lrc_word_count:5}    |  Audio words:    {stats.audio_word_count:5}")
-    lines.append(f"Matched:        {stats.matched_count:5}    |  Missing: {stats.missing_count}  |  Extra: {stats.extra_count}")
+    lines.append(
+        f"LRC words:      {stats.lrc_word_count:5}    |  Audio words:    {stats.audio_word_count:5}"
+    )
+    lines.append(
+        f"Matched:        {stats.matched_count:5}    |  Missing: {stats.missing_count}  |  Extra: {stats.extra_count}"
+    )
     lines.append("")
 
     lines.append("--- Timing ---")
     lines.append(f"Global offset:  {stats.time_offset_ms:+.0f} ms (auto-corrected)")
-    lines.append(f"RMS error:      {stats.rms_error_ms:5.1f} ms  |  Max: {stats.max_error_ms:.1f} ms")
+    lines.append(
+        f"RMS error:      {stats.rms_error_ms:5.1f} ms  |  Max: {stats.max_error_ms:.1f} ms"
+    )
     lines.append("")
 
     lines.append("--- Scores ---")
-    lines.append(f"Text accuracy:   {scores.text_accuracy:5.1f} / 100  (weight: {scores.text_weight})")
-    lines.append(f"Timing accuracy: {scores.timing_accuracy:5.1f} / 100  (weight: {scores.timing_weight})")
+    lines.append(
+        f"Text accuracy:   {scores.text_accuracy:5.1f} / 100  (weight: {scores.text_weight})"
+    )
+    lines.append(
+        f"Timing accuracy: {scores.timing_accuracy:5.1f} / 100  (weight: {scores.timing_weight})"
+    )
     lines.append("─" * 35)
     lines.append(f"Final score:     {scores.final_score:5.1f} / 100")
     lines.append("")
@@ -1986,7 +2143,7 @@ def format_line_diff_report(
         if not assigned:
             # Assign to closest line
             closest_idx = 0
-            min_dist = float('inf')
+            min_dist = float("inf")
             for i, (start, end, _) in enumerate(line_boundaries):
                 dist = min(abs(ref_time - start), abs(ref_time - end))
                 if dist < min_dist:
@@ -2156,7 +2313,7 @@ def format_line_diff_report(
         if matched_entries:
             avg_diff = sum(e.time_diff for e in matched_entries) / len(matched_entries)
             max_diff = max(abs(e.time_diff) for e in matched_entries)
-            lines.append(f"  Timing: avg {avg_diff*1000:+.0f}ms, max {max_diff*1000:.0f}ms")
+            lines.append(f"  Timing: avg {avg_diff * 1000:+.0f}ms, max {max_diff * 1000:.0f}ms")
 
         lines.append("")
 
@@ -2172,7 +2329,13 @@ def format_line_diff_report(
 
 # --------------------------------------------------------------------------
 # Main Evaluation Function
-# --------------------------------------------------------------------------
+# ----------
+# Orchestrates the complete evaluation workflow:
+# 1. Align LRC and audio pinyin sequences
+# 2. Detect and normalize global time offset
+# 3. Calculate text and timing scores
+# 4. Generate comprehensive stats and scores
+# Returns EvaluationResult containing all metrics and diff data for reporting.
 
 
 def evaluate_lrc(
@@ -2263,7 +2426,13 @@ def evaluate_lrc(
 
 # --------------------------------------------------------------------------
 # CLI
-# --------------------------------------------------------------------------
+# ----------
+# Command-line interface using Typer for flexible evaluation execution.
+# Supports two input modes:
+# - Song ID mode: Query database for LRC and vocals, auto-download if not cached
+# - Local file mode: Specify LRC and audio files directly
+# Extensive options for engine selection, segmentation, alignment mode, scoring weights,
+# and output formatting.
 
 
 app = typer.Typer(help="Evaluate LRC lyrics file accuracy against audio transcription")
@@ -2287,29 +2456,63 @@ def main(
         help="Model name (default: large-v2 for whisper, SenseVoiceSmall for sensevoice)",
     ),
     device: str = typer.Option("cpu", "--device", "-d", help="Device to run on (cpu/cuda/mps)"),
-    compute_type: str = typer.Option("int8", "--compute-type", "-c", help="Compute type (int8/float16, whisper only)"),
-    batch_size_s: int = typer.Option(60, "--batch-size-s", help="Batch size in seconds for transcription"),
+    compute_type: str = typer.Option(
+        "int8", "--compute-type", "-c", help="Compute type (int8/float16, whisper only)"
+    ),
+    batch_size_s: int = typer.Option(
+        60, "--batch-size-s", help="Batch size in seconds for transcription"
+    ),
     # Segmentation options
-    segment_mode: str = typer.Option("lrc", "--segment-mode", help="Segmentation mode: lrc, vad, or none"),
-    merge_vad: bool = typer.Option(True, "--merge-vad/--no-merge-vad", help="Merge adjacent VAD segments (vad mode)"),
-    split_on_silence: bool = typer.Option(False, "--split-on-silence/--no-split-on-silence", help="Split segments on silence (vad mode)"),
+    segment_mode: str = typer.Option(
+        "lrc", "--segment-mode", help="Segmentation mode: lrc, vad, or none"
+    ),
+    merge_vad: bool = typer.Option(
+        True, "--merge-vad/--no-merge-vad", help="Merge adjacent VAD segments (vad mode)"
+    ),
+    split_on_silence: bool = typer.Option(
+        False,
+        "--split-on-silence/--no-split-on-silence",
+        help="Split segments on silence (vad mode)",
+    ),
     # Alignment and scoring options
-    per_line_align: bool = typer.Option(True, "--per-line-align/--no-per-line-align", help="Use per-line alignment"),
-    pinyin_mode: bool = typer.Option(True, "--pinyin-mode/--no-pinyin-mode", help="Use pinyin accuracy (includes homophones)"),
+    per_line_align: bool = typer.Option(
+        True, "--per-line-align/--no-per-line-align", help="Use per-line alignment"
+    ),
+    pinyin_mode: bool = typer.Option(
+        True, "--pinyin-mode/--no-pinyin-mode", help="Use pinyin accuracy (includes homophones)"
+    ),
     text_weight: float = typer.Option(0.6, "--text-weight", help="Text accuracy weight"),
     timing_weight: float = typer.Option(0.4, "--timing-weight", help="Timing accuracy weight"),
-    timing_threshold: float = typer.Option(500.0, "--timing-threshold", help="RMS threshold for 0 timing score (ms)"),
+    timing_threshold: float = typer.Option(
+        500.0, "--timing-threshold", help="RMS threshold for 0 timing score (ms)"
+    ),
     # SenseVoice-specific options
-    use_itn: bool = typer.Option(False, "--use-itn/--no-use-itn", help="Use inverse text normalization (SenseVoice)"),
-    sensevoice_disable_vad: bool = typer.Option(False, "--sensevoice-disable-vad", help="Disable internal VAD (SenseVoice)"),
-    sensevoice_vad_max_silence: int = typer.Option(1000, "--sensevoice-vad-max-silence", help="VAD max silence in ms (SenseVoice)"),
-    sensevoice_vad_threshold: float = typer.Option(0.5, "--sensevoice-vad-threshold", help="VAD threshold 0-1 (SenseVoice)"),
+    use_itn: bool = typer.Option(
+        False, "--use-itn/--no-use-itn", help="Use inverse text normalization (SenseVoice)"
+    ),
+    sensevoice_disable_vad: bool = typer.Option(
+        False, "--sensevoice-disable-vad", help="Disable internal VAD (SenseVoice)"
+    ),
+    sensevoice_vad_max_silence: int = typer.Option(
+        1000, "--sensevoice-vad-max-silence", help="VAD max silence in ms (SenseVoice)"
+    ),
+    sensevoice_vad_threshold: float = typer.Option(
+        0.5, "--sensevoice-vad-threshold", help="VAD threshold 0-1 (SenseVoice)"
+    ),
     # Paraformer-specific options
-    paraformer_disable_vad: bool = typer.Option(False, "--paraformer-disable-vad", help="Disable internal VAD (Paraformer)"),
-    paraformer_vad_max_silence: int = typer.Option(1000, "--paraformer-vad-max-silence", help="VAD max silence in ms (Paraformer)"),
-    paraformer_vad_threshold: float = typer.Option(0.5, "--paraformer-vad-threshold", help="VAD threshold 0-1 (Paraformer)"),
+    paraformer_disable_vad: bool = typer.Option(
+        False, "--paraformer-disable-vad", help="Disable internal VAD (Paraformer)"
+    ),
+    paraformer_vad_max_silence: int = typer.Option(
+        1000, "--paraformer-vad-max-silence", help="VAD max silence in ms (Paraformer)"
+    ),
+    paraformer_vad_threshold: float = typer.Option(
+        0.5, "--paraformer-vad-threshold", help="VAD threshold 0-1 (Paraformer)"
+    ),
     # Output options
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file (default: stdout)"),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file (default: stdout)"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show word-by-word diff"),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output"),
@@ -2448,7 +2651,9 @@ def main(
     lrc_lines = extract_lrc_lines(lrc_content)  # For line-by-line diff
     # Extract raw lyrics text (without timestamps) for whisper prompting
     lyrics_text = "\n".join(text for _, text in lrc_lines if text.strip())
-    console.print(f"Parsed {len(lrc_words)} pinyin syllables from LRC ({len(lrc_lines)} lines)", style="dim")
+    console.print(
+        f"Parsed {len(lrc_words)} pinyin syllables from LRC ({len(lrc_lines)} lines)", style="dim"
+    )
 
     # Validate engine
     if engine not in ENGINES:
@@ -2457,12 +2662,20 @@ def main(
 
     # Validate segment mode
     if segment_mode not in ["vad", "lrc", "none"]:
-        console.print(f"Error: Unknown segment mode '{segment_mode}'. Supported: vad, lrc, none", style="red")
+        console.print(
+            f"Error: Unknown segment mode '{segment_mode}'. Supported: vad, lrc, none", style="red"
+        )
         raise typer.Exit(1)
 
     console.print(f"Engine: {engine}", style="dim")
-    console.print(f"Segment mode: {segment_mode}, merge: {merge_vad}, split_on_silence: {split_on_silence}", style="dim")
-    console.print(f"Per-line alignment: {per_line_align}, pinyin_mode: {pinyin_mode}, batch_size_s: {batch_size_s}", style="dim")
+    console.print(
+        f"Segment mode: {segment_mode}, merge: {merge_vad}, split_on_silence: {split_on_silence}",
+        style="dim",
+    )
+    console.print(
+        f"Per-line alignment: {per_line_align}, pinyin_mode: {pinyin_mode}, batch_size_s: {batch_size_s}",
+        style="dim",
+    )
 
     # Transcribe audio (with optional segmentation pre-processing)
     audio_words = transcribe_with_segmentation(
@@ -2490,7 +2703,10 @@ def main(
     # Run evaluation
     console.print("Running evaluation...", style="dim")
     if pinyin_mode:
-        console.print("Pinyin mode: Scoring based on pronunciation accuracy (includes homophones)", style="dim")
+        console.print(
+            "Pinyin mode: Scoring based on pronunciation accuracy (includes homophones)",
+            style="dim",
+        )
     result = evaluate_lrc(
         lrc_words=lrc_words,
         audio_words=audio_words,
