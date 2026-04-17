@@ -133,6 +133,84 @@ def extract_segments(result) -> list[dict]:
     return segments
 
 
+def cache_file_name(
+    cache_dir: Path,
+    song_id: str,
+    model: str,
+    backend: str,
+) -> Path:
+    """Generate cache file name for transcription.
+
+    Args:
+        cache_dir: Cache directory
+        song_id: Song identifier
+        model: Model size (0.6B or 1.7B)
+        backend: MLX backend name
+
+    Returns:
+        Path to cache file
+    """
+    safe_song_id = song_id.replace("/", "_").replace("\\", "_")
+    filename = f"{safe_song_id}_{model}_{backend}_transcription.json"
+    return cache_dir / filename
+
+
+def load_cached_transcription(cache_path: Path) -> Optional[list[dict]]:
+    """Load cached transcription segments.
+
+    Args:
+        cache_path: Path to cache file
+
+    Returns:
+        List of segment dicts, or None if cache file not found/invalid
+    """
+    if not cache_path.exists():
+        return None
+
+    try:
+        cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+        segments = cache_data.get("segments", [])
+
+        if not segments:
+            return None
+
+        typer.echo(f"Loaded {len(segments)} segments from cache: {cache_path}", err=True)
+        return segments
+    except Exception as e:
+        typer.echo(f"Warning: Cache file invalid, ignoring: {e}", err=True)
+        return None
+
+
+def save_cached_transcription(
+    cache_path: Path,
+    segments: list[dict],
+    model: str,
+    backend: str,
+    wall_time: float,
+) -> None:
+    """Save transcription segments to cache.
+
+    Args:
+        cache_path: Path to cache file
+        segments: List of segment dicts
+        model: Model size used
+        backend: Backend used
+        wall_time: Wall-clock time taken
+    """
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cache_data = {
+        "model": model,
+        "backend": backend,
+        "wall_time": wall_time,
+        "timestamp": __import__("time").time(),
+        "segments": segments,
+    }
+
+    cache_path.write_text(json.dumps(cache_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    typer.echo(f"Saved transcription to cache: {cache_path}", err=True)
+
+
 def detect_chinese_script(text: str) -> str:
     """Detect whether Chinese text is traditional or simplified.
 
@@ -352,12 +430,28 @@ def main(
     end: Optional[float] = typer.Option(
         None, "--end", "-e", help="End timestamp in seconds (default: full song)"
     ),
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Directory for transcription cache (default: ~/.cache/qwen3_asr)",
+    ),
+    reuse_transcription: bool = typer.Option(
+        True,
+        "--reuse-transcription/--no-reuse-transcription",
+        help="Reuse cached transcription if available",
+    ),
+    force_rerun: bool = typer.Option(
+        False, "--force-rerun", help="Ignore cache and rerun transcription"
+    ),
 ):
     """Run Qwen3-ASR local MLX transcription on a song and output LRC format.
 
     By default, transcription uses mlx-qwen3-asr with context biasing and
     canonical-line snap enabled. Use --backend mlx-audio for 8-bit quantized
     but no context support.
+
+    Transcription results are cached and reused by default. Use --force-rerun
+    to ignore the cache.
     """
     # Validate backend
     if backend not in ("mlx-qwen3-asr", "mlx-audio"):
@@ -397,95 +491,127 @@ def main(
     else:
         typer.echo("Transcribing full song", err=True)
 
-    # Extract segment if needed
-    transcribe_path = audio_path
-    segment_path: Optional[Path] = None
-    if start > 0 or effective_end is not None:
-        typer.echo(f"Extracting audio segment: {start}s to {effective_end or 'end'}s", err=True)
-        segment_path = extract_audio_segment(audio_path, start, effective_end or 3600)
-        transcribe_path = segment_path
+    # Set up cache directory
+    if cache_dir is None:
+        cache_dir = Path.home() / ".cache" / "qwen3_asr"
+    cache_path = cache_file_name(cache_dir, song_id, model, backend)
 
-    import time
+    segments: list[dict] = []
+    wall_time = 0.0
 
-    wall_time_start = time.time()
+    # Check for cached transcription
+    used_cache = False
+    if reuse_transcription and not force_rerun:
+        cached_segments = load_cached_transcription(cache_path)
+        if cached_segments is not None:
+            segments = cached_segments
+            used_cache = True
+            typer.echo("Using cached transcription", err=True)
 
-    try:
-        # Build context
-        context = None
-        if lyrics_context and backend == "mlx-qwen3-asr":
-            context = lyrics_text
-            if len(context) > context_max_chars:
-                context = context[:context_max_chars]
-                typer.echo(f"Context truncated to {context_max_chars} chars", err=True)
+    # Run transcription if not using cache
+    if not used_cache:
+        # Extract segment if needed
+        transcribe_path = audio_path
+        segment_path: Optional[Path] = None
+        if start > 0 or effective_end is not None:
+            typer.echo(f"Extracting audio segment: {start}s to {effective_end or 'end'}s", err=True)
+            segment_path = extract_audio_segment(audio_path, start, effective_end or 3600)
+            transcribe_path = segment_path
 
-        # Transcribe
-        if backend == "mlx-qwen3-asr":
-            result = transcribe_mlx_qwen3_asr(
-                audio_path=transcribe_path,
-                model=model,
-                context=context,
-            )
-        else:  # mlx-audio
-            result = transcribe_mlx_audio(
-                audio_path=transcribe_path,
-                model=model,
-            )
+        import time
 
-        wall_time = time.time() - wall_time_start
-        typer.echo(f"Transcription completed in {wall_time:.2f}s", err=True)
+        wall_time_start = time.time()
 
-        # Save raw result if requested
-        if save_raw:
-            save_raw.mkdir(parents=True, exist_ok=True)
-            raw_file = save_raw / "asr_raw.json"
-            result_dict = {}
-            if hasattr(result, "__dict__"):
-                result_dict = result.__dict__
-            elif isinstance(result, dict):
-                result_dict = result
-            raw_file.write_text(json.dumps(result_dict, ensure_ascii=False, indent=2, default=str))
-            typer.echo(f"Saved raw ASR result to: {raw_file}", err=True)
+        try:
+            # Build context
+            context = None
+            if lyrics_context and backend == "mlx-qwen3-asr":
+                context = lyrics_text
+                if len(context) > context_max_chars:
+                    context = context[:context_max_chars]
+                    typer.echo(f"Context truncated to {context_max_chars} chars", err=True)
 
-        # Extract segments
-        segments = extract_segments(result)
+            # Transcribe
+            if backend == "mlx-qwen3-asr":
+                result = transcribe_mlx_qwen3_asr(
+                    audio_path=transcribe_path,
+                    model=model,
+                    context=context,
+                )
+            else:  # mlx-audio
+                result = transcribe_mlx_audio(
+                    audio_path=transcribe_path,
+                    model=model,
+                )
 
-        if not segments:
-            typer.echo("Error: No segments extracted from ASR result", err=True)
-            raise typer.Exit(1)
+            wall_time = time.time() - wall_time_start
+            typer.echo(f"Transcription completed in {wall_time:.2f}s", err=True)
 
+            # Save raw result if requested
+            if save_raw:
+                save_raw.mkdir(parents=True, exist_ok=True)
+                raw_file = save_raw / "asr_raw.json"
+                result_dict = {}
+                if hasattr(result, "__dict__"):
+                    result_dict = result.__dict__
+                elif isinstance(result, dict):
+                    result_dict = result
+                raw_file.write_text(
+                    json.dumps(result_dict, ensure_ascii=False, indent=2, default=str)
+                )
+                typer.echo(f"Saved raw ASR result to: {raw_file}", err=True)
+
+            segments = extract_segments(result)
+
+            if not segments:
+                typer.echo("Error: No segments extracted from ASR result", err=True)
+                raise typer.Exit(1)
+
+            typer.echo(f"Extracted {len(segments)} segments", err=True)
+
+            # Save to cache
+            save_cached_transcription(cache_path, segments, model, backend, wall_time)
+
+        finally:
+            if segment_path and segment_path.exists():
+                segment_path.unlink()
+
+        typer.echo(f"Saved transcription to cache for reuse", err=True)
+
+    if not segments:
+        typer.echo("Error: No segments available", err=True)
+        raise typer.Exit(1)
+
+    if not used_cache:
         typer.echo(f"Extracted {len(segments)} segments", err=True)
 
-        # Process segments
-        if snap:
-            results = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
-            replaced_count = sum(1 for _, _, replaced in results if replaced)
-            typer.echo(
-                f"Canonical-line snap: {replaced_count}/{len(results)} segments replaced", err=True
-            )
+    # Process segments
+    if snap:
+        results = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
+        replaced_count = sum(1 for _, _, replaced in results if replaced)
+        typer.echo(
+            f"Canonical-line snap: {replaced_count}/{len(results)} segments replaced", err=True
+        )
 
-            # Write diagnostic if requested
-            if save_raw:
-                diag_file = save_raw / "diagnostic.md"
-                write_diagnostic(segments, lyrics, results, diag_file, wall_time)
-                typer.echo(f"Saved diagnostic report to: {diag_file}", err=True)
-        else:
-            results = [(seg["start"], seg["text"], False) for seg in segments]
-            typer.echo(f"Snap disabled, using raw ASR output", err=True)
+        # Write diagnostic if requested
+        if save_raw:
+            save_raw.mkdir(parents=True, exist_ok=True)
+            diag_file = save_raw / "diagnostic.md"
+            write_diagnostic(segments, lyrics, results, diag_file, wall_time)
+            typer.echo(f"Saved diagnostic report to: {diag_file}", err=True)
+    else:
+        results = [(seg["start"], seg["text"], False) for seg in segments]
+        typer.echo(f"Snap disabled, using raw ASR output", err=True)
 
-        # Convert to LRC
-        lrc_content = results_to_lrc(results)
+    # Convert to LRC
+    lrc_content = results_to_lrc(results)
 
-        # Output
-        if output:
-            output.write_text(lrc_content, encoding="utf-8")
-            typer.echo(f"Wrote LRC to: {output}", err=True)
-        else:
-            print(lrc_content)
-
-    finally:
-        # Clean up temp file
-        if segment_path and segment_path.exists():
-            segment_path.unlink()
+    # Output
+    if output:
+        output.write_text(lrc_content, encoding="utf-8")
+        typer.echo(f"Wrote LRC to: {output}", err=True)
+    else:
+        print(lrc_content)
 
 
 if __name__ == "__main__":
