@@ -74,6 +74,7 @@ transcription = [
     "boto3>=1.34.0",
     "tomli>=2.0.0",
     "tomli-w>=1.0.0",
+    "zhconv>=1.4.0",
 ]
 
 # Qwen3 Forced Aligner dependencies
@@ -157,6 +158,7 @@ poc_qwen3_local = [
     "mlx-audio>=0.1.0",
     "rapidfuzz>=3.0.0",
     "huggingface-hub>=0.20.0",
+    "zhconv>=1.4.0",
 ]
 
 # All dependencies together

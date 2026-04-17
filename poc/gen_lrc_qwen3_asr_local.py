@@ -133,12 +133,38 @@ def extract_segments(result) -> list[dict]:
     return segments
 
 
+def detect_chinese_script(text: str) -> str:
+    """Detect whether Chinese text is traditional or simplified.
+
+    Args:
+        text: Chinese text to analyze
+
+    Returns:
+        "zh-hans" if simplified, "zh-hant" if traditional
+    """
+    from zhconv import convert
+
+    total_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    if total_chars == 0:
+        return "zh-hans"
+
+    simplified = convert(text, "zh-hans")
+    if simplified == text:
+        return "zh-hans"
+    else:
+        return "zh-hant"
+
+
 def canonical_line_snap(
     segments: list[dict],
     lyrics: list[str],
     threshold: float = 0.60,
 ) -> list[tuple[float, str, bool]]:
     """Snap ASR segments to canonical lyrics using fuzzy matching.
+
+    Automatically detects script (traditional/simplified) of canonical lyrics
+    and normalizes ASR output to match for scoring, but keeps original form
+    for output.
 
     Args:
         segments: List of dicts with 'start', 'end', 'text' keys
@@ -149,13 +175,29 @@ def canonical_line_snap(
         List of (start, final_text, replaced) tuples
     """
     from rapidfuzz import fuzz
+    from zhconv import convert
 
     canonical_lines = [l for l in lyrics if l.strip()]
     results = []
 
+    if not canonical_lines:
+        return results
+
+    sample_text = "".join(canonical_lines)
+    target_script = detect_chinese_script(sample_text)
+
+    canonical_lines_normalized = [convert(l, target_script) for l in canonical_lines]
+
     for seg in segments:
         asr_text = seg["text"]
-        scored = [(line, fuzz.token_set_ratio(asr_text, line) / 100.0) for line in canonical_lines]
+        asr_normalized = convert(asr_text, target_script)
+        scored = [
+            (
+                canonical_lines[i],
+                fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0,
+            )
+            for i in range(len(canonical_lines))
+        ]
         best_line, best_score = max(scored, key=lambda x: x[1])
 
         if best_score >= threshold:
@@ -199,6 +241,7 @@ def write_diagnostic(
         wall_time: Wall-clock elapsed time in seconds
     """
     from rapidfuzz import fuzz
+    from zhconv import convert
 
     canonical_lines = [l for l in lyrics if l.strip()]
 
@@ -214,12 +257,21 @@ def write_diagnostic(
     lines.append(f"Replaced by snap: {replaced_count}\n")
     lines.append(f"Kept original: {kept_count}\n")
 
+    # Detect target script for scoring
+    sample_text = "".join(canonical_lines)
+    target_script = detect_chinese_script(sample_text) if sample_text else "zh-hans"
+    canonical_lines_normalized = [convert(l, target_script) for l in canonical_lines]
+
     # Calculate average score
     scores = []
     for seg, results_item in zip(segments, results):
         asr_text = seg["text"]
-        scored = [(line, fuzz.token_set_ratio(asr_text, line) / 100.0) for line in canonical_lines]
-        best_score = max(s[1] for s in scored)
+        asr_normalized = convert(asr_text, target_script)
+        scored = [
+            fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0
+            for i in range(len(canonical_lines))
+        ]
+        best_score = max(scored)
         scores.append(best_score)
 
     if scores:
@@ -247,11 +299,16 @@ def write_diagnostic(
     lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced |\n")
     lines.append("|-------|-----|----------|-------------------|-------|----------|\n")
 
-    from rapidfuzz import fuzz
-
     for seg, (start, final_text, replaced) in zip(segments, results):
         asr_text = seg["text"]
-        scored = [(line, fuzz.token_set_ratio(asr_text, line) / 100.0) for line in canonical_lines]
+        asr_normalized = convert(asr_text, target_script)
+        scored = [
+            (
+                canonical_lines[i],
+                fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0,
+            )
+            for i in range(len(canonical_lines))
+        ]
         best_line, best_score = max(scored, key=lambda x: x[1])
 
         lines.append(
