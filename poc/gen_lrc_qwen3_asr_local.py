@@ -811,6 +811,9 @@ def main(
     song_id: str = typer.Argument(
         ..., help="Song ID (e.g., wo_yao_quan_xin_zan_mei_244) or path to audio file"
     ),
+    vocal_stem: Optional[Path] = typer.Option(
+        None, "--vocal-stem", help="Path to vocal stem FLAC file to use for transcription"
+    ),
     use_vocals: bool = typer.Option(
         True, "--use-vocals/--no-use-vocals", help="Use vocals stem if available"
     ),
@@ -881,6 +884,14 @@ def main(
     # Resolve inputs
     audio_path, lyrics = resolve_song_audio_path(song_id, use_vocals=use_vocals)
 
+    # Override with provided vocal stem if specified
+    if vocal_stem:
+        if not vocal_stem.exists():
+            typer.echo(f"Error: Vocal stem file not found: {vocal_stem}", err=True)
+            raise typer.Exit(1)
+        audio_path = vocal_stem
+        typer.echo(f"Using provided vocal stem: {audio_path}", err=True)
+
     if lyrics is None:
         typer.echo("Error: No lyrics from catalog; cannot run biasing/snap.", err=True)
         raise typer.Exit(1)
@@ -897,6 +908,8 @@ def main(
         typer.echo("Transcribing full song", err=True)
 
     # Build params dict for cache key
+    # Include vocal_stem filename to ensure different stems get separate cache entries
+    vocal_stem_key = vocal_stem.name if vocal_stem else None
     params = {
         "use_vocals": use_vocals,
         "lyrics_context": lyrics_context,
@@ -904,6 +917,7 @@ def main(
         "start": start,
         "end": effective_end,
         "language": "Chinese",
+        "vocal_stem": vocal_stem_key,
     }
     params_hash = compute_params_hash(params)
 
