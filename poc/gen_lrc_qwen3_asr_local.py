@@ -709,6 +709,68 @@ def results_to_lrc(results: list[tuple[float, str, bool, bool]]) -> str:
     return "\n".join(lines)
 
 
+def _strip_timestamp(line: str) -> str:
+    """Remove timestamp from a line.
+
+    Expected format: [HH:MM:SS]    text
+    """
+    import re
+    match = re.search(r'\[.*?\]\s*.?', line)
+    if match:
+        return line[match.end():].strip()
+    return line.strip()
+
+
+def write_comparison_report(
+    verified_lyrics: list[str],
+    output_lyrics: list[str],
+    output_path: Path,
+) -> None:
+    """Write comparison report between verified and output lyrics.
+
+    Args:
+        verified_lyrics: List of verified lyric lines
+        output_lyrics: List of output lyric lines
+        output_path: Path to write comparison report
+    """
+    lines = []
+    lines.append("VERIFIED LINE # | VERIFIED TEXT                          | OUTPUT")
+    lines.append("---------------+----------------------------------------+-------------------------")
+
+    matching_count = 0
+    missing_lines = []
+    differing_lines = []
+
+    output_idx = 0
+    for i, verified_text in enumerate(verified_lyrics, 1):
+
+        if output_idx < len(output_lyrics):
+            output_text = output_lyrics[output_idx]
+            if output_text == verified_text:
+                lines.append(f"{i:<14} | {verified_text:<38} | {output_text}")
+                matching_count += 1
+                output_idx += 1
+            else:
+                lines.append(f"{i:<14} | {verified_text:<38} | {output_text} [DIFFERS]")
+                differing_lines.append(i)
+                output_idx += 1
+        else:
+            lines.append(f"{i:<14} | {verified_text:<38} | [MISSING]")
+            missing_lines.append(i)
+
+    total_verified = len(verified_lyrics)
+    matching_rate = (matching_count / total_verified * 100) if total_verified > 0 else 0
+
+    lines.append("")
+    lines.append("SUMMARY")
+    lines.append("=======")
+    lines.append(f"Matching rate: {matching_rate:.1f}% ({matching_count}/{total_verified} lines)")
+    lines.append(f"Missing lines: {', '.join(str(x) for x in missing_lines) or 'None'}")
+    lines.append(f"Differing lines: {', '.join(str(x) for x in differing_lines) or 'None'}")
+
+    output_path.write_text("\n".join(lines))
+
+
 def write_diagnostic(
     segments: list[dict],
     lyrics: list[str],
@@ -853,6 +915,12 @@ def main(
     ),
     force_rerun: bool = typer.Option(
         False, "--force-rerun", help="Ignore cache and rerun transcription"
+    ),
+    verified_lyrics: Optional[Path] = typer.Option(
+        None, "--verified-lyrics", "-v", help="Path to verified lyrics file for comparison"
+    ),
+    comparison_output: Optional[Path] = typer.Option(
+        None, "--comparison-output", "-c", help="Path to write comparison report"
     ),
 ):
     """Run Qwen3-ASR local MLX transcription on a song and output LRC format.
@@ -1038,6 +1106,24 @@ def main(
         typer.echo(f"Wrote LRC to: {output}", err=True)
     else:
         print(lrc_content)
+
+    # Write comparison report if verified lyrics provided
+    if verified_lyrics and comparison_output:
+        if not verified_lyrics.exists():
+            typer.echo(f"Error: Verified lyrics file not found: {verified_lyrics}", err=True)
+            raise typer.Exit(1)
+
+        # Read verified lyrics (strip whitespace, timestamps, filter empty lines)
+        verified_lines = [
+            _strip_timestamp(l) for l in verified_lyrics.read_text(encoding="utf-8").splitlines() if l.strip()
+        ]
+
+        # Extract output lines from results
+        output_lines = [text for _, text, _, _ in results]
+
+        # Write comparison
+        write_comparison_report(verified_lines, output_lines, comparison_output)
+        typer.echo(f"Wrote comparison report to: {comparison_output}", err=True)
 
 
 if __name__ == "__main__":
