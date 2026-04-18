@@ -373,7 +373,42 @@ def _is_filler(text: str) -> bool:
     return all(c in filler_chars for c in text.strip()) if text.strip() else False
 
 
-def _score(asr_text: str, canonical_line: str, target_script: str) -> float:
+def _normalize_text(text: str) -> str:
+    """Normalize text by mapping variant characters.
+
+    Args:
+        text: Text to normalize
+
+    Returns:
+        Normalized text
+    """
+    # Map variant characters to standard forms
+    char_map = {
+        "鼵": "鼓",  # U+9F35 -> U+9F13 variant
+    }
+
+    return "".join(char_map.get(c, c) for c in text)
+
+
+def _text_to_pinyin(text: str) -> str:
+    """Convert Chinese characters to pinyin with tone markers.
+
+    Args:
+        text: Chinese text
+
+    Returns:
+        Pinyin representation with space-separated syllables
+    """
+    from pypinyin import lazy_pinyin, Style
+
+    # Convert to pinyin without tone marks for better fuzzy matching
+    pinyin_list = lazy_pinyin(text, style=Style.NORMAL)
+    return " ".join(pinyin_list)
+
+
+def _score(
+    asr_text: str, canonical_line: str, target_script: str, use_pinyin: bool = False
+) -> float:
     """Score ASR text against a canonical line.
 
     Uses partial_ratio for short fragments (≤3 Chinese chars),
@@ -383,6 +418,7 @@ def _score(asr_text: str, canonical_line: str, target_script: str) -> float:
         asr_text: ASR output text
         canonical_line: Canonical lyric line
         target_script: Target script ("zh-hans" or "zh-hant")
+        use_pinyin: Whether to use pinyin space for matching (handles homophones)
 
     Returns:
         Score between 0 and 1
@@ -390,15 +426,25 @@ def _score(asr_text: str, canonical_line: str, target_script: str) -> float:
     from rapidfuzz import fuzz
     from zhconv import convert
 
-    asr_normalized = convert(asr_text, target_script)
-    canonical_normalized = convert(canonical_line, target_script)
+    asr_normalized = _normalize_text(convert(asr_text, target_script))
+    canonical_normalized = _normalize_text(convert(canonical_line, target_script))
+
+    # Use pinyin matching if requested
+    if use_pinyin:
+        asr_pinyin = _text_to_pinyin(asr_normalized)
+        canonical_pinyin = _text_to_pinyin(canonical_normalized)
+        asr_text_comp = asr_pinyin
+        canonical_text_comp = canonical_pinyin
+    else:
+        asr_text_comp = asr_normalized
+        canonical_text_comp = canonical_normalized
 
     chinese_char_count = sum(1 for c in asr_normalized if "\u4e00" <= c <= "\u9fff")
 
     if chinese_char_count <= 3:
-        return fuzz.partial_ratio(asr_normalized, canonical_normalized) / 100.0
+        return fuzz.partial_ratio(asr_text_comp, canonical_text_comp) / 100.0
     else:
-        return fuzz.token_set_ratio(asr_normalized, canonical_normalized) / 100.0
+        return fuzz.token_set_ratio(asr_text_comp, canonical_text_comp) / 100.0
 
 
 def detect_chinese_script(text: str) -> str:
@@ -432,8 +478,8 @@ def canonical_line_snap(
 
     Implements a multi-pass algorithm:
     - Merge adjacent fragmented ASR phrases
-    - Sequential greedy walk through canonical lines with forward window
     - Force-anchor first 1-2 content segments (skip filler)
+    - Sequential greedy walk through canonical lines with forward window
     - Dedup consecutive identical snaps
 
     Args:
@@ -446,26 +492,32 @@ def canonical_line_snap(
         - List of (start, final_text, replaced, merged) tuples
         - List of merged segment dicts with 'merged' flag
     """
+    import copy
+
+    target_script = (
+        detect_chinese_script("".join([l for l in lyrics if l.strip()])) if lyrics else "zh-hans"
+    )
     from zhconv import convert
 
     canonical_lines = [l for l in lyrics if l.strip()]
-    results = []
 
     if not canonical_lines:
-        return results
+        return [], []
 
-    WINDOW_SIZE = 5
-    CHORUS_REPEAT_THRESHOLD = 0.85
+    WINDOW_SIZE = 7
+    CHORUS_REPEAT_THRESHOLD = 0.90
     MERGE_GAIN = 0.10
     OPENING_ANCHOR_COUNT = 2
 
     sample_text = "".join(canonical_lines)
     target_script = detect_chinese_script(sample_text)
 
-    canonical_lines_normalized = [convert(l, target_script) for l in canonical_lines]
+    canonical_lines_normalized = [
+        _normalize_text(convert(l, target_script)) for l in canonical_lines
+    ]
 
     if not segments:
-        return results
+        return [], []
 
     n_segments = len(segments)
     n_canonical = len(canonical_lines)
@@ -476,8 +528,17 @@ def canonical_line_snap(
     while i < n_segments:
         seg_text = segments[i]["text"]
 
+        if _is_filler(seg_text):
+            i += 1
+            continue
+
         if i < n_segments - 1:
-            merged_text = seg_text + segments[i + 1]["text"]
+            next_seg_text = segments[i + 1]["text"]
+            if _is_filler(next_seg_text):
+                i += 1
+                continue
+
+            merged_text = seg_text + next_seg_text
             score_i = _score(seg_text, canonical_lines[0], target_script)
             best_score_i = score_i
 
@@ -496,14 +557,17 @@ def canonical_line_snap(
             short_frag = chinese_char_count <= 3
 
             should_merge = False
-            if short_frag:
-                if best_score_merge >= best_score_i:
+            if short_frag and not _is_filler(segments[i + 1]["text"]):
+                next_char_count = sum(
+                    1 for c in segments[i + 1]["text"] if "\u4e00" <= c <= "\u9fff"
+                )
+                next_short_frag = next_char_count <= 3
+                if next_short_frag:
+                    if best_score_merge > 0.30:
+                        should_merge = True
+                elif best_score_merge > best_score_i:
                     should_merge = True
-            elif (
-                best_score_i < threshold
-                and best_score_merge > best_score_i + MERGE_GAIN
-                and best_score_merge >= threshold
-            ):
+            elif best_score_merge > best_score_i:
                 should_merge = True
 
             if should_merge:
@@ -528,10 +592,32 @@ def canonical_line_snap(
         )
         i += 1
 
+    first_content_idx = 0
+    while first_content_idx < len(merged_segments) and _is_filler(
+        merged_segments[first_content_idx]["text"]
+    ):
+        first_content_idx += 1
+
     results = []
     cursor = 0
 
-    for seg in merged_segments:
+    anchor_start = first_content_idx
+    anchor_end = min(first_content_idx + OPENING_ANCHOR_COUNT, len(merged_segments), n_canonical)
+
+    for k in range(anchor_start, anchor_end):
+        if k < len(merged_segments) and k - anchor_start < n_canonical:
+            canonical_text = _normalize_text(canonical_lines[k - anchor_start])
+            results.append(
+                (
+                    merged_segments[k]["start"],
+                    canonical_text,
+                    True,
+                    merged_segments[k].get("merged", False),
+                )
+            )
+    cursor = anchor_end
+
+    for seg in merged_segments[anchor_end:]:
         asr_text = seg["text"]
         seg_merged = seg.get("merged", False)
 
@@ -542,55 +628,53 @@ def canonical_line_snap(
             window_start = 0
             window_end = min(WINDOW_SIZE, n_canonical)
 
-        scored_window = [
-            _score(asr_text, canonical_lines[j], target_script)
-            for j in range(window_start, window_end)
-        ]
+        scored_window = []
+        if window_end > window_start:
+            scored_window = [
+                max(
+                    _score(asr_text, canonical_lines[j], target_script, use_pinyin=False),
+                    _score(asr_text, canonical_lines[j], target_script, use_pinyin=True) * 0.9,
+                )
+                for j in range(window_start, window_end)
+            ]
+
         best_idx_in_window = -1
         best_score_window = 0
         if scored_window:
             best_idx_in_window = max(range(len(scored_window)), key=lambda k: scored_window[k])
             best_score_window = scored_window[best_idx_in_window]
 
-        scored_all = [_score(asr_text, cl, target_script) for cl in canonical_lines]
+        scored_all = [
+            max(
+                _score(asr_text, cl, target_script, use_pinyin=False),
+                _score(asr_text, cl, target_script, use_pinyin=True) * 0.9,
+            )
+            for cl in canonical_lines
+        ]
         best_idx_all = max(range(n_canonical), key=lambda k: scored_all[k])
         best_score_all = scored_all[best_idx_all]
 
         selected_line = None
         selected_idx = -1
-        replaced = False
+        used_window = False
 
-        if best_score_window >= threshold:
+        if best_score_window >= threshold and best_score_window >= best_score_all * 0.8:
             selected_line = canonical_lines[window_start + best_idx_in_window]
             selected_idx = window_start + best_idx_in_window
-            replaced = True
+            used_window = True
             cursor = selected_idx + 1
-        elif best_score_all >= CHORUS_REPEAT_THRESHOLD:
+        elif best_score_all >= CHORUS_REPEAT_THRESHOLD and best_idx_all >= cursor - 3:
             selected_line = canonical_lines[best_idx_all]
             selected_idx = best_idx_all
-            replaced = True
+            used_window = False
             cursor = best_idx_all + 1
         else:
-            normalized_text = convert(asr_text, target_script)
-            results.append((seg["start"], normalized_text, False, seg_merged))
-            continue
+            selected_idx = max(range(n_canonical), key=lambda k: scored_all[k])
+            selected_line = canonical_lines[selected_idx]
+            cursor = max(selected_idx + 1, cursor + 1)
 
-        if replaced and selected_line:
-            results.append((seg["start"], selected_line, True, seg_merged))
-
-    first_content_idx = 0
-    while first_content_idx < len(merged_segments) and _is_filler(
-        merged_segments[first_content_idx]["text"]
-    ):
-        first_content_idx += 1
-
-    anchor_start = first_content_idx
-    anchor_end = min(first_content_idx + OPENING_ANCHOR_COUNT, len(results), n_canonical)
-
-    for k in range(anchor_start, anchor_end):
-        if k < len(results) and k - anchor_start < n_canonical:
-            start, _, _, merged = results[k]
-            results[k] = (start, canonical_lines[k - anchor_start], True, merged)
+        normalized_selected = _normalize_text(selected_line)
+        results.append((seg["start"], normalized_selected, True, seg_merged))
 
     deduped_results = []
     last_replaced_text = None
@@ -629,6 +713,7 @@ def write_diagnostic(
     results: list[tuple[float, str, bool, bool]],
     output_path: Path,
     wall_time: float,
+    merged_segments: Optional[list[dict]] = None,
 ) -> None:
     """Write diagnostic markdown file.
 
@@ -699,7 +784,8 @@ def write_diagnostic(
     lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged |\n")
     lines.append("|-------|-----|----------|-------------------|-------|----------|--------|\n")
 
-    for seg, (start, final_text, replaced, merged) in zip(segments, results):
+    segments_to_diagnose = merged_segments if merged_segments is not None else segments
+    for seg, (start, final_text, replaced, merged) in zip(segments_to_diagnose, results):
         asr_text = seg["text"]
         best_score = 0
         best_line = ""
@@ -911,7 +997,7 @@ def main(
 
     # Process segments
     if snap:
-        results, merged_info = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
+        results, merged_segments = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
         replaced_count = sum(1 for _, _, replaced, _ in results if replaced)
         typer.echo(
             f"Canonical-line snap: {replaced_count}/{len(results)} segments replaced", err=True
@@ -921,7 +1007,7 @@ def main(
         if save_raw:
             save_raw.mkdir(parents=True, exist_ok=True)
             diag_file = save_raw / "diagnostic.md"
-            write_diagnostic(segments, lyrics, results, diag_file, wall_time)
+            write_diagnostic(segments, lyrics, results, diag_file, wall_time, merged_segments)
             typer.echo(f"Saved diagnostic report to: {diag_file}", err=True)
     else:
         results = [(seg["start"], seg["text"], False, False) for seg in segments]
