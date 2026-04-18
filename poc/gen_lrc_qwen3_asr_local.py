@@ -639,13 +639,25 @@ def canonical_line_snap(
             window_start = 0
             window_end = min(WINDOW_SIZE, n_canonical)
 
+        asr_char_count = sum(1 for c in asr_text if "\u4e00" <= c <= "\u9fff")
+
+        def _combined_score(asr: str, canonical: str) -> float:
+            """Score combining char and pinyin.
+
+            Pinyin boost is disabled for long ASR segments (>8 Chinese chars) because
+            long garbled text often contains phonetic substrings that accidentally match
+            short canonical lines, producing false high-confidence snaps.
+            """
+            char_s = _score(asr, canonical, target_script, use_pinyin=False)
+            if asr_char_count <= 8:
+                pin_s = _score(asr, canonical, target_script, use_pinyin=True) * 0.9
+                return max(char_s, pin_s)
+            return char_s
+
         scored_window = []
         if window_end > window_start:
             scored_window = [
-                max(
-                    _score(asr_text, canonical_lines[j], target_script, use_pinyin=False),
-                    _score(asr_text, canonical_lines[j], target_script, use_pinyin=True) * 0.9,
-                )
+                _combined_score(asr_text, canonical_lines[j])
                 for j in range(window_start, window_end)
             ]
 
@@ -655,13 +667,7 @@ def canonical_line_snap(
             best_idx_in_window = max(range(len(scored_window)), key=lambda k: scored_window[k])
             best_score_window = scored_window[best_idx_in_window]
 
-        scored_all = [
-            max(
-                _score(asr_text, cl, target_script, use_pinyin=False),
-                _score(asr_text, cl, target_script, use_pinyin=True) * 0.9,
-            )
-            for cl in canonical_lines
-        ]
+        scored_all = [_combined_score(asr_text, cl) for cl in canonical_lines]
         best_idx_all = max(range(n_canonical), key=lambda k: scored_all[k])
         best_score_all = scored_all[best_idx_all]
 
@@ -669,34 +675,61 @@ def canonical_line_snap(
         selected_idx = -1
         used_window = False
 
+        # When ASR is very garbled (score < 0.40), trust sequential position rather than
+        # fuzzy match — global search can't distinguish repeated chorus lines at this confidence.
+        # For long garbled segments, estimate how many canonical lines they span by duration.
+        LOW_CONFIDENCE_THRESHOLD = 0.40
+        AVG_LINE_DURATION = 8.0  # seconds per lyric line (rough estimate)
+        seq_cursor = cursor % n_canonical
+
+        low_confidence = best_score_all < LOW_CONFIDENCE_THRESHOLD
+
+        if low_confidence:
+            seg_duration_s = seg["end"] - seg["start"]
+            n_lines_est = max(1, round(seg_duration_s / AVG_LINE_DURATION))
+            selected_idx = seq_cursor
+            selected_line = canonical_lines[seq_cursor]
+            used_window = True
         # Choose between window match and global match
         # Window match keeps sequential flow, global match allows jumping to better matches
-        if best_score_window >= best_score_all * 0.9 and scored_window:
+        elif best_score_window >= best_score_all * 0.9 and scored_window:
             selected_line = canonical_lines[window_start + best_idx_in_window]
             selected_idx = window_start + best_idx_in_window
             used_window = True
+            n_lines_est = 1
         else:
             selected_line = canonical_lines[best_idx_all]
             selected_idx = best_idx_all
             used_window = False
+            n_lines_est = 1
 
         # Check if we skipped any canonical lines - if so, emit them first
         # This handles cases where ASR segments cover multiple lyric lines
         lines_to_emit = []
 
-        # If selected_idx is ahead of cursor, we may have skipped lines
-        # Only emit skipped lines if the gap is small (1-2 lines) and we're in the window
-        if used_window and selected_idx > cursor:
-            gap_size = selected_idx - cursor
-            if gap_size <= 2:  # Only fill small gaps
-                for skipped_idx in range(cursor, selected_idx):
-                    lines_to_emit.append((skipped_idx, seg["start"]))
+        if low_confidence and n_lines_est > 1:
+            # Emit multiple sequential canonical lines for long garbled segments
+            for k in range(n_lines_est):
+                emit_idx = (seq_cursor + k) % n_canonical
+                lines_to_emit.append((emit_idx, seg["start"]))
+        else:
+            # If selected_idx is ahead of cursor, we may have skipped lines
+            # Only emit skipped lines if the gap is small (1-2 lines) and we're in the window
+            if used_window and selected_idx > cursor:
+                gap_size = selected_idx - cursor
+                if gap_size <= 2:  # Only fill small gaps
+                    for skipped_idx in range(cursor, selected_idx):
+                        lines_to_emit.append((skipped_idx, seg["start"]))
 
-        # Add the selected line
-        lines_to_emit.append((selected_idx, seg["start"]))
+        # Add the selected line (unless already included by low-confidence multi-emit)
+        if not low_confidence or n_lines_est == 1:
+            lines_to_emit.append((selected_idx, seg["start"]))
 
-        # Emit all lines (sort by canonical index to maintain order)
-        lines_to_emit.sort(key=lambda x: x[0])
+        # Sort by canonical index to maintain order — but skip sort for low-confidence
+        # multi-emit since indices may wrap around (e.g. [12, 13, 0]) and sequential
+        # order is already correct.
+        if not (low_confidence and n_lines_est > 1):
+            lines_to_emit.sort(key=lambda x: x[0])
 
         # Interpolate timestamps across the segment when emitting multiple lines
         seg_duration = seg["end"] - seg["start"]
@@ -710,8 +743,12 @@ def canonical_line_snap(
             line_text = _normalize_text(canonical_lines[line_idx])
             results.append((timestamp, line_text, True, seg_merged))
 
-        # Advance cursor past the last emitted line
-        if lines_to_emit:
+        # Advance cursor past the last emitted line.
+        # For low-confidence multi-emit, advance by n_lines_est (not by canonical index,
+        # since wrapped indices would give wrong cursor position).
+        if low_confidence and n_lines_est > 1:
+            cursor = cursor + n_lines_est
+        elif lines_to_emit:
             cursor = lines_to_emit[-1][0] + 1
         else:
             cursor = selected_idx + 1
@@ -1229,9 +1266,11 @@ def main(
 
         try:
             # Build context
+            # Format: space-separated phrases (per mlx-qwen3-asr convention for vocabulary biasing)
+            # Newline-separated lyrics cause the model to hallucinate them as transcription output
             context = None
             if lyrics_context:
-                context = lyrics_text
+                context = " ".join(l.strip() for l in lyrics if l.strip())
                 if len(context) > context_max_chars:
                     context = context[:context_max_chars]
                     typer.echo(f"Context truncated to {context_max_chars} chars", err=True)
