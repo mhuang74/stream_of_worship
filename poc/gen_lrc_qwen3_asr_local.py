@@ -447,6 +447,31 @@ def _score(
         return fuzz.token_set_ratio(asr_text_comp, canonical_text_comp) / 100.0
 
 
+def _combined_score(
+    asr: str, canonical: str, target_script: str, asr_char_count: int
+) -> float:
+    """Score combining char and pinyin.
+
+    Pinyin boost is disabled for long ASR segments (>8 Chinese chars) because
+    long garbled text often contains phonetic substrings that accidentally match
+    short canonical lines, producing false high-confidence snaps.
+
+    Args:
+        asr: ASR text
+        canonical: Canonical line text
+        target_script: Target script ("zh-hans" or "zh-hant")
+        asr_char_count: Number of Chinese chars in ASR text
+
+    Returns:
+        Combined score between 0 and 1
+    """
+    char_s = _score(asr, canonical, target_script, use_pinyin=False)
+    if asr_char_count <= 8:
+        pin_s = _score(asr, canonical, target_script, use_pinyin=True) * 0.9
+        return max(char_s, pin_s)
+    return char_s
+
+
 def detect_chinese_script(text: str) -> str:
     """Detect whether Chinese text is traditional or simplified.
 
@@ -473,24 +498,33 @@ def canonical_line_snap(
     segments: list[dict],
     lyrics: list[str],
     threshold: float = 0.60,
+    snap_algo: str = "dp",
+    dp_skip_penalty: float = 0.15,
+    dp_wrap_penalty: float = 0.05,
+    dp_k_max: int = 4,
 ) -> tuple[list[tuple[float, str, bool, bool]], list[dict]]:
     """Snap ASR segments to canonical lyrics using fuzzy matching.
 
     Implements a multi-pass algorithm:
     - Merge adjacent fragmented ASR phrases
     - Force-anchor first 1-2 content segments (skip filler)
-    - Sequential greedy walk through canonical lines with forward window
+    - Either greedy walk or DP consensus for remaining segments
     - Dedup consecutive identical snaps
 
     Args:
         segments: List of dicts with 'start', 'end', 'text' keys
         lyrics: List of canonical lyric lines
         threshold: Minimum fuzzy score to snap (0-1)
+        snap_algo: Algorithm to use ("greedy" or "dp")
+        dp_skip_penalty: Penalty for skipping canonical indices within a layer
+        dp_wrap_penalty: Penalty for starting a new layer mid-sequence
+        dp_k_max: Maximum number of layer wraps (chorus repeats)
 
     Returns:
         Tuple of:
         - List of (start, final_text, replaced, merged) tuples
         - List of merged segment dicts with 'merged' flag
+        - List of DP assignment info (for diagnostics) or None
     """
     from zhconv import convert
 
@@ -626,138 +660,221 @@ def canonical_line_snap(
                     merged_segments[k].get("merged", False),
                 )
             )
-    cursor = anchor_end
 
-    for seg in merged_segments[anchor_end:]:
-        asr_text = seg["text"]
-        seg_merged = seg.get("merged", False)
+    dp_assignments = None
+    AVG_LINE_DURATION = 8.0
 
-        if cursor < n_canonical:
-            window_start = cursor
-            window_end = min(cursor + WINDOW_SIZE, n_canonical)
-        else:
-            window_start = 0
-            window_end = min(WINDOW_SIZE, n_canonical)
+    dp_segments = merged_segments[anchor_end:]
+    n_dp_segments = len(dp_segments)
 
-        asr_char_count = sum(1 for c in asr_text if "\u4e00" <= c <= "\u9fff")
-
-        def _combined_score(asr: str, canonical: str) -> float:
-            """Score combining char and pinyin.
-
-            Pinyin boost is disabled for long ASR segments (>8 Chinese chars) because
-            long garbled text often contains phonetic substrings that accidentally match
-            short canonical lines, producing false high-confidence snaps.
-            """
-            char_s = _score(asr, canonical, target_script, use_pinyin=False)
-            if asr_char_count <= 8:
-                pin_s = _score(asr, canonical, target_script, use_pinyin=True) * 0.9
-                return max(char_s, pin_s)
-            return char_s
-
-        scored_window = []
-        if window_end > window_start:
-            scored_window = [
-                _combined_score(asr_text, canonical_lines[j])
-                for j in range(window_start, window_end)
+    if snap_algo == "dp" and n_dp_segments > 0:
+        S = []
+        L = []
+        for seg in dp_segments:
+            asr_char_count = sum(1 for c in seg["text"] if "\u4e00" <= c <= "\u9fff")
+            seg_scores = [
+                _combined_score(seg["text"], canonical_lines[j], target_script, asr_char_count)
+                for j in range(n_canonical)
             ]
+            S.append(seg_scores)
+            seg_duration = seg["end"] - seg["start"]
+            n_lines_est = max(1, round(seg_duration / AVG_LINE_DURATION))
+            L.append(n_lines_est)
 
-        best_idx_in_window = -1
-        best_score_window = 0
-        if scored_window:
-            best_idx_in_window = max(range(len(scored_window)), key=lambda k: scored_window[k])
-            best_score_window = scored_window[best_idx_in_window]
+        NEG_INF = float("-inf")
+        dp = {}
+        back_ptr = {}
 
-        scored_all = [_combined_score(asr_text, cl) for cl in canonical_lines]
-        best_idx_all = max(range(n_canonical), key=lambda k: scored_all[k])
-        best_score_all = scored_all[best_idx_all]
+        anchor_last_j = min(anchor_end - anchor_start - 1, n_canonical - 1)
+        if anchor_last_j < 0:
+            anchor_last_j = 0
+        dp[(0, anchor_last_j, 0)] = 0.0
 
-        selected_line = None
-        selected_idx = -1
-        used_window = False
+        for i in range(n_dp_segments):
+            seg = dp_segments[i]
+            n_lines_max = min(L[i] + 1, n_canonical)
 
-        # When ASR is very garbled (score < 0.40), trust sequential position rather than
-        # fuzzy match — global search can't distinguish repeated chorus lines at this confidence.
-        # For long garbled segments, estimate how many canonical lines they span by duration.
-        LOW_CONFIDENCE_THRESHOLD = 0.40
-        AVG_LINE_DURATION = 8.0  # seconds per lyric line (rough estimate)
-        seq_cursor = cursor % n_canonical
+            for (prev_i, prev_j, prev_k), prev_score in list(dp.items()):
+                if prev_i != i:
+                    continue
 
-        low_confidence = best_score_all < LOW_CONFIDENCE_THRESHOLD
+                for n_lines in range(1, n_lines_max + 1):
+                    for j_start in range(n_canonical):
+                        j_end = j_start + n_lines - 1
+                        if j_end >= n_canonical:
+                            continue
 
-        if low_confidence:
-            seg_duration_s = seg["end"] - seg["start"]
-            n_lines_est = max(1, round(seg_duration_s / AVG_LINE_DURATION))
-            selected_idx = seq_cursor
-            selected_line = canonical_lines[seq_cursor]
-            used_window = True
-        # Choose between window match and global match
-        # Window match keeps sequential flow, global match allows jumping to better matches
-        elif best_score_window >= best_score_all * 0.9 and scored_window:
-            selected_line = canonical_lines[window_start + best_idx_in_window]
-            selected_idx = window_start + best_idx_in_window
-            used_window = True
-            n_lines_est = 1
-        else:
-            selected_line = canonical_lines[best_idx_all]
-            selected_idx = best_idx_all
-            used_window = False
-            n_lines_est = 1
+                        line_score = sum(S[i][j] for j in range(j_start, j_end + 1))
 
-        # Check if we skipped any canonical lines - if so, emit them first
-        # This handles cases where ASR segments cover multiple lyric lines
-        lines_to_emit = []
+                        if j_start == prev_j + 1:
+                            new_k = prev_k
+                            penalty = 0.0
+                            new_score = prev_score + line_score - penalty
+                            key = (i + 1, j_end, new_k)
+                            if new_score > dp.get(key, NEG_INF):
+                                dp[key] = new_score
+                                back_ptr[key] = (prev_i, prev_j, prev_k, j_start, n_lines)
 
-        if low_confidence and n_lines_est > 1:
-            # Emit multiple sequential canonical lines for long garbled segments
-            for k in range(n_lines_est):
-                emit_idx = (seq_cursor + k) % n_canonical
-                lines_to_emit.append((emit_idx, seg["start"]))
-        else:
-            # If selected_idx is ahead of cursor, we may have skipped lines
-            # Only emit skipped lines if the gap is small (1-2 lines) and we're in the window
-            if used_window and selected_idx > cursor:
-                gap_size = selected_idx - cursor
-                if gap_size <= 2:  # Only fill small gaps
-                    for skipped_idx in range(cursor, selected_idx):
-                        lines_to_emit.append((skipped_idx, seg["start"]))
+                        elif j_start > prev_j + 1:
+                            new_k = prev_k
+                            skip_penalty = dp_skip_penalty * (j_start - prev_j - 1)
+                            new_score = prev_score + line_score - skip_penalty
+                            key = (i + 1, j_end, new_k)
+                            if new_score > dp.get(key, NEG_INF):
+                                dp[key] = new_score
+                                back_ptr[key] = (prev_i, prev_j, prev_k, j_start, n_lines)
 
-        # Add the selected line (unless already included by low-confidence multi-emit)
-        if not low_confidence or n_lines_est == 1:
-            lines_to_emit.append((selected_idx, seg["start"]))
+                        if prev_k + 1 < dp_k_max and j_start <= prev_j:
+                            new_k = prev_k + 1
+                            wrap_penalty = dp_wrap_penalty if j_start > 0 else 0.0
+                            new_score = prev_score + line_score - wrap_penalty
+                            key = (i + 1, j_end, new_k)
+                            if new_score > dp.get(key, NEG_INF):
+                                dp[key] = new_score
+                                back_ptr[key] = (prev_i, prev_j, prev_k, j_start, n_lines)
 
-        # Sort by canonical index to maintain order — but skip sort for low-confidence
-        # multi-emit since indices may wrap around (e.g. [12, 13, 0]) and sequential
-        # order is already correct.
-        if not (low_confidence and n_lines_est > 1):
-            lines_to_emit.sort(key=lambda x: x[0])
+        best_end = None
+        best_end_score = NEG_INF
+        for (i, j, k), score in dp.items():
+            if i == n_dp_segments and score > best_end_score:
+                best_end_score = score
+                best_end = (i, j, k)
 
-        # Interpolate timestamps across the segment when emitting multiple lines
-        seg_duration = seg["end"] - seg["start"]
-        n_lines = len(lines_to_emit)
-        for i, (line_idx, _) in enumerate(lines_to_emit):
-            # Distribute timestamps evenly across the segment
-            if n_lines > 1:
-                timestamp = seg["start"] + seg_duration * i / (n_lines - 1)
+        dp_assignments = []
+        if best_end is not None:
+            assignments = []
+            current = best_end
+            while current in back_ptr:
+                prev_i, prev_j, prev_k, j_start, n_lines = back_ptr[current]
+                assignments.append((j_start, n_lines, current[2]))
+                current = (prev_i, prev_j, prev_k)
+            assignments.reverse()
+
+            for i, (j_start, n_lines, layer_k) in enumerate(assignments):
+                seg = dp_segments[i]
+                seg_merged = seg.get("merged", False)
+                seg_duration = seg["end"] - seg["start"]
+
+                lines_to_emit = []
+                for offset in range(n_lines):
+                    j = j_start + offset
+                    if j < n_canonical:
+                        lines_to_emit.append(j)
+
+                n_lines_emit = len(lines_to_emit)
+                for idx, line_idx in enumerate(lines_to_emit):
+                    if n_lines_emit > 1:
+                        timestamp = seg["start"] + seg_duration * idx / (n_lines_emit - 1)
+                    else:
+                        timestamp = seg["start"]
+                    line_text = _normalize_text(canonical_lines[line_idx])
+                    results.append((timestamp, line_text, True, seg_merged))
+
+                dp_assignments.append({
+                    "seg_idx": anchor_end + i,
+                    "canonical_start": j_start,
+                    "n_lines": n_lines,
+                    "layer_k": layer_k,
+                })
+
+    elif snap_algo == "greedy" or n_dp_segments == 0:
+        cursor = anchor_end
+
+        for seg in merged_segments[anchor_end:]:
+            asr_text = seg["text"]
+            seg_merged = seg.get("merged", False)
+
+            if cursor < n_canonical:
+                window_start = cursor
+                window_end = min(cursor + WINDOW_SIZE, n_canonical)
             else:
-                timestamp = seg["start"]
-            line_text = _normalize_text(canonical_lines[line_idx])
-            results.append((timestamp, line_text, True, seg_merged))
+                window_start = 0
+                window_end = min(WINDOW_SIZE, n_canonical)
 
-        # Advance cursor past the last emitted line.
-        # For low-confidence multi-emit, advance by n_lines_est (not by canonical index,
-        # since wrapped indices would give wrong cursor position).
-        if low_confidence and n_lines_est > 1:
-            cursor = cursor + n_lines_est
-        elif lines_to_emit:
-            cursor = lines_to_emit[-1][0] + 1
-        else:
-            cursor = selected_idx + 1
+            asr_char_count = sum(1 for c in asr_text if "\u4e00" <= c <= "\u9fff")
 
-    # No dedup - we want all ASR segments replaced with canonical lines
-    # (User requires 100% replacement of all transcribed phrases)
+            scored_window = []
+            if window_end > window_start:
+                scored_window = [
+                    _combined_score(asr_text, canonical_lines[j], target_script, asr_char_count)
+                    for j in range(window_start, window_end)
+                ]
+
+            best_idx_in_window = -1
+            best_score_window = 0
+            if scored_window:
+                best_idx_in_window = max(range(len(scored_window)), key=lambda k: scored_window[k])
+                best_score_window = scored_window[best_idx_in_window]
+
+            scored_all = [_combined_score(asr_text, cl, target_script, asr_char_count) for cl in canonical_lines]
+            best_idx_all = max(range(n_canonical), key=lambda k: scored_all[k])
+            best_score_all = scored_all[best_idx_all]
+
+            selected_line = None
+            selected_idx = -1
+            used_window = False
+
+            LOW_CONFIDENCE_THRESHOLD = 0.40
+            seq_cursor = cursor % n_canonical
+
+            low_confidence = best_score_all < LOW_CONFIDENCE_THRESHOLD
+
+            if low_confidence:
+                seg_duration_s = seg["end"] - seg["start"]
+                n_lines_est = max(1, round(seg_duration_s / AVG_LINE_DURATION))
+                selected_idx = seq_cursor
+                selected_line = canonical_lines[seq_cursor]
+                used_window = True
+            elif best_score_window >= best_score_all * 0.9 and scored_window:
+                selected_line = canonical_lines[window_start + best_idx_in_window]
+                selected_idx = window_start + best_idx_in_window
+                used_window = True
+                n_lines_est = 1
+            else:
+                selected_line = canonical_lines[best_idx_all]
+                selected_idx = best_idx_all
+                used_window = False
+                n_lines_est = 1
+
+            lines_to_emit = []
+
+            if low_confidence and n_lines_est > 1:
+                for k in range(n_lines_est):
+                    emit_idx = (seq_cursor + k) % n_canonical
+                    lines_to_emit.append((emit_idx, seg["start"]))
+            else:
+                if used_window and selected_idx > cursor:
+                    gap_size = selected_idx - cursor
+                    if gap_size <= 2:
+                        for skipped_idx in range(cursor, selected_idx):
+                            lines_to_emit.append((skipped_idx, seg["start"]))
+
+            if not low_confidence or n_lines_est == 1:
+                lines_to_emit.append((selected_idx, seg["start"]))
+
+            if not (low_confidence and n_lines_est > 1):
+                lines_to_emit.sort(key=lambda x: x[0])
+
+            seg_duration = seg["end"] - seg["start"]
+            n_lines = len(lines_to_emit)
+            for i, (line_idx, _) in enumerate(lines_to_emit):
+                if n_lines > 1:
+                    timestamp = seg["start"] + seg_duration * i / (n_lines - 1)
+                else:
+                    timestamp = seg["start"]
+                line_text = _normalize_text(canonical_lines[line_idx])
+                results.append((timestamp, line_text, True, seg_merged))
+
+            if low_confidence and n_lines_est > 1:
+                cursor = cursor + n_lines_est
+            elif lines_to_emit:
+                cursor = lines_to_emit[-1][0] + 1
+            else:
+                cursor = selected_idx + 1
+
     deduped_results = results
 
-    return deduped_results, merged_segments
+    return deduped_results, merged_segments, dp_assignments
 
 
 def _detect_extra_lines_in_segment(
@@ -1013,6 +1130,7 @@ def write_diagnostic(
     output_path: Path,
     wall_time: float,
     merged_segments: Optional[list[dict]] = None,
+    dp_assignments: Optional[list[dict]] = None,
 ) -> None:
     """Write diagnostic markdown file.
 
@@ -1022,6 +1140,8 @@ def write_diagnostic(
         results: List of (start, final_text, replaced, merged) tuples
         output_path: Path to write diagnostic.md
         wall_time: Wall-clock elapsed time in seconds
+        merged_segments: List of merged segment dicts
+        dp_assignments: List of DP assignment dicts with seg_idx, canonical_start, n_lines, layer_k
     """
     from zhconv import convert
 
@@ -1080,11 +1200,23 @@ def write_diagnostic(
         pass
 
     lines.append("\n## Segment Details\n\n")
-    lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged |\n")
-    lines.append("|-------|-----|----------|-------------------|-------|----------|--------|\n")
+
+    if dp_assignments:
+        lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged | Canon Idx | Layer | N Lines |\n")
+        lines.append("|-------|-----|----------|-------------------|-------|----------|--------|-----------|-------|---------|\n")
+    else:
+        lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged |\n")
+        lines.append("|-------|-----|----------|-------------------|-------|----------|--------|\n")
+
+    dp_lookup = {}
+    if dp_assignments:
+        for assign in dp_assignments:
+            dp_lookup[assign["seg_idx"]] = assign
 
     segments_to_diagnose = merged_segments if merged_segments is not None else segments
-    for seg, (start, final_text, replaced, merged) in zip(segments_to_diagnose, results):
+    for seg_idx, (seg, (start, final_text, replaced, merged)) in enumerate(
+        zip(segments_to_diagnose, results)
+    ):
         asr_text = seg["text"]
         best_score = 0
         best_line = ""
@@ -1096,9 +1228,22 @@ def write_diagnostic(
 
         merged_mark = "Yes" if merged else ""
 
-        lines.append(
-            f"| {seg['start']:6.2f} | {seg['end']:4.2f} | {asr_text[:30]:30s} | {best_line[:30]:30s} | {best_score:5.2f} | {'Yes' if replaced else 'No':6s} | {merged_mark:6s} |\n"
-        )
+        if dp_assignments and seg_idx in dp_lookup:
+            assign = dp_lookup[seg_idx]
+            canon_idx = assign["canonical_start"]
+            layer_k = assign["layer_k"]
+            n_lines = assign["n_lines"]
+            lines.append(
+                f"| {seg['start']:6.2f} | {seg['end']:4.2f} | {asr_text[:30]:30s} | {best_line[:30]:30s} | {best_score:5.2f} | {'Yes' if replaced else 'No':6s} | {merged_mark:6s} | {canon_idx:9d} | {layer_k:5d} | {n_lines:7d} |\n"
+            )
+        elif dp_assignments:
+            lines.append(
+                f"| {seg['start']:6.2f} | {seg['end']:4.2f} | {asr_text[:30]:30s} | {best_line[:30]:30s} | {best_score:5.2f} | {'Yes' if replaced else 'No':6s} | {merged_mark:6s} | {'-':>9s} | {'-':>5s} | {'-':>7s} |\n"
+            )
+        else:
+            lines.append(
+                f"| {seg['start']:6.2f} | {seg['end']:4.2f} | {asr_text[:30]:30s} | {best_line[:30]:30s} | {best_score:5.2f} | {'Yes' if replaced else 'No':6s} | {merged_mark:6s} |\n"
+            )
 
     output_path.write_text("".join(lines))
 
@@ -1122,6 +1267,18 @@ def main(
     snap: bool = typer.Option(True, "--snap/--no-snap", help="Enable canonical-line fuzzy snap"),
     snap_threshold: float = typer.Option(
         0.60, "--snap-threshold", help="Minimum fuzzy score to snap (0-1)"
+    ),
+    snap_algo: str = typer.Option(
+        "greedy", "--snap-algo", help="Snap algorithm: 'greedy' (default) or 'dp' (dynamic programming)"
+    ),
+    dp_skip_penalty: float = typer.Option(
+        0.15, "--dp-skip-penalty", help="DP penalty for skipping canonical indices within a layer"
+    ),
+    dp_wrap_penalty: float = typer.Option(
+        0.05, "--dp-wrap-penalty", help="DP penalty for starting a new layer mid-sequence"
+    ),
+    dp_k_max: int = typer.Option(
+        4, "--dp-k-max", help="DP maximum number of layer wraps (chorus repeats)"
     ),
     lyrics_context: bool = typer.Option(
         True, "--lyrics-context/--no-lyrics-context", help="Enable context biasing with lyrics"
@@ -1318,17 +1475,27 @@ def main(
 
     # Process segments
     if snap:
-        results, merged_segments = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
+        results, merged_segments, dp_assignments = canonical_line_snap(
+            segments,
+            lyrics,
+            threshold=snap_threshold,
+            snap_algo=snap_algo,
+            dp_skip_penalty=dp_skip_penalty,
+            dp_wrap_penalty=dp_wrap_penalty,
+            dp_k_max=dp_k_max,
+        )
         replaced_count = sum(1 for _, _, replaced, _ in results if replaced)
         typer.echo(
-            f"Canonical-line snap: {replaced_count}/{len(results)} segments replaced", err=True
+            f"Canonical-line snap ({snap_algo}): {replaced_count}/{len(results)} segments replaced", err=True
         )
 
         # Write diagnostic if requested
         if save_raw:
             save_raw.mkdir(parents=True, exist_ok=True)
             diag_file = save_raw / "diagnostic.md"
-            write_diagnostic(segments, lyrics, results, diag_file, wall_time, merged_segments)
+            write_diagnostic(
+                segments, lyrics, results, diag_file, wall_time, merged_segments, dp_assignments
+            )
             typer.echo(f"Saved diagnostic report to: {diag_file}", err=True)
     else:
         results = [(seg["start"], seg["text"], False, False) for seg in segments]
