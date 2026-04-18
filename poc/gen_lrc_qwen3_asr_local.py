@@ -721,12 +721,12 @@ def _strip_timestamp(line: str) -> str:
     return line.strip()
 
 
-def write_comparison_report(
+def generate_comparison_report(
     verified_lyrics: list[str],
     output_lyrics: list[str],
     output_path: Path,
 ) -> None:
-    """Write comparison report between verified and output lyrics.
+    """Generate comparison report between verified and output lyrics.
 
     Args:
         verified_lyrics: List of verified lyric lines
@@ -1122,7 +1122,7 @@ def main(
         output_lines = [text for _, text, _, _ in results]
 
         # Write comparison
-        write_comparison_report(verified_lines, output_lines, comparison_output)
+        generate_comparison_report(verified_lines, output_lines, comparison_output)
         typer.echo(f"Wrote comparison report to: {comparison_output}", err=True)
 
 
