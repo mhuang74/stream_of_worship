@@ -504,7 +504,7 @@ def canonical_line_snap(
     if not canonical_lines:
         return [], []
 
-    WINDOW_SIZE = 7
+    WINDOW_SIZE = 7  # Original value - balanced between flexibility and sequential flow
     CHORUS_REPEAT_THRESHOLD = 0.90
     MERGE_GAIN = 0.10
     OPENING_ANCHOR_COUNT = 2
@@ -532,10 +532,22 @@ def canonical_line_snap(
             i += 1
             continue
 
+        should_merge = False
+        merged_text = None
+
         if i < n_segments - 1:
             next_seg_text = segments[i + 1]["text"]
             if _is_filler(next_seg_text):
-                i += 1
+                # Add current segment and skip both current and filler
+                merged_segments.append(
+                    {
+                        "start": segments[i]["start"],
+                        "end": segments[i]["end"],
+                        "text": seg_text,
+                        "merged": False,
+                    }
+                )
+                i += 2
                 continue
 
             merged_text = seg_text + next_seg_text
@@ -556,7 +568,6 @@ def canonical_line_snap(
             chinese_char_count = sum(1 for c in seg_text if "\u4e00" <= c <= "\u9fff")
             short_frag = chinese_char_count <= 3
 
-            should_merge = False
             if short_frag and not _is_filler(segments[i + 1]["text"]):
                 next_char_count = sum(
                     1 for c in segments[i + 1]["text"] if "\u4e00" <= c <= "\u9fff"
@@ -658,35 +669,26 @@ def canonical_line_snap(
         selected_idx = -1
         used_window = False
 
-        if best_score_window >= threshold and best_score_window >= best_score_all * 0.8:
+        # Force replacement with best-matching canonical line (no filtering)
+        # Use window match if it's competitive, otherwise use global best
+        # The window maintains sequential flow through repeated sections
+        if best_score_window >= best_score_all * 0.9 and scored_window:
             selected_line = canonical_lines[window_start + best_idx_in_window]
             selected_idx = window_start + best_idx_in_window
             used_window = True
             cursor = selected_idx + 1
-        elif best_score_all >= CHORUS_REPEAT_THRESHOLD and best_idx_all >= cursor - 3:
+        else:
             selected_line = canonical_lines[best_idx_all]
             selected_idx = best_idx_all
             used_window = False
             cursor = best_idx_all + 1
-        else:
-            selected_idx = max(range(n_canonical), key=lambda k: scored_all[k])
-            selected_line = canonical_lines[selected_idx]
-            cursor = max(selected_idx + 1, cursor + 1)
 
         normalized_selected = _normalize_text(selected_line)
         results.append((seg["start"], normalized_selected, True, seg_merged))
 
-    deduped_results = []
-    last_replaced_text = None
-
-    for start, final_text, replaced, merged in results:
-        if replaced and final_text == last_replaced_text:
-            continue
-        deduped_results.append((start, final_text, replaced, merged))
-        if replaced:
-            last_replaced_text = final_text
-        else:
-            last_replaced_text = None
+    # No dedup - we want all ASR segments replaced with canonical lines
+    # (User requires 100% replacement of all transcribed phrases)
+    deduped_results = results
 
     return deduped_results, merged_segments
 
