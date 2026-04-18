@@ -492,19 +492,18 @@ def canonical_line_snap(
         - List of (start, final_text, replaced, merged) tuples
         - List of merged segment dicts with 'merged' flag
     """
-    import copy
+    from zhconv import convert
 
     target_script = (
         detect_chinese_script("".join([l for l in lyrics if l.strip()])) if lyrics else "zh-hans"
     )
-    from zhconv import convert
 
     canonical_lines = [l for l in lyrics if l.strip()]
 
     if not canonical_lines:
         return [], []
 
-    WINDOW_SIZE = 7  # Original value - balanced between flexibility and sequential flow
+    WINDOW_SIZE = 7
     CHORUS_REPEAT_THRESHOLD = 0.90
     MERGE_GAIN = 0.10
     OPENING_ANCHOR_COUNT = 2
@@ -551,19 +550,20 @@ def canonical_line_snap(
                 continue
 
             merged_text = seg_text + next_seg_text
-            score_i = _score(seg_text, canonical_lines[0], target_script)
-            best_score_i = score_i
+            # Score with char + pinyin matching
+            def score_text(text):
+                best = 0
+                for cl in canonical_lines:
+                    s = max(
+                        _score(text, cl, target_script, use_pinyin=False),
+                        _score(text, cl, target_script, use_pinyin=True) * 0.95,
+                    )
+                    if s > best:
+                        best = s
+                return best
 
-            for j, cl in enumerate(canonical_lines):
-                s = _score(seg_text, cl, target_script)
-                if s > best_score_i:
-                    best_score_i = s
-
-            best_score_merge = 0
-            for j, cl in enumerate(canonical_lines):
-                s = _score(merged_text, cl, target_script)
-                if s > best_score_merge:
-                    best_score_merge = s
+            best_score_i = score_text(seg_text)
+            best_score_merge = score_text(merged_text)
 
             chinese_char_count = sum(1 for c in seg_text if "\u4e00" <= c <= "\u9fff")
             short_frag = chinese_char_count <= 3
@@ -669,28 +669,121 @@ def canonical_line_snap(
         selected_idx = -1
         used_window = False
 
-        # Force replacement with best-matching canonical line (no filtering)
-        # Use window match if it's competitive, otherwise use global best
-        # The window maintains sequential flow through repeated sections
+        # Choose between window match and global match
+        # Window match keeps sequential flow, global match allows jumping to better matches
         if best_score_window >= best_score_all * 0.9 and scored_window:
             selected_line = canonical_lines[window_start + best_idx_in_window]
             selected_idx = window_start + best_idx_in_window
             used_window = True
-            cursor = selected_idx + 1
         else:
             selected_line = canonical_lines[best_idx_all]
             selected_idx = best_idx_all
             used_window = False
-            cursor = best_idx_all + 1
 
-        normalized_selected = _normalize_text(selected_line)
-        results.append((seg["start"], normalized_selected, True, seg_merged))
+        # Check if we skipped any canonical lines - if so, emit them first
+        # This handles cases where ASR segments cover multiple lyric lines
+        lines_to_emit = []
+
+        # If selected_idx is ahead of cursor, we may have skipped lines
+        # Only emit skipped lines if the gap is small (1-2 lines) and we're in the window
+        if used_window and selected_idx > cursor:
+            gap_size = selected_idx - cursor
+            if gap_size <= 2:  # Only fill small gaps
+                for skipped_idx in range(cursor, selected_idx):
+                    lines_to_emit.append((skipped_idx, seg["start"]))
+
+        # Add the selected line
+        lines_to_emit.append((selected_idx, seg["start"]))
+
+        # Emit all lines (sort by canonical index to maintain order)
+        lines_to_emit.sort(key=lambda x: x[0])
+
+        # Interpolate timestamps across the segment when emitting multiple lines
+        seg_duration = seg["end"] - seg["start"]
+        n_lines = len(lines_to_emit)
+        for i, (line_idx, _) in enumerate(lines_to_emit):
+            # Distribute timestamps evenly across the segment
+            if n_lines > 1:
+                timestamp = seg["start"] + seg_duration * i / (n_lines - 1)
+            else:
+                timestamp = seg["start"]
+            line_text = _normalize_text(canonical_lines[line_idx])
+            results.append((timestamp, line_text, True, seg_merged))
+
+        # Advance cursor past the last emitted line
+        if lines_to_emit:
+            cursor = lines_to_emit[-1][0] + 1
+        else:
+            cursor = selected_idx + 1
 
     # No dedup - we want all ASR segments replaced with canonical lines
     # (User requires 100% replacement of all transcribed phrases)
     deduped_results = results
 
     return deduped_results, merged_segments
+
+
+def _detect_extra_lines_in_segment(
+    asr_text: str,
+    canonical_lines: list[str],
+    target_script: str,
+    matched_idx: int,
+    n_canonical: int,
+    matched_score: float,
+) -> list[int]:
+    """Detect if an ASR segment contains content for multiple canonical lines.
+
+    Uses fuzzy matching to find lines that are clearly present in the ASR text.
+    Returns additional line indices that should be emitted from this segment.
+
+    Args:
+        asr_text: The ASR text from the segment
+        canonical_lines: List of canonical lines
+        target_script: Target script for conversion
+        matched_idx: The index of the already-matched canonical line
+        n_canonical: Total number of canonical lines
+        matched_score: The fuzzy score of the matched line
+
+    Returns:
+        List of additional canonical line indices to emit (sorted)
+    """
+    from zhconv import convert
+
+    asr_char_count = sum(1 for c in asr_text if "\u4e00" <= c <= "\u9fff")
+
+    # Only check for long segments (merged segments with 15+ chars)
+    if asr_char_count < 15:
+        return []
+
+    # Require high confidence to detect extra lines
+    # Don't try to detect extras in low-confidence segments (garbled ASR)
+    if matched_score >= 0.85:
+        score_threshold = 0.60  # High threshold for high-confidence segments
+    elif matched_score >= 0.70:
+        score_threshold = 0.65  # Medium threshold
+    else:
+        return []  # Don't try to detect extras in low-confidence segments
+
+    extra_lines = []
+
+    # Check next few canonical lines to see if they appear in the ASR text
+    # Look up to 3 lines ahead
+    check_end = min(matched_idx + 4, n_canonical)
+
+    for check_idx in range(matched_idx + 1, check_end):
+        # Skip if already have this line
+        if check_idx in extra_lines:
+            continue
+
+        score_char = _score(asr_text, canonical_lines[check_idx], target_script, use_pinyin=False)
+        score_pinyin = _score(asr_text, canonical_lines[check_idx], target_script, use_pinyin=True) * 0.95
+        fuzzy_score = max(score_char, score_pinyin)
+
+        # Add line if it meets threshold
+        if fuzzy_score >= score_threshold:
+            extra_lines.append(check_idx)
+
+    return sorted(extra_lines)
 
 
 def results_to_lrc(results: list[tuple[float, str, bool, bool]]) -> str:
