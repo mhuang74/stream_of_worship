@@ -98,8 +98,27 @@ def transcribe_mlx_qwen3_asr(
 #     return result
 
 
+def _get_field(item, field: str, default):
+    """Get field from item, trying dict access first then getattr.
+
+    Args:
+        item: Dict or object to get field from
+        field: Field name
+        default: Default value if not found
+
+    Returns:
+        Field value or default
+    """
+    if isinstance(item, dict):
+        return item.get(field, default)
+    return getattr(item, field, default)
+
+
 def extract_segments(result) -> list[dict]:
     """Extract segments from MLX output.
+
+    Reconstructs phrase-level segments from top-level text and per-character
+    timestamp segments by splitting on Chinese and ASCII punctuation.
 
     Args:
         result: Raw MLX output (TranscriptionResult object or dict)
@@ -107,45 +126,90 @@ def extract_segments(result) -> list[dict]:
     Returns:
         List of segment dicts with 'start', 'end', 'text' keys
     """
-    segments = []
-    empty_count = 0
+    # Get text and segments from result (handle both dict and dataclass)
+    if isinstance(result, dict):
+        text = result.get("text", "")
+        raw_segments = result.get("segments", [])
+    elif hasattr(result, "text"):
+        text = result.text
+        raw_segments = getattr(result, "segments", []) if result.segments else []
+    else:
+        typer.echo("Error: Result missing 'text' field", err=True)
+        return []
 
-    try:
-        if hasattr(result, "segments"):
-            for seg in result.segments:
-                text = getattr(seg, "text", "").strip()
-                if text:
-                    segments.append(
-                        {
-                            "start": getattr(seg, "start", 0),
-                            "end": getattr(seg, "end", 0),
-                            "text": text,
-                        }
+    if not text or not raw_segments:
+        typer.echo("Error: Missing 'text' or 'segments' in result", err=True)
+        return []
+
+    # Parse each per-char segment
+    char_segments = []
+    empty_count = 0
+    for seg in raw_segments:
+        seg_text = _get_field(seg, "text", "").strip()
+        if seg_text:
+            char_segments.append(
+                {
+                    "start": _get_field(seg, "start", 0),
+                    "end": _get_field(seg, "end", 0),
+                    "text": seg_text,
+                }
+            )
+        else:
+            empty_count += 1
+
+    # Count non-punctuation characters in text
+    punct_set = "。，、！？；：．.,!?;:"
+    non_punct_char_count = sum(1 for c in text if c not in punct_set)
+
+    # Check for length mismatch - fall back to per-char with warning
+    if len(char_segments) != non_punct_char_count:
+        typer.echo(
+            f"Warning: Char count mismatch (text has {non_punct_char_count} non-punct chars, "
+            f"found {len(char_segments)} segments). Falling back to per-character segments.",
+            err=True,
+        )
+        segments = char_segments
+    else:
+        # Verify alignment and reconstruct phrase-level segments
+        segments = []
+        seg_idx = 0
+        phrase_start = 0  # Position in text
+
+        while seg_idx < len(char_segments):
+            # Accumulate chars until we hit phrase boundary
+            phrase_chars = []
+            first_start = char_segments[seg_idx]["start"]
+            last_end = char_segments[seg_idx]["end"]
+
+            while seg_idx < len(char_segments):
+                char = text[phrase_start]
+                expected_char = char_segments[seg_idx]["text"]
+
+                # Verify alignment
+                if char != expected_char:
+                    typer.echo(
+                        f"Warning: Char mismatch at position {phrase_start}: "
+                        f"text='{char}', segments['{seg_idx}']='{expected_char}'. "
+                        "Falling back to per-character segments.",
+                        err=True,
                     )
-                else:
-                    empty_count += 1
-        elif isinstance(result, dict):
-            raw_segments = result.get("segments", [])
-            for seg in raw_segments:
-                text = seg.get("text", "").strip()
-                if text:
-                    segments.append(
-                        {
-                            "start": seg.get("start", 0),
-                            "end": seg.get("end", 0),
-                            "text": text,
-                        }
-                    )
-                else:
-                    empty_count += 1
-    except Exception as e:
-        typer.echo(f"Error parsing segments: {e}", err=True)
-        typer.echo(f"Result type: {type(result)}", err=True)
-        if hasattr(result, "__dict__"):
-            typer.echo(f"Result attributes: {list(result.__dict__.keys())}", err=True)
-        if isinstance(result, dict):
-            typer.echo(f"Result keys: {list(result.keys())}", err=True)
-        raise
+                    segments = char_segments
+                    return segments
+
+                phrase_chars.append(char)
+                last_end = char_segments[seg_idx]["end"]
+                phrase_start += 1
+                seg_idx += 1
+
+                # Stop at phrase boundary
+                if seg_idx < len(text) and text[phrase_start] in punct_set:
+                    # Skip the punctuation
+                    phrase_start += 1
+                    break
+
+            phrase_text = "".join(phrase_chars).strip()
+            if phrase_text:
+                segments.append({"start": first_start, "end": last_end, "text": phrase_text})
 
     if not segments:
         typer.echo(
@@ -161,11 +225,47 @@ def extract_segments(result) -> list[dict]:
     return segments
 
 
+def raw_to_dict(result) -> dict:
+    """Convert TranscriptionResult to plain JSON-roundtrippable dict.
+
+    Args:
+        result: TranscriptionResult object or dict
+
+    Returns:
+        JSON-serializable dict
+    """
+    if hasattr(result, "__dict__"):
+        orig_dict = result.__dict__
+    elif isinstance(result, dict):
+        orig_dict = result
+    else:
+        return {}
+
+    return json.loads(json.dumps(orig_dict, ensure_ascii=False, default=str))
+
+
+def compute_params_hash(params: dict) -> str:
+    """Compute 8-char SHA256 prefix of canonical JSON for params.
+
+    Args:
+        params: Dict of parameters
+
+    Returns:
+        8-character hex string
+    """
+    import hashlib
+
+    canonical = json.dumps(params, sort_keys=True, ensure_ascii=False)
+    full_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return full_hash[:8]
+
+
 def cache_file_name(
     cache_dir: Path,
     song_id: str,
     model: str,
     backend: str,
+    params_hash: str,
 ) -> Path:
     """Generate cache file name for transcription.
 
@@ -174,58 +274,53 @@ def cache_file_name(
         song_id: Song identifier
         model: Model size (0.6B or 1.7B)
         backend: MLX backend name
+        params_hash: 8-char SHA256 prefix of parameters
 
     Returns:
         Path to cache file
     """
     safe_song_id = song_id.replace("/", "_").replace("\\", "_")
-    filename = f"{safe_song_id}_{model}_transcription.json"
+    filename = f"{safe_song_id}_{model}_{backend}_{params_hash}.json"
     return cache_dir / filename
 
 
-def load_cached_transcription(cache_path: Path) -> Optional[list[dict]]:
-    """Load cached transcription segments.
+def load_cached_transcription(cache_path: Path) -> Optional[dict]:
+    """Load cached raw transcription dict.
 
     Args:
         cache_path: Path to cache file
 
     Returns:
-        List of segment dicts, or None if cache file not found/invalid
+        Raw dict from cache, or None if cache file not found/invalid
     """
     if not cache_path.exists():
+        typer.echo(f"Cache not found at: {cache_path}", err=True)
         return None
 
     try:
         cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
-        segments = cache_data.get("segments", [])
 
-        if not segments:
+        cache_version = cache_data.get("cache_version")
+        if cache_version != 2:
+            typer.echo(f"Warning: Cache version {cache_version} incompatible, ignoring", err=True)
             return None
 
-        # Validate segments have required fields and non-empty text
-        valid_segments = []
-        for seg in segments:
-            if not all(k in seg for k in ("start", "end", "text")):
-                typer.echo("Warning: Cache file has invalid segment structure, ignoring", err=True)
-                return None
-            if seg.get("text", "").strip():
-                valid_segments.append(seg)
-
-        # Reject cache if most segments are empty (indicates failed transcription)
-        if valid_segments == 0:
-            typer.echo("Warning: Cache file has no valid text segments, ignoring", err=True)
+        raw = cache_data.get("raw")
+        if not isinstance(raw, dict):
+            typer.echo("Warning: Cache missing 'raw' dict, ignoring", err=True)
             return None
 
-        if len(valid_segments) < len(segments) * 0.5:
-            typer.echo(
-                f"Warning: Cache file has {len(valid_segments)} valid segments out of {len(segments)} total, "
-                "ignoring and will rerun",
-                err=True,
-            )
+        if not isinstance(raw.get("text"), str) or not raw.get("text").strip():
+            typer.echo("Warning: Cache 'raw.text' missing or empty, ignoring", err=True)
             return None
 
-        typer.echo(f"Loaded {len(valid_segments)} segments from cache: {cache_path}", err=True)
-        return valid_segments
+        segments = raw.get("segments")
+        if not isinstance(segments, list) or len(segments) == 0:
+            typer.echo("Warning: Cache 'raw.segments' missing or empty, ignoring", err=True)
+            return None
+
+        typer.echo(f"Loaded cached transcription from: {cache_path}", err=True)
+        return cache_data
     except Exception as e:
         typer.echo(f"Warning: Cache file invalid, ignoring: {e}", err=True)
         return None
@@ -233,32 +328,77 @@ def load_cached_transcription(cache_path: Path) -> Optional[list[dict]]:
 
 def save_cached_transcription(
     cache_path: Path,
-    segments: list[dict],
+    raw: dict,
     model: str,
     backend: str,
+    params: dict,
     wall_time: float,
 ) -> None:
-    """Save transcription segments to cache.
+    """Save raw transcription to cache.
 
     Args:
         cache_path: Path to cache file
-        segments: List of segment dicts
+        raw: Raw dict from transcription result
         model: Model size used
         backend: Backend used
+        params: Parameters that affect ASR
         wall_time: Wall-clock time taken
     """
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     cache_data = {
+        "cache_version": 2,
         "model": model,
         "backend": backend,
+        "params": params,
         "wall_time": wall_time,
         "timestamp": __import__("time").time(),
-        "segments": segments,
+        "raw": raw,
     }
 
     cache_path.write_text(json.dumps(cache_data, ensure_ascii=False, indent=2), encoding="utf-8")
     typer.echo(f"Saved transcription to cache: {cache_path}", err=True)
+
+
+def _is_filler(text: str) -> bool:
+    """Check if text is only filler interjections.
+
+    Args:
+        text: Text to check
+
+    Returns:
+        True if only interjection chars (嗯啊呃哦唉)
+    """
+    filler_chars = set("嗯啊呃哦嗯哦")
+    return all(c in filler_chars for c in text.strip()) if text.strip() else False
+
+
+def _score(asr_text: str, canonical_line: str, target_script: str) -> float:
+    """Score ASR text against a canonical line.
+
+    Uses partial_ratio for short fragments (≤3 Chinese chars),
+    token_set_ratio otherwise.
+
+    Args:
+        asr_text: ASR output text
+        canonical_line: Canonical lyric line
+        target_script: Target script ("zh-hans" or "zh-hant")
+
+    Returns:
+        Score between 0 and 1
+    """
+    from rapidfuzz import fuzz
+    from zhconv import convert
+
+    asr_normalized = convert(asr_text, target_script)
+    canonical_normalized = convert(canonical_line, target_script)
+
+    chinese_char_count = sum(1 for c in asr_normalized if "\u4e00" <= c <= "\u9fff")
+
+    if chinese_char_count <= 3:
+        return fuzz.partial_ratio(asr_normalized, canonical_normalized) / 100.0
+    else:
+        return fuzz.token_set_ratio(asr_normalized, canonical_normalized) / 100.0
 
 
 def detect_chinese_script(text: str) -> str:
@@ -287,12 +427,14 @@ def canonical_line_snap(
     segments: list[dict],
     lyrics: list[str],
     threshold: float = 0.60,
-) -> list[tuple[float, str, bool]]:
+) -> tuple[list[tuple[float, str, bool, bool]], list[dict]]:
     """Snap ASR segments to canonical lyrics using fuzzy matching.
 
-    Automatically detects script (traditional/simplified) of canonical lyrics
-    and normalizes ASR output to match for scoring, but keeps original form
-    for output.
+    Implements a multi-pass algorithm:
+    - Merge adjacent fragmented ASR phrases
+    - Sequential greedy walk through canonical lines with forward window
+    - Force-anchor first 1-2 content segments (skip filler)
+    - Dedup consecutive identical snaps
 
     Args:
         segments: List of dicts with 'start', 'end', 'text' keys
@@ -300,9 +442,10 @@ def canonical_line_snap(
         threshold: Minimum fuzzy score to snap (0-1)
 
     Returns:
-        List of (start, final_text, replaced) tuples
+        Tuple of:
+        - List of (start, final_text, replaced, merged) tuples
+        - List of merged segment dicts with 'merged' flag
     """
-    from rapidfuzz import fuzz
     from zhconv import convert
 
     canonical_lines = [l for l in lyrics if l.strip()]
@@ -311,42 +454,170 @@ def canonical_line_snap(
     if not canonical_lines:
         return results
 
+    WINDOW_SIZE = 5
+    CHORUS_REPEAT_THRESHOLD = 0.85
+    MERGE_GAIN = 0.10
+    OPENING_ANCHOR_COUNT = 2
+
     sample_text = "".join(canonical_lines)
     target_script = detect_chinese_script(sample_text)
 
     canonical_lines_normalized = [convert(l, target_script) for l in canonical_lines]
 
-    for seg in segments:
+    if not segments:
+        return results
+
+    n_segments = len(segments)
+    n_canonical = len(canonical_lines)
+
+    merged_segments = []
+    i = 0
+
+    while i < n_segments:
+        seg_text = segments[i]["text"]
+
+        if i < n_segments - 1:
+            merged_text = seg_text + segments[i + 1]["text"]
+            score_i = _score(seg_text, canonical_lines[0], target_script)
+            best_score_i = score_i
+
+            for j, cl in enumerate(canonical_lines):
+                s = _score(seg_text, cl, target_script)
+                if s > best_score_i:
+                    best_score_i = s
+
+            best_score_merge = 0
+            for j, cl in enumerate(canonical_lines):
+                s = _score(merged_text, cl, target_script)
+                if s > best_score_merge:
+                    best_score_merge = s
+
+            chinese_char_count = sum(1 for c in seg_text if "\u4e00" <= c <= "\u9fff")
+            short_frag = chinese_char_count <= 3
+
+            should_merge = False
+            if short_frag:
+                if best_score_merge >= best_score_i:
+                    should_merge = True
+            elif (
+                best_score_i < threshold
+                and best_score_merge > best_score_i + MERGE_GAIN
+                and best_score_merge >= threshold
+            ):
+                should_merge = True
+
+            if should_merge:
+                merged_segments.append(
+                    {
+                        "start": segments[i]["start"],
+                        "end": segments[i + 1]["end"],
+                        "text": merged_text,
+                        "merged": True,
+                    }
+                )
+                i += 2
+                continue
+
+        merged_segments.append(
+            {
+                "start": segments[i]["start"],
+                "end": segments[i]["end"],
+                "text": seg_text,
+                "merged": False,
+            }
+        )
+        i += 1
+
+    results = []
+    cursor = 0
+
+    for seg in merged_segments:
         asr_text = seg["text"]
-        asr_normalized = convert(asr_text, target_script)
-        scored = [
-            (
-                canonical_lines[i],
-                fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0,
-            )
-            for i in range(len(canonical_lines))
-        ]
-        best_line, best_score = max(scored, key=lambda x: x[1])
+        seg_merged = seg.get("merged", False)
 
-        if best_score >= threshold:
-            results.append((seg["start"], best_line, True))
+        if cursor < n_canonical:
+            window_start = cursor
+            window_end = min(cursor + WINDOW_SIZE, n_canonical)
         else:
-            results.append((seg["start"], asr_text, False))
+            window_start = 0
+            window_end = min(WINDOW_SIZE, n_canonical)
 
-    return results
+        scored_window = [
+            _score(asr_text, canonical_lines[j], target_script)
+            for j in range(window_start, window_end)
+        ]
+        best_idx_in_window = -1
+        best_score_window = 0
+        if scored_window:
+            best_idx_in_window = max(range(len(scored_window)), key=lambda k: scored_window[k])
+            best_score_window = scored_window[best_idx_in_window]
+
+        scored_all = [_score(asr_text, cl, target_script) for cl in canonical_lines]
+        best_idx_all = max(range(n_canonical), key=lambda k: scored_all[k])
+        best_score_all = scored_all[best_idx_all]
+
+        selected_line = None
+        selected_idx = -1
+        replaced = False
+
+        if best_score_window >= threshold:
+            selected_line = canonical_lines[window_start + best_idx_in_window]
+            selected_idx = window_start + best_idx_in_window
+            replaced = True
+            cursor = selected_idx + 1
+        elif best_score_all >= CHORUS_REPEAT_THRESHOLD:
+            selected_line = canonical_lines[best_idx_all]
+            selected_idx = best_idx_all
+            replaced = True
+            cursor = best_idx_all + 1
+        else:
+            normalized_text = convert(asr_text, target_script)
+            results.append((seg["start"], normalized_text, False, seg_merged))
+            continue
+
+        if replaced and selected_line:
+            results.append((seg["start"], selected_line, True, seg_merged))
+
+    first_content_idx = 0
+    while first_content_idx < len(merged_segments) and _is_filler(
+        merged_segments[first_content_idx]["text"]
+    ):
+        first_content_idx += 1
+
+    anchor_start = first_content_idx
+    anchor_end = min(first_content_idx + OPENING_ANCHOR_COUNT, len(results), n_canonical)
+
+    for k in range(anchor_start, anchor_end):
+        if k < len(results) and k - anchor_start < n_canonical:
+            start, _, _, merged = results[k]
+            results[k] = (start, canonical_lines[k - anchor_start], True, merged)
+
+    deduped_results = []
+    last_replaced_text = None
+
+    for start, final_text, replaced, merged in results:
+        if replaced and final_text == last_replaced_text:
+            continue
+        deduped_results.append((start, final_text, replaced, merged))
+        if replaced:
+            last_replaced_text = final_text
+        else:
+            last_replaced_text = None
+
+    return deduped_results, merged_segments
 
 
-def results_to_lrc(results: list[tuple[float, str, bool]]) -> str:
+def results_to_lrc(results: list[tuple[float, str, bool, bool]]) -> str:
     """Convert results to LRC format.
 
     Args:
-        results: List of (start, text, replaced) tuples
+        results: List of (start, text, replaced, merged) tuples
 
     Returns:
         LRC format string
     """
     lines = []
-    for start, text, _replaced in results:
+    for start, text, _replaced, _merged in results:
         timestamp = format_timestamp(start)
         lines.append(f"{timestamp} {text}")
     return "\n".join(lines)
@@ -355,7 +626,7 @@ def results_to_lrc(results: list[tuple[float, str, bool]]) -> str:
 def write_diagnostic(
     segments: list[dict],
     lyrics: list[str],
-    results: list[tuple[float, str, bool]],
+    results: list[tuple[float, str, bool, bool]],
     output_path: Path,
     wall_time: float,
 ) -> None:
@@ -364,11 +635,10 @@ def write_diagnostic(
     Args:
         segments: List of segment dicts with 'start', 'end', 'text' keys
         lyrics: List of canonical lyric lines
-        results: List of (start, final_text, replaced) tuples
+        results: List of (start, final_text, replaced, merged) tuples
         output_path: Path to write diagnostic.md
         wall_time: Wall-clock elapsed time in seconds
     """
-    from rapidfuzz import fuzz
     from zhconv import convert
 
     canonical_lines = [l for l in lyrics if l.strip()]
@@ -380,26 +650,25 @@ def write_diagnostic(
     lines.append(f"Canonical lines: {len(canonical_lines)}\n")
     lines.append(f"Output lines: {len(results)}\n")
 
-    replaced_count = sum(1 for _, _, replaced in results if replaced)
+    replaced_count = sum(1 for _, _, replaced, _ in results if replaced)
     kept_count = len(results) - replaced_count
     lines.append(f"Replaced by snap: {replaced_count}\n")
     lines.append(f"Kept original: {kept_count}\n")
+    lines.append(f"Merged segments: {sum(1 for _, _, _, merged in results if merged)}\n")
 
     # Detect target script for scoring
     sample_text = "".join(canonical_lines)
     target_script = detect_chinese_script(sample_text) if sample_text else "zh-hans"
-    canonical_lines_normalized = [convert(l, target_script) for l in canonical_lines]
 
-    # Calculate average score
+    # Calculate average score using shared _score helper
     scores = []
     for seg, results_item in zip(segments, results):
         asr_text = seg["text"]
-        asr_normalized = convert(asr_text, target_script)
-        scored = [
-            fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0
-            for i in range(len(canonical_lines))
-        ]
-        best_score = max(scored)
+        best_score = 0
+        for cl in canonical_lines:
+            s = _score(asr_text, cl, target_script)
+            if s > best_score:
+                best_score = s
         scores.append(best_score)
 
     if scores:
@@ -427,23 +696,23 @@ def write_diagnostic(
         pass
 
     lines.append("\n## Segment Details\n\n")
-    lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced |\n")
-    lines.append("|-------|-----|----------|-------------------|-------|----------|\n")
+    lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged |\n")
+    lines.append("|-------|-----|----------|-------------------|-------|----------|--------|\n")
 
-    for seg, (start, final_text, replaced) in zip(segments, results):
+    for seg, (start, final_text, replaced, merged) in zip(segments, results):
         asr_text = seg["text"]
-        asr_normalized = convert(asr_text, target_script)
-        scored = [
-            (
-                canonical_lines[i],
-                fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0,
-            )
-            for i in range(len(canonical_lines))
-        ]
-        best_line, best_score = max(scored, key=lambda x: x[1])
+        best_score = 0
+        best_line = ""
+        for cl in canonical_lines:
+            s = _score(asr_text, cl, target_script)
+            if s > best_score:
+                best_score = s
+                best_line = cl
+
+        merged_mark = "Yes" if merged else ""
 
         lines.append(
-            f"| {seg['start']:6.2f} | {seg['end']:4.2f} | {asr_text[:30]:30s} | {best_line[:30]:30s} | {best_score:5.2f} | {'Yes' if replaced else 'No'} |\n"
+            f"| {seg['start']:6.2f} | {seg['end']:4.2f} | {asr_text[:30]:30s} | {best_line[:30]:30s} | {best_score:5.2f} | {'Yes' if replaced else 'No':6s} | {merged_mark:6s} |\n"
         )
 
     output_path.write_text("".join(lines))
@@ -539,25 +808,45 @@ def main(
     else:
         typer.echo("Transcribing full song", err=True)
 
+    # Build params dict for cache key
+    params = {
+        "use_vocals": use_vocals,
+        "lyrics_context": lyrics_context,
+        "context_max_chars": context_max_chars,
+        "start": start,
+        "end": effective_end,
+        "language": "Chinese",
+    }
+    params_hash = compute_params_hash(params)
+
     # Set up cache directory
     if cache_dir is None:
         cache_dir = Path.home() / ".cache" / "qwen3_asr"
-    cache_path = cache_file_name(cache_dir, song_id, model, backend)
+    cache_path = cache_file_name(cache_dir, song_id, model, backend, params_hash)
 
-    segments: list[dict] = []
+    raw: Optional[dict] = None
     wall_time = 0.0
+    used_cache = False
 
     # Check for cached transcription
-    used_cache = False
     if reuse_transcription and not force_rerun:
-        cached_segments = load_cached_transcription(cache_path)
-        if cached_segments is not None:
-            segments = cached_segments
+        cached_data = load_cached_transcription(cache_path)
+        if cached_data is not None:
+            raw = cached_data.get("raw")
             used_cache = True
             typer.echo("Using cached transcription", err=True)
 
+    # No valid cache available — only run inference if explicitly requested
+    if raw is None and not force_rerun:
+        typer.echo(
+            "No valid cached transcription available. "
+            "Rerun with --force-rerun to perform qwen3-asr inference.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     # Run transcription if not using cache
-    if not used_cache:
+    if raw is None:
         # Extract segment if needed
         transcribe_path = audio_path
         segment_path: Optional[Path] = None
@@ -589,30 +878,11 @@ def main(
             wall_time = time.time() - wall_time_start
             typer.echo(f"Transcription completed in {wall_time:.2f}s", err=True)
 
-            # Save raw result if requested
-            if save_raw:
-                save_raw.mkdir(parents=True, exist_ok=True)
-                raw_file = save_raw / "asr_raw.json"
-                result_dict = {}
-                if hasattr(result, "__dict__"):
-                    result_dict = result.__dict__
-                elif isinstance(result, dict):
-                    result_dict = result
-                raw_file.write_text(
-                    json.dumps(result_dict, ensure_ascii=False, indent=2, default=str)
-                )
-                typer.echo(f"Saved raw ASR result to: {raw_file}", err=True)
-
-            segments = extract_segments(result)
-
-            if not segments:
-                typer.echo("Error: No segments extracted from ASR result", err=True)
-                raise typer.Exit(1)
-
-            typer.echo(f"Extracted {len(segments)} segments", err=True)
+            # Convert to raw dict
+            raw = raw_to_dict(result)
 
             # Save to cache
-            save_cached_transcription(cache_path, segments, model, backend, wall_time)
+            save_cached_transcription(cache_path, raw, model, backend, params, wall_time)
 
         finally:
             if segment_path and segment_path.exists():
@@ -620,17 +890,29 @@ def main(
 
         typer.echo(f"Saved transcription to cache for reuse", err=True)
 
+    # Write raw output if requested (works on cache hit or miss)
+    if save_raw:
+        save_raw.mkdir(parents=True, exist_ok=True)
+        raw_file = save_raw / "asr_raw.json"
+        raw_file.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+        typer.echo(f"Saved raw ASR result to: {raw_file}", err=True)
+
+    # Extract segments from raw dict
+    segments = extract_segments(raw)
+
     if not segments:
-        typer.echo("Error: No segments available", err=True)
+        typer.echo("Error: No segments extracted from ASR result", err=True)
         raise typer.Exit(1)
+
+    typer.echo(f"Extracted {len(segments)} segments", err=True)
 
     if not used_cache:
         typer.echo(f"Extracted {len(segments)} segments", err=True)
 
     # Process segments
     if snap:
-        results = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
-        replaced_count = sum(1 for _, _, replaced in results if replaced)
+        results, merged_info = canonical_line_snap(segments, lyrics, threshold=snap_threshold)
+        replaced_count = sum(1 for _, _, replaced, _ in results if replaced)
         typer.echo(
             f"Canonical-line snap: {replaced_count}/{len(results)} segments replaced", err=True
         )
@@ -642,7 +924,7 @@ def main(
             write_diagnostic(segments, lyrics, results, diag_file, wall_time)
             typer.echo(f"Saved diagnostic report to: {diag_file}", err=True)
     else:
-        results = [(seg["start"], seg["text"], False) for seg in segments]
+        results = [(seg["start"], seg["text"], False, False) for seg in segments]
         typer.echo(f"Snap disabled, using raw ASR output", err=True)
 
     # Convert to LRC
