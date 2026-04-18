@@ -715,7 +715,8 @@ def _strip_timestamp(line: str) -> str:
     Expected format: [HH:MM:SS]    text
     """
     import re
-    match = re.search(r'^\[.*?\]\s*', line)
+    line = line.lstrip()
+    match = re.search(r'\[.*?\]\s*', line)
     if match:
         return line[match.end():].strip()
     return line.strip()
