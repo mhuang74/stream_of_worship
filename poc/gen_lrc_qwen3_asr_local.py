@@ -734,47 +734,144 @@ def generate_comparison_report(
         output_lyrics: List of output lyric lines
         output_path: Path to write comparison report
     """
+    from difflib import SequenceMatcher
+
     lines = []
-    lines.append("VERIFIED LINE # | VERIFIED TEXT                          | OUTPUT")
-    lines.append("---------------+----------------------------------------+-------------------------")
+    lines.append("ALIGNED LYRICS COMPARISON")
+    lines.append("=========================\n")
+    lines.append("Key:")
+    lines.append("[INPUT]  = verified.txt (reference)")
+    lines.append("[OUTPUT] = out.txt (transcription)")
+    lines.append("   GAP   = Line missing from output")
+    lines.append("   MISMATCH = Wrong content")
+    lines.append("")
+    lines.append("INPUT Line    | OUTPUT Line   | Content")
+    lines.append("--------------+---------------+------------------------------")
+
+    matcher = SequenceMatcher(None, verified_lyrics, output_lyrics)
 
     matching_count = 0
-    missing_lines = []
-    differing_lines = []
-    differing_details = []
-    extra_lines = []
+    gap_ranges = []
+    mismatch_details = []
 
-    output_idx = 0
-    for i, verified_text in enumerate(verified_lyrics, 1):
+    pending_gap_lines = []
+    pending_gap_start = None
+    gap_number = 0
 
-        if output_idx < len(output_lyrics):
-            output_text = output_lyrics[output_idx]
-            if output_text == verified_text:
-                lines.append(f"{i:<14} | {verified_text:<38} | {output_text}")
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            # Process pending gap before showing matched lines
+            if pending_gap_lines:
+                gap_start = pending_gap_start
+                gap_last = gap_start + len(pending_gap_lines) - 1
+                gap_ranges.append((gap_start, gap_last))
+                gap_number += 1
+                lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+                for gi, line in enumerate(pending_gap_lines):
+                    lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
+                lines.append("")
+                pending_gap_lines = []
+                pending_gap_start = None
+
+            # Show aligned lines
+            for idx in range(i1, i2):
+                vi = idx + 1
+                vj = j1 + (idx - i1) + 1
+                lines.append(f"{vi:<14} | {vj:<14} | {verified_lyrics[idx]}")
                 matching_count += 1
-                output_idx += 1
-            else:
-                lines.append(f"{i:<14} | {verified_text:<38} | {output_text} [DIFFERS]")
-                differing_lines.append(i)
-                differing_details.append((i, verified_text, output_text))
-                output_idx += 1
-        else:
-            lines.append(f"{i:<14} | {verified_text:<38} | [MISSING]")
-            missing_lines.append(i)
 
-    total_verified = len(verified_lyrics)
-    matching_rate = (matching_count / total_verified * 100) if total_verified > 0 else 0
+        elif tag == "delete":
+            # Gap in output - defer processing
+            if pending_gap_start is None:
+                pending_gap_start = i1 + 1
+            for idx in range(i1, i2):
+                pending_gap_lines.append(verified_lyrics[idx])
+
+        elif tag == "insert":
+            # Process pending gap before showing extra lines
+            if pending_gap_lines:
+                gap_start = pending_gap_start
+                gap_last = gap_start + len(pending_gap_lines) - 1
+                gap_ranges.append((gap_start, gap_last))
+                gap_number += 1
+                lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+                for gi, line in enumerate(pending_gap_lines):
+                    lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
+                lines.append("")
+                pending_gap_lines = []
+                pending_gap_start = None
+
+            # Show extra output lines
+            for idx in range(j1, j2):
+                vj = idx + 1
+                lines.append(f"{'EXTRA':<14} | {vj:<14} | {output_lyrics[idx]}")
+
+        elif tag == "replace":
+            # Process pending gap before showing mismatch
+            if pending_gap_lines:
+                gap_start = pending_gap_start
+                gap_last = gap_start + len(pending_gap_lines) - 1
+                gap_ranges.append((gap_start, gap_last))
+                gap_number += 1
+                lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+                for gi, line in enumerate(pending_gap_lines):
+                    lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
+                lines.append("")
+                pending_gap_lines = []
+                pending_gap_start = None
+
+            # Show mismatch
+            vi = i1 + 1
+            vj = j1 + 1
+            expected = verified_lyrics[i1]
+            actual = output_lyrics[j1]
+            lines.append(f"{vi:<14} | {vj:<14} | {expected} [DIFFERS]")
+            lines.append(f"{'':<14} | {'':<14} (expected: {expected})")
+            lines.append(f"{'':<14} | {'':<14} (got: {actual})")
+            mismatch_details.append((vi, expected, actual))
+
+    # Handle final pending gap
+    if pending_gap_lines:
+        gap_start = pending_gap_start
+        gap_last = gap_start + len(pending_gap_lines) - 1
+        gap_ranges.append((gap_start, gap_last))
+        gap_number += 1
+        lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+        for gi, line in enumerate(pending_gap_lines):
+            lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
+        lines.append("")
+
+    lines.append("")
+    lines.append("DETAILED GAP ANALYSIS")
+    lines.append("=====================")
+    if gap_ranges:
+        for i, (g_start, g_last) in enumerate(gap_ranges, 1):
+            lines.append(f"GAP #{i}: Lines {g_start}-{g_last}")
+    else:
+        lines.append("No gaps detected in transcription")
 
     lines.append("")
     lines.append("SUMMARY")
     lines.append("=======")
-    lines.append(f"Missing lines: {', '.join(str(x) for x in missing_lines) or 'None'}")
-    lines.append(f"Content differs: {', '.join(str(x) for x in differing_lines) or 'None'}")
-    if differing_details:
+    total_verified = len(verified_lyrics)
+    matching_rate = (matching_count / total_verified * 100) if total_verified > 0 else 0
+
+    if gap_ranges:
+        gap_list = ", ".join(f"Lines {s}-{l}" for s, l in gap_ranges)
+        lines.append(f"Missing lines: {gap_list}")
+    else:
+        lines.append("Missing lines: None")
+
+    if mismatch_details:
+        lines.append(f"Content differs: {', '.join(str(x[0]) for x in mismatch_details)}")
         lines.append("")
         lines.append("Differences:")
-        for line_num, expected, actual in differing_details:
-            lines.append(f"  Line {line_num} (should be: {expected}, got: {actual})")
+        for line_num, expected, actual in mismatch_details:
+            lines.append(f"  Line {line_num}: (expected: {expected}, got: {actual})")
+    else:
+        lines.append("Content differs: None")
+
+    lines.append(f"Matching rate: {matching_count}/{total_verified} lines ({matching_rate:.1f}%)")
 
     output_path.write_text("\n".join(lines))
 
@@ -1126,8 +1223,8 @@ def main(
             _strip_timestamp(l) for l in verified_lyrics.read_text(encoding="utf-8").splitlines() if l.strip()
         ]
 
-        # Extract output lines from results
-        output_lines = [text for _, text, _, _ in results]
+        # Extract output lines from results (also strip timestamps in case they're present)
+        output_lines = [_strip_timestamp(text) for _, text, _, _ in results]
 
         # Write comparison
         generate_comparison_report(verified_lines, output_lines, comparison_output)
