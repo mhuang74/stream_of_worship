@@ -734,56 +734,47 @@ def generate_comparison_report(
         output_lyrics: List of output lyric lines
         output_path: Path to write comparison report
     """
-    from difflib import SequenceMatcher
-
     lines = []
-    lines.append("ALIGNED LYRICS COMPARISON")
-    lines.append("=========================\n")
-    lines.append("Key:")
-    lines.append("[INPUT]  = verified.txt (reference)")
-    lines.append("[OUTPUT] = out.txt (transcription)")
-    lines.append("   GAP   = Line missing from output")
-    lines.append("   MISMATCH = Wrong content")
-    lines.append("")
-    lines.append("INPUT Line    | OUTPUT Line   | Content")
-    lines.append("--------------+---------------+------------------------------")
-
-    matcher = SequenceMatcher(None, verified_lyrics, output_lyrics)
+    lines.append("VERIFIED LINE # | VERIFIED TEXT                          | OUTPUT")
+    lines.append("---------------+----------------------------------------+-------------------------")
 
     matching_count = 0
-    gap_count = 0
-    mismatch_count = 0
+    missing_lines = []
+    differing_lines = []
+    differing_details = []
+    extra_lines = []
 
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        verified_section = verified_lyrics[i1:i2]
-        output_section = output_lyrics[j1:j2]
+    output_idx = 0
+    for i, verified_text in enumerate(verified_lyrics, 1):
 
-        if tag == "equal":
-            for idx in range(i1, i2):
-                lines.append(f"{idx + 1:<14} | {j1 + (idx - i1) + 1:<14} | {verified_lyrics[idx]}")
+        if output_idx < len(output_lyrics):
+            output_text = output_lyrics[output_idx]
+            if output_text == verified_text:
+                lines.append(f"{i:<14} | {verified_text:<38} | {output_text}")
                 matching_count += 1
-        elif tag == "delete":
-            for idx in range(i1, i2):
-                lines.append(f"{idx + 1:<14} |      GAP      | {verified_lyrics[idx]}")
-                gap_count += 1
-        elif tag == "insert":
-            for idx in range(j1, j2):
-                lines.append(f"{'EXTRA':<14} | {idx + 1:<14} | {output_lyrics[idx]}")
-        elif tag == "replace":
-            for idx, (v_line, o_line) in enumerate(zip(verified_section, output_section)):
-                vi = i1 + idx + 1
-                vj = j1 + idx + 1
-                lines.append(f"{vi:<14} | {vj:<14} | {v_line} [DIFFERS]")
-                lines.append(f"{'':<14} | {'':<14} (expected: {v_line})")
-                lines.append(f"{'':<14} | {'':<14} (got: {o_line})")
-                mismatch_count += 1
+                output_idx += 1
+            else:
+                lines.append(f"{i:<14} | {verified_text:<38} | {output_text} [DIFFERS]")
+                differing_lines.append(i)
+                differing_details.append((i, verified_text, output_text))
+                output_idx += 1
+        else:
+            lines.append(f"{i:<14} | {verified_text:<38} | [MISSING]")
+            missing_lines.append(i)
+
+    total_verified = len(verified_lyrics)
+    matching_rate = (matching_count / total_verified * 100) if total_verified > 0 else 0
 
     lines.append("")
     lines.append("SUMMARY")
     lines.append("=======")
-    lines.append(f"Matching rate: {matching_count}/{len(verified_lyrics)} lines ({matching_count * 100 // len(verified_lyrics)}%)")
-    lines.append(f"Missing lines (gaps): {gap_count}")
-    lines.append(f"Content differences: {mismatch_count}")
+    lines.append(f"Missing lines: {', '.join(str(x) for x in missing_lines) or 'None'}")
+    lines.append(f"Content differs: {', '.join(str(x) for x in differing_lines) or 'None'}")
+    if differing_details:
+        lines.append("")
+        lines.append("Differences:")
+        for line_num, expected, actual in differing_details:
+            lines.append(f"  Line {line_num} (should be: {expected}, got: {actual})")
 
     output_path.write_text("\n".join(lines))
 
