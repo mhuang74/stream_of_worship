@@ -161,6 +161,29 @@ poc_qwen3_local = [
     "zhconv>=1.4.0",
 ]
 
+# LRC quality scoring via TTS round-trip (Apple Silicon only)
+# Note: mlx-audio>=0.3.0 must be installed separately due to dependency conflicts
+# with transcription_qwen3. To use this feature:
+#   1. Install base dependencies: uv sync --extra score_lrc_base
+#   2. Install mlx-audio: uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+score_lrc_base = [
+    "soundfile>=0.12.0",
+    "librosa>=0.10.0",
+    "numpy>=1.24.0",
+    "torch>=2.8.0,<2.9.0",
+    "transformers>=4.40.0",  # wav2vec2-xls-r feature extractor + model
+    "zhconv>=1.4.0",         # Traditional → Simplified normalization
+    "typer>=0.12.0",
+    "scipy>=1.10.0",         # DTW alignment
+]
+
+# Full score_lrc (requires manual install of mlx-audio>=0.3.0)
+score_lrc = [
+    "stream-of-worship[score_lrc_base]",
+    # mlx-audio>=0.3.0 must be installed separately:
+    # uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+]
+
 # All dependencies together
 all = [
     "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
