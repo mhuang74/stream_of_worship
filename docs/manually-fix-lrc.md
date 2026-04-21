@@ -303,9 +303,11 @@ uv pip install "mlx-audio>=0.3.0" --prerelease=allow
 
 ## Tips for Better Results
 
-1. **Use vocals-only audio:** The forced aligner works best with cleaned vocal stems. The script automatically prioritizes these if available.
+1. **Generate clean vocal stems first:** Always run Step 0 to create clean vocals with echo/reverb removal. This dramatically improves alignment accuracy for all subsequent steps.
 
-2. **Choose the right snap algorithm:**
+2. **Use vocals-only audio:** The forced aligner works best with cleaned vocal stems. The script automatically prioritizes these if available.
+
+3. **Choose the right snap algorithm:
    - Simple songs without repetition: Use `--snap-algo greedy`
    - Songs with choruses/bridges: Use `--snap-algo dp` with adjusted penalties
 
