@@ -24,6 +24,55 @@ uv pip install "mlx-audio>=0.3.0" --prerelease=allow
 
 ## Step-by-Step Workflow
 
+### Step 0: Generate Clean Vocal Stems (Optional but Recommended)
+
+Generate high-quality vocal stems using two-stage vocal extraction (BS-Roformer + De-Echo). This produces cleaner vocals for better alignment accuracy.
+
+```bash
+# Generate clean vocals from a local audio file
+uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
+  /path/to/song.mp3 \
+  -o ./tmp_output/vocals
+
+# Or if you have the cached audio, find it and process it
+uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
+  ~/.cache/stream-of-worship/<song_id>/audio.mp3 \
+  -o ./tmp_output/vocals
+```
+
+**What This Does:**
+1. **Stage 1**: Extracts vocals from the mix using BS-Roformer-Viperx-1297
+2. **Stage 2**: Removes echo/reverb using UVR-De-Echo-Normal
+
+**Output Files:**
+- `./tmp_output/vocals/stage1_vocal_separation/` - Initial vocal separation
+- `./tmp_output/vocals/stage2_dereverb/` - Clean vocals (no echo)
+- Look for files containing `(No Echo)` or `dry` for the cleanest vocals
+
+**Replacing Cached Stems:**
+
+Once you have the clean vocals, replace the cached vocal stem so that subsequent steps use it:
+
+```bash
+# Find the clean vocals file (usually contains "No Echo" in the name)
+CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" | head -1)
+
+# Replace the cached vocal stem
+CACHE_DIR="$HOME/.cache/stream-of-worship/<song_id>"
+cp "$CLEAN_VOCALS" "$CACHE_DIR/vocals.flac"
+
+# Verify the replacement
+ls -la "$CACHE_DIR/"
+```
+
+**Key Options:**
+- `--dereverb-model` - Choose de-echo model:
+  - `UVR-De-Echo-Normal.pth` (default, balanced)
+  - `UVR-De-Echo-Aggressive.pth` (stronger echo removal)
+- `--reuse-stage1` - Skip Stage 1 if already run (saves time)
+
+---
+
 ### Step 1: Transcribe Lyrics with Qwen3-ASR MLX
 
 Generate a new transcription using the local MLX-based Qwen3-ASR model. This gives you word-level timestamps with context biasing optional.
@@ -156,6 +205,15 @@ Here's a complete example showing all steps for a single song:
 # Create temporary output directory
 mkdir -p tmp_output
 
+# Step 0: Generate clean vocal stems (optional but recommended)
+uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
+  ~/.cache/stream-of-worship/dan_dan_ai_mi_249/audio.mp3 \
+  -o ./tmp_output/vocals
+
+# Replace cached vocals with clean version
+CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" | head -1)
+cp "$CLEAN_VOCALS" "$HOME/.cache/stream-of-worship/dan_dan_ai_mi_249/vocals.flac"
+
 # Step 1: Transcribe with Qwen3-ASR
 uv run --extra poc_qwen3_mlx python poc/gen_lrc_qwen3_asr_local.py \
   --save-raw ./tmp_output \
@@ -270,6 +328,12 @@ For reference, here are the pyproject.toml extras used in this workflow:
 # Unified: All LRC fixing tools in one extra (recommended)
 fix_lrc = [
     "stream-of-worship[poc_qwen3_mlx,poc_qwen3_align,score_lrc_base]",
+]
+
+# Stem separation for clean vocal extraction (BS-Roformer + De-Echo)
+stem_separation = [
+    "audio-separator>=0.30.0",
+    "onnxruntime>=1.17.0",
 ]
 
 # Qwen3-ASR local MLX transcription (Apple Silicon only)
