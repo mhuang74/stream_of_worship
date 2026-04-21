@@ -6,15 +6,17 @@ against the original vocal stem in phonetic embedding space to detect
 content errors.
 
 Usage:
-    PYTHONPATH=. uv run --extra score_lrc python poc/score_lrc_quality.py \
-        --stem tmp_input/wo_yao_clean_vocals.flac \
-        --lrc tmp_output/wo_yao.lrc \
-        --report tmp_output/wo_yao.quality.md \
-        --score-json tmp_output/wo_yao.quality.json
+    PYTHONPATH=src:. uv run --extra score_lrc_base python poc/score_lrc_quality.py \
+        wo_yao_quan_xin_zan_mei_244
+
+    PYTHONPATH=src:. uv run --extra score_lrc_base python poc/score_lrc_quality.py \
+        wo_yao_quan_xin_zan_mei_244 \
+        --stem /custom/path/vocals.flac \
+        --lrc /custom/path/lyrics.lrc
 
 Installation Notes:
     This script requires mlx-audio>=0.3.0 for Qwen3-TTS support. Due to
-    dependency conflicts with transcription_qwen3 (which requires qwen-asr
+    dependency conflicts with poc_qwen3_align (which requires qwen-asr
     that pins transformers==4.57.6), mlx-audio must be installed separately:
 
         uv pip install mlx-audio>=0.3.0 --prerelease=allow
@@ -27,6 +29,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sqlite3
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +38,9 @@ from typing import Optional
 
 import numpy as np
 import typer
+
+# Add src directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def format_timestamp(seconds: float) -> str:
@@ -43,9 +50,7 @@ def format_timestamp(seconds: float) -> str:
     return f"[{minutes:02d}:{secs:05.2f}]"
 
 
-# LRC Parser (copied from src/stream_of_worship/admin/services/lrc_parser.py)
-# We inline this to avoid importing the full package which has many dependencies
-
+# LRC Parser
 from dataclasses import dataclass
 from typing import List
 
@@ -72,7 +77,6 @@ def parse_lrc(content: str) -> LRCFile:
     import re
 
     lines = []
-    # Match [mm:ss.xx] or [mm:ss.xxx] format
     pattern = r"\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)"
 
     for line in content.split("\n"):
@@ -99,6 +103,199 @@ def parse_lrc(content: str) -> LRCFile:
 
 
 app = typer.Typer(help="LRC quality scorer via TTS round-trip comparison")
+
+
+# =============================================================================
+# Config and path resolution (inlined to avoid heavy dependencies)
+# =============================================================================
+
+def load_admin_config(config_path: Optional[Path] = None):
+    """Load admin config from file or default location."""
+    import tomllib
+
+    if config_path is None:
+        config_path = Path.home() / ".config" / "sow-admin" / "config.toml"
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    content = config_path.read_text()
+    config = tomllib.loads(content)
+
+    return config
+
+
+def get_recording_from_db(db_path: Path, song_id: str) -> Optional[dict]:
+    """Get recording hash_prefix for a song from the database."""
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Find song by ID (songs.id is the primary key, not song_id)
+    cursor.execute(
+        "SELECT id FROM songs WHERE id = ?",
+        (song_id,)
+    )
+    song_row = cursor.fetchone()
+
+    if not song_row:
+        conn.close()
+        return None
+
+    song_db_id = song_row["id"]
+
+    # Find recording for this song
+    cursor.execute(
+        "SELECT hash_prefix FROM recordings WHERE song_id = ?",
+        (song_db_id,)
+    )
+    recording_row = cursor.fetchone()
+
+    conn.close()
+
+    if recording_row:
+        return {"hash_prefix": recording_row["hash_prefix"]}
+    return None
+
+
+def download_from_r2(
+    s3_key: str,
+    dest_path: Path,
+    bucket: str,
+    endpoint_url: str,
+    region: str = "auto",
+) -> bool:
+    """Download a file from R2."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    access_key = os.environ.get("SOW_R2_ACCESS_KEY_ID")
+    secret_key = os.environ.get("SOW_R2_SECRET_ACCESS_KEY")
+
+    if not access_key or not secret_key:
+        raise ValueError(
+            "R2 credentials not set. Set SOW_R2_ACCESS_KEY_ID and SOW_R2_SECRET_ACCESS_KEY."
+        )
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name=region,
+    )
+
+    try:
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        client.download_file(bucket, s3_key, str(dest_path))
+        return dest_path.exists()
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code in ("404", "NoSuchKey"):
+            typer.echo(f"File not found in R2: {s3_key}", err=True)
+        else:
+            typer.echo(f"Error downloading from R2: {e}", err=True)
+        return False
+    except Exception as e:
+        typer.echo(f"Error downloading from R2: {e}", err=True)
+        return False
+
+
+def resolve_lrc_path(
+    song_id: str,
+    cache_dir: Path,
+    db_path: Path,
+    r2_bucket: str,
+    r2_endpoint: str,
+) -> Path:
+    """Resolve LRC path for a song, downloading from R2 if not cached."""
+    input_path = Path(song_id).expanduser()
+
+    # Direct file path
+    if input_path.exists() and input_path.suffix == ".lrc":
+        return input_path
+
+    # Look up song in database
+    recording = get_recording_from_db(db_path, song_id)
+    if not recording:
+        typer.echo(f"Error: Song not found: {song_id}", err=True)
+        raise typer.Exit(1)
+
+    hash_prefix = recording["hash_prefix"]
+    lrc_path = cache_dir / hash_prefix / "lrc" / "lyrics.lrc"
+
+    # Check local cache first
+    if lrc_path.exists():
+        typer.echo(f"Using cached LRC: {lrc_path}", err=True)
+        return lrc_path
+
+    # Download from R2
+    typer.echo("Downloading LRC from R2...", err=True)
+    s3_key = f"{hash_prefix}/lyrics.lrc"
+
+    if download_from_r2(s3_key, lrc_path, r2_bucket, r2_endpoint):
+        typer.echo(f"Downloaded LRC to: {lrc_path}", err=True)
+        return lrc_path
+
+    # Failed to download
+    typer.echo(f"Error: LRC not found in local cache or R2: {song_id}", err=True)
+    typer.echo(f"Run 'sow-admin audio lrc {song_id}' to generate LRC first.", err=True)
+    raise typer.Exit(1)
+
+
+def resolve_stem_path(
+    song_id: str,
+    cache_dir: Path,
+    db_path: Path,
+    r2_bucket: str,
+    r2_endpoint: str,
+) -> Path:
+    """Resolve vocal stem path for a song, downloading from R2 if not cached."""
+    input_path = Path(song_id).expanduser()
+
+    # Direct file path
+    if input_path.exists() and input_path.suffix in (".flac", ".wav", ".mp3"):
+        return input_path
+
+    # Look up song in database
+    recording = get_recording_from_db(db_path, song_id)
+    if not recording:
+        typer.echo(f"Error: Song not found: {song_id}", err=True)
+        raise typer.Exit(1)
+
+    hash_prefix = recording["hash_prefix"]
+
+    # Try vocals stem first
+    vocals_path = cache_dir / hash_prefix / "stems" / "vocals.wav"
+    if vocals_path.exists():
+        typer.echo(f"Using cached vocals stem: {vocals_path}", err=True)
+        return vocals_path
+
+    # Download vocals stem from R2
+    typer.echo("Downloading vocals stem from R2...", err=True)
+    s3_key = f"{hash_prefix}/stems/vocals.wav"
+
+    if download_from_r2(s3_key, vocals_path, r2_bucket, r2_endpoint):
+        typer.echo(f"Downloaded vocals stem to: {vocals_path}", err=True)
+        return vocals_path
+
+    # Try main audio as fallback
+    main_audio_path = cache_dir / hash_prefix / "audio.mp3"
+    if main_audio_path.exists():
+        typer.echo(f"Using cached main audio: {main_audio_path}", err=True)
+        return main_audio_path
+
+    # Download main audio from R2
+    typer.echo("Downloading main audio from R2...", err=True)
+    s3_key = f"{hash_prefix}/audio.mp3"
+
+    if download_from_r2(s3_key, main_audio_path, r2_bucket, r2_endpoint):
+        typer.echo(f"Downloaded main audio to: {main_audio_path}", err=True)
+        return main_audio_path
+
+    # Failed to find any audio
+    typer.echo(f"Error: Could not find or download audio for: {song_id}", err=True)
+    raise typer.Exit(1)
 
 
 # =============================================================================
@@ -154,18 +351,7 @@ class MLXQwen3TTS:
         return self._model.sample_rate
 
     def synthesize(self, text: str, voice: str = "Chelsie", language: str = "Mandarin") -> np.ndarray:
-        """Synthesize audio from text.
-
-        Args:
-            text: Text to synthesize
-            voice: Voice name (e.g., "Chelsie")
-            language: Language code
-
-        Returns:
-            Audio as float32 numpy array
-        """
-        import mlx.core as mx
-
+        """Synthesize audio from text."""
         results = list(self._model.generate(text=text, voice=voice, language=language))
         audio_mx = results[0].audio
         return np.array(audio_mx, dtype=np.float32)
@@ -204,48 +390,25 @@ class Wav2Vec2Embedder:
         typer.echo("Embedding model loaded.", err=True)
 
     def embed(self, audio: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
-        """Extract phonetic embedding from audio.
-
-        Args:
-            audio: Audio samples as float32 array
-            sample_rate: Sample rate of audio
-
-        Returns:
-            Mean-pooled embedding vector
-        """
+        """Extract phonetic embedding from audio."""
         import torch
 
-        # Process through feature extractor
         inputs = self._processor(
             audio,
             sampling_rate=sample_rate,
             return_tensors="pt",
             padding=True,
         )
-
-        # Move to device
         input_values = inputs.input_values.to(self._device)
 
-        # Forward pass
         with torch.no_grad():
             outputs = self._model(input_values)
 
-        # Mean pool the hidden states across time dimension
-        # outputs.last_hidden_state shape: (batch, time, hidden_dim)
-        embeddings = outputs.last_hidden_state.mean(dim=1)  # (batch, hidden_dim)
-
+        embeddings = outputs.last_hidden_state.mean(dim=1)
         return embeddings.cpu().numpy().squeeze()
 
     def embed_framewise(self, audio: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
-        """Extract framewise phonetic embeddings from audio.
-
-        Args:
-            audio: Audio samples as float32 array
-            sample_rate: Sample rate of audio
-
-        Returns:
-            Framewise embeddings array of shape (time, hidden_dim)
-        """
+        """Extract framewise phonetic embeddings from audio."""
         import torch
 
         inputs = self._processor(
@@ -259,7 +422,6 @@ class Wav2Vec2Embedder:
         with torch.no_grad():
             outputs = self._model(input_values)
 
-        # Return framewise embeddings: (time, hidden_dim)
         return outputs.last_hidden_state.squeeze(0).cpu().numpy()
 
 
@@ -268,17 +430,7 @@ class Wav2Vec2Embedder:
 # =============================================================================
 
 def get_cache_path(text: str, voice: str, model_id: str, cache_dir: Path) -> Path:
-    """Get cache path for TTS audio.
-
-    Args:
-        text: Text to synthesize
-        voice: Voice name
-        model_id: TTS model ID
-        cache_dir: Base cache directory
-
-    Returns:
-        Path to cached WAV file
-    """
+    """Get cache path for TTS audio."""
     key = f"{model_id}:{voice}:{text}"
     sha1 = hashlib.sha1(key.encode("utf-8")).hexdigest()
     return cache_dir / f"{sha1}.wav"
@@ -291,22 +443,10 @@ def synthesize_cached(
     cache_dir: Path = Path.home() / ".cache" / "qwen3_tts",
     normalize_zh: bool = True,
 ) -> tuple[np.ndarray, int]:
-    """Synthesize audio with caching.
-
-    Args:
-        text: Text to synthesize
-        tts: TTS model instance
-        voice: Voice name
-        cache_dir: Cache directory
-        normalize_zh: Whether to normalize Traditional to Simplified Chinese
-
-    Returns:
-        Tuple of (audio_array, sample_rate)
-    """
+    """Synthesize audio with caching."""
     import soundfile as sf
     from zhconv import convert
 
-    # Normalize Chinese characters
     if normalize_zh:
         text = convert(text, "zh-hans")
 
@@ -316,11 +456,9 @@ def synthesize_cached(
         audio, sr = sf.read(str(cache_path), dtype="float32")
         return audio, sr
 
-    # Synthesize
     audio = tts.synthesize(text, voice=voice, language="Mandarin")
     sr = tts.sample_rate
 
-    # Save to cache
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(cache_path), audio, sr)
 
@@ -337,33 +475,19 @@ def load_stem_window(
     end: float,
     target_sr: int = 16000,
 ) -> np.ndarray:
-    """Load a time window from the stem audio.
-
-    Args:
-        stem_path: Path to stem audio file
-        start: Start time in seconds
-        end: End time in seconds
-        target_sr: Target sample rate
-
-    Returns:
-        Audio samples as float32 mono array at target_sr
-    """
+    """Load a time window from the stem audio."""
     import librosa
     import soundfile as sf
 
-    # Load with soundfile first to get native sample rate
     audio, sr = sf.read(str(stem_path), dtype="float32")
 
-    # Convert to mono if stereo
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
 
-    # Extract window
     start_sample = int(start * sr)
     end_sample = int(end * sr)
     audio = audio[start_sample:end_sample]
 
-    # Resample to target if needed
     if sr != target_sr:
         audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
 
@@ -380,21 +504,11 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def dtw_distance(x: np.ndarray, y: np.ndarray) -> float:
-    """Compute normalized DTW distance between two sequences.
-
-    Args:
-        x: First sequence of shape (time_x, dim)
-        y: Second sequence of shape (time_y, dim)
-
-    Returns:
-        Normalized DTW similarity (higher = more similar)
-    """
+    """Compute normalized DTW distance between two sequences."""
     from scipy.spatial.distance import cdist
 
-    # Compute pairwise distances
     dist_matrix = cdist(x, y, metric="cosine")
 
-    # DTW algorithm
     n, m = dist_matrix.shape
     dtw = np.zeros((n + 1, m + 1))
     dtw[0, 1:] = np.inf
@@ -406,8 +520,7 @@ def dtw_distance(x: np.ndarray, y: np.ndarray) -> float:
             cost = dist_matrix[i - 1, j - 1]
             dtw[i, j] = cost + min(dtw[i - 1, j], dtw[i, j - 1], dtw[i - 1, j - 1])
 
-    # Normalize by path length and convert to similarity
-    max_dist = 2.0  # Maximum cosine distance is 2
+    max_dist = 2.0
     normalized_dist = dtw[n, m] / (n + m)
     similarity = 1.0 - (normalized_dist / max_dist)
 
@@ -419,26 +532,15 @@ def find_peak_offset(
     stem_framewise: np.ndarray,
     hop_seconds: float = 0.02,
 ) -> float:
-    """Find the time offset where TTS best matches stem via sliding window.
-
-    Args:
-        tts_framewise: TTS framewise embeddings (time_tts, dim)
-        stem_framewise: Stem framewise embeddings (time_stem, dim)
-        hop_seconds: Seconds per frame (default 20ms for wav2vec2)
-
-    Returns:
-        Peak offset in seconds from start of stem window
-    """
+    """Find the time offset where TTS best matches stem via sliding window."""
     if len(stem_framewise) < len(tts_framewise):
         return 0.0
 
-    # Slide TTS over stem and compute similarity at each position
     num_positions = len(stem_framewise) - len(tts_framewise) + 1
     similarities = []
 
     for i in range(num_positions):
         stem_slice = stem_framewise[i : i + len(tts_framewise)]
-        # Use mean cosine similarity across aligned frames
         sim = cosine_similarity(tts_framewise.mean(axis=0), stem_slice.mean(axis=0))
         similarities.append(sim)
 
@@ -456,7 +558,6 @@ def find_peak_offset(
 @dataclass
 class LineScore:
     """Score result for a single LRC line."""
-
     line_idx: int
     timestamp: float
     text: str
@@ -470,7 +571,6 @@ class LineScore:
 @dataclass
 class ScoreReport:
     """Overall scoring report for an LRC file."""
-
     stem_path: Path
     lrc_path: Path
     line_scores: list[LineScore] = field(default_factory=list)
@@ -489,33 +589,19 @@ def score_line(
     embedder: Wav2Vec2Embedder,
     use_dtw: bool = False,
 ) -> dict:
-    """Score a single line by comparing stem and TTS audio.
-
-    Args:
-        stem_audio: Stem audio window
-        tts_audio: TTS synthesized audio
-        embedder: Embedding model
-        use_dtw: Whether to compute DTW alignment score
-
-    Returns:
-        Dict with score, dtw_score (optional), and peak_offset
-    """
-    # Get embeddings
+    """Score a single line by comparing stem and TTS audio."""
     tts_embed = embedder.embed(tts_audio)
     stem_embed = embedder.embed(stem_audio)
 
-    # Cosine similarity
     score = cosine_similarity(tts_embed, stem_embed)
 
     result = {"score": score, "dtw_score": None, "peak_offset": 0.0}
 
-    # DTW for borderline cases
     if use_dtw or (0.4 <= score <= 0.7):
         tts_frames = embedder.embed_framewise(tts_audio)
         stem_frames = embedder.embed_framewise(stem_audio)
         result["dtw_score"] = dtw_distance(tts_frames, stem_frames)
 
-    # Find peak offset
     tts_frames = embedder.embed_framewise(tts_audio)
     stem_frames = embedder.embed_framewise(stem_audio)
     result["peak_offset"] = find_peak_offset(tts_frames, stem_frames)
@@ -532,25 +618,10 @@ def score_lrc(
     tts_voice: str = "Chelsie",
     tts_cache_dir: Path = Path.home() / ".cache" / "qwen3_tts",
 ) -> ScoreReport:
-    """Score an LRC file against its vocal stem.
-
-    Args:
-        stem_path: Path to vocal stem audio file
-        lrc_path: Path to LRC file
-        threshold: PASS/REVIEW threshold
-        max_window: Maximum window duration in seconds
-        tts_model: TTS model ID
-        tts_voice: TTS voice name
-        tts_cache_dir: TTS cache directory
-
-    Returns:
-        ScoreReport with per-line and overall scores
-    """
-    # Initialize models
+    """Score an LRC file against its vocal stem."""
     tts = MLXQwen3TTS(model_id=tts_model)
     embedder = Wav2Vec2Embedder()
 
-    # Parse LRC
     lrc_content = lrc_path.read_text(encoding="utf-8")
     lrc_file = parse_lrc(lrc_content)
 
@@ -564,16 +635,13 @@ def score_lrc(
         },
     )
 
-    # Get stem duration
     import soundfile as sf
-
     stem_info = sf.info(str(stem_path))
     stem_duration = stem_info.duration
 
     typer.echo(f"Scoring {len(lrc_file.lines)} lines...", err=True)
 
     for i, line in enumerate(lrc_file.lines):
-        # Determine window end
         if i < len(lrc_file.lines) - 1:
             next_time = lrc_file.lines[i + 1].time_seconds
         else:
@@ -588,7 +656,6 @@ def score_lrc(
 
         stem_duration_actual = window_end - window_start
 
-        # Synthesize TTS
         try:
             tts_audio, tts_sr = synthesize_cached(
                 line.text,
@@ -602,14 +669,12 @@ def score_lrc(
 
         tts_duration = len(tts_audio) / tts_sr
 
-        # Load stem window
         try:
             stem_audio = load_stem_window(stem_path, window_start, window_end)
         except Exception as e:
             typer.echo(f"Error loading stem for line {i+1}: {e}", err=True)
             continue
 
-        # Score
         try:
             result = score_line(stem_audio, tts_audio, embedder)
         except Exception as e:
@@ -634,7 +699,6 @@ def score_lrc(
             err=True,
         )
 
-    # Compute overall statistics
     if report.line_scores:
         scores = [ls.score for ls in report.line_scores]
         report.overall = float(np.mean(scores))
@@ -642,7 +706,6 @@ def score_lrc(
         report.p10_score = float(np.percentile(scores, 10))
         report.num_below_threshold = sum(1 for s in scores if s < threshold)
 
-        # Determine status
         below_ratio = report.num_below_threshold / len(scores)
         if report.overall >= threshold and below_ratio <= 0.15:
             report.status = "PASS"
@@ -655,7 +718,6 @@ def score_lrc(
 # =============================================================================
 # Report generation
 # =============================================================================
-
 
 def write_report_json(report: ScoreReport, json_path: Path) -> None:
     """Write JSON score report."""
@@ -706,7 +768,6 @@ def write_report_markdown(report: ScoreReport, md_path: Path) -> None:
     for key, val in report.model_ids.items():
         lines.append(f"- **{key}:** `{val}`\n")
 
-    # Problem lines
     problem_lines = [ls for ls in report.line_scores if ls.score < report.threshold]
     if problem_lines:
         lines.append("\n## Problem Lines (Score < Threshold)\n")
@@ -721,8 +782,19 @@ def write_report_markdown(report: ScoreReport, md_path: Path) -> None:
     lines.append("\n## All Lines (Sorted by Score)\n")
     lines.append("| Line | Time | Text | Score | DTW Score | Peak Offset |\n")
     lines.append("|------|------|------|-------|-----------|-------------|\n")
-    sorted_lines = sorted(report.line_scores, key=lambda x: x.score)
-    for ls in sorted_lines:
+    sorted_by_score = sorted(report.line_scores, key=lambda x: x.score)
+    for ls in sorted_by_score:
+        time_str = format_timestamp(ls.timestamp)
+        text_short = ls.text[:30] + "..." if len(ls.text) > 30 else ls.text
+        dtw_str = f"{ls.dtw_score:.3f}" if ls.dtw_score is not None else "-"
+        lines.append(f"| {ls.line_idx} | {time_str} | {text_short} | {ls.score:.3f} | {dtw_str} | {ls.peak_offset:.2f}s |\n")
+
+    # All lines sorted by line index (chronological)
+    lines.append("\n## All Lines (Sorted by Line Index)\n")
+    lines.append("| Line | Time | Text | Score | DTW Score | Peak Offset |\n")
+    lines.append("|------|------|------|-------|-----------|-------------|\n")
+    sorted_by_index = sorted(report.line_scores, key=lambda x: x.line_idx)
+    for ls in sorted_by_index:
         time_str = format_timestamp(ls.timestamp)
         text_short = ls.text[:30] + "..." if len(ls.text) > 30 else ls.text
         dtw_str = f"{ls.dtw_score:.3f}" if ls.dtw_score is not None else "-"
@@ -737,23 +809,43 @@ def write_report_markdown(report: ScoreReport, md_path: Path) -> None:
 
 @app.command()
 def main(
-    stem: Path = typer.Option(..., "--stem", help="Path to vocal stem audio file (FLAC, WAV, etc.)"),
-    lrc: Path = typer.Option(..., "--lrc", help="Path to LRC file to score"),
-    threshold: float = typer.Option(0.60, "--threshold", help="PASS/REVIEW cutoff threshold (0-1)"),
-    max_window: float = typer.Option(15.0, "--max-window", help="Maximum window duration in seconds"),
+    song_id: str = typer.Argument(
+        ..., help="Song ID (e.g., wo_yao_quan_xin_zan_mei_244) or path to files"
+    ),
+    stem: Optional[Path] = typer.Option(
+        None, "--stem", help="Override vocal stem path"
+    ),
+    lrc: Optional[Path] = typer.Option(
+        None, "--lrc", help="Override LRC file path"
+    ),
+    threshold: float = typer.Option(
+        0.60, "--threshold", help="PASS/REVIEW cutoff threshold (0-1)"
+    ),
+    max_window: float = typer.Option(
+        15.0, "--max-window", help="Maximum window duration in seconds"
+    ),
     tts_cache_dir: Path = typer.Option(
         Path.home() / ".cache" / "qwen3_tts",
         "--tts-cache-dir",
         help="Directory for TTS audio cache",
     ),
-    report: Optional[Path] = typer.Option(None, "--report", help="Path to write Markdown report"),
-    score_json: Optional[Path] = typer.Option(None, "--score-json", help="Path to write JSON scores"),
+    report: Optional[Path] = typer.Option(
+        None, "--report", help="Output Markdown report (default: tmp_output/{song_id}.quality.md)"
+    ),
+    score_json: Optional[Path] = typer.Option(
+        None, "--score-json", help="Output JSON scores (default: tmp_output/{song_id}.quality.json)"
+    ),
     tts_model: str = typer.Option(
         "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16",
         "--tts-model",
         help="TTS model ID",
     ),
-    tts_voice: str = typer.Option("Chelsie", "--tts-voice", help="TTS voice name"),
+    tts_voice: str = typer.Option(
+        "Chelsie", "--tts-voice", help="TTS voice name"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to admin config file"
+    ),
 ):
     """Score LRC quality by TTS round-trip comparison.
 
@@ -761,23 +853,22 @@ def main(
     in phonetic embedding space. Outputs PASS/REVIEW status, per-line scores,
     and detailed reports.
 
+    If --stem or --lrc are not provided, resolves them from the local cache
+    (downloading from R2 if necessary).
+
     Installation Note:
         This script requires mlx-audio>=0.3.0 which conflicts with
-        transcription_qwen3 (qwen-asr pins transformers==4.57.6).
+        poc_qwen3_align (qwen-asr pins transformers==4.57.6).
         Install separately:
             uv pip install mlx-audio>=0.3.0 --prerelease=allow
 
     Exit codes: 0 = PASS, 1 = REVIEW
     """
-    # Check dependencies
     if not check_mlx_audio():
         typer.echo("ERROR: mlx-audio is not installed.", err=True)
         typer.echo("", err=True)
         typer.echo("To install, run:", err=True)
         typer.echo("    uv pip install mlx-audio>=0.3.0 --prerelease=allow", err=True)
-        typer.echo("", err=True)
-        typer.echo("Note: This will upgrade transformers to 5.0.0rc3 which conflicts", err=True)
-        typer.echo("with transcription_qwen3. Use a separate venv for LRC scoring.", err=True)
         raise typer.Exit(1)
 
     if not check_qwen_tts_support():
@@ -786,16 +877,64 @@ def main(
         typer.echo("    uv pip install mlx-audio>=0.3.0 --prerelease=allow", err=True)
         raise typer.Exit(1)
 
-    # Validate inputs
-    if not stem.exists():
-        typer.echo(f"Error: Stem file not found: {stem}", err=True)
+    # Load config
+    try:
+        config = load_admin_config(config_path)
+    except FileNotFoundError as e:
+        typer.echo(f"Error: {e}", err=True)
+        typer.echo("Run 'sow-admin config init' first.", err=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Error loading config: {e}", err=True)
         raise typer.Exit(1)
 
-    if not lrc.exists():
-        typer.echo(f"Error: LRC file not found: {lrc}", err=True)
+    # Parse TOML sections
+    database_config = config.get("database", {})
+    r2_config = config.get("r2", {})
+
+    db_path = Path(database_config.get("path", Path.home() / ".config" / "sow-admin" / "db" / "sow.db"))
+    r2_bucket = r2_config.get("bucket")
+    r2_endpoint = r2_config.get("endpoint_url")
+
+    # Cache dir is not in config, use default location
+    cache_dir = Path.home() / ".cache" / "stream-of-worship"
+
+    if not db_path.exists():
+        typer.echo(f"Error: Database not found at {db_path}", err=True)
+        typer.echo("Run 'sow-admin catalog init' first.", err=True)
         raise typer.Exit(1)
 
-    # Warn about model downloads
+    # Resolve stem path
+    if stem:
+        if not stem.exists():
+            typer.echo(f"Error: Stem file not found: {stem}", err=True)
+            raise typer.Exit(1)
+        stem_path = stem
+        typer.echo(f"Using provided stem: {stem_path}", err=True)
+    else:
+        stem_path = resolve_stem_path(song_id, cache_dir, db_path, r2_bucket, r2_endpoint)
+
+    # Resolve LRC path
+    if lrc:
+        if not lrc.exists():
+            typer.echo(f"Error: LRC file not found: {lrc}", err=True)
+            raise typer.Exit(1)
+        lrc_path = lrc
+        typer.echo(f"Using provided LRC: {lrc_path}", err=True)
+    else:
+        lrc_path = resolve_lrc_path(song_id, cache_dir, db_path, r2_bucket, r2_endpoint)
+
+    # Determine output paths
+    safe_song_id = Path(song_id).stem if Path(song_id).exists() else song_id.replace("/", "_")
+    if report is None:
+        report = Path("tmp_output") / f"{safe_song_id}.quality.md"
+    if score_json is None:
+        score_json = Path("tmp_output") / f"{safe_song_id}.quality.json"
+
+    report.parent.mkdir(parents=True, exist_ok=True)
+    score_json.parent.mkdir(parents=True, exist_ok=True)
+
+    typer.echo("", err=True)
     typer.echo("Note: First run will download ~2GB of models from HuggingFace:", err=True)
     typer.echo(f"  - TTS: {tts_model}", err=True)
     typer.echo("  - Embedder: facebook/wav2vec2-xls-r-300m", err=True)
@@ -804,8 +943,8 @@ def main(
     # Run scoring
     try:
         report_data = score_lrc(
-            stem_path=stem,
-            lrc_path=lrc,
+            stem_path=stem_path,
+            lrc_path=lrc_path,
             threshold=threshold,
             max_window=max_window,
             tts_model=tts_model,
@@ -818,23 +957,18 @@ def main(
         traceback.print_exc()
         raise typer.Exit(1)
 
-    # Write reports
-    if report:
-        write_report_markdown(report_data, report)
-        typer.echo(f"Wrote Markdown report to: {report}", err=True)
+    write_report_markdown(report_data, report)
+    typer.echo(f"Wrote Markdown report to: {report}", err=True)
 
-    if score_json:
-        write_report_json(report_data, score_json)
-        typer.echo(f"Wrote JSON scores to: {score_json}", err=True)
+    write_report_json(report_data, score_json)
+    typer.echo(f"Wrote JSON scores to: {score_json}", err=True)
 
-    # Summary
     typer.echo("\n" + "=" * 50, err=True)
     typer.echo(f"Status: {report_data.status}", err=True)
     typer.echo(f"Overall Score: {report_data.overall:.3f}", err=True)
     typer.echo(f"Lines Below Threshold: {report_data.num_below_threshold}/{len(report_data.line_scores)}", err=True)
     typer.echo("=" * 50, err=True)
 
-    # Exit code
     if report_data.status == "PASS":
         raise typer.Exit(0)
     else:

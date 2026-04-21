@@ -78,7 +78,7 @@ transcription = [
 ]
 
 # Qwen3 Forced Aligner dependencies
-transcription_qwen3 = [
+poc_qwen3_align = [
     "qwen-asr",
     "torch>=2.8.0,<2.9.0",
     "numpy>=2.0.2,<2.1.0",
@@ -152,7 +152,7 @@ transcription_youtube = [
 ]
 
 # Qwen3-ASR local MLX dependencies (Apple Silicon only)
-poc_qwen3_local = [
+poc_qwen3_mlx = [
     "mlx",
     "mlx-qwen3-asr>=0.1.0",
     "mlx-audio>=0.1.0",
@@ -163,7 +163,7 @@ poc_qwen3_local = [
 
 # LRC quality scoring via TTS round-trip (Apple Silicon only)
 # Note: mlx-audio>=0.3.0 must be installed separately due to dependency conflicts
-# with transcription_qwen3. To use this feature:
+# with poc_qwen3_align. To use this feature:
 #   1. Install base dependencies: uv sync --extra score_lrc_base
 #   2. Install mlx-audio: uv pip install "mlx-audio>=0.3.0" --prerelease=allow
 score_lrc_base = [
@@ -175,6 +175,17 @@ score_lrc_base = [
     "zhconv>=1.4.0",         # Traditional → Simplified normalization
     "typer>=0.12.0",
     "scipy>=1.10.0",         # DTW alignment
+    "tomli_w>=1.0.0",        # Admin config file writing
+    "boto3>=1.34.0",         # R2/S3 access
+]
+
+# Unified extra for the full LRC fixing workflow (all Qwen3-based tools)
+# This combines transcription, alignment, and quality scoring.
+# Note: mlx-audio>=0.3.0 must still be installed separately after:
+#   uv sync --extra fix_lrc
+#   uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+fix_lrc = [
+    "stream-of-worship[poc_qwen3_mlx,poc_qwen3_align,score_lrc_base]",
 ]
 
 # Full score_lrc (requires manual install of mlx-audio>=0.3.0)
@@ -186,7 +197,7 @@ score_lrc = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,transcription,transcription_whisperx,transcription_youtube,admin,turso,app]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,admin,turso,app]",
 ]
 
 [project.scripts]
