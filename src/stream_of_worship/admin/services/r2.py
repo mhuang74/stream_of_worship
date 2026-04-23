@@ -89,6 +89,23 @@ class R2Client:
         self._client.upload_file(str(file_path), self.bucket, s3_key)
         return f"s3://{self.bucket}/{s3_key}"
 
+    def upload_stem(self, file_path: Path, hash_prefix: str, stem_name: str) -> str:
+        """Upload a stem file to R2.
+
+        The file is stored at ``{hash_prefix}/stems/{stem_name}.wav`` inside the bucket.
+
+        Args:
+            file_path: Local path to stem file
+            hash_prefix: 12-character hash prefix (R2 directory name)
+            stem_name: Stem name (e.g., 'vocals_clean')
+
+        Returns:
+            S3-style URL of the uploaded object
+        """
+        s3_key = f"{hash_prefix}/stems/{stem_name}.wav"
+        self._client.upload_file(str(file_path), self.bucket, s3_key)
+        return f"s3://{self.bucket}/{s3_key}"
+
     def download_audio(self, hash_prefix: str, dest_path: Path) -> Path:
         """Download an audio file from R2.
 

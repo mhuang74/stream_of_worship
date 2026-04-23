@@ -1354,6 +1354,221 @@ def lrc_recording(
             console.print(f"  LRC URL: {final_job.result.lrc_url}")
 
 
+@app.command("vocal")
+def vocal_clean(
+    song_id: str = typer.Argument(..., help="Song ID or hash prefix"),
+    vocal_model: str = typer.Option(
+        "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+        "--vocal-model",
+        help="BS-Roformer model for vocal extraction",
+    ),
+    dereverb_model: str = typer.Option(
+        "UVR-De-Echo-Normal.pth",
+        "--dereverb-model",
+        help="UVR model for reverb removal",
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Re-generate if exists"),
+    skip_upload: bool = typer.Option(
+        False, "--skip-upload", help="Skip R2 upload (local only)"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Generate clean vocals (de-reverb) and upload to R2.
+
+    Uses a two-stage extraction pipeline:
+    1. BS-Roformer for vocal separation
+    2. UVR-De-Echo for reverb removal
+
+    Prerequisite: Run 'sow-admin audio download <song_id>' first.
+
+    Requires the stem_separation extra:
+        uv run --extra stem_separation sow-admin audio vocal ...
+    """
+    from stream_of_worship.app.services.asset_cache import AssetCache
+
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Resolve song_id to recording (support both song_id and hash_prefix)
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        # Try as hash_prefix
+        recording = db_client.get_recording_by_hash(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    hash_prefix = recording.hash_prefix
+    console.print(f"[cyan]Recording:[/cyan] {hash_prefix}")
+
+    # Initialize R2 client
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Check if vocals_clean already exists in R2
+    vocals_clean_key = f"{hash_prefix}/stems/vocals_clean.wav"
+    if not force and r2_client.file_exists(vocals_clean_key):
+        console.print(
+            f"[yellow]vocals_clean.wav already exists in R2. Use --force to re-generate.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    # Initialize asset cache and get audio.mp3
+    # Use cache directory adjacent to db_path
+    cache_dir = config.db_path.parent / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
+    audio_path = cache.download_audio(hash_prefix)
+    if not audio_path or not audio_path.exists():
+        console.print(
+            f"[red]audio.mp3 not found. Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]Input audio:[/cyan] {audio_path}")
+
+    # Import audio_separator (requires stem_separation extra)
+    try:
+        from audio_separator.separator import Separator
+    except ImportError:
+        console.print(
+            "[red]audio-separator not installed. "
+            "Run: uv run --extra stem_separation sow-admin audio vocal ...[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Create output directory in cache
+    output_dir = cache_dir / hash_prefix / "vocal_extraction"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    import logging
+    import os
+
+    # Suppress tqdm bars from audio-separator (model download + processing)
+    os.environ["TQDM_DISABLE"] = "1"
+
+    # === STAGE 1: Vocal Extraction ===
+    console.print(Rule("Stage 1: Vocal Extraction (BS-Roformer)"))
+
+    stage1_dir = output_dir / "stage1_vocal_separation"
+    stage1_dir.mkdir(exist_ok=True)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Loading vocal model...", total=None)
+
+        # log_level=WARNING suppresses audio-separator's verbose info logs
+        separator = Separator(
+            output_dir=str(stage1_dir),
+            output_format="FLAC",
+            log_level=logging.WARNING,
+        )
+        separator.load_model(model_filename=vocal_model)
+
+        progress.update(task, description="Separating vocals...")
+        separator.separate(str(audio_path))
+
+    # Find vocals output
+    vocals_file = None
+    for output_path in stage1_dir.glob("*"):
+        if output_path.is_file():
+            name = output_path.name.lower()
+            if "vocals" in name:
+                vocals_file = output_path
+                break
+
+    if not vocals_file or not vocals_file.exists():
+        console.print("[red]Stage 1 failed: No vocals file found[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Stage 1 complete:[/green] {vocals_file.name}")
+
+    # === STAGE 2: Echo/Reverb Removal ===
+    console.print(Rule("Stage 2: Echo/Reverb Removal (UVR-De-Echo)"))
+
+    stage2_dir = output_dir / "stage2_dereverb"
+    stage2_dir.mkdir(exist_ok=True)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Loading dereverb model...", total=None)
+
+        separator_dereverb = Separator(
+            output_dir=str(stage2_dir),
+            output_format="WAV",  # Output as WAV for R2 upload
+            log_level=logging.WARNING,
+        )
+        separator_dereverb.load_model(model_filename=dereverb_model)
+
+        progress.update(task, description="Removing reverb...")
+        stage2_outputs = separator_dereverb.separate(str(vocals_file))
+
+    # Find the dry (no reverb) output
+    dry_vocals_file = None
+    for output_file in stage2_outputs:
+        output_path = Path(output_file)
+        if not output_path.is_absolute():
+            output_path = stage2_dir / output_path
+        name_lower = output_path.name.lower()
+        if "no echo" in name_lower or "dry" in name_lower or "no_echo" in name_lower:
+            dry_vocals_file = output_path
+            break
+
+    # Fallback: take first output
+    if not dry_vocals_file and stage2_outputs:
+        dry_vocals_file = Path(stage2_outputs[0])
+        if not dry_vocals_file.is_absolute():
+            dry_vocals_file = stage2_dir / dry_vocals_file
+
+    if not dry_vocals_file or not dry_vocals_file.exists():
+        console.print("[red]Stage 2 failed: No dry vocals file found[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Stage 2 complete:[/green] {dry_vocals_file.name}")
+
+    # Copy to final location as vocals_clean.wav
+    final_path = cache.get_stem_path(hash_prefix, "vocals_clean")
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+
+    import shutil
+    shutil.copy2(dry_vocals_file, final_path)
+    console.print(f"[cyan]Local file:[/cyan] {final_path}")
+
+    # Upload to R2
+    if not skip_upload:
+        console.print("[cyan]Uploading to R2...[/cyan]")
+        r2_url = r2_client.upload_stem(final_path, hash_prefix, "vocals_clean")
+        console.print(f"[green]Uploaded:[/green] {r2_url}")
+    else:
+        console.print("[yellow]Skipped R2 upload (--skip-upload)[/yellow]")
+
+    console.print(f"[green]Clean vocals generated for {song_id}[/green]")
+
+
 @app.command("status")
 def check_status(
     job_id: Optional[str] = typer.Argument(None, help="Job ID to check"),

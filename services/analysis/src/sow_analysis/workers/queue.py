@@ -557,14 +557,18 @@ class JobQueue:
                     logger.info(f"[{job.id}] Audio download completed in {download_elapsed:.2f}s")
 
                 # Check if vocals stem exists and should be used
+                # Preference: vocals_clean > vocals
                 transcription_path = audio_path
                 if request.options.use_vocals_stem and self.r2_client:
-                    vocals_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/vocals.wav"
-                    if await self.r2_client.check_exists(vocals_url):
-                        vocals_path = temp_path / "vocals.wav"
-                        await self.r2_client.download_audio(vocals_url, vocals_path)
-                        transcription_path = vocals_path
-                        job.stage = "using_vocals_stem"
+                    for stem_name in ["vocals_clean", "vocals"]:
+                        stem_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/{stem_name}.wav"
+                        if await self.r2_client.check_exists(stem_url):
+                            stem_path = temp_path / f"{stem_name}.wav"
+                            await self.r2_client.download_audio(stem_url, stem_path)
+                            transcription_path = stem_path
+                            logger.info(f"[{job.id}] Using {stem_name} stem for transcription")
+                            job.stage = f"using_{stem_name}_stem"
+                            break
 
                 # Check for cached Whisper transcription (audio hash only, not lyrics)
                 cached_phrases = None

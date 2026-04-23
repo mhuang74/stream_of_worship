@@ -15,6 +15,9 @@ from poc.utils import SUPPORTED_AUDIO_FORMATS, extract_audio_segment, format_tim
 
 app = typer.Typer(help="OmniSenseVoice transcription driver")
 
+# Max time gap (seconds) between identical adjacent phrases to consider them duplicates
+DEDUPE_TIME_THRESHOLD_S = 1.0
+
 
 def transcribe_audio(
     audio_path: Path,
@@ -196,7 +199,7 @@ def transcribe_audio(
         # Overlap chunking can produce repeated adjacent lines; remove exact duplicates.
         deduped: list[tuple[float, float, str]] = []
         for start, end, text in phrases:
-            if deduped and deduped[-1][2] == text and abs(start - deduped[-1][0]) < 1.0:
+            if deduped and deduped[-1][2] == text and abs(start - deduped[-1][0]) < DEDUPE_TIME_THRESHOLD_S:
                 continue
             deduped.append((start, end, text))
         phrases = deduped

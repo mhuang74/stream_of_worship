@@ -172,7 +172,6 @@ def transcribe_audio(
             vad_model_runner = AutoModel(
                 model=vad_model,
                 trust_remote_code=True,
-                remote_code="./model.py",
                 device=device,
             )
             vad_res = vad_model_runner.generate(input=str(transcribe_path))
@@ -198,7 +197,6 @@ def transcribe_audio(
             asr_model = AutoModel(
                 model=model_name,
                 trust_remote_code=True,
-                remote_code="./model.py",
                 vad_model=None,
                 punc_model=None,
                 device=device,
@@ -207,7 +205,6 @@ def transcribe_audio(
             asr_model = AutoModel(
                 model=model_name,
                 trust_remote_code=True,
-                remote_code="./model.py",
                 vad_model=vad_model,
                 vad_kwargs={"max_single_segment_time": vad_max_single_seg_ms},
                 punc_model=punc_model,
@@ -280,8 +277,7 @@ def transcribe_audio(
         # Adjust timestamps by start offset
         if start_seconds > 0:
             phrases = [
-                (start + start_seconds, end + start_seconds, text)
-                for start, end, text in phrases
+                (start + start_seconds, end + start_seconds, text) for start, end, text in phrases
             ]
 
         transcribe_elapsed = time.time() - transcribe_start
@@ -317,9 +313,7 @@ def main(
         ..., help="Song ID (e.g., wo_yao_quan_xin_zan_mei_244) or path to audio file"
     ),
     device: str = typer.Option("cpu", "--device", "-d", help="Device to run on (cpu/cuda)"),
-    model: str = typer.Option(
-        "iic/SenseVoiceSmall", "--model", "-m", help="SenseVoice model name"
-    ),
+    model: str = typer.Option("iic/SenseVoiceSmall", "--model", "-m", help="SenseVoice model name"),
     use_vocals: bool = typer.Option(
         True, "--use-vocals/--no-use-vocals", help="Use vocals stem if available"
     ),
@@ -332,21 +326,13 @@ def main(
     end: Optional[float] = typer.Option(
         None, "--end", "-e", help="End timestamp in seconds (default: full song)"
     ),
-    vad_model: str = typer.Option(
-        "fsmn-vad", "--vad-model", help="VAD model name"
-    ),
+    vad_model: str = typer.Option("fsmn-vad", "--vad-model", help="VAD model name"),
     vad_max_single_seg_ms: int = typer.Option(
         30000, "--vad-max-single-seg-ms", help="VAD max single segment time (ms)"
     ),
-    merge_vad: bool = typer.Option(
-        True, "--merge-vad/--no-merge-vad", help="Merge VAD segments"
-    ),
-    merge_length_s: int = typer.Option(
-        15, "--merge-length-s", help="Merge length in seconds"
-    ),
-    batch_size_s: int = typer.Option(
-        60, "--batch-size-s", help="Batch size in seconds"
-    ),
+    merge_vad: bool = typer.Option(True, "--merge-vad/--no-merge-vad", help="Merge VAD segments"),
+    merge_length_s: int = typer.Option(15, "--merge-length-s", help="Merge length in seconds"),
+    batch_size_s: int = typer.Option(60, "--batch-size-s", help="Batch size in seconds"),
     use_itn: bool = typer.Option(
         True, "--use-itn/--no-use-itn", help="Use inverse text normalization"
     ),

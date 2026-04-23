@@ -108,6 +108,8 @@ admin = [
     "pypinyin>=0.55.0",
     "yt-dlp>=2024.1.1",
     "boto3>=1.34.0",
+    "audio-separator>=0.30.0",
+    "onnxruntime>=1.17.0",
 ]
 
 # User App (TUI) dependencies
@@ -149,6 +151,22 @@ transcription_youtube = [
     "youtube-transcript-api>=0.6.0",
     "openai>=1.0.0",
     "typer>=0.12.0",
+]
+
+# LRC evaluation dependencies (POC script)
+# Includes admin extra for AssetCache and app config imports
+# Supports multiple transcription engines: whisper, sensevoice, paraformer
+lrc_eval = [
+    "stream-of-worship[admin]",
+    "faster-whisper>=1.0.0",
+    "funasr>=1.3.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "modelscope>=1.34.0",
+    "pypinyin>=0.52.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "pydub>=0.25.0",
 ]
 
 # Qwen3-ASR local MLX dependencies (Apple Silicon only)
@@ -197,7 +215,7 @@ score_lrc = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,admin,turso,app]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,turso,app]",
 ]
 
 [project.scripts]
