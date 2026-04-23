@@ -8,10 +8,14 @@ and aligns them precisely to the audio timing.
 Note: Maximum audio length is 5 minutes (model limitation).
 """
 
+import sys
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+# Add parent directory to path for poc.utils import
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import shared utilities
 from poc.utils import format_timestamp, resolve_song_audio_path
@@ -354,8 +358,6 @@ def main(
     Maximum audio length is 5 minutes.
     """
     # Add src to path for imports (needed for offline mode handling)
-    import sys
-
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
     from stream_of_worship.app.config import AppConfig

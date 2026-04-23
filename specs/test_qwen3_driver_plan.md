@@ -19,7 +19,7 @@ Create a new LRC generation script using **Qwen3ForcedAligner** (`Qwen/Qwen3-For
 
 ### Installation
 ```bash
-uv add --optional transcription_qwen3 qwen-asr
+uv add --optional poc_qwen3_align qwen-asr
 ```
 
 ### Basic Usage
@@ -127,21 +127,21 @@ Since this targets Apple M2:
 
 ## Dependencies
 
-Use `uv add` to add dependencies to the `transcription_qwen3` optional group:
+Use `uv add` to add dependencies to the `poc_qwen3_align` optional group:
 
 ```bash
-# Add qwen-asr to the transcription_qwen3 extra
-uv add --optional transcription_qwen3 qwen-asr
+# Add qwen-asr to the poc_qwen3_align extra
+uv add --optional poc_qwen3_align qwen-asr
 
 # torch should already be in the project, but if not:
-uv add --optional transcription_qwen3 torch
+uv add --optional poc_qwen3_align torch
 ```
 
 This will create/update the `[project.optional-dependencies]` section in `pyproject.toml`:
 
 ```toml
 [project.optional-dependencies]
-transcription_qwen3 = [
+poc_qwen3_align = [
     "qwen-asr>=x.x.x",
     "torch>=x.x.x",
 ]
@@ -151,22 +151,22 @@ transcription_qwen3 = [
 
 ### Basic usage (stdout)
 ```bash
-uv run --extra transcription_qwen3 python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244
+uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244
 ```
 
 ### Save to file
 ```bash
-uv run --extra transcription_qwen3 python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244 -o output.lrc
+uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244 -o output.lrc
 ```
 
 ### Force CPU usage
 ```bash
-uv run --extra transcription_qwen3 python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244 --device cpu
+uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244 --device cpu
 ```
 
 ### Download audio from R2
 ```bash
-uv run --extra transcription_qwen3 python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244 --download
+uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3.py wo_yao_quan_xin_zan_mei_244 --download
 ```
 
 ## Notes
