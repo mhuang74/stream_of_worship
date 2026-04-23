@@ -1335,11 +1335,6 @@ def main(
             err=True,
         )
         raise typer.Exit(1)
-        typer.echo(
-            "Warning: mlx-audio backend does not support context biasing. "
-            "Use --backend mlx-qwen3-asr for context support.",
-            err=True,
-        )
 
     # Resolve inputs
     audio_path, lyrics = resolve_song_audio_path(song_id, use_vocals=use_vocals)

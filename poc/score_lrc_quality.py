@@ -953,8 +953,11 @@ def main(
         )
     except Exception as e:
         typer.echo(f"Error during scoring: {e}", err=True)
-        import traceback
-        traceback.print_exc()
+        typer.echo("\nTroubleshooting tips:", err=True)
+        typer.echo("  - Ensure the vocal stem file exists and is valid audio", err=True)
+        typer.echo("  - Verify the LRC file contains valid timestamped lyrics", err=True)
+        typer.echo("  - Check that mlx-audio>=0.3.0 is installed for Qwen3-TTS support", err=True)
+        typer.echo("  - For verbose error details, run with --verbose flag", err=True)
         raise typer.Exit(1)
 
     write_report_markdown(report_data, report)
