@@ -360,100 +360,34 @@ def main(
 
     Maximum audio length is 5 minutes.
     """
-    import sys
-
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-    from stream_of_worship.app.config import AppConfig
-    from stream_of_worship.app.db.read_client import ReadOnlyClient
-    from stream_of_worship.app.services.catalog import CatalogService
-
-    input_path = Path(song_id).expanduser()
-    audio_path: Optional[Path] = None
+    audio_path, db_lyrics = resolve_song_audio_path(song_id, use_vocals=use_vocals)
     lyrics: list[str] = []
 
-    # Handle direct audio file path
-    if input_path.exists():
-        audio_path = input_path
-        typer.echo(f"Using direct audio path: {audio_path}", err=True)
-    else:
-        # Load config for song lookup
+    # Get lyrics from file or database
+    if lyrics_file:
+        if not lyrics_file.exists():
+            typer.echo(f"Error: Lyrics file not found: {lyrics_file}", err=True)
+            raise typer.Exit(1)
         try:
-            config = AppConfig.load()
-        except FileNotFoundError:
-            typer.echo(
-                "Error: Config file not found. Please run 'sow-app' first to create config.",
-                err=True,
-            )
+            lyrics_text = lyrics_file.read_text(encoding="utf-8")
+            lyrics = [line.rstrip() for line in lyrics_text.splitlines()]
+            # Remove trailing empty lines but preserve internal ones
+            while lyrics and not lyrics[-1]:
+                lyrics.pop()
+            typer.echo(f"Using lyrics from file: {lyrics_file}", err=True)
+        except Exception as e:
+            typer.echo(f"Error reading lyrics file: {e}", err=True)
             raise typer.Exit(1)
+    elif db_lyrics:
+        lyrics = db_lyrics
+        typer.echo("Using lyrics from database", err=True)
 
-        # Initialize database client
-        db_client = ReadOnlyClient(config.db_path)
-        catalog = CatalogService(db_client)
-
-        # Look up song and recording
-        song_with_recording = catalog.get_song_with_recording(song_id)
-        if not song_with_recording:
-            typer.echo(f"Error: Song not found: {song_id}", err=True)
-            raise typer.Exit(1)
-
-        if not song_with_recording.recording:
-            typer.echo(f"Error: No recording found for song: {song_id}", err=True)
-            raise typer.Exit(1)
-
-        song = song_with_recording.song
-        recording = song_with_recording.recording
-        hash_prefix = recording.hash_prefix
-
-        typer.echo(f"Song: {song.title}", err=True)
-        typer.echo(f"Recording: {hash_prefix}", err=True)
-
-        # Get lyrics from file or database
-        if lyrics_file:
-            if not lyrics_file.exists():
-                typer.echo(f"Error: Lyrics file not found: {lyrics_file}", err=True)
-                raise typer.Exit(1)
-            try:
-                lyrics_text = lyrics_file.read_text(encoding="utf-8")
-                lyrics = [line.rstrip() for line in lyrics_text.splitlines()]
-                # Remove trailing empty lines but preserve internal ones
-                while lyrics and not lyrics[-1]:
-                    lyrics.pop()
-                typer.echo(f"Using lyrics from file: {lyrics_file}", err=True)
-            except Exception as e:
-                typer.echo(f"Error reading lyrics file: {e}", err=True)
-                raise typer.Exit(1)
-        else:
-            lyrics = song.lyrics_list
-            if not lyrics:
-                typer.echo(
-                    "Error: No lyrics found for this song. Forced alignment requires lyrics.",
-                    err=True,
-                )
-                typer.echo(
-                    "Please add lyrics to the song first using the scraper or admin tools.",
-                    err=True,
-                )
-                raise typer.Exit(1)
-            typer.echo("Using lyrics from database", err=True)
-
+    if lyrics:
         typer.echo(f"Using {len(lyrics)} lines of lyrics for alignment:", err=True)
         typer.echo("-" * 40, err=True)
         for i, line in enumerate(lyrics, 1):
             typer.echo(f"{i:2d}: {line}", err=True)
         typer.echo("-" * 40, err=True)
-
-        # Check audio duration (5 minute limit for Qwen3ForcedAligner)
-        if recording.duration_seconds and recording.duration_seconds > 300:
-            typer.echo(
-                f"Error: Song duration ({recording.duration_seconds:.1f}s) exceeds "
-                f"5 minute limit of Qwen3ForcedAligner",
-                err=True,
-            )
-            raise typer.Exit(1)
-
-        # Resolve audio path using shared utility
-        audio_path, _ = resolve_song_audio_path(song_id, use_vocals=use_vocals)
 
     # Lyrics are required for Qwen3 forced alignment
     if not lyrics:

@@ -254,6 +254,13 @@ PINYIN_OVERRIDES = {
     "禰": "ni",  # Variant of 祢
 }
 
+# Fallback time estimate per character when no segment timing is available
+DEFAULT_CHAR_TIME_S = 0.2
+# Default duration assumed for the last LRC line (no next timestamp to infer end)
+DEFAULT_LAST_LINE_DURATION_S = 5.0
+# Default duration assumed for LRC lines when no timing context is available
+DEFAULT_LINE_DURATION_S = 10.0
+
 
 def chinese_to_pinyin(text: str) -> list[str]:
     """Convert Chinese text to pinyin without tones.
@@ -448,7 +455,7 @@ def parse_lrc_file(content: str) -> list[PinyinWord]:
         if i + 1 < len(lines_data):
             line_end = lines_data[i + 1][0]
         else:
-            line_end = line_start + 5.0
+            line_end = line_start + DEFAULT_LAST_LINE_DURATION_S
 
         if len(words) == 1 and len(words[0].text) > 1:
             # Single word representing whole line - split into characters and interpolate
@@ -706,9 +713,9 @@ def transcribe_with_sensevoice(
             elif chars:
                 # No timestamps - use segment start time and interpolate
                 segment_start = item.get("start", 0) / 1000.0 if "start" in item else 0.0
-                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + 5.0
+                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + DEFAULT_LAST_LINE_DURATION_S
                 duration = segment_end - segment_start
-                time_per_char = duration / len(chars) if len(chars) > 0 else 0.2
+                time_per_char = duration / len(chars) if len(chars) > 0 else DEFAULT_CHAR_TIME_S
 
                 for j, char in enumerate(chars):
                     time_sec = segment_start + j * time_per_char
@@ -831,7 +838,7 @@ def transcribe_with_paraformer(
                         start_ms = timestamp[j][0]
                         time_sec = start_ms / 1000.0
                     else:
-                        time_sec = result[-1].time_seconds + 0.2 if result else 0.0
+                        time_sec = result[-1].time_seconds + DEFAULT_CHAR_TIME_S if result else 0.0
 
                     pinyin_list = chinese_to_pinyin(char)
                     for py in pinyin_list:
@@ -839,11 +846,11 @@ def transcribe_with_paraformer(
             else:
                 # Fallback: interpolate timestamps based on segment boundaries
                 segment_start = item.get("start", 0) / 1000.0 if "start" in item else 0.0
-                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + 5.0
+                segment_end = item.get("end", 0) / 1000.0 if "end" in item else segment_start + DEFAULT_LAST_LINE_DURATION_S
 
                 if chars:
                     duration = segment_end - segment_start
-                    time_per_char = duration / len(chars) if len(chars) > 0 else 0.2
+                    time_per_char = duration / len(chars) if len(chars) > 0 else DEFAULT_CHAR_TIME_S
 
                     for j, char in enumerate(chars):
                         time_sec = segment_start + j * time_per_char
@@ -1176,7 +1183,7 @@ def build_lrc_segments(lrc_lines: list[tuple[float, str]]) -> list[VADSegment]:
         if i + 1 < len(lrc_lines):
             segment_end = lrc_lines[i + 1][0]
         else:
-            segment_end = timestamp + 5.0  # Default 5s for last line
+            segment_end = timestamp + DEFAULT_LAST_LINE_DURATION_S
 
         # Skip very short segments
         if segment_end - timestamp < 0.1:
@@ -1539,7 +1546,7 @@ def align_sequences_per_line(
         if i + 1 < len(lrc_lines):
             line_end = lrc_lines[i + 1][0]
         else:
-            line_end = line_ts + 10.0  # Last line: assume 10s duration
+            line_end = line_ts + DEFAULT_LINE_DURATION_S
 
         # Find LRC words that belong to this line
         line_start_idx = lrc_word_idx
@@ -2115,7 +2122,7 @@ def format_line_diff_report(
     # Build line boundaries from LRC
     line_boundaries = []
     for i, (ts, text) in enumerate(lrc_lines):
-        next_ts = lrc_lines[i + 1][0] if i + 1 < len(lrc_lines) else ts + 10.0
+        next_ts = lrc_lines[i + 1][0] if i + 1 < len(lrc_lines) else ts + DEFAULT_LINE_DURATION_S
         line_boundaries.append((ts, next_ts, text))
 
     # Assign diff entries to lines
