@@ -2300,15 +2300,11 @@ def cache_assets(
             skipped.append(f"LRC: {lrc_path}")
         else:
             console.print("[cyan]Downloading LRC...[/cyan]")
-            # Check if LRC exists in R2
-            if recording.r2_lrc_url:
-                path = cache.download_lrc(hash_prefix, force=force)
-                if path:
-                    downloaded.append(f"LRC: {path.name}")
-                    console.print(f"[green]  ✓ {path.name}[/green]")
-                else:
-                    failed.append("LRC")
-                    console.print("[red]  ✗ Failed to download LRC[/red]")
+            # Always attempt download - download_lrc checks R2 existence internally
+            path = cache.download_lrc(hash_prefix, force=force)
+            if path:
+                downloaded.append(f"LRC: {path.name}")
+                console.print(f"[green]  ✓ {path.name}[/green]")
             else:
                 console.print("[yellow]  ! No LRC available (run 'sow-admin audio lrc' first)[/yellow]")
 
