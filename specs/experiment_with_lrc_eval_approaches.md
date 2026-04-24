@@ -24,8 +24,10 @@ No thresholds are set here — the goal is raw signal data for comparison.
 
 ### 1. Ensure assets are in local cache
 
-Both songs must have their vocal stem (`stems/vocals.wav`) and canonical LRC
-(`lrc/lyrics.lrc`) in `~/.cache/stream-of-worship/<hash_prefix>/`.
+Both songs must have their canonical LRC (`lrc/lyrics.lrc`) and a vocal stem
+in the local cache directory (obtained via `sow-admin audio cache <song_id>`).
+Look for the "Cache location:" line in the output — typically
+`~/.config/sow-app/cache/<hash_prefix>/`.
 
 ```bash
 sow-admin audio cache dan_dan_ai_mi_249
@@ -40,6 +42,40 @@ PYTHONPATH=src uv run --extra admin python -m stream_of_worship.admin.main audio
 Hash prefixes (for reference / direct R2 fallback):
 - `dan_dan_ai_mi_249` → `5b445438847a`
 - `wo_yao_yi_xin_cheng_xie_mi_247` → `c105e75972f7`
+
+### 1b. Generate clean_vocals.flac (recommended)
+
+The experiment produces the best results with **`clean_vocals.flac`** (de-echoed
+vocal stem) instead of the default `stems/vocals.wav`. If
+`<cache_dir>/stems/clean_vocals.flac` does not already exist, generate it:
+
+```bash
+# Get the cache directory for the song
+CACHE_DIR=$(sow-admin audio cache <song_id> 2>/dev/null | grep "Cache location:" | awk '{print $NF}')
+
+# Generate clean vocals from the cached audio
+PYTHONPATH=src:. uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
+  "$CACHE_DIR/audio/audio.mp3" \
+  -o ./tmp_output/vocals
+
+# Find the clean vocals file and copy to cache
+CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" | head -1)
+cp "$CLEAN_VOCALS" "$CACHE_DIR/stems/clean_vocals.flac"
+```
+
+This runs a two-stage pipeline (BS-Roformer vocal separation → UVR de-echo) and
+copies the result to the cache directory. See `docs/manually-fix-lrc.md` Step 0
+for full details including `--dereverb-model` options and `--reuse-stage1`.
+
+When running the experiment, pass the clean vocals path via `--stem`:
+
+```bash
+PYTHONPATH=src:. uv run --extra score_lrc_base --extra poc_qwen3_align \
+  python poc/experiment_lrc_signals.py \
+  --song <song_id> \
+  --stem ~/.config/sow-app/cache/<hash_prefix>/stems/clean_vocals.flac \
+  --lrc ~/.config/sow-app/cache/<hash_prefix>/lrc/lyrics.lrc
+```
 
 ### 2. Populate TTS cache
 
