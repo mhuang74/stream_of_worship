@@ -265,19 +265,11 @@ def resolve_stem_path(
 
     hash_prefix = recording["hash_prefix"]
 
-    # Try vocals stem first
-    vocals_path = cache_dir / hash_prefix / "stems" / "vocals.wav"
-    if vocals_path.exists():
-        typer.echo(f"Using cached vocals stem: {vocals_path}", err=True)
-        return vocals_path
-
-    # Download vocals stem from R2
-    typer.echo("Downloading vocals stem from R2...", err=True)
-    s3_key = f"{hash_prefix}/stems/vocals.wav"
-
-    if download_from_r2(s3_key, vocals_path, r2_bucket, r2_endpoint):
-        typer.echo(f"Downloaded vocals stem to: {vocals_path}", err=True)
-        return vocals_path
+    # Try clean_vocal stem first
+    clean_vocal_path = cache_dir / hash_prefix / "clean_vocal.flac"
+    if clean_vocal_path.exists():
+        typer.echo(f"Using cached clean vocal stem: {clean_vocal_path}", err=True)
+        return clean_vocal_path
 
     # Try main audio as fallback
     main_audio_path = cache_dir / hash_prefix / "audio.mp3"

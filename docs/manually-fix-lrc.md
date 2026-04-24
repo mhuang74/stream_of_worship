@@ -56,15 +56,15 @@ uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
 
 **Replacing Cached Stems:**
 
-Once you have the clean vocals, replace the cached vocal stem so that subsequent steps use it:
+Once you have the clean vocals, save them as `clean_vocal.flac` in the cache directory so that subsequent steps use it:
 
 ```bash
 # Find the clean vocals file (usually contains "No Echo" in the name)
 CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" | head -1)
 
-# Replace the cached vocal stem
+# Save as clean_vocal.flac in the cache directory
 CACHE_DIR="$HOME/.cache/stream-of-worship/<song_id>"
-cp "$CLEAN_VOCALS" "$CACHE_DIR/vocals.flac"
+cp "$CLEAN_VOCALS" "$CACHE_DIR/clean_vocal.flac"
 
 # Verify the replacement
 ls -la "$CACHE_DIR/"
@@ -150,20 +150,37 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
 
 ---
 
-### Step 3: Evaluate LRC Quality
+### Step 3: Upload LRC to Database
 
-Score the LRC quality using TTS round-trip comparison to detect content errors and alignment issues.
+Upload the finalized LRC file to the R2 storage and update the song database record. This must be done **before** evaluating quality so that the eval step uses the canonical LRC from the database.
+
+```bash
+sow_admin audio upload-lrc <song_id> <lrc_file_path>
+```
+
+**Arguments:**
+- `<song_id>` - Song ID (e.g., `dan_dan_ai_mi_249`)
+- `<lrc_file_path>` - Path to LRC file (e.g., `tmp_output/aligned.txt`)
+
+**What This Does:**
+1. Uploads LRC file to R2 storage
+2. Updates the song's recording metadata
+3. Makes the LRC available to all application components
+
+---
+
+### Step 4: Evaluate LRC Quality
+
+Score the LRC quality using TTS round-trip comparison to detect content errors and alignment issues. The lyrics used for evaluation always come from the canonical LRC stored in the database (same source as `sow_admin audio view-lrc <song_id>`), ensuring the eval reflects what users will actually see.
 
 ```bash
 uv run --extra score_lrc_base python poc/score_lrc_quality.py \
-  --lrc tmp_output/aligned.txt \
   --report tmp_output/quality.md \
   --score-json tmp_output/quality.json \
   <song_id>
 ```
 
 **Key Options:**
-- `--lrc tmp_output/aligned.txt` - Path to LRC file to evaluate
 - `--report tmp_output/quality.md` - Path to write detailed quality report
 - `--score-json tmp_output/quality.json` - Path to write JSON scores
 - `<song_id>` - Song ID (e.g., `dan_dan_ai_mi_249`)
@@ -184,25 +201,6 @@ uv run --extra score_lrc_base python poc/score_lrc_quality.py \
 
 ---
 
-### Step 4: Upload LRC to Database
-
-Upload the finalized LRC file to the R2 storage and update the song database record.
-
-```bash
-sow_admin audio upload-lrc <song_id> <lrc_file_path>
-```
-
-**Arguments:**
-- `<song_id>` - Song ID (e.g., `dan_dan_ai_mi_249`)
-- `<lrc_file_path>` - Path to LRC file (e.g., `tmp_output/aligned.txt`)
-
-**What This Does:**
-1. Uploads LRC file to R2 storage
-2. Updates the song's recording metadata
-3. Makes the LRC available to all application components
-
----
-
 ## Complete Example Workflow
 
 Here's a complete example showing all steps for a single song:
@@ -216,9 +214,9 @@ uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
   ~/.cache/stream-of-worship/dan_dan_ai_mi_249/audio.mp3 \
   -o ./tmp_output/vocals
 
-# Replace cached vocals with clean version
+# Save clean vocals to cache as clean_vocal.flac
 CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" | head -1)
-cp "$CLEAN_VOCALS" "$HOME/.cache/stream-of-worship/dan_dan_ai_mi_249/vocals.flac"
+cp "$CLEAN_VOCALS" "$HOME/.cache/stream-of-worship/dan_dan_ai_mi_249/clean_vocal.flac"
 
 # Step 1: Transcribe with Qwen3-ASR
 uv run --extra poc_qwen3_mlx python poc/gen_lrc_qwen3_asr_local.py \
@@ -234,9 +232,11 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
   --output tmp_output/aligned.txt \
   dan_dan_ai_mi_249
 
-# Step 3: Evaluate quality
+# Step 3: Upload to database (must be done before evaluating)
+sow_admin audio upload-lrc dan_dan_ai_mi_249 tmp_output/aligned.txt
+
+# Step 4: Evaluate quality (uses canonical LRC from database)
 uv run --extra score_lrc_base python poc/score_lrc_quality.py \
-  --lrc tmp_output/aligned.txt \
   --report tmp_output/quality.md \
   --score-json tmp_output/quality.json \
   dan_dan_ai_mi_249
@@ -244,8 +244,8 @@ uv run --extra score_lrc_base python poc/score_lrc_quality.py \
 # Review the quality report
 cat tmp_output/quality.md
 
-# Step 4: If satisfied, upload
-sow_admin audio upload-lrc dan_dan_ai_mi_249 tmp_output/aligned.txt
+# Verify the LRC content matches what was uploaded
+sow_admin audio view-lrc dan_dan_ai_mi_249
 ```
 
 ---
@@ -325,6 +325,8 @@ uv pip install "mlx-audio>=0.4.0" --prerelease=allow
    - Adjust the source lyrics in the database
 
 5. **Context biasing:** Enable `--lyrics-context` when transcription might be uncertain, but disable it (`--no-lyrics-context`) when you want a fresh transcription.
+
+6. **Evaluate against canonical LRC:** Always upload the LRC before evaluating, so the scoring compares against the canonical version in the database (same as `sow_admin audio view-lrc <song_id>`).
 
 ---
 
