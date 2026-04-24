@@ -31,11 +31,11 @@ uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 
 All LRC fixing scripts resolve audio from the local cache directory with the following priority:
 
-1. **`clean_vocal.flac`** — Clean vocal stem (de-echoed, generated in Step 0). Preferred for best alignment accuracy.
+1. **`clean_vocals.flac`** — Clean vocal stem (de-echoed, generated in Step 0). Preferred for best alignment accuracy.
 2. **`vocal.wav`** — Standard vocal stem (from R2, downloaded via `sow_admin audio cache`). Fallback when clean vocals haven't been generated yet.
 3. **`audio.mp3`** — Full mix. Last resort when no vocal stems are available.
 
-If `clean_vocal.flac` is not in the cache, it is strongly recommended to run Step 0 to generate it and copy it to the cache directory for future use. Only fall back to `vocal.wav` or `audio.mp3` if generating clean vocals is not feasible.
+If `clean_vocals.flac` is not in the cache, it is strongly recommended to run Step 0 to generate it and copy it to the cache directory for future use. Only fall back to `vocal.wav` or `audio.mp3` if generating clean vocals is not feasible.
 
 The cache directory for a song can be obtained via:
 
@@ -45,7 +45,7 @@ sow_admin audio cache <song_id>
 
 Look for the "Cache location:" line in the output to find the local directory path (e.g., `~/.config/sow-app/cache/<hash_prefix>/`). The files are located at:
 
-- `clean_vocal.flac` — `<cache_dir>/<hash_prefix>/clean_vocal.flac`
+- `clean_vocals.flac` — `<cache_dir>/<hash_prefix>/clean_vocals.flac`
 - `vocal.wav` — `<cache_dir>/<hash_prefix>/stems/vocals.wav`
 - `audio.mp3` — `<cache_dir>/<hash_prefix>/audio/audio.mp3`
 
@@ -55,7 +55,7 @@ Look for the "Cache location:" line in the output to find the local directory pa
 
 ### Step 0: Generate Clean Vocal Stems (Recommended)
 
-Generate high-quality vocal stems using two-stage vocal extraction (BS-Roformer + De-Echo). If `clean_vocal.flac` is not already in the cache, you should generate it here and copy it to the cache directory for all subsequent steps to use.
+Generate high-quality vocal stems using two-stage vocal extraction (BS-Roformer + De-Echo). If `clean_vocals.flac` is not already in the cache, you should generate it here and copy it to the cache directory for all subsequent steps to use.
 
 ```bash
 # Get the cache directory for the song
@@ -78,7 +78,7 @@ uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
 
 **Replacing Cached Stems:**
 
-Once you have the clean vocals, save them as `clean_vocal.flac` in the cache directory so that subsequent steps use it:
+Once you have the clean vocals, save them as `clean_vocals.flac` in the cache directory so that subsequent steps use it:
 
 ```bash
 # Find the clean vocals file (usually contains "No Echo" in the name)
@@ -87,8 +87,8 @@ CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" |
 # Get the cache directory
 CACHE_DIR=$(sow_admin audio cache <song_id> 2>/dev/null | grep "Cache location:" | awk '{print $NF}')
 
-# Save as clean_vocal.flac in the cache directory
-cp "$CLEAN_VOCALS" "$CACHE_DIR/clean_vocal.flac"
+# Save as clean_vocals.flac in the cache directory
+cp "$CLEAN_VOCALS" "$CACHE_DIR/clean_vocals.flac"
 
 # Verify the replacement
 ls -la "$CACHE_DIR/"
@@ -124,7 +124,7 @@ uv run --extra poc_qwen3_mlx python poc/gen_lrc_qwen3_asr_local.py \
 - `--snap-algo dp` - Use dynamic programming algorithm for canonical line matching
   - Alternative: `greedy` (faster, less accurate for repetitive sections)
 - `--force-rerun` - Ignore cached results and re-transcribe
-- `--use-vocals` - Use vocal stems from cache if available (default: True). Audio source priority: `clean_vocal.flac` → `vocal.wav` → `audio.mp3` (see [Audio Source Resolution](#audio-source-resolution))
+- `--use-vocals` - Use vocal stems from cache if available (default: True). Audio source priority: `clean_vocals.flac` → `vocal.wav` → `audio.mp3` (see [Audio Source Resolution](#audio-source-resolution))
 - `<song_id>` - Song ID (e.g., `dan_dan_ai_mi_249`)
 
 **Snap Algorithm Options:**
@@ -158,7 +158,7 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
 **Additional Options:**
 - `--device auto` - Device selection (auto/mps/cuda/cpu)
 - `--dtype float32` - Data type (bfloat16/float16/float32)
-- `--use-vocals` - Use vocal stems from cache if available (default: True). Audio source priority: `clean_vocal.flac` → `vocal.wav` → `audio.mp3` (see [Audio Source Resolution](#audio-source-resolution))
+- `--use-vocals` - Use vocal stems from cache if available (default: True). Audio source priority: `clean_vocals.flac` → `vocal.wav` → `audio.mp3` (see [Audio Source Resolution](#audio-source-resolution))
 - `--language Chinese` - Language hint
 - `--lyrics-file <path>` - Override lyrics with external file
 - `--model-cache-dir <path>` - Custom model cache directory
@@ -168,7 +168,7 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
 **Important Notes:**
 - Maximum audio length is 5 minutes (Qwen3ForcedAligner limitation)
 - Requires lyrics to exist in the database or be provided via `--lyrics-file`
-- Uses clean vocal stems (`clean_vocal.flac`) for best alignment accuracy; falls back to `vocal.wav` then `audio.mp3`
+- Uses clean vocal stems (`clean_vocals.flac`) for best alignment accuracy; falls back to `vocal.wav` then `audio.mp3`
 
 **Output:**
 - `tmp_output/aligned.txt` - Aligned LRC file
@@ -243,9 +243,9 @@ uv run --extra stem_separation python poc/gen_clean_vocal_stem.py \
   "$CACHE_DIR/audio/audio.mp3" \
   -o ./tmp_output/vocals
 
-# Save clean vocals to cache as clean_vocal.flac
+# Save clean vocals to cache as clean_vocals.flac
 CLEAN_VOCALS=$(find ./tmp_output/vocals/stage2_dereverb -name "*No Echo*.flac" | head -1)
-cp "$CLEAN_VOCALS" "$CACHE_DIR/clean_vocal.flac"
+cp "$CLEAN_VOCALS" "$CACHE_DIR/clean_vocals.flac"
 
 # Step 1: Transcribe with Qwen3-ASR
 uv run --extra poc_qwen3_mlx python poc/gen_lrc_qwen3_asr_local.py \
@@ -338,9 +338,9 @@ uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 
 ## Tips for Better Results
 
-1. **Generate clean vocal stems first:** If `clean_vocal.flac` is not already cached, run Step 0 to generate it and copy it to the cache directory. This dramatically improves alignment accuracy for all subsequent steps. All scripts prefer `clean_vocal.flac` over `vocal.wav` and `audio.mp3` (see [Audio Source Resolution](#audio-source-resolution)).
+1. **Generate clean vocal stems first:** If `clean_vocals.flac` is not already cached, run Step 0 to generate it and copy it to the cache directory. This dramatically improves alignment accuracy for all subsequent steps. All scripts prefer `clean_vocals.flac` over `vocal.wav` and `audio.mp3` (see [Audio Source Resolution](#audio-source-resolution)).
 
-2. **Use vocals-only audio:** The forced aligner works best with cleaned vocal stems (`clean_vocal.flac`). If clean vocals aren't available and cannot be generated, `vocal.wav` from the cache (downloaded via `sow_admin audio cache <song_id>`) is the next best option.
+2. **Use vocals-only audio:** The forced aligner works best with cleaned vocal stems (`clean_vocals.flac`). If clean vocals aren't available and cannot be generated, `vocal.wav` from the cache (downloaded via `sow_admin audio cache <song_id>`) is the next best option.
 
 3. **Choose the right snap algorithm:
    - Simple songs without repetition: Use `--snap-algo greedy`

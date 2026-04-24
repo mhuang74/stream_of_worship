@@ -265,11 +265,11 @@ def resolve_stem_path(
 
     hash_prefix = recording["hash_prefix"]
 
-    # Try clean_vocal.flac first
-    clean_vocal_path = cache_dir / hash_prefix / "clean_vocal.flac"
-    if clean_vocal_path.exists():
-        typer.echo(f"Using cached clean vocal stem: {clean_vocal_path}", err=True)
-        return clean_vocal_path
+    # Try clean_vocals.flac first
+    clean_vocals_path = cache_dir / hash_prefix / "clean_vocals.flac"
+    if clean_vocals_path.exists():
+        typer.echo(f"Using cached clean vocal stem: {clean_vocals_path}", err=True)
+        return clean_vocals_path
 
     # Try vocals stem (vocal.wav) as fallback
     vocals_stem_path = cache_dir / hash_prefix / "stems" / "vocals.wav"

@@ -154,13 +154,13 @@ def resolve_song_audio_path(
     cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
     audio_path: Optional[Path] = None
 
-    # Try clean_vocal.flac first, then vocal stem, then main audio
-    # Preference: clean_vocal.flac > vocals stem (vocal.wav) > audio.mp3
+    # Try clean_vocals.flac first, then vocal stem, then main audio
+    # Preference: clean_vocals.flac > vocals stem (vocal.wav) > audio.mp3
     if use_vocals:
-        # Check for clean_vocal.flac in the hash prefix directory
-        clean_vocal_path = cache.cache_dir / hash_prefix / "clean_vocal.flac"
-        if clean_vocal_path.exists():
-            audio_path = clean_vocal_path
+        # Check for clean_vocals.flac in the hash prefix directory
+        clean_vocals_path = cache.cache_dir / hash_prefix / "clean_vocals.flac"
+        if clean_vocals_path.exists():
+            audio_path = clean_vocals_path
             typer.echo(f"Using cached clean vocal stem: {audio_path}", err=True)
 
         # Fall back to vocals stem (vocal.wav)
