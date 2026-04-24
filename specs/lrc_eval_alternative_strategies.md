@@ -149,7 +149,89 @@ Pure timing, no TTS needed.
   any vocal passage passes. Useful as a cheap pre-filter, not as the main
   signal.
 
-## Recommendation: **Option B (DTW with slope), augmented by Option E as a pre-filter**
+### Option F — Montreal Forced Aligner (MFA) on stem + LRC text
+
+Treat the LRC text as a known transcription and run MFA to align phones
+against the stem. MFA is purpose-built for this problem on read speech.
+
+- Run `mfa align` with the official `mandarin_mfa` acoustic model and
+  pinyin-based dictionary over `(stem, LRC text)`.
+- Per-line signals: `mfa_line_start` (aligner's word-level start of the
+  line's first character) and `mean_phone_log_likelihood`.
+- PASS rule candidates:
+  - `|mfa_line_start − lrc_timestamp| < 0.3 s`, and
+  - `mean_phone_log_likelihood > threshold` (threshold calibrated per
+    song).
+- **Pros:** purpose-built, gives both timing drift *and* acoustic
+  confidence. No TTS needed. Monotone by construction, so no
+  phrase-recycling problem. Output timestamps double as corrected LRC
+  candidates.
+- **Cons:** MFA is trained on read speech, not sung Mandarin — alignment
+  quality on melismas / sustained notes is an open question. New
+  dependency (conda-only). Official Mandarin dict assumes pinyin input;
+  Traditional-char LRCs need conversion.
+
+### Option G — qwen3-forcedaligner (neural aligner)
+
+Same shape as Option F but with a neural aligner already declared in this
+project (`poc_qwen3_align` extra, `pyproject.toml:81`).
+
+- Feed stem + LRC text; get per-line start + per-line confidence.
+- Same PASS/drift logic as Option F.
+- **Pros:** already installed. Neural aligners tend to be more robust to
+  non-read speech than HMM-GMM aligners like MFA. No new dep.
+- **Cons:** unknown performance on sung Mandarin worship vocals; need to
+  empirically validate.
+
+### Option H — Rhythmic density via onset detection
+
+Cheap, pure-timing signal distinct from Option C: aggregate, not
+per-character.
+
+- Count stem onsets in `[t_i, t_{i+1}]` (librosa onsets on stem).
+- Compare to expected character count of the LRC line (one onset per
+  character, roughly, for Mandarin).
+- Line is suspicious if observed onset count deviates >30 % from expected.
+- **Pros:** trivial; no TTS; complementary to phonetic checks.
+- **Cons:** onset counting on sustained notes is unreliable; probably
+  only useful as a secondary signal.
+
+### Option I — Tone/F0 correlation via CREPE/pYIN
+
+Mandarin is tonal. Each character has an expected tone contour (1=flat,
+2=rising, 3=dip, 4=falling). In *spoken* Mandarin the F0 contour follows
+the tone. In *sung* Mandarin the melody dominates, so tone information is
+partially masked — but not entirely.
+
+- Extract F0 on the stem window via `librosa.pyin` (cheap) or CREPE
+  (higher quality, heavier).
+- For each character, compare observed F0 slope sign vs expected tone
+  slope sign.
+- Per-line score = mean agreement across characters.
+- **Pros:** orthogonal signal to everything above. If it works, it's a
+  strong sanity check that can't be fooled by phrase recycling.
+- **Cons:** unknown whether tone survives sung-melody contamination
+  enough to be useful. Treat as a validity probe in the experiment
+  phase, not a committed signal.
+
+## Recommendation: **experiment first, then pick**
+
+The user has expanded the option set (Options F–I above) and asked to
+gather per-line signal data across a few songs before committing to a
+final scorer design. Concretely:
+
+- Write an experiment driver that computes Options B, E, F, G, H, I as
+  per-line signals on at least one known-bad (`dan_dan_ai_mi_249`) and
+  one known-good (`wo_yao_yi_xin_cheng_xie_mi_247`) song.
+- Emit a per-line CSV + a short markdown summary showing which signals
+  cleanly separate the two songs at line level.
+- Pick the final scorer (single signal or weighted combo) from that
+  evidence, then replace `score_lrc_quality.py` outright (no legacy
+  flag — user prefers a clean cutover).
+
+### Why this beats committing to Option B up front
+
+## Prior recommendation (superseded): **Option B (DTW with slope), augmented by Option E as a pre-filter**
 
 Rationale:
 
@@ -176,7 +258,7 @@ plausibly land in the 0.55–0.75 range and flag the 15+ lines with
 `peak_offset > 1.0 s` as the suspect set. That matches the user's audible
 observation.
 
-## Implementation plan (if approved)
+## Implementation plan (superseded — see experiment-first plan below)
 
 New CLI flag on `poc/score_lrc_quality.py`, e.g., `--strategy dtw` (default
 stays as legacy for now, to preserve comparability).
@@ -233,9 +315,63 @@ On `dan_dan_ai_mi_249` (ground-truth: user says timing is off):
 
 ## Out of scope
 
-- Re-running ASR or forced alignment.
+- Re-running ASR (but external forced alignment via MFA / qwen3-forcedaligner
+  is explicitly in scope per Options F–G above).
 - Reusing `asr_raw.json` — its text/timings are pre-canonical-snap and
   don't map 1:1 to final LRC lines.
 - Fixing the LRC itself. This plan only concerns *detecting* bad LRCs;
   correcting them is a separate task (likely Option D in a later
   iteration).
+
+---
+
+## Experiment-first plan (current direction after interview)
+
+### Decisions captured
+
+- **Legacy handling:** replace `score_lrc_quality.py` outright once the
+  final scorer is chosen. No `--strategy` flag, no dual-maintenance.
+- **Reference songs:**
+  - Bad: `dan_dan_ai_mi_249` (audible drift; current scorer returns 0.950).
+    *Locate stems + final LRC before the experiment starts* — not present
+    under `vocal_extraction_output/`.
+  - Good: `wo_yao_yi_xin_cheng_xie_mi_247`. Canonical LRC via
+    `sow_admin audio view-lrc wo_yao_yi_xin_cheng_xie_mi_247` (not the
+    raw `…sensevoice.lrc` file).
+- **VAD:** Silero.
+- **Forced aligner:** try both MFA and `qwen3-forcedaligner` in the
+  experiment. `qwen3-forcedaligner` is already in
+  `pyproject.toml:81` under the `poc_qwen3_align` extra. MFA is **not**
+  installed; add it only if the experiment supports it.
+- **MFA model (if used):** official `mandarin_mfa` via `mfa model download`;
+  training on worship data is a follow-up only if sung-vocal alignment is
+  poor.
+- **Tone/F0 and onset-density signals:** include as exploratory validity
+  probes; drop before the final scorer if they're too noisy on sung vocals.
+
+### Experiment deliverable
+
+A new script `poc/experiment_lrc_signals.py` that, per song, produces
+`poc/experiment_output/<song>/signals.csv` with per-line columns:
+
+`line_idx, t_lrc, text, voiced_frac, dtw_path_cosine, dtw_slope_dev,
+onset_match_ratio, tone_corr, mfa_drift, mfa_logprob, qwen3_drift,
+qwen3_conf`
+
+Plus a short `signals.md` summary: histograms per signal, top-10
+worst-per-signal lines for manual spot-check, and correlations between
+signals (do DTW slope and qwen3 drift agree on which lines are bad?).
+
+**No PASS/REVIEW thresholds in this phase.** Thresholds get picked after
+the data comes back.
+
+### Post-experiment decision
+
+With both reference songs scored, pick the final scorer by:
+
+- Which signals cleanly separate the two songs at the *per-line* level?
+- Which are cheap and robust enough for every-run use?
+- Single signal, or a small weighted combo?
+
+That decision, and the outright replacement of `score_lrc_quality.py`,
+happen in a follow-up PR.
