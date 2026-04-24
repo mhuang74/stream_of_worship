@@ -149,7 +149,7 @@ Both cache to `~/.cache/huggingface/hub/` and are reused across runs.
 
 2. **Positive-negative contrast**:
    ```
-   … --stem tmp_input/zhe_shi_sheng_jie_zhi_di_259_clean_vocal.flac \
+   … --stem tmp_input/zhe_shi_sheng_jie_zhi_di_259_clean_vocals.flac \
      --lrc  tmp_output/zhe_shi_sheng_jie_zhi_di_259.lrc …
    ```
    Expected: `REVIEW`, with lines 26 (`在祢大能榮耀光中` tagged as
