@@ -154,20 +154,28 @@ def resolve_song_audio_path(
     cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
     audio_path: Optional[Path] = None
 
-    # Try vocals stem first if requested
-    # Preference: vocals_clean > vocals
+    # Try clean_vocal.flac first, then vocal stem, then main audio
+    # Preference: clean_vocal.flac > vocals stem (vocal.wav) > audio.mp3
     if use_vocals:
-        for stem_name in ["vocals_clean", "vocals"]:
-            stem_path = cache.get_stem_path(hash_prefix, stem_name)
-            if stem_path.exists():
-                audio_path = stem_path
-                typer.echo(f"Using cached {stem_name} stem: {audio_path}", err=True)
-                break
-            downloaded = cache.download_stem(hash_prefix, stem_name)
-            if downloaded:
-                audio_path = downloaded
-                typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
-                break
+        # Check for clean_vocal.flac in the hash prefix directory
+        clean_vocal_path = cache.cache_dir / hash_prefix / "clean_vocal.flac"
+        if clean_vocal_path.exists():
+            audio_path = clean_vocal_path
+            typer.echo(f"Using cached clean vocal stem: {audio_path}", err=True)
+
+        # Fall back to vocals stem (vocal.wav)
+        if audio_path is None:
+            for stem_name in ["vocals_clean", "vocals"]:
+                stem_path = cache.get_stem_path(hash_prefix, stem_name)
+                if stem_path.exists():
+                    audio_path = stem_path
+                    typer.echo(f"Using cached {stem_name} stem: {audio_path}", err=True)
+                    break
+                downloaded = cache.download_stem(hash_prefix, stem_name)
+                if downloaded:
+                    audio_path = downloaded
+                    typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
+                    break
 
     # Fall back to main audio
     if audio_path is None:
