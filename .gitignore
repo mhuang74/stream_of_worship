@@ -268,3 +268,5 @@ tmp/
 
 # POC output directories at root level
 poc_output*/
+tmp_input/*
+tmp_output/*

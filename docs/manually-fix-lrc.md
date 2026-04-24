@@ -18,8 +18,13 @@ Before beginning, ensure you have the required dependencies installed:
 # Install dependencies for the full workflow (single command)
 uv sync --extra fix_lrc
 
-# Install mlx-audio separately (due to dependency conflicts)
-uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+# Install mlx-audio separately (due to dependency conflicts with qwen-asr)
+# Note: mlx-audio>=0.4.0 is required for quality scoring (tested with 0.4.2)
+# mlx-audio and qwen-asr have incompatible transformers version requirements:
+#   - qwen-asr requires transformers==4.57.6
+#   - mlx-audio>=0.4.0 requires transformers>=5.0.0
+# Therefore, mlx-audio must be installed manually AFTER running fix_lrc workflow
+uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 ```
 
 ## Step-by-Step Workflow
@@ -69,6 +74,7 @@ ls -la "$CACHE_DIR/"
 - `--dereverb-model` - Choose de-echo model:
   - `UVR-De-Echo-Normal.pth` (default, balanced)
   - `UVR-De-Echo-Aggressive.pth` (stronger echo removal)
+  - `UVR-DeEcho-DeReverb.pth` (combined de-echo and de-reverb)
 - `--reuse-stage1` - Skip Stage 1 if already run (saves time)
 
 ---
@@ -128,11 +134,11 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
 - `--device auto` - Device selection (auto/mps/cuda/cpu)
 - `--dtype float32` - Data type (bfloat16/float16/float32)
 - `--use-vocals` - Use vocals stem if available (default: True)
-- `--offline` - Only use cached files (default: True)
-- `--download` - Download from R2 if not cached
 - `--language Chinese` - Language hint
 - `--lyrics-file <path>` - Override lyrics with external file
 - `--model-cache-dir <path>` - Custom model cache directory
+
+**Note:** The `--offline` and `--download` flags are deprecated. The script now always downloads from R2 if the cache misses.
 
 **Important Notes:**
 - Maximum audio length is 5 minutes (Qwen3ForcedAligner limitation)
@@ -164,7 +170,7 @@ uv run --extra score_lrc_base python poc/score_lrc_quality.py \
 
 **Additional Options:**
 - `--stem <path>` - Override vocal stem path
-- `--threshold 0.8` - Minimum score threshold (default: 0.8 for PASS, lower for REVIEW)
+- `--threshold 0.6` - Minimum score threshold (default: 0.6 for PASS, lower for REVIEW)
 
 **Output:**
 - Report file with per-line scores and overall PASS/REVIEW status
@@ -285,7 +291,7 @@ uv sync --extra poc_qwen3_align
 
 **Solution:**
 ```bash
-uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 ```
 
 ---
@@ -342,7 +348,7 @@ stem_separation = [
 poc_qwen3_mlx = [
     "mlx",
     "mlx-qwen3-asr>=0.1.0",
-    "mlx-audio>=0.1.0",
+    "mlx-audio>=0.4.0",
     "rapidfuzz>=3.0.0",
     "huggingface-hub>=0.20.0",
     "zhconv>=1.4.0",
@@ -372,7 +378,7 @@ score_lrc_base = [
 ]
 ```
 
-**Note:** `mlx-audio>=0.3.0` must still be installed separately with `--prerelease=allow` after installing `fix_lrc`.
+**Note:** `mlx-audio>=0.4.0` is required (tested with 0.4.2) and must be installed separately with `--prerelease=allow` after installing `fix_lrc`.
 
 ---
 

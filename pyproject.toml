@@ -170,20 +170,21 @@ lrc_eval = [
 ]
 
 # Qwen3-ASR local MLX dependencies (Apple Silicon only)
+# Note: mlx-audio is NOT included here due to conflicts with qwen-asr
+# Install separately: uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 poc_qwen3_mlx = [
     "mlx",
     "mlx-qwen3-asr>=0.1.0",
-    "mlx-audio>=0.1.0",
     "rapidfuzz>=3.0.0",
     "huggingface-hub>=0.20.0",
     "zhconv>=1.4.0",
 ]
 
 # LRC quality scoring via TTS round-trip (Apple Silicon only)
-# Note: mlx-audio>=0.3.0 must be installed separately due to dependency conflicts
-# with poc_qwen3_align. To use this feature:
+# Note: mlx-audio>=0.4.0 must be installed separately due to dependency conflicts.
+# To use this feature:
 #   1. Install base dependencies: uv sync --extra score_lrc_base
-#   2. Install mlx-audio: uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+#   2. Install mlx-audio: uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 score_lrc_base = [
     "soundfile>=0.12.0",
     "librosa>=0.10.0",
@@ -199,18 +200,18 @@ score_lrc_base = [
 
 # Unified extra for the full LRC fixing workflow (all Qwen3-based tools)
 # This combines transcription, alignment, and quality scoring.
-# Note: mlx-audio>=0.3.0 must still be installed separately after:
+# Note: mlx-audio>=0.4.0 must still be installed separately after:
 #   uv sync --extra fix_lrc
-#   uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+#   uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 fix_lrc = [
     "stream-of-worship[poc_qwen3_mlx,poc_qwen3_align,score_lrc_base]",
 ]
 
-# Full score_lrc (requires manual install of mlx-audio>=0.3.0)
+# Full score_lrc (requires manual install of mlx-audio>=0.4.0)
 score_lrc = [
     "stream-of-worship[score_lrc_base]",
-    # mlx-audio>=0.3.0 must be installed separately:
-    # uv pip install "mlx-audio>=0.3.0" --prerelease=allow
+    # mlx-audio>=0.4.0 must be installed separately:
+    # uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 ]
 
 # All dependencies together
