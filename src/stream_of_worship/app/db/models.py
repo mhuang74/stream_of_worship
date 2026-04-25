@@ -4,7 +4,7 @@ Provides dataclasses for Songset and SongsetItem entities with serialization
 to/from database rows.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 

@@ -5,9 +5,8 @@ Supports libsql/Turso embedded replicas for sync with the cloud database.
 """
 
 import sqlite3
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, Optional, Union
+from typing import Optional, Union
 
 from stream_of_worship.admin.db.models import Recording, Song
 
