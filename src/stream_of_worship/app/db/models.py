@@ -171,13 +171,16 @@ class SongsetItem:
                 created_at=row[10],
             )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_joined: bool = False) -> dict[str, Any]:
         """Convert SongsetItem to dictionary.
+
+        Args:
+            include_joined: Whether to include joined fields (song_title, etc.)
 
         Returns:
             Dictionary representation of the item
         """
-        return {
+        base = {
             "id": self.id,
             "songset_id": self.songset_id,
             "song_id": self.song_id,
@@ -189,16 +192,24 @@ class SongsetItem:
             "key_shift_semitones": self.key_shift_semitones,
             "tempo_ratio": self.tempo_ratio,
             "created_at": self.created_at,
-            "song_title": self.song_title,
-            "song_key": self.song_key,
-            "duration_seconds": self.duration_seconds,
-            "tempo_bpm": self.tempo_bpm,
-            "recording_key": self.recording_key,
-            "loudness_db": self.loudness_db,
-            "song_composer": self.song_composer,
-            "song_lyricist": self.song_lyricist,
-            "song_album_name": self.song_album_name,
         }
+
+        if include_joined:
+            base.update(
+                {
+                    "song_title": self.song_title,
+                    "song_key": self.song_key,
+                    "duration_seconds": self.duration_seconds,
+                    "tempo_bpm": self.tempo_bpm,
+                    "recording_key": self.recording_key,
+                    "loudness_db": self.loudness_db,
+                    "song_composer": self.song_composer,
+                    "song_lyricist": self.song_lyricist,
+                    "song_album_name": self.song_album_name,
+                }
+            )
+
+        return base
 
     @classmethod
     def generate_id(cls) -> str:

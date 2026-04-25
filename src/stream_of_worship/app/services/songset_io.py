@@ -78,7 +78,7 @@ class SongsetIOService:
 
         data = {
             "songset": songset.to_dict(),
-            "items": [item.to_dict() for item in items],
+            "items": [item.to_dict(include_joined=False) for item in items],
         }
 
         # Ensure parent directory exists
