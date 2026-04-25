@@ -49,6 +49,7 @@ class Song:
     table_row_number: Optional[int] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    deleted_at: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Song":
@@ -59,7 +60,13 @@ class Song:
 
         Returns:
             Song instance
+
+        Note:
+            Handles schema versions:
+            - 16 columns: before deleted_at was added
+            - 17 columns: with deleted_at at index 16
         """
+        row_len = len(row)
         return cls(
             id=row[0],
             title=row[1],
@@ -77,6 +84,7 @@ class Song:
             scraped_at=row[13],
             created_at=row[14],
             updated_at=row[15],
+            deleted_at=row[16] if row_len > 16 else None,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -102,6 +110,7 @@ class Song:
             "scraped_at": self.scraped_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "deleted_at": self.deleted_at,
         }
 
     @property
@@ -180,6 +189,7 @@ class Recording:
     visibility_status: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    deleted_at: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Recording":
@@ -196,29 +206,34 @@ class Recording:
             - 25 columns: before youtube_url was added
             - 26 columns: with youtube_url at the end, no visibility_status
             - 27 columns: with visibility_status at the end (after youtube_url)
+            - 28 columns: with deleted_at at the end
         """
         row_len = len(row)
 
-        # Determine schema version and parse accordingly
-        if row_len == 27:
-            # Schema with visibility_status at the end (ALTER TABLE adds columns at end)
-            # Column order: created_at (23), updated_at (24), youtube_url (25), visibility_status (26)
+        if row_len == 28:
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
+            deleted_at = row[27]
+        elif row_len == 27:
+            created_at = row[23]
+            updated_at = row[24]
+            youtube_url = row[25]
+            visibility_status = row[26]
+            deleted_at = None
         elif row_len == 26:
-            # Legacy schema: youtube_url at end, no visibility_status
             visibility_status = None
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
+            deleted_at = None
         else:
-            # Oldest schema: no youtube_url, no visibility_status
             visibility_status = None
             created_at = row[23] if row_len > 23 else None
             updated_at = row[24] if row_len > 24 else None
             youtube_url = None
+            deleted_at = None
 
         return cls(
             content_hash=row[0],
@@ -248,6 +263,7 @@ class Recording:
             visibility_status=visibility_status,
             created_at=created_at,
             updated_at=updated_at,
+            deleted_at=deleted_at,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -284,6 +300,7 @@ class Recording:
             "visibility_status": self.visibility_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "deleted_at": self.deleted_at,
         }
 
     @property

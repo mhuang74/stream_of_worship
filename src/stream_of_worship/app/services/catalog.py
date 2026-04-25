@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from typing import Optional
 
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.schema import (
+    RECORDING_COLUMNS_FOR_JOIN,
+    RECORDING_COLUMN_COUNT,
+    SONG_COLUMNS_FOR_JOIN,
+    SONG_COLUMN_COUNT,
+)
 from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
@@ -81,13 +87,21 @@ class SongsetItemWithDetails:
 
     @property
     def is_orphan(self) -> bool:
-        """Check if this item is orphaned (missing song/recording)."""
-        return self.song is None or self.recording is None
+        """Check if this item is orphaned (missing or soft-deleted reference)."""
+        if self.song is None or self.recording is None:
+            return True
+        if self.song.deleted_at is not None:
+            return True
+        if self.recording.deleted_at is not None:
+            return True
+        return False
 
     @property
     def display_title(self) -> str:
         """Get the title to display."""
         if self.song:
+            if self.song.deleted_at is not None:
+                return f"Removed: {self.song.title}"
             return self.song.title
         return "Unknown"
 
@@ -190,14 +204,9 @@ class CatalogService:
         """List songs with analyzed recordings."""
         cursor = self.db_client.connection.cursor()
 
-        query = """
-            SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
-                   r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
-                   r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
-                   r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
-                   r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
-                   r.updated_at
+        query = f"""
+            SELECT {SONG_COLUMNS_FOR_JOIN},
+                   {RECORDING_COLUMNS_FOR_JOIN}
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.analysis_status = 'completed' AND r.deleted_at IS NULL
@@ -226,8 +235,8 @@ class CatalogService:
         result = []
         for row in cursor.fetchall():
             row_tuple = tuple(row)
-            song = Song.from_row(row_tuple[0:16])
-            recording = Recording.from_row(row_tuple[16:])
+            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT])
+            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
             result.append(SongWithRecording(song=song, recording=recording))
 
         return result
@@ -242,14 +251,9 @@ class CatalogService:
         """List songs with LRC lyrics."""
         cursor = self.db_client.connection.cursor()
 
-        query = """
-            SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
-                   r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
-                   r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
-                   r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
-                   r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.visibility_status,
-                   r.created_at, r.updated_at
+        query = f"""
+            SELECT {SONG_COLUMNS_FOR_JOIN},
+                   {RECORDING_COLUMNS_FOR_JOIN}
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
@@ -278,8 +282,8 @@ class CatalogService:
         result = []
         for row in cursor.fetchall():
             row_tuple = tuple(row)
-            song = Song.from_row(row_tuple[0:16])
-            recording = Recording.from_row(row_tuple[16:])
+            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT])
+            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
             result.append(SongWithRecording(song=song, recording=recording))
 
         return result
@@ -306,14 +310,9 @@ class CatalogService:
 
         search_pattern = f"%{query}%"
 
-        base_sql = """
-            SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
-                   r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
-                   r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
-                   r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
-                   r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-                   r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.visibility_status,
-                   r.created_at, r.updated_at
+        base_sql = f"""
+            SELECT {SONG_COLUMNS_FOR_JOIN},
+                   {RECORDING_COLUMNS_FOR_JOIN}
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
@@ -345,8 +344,8 @@ class CatalogService:
         result = []
         for row in cursor.fetchall():
             row_tuple = tuple(row)
-            song = Song.from_row(row_tuple[0:16])
-            recording = Recording.from_row(row_tuple[16:])
+            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT])
+            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
             result.append(SongWithRecording(song=song, recording=recording))
 
         return result
