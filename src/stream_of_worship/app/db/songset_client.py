@@ -110,18 +110,24 @@ class SongsetClient:
 
     # Songset operations
 
-    def create_songset(self, name: str, description: Optional[str] = None) -> Songset:
+    def create_songset(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        id: Optional[str] = None,
+    ) -> Songset:
         """Create a new songset.
 
         Args:
             name: Display name for the songset
             description: Optional description
+            id: Optional ID to use (for import); generated if None
 
         Returns:
             Created Songset instance
         """
         songset = Songset(
-            id=Songset.generate_id(),
+            id=id or Songset.generate_id(),
             name=name,
             description=description,
             created_at=datetime.now().isoformat(),
@@ -310,6 +316,10 @@ class SongsetClient:
         recording_hash_prefix: Optional[str] = None,
         position: Optional[int] = None,
         gap_beats: float = 2.0,
+        crossfade_enabled: bool = False,
+        crossfade_duration_seconds: Optional[float] = None,
+        key_shift_semitones: int = 0,
+        tempo_ratio: float = 1.0,
         get_recording: Optional[Callable[[str], Optional]] = None,
     ) -> SongsetItem:
         """Add a song to a songset.
@@ -320,6 +330,10 @@ class SongsetClient:
             recording_hash_prefix: Optional recording hash (canonical anchor)
             position: Position in songset (None = append to end)
             gap_beats: Gap duration before this song
+            crossfade_enabled: Whether to use crossfade instead of gap
+            crossfade_duration_seconds: Duration of crossfade if enabled
+            key_shift_semitones: Key adjustment for this song
+            tempo_ratio: Tempo adjustment ratio (1.0 = original)
             get_recording: Optional callable to validate recording existence
 
         Returns:
@@ -351,14 +365,20 @@ class SongsetClient:
                 recording_hash_prefix=recording_hash_prefix,
                 position=position,
                 gap_beats=gap_beats,
+                crossfade_enabled=crossfade_enabled,
+                crossfade_duration_seconds=crossfade_duration_seconds,
+                key_shift_semitones=key_shift_semitones,
+                tempo_ratio=tempo_ratio,
                 created_at=datetime.now().isoformat(),
             )
 
             cursor.execute(
                 """
                 INSERT INTO songset_items
-                (id, songset_id, song_id, recording_hash_prefix, position, gap_beats, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, songset_id, song_id, recording_hash_prefix, position, gap_beats,
+                 crossfade_enabled, crossfade_duration_seconds, key_shift_semitones,
+                 tempo_ratio, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
@@ -367,6 +387,10 @@ class SongsetClient:
                     item.recording_hash_prefix,
                     item.position,
                     item.gap_beats,
+                    1 if item.crossfade_enabled else 0,
+                    item.crossfade_duration_seconds,
+                    item.key_shift_semitones,
+                    item.tempo_ratio,
                     item.created_at,
                 ),
             )

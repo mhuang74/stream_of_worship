@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.db.songset_client import MissingReferenceError, SongsetClient
 
 
@@ -168,26 +167,17 @@ class SongsetIOService:
                 # Delete existing
                 self.songset_client.delete_songset(existing.id)
 
-        # Create songset
-        songset = Songset(
-            id=songset_data["id"],
-            name=songset_data["name"],
-            description=songset_data.get("description"),
-            created_at=songset_data.get("created_at"),
-            updated_at=songset_data.get("updated_at"),
-        )
+        # Create songset via SongsetClient (preserves imported ID)
+        try:
+            songset = self.songset_client.create_songset(
+                name=songset_data["name"],
+                description=songset_data.get("description"),
+                id=songset_data["id"],
+            )
+        except Exception as e:
+            return ImportResult(success=False, error=f"Failed to create songset: {e}")
 
-        # Insert songset directly (bypass create_songset to preserve ID)
-        import sqlite3
-
-        conn = self.songset_client.connection
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO songsets (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (songset.id, songset.name, songset.description, songset.created_at, songset.updated_at),
-        )
-
-        # Import items
+        # Import items via SongsetClient.add_item()
         imported_count = 0
         orphaned_count = 0
         warnings = []
@@ -202,45 +192,23 @@ class SongsetIOService:
                     warnings.append(f"Recording not found: {recording_hash}, importing as orphan")
                     orphaned_count += 1
 
-            item = SongsetItem(
-                id=item_data["id"],
-                songset_id=songset.id,
-                song_id=item_data["song_id"],
-                recording_hash_prefix=recording_hash,
-                position=item_data["position"],
-                gap_beats=item_data.get("gap_beats", 2.0),
-                crossfade_enabled=item_data.get("crossfade_enabled", False),
-                crossfade_duration_seconds=item_data.get("crossfade_duration_seconds"),
-                key_shift_semitones=item_data.get("key_shift_semitones", 0),
-                tempo_ratio=item_data.get("tempo_ratio", 1.0),
-                created_at=item_data.get("created_at"),
-            )
-
-            cursor.execute(
-                """
-                INSERT INTO songset_items
-                (id, songset_id, song_id, recording_hash_prefix, position, gap_beats,
-                 crossfade_enabled, crossfade_duration_seconds, key_shift_semitones,
-                 tempo_ratio, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    item.id,
-                    item.songset_id,
-                    item.song_id,
-                    item.recording_hash_prefix,
-                    item.position,
-                    item.gap_beats,
-                    1 if item.crossfade_enabled else 0,
-                    item.crossfade_duration_seconds,
-                    item.key_shift_semitones,
-                    item.tempo_ratio,
-                    item.created_at,
-                ),
-            )
-            imported_count += 1
-
-        conn.commit()
+            try:
+                self.songset_client.add_item(
+                    songset_id=songset.id,
+                    song_id=item_data["song_id"],
+                    recording_hash_prefix=recording_hash,
+                    position=item_data["position"],
+                    gap_beats=item_data.get("gap_beats", 2.0),
+                    crossfade_enabled=item_data.get("crossfade_enabled", False),
+                    crossfade_duration_seconds=item_data.get("crossfade_duration_seconds"),
+                    key_shift_semitones=item_data.get("key_shift_semitones", 0),
+                    tempo_ratio=item_data.get("tempo_ratio", 1.0),
+                    get_recording=self.get_recording,
+                )
+                imported_count += 1
+            except MissingReferenceError as e:
+                warnings.append(str(e))
+                orphaned_count += 1
 
         return ImportResult(
             success=True,
