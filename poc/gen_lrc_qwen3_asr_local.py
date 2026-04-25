@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Qwen3-ASR local MLX transcription POC script.
+"""Qwen3-ASR transcription POC script with platform-aware backend selection.
 
-Uses mlx-qwen3-asr for local transcription on Apple Silicon
-with context biasing and canonical-line fuzzy snap to produce LRC files.
-
-This script mirrors the cloud variant but runs entirely locally.
+Supports:
+- Local MLX backend on macOS (Apple Silicon)
+- Cloud DashScope API on all platforms
+- Auto-detects platform and selects appropriate backend
 
 Note: mlx-audio backend support is pending - current version does not include
-Qwen3-ASR models. Only mlx-qwen3-asr is currently supported.
+Qwen3-ASR models. Only mlx-qwen3-asr is currently supported for local mode.
 """
 
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 from typing import Optional
@@ -24,7 +25,43 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import shared utilities
 from poc.utils import extract_audio_segment, format_timestamp, resolve_song_audio_path
 
-app = typer.Typer(help="Qwen3-ASR local MLX transcription POC")
+app = typer.Typer(help="Qwen3-ASR transcription POC with platform-aware backends")
+
+# Region URLs for DashScope API
+REGION_URL = {
+    "intl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "cn": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "us": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+}
+
+
+def is_mlx_available() -> bool:
+    """Check if MLX is available (macOS with Apple Silicon)."""
+    if platform.system() != "Darwin":
+        return False
+    # Check for Apple Silicon
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True
+        )
+        return "Apple" in result.stdout
+    except Exception:
+        return False
+
+
+def get_default_backend() -> str:
+    """Get the default backend based on platform."""
+    if is_mlx_available():
+        return "mlx-qwen3-asr"
+    # Try qwen-asr (PyTorch) next, then fall back to dashscope
+    try:
+        import qwen_asr
+
+        return "qwen-asr"
+    except ImportError:
+        return "dashscope"
 
 
 def transcribe_mlx_qwen3_asr(
@@ -32,7 +69,7 @@ def transcribe_mlx_qwen3_asr(
     model: str = "1.7B",
     context: Optional[str] = None,
 ) -> dict:
-    """Run transcription using mlx-qwen3-asr backend.
+    """Run transcription using mlx-qwen3-asr backend (macOS only).
 
     Args:
         audio_path: Path to audio file
@@ -61,6 +98,108 @@ def transcribe_mlx_qwen3_asr(
     )
 
     return result
+
+
+def transcribe_dashscope(
+    audio_path: Path,
+    model: str = "qwen3-asr-flash",
+    region: str = "intl",
+    context: Optional[str] = None,
+) -> dict:
+    """Run transcription using DashScope cloud API.
+
+    Args:
+        audio_path: Path to audio file
+        model: Model name (qwen3-asr-flash or qwen3-asr-flash-filetrans)
+        region: Region (intl, cn, us)
+        context: Optional context string for biasing
+
+    Returns:
+        Raw API response as dict
+    """
+    import dashscope
+
+    dashscope.base_http_api_url = REGION_URL[region]
+
+    messages = [
+        {"role": "user", "content": [{"audio": f"file://{audio_path.resolve()}"}]},
+    ]
+
+    if context:
+        messages.insert(0, {"role": "system", "content": [{"text": context}]})
+
+    api_key = os.environ.get("DASHSCOPE_API_KEY")
+    if not api_key:
+        raise typer.Exit("DASHSCOPE_API_KEY environment variable not set")
+
+    typer.echo(f"Calling DashScope Qwen3-ASR ({model}) in {region} region...", err=True)
+    if context:
+        typer.echo(f"Using context biasing ({len(context)} chars)", err=True)
+
+    resp = dashscope.MultiModalConversation.call(
+        api_key=api_key,
+        model=model,
+        messages=messages,
+        result_format="message",
+        asr_options={"enable_itn": False, "enable_words": True, "language": "zh"},
+    )
+
+    if resp.status_code != 200:
+        typer.echo(f"API error: {resp.status_code} - {resp.message}", err=True)
+        raise typer.Exit(1)
+
+    return resp.output
+
+
+def transcribe_qwen_asr_pytorch(
+    audio_path: Path,
+    model: str = "Qwen/Qwen3-ASR-0.6B",
+    context: Optional[str] = None,
+) -> dict:
+    """Run transcription using qwen-asr PyTorch backend.
+
+    Args:
+        audio_path: Path to audio file
+        model: Model name (Qwen/Qwen3-ASR-0.6B or Qwen/Qwen3-ASR-1.7B)
+        context: Optional context string for biasing
+
+    Returns:
+        Raw transcription result as dict
+    """
+    import torch
+    from qwen_asr import Qwen3ASRModel
+
+    typer.echo(f"Loading qwen-asr PyTorch ({model})...", err=True)
+
+    # Use CPU if CUDA not available
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
+    asr_model = Qwen3ASRModel.from_pretrained(
+        model,
+        dtype=dtype,
+        device_map=device,
+        max_inference_batch_size=1,
+        max_new_tokens=1024,
+    )
+
+    typer.echo(f"Transcribing: {audio_path}", err=True)
+    if context:
+        typer.echo(f"Using context biasing ({len(context)} chars)", err=True)
+
+    results = asr_model.transcribe(
+        audio=str(audio_path),
+        language="Chinese",
+        context=context,
+    )
+
+    # Convert to dict format compatible with extract_segments
+    result = results[0]
+    return {
+        "text": result.text,
+        "language": result.language,
+        "segments": getattr(result, "time_stamps", []),
+    }
 
 
 # NOTE: mlx-audio backend not yet supported - current version 0.2.9 does not include
@@ -114,18 +253,64 @@ def _get_field(item, field: str, default):
     return getattr(item, field, default)
 
 
-def extract_segments(result) -> list[dict]:
-    """Extract segments from MLX output.
+def extract_segments(result, backend: str = "mlx-qwen3-asr") -> list[dict]:
+    """Extract segments from ASR output.
 
+    Handles both MLX and DashScope output formats.
     Reconstructs phrase-level segments from top-level text and per-character
     timestamp segments by splitting on Chinese and ASCII punctuation.
 
     Args:
-        result: Raw MLX output (TranscriptionResult object or dict)
+        result: Raw ASR output (MLX TranscriptionResult or DashScope dict)
+        backend: Which backend produced the result ('mlx-qwen3-asr' or 'dashscope')
 
     Returns:
         List of segment dicts with 'start', 'end', 'text' keys
     """
+    # Handle DashScope format
+    if backend == "dashscope":
+        segments = []
+        try:
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", [])
+            for item in content:
+                if item.get("type") == "audio_transcription":
+                    sentences = item.get("audio_transcription_results", {}).get("sentences", [])
+                    for sentence in sentences:
+                        start = sentence.get("begin_time", 0) / 1000.0  # Convert ms to seconds
+                        end = sentence.get("end_time", 0) / 1000.0
+                        text = sentence.get("text", "").strip()
+                        if text:
+                            segments.append({"start": start, "end": end, "text": text})
+        except Exception as e:
+            typer.echo(f"Error parsing DashScope segments: {e}", err=True)
+            return []
+        return segments
+
+    # Handle qwen-asr PyTorch format (simple dict with text and optional segments)
+    if backend == "qwen-asr":
+        if isinstance(result, dict):
+            text = result.get("text", "")
+            # qwen-asr returns text directly, try to parse sentences if available
+            segments = []
+            if text:
+                # Split text by common sentence delimiters
+                import re
+
+                sentences = re.split(r"([。！？\.\?!])", text)
+                current_time = 0.0
+                for i, sent in enumerate(sentences):
+                    sent = sent.strip()
+                    if sent and sent not in "。！？.?!":
+                        # Estimate duration (rough approximation: ~3 chars per second)
+                        duration = len(sent) / 3.0
+                        segments.append(
+                            {"start": current_time, "end": current_time + duration, "text": sent}
+                        )
+                        current_time += duration
+            return segments
+        return []
+
+    # MLX format (original implementation)
     # Get text and segments from result (handle both dict and dataclass)
     if isinstance(result, dict):
         text = result.get("text", "")
@@ -447,9 +632,7 @@ def _score(
         return fuzz.token_set_ratio(asr_text_comp, canonical_text_comp) / 100.0
 
 
-def _combined_score(
-    asr: str, canonical: str, target_script: str, asr_char_count: int
-) -> float:
+def _combined_score(asr: str, canonical: str, target_script: str, asr_char_count: int) -> float:
     """Score combining char and pinyin.
 
     Pinyin boost is disabled for long ASR segments (>8 Chinese chars) because
@@ -584,6 +767,7 @@ def canonical_line_snap(
                 continue
 
             merged_text = seg_text + next_seg_text
+
             # Score with char + pinyin matching
             def score_text(text):
                 best = 0
@@ -770,12 +954,14 @@ def canonical_line_snap(
                     line_text = _normalize_text(canonical_lines[line_idx])
                     results.append((timestamp, line_text, True, seg_merged))
 
-                dp_assignments.append({
-                    "seg_idx": anchor_end + i,
-                    "canonical_start": j_start,
-                    "n_lines": n_lines,
-                    "layer_k": layer_k,
-                })
+                dp_assignments.append(
+                    {
+                        "seg_idx": anchor_end + i,
+                        "canonical_start": j_start,
+                        "n_lines": n_lines,
+                        "layer_k": layer_k,
+                    }
+                )
 
     elif snap_algo == "greedy" or n_dp_segments == 0:
         cursor = anchor_end
@@ -806,7 +992,10 @@ def canonical_line_snap(
                 best_idx_in_window = max(range(len(scored_window)), key=lambda k: scored_window[k])
                 best_score_window = scored_window[best_idx_in_window]
 
-            scored_all = [_combined_score(asr_text, cl, target_script, asr_char_count) for cl in canonical_lines]
+            scored_all = [
+                _combined_score(asr_text, cl, target_script, asr_char_count)
+                for cl in canonical_lines
+            ]
             best_idx_all = max(range(n_canonical), key=lambda k: scored_all[k])
             best_score_all = scored_all[best_idx_all]
 
@@ -930,7 +1119,9 @@ def _detect_extra_lines_in_segment(
             continue
 
         score_char = _score(asr_text, canonical_lines[check_idx], target_script, use_pinyin=False)
-        score_pinyin = _score(asr_text, canonical_lines[check_idx], target_script, use_pinyin=True) * 0.95
+        score_pinyin = (
+            _score(asr_text, canonical_lines[check_idx], target_script, use_pinyin=True) * 0.95
+        )
         fuzzy_score = max(score_char, score_pinyin)
 
         # Add line if it meets threshold
@@ -962,10 +1153,11 @@ def _strip_timestamp(line: str) -> str:
     Expected format: [HH:MM:SS]    text
     """
     import re
+
     line = line.lstrip()
-    match = re.search(r'\[.*?\]\s*', line)
+    match = re.search(r"\[.*?\]\s*", line)
     if match:
-        return line[match.end():].strip()
+        return line[match.end() :].strip()
     return line.strip()
 
 
@@ -1013,7 +1205,9 @@ def generate_comparison_report(
                 gap_last = gap_start + len(pending_gap_lines) - 1
                 gap_ranges.append((gap_start, gap_last))
                 gap_number += 1
-                lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+                lines.append(
+                    f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<"
+                )
                 for gi, line in enumerate(pending_gap_lines):
                     lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
                 lines.append("")
@@ -1041,7 +1235,9 @@ def generate_comparison_report(
                 gap_last = gap_start + len(pending_gap_lines) - 1
                 gap_ranges.append((gap_start, gap_last))
                 gap_number += 1
-                lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+                lines.append(
+                    f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<"
+                )
                 for gi, line in enumerate(pending_gap_lines):
                     lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
                 lines.append("")
@@ -1060,7 +1256,9 @@ def generate_comparison_report(
                 gap_last = gap_start + len(pending_gap_lines) - 1
                 gap_ranges.append((gap_start, gap_last))
                 gap_number += 1
-                lines.append(f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<")
+                lines.append(
+                    f">>> GAP #{gap_number}: LINES {gap_start}-{gap_last} COMPLETELY MISSING <<<"
+                )
                 for gi, line in enumerate(pending_gap_lines):
                     lines.append(f"{gap_start + gi:<14} |      GAP      | {line}")
                 lines.append("")
@@ -1202,8 +1400,12 @@ def write_diagnostic(
     lines.append("\n## Segment Details\n\n")
 
     if dp_assignments:
-        lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged | Canon Idx | Layer | N Lines |\n")
-        lines.append("|-------|-----|----------|-------------------|-------|----------|--------|-----------|-------|---------|\n")
+        lines.append(
+            "| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged | Canon Idx | Layer | N Lines |\n"
+        )
+        lines.append(
+            "|-------|-----|----------|-------------------|-------|----------|--------|-----------|-------|---------|\n"
+        )
     else:
         lines.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced | Merged |\n")
         lines.append("|-------|-----|----------|-------------------|-------|----------|--------|\n")
@@ -1262,14 +1464,26 @@ def main(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output file (default: stdout)"
     ),
-    model: str = typer.Option("1.7B", "--model", help="Model size (0.6B or 1.7B)"),
-    backend: str = typer.Option("mlx-qwen3-asr", "--backend", help="MLX backend (mlx-qwen3-asr)"),
+    model: str = typer.Option(
+        "1.7B",
+        "--model",
+        help="Model size (0.6B or 1.7B for MLX; 'qwen3-asr-flash' or 'qwen3-asr-flash-filetrans' for DashScope)",
+    ),
+    backend: str = typer.Option(
+        None,
+        "--backend",
+        help=f"Backend to use (auto-detected: '{get_default_backend()}' on this platform). "
+        "Options: 'mlx-qwen3-asr' (macOS only), 'dashscope' (all platforms)",
+    ),
+    region: str = typer.Option("intl", "--region", help="DashScope region (intl/cn/us)"),
     snap: bool = typer.Option(True, "--snap/--no-snap", help="Enable canonical-line fuzzy snap"),
     snap_threshold: float = typer.Option(
         0.60, "--snap-threshold", help="Minimum fuzzy score to snap (0-1)"
     ),
     snap_algo: str = typer.Option(
-        "greedy", "--snap-algo", help="Snap algorithm: 'greedy' (default) or 'dp' (dynamic programming)"
+        "greedy",
+        "--snap-algo",
+        help="Snap algorithm: 'greedy' (default) or 'dp' (dynamic programming)",
     ),
     dp_skip_penalty: float = typer.Option(
         0.15, "--dp-skip-penalty", help="DP penalty for skipping canonical indices within a layer"
@@ -1315,26 +1529,43 @@ def main(
         None, "--comparison-output", "-c", help="Path to write comparison report"
     ),
 ):
-    """Run Qwen3-ASR local MLX transcription on a song and output LRC format.
+    """Run Qwen3-ASR transcription on a song and output LRC format.
 
-    Transcription uses mlx-qwen3-asr with context biasing and canonical-line
-    snap enabled by default.
+    Supports both local MLX backend (macOS) and cloud DashScope API (all platforms).
+    Auto-detects platform and selects appropriate backend if not specified.
+
+    Lyrics are optional for transcription, but required for canonical-line snap.
+    Without lyrics, the script outputs raw ASR segments.
 
     Transcription results are cached and reused by default. Use --force-rerun
     to ignore the cache.
     """
-    # Validate model
-    if model not in ("0.6B", "1.7B"):
-        typer.echo(f"Error: Invalid model '{model}'. Use '0.6B' or '1.7B'.", err=True)
-        raise typer.Exit(1)
+    # Auto-detect backend if not specified
+    if backend is None:
+        backend = get_default_backend()
+        typer.echo(f"Auto-detected backend: {backend}", err=True)
 
     # Validate backend
-    if backend != "mlx-qwen3-asr":
+    if backend not in ("mlx-qwen3-asr", "qwen-asr", "dashscope"):
         typer.echo(
-            f"Error: Backend '{backend}' not yet supported. Only 'mlx-qwen3-asr' is currently supported.",
+            f"Error: Backend '{backend}' not supported. Use 'mlx-qwen3-asr', 'qwen-asr', or 'dashscope'.",
             err=True,
         )
         raise typer.Exit(1)
+
+    # Validate model based on backend
+    if backend == "mlx-qwen3-asr":
+        if model not in ("0.6B", "1.7B"):
+            typer.echo(f"Error: Invalid model '{model}' for MLX. Use '0.6B' or '1.7B'.", err=True)
+            raise typer.Exit(1)
+    elif backend == "qwen-asr":
+        # For qwen-asr, default to 0.6B if model is still the MLX default
+        if model in ("0.6B", "1.7B"):
+            model = f"Qwen/Qwen3-ASR-{model}"
+        typer.echo(f"Using qwen-asr model: {model}", err=True)
+    elif backend == "dashscope":
+        if model not in ("qwen3-asr-flash", "qwen3-asr-flash-filetrans"):
+            typer.echo(f"Warning: Using DashScope model '{model}'", err=True)
 
     # Resolve inputs
     audio_path, lyrics = resolve_song_audio_path(song_id, use_vocals=use_vocals)
@@ -1347,11 +1578,17 @@ def main(
         audio_path = vocal_stem
         typer.echo(f"Using provided vocal stem: {audio_path}", err=True)
 
+    # Lyrics are optional - only warn if snap or context biasing is requested
     if lyrics is None:
-        typer.echo("Error: No lyrics from catalog; cannot run biasing/snap.", err=True)
-        raise typer.Exit(1)
-
-    lyrics_text = "\n".join(lyrics)
+        if lyrics_context:
+            typer.echo("Warning: No lyrics from catalog; disabling context biasing.", err=True)
+            lyrics_context = False
+        if snap:
+            typer.echo("Warning: No lyrics from catalog; disabling canonical-line snap.", err=True)
+            snap = False
+        lyrics_text = ""
+    else:
+        lyrics_text = "\n".join(lyrics)
 
     # Determine time range
     effective_end: Optional[float] = end if end and end > 0 else None
@@ -1421,18 +1658,32 @@ def main(
             # Format: space-separated phrases (per mlx-qwen3-asr convention for vocabulary biasing)
             # Newline-separated lyrics cause the model to hallucinate them as transcription output
             context = None
-            if lyrics_context:
+            if lyrics_context and lyrics:
                 context = " ".join(l.strip() for l in lyrics if l.strip())
                 if len(context) > context_max_chars:
                     context = context[:context_max_chars]
                     typer.echo(f"Context truncated to {context_max_chars} chars", err=True)
 
-            # Transcribe (only mlx-qwen3-asr currently supported)
-            result = transcribe_mlx_qwen3_asr(
-                audio_path=transcribe_path,
-                model=model,
-                context=context,
-            )
+            # Transcribe with selected backend
+            if backend == "mlx-qwen3-asr":
+                result = transcribe_mlx_qwen3_asr(
+                    audio_path=transcribe_path,
+                    model=model,
+                    context=context,
+                )
+            elif backend == "qwen-asr":
+                result = transcribe_qwen_asr_pytorch(
+                    audio_path=transcribe_path,
+                    model=model,
+                    context=context,
+                )
+            else:  # dashscope
+                result = transcribe_dashscope(
+                    audio_path=transcribe_path,
+                    model=model,
+                    region=region,
+                    context=context,
+                )
 
             wall_time = time.time() - wall_time_start
             typer.echo(f"Transcription completed in {wall_time:.2f}s", err=True)
@@ -1456,8 +1707,8 @@ def main(
         raw_file.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
         typer.echo(f"Saved raw ASR result to: {raw_file}", err=True)
 
-    # Extract segments from raw dict
-    segments = extract_segments(raw)
+    # Extract segments from raw dict (handle both MLX and DashScope formats)
+    segments = extract_segments(raw, backend=backend)
 
     if not segments:
         typer.echo("Error: No segments extracted from ASR result", err=True)
@@ -1481,7 +1732,8 @@ def main(
         )
         replaced_count = sum(1 for _, _, replaced, _ in results if replaced)
         typer.echo(
-            f"Canonical-line snap ({snap_algo}): {replaced_count}/{len(results)} segments replaced", err=True
+            f"Canonical-line snap ({snap_algo}): {replaced_count}/{len(results)} segments replaced",
+            err=True,
         )
 
         # Write diagnostic if requested
@@ -1514,7 +1766,9 @@ def main(
 
         # Read verified lyrics (strip whitespace, timestamps, filter empty lines)
         verified_lines = [
-            _strip_timestamp(l) for l in verified_lyrics.read_text(encoding="utf-8").splitlines() if l.strip()
+            _strip_timestamp(l)
+            for l in verified_lyrics.read_text(encoding="utf-8").splitlines()
+            if l.strip()
         ]
 
         # Extract output lines from results (also strip timestamps in case they're present)
