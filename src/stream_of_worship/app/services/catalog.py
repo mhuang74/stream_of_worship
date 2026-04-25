@@ -10,7 +10,6 @@ from typing import Optional
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.db.schema import (
     RECORDING_COLUMNS_FOR_JOIN,
-    RECORDING_COLUMN_COUNT,
     SONG_COLUMNS_FOR_JOIN,
     SONG_COLUMN_COUNT,
 )

@@ -4,10 +4,6 @@ Textual-based application for worship leaders to browse songs,
 manage songsets, and export audio/video.
 """
 
-import asyncio
-import sys
-from pathlib import Path
-
 from textual.app import App
 
 from stream_of_worship.admin.services.r2 import R2Client
