@@ -113,22 +113,20 @@ class SowApp(App):
         """Handle app mount event."""
         logger.info("App mounted, navigating to initial screen: SONGSET_LIST")
 
-        # Start background sync if configured
         if self.config.sync_on_startup and self.config.is_turso_configured:
-            self.run_worker(self._sync_in_background(), exclusive=True)
+            self.run_worker(self._sync_in_background, thread=True, exclusive=True)
 
-        # Use navigate_to to properly set up state
         self.navigate_to(AppScreen.SONGSET_LIST)
 
-    async def _sync_in_background(self) -> None:
-        """Run sync in background with error handling."""
+    def _sync_in_background(self) -> None:
+        """Run sync in background thread with error handling."""
         try:
             result = self.sync_service.execute_sync()
             logger.info(f"Background sync completed: {result.message}")
+            self.call_from_thread(self.notify, f"Sync completed: {result.message}")
         except Exception as e:
             logger.warning(f"Background sync failed: {e}")
-            # Non-blocking toast - just log for now
-            # Could emit a message to show in UI
+            self.call_from_thread(self.notify, f"Sync failed: {e}", severity="error")
 
     def action_sync_catalog(self) -> None:
         """Sync catalog on demand (capital S key)."""
@@ -139,11 +137,11 @@ class SowApp(App):
         def do_sync():
             try:
                 result = self.sync_service.execute_sync()
-                self.notify(f"Sync completed: {result.message}")
+                self.call_from_thread(self.notify, f"Sync completed: {result.message}")
             except Exception as e:
-                self.notify(f"Sync failed: {e}", severity="error")
+                self.call_from_thread(self.notify, f"Sync failed: {e}", severity="error")
 
-        self.run_worker(do_sync(), exclusive=True)
+        self.run_worker(do_sync, thread=True, exclusive=True)
 
     def _create_screen(self, screen: AppScreen):
         """Create a fresh screen instance.
