@@ -100,14 +100,18 @@ class AppConfig:
             data = tomllib.load(f)
 
         # Load base admin config from its own section or file
-        admin_config = AdminConfig()
+        admin_config = AdminConfig.load()
         if "admin" in data:
             admin_data = data["admin"]
             admin_config.analysis_url = admin_data.get("analysis_url", admin_config.analysis_url)
             admin_config.r2_bucket = admin_data.get("r2_bucket", admin_config.r2_bucket)
-            admin_config.r2_endpoint_url = admin_data.get("r2_endpoint_url", admin_config.r2_endpoint_url)
+            admin_config.r2_endpoint_url = admin_data.get(
+                "r2_endpoint_url", admin_config.r2_endpoint_url
+            )
             admin_config.r2_region = admin_data.get("r2_region", admin_config.r2_region)
-            admin_config.turso_database_url = admin_data.get("turso_database_url", admin_config.turso_database_url)
+            admin_config.turso_database_url = admin_data.get(
+                "turso_database_url", admin_config.turso_database_url
+            )
             if "db_path" in admin_data:
                 admin_config.db_path = Path(admin_data["db_path"])
 
@@ -123,8 +127,12 @@ class AppConfig:
             config.preview_buffer_ms = app_data.get("preview_buffer_ms", config.preview_buffer_ms)
             config.preview_volume = app_data.get("preview_volume", config.preview_volume)
             config.default_gap_beats = app_data.get("default_gap_beats", config.default_gap_beats)
-            config.default_video_template = app_data.get("default_video_template", config.default_video_template)
-            config.default_video_resolution = app_data.get("default_video_resolution", config.default_video_resolution)
+            config.default_video_template = app_data.get(
+                "default_video_template", config.default_video_template
+            )
+            config.default_video_resolution = app_data.get(
+                "default_video_resolution", config.default_video_resolution
+            )
 
         return config
 
