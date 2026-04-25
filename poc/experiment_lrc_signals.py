@@ -55,8 +55,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 app = typer.Typer(help="LRC signal experiment: compare per-line timing signals on reference songs")
 
 SONGS = {
-    "dan_dan_ai_mi_249": {"label": "BAD (known drift)", "hash_prefix": "5b445438847a"},
-    "wo_yao_yi_xin_cheng_xie_mi_247": {"label": "GOOD (hand-verified)", "hash_prefix": "c105e75972f7"},
+    "dan_qin_ge_chang_zan_mei_mi_407": {"label": "NEW", "hash_prefix": "ad4d01257853"},
+    "dan_dan_ai_mi_255": {"label": "NEW", "hash_prefix": "97dc9af36c46"},
+    "wo_yao_yi_xin_cheng_xie_mi_253": {"label": "NEW", "hash_prefix": "a5c5c44d1661"},
 }
 
 OUTPUT_BASE = Path(__file__).parent / "experiment_output"
@@ -67,6 +68,7 @@ R2_BUCKET = "stream-of-worship"
 
 
 # ── LRC parsing ──────────────────────────────────────────────────────────────
+
 
 @dataclass
 class LRCLine:
@@ -92,6 +94,7 @@ def parse_lrc(content: str) -> list[LRCLine]:
 
 # ── R2 download ───────────────────────────────────────────────────────────────
 
+
 def download_r2(s3_key: str, dest: Path) -> bool:
     import boto3
     from botocore.exceptions import ClientError
@@ -99,7 +102,9 @@ def download_r2(s3_key: str, dest: Path) -> bool:
     ak = os.environ.get("SOW_R2_ACCESS_KEY_ID")
     sk = os.environ.get("SOW_R2_SECRET_ACCESS_KEY")
     if not ak or not sk:
-        typer.echo("R2 credentials not set (SOW_R2_ACCESS_KEY_ID / SOW_R2_SECRET_ACCESS_KEY)", err=True)
+        typer.echo(
+            "R2 credentials not set (SOW_R2_ACCESS_KEY_ID / SOW_R2_SECRET_ACCESS_KEY)", err=True
+        )
         return False
 
     client = boto3.client(
@@ -119,38 +124,54 @@ def download_r2(s3_key: str, dest: Path) -> bool:
 
 
 def resolve_assets(song_id: str, hash_prefix: str) -> tuple[Path, Path]:
-    """Return (stem_path, lrc_path), downloading from R2 if needed."""
+    """Return (stem_path, lrc_path), downloading from R2 if needed.
+
+    Falls back to main audio file if vocal stems are not available.
+    """
     stem_path = CACHE_DIR / hash_prefix / "stems" / "vocals.wav"
+    audio_path = CACHE_DIR / hash_prefix / "audio" / "audio.mp3"
     lrc_path = CACHE_DIR / hash_prefix / "lrc" / "lyrics.lrc"
 
-    if not stem_path.exists():
+    # Try vocal stem first, then fall back to main audio
+    audio_source = None
+    if stem_path.exists():
+        audio_source = stem_path
+        typer.echo(f"Using cached vocal stem: {stem_path}", err=True)
+    elif audio_path.exists():
+        audio_source = audio_path
+        typer.echo(f"Vocal stem not available, using main audio: {audio_path}", err=True)
+    else:
+        # Try to download vocal stem from R2
         typer.echo(
-            f"Stem not in local cache — run: sow-admin audio cache {song_id}\n"
-            f"Attempting direct R2 download as fallback...",
+            f"Stem not in local cache — attempting direct R2 download...",
             err=True,
         )
-        if not download_r2(f"{hash_prefix}/stems/vocals.wav", stem_path):
-            raise FileNotFoundError(
-                f"Could not obtain stem for {song_id}. "
-                f"Run: sow-admin audio cache {song_id}"
-            )
+        if download_r2(f"{hash_prefix}/stems/vocals.wav", stem_path):
+            audio_source = stem_path
+        elif download_r2(f"{hash_prefix}/audio.mp3", audio_path):
+            audio_source = audio_path
+            typer.echo(f"Using downloaded main audio", err=True)
+
+    if audio_source is None:
+        raise FileNotFoundError(
+            f"Could not obtain audio for {song_id}. Run: sow-admin audio cache {song_id}"
+        )
 
     if not lrc_path.exists():
         typer.echo(
-            f"LRC not in local cache — run: sow-admin audio cache {song_id}\n"
-            f"Attempting direct R2 download as fallback...",
+            f"LRC not in local cache — attempting direct R2 download...",
             err=True,
         )
         if not download_r2(f"{hash_prefix}/lyrics.lrc", lrc_path):
             raise FileNotFoundError(
-                f"Could not obtain LRC for {song_id}. "
-                f"Run: sow-admin audio cache {song_id}"
+                f"Could not obtain LRC for {song_id}. Run: sow-admin audio cache {song_id} --lrc"
             )
 
-    return stem_path, lrc_path
+    return audio_source, lrc_path
 
 
 # ── Audio utilities ────────────────────────────────────────────────────────────
+
 
 def load_window(stem_path: Path, start: float, end: float, sr: int = 16000) -> np.ndarray:
     import librosa
@@ -169,6 +190,7 @@ def load_window(stem_path: Path, start: float, end: float, sr: int = 16000) -> n
 
 def stem_duration(stem_path: Path) -> float:
     import soundfile as sf
+
     return sf.info(str(stem_path)).duration
 
 
@@ -187,6 +209,7 @@ def _load_silero():
         return None, None
     if _silero_model is None:
         import torch
+
         try:
             typer.echo("Loading Silero VAD...", err=True)
             _silero_model, _silero_utils = torch.hub.load(
@@ -237,6 +260,7 @@ def _load_embedder():
     if _embedder is None:
         import torch
         from transformers import AutoFeatureExtractor, AutoModel
+
         model_id = "facebook/wav2vec2-xls-r-300m"
         typer.echo(f"Loading {model_id}...", err=True)
         device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -250,6 +274,7 @@ def _load_embedder():
 
 def embed_framewise(audio: np.ndarray, sr: int = 16000) -> np.ndarray:
     import torch
+
     mdl, proc, device = _load_embedder()
     inputs = proc(audio, sampling_rate=sr, return_tensors="pt", padding=True)
     with torch.no_grad():
@@ -310,6 +335,7 @@ def compute_dtw_signal(
     win_end = min(stem_total_dur, t_lrc + tts_dur + 1.0)
 
     import librosa
+
     tts_16k = librosa.resample(tts_audio.astype(np.float32), orig_sr=tts_sr, target_sr=16000)
     stem_chunk = load_window(stem_path, win_start, win_end, sr=16000)
 
@@ -326,6 +352,7 @@ def compute_dtw_signal(
 
 
 # ── Signal 3: Onset match ratio ───────────────────────────────────────────────
+
 
 def onset_match_ratio(
     stem_path: Path,
@@ -346,9 +373,7 @@ def onset_match_ratio(
     )
 
     stem_chunk = load_window(stem_path, win_start, win_end, sr=tts_sr)
-    stem_onsets_rel = librosa.onset.onset_detect(
-        y=stem_chunk, sr=tts_sr, units="time"
-    )
+    stem_onsets_rel = librosa.onset.onset_detect(y=stem_chunk, sr=tts_sr, units="time")
     # Convert relative onset times to absolute; align TTS onset to t_lrc
     stem_onsets_abs = stem_onsets_rel + win_start
 
@@ -468,6 +493,7 @@ def _load_qwen3_aligner():
         try:
             import torch
             from qwen_asr import Qwen3ForcedAligner
+
             device = "mps" if torch.backends.mps.is_available() else "cpu"
             typer.echo("Loading Qwen3ForcedAligner-0.6B...", err=True)
             _qwen3_aligner = Qwen3ForcedAligner.from_pretrained(
@@ -502,11 +528,10 @@ def run_qwen3_aligner(stem_path: Path, lrc_lines: list[LRCLine]) -> list[float]:
     # Qwen3ForcedAligner requires audio <= 5 minutes
     try:
         import soundfile as sf
+
         dur = sf.info(str(stem_path)).duration
         if dur > 300:
-            typer.echo(
-                f"  Stem duration {dur:.1f}s > 300s — skipping qwen3 signal.", err=True
-            )
+            typer.echo(f"  Stem duration {dur:.1f}s > 300s — skipping qwen3 signal.", err=True)
             return [float("nan")] * len(lrc_lines)
     except Exception:
         pass
@@ -541,7 +566,7 @@ def run_qwen3_aligner(stem_path: Path, lrc_lines: list[LRCLine]) -> list[float]:
     import re as _re
 
     def _norm(t: str) -> str:
-        return _re.sub(r"[\s。，！？、；：\"''""''（）【】「」『』 ]+", "", t)
+        return _re.sub(r"[\s。，！？、；：\"''" "''（）【】「」『』 ]+", "", t)
 
     aligned_norm = _norm(aligned_text)
     pos = 0
@@ -558,9 +583,7 @@ def run_qwen3_aligner(stem_path: Path, lrc_lines: list[LRCLine]) -> list[float]:
         line_end = idx + len(norm_line)
         pos = line_end
         overlapping = [
-            s_start
-            for (sc, ec, s_start, s_end) in seg_positions
-            if ec > idx and sc < line_end
+            s_start for (sc, ec, s_start, s_end) in seg_positions if ec > idx and sc < line_end
         ]
         if not overlapping:
             drifts.append(float("nan"))
@@ -572,6 +595,7 @@ def run_qwen3_aligner(stem_path: Path, lrc_lines: list[LRCLine]) -> list[float]:
 
 
 # ── Signal 6: MFA start-time drift (stub — MFA not installed) ────────────────
+
 
 def run_mfa_aligner(stem_path: Path, lrc_lines: list[LRCLine]) -> list[float]:
     """Run MFA alignment and return per-line |mfa_start - t_lrc| drift values.
@@ -586,6 +610,7 @@ def run_mfa_aligner(stem_path: Path, lrc_lines: list[LRCLine]) -> list[float]:
     """
     try:
         import subprocess
+
         result = subprocess.run(["mfa", "version"], capture_output=True)
         if result.returncode != 0:
             raise FileNotFoundError
@@ -605,6 +630,7 @@ TTS_CACHE_DIR = Path.home() / ".cache" / "qwen3_tts"
 
 def _tts_cache_path(text: str, voice: str = "Chelsie") -> Path:
     import hashlib
+
     key = f"mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16:{voice}:{text}"
     sha1 = hashlib.sha1(key.encode()).hexdigest()
     return TTS_CACHE_DIR / f"{sha1}.wav"
@@ -628,6 +654,7 @@ def load_tts_audio(text: str, voice: str = "Chelsie") -> tuple[np.ndarray, int]:
 
 # ── Per-line signal computation ────────────────────────────────────────────────
 
+
 @dataclass
 class LineSignals:
     line_idx: int
@@ -638,8 +665,8 @@ class LineSignals:
     dtw_slope_dev: float = float("nan")
     onset_match_ratio: float = float("nan")
     tone_corr: float = float("nan")
-    qwen3_drift: float = float("nan")   # |qwen3_start - t_lrc| in seconds
-    mfa_drift: float = float("nan")     # |mfa_start - t_lrc| in seconds
+    qwen3_drift: float = float("nan")  # |qwen3_start - t_lrc| in seconds
+    mfa_drift: float = float("nan")  # |mfa_start - t_lrc| in seconds
     tts_duration: float = float("nan")
     tts_cache_hit: bool = False
 
@@ -684,7 +711,7 @@ def compute_signals_for_song(
             sig.tts_duration = len(tts_audio) / tts_sr
             sig.tts_cache_hit = True
         except FileNotFoundError as e:
-            typer.echo(f"  Line {i+1}: TTS cache miss — {e}", err=True)
+            typer.echo(f"  Line {i + 1}: TTS cache miss — {e}", err=True)
 
         # Signal 1: VAD
         if not skip_vad:
@@ -693,7 +720,7 @@ def compute_signals_for_song(
                 win_end = min(total_dur, line.time_seconds + tts_dur_est + 0.5)
                 sig.voiced_frac = voiced_fraction(stem_path, line.time_seconds, win_end)
             except Exception as e:
-                typer.echo(f"  Line {i+1} VAD error: {e}", err=True)
+                typer.echo(f"  Line {i + 1} VAD error: {e}", err=True)
 
         # Signals 2–4 require TTS audio
         if tts_audio is not None:
@@ -704,7 +731,7 @@ def compute_signals_for_song(
                         stem_path, line.time_seconds, tts_audio, tts_sr, total_dur
                     )
                 except Exception as e:
-                    typer.echo(f"  Line {i+1} DTW error: {e}", err=True)
+                    typer.echo(f"  Line {i + 1} DTW error: {e}", err=True)
 
             # Signal 3: Onset
             if not skip_onset:
@@ -713,7 +740,7 @@ def compute_signals_for_song(
                         stem_path, line.time_seconds, tts_audio, tts_sr, total_dur
                     )
                 except Exception as e:
-                    typer.echo(f"  Line {i+1} onset error: {e}", err=True)
+                    typer.echo(f"  Line {i + 1} onset error: {e}", err=True)
 
             # Signal 4: Tone/F0
             if not skip_tone:
@@ -722,7 +749,7 @@ def compute_signals_for_song(
                         stem_path, line.time_seconds, line.text, tts_audio, tts_sr, total_dur
                     )
                 except Exception as e:
-                    typer.echo(f"  Line {i+1} tone error: {e}", err=True)
+                    typer.echo(f"  Line {i + 1} tone error: {e}", err=True)
 
         results.append(sig)
         _progress(i + 1, len(lines), sig)
@@ -747,11 +774,18 @@ def _progress(idx: int, total: int, sig: LineSignals) -> None:
 # ── CSV output ────────────────────────────────────────────────────────────────
 
 COLUMNS = [
-    "line_idx", "t_lrc", "text",
-    "voiced_frac", "dtw_path_cosine", "dtw_slope_dev",
-    "onset_match_ratio", "tone_corr",
-    "qwen3_drift", "mfa_drift",
-    "tts_duration", "tts_cache_hit",
+    "line_idx",
+    "t_lrc",
+    "text",
+    "voiced_frac",
+    "dtw_path_cosine",
+    "dtw_slope_dev",
+    "onset_match_ratio",
+    "tone_corr",
+    "qwen3_drift",
+    "mfa_drift",
+    "tts_duration",
+    "tts_cache_hit",
 ]
 
 
@@ -761,28 +795,41 @@ def write_csv(signals: list[LineSignals], path: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=COLUMNS)
         writer.writeheader()
         for s in signals:
-            writer.writerow({
-                "line_idx": s.line_idx,
-                "t_lrc": f"{s.t_lrc:.3f}",
-                "text": s.text,
-                "voiced_frac": "" if np.isnan(s.voiced_frac) else f"{s.voiced_frac:.4f}",
-                "dtw_path_cosine": "" if np.isnan(s.dtw_path_cosine) else f"{s.dtw_path_cosine:.4f}",
-                "dtw_slope_dev": "" if np.isnan(s.dtw_slope_dev) else f"{s.dtw_slope_dev:.4f}",
-                "onset_match_ratio": "" if np.isnan(s.onset_match_ratio) else f"{s.onset_match_ratio:.4f}",
-                "tone_corr": "" if np.isnan(s.tone_corr) else f"{s.tone_corr:.4f}",
-                "qwen3_drift": "" if np.isnan(s.qwen3_drift) else f"{s.qwen3_drift:.3f}",
-                "mfa_drift": "" if np.isnan(s.mfa_drift) else f"{s.mfa_drift:.3f}",
-                "tts_duration": "" if np.isnan(s.tts_duration) else f"{s.tts_duration:.3f}",
-                "tts_cache_hit": str(s.tts_cache_hit),
-            })
+            writer.writerow(
+                {
+                    "line_idx": s.line_idx,
+                    "t_lrc": f"{s.t_lrc:.3f}",
+                    "text": s.text,
+                    "voiced_frac": "" if np.isnan(s.voiced_frac) else f"{s.voiced_frac:.4f}",
+                    "dtw_path_cosine": ""
+                    if np.isnan(s.dtw_path_cosine)
+                    else f"{s.dtw_path_cosine:.4f}",
+                    "dtw_slope_dev": "" if np.isnan(s.dtw_slope_dev) else f"{s.dtw_slope_dev:.4f}",
+                    "onset_match_ratio": ""
+                    if np.isnan(s.onset_match_ratio)
+                    else f"{s.onset_match_ratio:.4f}",
+                    "tone_corr": "" if np.isnan(s.tone_corr) else f"{s.tone_corr:.4f}",
+                    "qwen3_drift": "" if np.isnan(s.qwen3_drift) else f"{s.qwen3_drift:.3f}",
+                    "mfa_drift": "" if np.isnan(s.mfa_drift) else f"{s.mfa_drift:.3f}",
+                    "tts_duration": "" if np.isnan(s.tts_duration) else f"{s.tts_duration:.3f}",
+                    "tts_cache_hit": str(s.tts_cache_hit),
+                }
+            )
 
 
 # ── Markdown report ───────────────────────────────────────────────────────────
 
+
 def _stats(vals: list[float]) -> dict:
     v = [x for x in vals if not np.isnan(x)]
     if not v:
-        return {"n": 0, "mean": float("nan"), "std": float("nan"), "min": float("nan"), "max": float("nan")}
+        return {
+            "n": 0,
+            "mean": float("nan"),
+            "std": float("nan"),
+            "min": float("nan"),
+            "max": float("nan"),
+        }
     return {"n": len(v), "mean": np.mean(v), "std": np.std(v), "min": np.min(v), "max": np.max(v)}
 
 
@@ -796,7 +843,9 @@ def write_markdown(
     for song_id, sigs in all_results.items():
         meta = SONGS.get(song_id, {})
         lines.append(f"## {song_id} — {meta.get('label', '')}\n\n")
-        lines.append(f"Lines processed: {len(sigs)}  |  TTS cache hits: {sum(s.tts_cache_hit for s in sigs)}\n\n")
+        lines.append(
+            f"Lines processed: {len(sigs)}  |  TTS cache hits: {sum(s.tts_cache_hit for s in sigs)}\n\n"
+        )
 
         signal_fields = [
             ("voiced_frac", "VAD voiced fraction"),
@@ -818,8 +867,8 @@ def write_markdown(
                 f"| {label} | {st['n']} | "
                 f"{st['mean']:.3f} | {st['std']:.3f} | "
                 f"{st['min']:.3f} | {st['max']:.3f} |\n"
-                if st["n"] > 0 else
-                f"| {label} | 0 | n/a | n/a | n/a | n/a |\n"
+                if st["n"] > 0
+                else f"| {label} | 0 | n/a | n/a | n/a | n/a |\n"
             )
 
         # Top-10 worst per signal (those with lowest values, except slope_dev where highest is worst)
@@ -859,7 +908,11 @@ def write_markdown(
             ("qwen3_drift", "Qwen3 aligner drift (s)"),
             ("mfa_drift", "MFA drift (s)"),
         ]
-        lines.append("| Signal | " + " | ".join(s.split("_")[0][:12] + "…" for s in song_ids) + " | Separates? |\n")
+        lines.append(
+            "| Signal | "
+            + " | ".join(s.split("_")[0][:12] + "…" for s in song_ids)
+            + " | Separates? |\n"
+        )
         lines.append("|--------|" + "|".join("---" for _ in song_ids) + "|------------|\n")
         for attr, label in signal_fields_compare:
             means = []
@@ -881,10 +934,13 @@ def write_markdown(
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 @app.command()
 def main(
     song: Optional[str] = typer.Option(
-        None, "--song", "-s",
+        None,
+        "--song",
+        "-s",
         help="Run on single song ID instead of both reference songs",
     ),
     skip_vad: bool = typer.Option(False, "--skip-vad", help="Skip Silero VAD signal"),
@@ -892,7 +948,9 @@ def main(
     skip_onset: bool = typer.Option(False, "--skip-onset", help="Skip onset match signal"),
     skip_tone: bool = typer.Option(False, "--skip-tone", help="Skip tone/F0 correlation signal"),
     skip_qwen3: bool = typer.Option(False, "--skip-qwen3", help="Skip qwen3-forcedaligner signal"),
-    skip_mfa: bool = typer.Option(False, "--skip-mfa", help="Skip MFA signal (no-op if MFA not installed)"),
+    skip_mfa: bool = typer.Option(
+        False, "--skip-mfa", help="Skip MFA signal (no-op if MFA not installed)"
+    ),
     stem_override: Optional[Path] = typer.Option(None, "--stem", help="Override stem path"),
     lrc_override: Optional[Path] = typer.Option(None, "--lrc", help="Override LRC path"),
     out_dir: Path = typer.Option(OUTPUT_BASE, "--out-dir", help="Output directory base"),
@@ -911,9 +969,9 @@ def main(
     all_results: dict[str, list[LineSignals]] = {}
 
     for song_id, meta in songs_to_run.items():
-        typer.echo(f"\n{'='*60}", err=True)
+        typer.echo(f"\n{'=' * 60}", err=True)
         typer.echo(f"Song: {song_id}  ({meta['label']})", err=True)
-        typer.echo(f"{'='*60}", err=True)
+        typer.echo(f"{'=' * 60}", err=True)
 
         # Resolve paths
         if stem_override and lrc_override and song == song_id:
@@ -924,17 +982,24 @@ def main(
                 stem_path, lrc_path = resolve_assets(song_id, meta["hash_prefix"])
             except FileNotFoundError as e:
                 typer.echo(f"ERROR: {e}", err=True)
-                typer.echo("Set SOW_R2_ACCESS_KEY_ID and SOW_R2_SECRET_ACCESS_KEY to download from R2.", err=True)
+                typer.echo(
+                    "Set SOW_R2_ACCESS_KEY_ID and SOW_R2_SECRET_ACCESS_KEY to download from R2.",
+                    err=True,
+                )
                 continue
         else:
-            typer.echo(f"ERROR: no hash_prefix for {song_id} and no --stem/--lrc overrides.", err=True)
+            typer.echo(
+                f"ERROR: no hash_prefix for {song_id} and no --stem/--lrc overrides.", err=True
+            )
             continue
 
         typer.echo(f"Stem: {stem_path}", err=True)
         typer.echo(f"LRC:  {lrc_path}", err=True)
 
         sigs = compute_signals_for_song(
-            song_id, stem_path, lrc_path,
+            song_id,
+            stem_path,
+            lrc_path,
             skip_vad=skip_vad,
             skip_dtw=skip_dtw,
             skip_onset=skip_onset,
