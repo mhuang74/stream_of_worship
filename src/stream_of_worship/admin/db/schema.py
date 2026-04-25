@@ -181,6 +181,26 @@ INTEGRITY_CHECK_QUERY = "PRAGMA integrity_check;"
 # SQL to get foreign key status
 FOREIGN_KEYS_QUERY = "PRAGMA foreign_keys;"
 
+SONG_COLUMNS_FOR_JOIN = """
+    s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
+    s.album_name, s.album_series, s.musical_key, s.lyrics_raw,
+    s.lyrics_lines, s.sections, s.source_url, s.table_row_number,
+    s.scraped_at, s.created_at, s.updated_at, s.deleted_at
+"""
+
+RECORDING_COLUMNS_FOR_JOIN = """
+    r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
+    r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
+    r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
+    r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
+    r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
+    r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.youtube_url,
+    r.visibility_status, r.created_at, r.updated_at, r.deleted_at
+"""
+
+SONG_COLUMN_COUNT = 17
+RECORDING_COLUMN_COUNT = 28
+
 # Default sync metadata values
 DEFAULT_SYNC_METADATA = {
     "last_sync_at": "",
