@@ -177,17 +177,28 @@ def resolve_song_audio_path(
                     typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
                     break
 
-    # Fall back to main audio
+    # If no vocals or audio available, generate clean vocal stem from main audio
     if audio_path is None:
+        from poc.gen_clean_vocal_stem import extract_vocals_two_stage
+
         main_audio_path = cache.get_audio_path(hash_prefix)
-        if main_audio_path.exists():
-            audio_path = main_audio_path
-            typer.echo(f"Using cached main audio: {audio_path}", err=True)
-        else:
+        if not main_audio_path.exists():
             typer.echo("Downloading main audio...", err=True)
-            audio_path = cache.download_audio(hash_prefix)
-            if audio_path:
-                typer.echo(f"Downloaded main audio: {audio_path}", err=True)
+            main_audio_path = cache.download_audio(hash_prefix)
+            if main_audio_path:
+                typer.echo(f"Downloaded main audio: {main_audio_path}", err=True)
+
+        if main_audio_path and main_audio_path.exists():
+            output_dir = cache.cache_dir / hash_prefix
+            typer.echo("Generating clean vocal stem from main audio...", err=True)
+            results = extract_vocals_two_stage(
+                input_path=main_audio_path,
+                output_dir=output_dir,
+            )
+            dry_vocal_path = results["stages"]["stage2"].get("dry_vocals_file")
+            if dry_vocal_path:
+                audio_path = Path(dry_vocal_path)
+                typer.echo(f"Generated clean vocal stem: {audio_path}", err=True)
 
     if audio_path is None:
         typer.echo("Error: Could not find or download audio", err=True)
