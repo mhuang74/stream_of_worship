@@ -460,6 +460,14 @@ def turso_bootstrap(
         cursor = conn.cursor()
         for statement in ALL_SCHEMA_STATEMENTS:
             cursor.execute(statement)
+
+        # Run migrations (idempotent)
+        for table in ("songs", "recordings"):
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TIMESTAMP")
+            except Exception:
+                pass
+
         conn.commit()
 
         console.print("[green]Schema created successfully![/green]")

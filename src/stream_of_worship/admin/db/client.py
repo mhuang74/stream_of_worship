@@ -214,6 +214,18 @@ class DatabaseClient:
                 # Column already exists - ignore
                 pass
 
+            # Migration: add deleted_at column to songs if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE songs ADD COLUMN deleted_at TIMESTAMP")
+            except sqlite3.OperationalError:
+                pass
+
+            # Migration: add deleted_at column to recordings if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE recordings ADD COLUMN deleted_at TIMESTAMP")
+            except sqlite3.OperationalError:
+                pass
+
             # Now create indexes (they can reference migrated columns)
             for statement in CREATE_INDEXES:
                 cursor.execute(statement)
