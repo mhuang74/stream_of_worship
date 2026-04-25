@@ -171,8 +171,8 @@ def transcribe_qwen_asr_pytorch(
 
     typer.echo(f"Loading qwen-asr PyTorch ({model})...", err=True)
 
-    # Use CPU if CUDA not available
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    # Use best available device: CUDA > MPS (Apple Silicon) > CPU
+    device = "cuda:0" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
     asr_model = Qwen3ASRModel.from_pretrained(
@@ -289,26 +289,36 @@ def extract_segments(result, backend: str = "mlx-qwen3-asr") -> list[dict]:
     # Handle qwen-asr PyTorch format (simple dict with text and optional segments)
     if backend == "qwen-asr":
         if isinstance(result, dict):
-            text = result.get("text", "")
-            # qwen-asr returns text directly, try to parse sentences if available
-            segments = []
-            if text:
-                # Split text by common sentence delimiters
-                import re
+            raw_segments = result.get("segments", [])
+            # If model provided timestamps, fall through to the main extraction logic
+            if not raw_segments:
+                text = result.get("text", "")
+                segments = []
+                if text:
+                    import re
 
-                sentences = re.split(r"([。！？\.\?!])", text)
-                current_time = 0.0
-                for i, sent in enumerate(sentences):
-                    sent = sent.strip()
-                    if sent and sent not in "。！？.?!":
-                        # Estimate duration (rough approximation: ~3 chars per second)
-                        duration = len(sent) / 3.0
+                    # Split while keeping delimiters to preserve punctuation
+                    parts = re.split(r"([。！？\.\?!])", text)
+                    current_time = 0.0
+                    for i in range(0, len(parts) - 1, 2):
+                        sent = parts[i].strip()
+                        delim = parts[i + 1]
+                        full_sent = sent + delim
+                        if sent:
+                            duration = len(full_sent) / 3.0
+                            segments.append(
+                                {"start": current_time, "end": current_time + duration, "text": full_sent}
+                            )
+                            current_time += duration
+                    # Handle trailing text without a delimiter
+                    if len(parts) % 2 == 1 and parts[-1].strip():
+                        sent = parts[-1].strip()
                         segments.append(
-                            {"start": current_time, "end": current_time + duration, "text": sent}
+                            {"start": current_time, "end": current_time + (len(sent) / 3.0), "text": sent}
                         )
-                        current_time += duration
-            return segments
-        return []
+                return segments
+        else:
+            return []
 
     # MLX format (original implementation)
     # Get text and segments from result (handle both dict and dataclass)
