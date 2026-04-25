@@ -499,39 +499,32 @@ def turso_bootstrap(
                 songs = local_cursor.fetchall()
                 if songs:
                     console.print(f"Copying {len(songs)} songs...")
-                    for song in songs:
-                        columns = ", ".join(song.keys())
-                        placeholders = ", ".join(["?" for _ in song.keys()])
-                        cursor.execute(
-                            f"INSERT OR REPLACE INTO songs ({columns}) VALUES ({placeholders})",
-                            tuple(song),
-                        )
+                    columns = ", ".join(songs[0].keys())
+                    placeholders = ", ".join(["?" for _ in songs[0].keys()])
+                    sql = f"INSERT OR REPLACE INTO songs ({columns}) VALUES ({placeholders})"
+                    cursor.executemany(sql, [tuple(song) for song in songs])
 
                 # Copy recordings
                 local_cursor.execute("SELECT * FROM recordings")
                 recordings = local_cursor.fetchall()
                 if recordings:
                     console.print(f"Copying {len(recordings)} recordings...")
-                    for recording in recordings:
-                        columns = ", ".join(recording.keys())
-                        placeholders = ", ".join(["?" for _ in recording.keys()])
-                        cursor.execute(
-                            f"INSERT OR REPLACE INTO recordings ({columns}) VALUES ({placeholders})",
-                            tuple(recording),
-                        )
+                    columns = ", ".join(recordings[0].keys())
+                    placeholders = ", ".join(["?" for _ in recordings[0].keys()])
+                    sql = f"INSERT OR REPLACE INTO recordings ({columns}) VALUES ({placeholders})"
+                    cursor.executemany(sql, [tuple(recording) for recording in recordings])
 
                 # Copy sync_metadata
                 local_cursor.execute("SELECT * FROM sync_metadata")
                 metadata = local_cursor.fetchall()
                 if metadata:
                     console.print(f"Copying {len(metadata)} sync metadata entries...")
-                    for meta in metadata:
-                        columns = ", ".join(meta.keys())
-                        placeholders = ", ".join(["?" for _ in meta.keys()])
-                        cursor.execute(
-                            f"INSERT OR REPLACE INTO sync_metadata ({columns}) VALUES ({placeholders})",
-                            tuple(meta),
-                        )
+                    columns = ", ".join(metadata[0].keys())
+                    placeholders = ", ".join(["?" for _ in metadata[0].keys()])
+                    sql = (
+                        f"INSERT OR REPLACE INTO sync_metadata ({columns}) VALUES ({placeholders})"
+                    )
+                    cursor.executemany(sql, [tuple(meta) for meta in metadata])
 
                 local_conn.close()
                 console.print("[green]Data seeded successfully![/green]")

@@ -4,7 +4,6 @@ Provides CRUD operations for songsets and songset_items tables.
 These tables are managed by the app and separate from admin tables.
 """
 
-import shutil
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -290,8 +289,12 @@ class SongsetClient:
         timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         backup_path = self.db_path.parent / f"{self.db_path.name}.bak-{timestamp}"
 
-        # Copy database file
-        shutil.copy2(self.db_path, backup_path)
+        # Use SQLite backup API for consistent snapshot
+        backup_conn = sqlite3.connect(str(backup_path))
+        try:
+            self.connection.backup(backup_conn)
+        finally:
+            backup_conn.close()
 
         # Prune old backups beyond retention limit
         backup_pattern = f"{self.db_path.name}.bak-*"

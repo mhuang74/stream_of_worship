@@ -122,14 +122,17 @@ def migrate_song_ids(
         ) as progress:
             task = progress.add_task("Updating recordings...", total=len(id_map))
 
+            items = list(id_map.items())
+            chunk_size = 100
             with client.transaction() as conn:
                 cursor = conn.cursor()
-                for old_id, new_id in id_map.items():
-                    cursor.execute(
+                for i in range(0, len(items), chunk_size):
+                    chunk = items[i : i + chunk_size]
+                    cursor.executemany(
                         "UPDATE recordings SET song_id = ? WHERE song_id = ?",
-                        (new_id, old_id),
+                        [(new_id, old_id) for old_id, new_id in chunk],
                     )
-                    progress.advance(task)
+                    progress.advance(task, advance=len(chunk))
 
         # Step 3: Update songset_items in admin's songsets.db if it exists
         songsets_db_path = db_path.parent / "songsets.db"
@@ -144,14 +147,17 @@ def migrate_song_ids(
                 ) as progress:
                     task = progress.add_task("Updating songset_items...", total=len(id_map))
 
+                    items = list(id_map.items())
+                    chunk_size = 100
                     conn = sqlite3.connect(songsets_db_path)
                     cursor = conn.cursor()
-                    for old_id, new_id in id_map.items():
-                        cursor.execute(
+                    for i in range(0, len(items), chunk_size):
+                        chunk = items[i : i + chunk_size]
+                        cursor.executemany(
                             "UPDATE songset_items SET song_id = ? WHERE song_id = ?",
-                            (new_id, old_id),
+                            [(new_id, old_id) for old_id, new_id in chunk],
                         )
-                        progress.advance(task)
+                        progress.advance(task, advance=len(chunk))
                     conn.commit()
                     conn.close()
 
@@ -167,14 +173,17 @@ def migrate_song_ids(
         ) as progress:
             task = progress.add_task("Updating songs...", total=len(id_map))
 
+            items = list(id_map.items())
+            chunk_size = 100
             with client.transaction() as conn:
                 cursor = conn.cursor()
-                for old_id, new_id in id_map.items():
-                    cursor.execute(
+                for i in range(0, len(items), chunk_size):
+                    chunk = items[i : i + chunk_size]
+                    cursor.executemany(
                         "UPDATE songs SET id = ? WHERE id = ?",
-                        (new_id, old_id),
+                        [(new_id, old_id) for old_id, new_id in chunk],
                     )
-                    progress.advance(task)
+                    progress.advance(task, advance=len(chunk))
 
         console.print(f"[green]Successfully migrated {len(id_map)} song IDs![/green]")
         console.print("\n[dim]Note: User songset_items tables will need manual migration[/dim]")
