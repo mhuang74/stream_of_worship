@@ -4,6 +4,7 @@ Textual-based application for worship leaders to browse songs,
 manage songsets, and export audio/video.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.export import ExportService
 from stream_of_worship.app.services.playback import PlaybackService
+from stream_of_worship.app.services.sync import AppSyncService
 from stream_of_worship.app.services.video_engine import VideoEngine
 from stream_of_worship.app.state import AppScreen, AppState
 
@@ -39,6 +41,7 @@ class SowApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("s", "navigate_settings", "Settings"),
+        ("S", "sync_catalog", "Sync catalog now"),
     ]
 
     def __init__(self, config: AppConfig, *args, **kwargs):
@@ -56,9 +59,25 @@ class SowApp(App):
         self.state = AppState()
 
         # Initialize database clients
-        self.read_client = ReadOnlyClient(config.db_path)
-        self.songset_client = SongsetClient(config.db_path)
+        # ReadOnlyClient connects to sow.db (Turso embedded replica)
+        self.read_client = ReadOnlyClient(
+            config.db_path,
+            turso_url=config.turso_database_url,
+            turso_token=config.turso_readonly_token,
+        )
+        # SongsetClient connects to separate songsets.db (local-only)
+        self.songset_client = SongsetClient(config.songsets_db_path)
         self.songset_client.initialize_schema()
+
+        # Initialize sync service
+        self.sync_service = AppSyncService(
+            read_client=self.read_client,
+            songset_client=self.songset_client,
+            config_dir=config.db_path.parent.parent,  # ~/.config/sow-app
+            turso_url=config.turso_database_url,
+            turso_token=config.turso_readonly_token,
+            backup_retention=config.songsets_backup_retention,
+        )
 
         # Initialize services
         self.catalog = CatalogService(self.read_client)
@@ -93,8 +112,38 @@ class SowApp(App):
     def on_mount(self) -> None:
         """Handle app mount event."""
         logger.info("App mounted, navigating to initial screen: SONGSET_LIST")
+
+        # Start background sync if configured
+        if self.config.sync_on_startup and self.config.is_turso_configured:
+            self.run_worker(self._sync_in_background(), exclusive=True)
+
         # Use navigate_to to properly set up state
         self.navigate_to(AppScreen.SONGSET_LIST)
+
+    async def _sync_in_background(self) -> None:
+        """Run sync in background with error handling."""
+        try:
+            result = self.sync_service.execute_sync()
+            logger.info(f"Background sync completed: {result.message}")
+        except Exception as e:
+            logger.warning(f"Background sync failed: {e}")
+            # Non-blocking toast - just log for now
+            # Could emit a message to show in UI
+
+    def action_sync_catalog(self) -> None:
+        """Sync catalog on demand (capital S key)."""
+        if not self.config.is_turso_configured:
+            self.notify("Turso sync not configured", severity="warning")
+            return
+
+        def do_sync():
+            try:
+                result = self.sync_service.execute_sync()
+                self.notify(f"Sync completed: {result.message}")
+            except Exception as e:
+                self.notify(f"Sync failed: {e}", severity="error")
+
+        self.run_worker(do_sync(), exclusive=True)
 
     def _create_screen(self, screen: AppScreen):
         """Create a fresh screen instance.
@@ -111,26 +160,34 @@ class SowApp(App):
         logger.debug(f"Creating fresh screen instance: {screen.name}")
         if screen == AppScreen.SONGSET_LIST:
             from stream_of_worship.app.screens.songset_list import SongsetListScreen
+
             return SongsetListScreen(self.state, self.songset_client)
         elif screen == AppScreen.BROWSE:
             from stream_of_worship.app.screens.browse import BrowseScreen
+
             return BrowseScreen(self.state, self.catalog, self.songset_client)
         elif screen == AppScreen.SONGSET_EDITOR:
             from stream_of_worship.app.screens.songset_editor import SongsetEditorScreen
+
             return SongsetEditorScreen(
-                self.state, self.songset_client, self.catalog, self.playback,
-                self.audio_engine, self.asset_cache
+                self.state,
+                self.songset_client,
+                self.catalog,
+                self.playback,
+                self.audio_engine,
+                self.asset_cache,
             )
         elif screen == AppScreen.TRANSITION_DETAIL:
             from stream_of_worship.app.screens.transition_detail import TransitionDetailScreen
-            return TransitionDetailScreen(
-                self.state, self.songset_client, self.playback
-            )
+
+            return TransitionDetailScreen(self.state, self.songset_client, self.playback)
         elif screen == AppScreen.EXPORT_PROGRESS:
             from stream_of_worship.app.screens.export_progress import ExportProgressScreen
+
             return ExportProgressScreen(self.state, self.export_service)
         elif screen == AppScreen.SETTINGS:
             from stream_of_worship.app.screens.settings import SettingsScreen
+
             return SettingsScreen(self.state, self.config)
 
     def navigate_to(self, screen: AppScreen) -> None:

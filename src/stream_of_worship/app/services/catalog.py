@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.read_client import ReadOnlyClient
+from stream_of_worship.app.db.songset_client import SongsetClient
 
 
 @dataclass
@@ -59,6 +61,44 @@ class SongWithRecording:
         if self.recording and self.recording.duration_seconds:
             return self.recording.formatted_duration
         return "--:--"
+
+
+@dataclass
+class SongsetItemWithDetails:
+    """Songset item with resolved song/recording details.
+
+    Attributes:
+        item: The songset item
+        song: Resolved song (may be None if soft-deleted)
+        recording: Resolved recording (may be None)
+        is_orphan: True if song or recording is missing/soft-deleted
+        display_title: Title to display (from song or "Unknown")
+    """
+
+    item: SongsetItem
+    song: Optional[Song] = None
+    recording: Optional[Recording] = None
+
+    @property
+    def is_orphan(self) -> bool:
+        """Check if this item is orphaned (missing song/recording)."""
+        return self.song is None or self.recording is None
+
+    @property
+    def display_title(self) -> str:
+        """Get the title to display."""
+        if self.song:
+            return self.song.title
+        return "Unknown"
+
+    @property
+    def display_key(self) -> str:
+        """Get the key to display."""
+        if self.recording and self.recording.musical_key:
+            return self.recording.musical_key
+        if self.song and self.song.musical_key:
+            return self.song.musical_key
+        return "?"
 
 
 class CatalogService:
@@ -119,15 +159,11 @@ class CatalogService:
         Returns:
             List of SongWithRecording
         """
-        # When filtering by LRC status, query via recordings first to ensure
-        # we get the right songs even with a limit (LRC songs may not be
-        # in the first N songs when ordered by title)
+        # When filtering by LRC status, query via recordings first
         if only_with_lrc:
             return self._list_lrc_songs(album=album, key=key, limit=limit, offset=offset)
 
-        # When filtering by analysis status, query via recordings first to ensure
-        # we get the right songs even with a limit (analyzed songs may not be
-        # in the first N songs when ordered by title)
+        # When filtering by analysis status, query via recordings first
         if only_analyzed:
             return self._list_analyzed_songs(album=album, key=key, limit=limit, offset=offset)
 
@@ -151,23 +187,9 @@ class CatalogService:
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> list[SongWithRecording]:
-        """List songs with analyzed recordings.
-
-        Queries through recordings to find songs with completed analysis,
-        ensuring proper pagination even when songs are spread across the catalog.
-
-        Args:
-            album: Filter by album name
-            key: Filter by musical key
-            limit: Maximum number of results
-            offset: Number of results to skip
-
-        Returns:
-            List of SongWithRecording with analyzed recordings
-        """
+        """List songs with analyzed recordings."""
         cursor = self.db_client.connection.cursor()
 
-        # Build query joining songs and recordings
         query = """
             SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
                    r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
@@ -178,7 +200,8 @@ class CatalogService:
                    r.updated_at
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
-            WHERE r.analysis_status = 'completed'
+            WHERE r.analysis_status = 'completed' AND r.deleted_at IS NULL
+            AND s.deleted_at IS NULL
         """
         params: list = []
 
@@ -202,12 +225,8 @@ class CatalogService:
 
         result = []
         for row in cursor.fetchall():
-            # Split row into song and recording parts
-            # Song has 16 columns (0-15), Recording has 25 columns (16-40)
-            # Total: 41 columns in the JOIN result
             row_tuple = tuple(row)
             song = Song.from_row(row_tuple[0:16])
-            # Recording columns start at 16 (content_hash)
             recording = Recording.from_row(row_tuple[16:])
             result.append(SongWithRecording(song=song, recording=recording))
 
@@ -220,23 +239,9 @@ class CatalogService:
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> list[SongWithRecording]:
-        """List songs with LRC lyrics.
-
-        Queries through recordings to find songs with completed LRC generation,
-        ensuring proper pagination even when songs are spread across the catalog.
-
-        Args:
-            album: Filter by album name
-            key: Filter by musical key
-            limit: Maximum number of results
-            offset: Number of results to skip
-
-        Returns:
-            List of SongWithRecording with LRC lyrics
-        """
+        """List songs with LRC lyrics."""
         cursor = self.db_client.connection.cursor()
 
-        # Build query joining songs and recordings
         query = """
             SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
                    r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
@@ -248,6 +253,7 @@ class CatalogService:
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
+            AND r.deleted_at IS NULL AND s.deleted_at IS NULL
         """
         params: list = []
 
@@ -271,12 +277,8 @@ class CatalogService:
 
         result = []
         for row in cursor.fetchall():
-            # Split row into song and recording parts
-            # Song has 16 columns (0-15), Recording has 26 columns (16-41)
-            # Total: 42 columns in the JOIN result
             row_tuple = tuple(row)
             song = Song.from_row(row_tuple[0:16])
-            # Recording columns start at 16 (content_hash)
             recording = Recording.from_row(row_tuple[16:])
             result.append(SongWithRecording(song=song, recording=recording))
 
@@ -285,17 +287,7 @@ class CatalogService:
     def search_songs_with_recordings(
         self, query: str, field: str = "all", limit: int = 20, only_with_lrc: bool = True
     ) -> list[SongWithRecording]:
-        """Search songs with their recordings.
-
-        Args:
-            query: Search query string
-            field: Field to search (title, lyrics, composer, all)
-            limit: Maximum number of results
-            only_with_lrc: Only return songs with LRC lyrics (default True)
-
-        Returns:
-            List of SongWithRecording
-        """
+        """Search songs with their recordings."""
         if not only_with_lrc:
             songs = self.db_client.search_songs(query, field=field, limit=limit)
             result = []
@@ -304,31 +296,16 @@ class CatalogService:
                 result.append(SongWithRecording(song=song, recording=recording))
             return result
 
-        # When filtering by LRC, join with recordings table to ensure
-        # we only get songs that have completed LRC generation
         return self._search_lrc_songs(query, field=field, limit=limit)
 
     def _search_lrc_songs(
         self, query: str, field: str = "all", limit: int = 20
     ) -> list[SongWithRecording]:
-        """Search songs with LRC lyrics.
-
-        Queries through recordings to find songs matching the search query
-        that also have completed LRC generation.
-
-        Args:
-            query: Search query string
-            field: Field to search (title, lyrics, composer, all)
-            limit: Maximum number of results
-
-        Returns:
-            List of SongWithRecording with LRC lyrics
-        """
+        """Search songs with LRC lyrics."""
         cursor = self.db_client.connection.cursor()
 
         search_pattern = f"%{query}%"
 
-        # Build base query joining songs and recordings
         base_sql = """
             SELECT s.*, r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
                    r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
@@ -340,6 +317,7 @@ class CatalogService:
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
+            AND r.deleted_at IS NULL AND s.deleted_at IS NULL
             AND (
         """
 
@@ -366,8 +344,6 @@ class CatalogService:
 
         result = []
         for row in cursor.fetchall():
-            # Split row into song and recording parts
-            # Song has 16 columns (0-15), Recording has 26 columns (16-41)
             row_tuple = tuple(row)
             song = Song.from_row(row_tuple[0:16])
             recording = Recording.from_row(row_tuple[16:])
@@ -376,15 +352,9 @@ class CatalogService:
         return result
 
     def list_available_albums(self) -> list[str]:
-        """List all albums that have at least one recording.
-
-        Returns:
-            List of album names
-        """
-        # Get all albums
+        """List all albums that have at least one recording."""
         all_albums = self.db_client.list_albums()
 
-        # Filter to those with recordings
         result = []
         for album in all_albums:
             songs = self.db_client.list_songs(album=album, limit=1)
@@ -396,12 +366,7 @@ class CatalogService:
         return result
 
     def list_available_keys(self) -> list[str]:
-        """List all keys that have at least one recording.
-
-        Returns:
-            List of key names
-        """
-        # Get all keys from songs with recordings
+        """List all keys that have at least one recording."""
         cursor = self.db_client.connection.cursor()
         cursor.execute(
             """
@@ -409,17 +374,14 @@ class CatalogService:
             FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE s.musical_key IS NOT NULL
+            AND r.deleted_at IS NULL AND s.deleted_at IS NULL
             ORDER BY s.musical_key
             """
         )
         return [row[0] for row in cursor.fetchall() if row[0]]
 
     def get_stats(self) -> dict:
-        """Get catalog statistics.
-
-        Returns:
-            Dictionary with catalog stats
-        """
+        """Get catalog statistics."""
         total_songs = self.db_client.get_song_count()
         total_recordings = self.db_client.get_recording_count()
         analyzed_recordings = self.db_client.get_analyzed_recording_count()
@@ -430,34 +392,17 @@ class CatalogService:
             "analyzed_recordings": analyzed_recordings,
             "analysis_coverage": (
                 f"{analyzed_recordings / total_recordings * 100:.1f}%"
-                if total_recordings > 0 else "N/A"
+                if total_recordings > 0
+                else "N/A"
             ),
         }
 
     def get_recording_for_song(self, song_id: str) -> Optional[Recording]:
-        """Get the best recording for a song.
-
-        Prefers recordings with analysis, then by most recent.
-
-        Args:
-            song_id: The song ID
-
-        Returns:
-            Best recording or None
-        """
+        """Get the best recording for a song."""
         return self.db_client.get_recording_by_song_id(song_id)
 
     def get_catalog_health(self) -> dict:
-        """Get catalog health status with actionable guidance.
-
-        Returns:
-            Dictionary with:
-            - status: 'empty'|'no_recordings'|'no_analysis'|'ready'
-            - total_songs: int
-            - total_recordings: int
-            - analyzed_recordings: int
-            - guidance: str (user-facing message with next steps)
-        """
+        """Get catalog health status with actionable guidance."""
         stats = self.get_stats()
         total_songs = stats["total_songs"]
         total_recordings = stats["total_recordings"]
@@ -497,3 +442,55 @@ class CatalogService:
             "analyzed_recordings": analyzed,
             "guidance": f"Catalog ready: {analyzed} analyzed recording(s) available",
         }
+
+    def get_songset_with_items(
+        self, songset_id: str, songset_client: SongsetClient
+    ) -> tuple[list[SongsetItemWithDetails], int]:
+        """Get a songset with resolved items (two-step cross-DB lookup).
+
+        This replaces the cross-DB JOIN with a Python-side lookup:
+        1. Get items from songset_client
+        2. For each item, fetch recording and song from catalog
+        3. Mark orphans for deleted/missing references
+
+        Args:
+            songset_id: The songset ID
+            songset_client: SongsetClient for fetching items
+
+        Returns:
+            Tuple of (list of SongsetItemWithDetails, orphan count)
+        """
+        items = songset_client.get_items_raw(songset_id)
+
+        result = []
+        orphan_count = 0
+
+        for item in items:
+            # Fetch recording (include deleted to check for soft-deleted)
+            recording = None
+            if item.recording_hash_prefix:
+                recording = self.db_client.get_recording_by_hash(
+                    item.recording_hash_prefix, include_deleted=True
+                )
+
+            # Fetch song (prefer recording's song_id, fall back to item's song_id)
+            song = None
+            if recording and recording.song_id:
+                song = self.db_client.get_song_including_deleted(recording.song_id)
+            if not song and item.song_id:
+                song = self.db_client.get_song_including_deleted(item.song_id)
+
+            # Check if orphan
+            is_orphan = song is None or recording is None
+            if is_orphan:
+                orphan_count += 1
+
+            result.append(
+                SongsetItemWithDetails(
+                    item=item,
+                    song=song,
+                    recording=recording,
+                )
+            )
+
+        return result, orphan_count

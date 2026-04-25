@@ -4,17 +4,27 @@ Provides CRUD operations for songsets and songset_items tables.
 These tables are managed by the app and separate from admin tables.
 """
 
+import shutil
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Callable, Generator, Optional
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.db.schema import (
     ALL_APP_SCHEMA_STATEMENTS,
-    SONGSET_ITEMS_DETAIL_QUERY,
+    SONGSET_ITEMS_QUERY,
 )
+
+
+class MissingReferenceError(Exception):
+    """Error when a referenced song or recording is not found."""
+
+    def __init__(self, message: str, reference_type: str, reference_id: str):
+        super().__init__(message)
+        self.reference_type = reference_type
+        self.reference_id = reference_id
 
 
 class SongsetClient:
@@ -125,7 +135,13 @@ class SongsetClient:
                 INSERT INTO songsets (id, name, description, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (songset.id, songset.name, songset.description, songset.created_at, songset.updated_at),
+                (
+                    songset.id,
+                    songset.name,
+                    songset.description,
+                    songset.created_at,
+                    songset.updated_at,
+                ),
             )
 
         return songset
@@ -170,7 +186,9 @@ class SongsetClient:
             results.append(Songset.from_row(tuple(row)))
         return results
 
-    def update_songset(self, songset_id: str, name: Optional[str] = None, description: Optional[str] = None) -> bool:
+    def update_songset(
+        self, songset_id: str, name: Optional[str] = None, description: Optional[str] = None
+    ) -> bool:
         """Update a songset's name and/or description.
 
         Args:
@@ -202,7 +220,7 @@ class SongsetClient:
 
             sql = f"""
                 UPDATE songsets
-                SET {', '.join(updates)}, updated_at = datetime('now')
+                SET {", ".join(updates)}, updated_at = datetime('now')
                 WHERE id = ?
             """
 
@@ -223,6 +241,66 @@ class SongsetClient:
             cursor.execute("DELETE FROM songsets WHERE id = ?", (songset_id,))
             return cursor.rowcount > 0
 
+    def validate_recording_exists(
+        self, recording_hash_prefix: str, get_recording: Optional[Callable[[str], Optional]] = None
+    ) -> bool:
+        """Validate that a recording exists in the catalog.
+
+        Args:
+            recording_hash_prefix: The recording hash prefix to validate
+            get_recording: Optional callable to check recording existence (e.g., ReadOnlyClient.get_recording_by_hash)
+
+        Returns:
+            True if recording exists or no validation function provided
+
+        Raises:
+            MissingReferenceError: If recording does not exist
+        """
+        if get_recording is None:
+            return True
+
+        recording = get_recording(recording_hash_prefix)
+        if recording is None:
+            raise MissingReferenceError(
+                f"Recording not found: {recording_hash_prefix}",
+                "recording",
+                recording_hash_prefix,
+            )
+        return True
+
+    def snapshot_db(self, retention: int = 5) -> Path:
+        """Create a timestamped backup of the songsets database.
+
+        Args:
+            retention: Number of backups to keep (oldest are pruned)
+
+        Returns:
+            Path to the created backup file
+        """
+        if not self.db_path.exists():
+            raise FileNotFoundError(f"Database not found: {self.db_path}")
+
+        # Create backup filename with ISO8601 timestamp
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        backup_path = self.db_path.parent / f"{self.db_path.name}.bak-{timestamp}"
+
+        # Copy database file
+        shutil.copy2(self.db_path, backup_path)
+
+        # Prune old backups beyond retention limit
+        backup_pattern = f"{self.db_path.name}.bak-*"
+        backups = sorted(
+            self.db_path.parent.glob(backup_pattern),
+            key=lambda p: p.stat().st_mtime,
+        )
+
+        # Remove oldest backups beyond retention
+        while len(backups) > retention:
+            oldest = backups.pop(0)
+            oldest.unlink()
+
+        return backup_path
+
     # Songset item operations
 
     def add_item(
@@ -232,19 +310,28 @@ class SongsetClient:
         recording_hash_prefix: Optional[str] = None,
         position: Optional[int] = None,
         gap_beats: float = 2.0,
+        get_recording: Optional[Callable[[str], Optional]] = None,
     ) -> SongsetItem:
         """Add a song to a songset.
 
         Args:
             songset_id: The songset ID
-            song_id: The song ID to add
-            recording_hash_prefix: Optional recording hash
+            song_id: The song ID to add (denormalized display hint)
+            recording_hash_prefix: Optional recording hash (canonical anchor)
             position: Position in songset (None = append to end)
             gap_beats: Gap duration before this song
+            get_recording: Optional callable to validate recording existence
 
         Returns:
             Created SongsetItem
+
+        Raises:
+            MissingReferenceError: If recording_hash_prefix is provided but not found
         """
+        # Validate recording exists if provided
+        if recording_hash_prefix:
+            self.validate_recording_exists(recording_hash_prefix, get_recording)
+
         with self.transaction() as conn:
             cursor = conn.cursor()
 
@@ -292,27 +379,33 @@ class SongsetClient:
 
         return item
 
-    def get_items(self, songset_id: str, detailed: bool = True) -> list[SongsetItem]:
+    def get_items(self, songset_id: str, detailed: bool = False) -> list[SongsetItem]:
         """Get all items in a songset.
 
         Args:
             songset_id: The songset ID
-            detailed: Whether to include joined song/recording details
+            detailed: Deprecated - kept for compatibility, always returns basic items
+
+        Returns:
+            List of SongsetItem ordered by position (without joined data)
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(SONGSET_ITEMS_QUERY, (songset_id,))
+        return [SongsetItem.from_row(tuple(row), detailed=False) for row in cursor.fetchall()]
+
+    def get_items_raw(self, songset_id: str) -> list[SongsetItem]:
+        """Get all items in a songset (raw, no joined data).
+
+        This is the preferred method for cross-DB lookups where song/recording
+        data is fetched separately via CatalogService.
+
+        Args:
+            songset_id: The songset ID
 
         Returns:
             List of SongsetItem ordered by position
         """
-        cursor = self.connection.cursor()
-
-        if detailed:
-            cursor.execute(SONGSET_ITEMS_DETAIL_QUERY, (songset_id,))
-            return [SongsetItem.from_row(tuple(row), detailed=True) for row in cursor.fetchall()]
-        else:
-            cursor.execute(
-                "SELECT * FROM songset_items WHERE songset_id = ? ORDER BY position",
-                (songset_id,),
-            )
-            return [SongsetItem.from_row(tuple(row), detailed=False) for row in cursor.fetchall()]
+        return self.get_items(songset_id, detailed=False)
 
     def update_item(
         self,
@@ -375,7 +468,7 @@ class SongsetClient:
 
             sql = f"""
                 UPDATE songset_items
-                SET {', '.join(updates)}
+                SET {", ".join(updates)}
                 WHERE id = ?
             """
 

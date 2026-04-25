@@ -91,10 +91,12 @@ migration = [
     "pypinyin>=0.52.0",
 ]
 
-# Turso sync dependencies
+# Turso sync dependencies (deprecated - now included in app extra)
 turso = [
     "libsql>=0.1.0",
 ]
+
+# libsql is now included in app extra by default
 
 # Admin CLI dependencies
 admin = [
@@ -121,6 +123,7 @@ app = [
     "ffmpeg-python>=0.2.0",
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
+    "libsql>=0.1.0",
 ]
 
 # Test dependencies

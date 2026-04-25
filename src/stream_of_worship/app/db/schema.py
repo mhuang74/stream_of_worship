@@ -16,12 +16,14 @@ CREATE TABLE IF NOT EXISTS songsets (
 """
 
 # SQL to create the songset_items table (songs in a songset)
+# Note: Foreign keys to songs/recordings are intentionally removed for cross-DB compatibility.
+# Integrity is enforced in application code. recording_hash_prefix is the canonical anchor.
 CREATE_SONGSET_ITEMS_TABLE = """
 CREATE TABLE IF NOT EXISTS songset_items (
     id TEXT PRIMARY KEY,
     songset_id TEXT NOT NULL REFERENCES songsets(id) ON DELETE CASCADE,
-    song_id TEXT NOT NULL REFERENCES songs(id),
-    recording_hash_prefix TEXT REFERENCES recordings(hash_prefix),
+    song_id TEXT NOT NULL,
+    recording_hash_prefix TEXT,
     position INTEGER NOT NULL,
     -- Transition parameters from previous song (null for first song)
     gap_beats REAL DEFAULT 2.0,
@@ -72,32 +74,41 @@ SONGSET_COUNT_QUERY = """
 SELECT COUNT(*) FROM songsets;
 """
 
-# SQL to get songset items with song/recording details
-SONGSET_ITEMS_DETAIL_QUERY = """
+# SQL to get songset items (simple query without cross-DB JOINs)
+# Cross-DB lookups are done in Python via CatalogService.get_songset_with_items()
+SONGSET_ITEMS_QUERY = """
 SELECT
-    si.id,
-    si.songset_id,
-    si.song_id,
-    si.recording_hash_prefix,
-    si.position,
-    si.gap_beats,
-    si.crossfade_enabled,
-    si.crossfade_duration_seconds,
-    si.key_shift_semitones,
-    si.tempo_ratio,
-    si.created_at,
-    s.title as song_title,
-    s.musical_key as song_key,
-    r.duration_seconds,
-    r.tempo_bpm,
-    r.musical_key as recording_key,
-    r.loudness_db,
-    s.composer as song_composer,
-    s.lyricist as song_lyricist,
-    s.album_name as song_album_name
-FROM songset_items si
-JOIN songs s ON si.song_id = s.id
-LEFT JOIN recordings r ON si.recording_hash_prefix = r.hash_prefix
-WHERE si.songset_id = ?
-ORDER BY si.position;
+    id,
+    songset_id,
+    song_id,
+    recording_hash_prefix,
+    position,
+    gap_beats,
+    crossfade_enabled,
+    crossfade_duration_seconds,
+    key_shift_semitones,
+    tempo_ratio,
+    created_at
+FROM songset_items
+WHERE songset_id = ?
+ORDER BY position;
+"""
+
+# SQL to get songset items with orphaned status info (for export/backup)
+SONGSET_ITEMS_FULL_QUERY = """
+SELECT
+    id,
+    songset_id,
+    song_id,
+    recording_hash_prefix,
+    position,
+    gap_beats,
+    crossfade_enabled,
+    crossfade_duration_seconds,
+    key_shift_semitones,
+    tempo_ratio,
+    created_at
+FROM songset_items
+WHERE songset_id = ?
+ORDER BY position;
 """
