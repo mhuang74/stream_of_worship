@@ -296,6 +296,8 @@ class DatabaseClient:
     def insert_song(self, song: Song) -> None:
         """Insert a song into the database.
 
+        Clears deleted_at on INSERT OR REPLACE to resurrect a previously-deleted song.
+
         Args:
             song: Song to insert
         """
@@ -307,8 +309,8 @@ class DatabaseClient:
                     id, title, title_pinyin, composer, lyricist,
                     album_name, album_series, musical_key, lyrics_raw,
                     lyrics_lines, sections, source_url, table_row_number,
-                    scraped_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    scraped_at, created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
                 (
                     song.id,
@@ -352,6 +354,7 @@ class DatabaseClient:
         album: Optional[str] = None,
         key: Optional[str] = None,
         limit: Optional[int] = None,
+        include_deleted: bool = False,
     ) -> list[Song]:
         """List songs with optional filters.
 
@@ -359,6 +362,7 @@ class DatabaseClient:
             album: Filter by album name
             key: Filter by musical key
             limit: Maximum number of results
+            include_deleted: Whether to include soft-deleted songs
 
         Returns:
             List of songs matching the filters
@@ -367,6 +371,9 @@ class DatabaseClient:
 
         query = "SELECT * FROM songs WHERE 1=1"
         params: list = []
+
+        if not include_deleted:
+            query += " AND deleted_at IS NULL"
 
         if album:
             query += " AND album_name = ?"
@@ -388,13 +395,16 @@ class DatabaseClient:
             results.append(Song.from_row(tuple(row)))
         return results
 
-    def search_songs(self, query: str, field: str = "all", limit: int = 20) -> list[Song]:
+    def search_songs(
+        self, query: str, field: str = "all", limit: int = 20, include_deleted: bool = False
+    ) -> list[Song]:
         """Search songs by query.
 
         Args:
             query: Search query string
             field: Field to search (title, lyrics, composer, album, all)
             limit: Maximum number of results
+            include_deleted: Whether to include soft-deleted songs
 
         Returns:
             List of matching songs
@@ -403,24 +413,26 @@ class DatabaseClient:
 
         search_pattern = f"%{query}%"
 
+        deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
+
         if field == "title":
-            sql = "SELECT * FROM songs WHERE title LIKE ? OR title_pinyin LIKE ?"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE ? OR title_pinyin LIKE ?)"
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = "SELECT * FROM songs WHERE lyrics_raw LIKE ?"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE ?"
             params = [search_pattern]
         elif field == "composer":
-            sql = "SELECT * FROM songs WHERE composer LIKE ? OR lyricist LIKE ?"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE ? OR lyricist LIKE ?)"
             params = [search_pattern, search_pattern]
         elif field == "album":
-            sql = "SELECT * FROM songs WHERE album_name LIKE ? OR album_series LIKE ?"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name LIKE ? OR album_series LIKE ?)"
             params = [search_pattern, search_pattern]
         else:  # all
-            sql = """
-                SELECT * FROM songs WHERE
+            sql = f"""
+                SELECT * FROM songs WHERE {deleted_clause}(
                 title LIKE ? OR title_pinyin LIKE ? OR
                 lyrics_raw LIKE ? OR composer LIKE ? OR lyricist LIKE ? OR
-                album_name LIKE ? OR album_series LIKE ?
+                album_name LIKE ? OR album_series LIKE ?)
             """
             params = [search_pattern] * 7
 
@@ -531,6 +543,7 @@ class DatabaseClient:
         status: Optional[str] = None,
         visibility: Optional[str] = None,
         limit: Optional[int] = None,
+        include_deleted: bool = False,
     ) -> list[Recording]:
         """List recordings with optional filters.
 
@@ -538,6 +551,7 @@ class DatabaseClient:
             status: Filter by analysis status
             visibility: Filter by visibility status (published|review|hold)
             limit: Maximum number of results
+            include_deleted: Whether to include soft-deleted recordings
 
         Returns:
             List of recordings matching the filters
@@ -546,6 +560,9 @@ class DatabaseClient:
 
         query = "SELECT * FROM recordings WHERE 1=1"
         params: list = []
+
+        if not include_deleted:
+            query += " AND deleted_at IS NULL"
 
         if status:
             query += " AND analysis_status = ?"
@@ -613,13 +630,15 @@ class DatabaseClient:
 
             sql = f"""
                 UPDATE recordings
-                SET {', '.join(updates)}, updated_at = datetime('now')
+                SET {", ".join(updates)}, updated_at = datetime('now')
                 WHERE hash_prefix = ?
             """
 
             cursor.execute(sql, params)
 
-    def get_recording_by_job_id(self, job_id: str, job_type: str = "analysis") -> Optional[Recording]:
+    def get_recording_by_job_id(
+        self, job_id: str, job_type: str = "analysis"
+    ) -> Optional[Recording]:
         """Get a recording by its analysis or LRC job ID.
 
         Args:
@@ -785,22 +804,86 @@ class DatabaseClient:
             return cursor.rowcount > 0
 
     def delete_recording(self, hash_prefix: str) -> None:
-        """Delete a recording by hash_prefix.
+        """Soft-delete a recording by hash_prefix.
 
         Args:
             hash_prefix: The hash prefix of the recording to delete
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
-            # First, clear any references from songset_items
-            # (foreign key constraint would otherwise prevent deletion)
-            # This table may not exist in all databases, so handle gracefully
-            try:
-                cursor.execute(
-                    "UPDATE songset_items SET recording_hash_prefix = NULL WHERE recording_hash_prefix = ?",
-                    (hash_prefix,)
-                )
-            except sqlite3.OperationalError:
-                # Table doesn't exist - skip this step
-                pass
-            cursor.execute("DELETE FROM recordings WHERE hash_prefix = ?", (hash_prefix,))
+            cursor.execute(
+                "UPDATE recordings SET deleted_at = datetime('now') WHERE hash_prefix = ?",
+                (hash_prefix,),
+            )
+
+    def soft_delete_song(self, song_id: str) -> bool:
+        """Soft-delete a song by ID.
+
+        Args:
+            song_id: The song ID to soft-delete
+
+        Returns:
+            True if song was marked as deleted, False if not found
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?", (song_id,))
+            return cursor.rowcount > 0
+
+    def list_deleted_songs(self) -> list[Song]:
+        """List all soft-deleted songs.
+
+        Returns:
+            List of soft-deleted songs
+        """
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT * FROM songs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC")
+        results = []
+        for row in cursor.fetchall():
+            results.append(Song.from_row(tuple(row)))
+        return results
+
+    def list_deleted_recordings(self) -> list[Recording]:
+        """List all soft-deleted recordings.
+
+        Returns:
+            List of soft-deleted recordings
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT * FROM recordings WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+        )
+        results = []
+        for row in cursor.fetchall():
+            results.append(Recording.from_row(tuple(row)))
+        return results
+
+    def restore_song(self, song_id: str) -> bool:
+        """Restore a soft-deleted song.
+
+        Args:
+            song_id: The song ID to restore
+
+        Returns:
+            True if song was restored, False if not found
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE songs SET deleted_at = NULL WHERE id = ?", (song_id,))
+            return cursor.rowcount > 0
+
+    def restore_recording(self, hash_prefix: str) -> bool:
+        """Restore a soft-deleted recording.
+
+        Args:
+            hash_prefix: The hash prefix of the recording to restore
+
+        Returns:
+            True if recording was restored, False if not found
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE recordings SET deleted_at = NULL WHERE hash_prefix = ?", (hash_prefix,)
+            )
+            return cursor.rowcount > 0

@@ -3,9 +3,11 @@
 Refactored from poc/lyrics_scraper.py to integrate with the admin CLI database.
 """
 
+import hashlib
 import json
 import logging
 import re
+import unicodedata
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -46,6 +48,7 @@ class CatalogScraper:
         limit: Optional[int] = None,
         force: bool = False,
         incremental: bool = True,
+        soft_delete_missing: bool = True,
     ) -> List[Song]:
         """Scrape all songs from the sop.org/songs table.
 
@@ -53,6 +56,7 @@ class CatalogScraper:
             limit: Maximum number of songs to scrape (None for all)
             force: Re-scrape all songs even if already in database
             incremental: Skip songs already in database (ignored if force=True)
+            soft_delete_missing: Mark songs not seen this run as deleted (full scrape only)
 
         Returns:
             List of Song objects
@@ -105,6 +109,7 @@ class CatalogScraper:
 
         if limit:
             data_rows = data_rows[:limit]
+            soft_delete_missing = False  # Don't soft-delete when using limit
 
         # Get existing song IDs for incremental mode
         existing_ids = set()
@@ -112,6 +117,7 @@ class CatalogScraper:
             existing_ids = self._get_existing_song_ids()
             logger.info(f"Found {len(existing_ids)} existing songs in database")
 
+        seen_ids = set()
         for row_num, row in enumerate(data_rows, 1):
             cells = row.find_all(["td", "th"])
             if not cells:
@@ -120,7 +126,8 @@ class CatalogScraper:
             try:
                 song = self._parse_row(cells, col_indices, row_num)
                 if song:
-                    # Skip if already exists and incremental mode
+                    seen_ids.add(song.id)
+                    # Skip if already exists and incremental mode (stable ID check)
                     if incremental and not force and song.id in existing_ids:
                         logger.debug(f"Skipping existing song: {song.id}")
                         continue
@@ -133,6 +140,15 @@ class CatalogScraper:
             except Exception as e:
                 logger.warning(f"Failed to parse row {row_num}: {e}")
                 continue
+
+        # Soft-delete songs not seen this run (full scrape only)
+        if soft_delete_missing and self.db_client and not limit:
+            missing_ids = existing_ids - seen_ids
+            if missing_ids:
+                logger.info(f"Soft-deleting {len(missing_ids)} songs not seen in this scrape")
+                for song_id in missing_ids:
+                    self.db_client.soft_delete_song(song_id)
+                    logger.debug(f"Soft-deleted song: {song_id}")
 
         logger.info(f"Successfully parsed {len(songs)} songs")
         return songs
@@ -220,17 +236,15 @@ class CatalogScraper:
             else ""
         )
         key = (
-            cells[col_indices["key"]].get_text(strip=True)
-            if col_indices["key"] is not None
-            else ""
+            cells[col_indices["key"]].get_text(strip=True) if col_indices["key"] is not None else ""
         )
 
         # Extract lyrics
         lyrics_cell = cells[col_indices["lyrics"]]
         lyrics_data = self._parse_lyrics_cell(lyrics_cell)
 
-        # Generate song ID
-        song_id = self._normalize_song_id(title, row_num)
+        # Generate stable song ID
+        song_id = self._compute_song_id(title, composer, lyricist)
 
         # Generate pinyin for title
         title_pinyin = "_".join(lazy_pinyin(title))
@@ -247,7 +261,9 @@ class CatalogScraper:
             musical_key=key,
             lyrics_raw=lyrics_data["lyrics_raw"],
             lyrics_lines=json.dumps(lyrics_data["lyrics_lines"], ensure_ascii=False),
-            sections=json.dumps(self._detect_sections(lyrics_data["lyrics_lines"]), ensure_ascii=False),
+            sections=json.dumps(
+                self._detect_sections(lyrics_data["lyrics_lines"]), ensure_ascii=False
+            ),
             source_url=self.url,
             table_row_number=row_num,
             scraped_at=datetime.now().isoformat(),
@@ -265,9 +281,7 @@ class CatalogScraper:
         lyrics_raw = cell.get_text()
 
         # Split into lines, strip whitespace, filter empty
-        lyrics_lines = [
-            line.strip() for line in lyrics_raw.split("\n") if line.strip()
-        ]
+        lyrics_lines = [line.strip() for line in lyrics_raw.split("\n") if line.strip()]
 
         return {"lyrics_raw": lyrics_raw.strip(), "lyrics_lines": lyrics_lines}
 
@@ -285,32 +299,28 @@ class CatalogScraper:
             }
         ]
 
-    def _normalize_song_id(self, title: str, row_num: int) -> str:
-        """Convert song title to filesystem-safe ID.
+    def _compute_song_id(self, title: str, composer: str, lyricist: str) -> str:
+        """Compute a stable song ID from content-derived hash.
 
-        Uses Pinyin romanization for Chinese characters.
+        Format: <pinyin_slug>_<8-hex-hash>
+        Hash is computed from: sha256(NFKC(title) + "|" + NFKC(composer) + "|" + NFKC(lyricist))[:8]
 
         Args:
             title: Song title (may contain Chinese)
-            row_num: Row number for uniqueness
+            composer: Composer name
+            lyricist: Lyricist name
 
         Returns:
-            Normalized song ID (e.g., "song_0209" or "jiang_tian_chang_kai_209")
+            Stable song ID (e.g., "jiang_tian_chang_kai_a1b2c3d4")
         """
-        # Convert to Pinyin
-        pinyin_parts = lazy_pinyin(title)
-        pinyin_str = "_".join(pinyin_parts)
-
-        # Remove special characters, keep only alphanumeric and underscore
-        clean_str = re.sub(r"[^a-z0-9_]", "", pinyin_str.lower())
-
-        # Add row number for uniqueness (in case of duplicate titles)
-        song_id = f"{clean_str}_{row_num}"
-
-        # Limit length to avoid filesystem issues
+        norm = lambda s: unicodedata.normalize("NFKC", (s or "").strip())
+        pinyin_parts = lazy_pinyin(norm(title))
+        slug = re.sub(r"[^a-z0-9_]", "", "_".join(pinyin_parts).lower())
+        payload = f"{norm(title)}|{norm(composer)}|{norm(lyricist)}"
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+        song_id = f"{slug}_{digest}"
         if len(song_id) > 100:
-            song_id = song_id[:95] + f"_{row_num}"
-
+            song_id = f"{slug[:91]}_{digest}"
         return song_id
 
     def validate_test_song(self) -> Song:

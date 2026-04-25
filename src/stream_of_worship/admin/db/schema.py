@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS songs (
     table_row_number INTEGER,
     scraped_at TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TIMESTAMP
 );
 """
 
@@ -66,7 +67,10 @@ CREATE TABLE IF NOT EXISTS recordings (
     youtube_url TEXT,
 
     -- Visibility status for User App (published, review, hold)
-    visibility_status TEXT DEFAULT NULL
+    visibility_status TEXT DEFAULT NULL,
+
+    -- Soft delete timestamp (NULL = active)
+    deleted_at TIMESTAMP
 );
 """
 
@@ -104,6 +108,14 @@ CREATE_INDEXES = [
     """
     CREATE INDEX IF NOT EXISTS idx_recordings_visibility_status
     ON recordings(visibility_status);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_songs_deleted_at
+    ON songs(deleted_at);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recordings_deleted_at
+    ON recordings(deleted_at);
     """,
 ]
 
@@ -172,6 +184,16 @@ FOREIGN_KEYS_QUERY = "PRAGMA foreign_keys;"
 # Default sync metadata values
 DEFAULT_SYNC_METADATA = {
     "last_sync_at": "",
-    "sync_version": "1",
+    "sync_version": "2",
     "local_device_id": "",
 }
+
+# SQL for listing active (non-deleted) songs
+ACTIVE_SONGS_QUERY = """
+SELECT * FROM songs WHERE deleted_at IS NULL
+"""
+
+# SQL for listing active (non-deleted) recordings
+ACTIVE_RECORDINGS_QUERY = """
+SELECT * FROM recordings WHERE deleted_at IS NULL
+"""

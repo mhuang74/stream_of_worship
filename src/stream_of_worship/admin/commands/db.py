@@ -20,6 +20,15 @@ from stream_of_worship.admin.services.sync import (
     get_sync_service_from_config,
 )
 
+# Optional libsql import for Turso bootstrap
+try:
+    import libsql
+
+    LIBSQL_AVAILABLE = True
+except ImportError:
+    LIBSQL_AVAILABLE = False
+    libsql = None  # type: ignore
+
 console = Console()
 app = typer.Typer(help="Database operations")
 
@@ -135,7 +144,9 @@ def show_status(
     console.print(info_table)
 
     if not exists:
-        console.print("\n[yellow]Database does not exist. Run 'sow-admin db init' to create it.[/yellow]")
+        console.print(
+            "\n[yellow]Database does not exist. Run 'sow-admin db init' to create it.[/yellow]"
+        )
         return
 
     # Get database stats
@@ -150,7 +161,9 @@ def show_status(
 
         stats_table.add_row("Songs", f"{stats.total_songs:,}")
         stats_table.add_row("Recordings", f"{stats.total_recordings:,}")
-        stats_table.add_row("Integrity Check", "[green]OK[/green]" if stats.integrity_ok else "[red]FAILED[/red]")
+        stats_table.add_row(
+            "Integrity Check", "[green]OK[/green]" if stats.integrity_ok else "[red]FAILED[/red]"
+        )
         stats_table.add_row(
             "Foreign Keys",
             "[green]Enabled[/green]" if stats.foreign_keys_enabled else "[red]Disabled[/red]",
@@ -178,7 +191,9 @@ def show_status(
         )
         sync_table.add_row(
             "libsql",
-            "[green]Available[/green]" if sync_status.libsql_available else "[red]Not Installed[/red]",
+            "[green]Available[/green]"
+            if sync_status.libsql_available
+            else "[red]Not Installed[/red]",
         )
 
         if config.turso_database_url:
@@ -214,12 +229,14 @@ def reset_db(
     This operation cannot be undone.
     """
     if not confirm:
-        console.print(Panel.fit(
-            "[red]WARNING: This will DELETE ALL DATA in the database![/red]\n\n"
-            "Run with --confirm to proceed.",
-            title="Database Reset",
-            border_style="red",
-        ))
+        console.print(
+            Panel.fit(
+                "[red]WARNING: This will DELETE ALL DATA in the database![/red]\n\n"
+                "Run with --confirm to proceed.",
+                title="Database Reset",
+                border_style="red",
+            )
+        )
         raise typer.Exit(1)
 
     try:
@@ -235,11 +252,13 @@ def reset_db(
         init_db(force=False, config_path=config_path)
         return
 
-    console.print(Panel.fit(
-        f"[red]Resetting database at {db_path}...[/red]",
-        title="Database Reset",
-        border_style="red",
-    ))
+    console.print(
+        Panel.fit(
+            f"[red]Resetting database at {db_path}...[/red]",
+            title="Database Reset",
+            border_style="red",
+        )
+    )
 
     client = DatabaseClient(db_path)
     client.reset_database()
@@ -356,3 +375,187 @@ def sync_db(
     except Exception as e:
         console.print(f"\n[red]Unexpected error: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command("turso-bootstrap")
+def turso_bootstrap(
+    config_path: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to config file",
+    ),
+    seed: bool = typer.Option(
+        False,
+        "--seed",
+        help="Copy local data to remote if remote is empty",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force bootstrap even if checks fail",
+    ),
+) -> None:
+    """Bootstrap Turso cloud database with schema and optional seed data.
+
+    Creates the schema on the Turso master database and optionally copies
+    all local data to initialize the remote.
+
+    Prerequisites:
+    - Turso database created: turso db create sow-catalog
+    - Turso token configured: SOW_TURSO_TOKEN environment variable
+    - libsql installed: uv add --extra turso libsql
+    - Local database exists at configured path
+    """
+    # Check libsql availability
+    if not LIBSQL_AVAILABLE:
+        console.print("[red]libsql is not installed.[/red]")
+        console.print("Install with: uv add --extra turso libsql")
+        raise typer.Exit(1)
+
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    # Check prerequisites
+    if not config.turso_database_url:
+        console.print("[red]Turso database URL not configured.[/red]")
+        console.print("Set turso.database_url in your config file.")
+        raise typer.Exit(1)
+
+    turso_token = os.environ.get("SOW_TURSO_TOKEN")
+    if not turso_token:
+        console.print("[red]Turso token not configured.[/red]")
+        console.print("Set SOW_TURSO_TOKEN environment variable.")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Local database not found: {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]Bootstrapping Turso database...[/bold]")
+    console.print(f"Local DB: {config.db_path}")
+    console.print(f"Turso URL: {config.turso_database_url}")
+
+    # Connect to Turso with embedded replica
+    try:
+        conn = libsql.connect(
+            str(config.db_path),
+            sync_url=config.turso_database_url,
+            auth_token=turso_token,
+        )
+    except Exception as e:
+        console.print(f"[red]Failed to connect to Turso: {e}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        # Step 1: Create schema
+        console.print("\n[yellow]Creating schema on Turso...[/yellow]")
+
+        from stream_of_worship.admin.db.schema import ALL_SCHEMA_STATEMENTS
+
+        cursor = conn.cursor()
+        for statement in ALL_SCHEMA_STATEMENTS:
+            cursor.execute(statement)
+        conn.commit()
+
+        console.print("[green]Schema created successfully![/green]")
+
+        # Step 2: Seed data if requested
+        if seed:
+            console.print("\n[yellow]Checking remote data...[/yellow]")
+
+            # Check if remote already has data
+            cursor.execute("SELECT COUNT(*) FROM songs")
+            remote_song_count = cursor.fetchone()[0]
+
+            if remote_song_count > 0 and not force:
+                console.print(f"[yellow]Remote already has {remote_song_count} songs.[/yellow]")
+                console.print("Use --force to overwrite with local data.")
+            else:
+                # Copy local data to remote
+                console.print("\n[yellow]Seeding remote database...[/yellow]")
+
+                # Connect to local database directly
+                import sqlite3
+
+                local_conn = sqlite3.connect(config.db_path)
+                local_conn.row_factory = sqlite3.Row
+                local_cursor = local_conn.cursor()
+
+                # Copy songs
+                local_cursor.execute("SELECT * FROM songs")
+                songs = local_cursor.fetchall()
+                if songs:
+                    console.print(f"Copying {len(songs)} songs...")
+                    for song in songs:
+                        columns = ", ".join(song.keys())
+                        placeholders = ", ".join(["?" for _ in song.keys()])
+                        cursor.execute(
+                            f"INSERT OR REPLACE INTO songs ({columns}) VALUES ({placeholders})",
+                            tuple(song),
+                        )
+
+                # Copy recordings
+                local_cursor.execute("SELECT * FROM recordings")
+                recordings = local_cursor.fetchall()
+                if recordings:
+                    console.print(f"Copying {len(recordings)} recordings...")
+                    for recording in recordings:
+                        columns = ", ".join(recording.keys())
+                        placeholders = ", ".join(["?" for _ in recording.keys()])
+                        cursor.execute(
+                            f"INSERT OR REPLACE INTO recordings ({columns}) VALUES ({placeholders})",
+                            tuple(recording),
+                        )
+
+                # Copy sync_metadata
+                local_cursor.execute("SELECT * FROM sync_metadata")
+                metadata = local_cursor.fetchall()
+                if metadata:
+                    console.print(f"Copying {len(metadata)} sync metadata entries...")
+                    for meta in metadata:
+                        columns = ", ".join(meta.keys())
+                        placeholders = ", ".join(["?" for _ in meta.keys()])
+                        cursor.execute(
+                            f"INSERT OR REPLACE INTO sync_metadata ({columns}) VALUES ({placeholders})",
+                            tuple(meta),
+                        )
+
+                local_conn.close()
+                console.print("[green]Data seeded successfully![/green]")
+
+        # Step 3: Sync
+        console.print("\n[yellow]Syncing with Turso...[/yellow]")
+        conn.sync()
+        console.print("[green]Sync completed![/green]")
+
+        console.print("\n[bold green]Turso bootstrap completed successfully![/bold green]")
+
+    except Exception as e:
+        console.print(f"\n[red]Bootstrap failed: {e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        conn.close()
+
+
+@app.command("tokens")
+def show_tokens() -> None:
+    """Show commands to create Turso tokens.
+
+    Displays the turso CLI commands needed to create read-write
+    and read-only tokens for the database.
+    """
+    console.print("[bold]Turso Token Commands[/bold]\n")
+
+    console.print("# Create a read-write token (for admin):")
+    console.print("[cyan]turso db tokens create sow-catalog --read-write[/cyan]\n")
+
+    console.print("# Create a read-only token (for user app distribution):")
+    console.print("[cyan]turso db tokens create sow-catalog --read-only[/cyan]\n")
+
+    console.print("# Set the token in your environment:")
+    console.print("[cyan]export SOW_TURSO_TOKEN=<token>[/cyan]")

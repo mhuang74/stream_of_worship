@@ -1,9 +1,10 @@
 """Configuration management for sow-app TUI.
 
-Extends AdminConfig with app-specific settings for asset cache,
-output directories, and playback preferences.
+Manages app-specific settings for asset cache, output directories,
+playback preferences, and Turso sync configuration.
 """
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,8 +12,6 @@ from typing import Optional
 
 import tomllib
 import tomli_w
-
-from stream_of_worship.admin.config import AdminConfig, get_config_dir as get_admin_config_dir
 
 
 def get_app_config_dir() -> Path:
@@ -44,25 +43,66 @@ def get_app_config_path() -> Path:
     return get_app_config_dir() / "config.toml"
 
 
+def get_default_db_path() -> Path:
+    """Get the default database path.
+
+    Returns:
+        Path to default database location (Turso embedded replica)
+    """
+    return get_app_config_dir() / "db" / "sow.db"
+
+
+def get_default_songsets_db_path() -> Path:
+    """Get the default songsets database path.
+
+    Returns:
+        Path to default songsets database location
+    """
+    return get_app_config_dir() / "db" / "songsets.db"
+
+
+def get_default_export_dir() -> Path:
+    """Get the default export directory for songsets.
+
+    Returns:
+        Path to default export directory
+    """
+    return Path.home() / "Documents" / "sow-songsets"
+
+
 @dataclass
 class AppConfig:
     """Configuration for sow-app TUI.
 
-    Extends AdminConfig with app-specific settings for asset cache,
-    output directories, and playback preferences.
-
     Attributes:
-        admin_config: Base admin configuration (shared database, R2, etc.)
+        db_path: Path to the catalog database (Turso embedded replica)
+        songsets_db_path: Path to the local songsets database
+        songsets_backup_retention: Number of songset backups to keep
+        songsets_export_dir: Directory for songset JSON exports
+        turso_database_url: Turso database URL for sync
+        turso_readonly_token: Turso read-only token
+        sync_on_startup: Whether to sync at app startup
         cache_dir: Local directory for cached R2 assets
         output_dir: Directory for exported audio/video files
         preview_buffer_ms: Audio buffer size for playback in milliseconds
+        preview_volume: Default playback volume (0.0-1.0)
         default_gap_beats: Default gap duration between songs (in beats)
         default_video_template: Default video template name
         default_video_resolution: Default video resolution (e.g., "1080p")
     """
 
-    # Base admin config (embedded)
-    admin_config: AdminConfig = field(default_factory=AdminConfig)
+    # Database paths
+    db_path: Path = field(default_factory=get_default_db_path)
+    songsets_db_path: Path = field(default_factory=get_default_songsets_db_path)
+
+    # Songset settings
+    songsets_backup_retention: int = 5
+    songsets_export_dir: Path = field(default_factory=get_default_export_dir)
+
+    # Turso sync settings
+    turso_database_url: str = ""
+    turso_readonly_token: str = ""
+    sync_on_startup: bool = True
 
     # App-specific paths
     cache_dir: Path = field(default_factory=lambda: get_app_config_dir() / "cache")
@@ -99,23 +139,40 @@ class AppConfig:
         with open(path, "rb") as f:
             data = tomllib.load(f)
 
-        # Load base admin config from its own section or file
-        admin_config = AdminConfig.load()
-        if "admin" in data:
-            admin_data = data["admin"]
-            admin_config.analysis_url = admin_data.get("analysis_url", admin_config.analysis_url)
-            admin_config.r2_bucket = admin_data.get("r2_bucket", admin_config.r2_bucket)
-            admin_config.r2_endpoint_url = admin_data.get(
-                "r2_endpoint_url", admin_config.r2_endpoint_url
-            )
-            admin_config.r2_region = admin_data.get("r2_region", admin_config.r2_region)
-            admin_config.turso_database_url = admin_data.get(
-                "turso_database_url", admin_config.turso_database_url
-            )
-            if "db_path" in admin_data:
-                admin_config.db_path = Path(admin_data["db_path"])
+        config = cls()
 
-        config = cls(admin_config=admin_config)
+        # Load database paths
+        if "database" in data:
+            db = data["database"]
+            if "db_path" in db:
+                config.db_path = Path(db["db_path"])
+            if "songsets_db_path" in db:
+                config.songsets_db_path = Path(db["songsets_db_path"])
+
+        # Load songset settings
+        if "songsets" in data:
+            songsets = data["songsets"]
+            config.songsets_backup_retention = songsets.get(
+                "backup_retention", config.songsets_backup_retention
+            )
+            if "export_dir" in songsets:
+                config.songsets_export_dir = Path(songsets["export_dir"])
+
+        # Load Turso settings
+        if "turso" in data:
+            turso = data["turso"]
+            config.turso_database_url = turso.get("database_url", config.turso_database_url)
+            config.turso_readonly_token = turso.get("readonly_token", config.turso_readonly_token)
+            config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
+
+        # Override from environment
+        env_url = os.environ.get("SOW_TURSO_DATABASE_URL")
+        if env_url:
+            config.turso_database_url = env_url
+
+        env_token = os.environ.get("SOW_TURSO_READONLY_TOKEN")
+        if env_token:
+            config.turso_readonly_token = env_token
 
         # Load app-specific settings
         if "app" in data:
@@ -150,13 +207,18 @@ class AppConfig:
 
         # Build TOML structure
         data = {
-            "admin": {
-                "analysis_url": self.admin_config.analysis_url,
-                "r2_bucket": self.admin_config.r2_bucket,
-                "r2_endpoint_url": self.admin_config.r2_endpoint_url,
-                "r2_region": self.admin_config.r2_region,
-                "turso_database_url": self.admin_config.turso_database_url,
-                "db_path": str(self.admin_config.db_path),
+            "database": {
+                "db_path": str(self.db_path),
+                "songsets_db_path": str(self.songsets_db_path),
+            },
+            "songsets": {
+                "backup_retention": self.songsets_backup_retention,
+                "export_dir": str(self.songsets_export_dir),
+            },
+            "turso": {
+                "database_url": self.turso_database_url,
+                "readonly_token": self.turso_readonly_token,
+                "sync_on_startup": self.sync_on_startup,
             },
             "app": {
                 "cache_dir": str(self.cache_dir),
@@ -174,28 +236,47 @@ class AppConfig:
 
     def ensure_directories(self) -> None:
         """Ensure all configured directories exist."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.songsets_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.songsets_export_dir.mkdir(parents=True, exist_ok=True)
 
     @property
-    def db_path(self) -> Path:
-        """Get the database path from admin config."""
-        return self.admin_config.db_path
+    def is_turso_configured(self) -> bool:
+        """Check if Turso sync is configured.
+
+        Returns:
+            True if Turso URL and token are configured
+        """
+        return bool(self.turso_database_url and self.turso_readonly_token)
 
     @property
     def r2_bucket(self) -> str:
-        """Get R2 bucket from admin config."""
-        return self.admin_config.r2_bucket
+        """Get R2 bucket (from environment or default).
+
+        Returns:
+            R2 bucket name
+        """
+        return os.environ.get("SOW_R2_BUCKET", "sow-audio")
 
     @property
     def r2_endpoint_url(self) -> str:
-        """Get R2 endpoint from admin config."""
-        return self.admin_config.r2_endpoint_url
+        """Get R2 endpoint (from environment).
+
+        Returns:
+            R2 endpoint URL
+        """
+        return os.environ.get("SOW_R2_ENDPOINT_URL", "")
 
     @property
     def r2_region(self) -> str:
-        """Get R2 region from admin config."""
-        return self.admin_config.r2_region
+        """Get R2 region (from environment or default).
+
+        Returns:
+            R2 region
+        """
+        return os.environ.get("SOW_R2_REGION", "auto")
 
 
 def ensure_app_config_exists() -> AppConfig:
@@ -213,7 +294,7 @@ def ensure_app_config_exists() -> AppConfig:
             # If config is corrupted, create a new one
             pass
 
-    # Create default config
+    # Create default config with placeholder Turso values
     config = AppConfig()
     config.save(config_path)
     return config
