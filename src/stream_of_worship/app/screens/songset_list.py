@@ -7,7 +7,7 @@ from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
+from textual.widgets import Button, DataTable, Footer, Header, Label
 
 from stream_of_worship.app.db.models import Songset
 from stream_of_worship.app.db.songset_client import SongsetClient

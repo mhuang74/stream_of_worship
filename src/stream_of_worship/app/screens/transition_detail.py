@@ -6,7 +6,7 @@ Allows fine-tuning of transition parameters between songs.
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Select, Static, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, Switch
 
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.services.playback import PlaybackService

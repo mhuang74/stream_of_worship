@@ -1427,7 +1427,7 @@ def vocal_clean(
     vocals_clean_key = f"{hash_prefix}/stems/vocals_clean.wav"
     if not force and r2_client.file_exists(vocals_clean_key):
         console.print(
-            f"[yellow]vocals_clean.wav already exists in R2. Use --force to re-generate.[/yellow]"
+            "[yellow]vocals_clean.wav already exists in R2. Use --force to re-generate.[/yellow]"
         )
         raise typer.Exit(0)
 
@@ -2401,7 +2401,7 @@ def upload_lrc(
         info_lines.append(f"[yellow]Existing LRC job: {recording.lrc_job_id}[/yellow]")
     elif recording.lrc_status == "failed":
         info_lines.append("")
-        info_lines.append(f"[yellow]Previous LRC generation failed[/yellow]")
+        info_lines.append("[yellow]Previous LRC generation failed[/yellow]")
 
     console.print(Panel.fit("\n".join(info_lines), title="LRC Upload Preview", border_style="cyan"))
 
@@ -2422,7 +2422,7 @@ def upload_lrc(
         raise typer.Exit(1)
 
     # Upload to R2
-    console.print(f"[cyan]Uploading LRC to R2...[/cyan]")
+    console.print("[cyan]Uploading LRC to R2...[/cyan]")
     try:
         r2_url = r2_client.upload_lrc(lrc_file, recording.hash_prefix)
         console.print(f"[green]Uploaded: {r2_url}[/green]")

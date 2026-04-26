@@ -4,7 +4,6 @@ Provides the `sow-app` command for launching the Textual interface,
 syncing with Turso, and managing songset exports/imports.
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -225,7 +224,7 @@ def sync(
         console.print("Set turso.database_url and turso.readonly_token in your config.")
         raise typer.Exit(1)
 
-    console.print(f"[bold]Syncing catalog...[/bold]")
+    console.print("[bold]Syncing catalog...[/bold]")
     console.print(f"Local DB: {config.db_path}")
     console.print(f"Turso URL: {config.turso_database_url}")
 

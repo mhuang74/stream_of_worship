@@ -17,9 +17,7 @@ from stream_of_worship.tui.services.playback import PlaybackService
 from stream_of_worship.tui.services.generation import TransitionGenerationService
 from stream_of_worship.tui.utils.logger import (
     init_error_logger,
-    get_error_logger,
     init_session_logger,
-    get_session_logger,
 )
 
 

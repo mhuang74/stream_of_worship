@@ -327,3 +327,141 @@ class TestSongsetItemWithDetails:
         )
         details = SongsetItemWithDetails(item=item, song=None, recording=None)
         assert details.display_title == "Unknown"
+
+
+class TestJoinColumnOffset:
+    """Test JOIN query splits at correct offset (R6.1)."""
+
+    def test_join_query_splits_at_correct_offset(self, tmp_path):
+        """Verify _list_analyzed_songs splits rows correctly at SONG_COLUMN_COUNT."""
+        from stream_of_worship.admin.db.schema import SONG_COLUMN_COUNT
+
+        catalog_db = tmp_path / "catalog.db"
+        conn = sqlite3.connect(catalog_db)
+
+        # Create full 17-column songs table
+        conn.execute("""
+            CREATE TABLE songs (
+                id TEXT PRIMARY KEY, title TEXT, title_pinyin TEXT, composer TEXT,
+                lyricist TEXT, album_name TEXT, album_series TEXT, musical_key TEXT,
+                lyrics_raw TEXT, lyrics_lines TEXT, sections TEXT, source_url TEXT,
+                table_row_number INTEGER, scraped_at TEXT, created_at TEXT, updated_at TEXT,
+                deleted_at TIMESTAMP
+            )
+        """)
+
+        # Create recordings table
+        conn.execute("""
+            CREATE TABLE recordings (
+                content_hash TEXT PRIMARY KEY, hash_prefix TEXT, song_id TEXT,
+                original_filename TEXT, file_size_bytes INTEGER, imported_at TEXT,
+                r2_audio_url TEXT, r2_stems_url TEXT, r2_lrc_url TEXT,
+                duration_seconds REAL, tempo_bpm REAL, musical_key TEXT, musical_mode TEXT,
+                key_confidence REAL, loudness_db REAL, beats TEXT, downbeats TEXT,
+                sections TEXT, embeddings_shape TEXT, analysis_status TEXT,
+                analysis_job_id TEXT, lrc_status TEXT, lrc_job_id TEXT,
+                youtube_url TEXT, visibility_status TEXT, created_at TEXT, updated_at TEXT,
+                deleted_at TIMESTAMP
+            )
+        """)
+
+        # Insert 17-column song with deleted_at at index 16
+        conn.execute(
+            """INSERT INTO songs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "song_1",
+                "Test Song",
+                "test_pinyin",
+                "Composer",
+                "Lyricist",
+                "Album",
+                None,
+                "G",
+                "raw",
+                "lines",
+                None,
+                "http://test",
+                1,
+                "2024-01-01",
+                "2024-01-01",
+                "2024-01-01",
+                None,
+            ),
+        )
+
+        # Insert 28-column recording
+        conn.execute(
+            """INSERT INTO recordings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "hash1" * 8,
+                "abc123",
+                "song_1",
+                "test.mp3",
+                1000,
+                "2024-01-01",
+                None,
+                None,
+                None,
+                180.0,
+                120.0,
+                "G",
+                "major",
+                0.9,
+                -8.0,
+                None,
+                None,
+                None,
+                None,
+                "completed",
+                None,
+                "completed",
+                None,
+                "2024-01-01",
+                "2024-01-01",
+                "https://yt.com",
+                "published",
+                None,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        read_client = ReadOnlyClient(catalog_db)
+        catalog = CatalogService(read_client)
+
+        # Test _list_analyzed_songs
+        songs = catalog._list_analyzed_songs()
+        assert len(songs) == 1
+
+        song = songs[0]
+        assert song.song.id == "song_1"
+        assert song.song.title == "Test Song"
+        assert song.recording.content_hash == "hash1" * 8
+        assert song.recording.visibility_status == "published"
+
+    def test_join_query_with_deleted_at_populated(self, tmp_path):
+        """Test soft-deleted songs filtered out."""
+        catalog_db = tmp_path / "catalog.db"
+        conn = sqlite3.connect(catalog_db)
+        conn.execute("""
+            CREATE TABLE songs (id TEXT PRIMARY KEY, title TEXT, scraped_at TEXT, deleted_at TIMESTAMP)
+        """)
+        conn.execute("""
+            CREATE TABLE recordings (content_hash TEXT PRIMARY KEY, song_id TEXT, analysis_status TEXT, deleted_at TIMESTAMP)
+        """)
+        conn.execute("INSERT INTO songs VALUES ('song_1', 'Active Song', '2024-01-01', NULL)")
+        conn.execute(
+            "INSERT INTO songs VALUES ('song_2', 'Deleted Song', '2024-01-01', '2024-01-02')"
+        )
+        conn.execute("INSERT INTO recordings VALUES ('hash1', 'song_1', 'completed', None)")
+        conn.commit()
+        conn.close()
+
+        read_client = ReadOnlyClient(catalog_db)
+        catalog = CatalogService(read_client)
+
+        songs = catalog._list_analyzed_songs()
+
+        # Only active song should be returned
+        assert len(songs) == 1
+        assert songs[0].song.title == "Active Song"

@@ -4,12 +4,11 @@ Provides CRUD operations for songsets and songset_items tables.
 These tables are managed by the app and separate from admin tables.
 """
 
-import shutil
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Generator, Optional
+from typing import Any, Callable, Generator, Optional
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.db.schema import (
@@ -110,18 +109,24 @@ class SongsetClient:
 
     # Songset operations
 
-    def create_songset(self, name: str, description: Optional[str] = None) -> Songset:
+    def create_songset(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        id: Optional[str] = None,
+    ) -> Songset:
         """Create a new songset.
 
         Args:
             name: Display name for the songset
             description: Optional description
+            id: Optional ID to use (for import); generated if None
 
         Returns:
             Created Songset instance
         """
         songset = Songset(
-            id=Songset.generate_id(),
+            id=id or Songset.generate_id(),
             name=name,
             description=description,
             created_at=datetime.now().isoformat(),
@@ -242,7 +247,9 @@ class SongsetClient:
             return cursor.rowcount > 0
 
     def validate_recording_exists(
-        self, recording_hash_prefix: str, get_recording: Optional[Callable[[str], Optional]] = None
+        self,
+        recording_hash_prefix: str,
+        get_recording: Optional[Callable[[str], Optional[Any]]] = None,
     ) -> bool:
         """Validate that a recording exists in the catalog.
 
@@ -284,8 +291,12 @@ class SongsetClient:
         timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         backup_path = self.db_path.parent / f"{self.db_path.name}.bak-{timestamp}"
 
-        # Copy database file
-        shutil.copy2(self.db_path, backup_path)
+        # Use SQLite backup API for consistent snapshot
+        backup_conn = sqlite3.connect(str(backup_path))
+        try:
+            self.connection.backup(backup_conn)
+        finally:
+            backup_conn.close()
 
         # Prune old backups beyond retention limit
         backup_pattern = f"{self.db_path.name}.bak-*"
@@ -310,7 +321,11 @@ class SongsetClient:
         recording_hash_prefix: Optional[str] = None,
         position: Optional[int] = None,
         gap_beats: float = 2.0,
-        get_recording: Optional[Callable[[str], Optional]] = None,
+        crossfade_enabled: bool = False,
+        crossfade_duration_seconds: Optional[float] = None,
+        key_shift_semitones: int = 0,
+        tempo_ratio: float = 1.0,
+        get_recording: Optional[Callable[[str], Optional[Any]]] = None,
     ) -> SongsetItem:
         """Add a song to a songset.
 
@@ -320,6 +335,10 @@ class SongsetClient:
             recording_hash_prefix: Optional recording hash (canonical anchor)
             position: Position in songset (None = append to end)
             gap_beats: Gap duration before this song
+            crossfade_enabled: Whether to use crossfade instead of gap
+            crossfade_duration_seconds: Duration of crossfade if enabled
+            key_shift_semitones: Key adjustment for this song
+            tempo_ratio: Tempo adjustment ratio (1.0 = original)
             get_recording: Optional callable to validate recording existence
 
         Returns:
@@ -351,14 +370,20 @@ class SongsetClient:
                 recording_hash_prefix=recording_hash_prefix,
                 position=position,
                 gap_beats=gap_beats,
+                crossfade_enabled=crossfade_enabled,
+                crossfade_duration_seconds=crossfade_duration_seconds,
+                key_shift_semitones=key_shift_semitones,
+                tempo_ratio=tempo_ratio,
                 created_at=datetime.now().isoformat(),
             )
 
             cursor.execute(
                 """
                 INSERT INTO songset_items
-                (id, songset_id, song_id, recording_hash_prefix, position, gap_beats, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, songset_id, song_id, recording_hash_prefix, position, gap_beats,
+                 crossfade_enabled, crossfade_duration_seconds, key_shift_semitones,
+                 tempo_ratio, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
@@ -367,6 +392,10 @@ class SongsetClient:
                     item.recording_hash_prefix,
                     item.position,
                     item.gap_beats,
+                    1 if item.crossfade_enabled else 0,
+                    item.crossfade_duration_seconds,
+                    item.key_shift_semitones,
+                    item.tempo_ratio,
                     item.created_at,
                 ),
             )
@@ -612,3 +641,32 @@ class SongsetClient:
         )
         result = cursor.fetchone()
         return result[0] if result else 0
+
+    def get_metadata(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Get metadata value from _sync_metadata table.
+
+        Args:
+            key: Metadata key
+            default: Default value if key not found
+
+        Returns:
+            Metadata value or default
+        """
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT value FROM _sync_metadata WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else default
+
+    def set_metadata(self, key: str, value: str) -> None:
+        """Set metadata value in _sync_metadata table.
+
+        Args:
+            key: Metadata key
+            value: Metadata value
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO _sync_metadata (key, value) VALUES (?, ?)",
+                (key, value),
+            )

@@ -5,9 +5,8 @@ Supports libsql/Turso embedded replicas for sync with the cloud database.
 """
 
 import sqlite3
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, Optional, Union
+from typing import Optional, Union
 
 from stream_of_worship.admin.db.models import Recording, Song
 
@@ -95,6 +94,8 @@ class ReadOnlyClient:
                 )
                 self._connection.row_factory = sqlite3.Row
 
+            self._migrate_schema()
+
         return self._connection
 
     def close(self) -> None:
@@ -102,6 +103,15 @@ class ReadOnlyClient:
         if self._connection:
             self._connection.close()
             self._connection = None
+
+    def _migrate_schema(self) -> None:
+        """Run schema migrations for the read-only catalog replica."""
+        cursor = self._connection.cursor()
+        for table in ("songs", "recordings"):
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TIMESTAMP")
+            except Exception:
+                pass
 
     def sync(self) -> None:
         """Sync with Turso cloud database.

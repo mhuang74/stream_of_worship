@@ -4,7 +4,6 @@ Manages local caching of R2 audio assets (stems, LRC files) to avoid
 repeated downloads. Tracks cache state and provides cache cleanup.
 """
 
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path

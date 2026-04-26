@@ -6,7 +6,7 @@ Allows viewing and editing application settings.
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Select, Static
+from textual.widgets import Button, Footer, Header, Input, Label, Select
 
 from stream_of_worship.app.config import AppConfig
 from stream_of_worship.app.services.video_engine import VideoEngine
