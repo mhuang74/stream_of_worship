@@ -17,16 +17,14 @@ class TestJobQueue:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
             yield q
             q.stop()
 
     @pytest.mark.asyncio
     async def test_submit_job(self, queue):
         """Test submitting a job."""
-        request = AnalyzeJobRequest(
-            audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123"
-        )
+        request = AnalyzeJobRequest(audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123")
 
         job = await queue.submit(JobType.ANALYZE, request)
 
@@ -37,9 +35,7 @@ class TestJobQueue:
     @pytest.mark.asyncio
     async def test_get_job(self, queue):
         """Test getting a job by ID."""
-        request = AnalyzeJobRequest(
-            audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123"
-        )
+        request = AnalyzeJobRequest(audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123")
 
         job = await queue.submit(JobType.ANALYZE, request)
         retrieved = await queue.get_job(job.id)
@@ -76,7 +72,7 @@ class TestLRCJobProcessing:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
             yield q
             q.stop()
 
@@ -106,9 +102,7 @@ class TestLRCJobProcessing:
     async def test_lrc_job_with_invalid_request(self, queue):
         """Test LRC job with invalid request type fails gracefully."""
         # Submit as analyze but try to process as LRC
-        request = AnalyzeJobRequest(
-            audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123"
-        )
+        request = AnalyzeJobRequest(audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123")
 
         job = Job(
             id="job_test123",
@@ -131,10 +125,10 @@ class TestJobQueueConcurrency:
     async def test_max_concurrent_jobs(self):
         """Test max concurrent job limit."""
         with tempfile.TemporaryDirectory() as tmp:
-            queue = JobQueue(max_concurrent=2, cache_dir=Path(tmp))
+            queue = JobQueue(max_concurrent_analysis=2, max_concurrent_lrc=2, cache_dir=Path(tmp))
 
-            assert queue.max_concurrent == 2
-            assert queue._semaphore._value == 2
+            assert queue.max_concurrent_analysis == 2
+            assert queue.max_concurrent_lrc == 2
 
             queue.stop()
 
@@ -146,7 +140,7 @@ class TestJobQueueR2:
     async def test_initialize_r2(self):
         """Test initializing R2 client."""
         with tempfile.TemporaryDirectory() as tmp:
-            queue = JobQueue(max_concurrent=1, cache_dir=Path(tmp))
+            queue = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
 
             with patch("sow_analysis.workers.queue.R2Client") as mock_r2:
                 mock_instance = MagicMock()

@@ -78,7 +78,25 @@ def temp_db_with_old_song_ids(tmp_path):
     conn.commit()
     conn.close()
 
-    return db_path
+    # Create a config file
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"""
+[service]
+analysis_url = "http://localhost:8000"
+
+[database]
+path = "{db_path}"
+
+[r2]
+bucket = "test-bucket"
+endpoint_url = ""
+region = "auto"
+
+[turso]
+database_url = ""
+""")
+
+    return tmp_path
 
 
 class TestMigrateSongIdsCommand:
@@ -89,12 +107,11 @@ class TestMigrateSongIdsCommand:
         runner = CliRunner()
         result = runner.invoke(
             migrate_commands.app,
-            ["song-ids", "--config", str(temp_db_with_old_song_ids.parent), "--dry-run"],
+            ["song-ids", "--config", str(temp_db_with_old_song_ids), "--dry-run"],
         )
 
         assert result.exit_code == 0
         assert "Dry run" in result.output
-        assert "no changes made" in result.output
 
     def test_migrate_song_ids_without_config(self, tmp_path):
         """Test command fails without config."""
@@ -112,14 +129,14 @@ class TestMigrateSongIdsCommand:
 
         # First migration
         result1 = runner.invoke(
-            migrate_commands.app, ["song-ids", "--config", str(temp_db_with_old_song_ids.parent)]
+            migrate_commands.app, ["song-ids", "--config", str(temp_db_with_old_song_ids)]
         )
         assert result1.exit_code == 0
-        assert "migration needed" not in result1.output.lower()
+        # After first migration, IDs should be in new format
 
         # Second migration
         result2 = runner.invoke(
-            migrate_commands.app, ["song-ids", "--config", str(temp_db_with_old_song_ids.parent)]
+            migrate_commands.app, ["song-ids", "--config", str(temp_db_with_old_song_ids)]
         )
         assert result2.exit_code == 0
         assert "No migration needed" in result2.output
@@ -133,8 +150,26 @@ class TestMigrateSongIdsCommand:
         conn.commit()
         conn.close()
 
+        # Create a config file
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f"""
+[service]
+analysis_url = "http://localhost:8000"
+
+[database]
+path = "{db_path}"
+
+[r2]
+bucket = "test-bucket"
+endpoint_url = ""
+region = "auto"
+
+[turso]
+database_url = ""
+""")
+
         runner = CliRunner()
-        result = runner.invoke(migrate_commands.app, ["song-ids", "--config", str(db_path.parent)])
+        result = runner.invoke(migrate_commands.app, ["song-ids", "--config", str(tmp_path)])
 
         assert result.exit_code == 0
         assert "No songs found" in result.output

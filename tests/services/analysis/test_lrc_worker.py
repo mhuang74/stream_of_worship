@@ -222,9 +222,7 @@ class TestRunWhisperTranscription:
         with patch("sow_analysis.workers.lrc.settings") as mock_settings:
             mock_settings.SOW_WHISPER_CACHE_DIR = Path("/tmp/whisper")
             with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
-                phrases = await _run_whisper_transcription(
-                    Path(tmp.name), "large-v3", "zh", "cpu"
-                )
+                phrases = await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh", "cpu")
 
         assert len(phrases) == 2
         assert phrases[0].text == "hello"
@@ -248,9 +246,7 @@ class TestRunWhisperTranscription:
             mock_settings.SOW_WHISPER_CACHE_DIR = Path("/tmp/whisper")
             with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
                 with pytest.raises(WhisperTranscriptionError):
-                    await _run_whisper_transcription(
-                        Path(tmp.name), "large-v3", "zh", "cpu"
-                    )
+                    await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh", "cpu")
 
 
 class TestLLMAlign:
@@ -371,9 +367,7 @@ class TestGenerateLRC:
                 # Configure the mock WhisperModel class to return our mock model
                 mock_whisper_model_class.return_value = mock_model
 
-                with patch.dict(
-                    "sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}
-                ):
+                with patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}):
                     options = LrcOptions()
                     lrc_path, count, phrases = await generate_lrc(
                         audio_path, "測試歌詞", options, output_path
@@ -394,7 +388,7 @@ class TestLRCJobQueueProcessing:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
             yield q
             q.stop()
 
