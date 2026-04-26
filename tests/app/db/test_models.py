@@ -59,14 +59,13 @@ class TestSongset:
         """Verify ID format matches pattern."""
         songset_id = Songset.generate_id()
 
-        # Should match pattern: songset_YYYYMMDDHHMMSS
+        # Should match pattern: songset_YYYYMMDDHHMMSSffffff (with microseconds)
         assert songset_id.startswith("songset_")
-        assert len(songset_id) == len("songset_") + 14  # 14 chars for timestamp
 
         # Verify timestamp portion is all digits
         timestamp_part = songset_id.split("_")[1]
         assert timestamp_part.isdigit()
-        assert len(timestamp_part) == 14
+        assert len(timestamp_part) == 20  # 14 chars for datetime + 6 for microseconds
 
 
 class TestSongsetItem:

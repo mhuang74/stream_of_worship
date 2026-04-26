@@ -7,7 +7,7 @@ and import with validation against the catalog.
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from stream_of_worship.app.db.songset_client import MissingReferenceError, SongsetClient
 
@@ -46,7 +46,7 @@ class SongsetIOService:
     def __init__(
         self,
         songset_client: SongsetClient,
-        get_recording: Optional[Callable[[str], Optional]] = None,
+        get_recording: Optional[Callable[[str], Optional[Any]]] = None,
     ):
         """Initialize the songset IO service.
 

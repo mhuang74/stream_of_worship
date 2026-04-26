@@ -51,22 +51,41 @@ class TestReadOnlyClientDeletedAware:
         """Test get_song excludes soft-deleted by default."""
         db_path = tmp_path / "test.db"
 
-        # Create test database
+        # Create test database with full schema
+        # Note: Use TEXT for deleted_at to avoid SQLite timestamp parsing issues
         conn = sqlite3.connect(db_path)
         conn.execute("""
             CREATE TABLE songs (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                title_pinyin TEXT,
+                composer TEXT,
+                lyricist TEXT,
+                album_name TEXT,
+                album_series TEXT,
+                musical_key TEXT,
+                lyrics_raw TEXT,
+                lyrics_lines TEXT,
+                sections TEXT,
                 source_url TEXT NOT NULL,
+                table_row_number INTEGER,
                 scraped_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
             )
         """)
         conn.execute(
-            "INSERT INTO songs VALUES ('song_1', 'Test Song', 'http://test', '2024-01-01', NULL)"
+            """INSERT INTO songs VALUES (
+                'song_1', 'Test Song', NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, 'http://test', NULL, '2024-01-01', NULL, NULL, NULL
+            )"""
         )
         conn.execute(
-            "INSERT INTO songs VALUES ('song_2', 'Deleted Song', 'http://test', '2024-01-01', '2024-01-02')"
+            """INSERT INTO songs VALUES (
+                'song_2', 'Deleted Song', NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, 'http://test', NULL, '2024-01-01', NULL, NULL, '2024-01-02'
+            )"""
         )
         conn.commit()
         conn.close()
@@ -96,16 +115,34 @@ class TestReadOnlyClientDeletedAware:
             CREATE TABLE songs (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                title_pinyin TEXT,
+                composer TEXT,
+                lyricist TEXT,
+                album_name TEXT,
+                album_series TEXT,
+                musical_key TEXT,
+                lyrics_raw TEXT,
+                lyrics_lines TEXT,
+                sections TEXT,
                 source_url TEXT NOT NULL,
+                table_row_number INTEGER,
                 scraped_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
             )
         """)
         conn.execute(
-            "INSERT INTO songs VALUES ('song_1', 'Active', 'http://test', '2024-01-01', NULL)"
+            """INSERT INTO songs VALUES (
+                'song_1', 'Active', NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, 'http://test', NULL, '2024-01-01', NULL, NULL, NULL
+            )"""
         )
         conn.execute(
-            "INSERT INTO songs VALUES ('song_2', 'Deleted', 'http://test', '2024-01-01', '2024-01-02')"
+            """INSERT INTO songs VALUES (
+                'song_2', 'Deleted', NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, 'http://test', NULL, '2024-01-01', NULL, NULL, '2024-01-02'
+            )"""
         )
         conn.commit()
         conn.close()
@@ -126,13 +163,28 @@ class TestReadOnlyClientDeletedAware:
             CREATE TABLE songs (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                title_pinyin TEXT,
+                composer TEXT,
+                lyricist TEXT,
+                album_name TEXT,
+                album_series TEXT,
+                musical_key TEXT,
+                lyrics_raw TEXT,
+                lyrics_lines TEXT,
+                sections TEXT,
                 source_url TEXT NOT NULL,
+                table_row_number INTEGER,
                 scraped_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
             )
         """)
         conn.execute(
-            "INSERT INTO songs VALUES ('deleted_song', 'Deleted', 'http://test', '2024-01-01', '2024-01-02')"
+            """INSERT INTO songs VALUES (
+                'deleted_song', 'Deleted', NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, 'http://test', NULL, '2024-01-01', NULL, NULL, '2024-01-02'
+            )"""
         )
         conn.commit()
         conn.close()
@@ -156,17 +208,49 @@ class TestReadOnlyClientRecordingQueries:
             CREATE TABLE recordings (
                 content_hash TEXT PRIMARY KEY,
                 hash_prefix TEXT NOT NULL,
+                song_id TEXT,
                 original_filename TEXT NOT NULL,
                 file_size_bytes INTEGER NOT NULL,
                 imported_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
+                r2_audio_url TEXT,
+                r2_stems_url TEXT,
+                r2_lrc_url TEXT,
+                youtube_url TEXT,
+                duration_seconds REAL,
+                tempo_bpm REAL,
+                musical_key TEXT,
+                musical_mode TEXT,
+                key_confidence REAL,
+                loudness_db REAL,
+                beats TEXT,
+                downbeats TEXT,
+                sections TEXT,
+                embeddings_shape TEXT,
+                analysis_status TEXT DEFAULT 'pending',
+                analysis_job_id TEXT,
+                lrc_status TEXT DEFAULT 'pending',
+                lrc_job_id TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                visibility_status TEXT,
+                deleted_at TEXT
             )
         """)
         conn.execute(
-            "INSERT INTO recordings VALUES ('hash1', 'abc123', 'test.mp3', 1000, '2024-01-01', NULL)"
+            """INSERT INTO recordings VALUES (
+                'hash1', 'abc123', NULL, 'test.mp3', 1000, '2024-01-01',
+                NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, NULL, 'pending', NULL, 'pending', NULL,
+                NULL, NULL, NULL, NULL
+            )"""
         )
         conn.execute(
-            "INSERT INTO recordings VALUES ('hash2', 'def456', 'deleted.mp3', 1000, '2024-01-01', '2024-01-02')"
+            """INSERT INTO recordings VALUES (
+                'hash2', 'def456', NULL, 'deleted.mp3', 1000, '2024-01-01',
+                NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, NULL, 'pending', NULL, 'pending', NULL,
+                NULL, NULL, NULL, '2024-01-02'
+            )"""
         )
         conn.commit()
         conn.close()
