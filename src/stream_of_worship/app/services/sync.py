@@ -15,6 +15,12 @@ from stream_of_worship.app.db.read_client import ReadOnlyClient, SyncError
 from stream_of_worship.app.db.songset_client import SongsetClient
 
 
+class LegacySyncFileFound:
+    """Marker for when legacy last_sync.json file exists."""
+
+    pass
+
+
 @dataclass
 class SyncStatus:
     """Current sync status information.
@@ -99,13 +105,12 @@ class AppSyncService:
             turso_token: Turso auth token (optional)
             backup_retention: Number of backups to keep
         """
+        self.config_dir = config_dir
         self.read_client = read_client
         self.songset_client = songset_client
-        self.config_dir = config_dir
         self.turso_url = turso_url or ""
         self.turso_token = turso_token or ""
         self.backup_retention = backup_retention
-        self._last_sync_file = config_dir / "last_sync.json"
 
         # Check libsql availability
         try:
@@ -114,6 +119,27 @@ class AppSyncService:
             self.libsql_available = True
         except ImportError:
             self.libsql_available = False
+
+    def _migrate_last_sync_json(self) -> None:
+        """Migrate legacy last_sync.json to database.
+
+        Reads the old last_sync.json file and migrates values to _sync_metadata table,
+        then deletes the JSON file. This is a one-time migration.
+        """
+        last_sync_file = self.config_dir / "last_sync.json"
+        if not last_sync_file.exists():
+            return
+
+        try:
+            with open(last_sync_file) as f:
+                data = json.load(f)
+            if data.get("last_sync_at"):
+                self.songset_client.set_metadata("last_sync_at", data["last_sync_at"])
+            if data.get("sync_version"):
+                self.songset_client.set_metadata("sync_version", data["sync_version"])
+            last_sync_file.unlink()
+        except Exception:
+            pass
 
     def _mask_url(self, url: str) -> str:
         """Mask sensitive parts of Turso URL for display.
@@ -140,18 +166,8 @@ class AppSyncService:
         Returns:
             SyncStatus with current configuration and state
         """
-        last_sync_at = None
-        sync_version = "2"
-
-        # Read local last sync timestamp
-        if self._last_sync_file.exists():
-            try:
-                with open(self._last_sync_file) as f:
-                    data = json.load(f)
-                    last_sync_at = data.get("last_sync_at")
-                    sync_version = data.get("sync_version", "2")
-            except Exception:
-                pass
+        last_sync_at = self.songset_client.get_metadata("last_sync_at")
+        sync_version = self.songset_client.get_metadata("sync_version", "2")
 
         enabled = bool(self.turso_url and self.libsql_available)
 
@@ -191,13 +207,8 @@ class AppSyncService:
 
     def _update_last_sync(self) -> None:
         """Update local last sync timestamp."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        data = {
-            "last_sync_at": datetime.now().isoformat(),
-            "sync_version": "2",
-        }
-        with open(self._last_sync_file, "w") as f:
-            json.dump(data, f)
+        self.songset_client.set_metadata("last_sync_at", datetime.now().isoformat())
+        self.songset_client.set_metadata("sync_version", "2")
 
     def execute_sync(self) -> SyncResult:
         """Execute database sync with Turso.

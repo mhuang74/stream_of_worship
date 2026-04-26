@@ -2,8 +2,6 @@
 
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
-import pytest
 
 from stream_of_worship.tui.state import (
     ActiveScreen,
@@ -11,7 +9,7 @@ from stream_of_worship.tui.state import (
     PlaybackState,
     AppState,
 )
-from stream_of_worship.tui.models.transition import TransitionParams, TransitionRecord
+from stream_of_worship.tui.models.transition import TransitionRecord
 
 
 class TestActiveScreen:

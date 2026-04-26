@@ -10,7 +10,6 @@ This module uses LLM to generate:
 import json
 from dataclasses import dataclass
 from typing import Optional, List
-from pathlib import Path
 
 try:
     import openai

@@ -436,7 +436,7 @@ def turso_bootstrap(
         console.print(f"[red]Local database not found: {config.db_path}[/red]")
         raise typer.Exit(1)
 
-    console.print(f"[bold]Bootstrapping Turso database...[/bold]")
+    console.print("[bold]Bootstrapping Turso database...[/bold]")
     console.print(f"Local DB: {config.db_path}")
     console.print(f"Turso URL: {config.turso_database_url}")
 

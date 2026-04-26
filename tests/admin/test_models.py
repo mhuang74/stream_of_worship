@@ -221,6 +221,152 @@ class TestRecording:
 
         assert recording.formatted_duration == "--:--"
 
+    def test_recording_from_row_28_columns(self):
+        """Test Recording.from_row with 28-column schema."""
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
+            "c6de4449928d",
+            "song_0001",
+            "original.mp3",
+            5242880,
+            "2024-01-15T10:30:00",
+            None,
+            None,
+            None,
+            245.3,
+            128.5,
+            "G",
+            "major",
+            0.87,
+            -8.2,
+            None,
+            None,
+            None,
+            None,
+            "completed",
+            None,
+            "completed",
+            None,
+            "2024-01-01",
+            "2024-01-02",
+            "https://youtube.com/watch?v=x",
+            "published",
+            "2026-01-01",
+        )
+        recording = Recording.from_row(row)
+
+        assert recording.youtube_url == "https://youtube.com/watch?v=x"
+        assert recording.visibility_status == "published"
+        assert recording.deleted_at == "2026-01-01"
+
+    def test_recording_from_row_27_columns(self):
+        """Test Recording.from_row with 27-column schema."""
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
+            "c6de4449928d",
+            "song_0001",
+            "original.mp3",
+            5242880,
+            "2024-01-15T10:30:00",
+            None,
+            None,
+            None,
+            245.3,
+            128.5,
+            "G",
+            "major",
+            0.87,
+            -8.2,
+            None,
+            None,
+            None,
+            None,
+            "completed",
+            None,
+            "completed",
+            None,
+            "2024-01-01",
+            "2024-01-02",
+            "https://youtube.com/watch?v=x",
+            "published",
+        )
+        recording = Recording.from_row(row)
+
+        assert recording.youtube_url == "https://youtube.com/watch?v=x"
+        assert recording.visibility_status == "published"
+        assert recording.deleted_at is None
+
+    def test_recording_from_row_26_columns(self):
+        """Test Recording.from_row with 26-column schema."""
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
+            "c6de4449928d",
+            "song_0001",
+            "original.mp3",
+            5242880,
+            "2024-01-15T10:30:00",
+            None,
+            None,
+            None,
+            245.3,
+            128.5,
+            "G",
+            "major",
+            0.87,
+            -8.2,
+            None,
+            None,
+            None,
+            None,
+            "completed",
+            None,
+            "completed",
+            None,
+            "2024-01-01",
+            "2024-01-02",
+            "https://youtube.com/watch?v=x",
+        )
+        recording = Recording.from_row(row)
+
+        assert recording.youtube_url == "https://youtube.com/watch?v=x"
+        assert recording.visibility_status is None
+        assert recording.deleted_at is None
+
+    def test_recording_from_row_25_columns(self):
+        """Test Recording.from_row with 25-column schema."""
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
+            "c6de4449928d",
+            "song_0001",
+            "original.mp3",
+            5242880,
+            "2024-01-15T10:30:00",
+            None,
+            None,
+            None,
+            245.3,
+            128.5,
+            "G",
+            "major",
+            0.87,
+            -8.2,
+            None,
+            None,
+            None,
+            None,
+            "completed",
+            None,
+            "completed",
+            None,
+            "2024-01-01",
+            "2024-01-02",
+        )
+        recording = Recording.from_row(row)
+
+        assert recording.youtube_url is None
+        assert recording.visibility_status is None
+        assert recording.deleted_at is None
+
 
 class TestDatabaseStats:
     """Tests for DatabaseStats model."""

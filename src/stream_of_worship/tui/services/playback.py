@@ -5,7 +5,7 @@ Uses pygame for cross-platform audio playback with seek support.
 
 from pathlib import Path
 from typing import Optional
-from threading import Thread, Lock
+from threading import Lock
 from queue import Queue
 
 

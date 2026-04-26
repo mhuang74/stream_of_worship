@@ -8,9 +8,9 @@ from datetime import timedelta
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Label, ProgressBar, Static
+from textual.widgets import Button, Footer, Header, Label, ProgressBar
 
-from stream_of_worship.app.services.export import ExportProgress, ExportService, ExportState
+from stream_of_worship.app.services.export import ExportProgress, ExportService
 from stream_of_worship.app.state import AppState
 
 

@@ -5,10 +5,9 @@ from textual.widgets import (
     Static,
     DataTable,
     Button,
-    Footer,
 )
 
-from stream_of_worship.tui.state import AppState, ActiveScreen
+from stream_of_worship.tui.state import AppState
 from stream_of_worship.tui.services.catalog import SongCatalogLoader
 from stream_of_worship.tui.services.playback import PlaybackService
 from stream_of_worship.tui.services.generation import TransitionGenerationService

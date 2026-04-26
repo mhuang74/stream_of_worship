@@ -100,7 +100,7 @@ class TestSongsetItem:
         assert item.loudness_db == -14.0
 
     def test_songset_item_to_dict(self, sample_songset_item_detailed_row):
-        """Verify to_dict() returns correct dict."""
+        """Verify to_dict() excludes joined fields by default."""
         item = SongsetItem.from_row(sample_songset_item_detailed_row, detailed=True)
         d = item.to_dict()
 
@@ -111,8 +111,23 @@ class TestSongsetItem:
         assert d["position"] == item.position
         assert d["gap_beats"] == item.gap_beats
         assert d["crossfade_enabled"] == item.crossfade_enabled
-        assert d["song_title"] == item.song_title
-        assert d["duration_seconds"] == item.duration_seconds
+        assert "song_title" not in d
+        assert "duration_seconds" not in d
+        assert "tempo_bpm" not in d
+
+    def test_songset_item_to_dict_includes_joined_when_requested(
+        self, sample_songset_item_detailed_row
+    ):
+        """Verify to_dict() includes joined fields when requested."""
+        item = SongsetItem.from_row(sample_songset_item_detailed_row, detailed=True)
+        d = item.to_dict(include_joined=True)
+
+        assert "song_title" in d
+        assert "duration_seconds" in d
+        assert "tempo_bpm" in d
+        assert d["song_title"] == "Test Song Title"
+        assert d["duration_seconds"] == 180.5
+        assert d["tempo_bpm"] == 120.0
 
     def test_songset_item_formatted_duration_with_value(self):
         """Verify formatted_duration property with valid duration."""

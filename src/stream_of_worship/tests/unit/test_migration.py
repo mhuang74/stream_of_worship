@@ -272,7 +272,6 @@ class TestGetExistingCatalog:
         empty_dir.mkdir()
 
         # Monkeypatch get_catalog_index_path to return non-existent path
-        from stream_of_worship.core.paths import get_catalog_index_path
         import stream_of_worship.core.paths as paths_module
         original_get_path = paths_module.get_catalog_index_path
 

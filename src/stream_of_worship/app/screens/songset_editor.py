@@ -10,7 +10,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
+from textual.widgets import Button, DataTable, Footer, Header, Input, Label
 
 from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.songset_client import SongsetClient

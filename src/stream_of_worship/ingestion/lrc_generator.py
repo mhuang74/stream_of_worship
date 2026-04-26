@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple
 
 try:
     import openai

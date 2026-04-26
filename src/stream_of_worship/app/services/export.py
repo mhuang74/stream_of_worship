@@ -319,7 +319,7 @@ class ExportService:
 
             # Log segment timing details after audio generation
             logger.info(f"AUDIO GENERATION COMPLETE: total_duration={job.audio_result.total_duration_seconds:.3f}s")
-            logger.info(f"Segment timing breakdown:")
+            logger.info("Segment timing breakdown:")
             for idx, segment in enumerate(job.audio_result.segments):
                 segment_end = segment.start_time_seconds + segment.duration_seconds
                 logger.info(f"  Segment {idx+1}: '{segment.item.song_title}'")

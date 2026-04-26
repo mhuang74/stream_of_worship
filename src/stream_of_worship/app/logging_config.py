@@ -5,7 +5,6 @@ Provides session logging to file without interfering with TUI display.
 
 import logging
 from pathlib import Path
-from datetime import datetime
 
 
 def _rotate_log_if_needed(log_file: Path, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5) -> None:

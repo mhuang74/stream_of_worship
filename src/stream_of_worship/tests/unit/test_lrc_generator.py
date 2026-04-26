@@ -1,8 +1,7 @@
 """Tests for LRC generation pipeline."""
 
-import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 try:
