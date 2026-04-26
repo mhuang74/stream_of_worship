@@ -30,8 +30,13 @@ class TestAdminConfig:
         assert config.r2_region == "auto"
         assert config.turso_database_url == ""
 
-    def test_load_from_file(self, tmp_path):
+    def test_load_from_file(self, tmp_path, monkeypatch):
         """Test loading config from TOML file."""
+        # Clear environment variables that might override file config
+        monkeypatch.delenv("SOW_R2_BUCKET", raising=False)
+        monkeypatch.delenv("SOW_R2_ENDPOINT_URL", raising=False)
+        monkeypatch.delenv("SOW_R2_REGION", raising=False)
+
         config_file = tmp_path / "config.toml"
         config_file.write_text(
             """
@@ -108,8 +113,11 @@ analysis_url = "http://localhost:8000"
         assert config.r2_endpoint_url == "https://env-only.r2.cloudflarestorage.com"
         assert config.r2_region == "auto"  # default
 
-    def test_save_and_load(self, tmp_path):
+    def test_save_and_load(self, tmp_path, monkeypatch):
         """Test saving and loading config preserves values."""
+        # Clear environment variables that might override file config
+        monkeypatch.delenv("SOW_R2_BUCKET", raising=False)
+
         config = AdminConfig()
         config.analysis_url = "https://test.example.com"
         config.r2_bucket = "test-bucket"

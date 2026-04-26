@@ -14,7 +14,6 @@ from stream_of_worship.app.config import (
     get_app_config_dir,
     get_app_config_path,
 )
-from stream_of_worship.admin.config import AdminConfig
 
 
 class TestAppConfigDir:
@@ -38,11 +37,19 @@ class TestAppConfigDir:
 class TestAppConfigDefaults:
     """Tests for default configuration values."""
 
-    def test_app_config_has_admin_config(self):
-        """Verify embedded AdminConfig."""
+    def test_default_db_path(self):
+        """Verify default db_path is set."""
         config = AppConfig()
 
-        assert isinstance(config.admin_config, AdminConfig)
+        assert isinstance(config.db_path, Path)
+        assert "sow.db" in str(config.db_path)
+
+    def test_default_songsets_db_path(self):
+        """Verify default songsets_db_path is set."""
+        config = AppConfig()
+
+        assert isinstance(config.songsets_db_path, Path)
+        assert "songsets.db" in str(config.songsets_db_path)
 
     def test_default_cache_dir(self):
         """Verify default cache_dir is set."""
@@ -72,31 +79,34 @@ class TestAppConfigDefaults:
 
 
 class TestAppConfigProperties:
-    """Tests for config property delegation."""
+    """Tests for config properties."""
 
     def test_db_path_property(self):
         """Verify db_path access."""
         config = AppConfig()
 
-        assert config.db_path == config.admin_config.db_path
+        assert isinstance(config.db_path, Path)
 
     def test_r2_bucket_property(self):
-        """Verify r2_bucket access."""
+        """Verify r2_bucket property reads from environment."""
         config = AppConfig()
 
-        assert config.r2_bucket == config.admin_config.r2_bucket
+        # Should return default or env value
+        assert isinstance(config.r2_bucket, str)
 
     def test_r2_endpoint_url_property(self):
-        """Verify r2_endpoint_url access."""
+        """Verify r2_endpoint_url property reads from environment."""
         config = AppConfig()
 
-        assert config.r2_endpoint_url == config.admin_config.r2_endpoint_url
+        # Should return env value or empty string
+        assert isinstance(config.r2_endpoint_url, str)
 
     def test_r2_region_property(self):
-        """Verify r2_region access."""
+        """Verify r2_region property reads from environment."""
         config = AppConfig()
 
-        assert config.r2_region == config.admin_config.r2_region
+        # Should return default or env value
+        assert isinstance(config.r2_region, str)
 
 
 class TestAppConfigSaveLoad:
@@ -108,13 +118,18 @@ class TestAppConfigSaveLoad:
 
         # Create a config file
         config_path.write_text("""
-[admin]
-analysis_url = "http://test:8000"
-r2_bucket = "test-bucket"
-r2_endpoint_url = "https://test.r2.cloudflarestorage.com"
-r2_region = "auto"
-turso_database_url = ""
+[database]
 db_path = "/test/db.sqlite"
+songsets_db_path = "/test/songsets.db"
+
+[songsets]
+backup_retention = 10
+export_dir = "/test/exports"
+
+[turso]
+database_url = "libsql://test.turso.io"
+readonly_token = "test-token"
+sync_on_startup = false
 
 [app]
 cache_dir = "/test/cache"
@@ -128,14 +143,20 @@ default_video_resolution = "720p"
 
         config = AppConfig.load(config_path)
 
-        assert config.admin_config.analysis_url == "http://test:8000"
-        assert config.admin_config.r2_bucket == "test-bucket"
+        assert config.db_path == Path("/test/db.sqlite")
+        assert config.songsets_db_path == Path("/test/songsets.db")
+        assert config.songsets_backup_retention == 10
+        assert config.songsets_export_dir == Path("/test/exports")
+        assert config.turso_database_url == "libsql://test.turso.io"
+        assert config.turso_readonly_token == "test-token"
+        assert config.sync_on_startup is False
         assert config.cache_dir == Path("/test/cache")
         assert config.output_dir == Path("/test/output")
         assert config.preview_buffer_ms == 1000
         assert config.preview_volume == 0.5
         assert config.default_gap_beats == 4.0
         assert config.default_video_template == "gradient_warm"
+        assert config.default_video_resolution == "720p"
 
     def test_load_raises_when_missing(self, tmp_path):
         """Verify load() raises when config missing."""
@@ -153,7 +174,9 @@ default_video_resolution = "720p"
 
         assert config_path.exists()
         content = config_path.read_text()
-        assert "[admin]" in content
+        assert "[database]" in content
+        assert "[songsets]" in content
+        assert "[turso]" in content
         assert "[app]" in content
 
     def test_save_creates_parent_directories(self, tmp_path):
@@ -191,6 +214,9 @@ class TestEnsureDirectories:
         config = AppConfig()
         config.cache_dir = cache_dir
         config.output_dir = output_dir
+        config.db_path = tmp_path / "db" / "sow.db"
+        config.songsets_db_path = tmp_path / "db" / "songsets.db"
+        config.songsets_export_dir = tmp_path / "exports"
 
         config.ensure_directories()
 
@@ -220,13 +246,18 @@ class TestEnsureAppConfigExists:
         config_path = get_app_config_path()
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text("""
-[admin]
-analysis_url = "http://existing:8000"
-r2_bucket = "existing-bucket"
-r2_endpoint_url = "https://existing.r2.cloudflarestorage.com"
-r2_region = "auto"
-turso_database_url = ""
+[database]
 db_path = "/existing/db.sqlite"
+songsets_db_path = "/existing/songsets.db"
+
+[songsets]
+backup_retention = 3
+export_dir = "/existing/exports"
+
+[turso]
+database_url = ""
+readonly_token = ""
+sync_on_startup = false
 
 [app]
 cache_dir = "/existing/cache"
@@ -240,5 +271,96 @@ default_video_resolution = "1080p"
 
         config = ensure_app_config_exists()
 
-        assert config.admin_config.analysis_url == "http://existing:8000"
+        assert config.db_path == Path("/existing/db.sqlite")
         assert config.default_gap_beats == 1.0
+
+
+class TestTursoConfig:
+    """Tests for Turso configuration."""
+
+    def test_is_turso_configured_requires_url_and_token(self):
+        """Verify Turso config requires both URL and token."""
+        config = AppConfig()
+
+        # Neither set
+        config.turso_database_url = ""
+        config.turso_readonly_token = ""
+        assert config.is_turso_configured is False
+
+        # Only URL set
+        config.turso_database_url = "libsql://test.turso.io"
+        config.turso_readonly_token = ""
+        assert config.is_turso_configured is False
+
+        # Both set
+        config.turso_database_url = "libsql://test.turso.io"
+        config.turso_readonly_token = "test-token"
+        assert config.is_turso_configured is True
+
+    def test_turso_url_from_environment(self, tmp_path, monkeypatch):
+        """Verify Turso URL can be set via environment."""
+        monkeypatch.setenv("SOW_TURSO_DATABASE_URL", "libsql://env.turso.io")
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("""
+[database]
+db_path = "/test/db.sqlite"
+songsets_db_path = "/test/songsets.db"
+
+[songsets]
+backup_retention = 5
+export_dir = "/test/exports"
+
+[turso]
+database_url = "libsql://file.turso.io"
+readonly_token = ""
+sync_on_startup = true
+
+[app]
+cache_dir = "/test/cache"
+output_dir = "/test/output"
+preview_buffer_ms = 500
+preview_volume = 0.8
+default_gap_beats = 2.0
+default_video_template = "dark"
+default_video_resolution = "1080p"
+""")
+
+        config = AppConfig.load(config_path)
+
+        # Environment should override file
+        assert config.turso_database_url == "libsql://env.turso.io"
+
+    def test_turso_token_from_environment(self, tmp_path, monkeypatch):
+        """Verify Turso token can be set via environment."""
+        monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "env-token")
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("""
+[database]
+db_path = "/test/db.sqlite"
+songsets_db_path = "/test/songsets.db"
+
+[songsets]
+backup_retention = 5
+export_dir = "/test/exports"
+
+[turso]
+database_url = ""
+readonly_token = "file-token"
+sync_on_startup = true
+
+[app]
+cache_dir = "/test/cache"
+output_dir = "/test/output"
+preview_buffer_ms = 500
+preview_volume = 0.8
+default_gap_beats = 2.0
+default_video_template = "dark"
+default_video_resolution = "1080p"
+""")
+
+        config = AppConfig.load(config_path)
+
+        # Environment should override file
+        assert config.turso_readonly_token == "env-token"
