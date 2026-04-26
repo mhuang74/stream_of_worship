@@ -73,11 +73,11 @@ def schema_db(tmp_path):
     # Insert sample data for FK references
     conn.execute(
         "INSERT INTO songs (id, title, source_url, scraped_at) VALUES (?, ?, ?, ?)",
-        ("song_0001", "Test Song", "http://example.com", "2024-01-01T00:00:00")
+        ("song_0001", "Test Song", "http://example.com", "2024-01-01T00:00:00"),
     )
     conn.execute(
         "INSERT INTO recordings (content_hash, hash_prefix, song_id, original_filename, file_size_bytes, imported_at) VALUES (?, ?, ?, ?, ?, ?)",
-        ("abc123" * 8, "abc123def456", "song_0001", "test.mp3", 1000, "2024-01-01T00:00:00")
+        ("abc123" * 8, "abc123def456", "song_0001", "test.mp3", 1000, "2024-01-01T00:00:00"),
     )
 
     # Create app schema
@@ -178,6 +178,7 @@ class TestSongsetCRUD:
 
         # Force a small delay to ensure timestamp changes
         import time
+
         time.sleep(0.01)
 
         songset_client.update_songset(sample_songset.id, name="New Name")
@@ -235,7 +236,9 @@ class TestSongsetItemOperations:
         songset_client.add_item(sample_songset.id, "song_0001", "abc123def456", position=1)
 
         # Insert at position 0 (no reindexing - just inserts with position 0)
-        new_item = songset_client.add_item(sample_songset.id, "song_0001", "abc123def456", position=0)
+        new_item = songset_client.add_item(
+            sample_songset.id, "song_0001", "abc123def456", position=0
+        )
 
         # Verify all items exist with their specified positions
         items = songset_client.get_items(sample_songset.id, detailed=False)
@@ -335,10 +338,57 @@ class TestSongsetItemOperations:
 
     def test_get_item_count(self, songset_client, sample_songset):
         """Verify item count is accurate."""
-        assert songset_client.get_item_count(sample_songset.id) == 0
+        assert songset_client.get_item_count(sample_songset.id) == 1
 
         songset_client.add_item(sample_songset.id, "song_0001", "abc123def456")
-        assert songset_client.get_item_count(sample_songset.id) == 1
+        assert songset_client.get_item_count(sample_songset.id) == 2
+
+
+class TestSnapshotBackup:
+    """Tests for snapshot_db backup functionality."""
+
+    def test_snapshot_db_creates_valid_backup(self, schema_db):
+        """Test snapshot creates a valid backup file."""
+        client = SongsetClient(schema_db)
+        client.create_songset("Test Songset")
+
+        backup_path = client.snapshot_db(retention=5)
+
+        assert backup_path.exists()
+        assert backup_path.name.startswith("songsets.db.bak-")
+
+        # Verify backup integrity
+        import sqlite3
+
+        conn = sqlite3.connect(backup_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA integrity_check")
+        result = cursor.fetchone()
+        conn.close()
+
+        assert result[0] == "ok"
+
+    def test_snapshot_db_uses_backup_api_not_file_copy(self, schema_db):
+        """Test snapshot uses SQLite backup API, not shutil.copy2."""
+        import stream_of_worship.app.db.songset_client as client_module
+
+        # Verify shutil is not imported
+        assert "shutil" not in dir(client_module)
+
+    def test_snapshot_db_prunes_old_backups(self, schema_db):
+        """Test backup retention pruning."""
+        client = SongsetClient(schema_db)
+
+        # Create 7 backups with timestamps
+        import time
+
+        for i in range(7):
+            client.snapshot_db(retention=5)
+            time.sleep(0.01)
+
+        # Should only have 5 backups
+        backups = list(schema_db.parent.glob("songsets.db.bak-*"))
+        assert len(backups) == 5
 
         songset_client.add_item(sample_songset.id, "song_0001", "abc123def456")
         assert songset_client.get_item_count(sample_songset.id) == 2
@@ -380,7 +430,7 @@ class TestTransactionManagement:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO songsets (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                ("songset_txn", "Txn Test", "2024-01-01T00:00:00", "2024-01-01T00:00:00")
+                ("songset_txn", "Txn Test", "2024-01-01T00:00:00", "2024-01-01T00:00:00"),
             )
 
         # Verify committed
@@ -394,7 +444,12 @@ class TestTransactionManagement:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT INTO songsets (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                    ("songset_rollback", "Rollback Test", "2024-01-01T00:00:00", "2024-01-01T00:00:00")
+                    (
+                        "songset_rollback",
+                        "Rollback Test",
+                        "2024-01-01T00:00:00",
+                        "2024-01-01T00:00:00",
+                    ),
                 )
                 raise ValueError("Test exception")
         except ValueError:

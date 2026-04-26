@@ -232,6 +232,73 @@ class TestSyncStatus:
         service.libsql_available = True
         service._last_sync_file = last_sync_file
 
-        status = service.get_sync_status()
-        assert status.last_sync_at == "2024-01-01T00:00:00"
-        assert status.sync_version == "2"
+        status = songset_client.get_metadata("last_sync_at")
+        assert status == "2024-01-01T00:00:00"
+        assert sync_version == "2"
+
+    def test_set_metadata_upsert(self, songset_client):
+        """Test set_metadata replaces existing value."""
+        songset_client.set_metadata("test_key", "value1")
+
+        value = songset_client.get_metadata("test_key")
+        assert value == "value1"
+
+        songset_client.set_metadata("test_key", "value2")
+
+        value = songset_client.get_metadata("test_key")
+        assert value == "value2"
+
+    def test_last_sync_json_migration(self, tmp_path, songset_client):
+        """Test migration of legacy last_sync.json to database."""
+        last_sync_file = tmp_path / "last_sync.json"
+        last_sync_file.write_text(
+            json.dumps({"last_sync_at": "2024-01-01T12:00:00", "sync_version": "2"})
+        )
+
+        read_client = MagicMock()
+        read_client.db_path = tmp_path / "catalog.db"
+
+        service = AppSyncService(
+            read_client=read_client,
+            songset_client=songset_client,
+            config_dir=tmp_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="token",
+        )
+
+        # Verify migration happened
+        last_sync_at = songset_client.get_metadata("last_sync_at")
+        sync_version = songset_client.get_metadata("sync_version")
+
+        assert last_sync_at == "2024-01-01T12:00:00"
+        assert sync_version == "2"
+
+        # Verify JSON file was deleted
+        assert not last_sync_file.exists()
+
+    def test_sync_metadata_no_stale_json_after_db_wipe(self, tmp_path):
+        """Test no stale metadata after DB is wiped."""
+        songset_db = tmp_path / "songsets.db"
+        conn = sqlite3.connect(songset_db)
+        conn.execute("CREATE TABLE songsets (id TEXT PRIMARY KEY)")
+        conn.commit()
+        conn.close()
+
+        # Create service and set metadata
+        songset_client = SongsetClient(songset_db)
+        songset_client.set_metadata("last_sync_at", "2024-01-01T12:00:00")
+
+        read_client = MagicMock()
+        read_client.db_path = tmp_path / "catalog.db"
+
+        service = AppSyncService(
+            read_client=read_client,
+            songset_client=songset_client,
+            config_dir=tmp_path,
+            turso_url="",
+            turso_token="",
+        )
+
+        # Verify metadata exists
+        last_sync_at = songset_client.get_metadata("last_sync_at")
+        assert last_sync_at == "2024-01-01T12:00:00"

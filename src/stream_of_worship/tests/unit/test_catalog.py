@@ -2,8 +2,6 @@
 
 import json
 from pathlib import Path
-from datetime import datetime
-from unittest.mock import patch
 import pytest
 
 from stream_of_worship.core.catalog import Song, CatalogIndex

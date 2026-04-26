@@ -1,6 +1,5 @@
 """Tests for CLI main entry point."""
 
-import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest

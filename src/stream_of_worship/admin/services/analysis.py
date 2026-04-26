@@ -4,10 +4,9 @@ Provides AnalysisClient for communicating with the FastAPI analysis service
 over HTTP. Handles authentication, job submission, polling, and result parsing.
 """
 
-import json
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import requests

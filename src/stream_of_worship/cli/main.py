@@ -14,9 +14,8 @@ from pathlib import Path
 from stream_of_worship.core.paths import (
     ensure_directories,
     get_config_path,
-    get_user_data_dir,
 )
-from stream_of_worship.core.config import Config, create_default_config
+from stream_of_worship.core.config import Config
 
 
 def main():
@@ -317,7 +316,7 @@ def handle_ingest(args, config: Config):
 
         if args.song_id:
             # Generate LRC for single song
-            from stream_of_worship.core.paths import get_song_dir, get_catalog_index_path
+            from stream_of_worship.core.paths import get_song_dir
             from stream_of_worship.core.catalog import CatalogIndex
 
             catalog = CatalogIndex.load()
@@ -356,7 +355,6 @@ def handle_ingest(args, config: Config):
 
         elif args.all:
             # Generate LRC for all songs
-            from stream_of_worship.core.paths import get_catalog_index_path
             from stream_of_worship.core.catalog import CatalogIndex
 
             catalog = CatalogIndex.load()
@@ -423,7 +421,7 @@ def handle_ingest(args, config: Config):
 
         if args.song_id:
             # Generate metadata for single song
-            from stream_of_worship.core.paths import get_song_dir, get_catalog_index_path
+            from stream_of_worship.core.paths import get_song_dir
             from stream_of_worship.core.catalog import CatalogIndex
 
             catalog = CatalogIndex.load()
@@ -469,7 +467,6 @@ def handle_ingest(args, config: Config):
 
         elif args.all:
             # Generate metadata for all songs
-            from stream_of_worship.core.paths import get_catalog_index_path
             from stream_of_worship.core.catalog import CatalogIndex
 
             catalog = CatalogIndex.load()
@@ -580,9 +577,9 @@ def handle_config(args, config: Config):
         print(f"  Video resolution: {config.video_resolution}")
         print(f"  LLM model: {config.llm_model}")
         if config.openrouter_api_key:
-            print(f"  OpenRouter API key: [SET]")
+            print("  OpenRouter API key: [SET]")
         else:
-            print(f"  OpenRouter API key: [NOT SET]")
+            print("  OpenRouter API key: [NOT SET]")
 
     elif args.config_command == "set":
         if hasattr(config, args.key):

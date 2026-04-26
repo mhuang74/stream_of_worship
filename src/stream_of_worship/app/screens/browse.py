@@ -12,7 +12,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.services.catalog import CatalogService, SongWithRecording
-from stream_of_worship.app.state import AppScreen, AppState
+from stream_of_worship.app.state import AppState
 
 
 class BrowseScreen(Screen):

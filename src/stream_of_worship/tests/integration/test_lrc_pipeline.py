@@ -11,7 +11,7 @@ These tests verify the complete LRC generation workflow including:
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 try:
     from stream_of_worship.ingestion.lrc_generator import (

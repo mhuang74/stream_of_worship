@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from datetime import datetime
 from unittest.mock import patch, MagicMock
 import pytest
 
@@ -10,7 +9,7 @@ from stream_of_worship.tui.services.catalog import SongCatalogLoader
 from stream_of_worship.tui.services.playback import PlaybackService
 from stream_of_worship.tui.services.generation import TransitionGenerationService
 from stream_of_worship.tui.models.song import Song as TUISong
-from stream_of_worship.tui.models.transition import TransitionParams, TransitionRecord
+from stream_of_worship.tui.models.transition import TransitionParams
 from stream_of_worship.tui.models.section import Section
 
 

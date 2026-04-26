@@ -8,13 +8,10 @@ from textual.widgets import (
     Label,
     Input,
     Select,
-    Footer,
 )
 
 from stream_of_worship.tui.state import AppState
-from stream_of_worship.tui.models.song import Song
 from stream_of_worship.tui.models.transition import TransitionParams
-from stream_of_worship.tui.models.section import Section
 from stream_of_worship.tui.services.catalog import SongCatalogLoader
 from stream_of_worship.tui.services.playback import PlaybackService
 from stream_of_worship.tui.services.generation import TransitionGenerationService

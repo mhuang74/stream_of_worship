@@ -4,8 +4,6 @@ Provides a Typer-based CLI for managing Stream of Worship catalog,
 audio recordings, and metadata.
 """
 
-import sys
-from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -15,6 +13,7 @@ from stream_of_worship.admin import __version__
 from stream_of_worship.admin.commands import audio as audio_commands
 from stream_of_worship.admin.commands import catalog as catalog_commands
 from stream_of_worship.admin.commands import db as db_commands
+from stream_of_worship.admin.commands import migrate as migrate_commands
 
 console = Console()
 
@@ -27,6 +26,9 @@ app = typer.Typer(
 
 # Add subcommand groups
 app.add_typer(db_commands.app, name="db", help="Database operations")
+db_commands.app.add_typer(
+    migrate_commands.app, name="migrate", help="Database migration operations"
+)
 app.add_typer(catalog_commands.app, name="catalog", help="Catalog operations")
 app.add_typer(audio_commands.app, name="audio", help="Audio recording operations")
 
@@ -56,7 +58,7 @@ def main(
 
     ## Commands
 
-    * [bold cyan]db[/bold cyan] - Database operations (init, status, reset)
+    * [bold cyan]db[/bold cyan] - Database operations (init, status, reset, migrate)
     * [bold cyan]catalog[/bold cyan] - Catalog operations (scrape, list, search, show)
     * [bold cyan]audio[/bold cyan] - Audio operations (download, list, show)
 
@@ -98,7 +100,7 @@ def config(
         sow-admin config set r2.bucket my-bucket
         sow-admin config path          # Show config file path
     """
-    from stream_of_worship.admin.config import AdminConfig, get_config_path, ensure_config_exists
+    from stream_of_worship.admin.config import get_config_path, ensure_config_exists
 
     if action == "show":
         try:

@@ -1,20 +1,18 @@
 """Playlist screen for building multi-song worship sets."""
 
-from textual.containers import Horizontal, Vertical, Container
+from textual.containers import Horizontal, Vertical
 from textual.widgets import (
     Static,
     DataTable,
     Button,
     Input,
     Label,
-    Footer,
 )
 from typing import Optional
 
 from stream_of_worship.tui.state import AppState, ActiveScreen
-from stream_of_worship.tui.models.playlist import Playlist, PlaylistItem
+from stream_of_worship.tui.models.playlist import Playlist
 from stream_of_worship.tui.models.transition import TransitionParams
-from stream_of_worship.tui.models.section import Section
 from stream_of_worship.tui.services.catalog import SongCatalogLoader
 from stream_of_worship.tui.services.playback import PlaybackService
 from stream_of_worship.tui.services.generation import TransitionGenerationService
