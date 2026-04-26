@@ -325,7 +325,7 @@ class SongsetClient:
         crossfade_duration_seconds: Optional[float] = None,
         key_shift_semitones: int = 0,
         tempo_ratio: float = 1.0,
-        get_recording: Optional[Callable[[str], Optional]] = None,
+        get_recording: Optional[Callable[[str], Optional[Any]]] = None,
     ) -> SongsetItem:
         """Add a song to a songset.
 
