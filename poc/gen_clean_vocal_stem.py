@@ -99,6 +99,12 @@ def extract_vocals_two_stage(
         process_time = time.time() - start_time
         print(f"Separation completed in {process_time:.1f}s")
 
+    # Release Stage 1 model memory before loading Stage 2
+    if not reuse_stage1:
+        del separator
+        import gc
+        gc.collect()
+
     # Find the vocals output file
     if not reuse_stage1:
         vocals_file, instrumental_file, _ = _find_stage1_stems(stage1_dir)

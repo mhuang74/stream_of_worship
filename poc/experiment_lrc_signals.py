@@ -128,9 +128,20 @@ def resolve_assets(song_id: str, hash_prefix: str) -> tuple[Path, Path]:
 
     Falls back to main audio file if vocal stems are not available.
     """
-    stem_path = CACHE_DIR / hash_prefix / "stems" / "vocals.wav"
+    # Prefer clean_vocals.flac (de-echoed) over vocals.wav; check both cache dirs
+    _sow_app_cache = Path.home() / ".config" / "sow-app" / "cache"
+    clean_vocals_candidates = [
+        CACHE_DIR / hash_prefix / "stems" / "clean_vocals.flac",
+        _sow_app_cache / hash_prefix / "stems" / "clean_vocals.flac",
+    ]
+    clean_vocals = next((p for p in clean_vocals_candidates if p.exists()), None)
+    stem_path = clean_vocals if clean_vocals else CACHE_DIR / hash_prefix / "stems" / "vocals.wav"
     audio_path = CACHE_DIR / hash_prefix / "audio" / "audio.mp3"
-    lrc_path = CACHE_DIR / hash_prefix / "lrc" / "lyrics.lrc"
+    lrc_candidates = [
+        CACHE_DIR / hash_prefix / "lrc" / "lyrics.lrc",
+        _sow_app_cache / hash_prefix / "lrc" / "lyrics.lrc",
+    ]
+    lrc_path = next((p for p in lrc_candidates if p.exists()), lrc_candidates[0])
 
     # Try vocal stem first, then fall back to main audio
     audio_source = None

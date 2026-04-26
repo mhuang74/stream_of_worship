@@ -216,6 +216,7 @@ __marimo__/
 # POC outputs (generated files)
 poc/output/*
 poc/output_*/*
+poc/experiment_*/*
 !poc/output/.gitkeep
 !poc/output_allinone/.gitkeep
 poc/demix/*
