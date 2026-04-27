@@ -7,7 +7,7 @@ manage songsets, and export audio/video.
 from textual.app import App
 
 from stream_of_worship.admin.services.r2 import R2Client
-from stream_of_worship.app.config import AppConfig
+from stream_of_worship.app.config import AppConfig, get_app_config_dir
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.logging_config import get_logger
@@ -69,7 +69,7 @@ class SowApp(App):
         self.sync_service = AppSyncService(
             read_client=self.read_client,
             songset_client=self.songset_client,
-            config_dir=config.db_path.parent.parent,  # ~/.config/sow-app
+            config_dir=get_app_config_dir(),  # ~/.config/sow
             turso_url=config.turso_database_url,
             turso_token=config.turso_readonly_token,
             backup_retention=config.songsets_backup_retention,

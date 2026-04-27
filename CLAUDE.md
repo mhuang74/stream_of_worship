@@ -97,8 +97,8 @@ The project consists of **four architecturally separate components**:
   - **Black**: Line length 100.
   - **Ruff**: Line length 100, target version py311.
 - **Output Directories**:
-  - `output_transitions/`: For transition clips.
-  - `output_songs/`: For full song outputs.
+  - `output/transitions/`: For transition clips.
+  - `output/songs/`: For full song outputs.
   - `stems/`: For separated audio stems.
 - **Safety**:
   - Use `run_in_background=True` for long-running analysis tasks.

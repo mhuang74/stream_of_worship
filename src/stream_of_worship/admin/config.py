@@ -27,6 +27,7 @@ class AdminConfig:
         r2_region: R2 region (usually "auto")
         turso_database_url: Turso database URL for sync
         db_path: Local SQLite database path
+        cache_dir: Local cache directory for admin operations
     """
 
     # Analysis Service
@@ -42,6 +43,9 @@ class AdminConfig:
 
     # Local Database
     db_path: Path = field(default_factory=lambda: get_default_db_path())
+
+    # Cache
+    cache_dir: Path = field(default_factory=lambda: get_cache_dir())
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "AdminConfig":
@@ -103,6 +107,17 @@ class AdminConfig:
             if db_path:
                 config.db_path = Path(db_path)
 
+        # Load cache dir from TOML
+        if "paths" in data:
+            toml_cache_dir = data["paths"].get("cache_dir")
+            if toml_cache_dir:
+                config.cache_dir = Path(toml_cache_dir)
+
+        # Env override wins over TOML (SOW_ADMIN_CACHE_DIR)
+        env_cache_dir = os.environ.get("SOW_ADMIN_CACHE_DIR")
+        if env_cache_dir:
+            config.cache_dir = Path(env_cache_dir)
+
         return config
 
     def save(self, path: Optional[Path] = None) -> None:
@@ -127,6 +142,7 @@ class AdminConfig:
             },
             "turso": {"database_url": self.turso_database_url},
             "database": {"path": str(self.db_path)},
+            "paths": {"cache_dir": str(self.cache_dir)},
         }
 
         with open(path, "wb") as f:
@@ -191,6 +207,32 @@ class AdminConfig:
             new_value = value
 
         setattr(target, final_key, new_value)
+
+
+def get_cache_dir() -> Path:
+    """Get the platform-specific cache directory for sow-admin.
+
+    Resolution order: SOW_ADMIN_CACHE_DIR env > platform default.
+
+    Returns:
+        Path to the cache directory for sow-admin.
+    """
+    env_override = os.environ.get("SOW_ADMIN_CACHE_DIR")
+    if env_override:
+        return Path(env_override)
+
+    if sys.platform == "darwin" or sys.platform == "linux":
+        xdg_cache = os.environ.get("XDG_CACHE_HOME")
+        if xdg_cache:
+            return Path(xdg_cache) / "sow-admin"
+        return Path.home() / ".cache" / "sow-admin"
+    elif sys.platform == "win32":
+        localappdata = os.environ.get("LOCALAPPDATA")
+        if localappdata:
+            return Path(localappdata) / "sow-admin" / "cache"
+        return Path.home() / "AppData" / "Local" / "sow-admin" / "cache"
+    else:
+        return Path.home() / ".cache" / "sow-admin"
 
 
 def get_config_dir() -> Path:

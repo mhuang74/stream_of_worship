@@ -13,25 +13,28 @@ from typing import Optional
 import tomllib
 import tomli_w
 
+from stream_of_worship.core.paths import get_cache_dir as _get_core_cache_dir
+from stream_of_worship.core.paths import get_user_data_dir as _get_core_data_dir
+
 
 def get_app_config_dir() -> Path:
     """Get the platform-specific config directory for sow-app.
 
     Returns:
-        Path to the config directory for sow-app.
+        Path to the config directory for sow-app (~/.config/sow/ on Linux/macOS).
     """
     if sys.platform == "darwin" or sys.platform == "linux":
-        xdg_config = __import__("os").environ.get("XDG_CONFIG_HOME")
+        xdg_config = os.environ.get("XDG_CONFIG_HOME")
         if xdg_config:
-            return Path(xdg_config) / "sow-app"
-        return Path.home() / ".config" / "sow-app"
+            return Path(xdg_config) / "sow"
+        return Path.home() / ".config" / "sow"
     elif sys.platform == "win32":
-        appdata = __import__("os").environ.get("APPDATA")
+        appdata = os.environ.get("APPDATA")
         if appdata:
-            return Path(appdata) / "sow-app"
-        return Path.home() / "AppData" / "Roaming" / "sow-app"
+            return Path(appdata) / "sow"
+        return Path.home() / "AppData" / "Roaming" / "sow"
     else:
-        return Path.home() / ".config" / "sow-app"
+        return Path.home() / ".config" / "sow"
 
 
 def get_app_config_path() -> Path:
@@ -105,8 +108,9 @@ class AppConfig:
     sync_on_startup: bool = True
 
     # App-specific paths
-    cache_dir: Path = field(default_factory=lambda: get_app_config_dir() / "cache")
-    output_dir: Path = field(default_factory=lambda: Path.home() / "StreamOfWorship" / "output")
+    cache_dir: Path = field(default_factory=_get_core_cache_dir)
+    output_dir: Path = field(default_factory=lambda: Path.home() / "sow" / "output")
+    log_dir: Path = field(default_factory=lambda: _get_core_data_dir() / "logs")
 
     # Playback settings
     preview_buffer_ms: int = 500
@@ -181,6 +185,8 @@ class AppConfig:
                 config.cache_dir = Path(app_data["cache_dir"])
             if "output_dir" in app_data:
                 config.output_dir = Path(app_data["output_dir"])
+            if "log_dir" in app_data:
+                config.log_dir = Path(app_data["log_dir"])
             config.preview_buffer_ms = app_data.get("preview_buffer_ms", config.preview_buffer_ms)
             config.preview_volume = app_data.get("preview_volume", config.preview_volume)
             config.default_gap_beats = app_data.get("default_gap_beats", config.default_gap_beats)
@@ -190,6 +196,11 @@ class AppConfig:
             config.default_video_resolution = app_data.get(
                 "default_video_resolution", config.default_video_resolution
             )
+
+        # SOW_CACHE_DIR env var wins over TOML cache_dir
+        env_cache_dir = os.environ.get("SOW_CACHE_DIR")
+        if env_cache_dir:
+            config.cache_dir = Path(env_cache_dir)
 
         return config
 
@@ -223,6 +234,7 @@ class AppConfig:
             "app": {
                 "cache_dir": str(self.cache_dir),
                 "output_dir": str(self.output_dir),
+                "log_dir": str(self.log_dir),
                 "preview_buffer_ms": self.preview_buffer_ms,
                 "preview_volume": self.preview_volume,
                 "default_gap_beats": self.default_gap_beats,
@@ -240,6 +252,7 @@ class AppConfig:
         self.songsets_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         self.songsets_export_dir.mkdir(parents=True, exist_ok=True)
 
     @property

@@ -4,83 +4,83 @@ This module handles cross-platform path conventions for storing user data,
 configuration, and cache files.
 
 Supported Platforms:
-- macOS: ~/Library/Application Support/StreamOfWorship/
-- Linux: ~/.local/share/stream_of_worship/ (XDG_DATA_HOME)
-- Windows: %APPDATA%\\StreamOfWorship\\
+- macOS: ~/Library/Application Support/sow/
+- Linux: ~/.local/share/sow/ (XDG_DATA_HOME)
+- Windows: %APPDATA%\\sow\\
 """
 
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def get_user_data_dir() -> Path:
     """Get the platform-specific user data directory.
 
-    Returns:
-        Path to the user data directory for Stream of Worship.
+    Resolution order: SOW_DATA_DIR env > STREAM_OF_WORSHIP_DATA_DIR (legacy) > platform default.
 
     Examples:
         >>> get_user_data_dir()  # doctest: +SKIP
-        Path('/home/user/.local/share/stream_of_worship')  # Linux
-        Path('/Users/user/Library/Application Support/StreamOfWorship')  # macOS
-        Path('C:\\Users\\user\\AppData\\Roaming\\StreamOfWorship')  # Windows
+        Path('/home/user/.local/share/sow')  # Linux
+        Path('/Users/user/Library/Application Support/sow')  # macOS
+        Path('C:\\Users\\user\\AppData\\Roaming\\sow')  # Windows
     """
-    # Check for environment variable override first
+    if "SOW_DATA_DIR" in os.environ:
+        return Path(os.environ["SOW_DATA_DIR"])
+
+    # Legacy fallback
     if "STREAM_OF_WORSHIP_DATA_DIR" in os.environ:
         return Path(os.environ["STREAM_OF_WORSHIP_DATA_DIR"])
 
     if sys.platform == "darwin":
-        # macOS: ~/Library/Application Support/
-        path = Path.home() / "Library" / "Application Support" / "StreamOfWorship"
+        path = Path.home() / "Library" / "Application Support" / "sow"
     elif sys.platform == "win32":
-        # Windows: %APPDATA%
         appdata = os.environ.get("APPDATA", "")
         if not appdata:
-            # Fallback to home directory
-            path = Path.home() / "AppData" / "Roaming" / "StreamOfWorship"
+            path = Path.home() / "AppData" / "Roaming" / "sow"
         else:
-            path = Path(appdata) / "StreamOfWorship"
+            path = Path(appdata) / "sow"
     else:
         # Linux and others: XDG_DATA_HOME or ~/.local/share
         xdg_data_home = os.environ.get("XDG_DATA_HOME")
         if xdg_data_home:
-            path = Path(xdg_data_home) / "stream_of_worship"
+            path = Path(xdg_data_home) / "sow"
         else:
-            path = Path.home() / ".local" / "share" / "stream_of_worship"
+            path = Path.home() / ".local" / "share" / "sow"
 
     return path
 
 
 def get_cache_dir() -> Path:
-    """Get the platform-specific cache directory.
+    """Get the platform-specific cache directory for the app.
 
-    Returns:
-        Path to the cache directory for Stream of Worship.
+    Resolution order: SOW_CACHE_DIR env > platform default.
 
     Examples:
         >>> get_cache_dir()  # doctest: +SKIP
-        Path('/home/user/.cache/stream_of_worship')  # Linux
-        Path('/Users/user/Library/Caches/StreamOfWorship')  # macOS
-        Path('C:\\Users\\user\\AppData\\Local\\StreamOfWorship\\cache')  # Windows
+        Path('/home/user/.cache/sow')  # Linux
+        Path('/Users/user/Library/Caches/sow')  # macOS
+        Path('C:\\Users\\user\\AppData\\Local\\sow\\cache')  # Windows
     """
+    if "SOW_CACHE_DIR" in os.environ:
+        return Path(os.environ["SOW_CACHE_DIR"])
+
     if sys.platform == "darwin":
-        # macOS: ~/Library/Caches/
-        path = Path.home() / "Library" / "Caches" / "StreamOfWorship"
+        path = Path.home() / "Library" / "Caches" / "sow"
     elif sys.platform == "win32":
-        # Windows: %LOCALAPPDATA%
         localappdata = os.environ.get("LOCALAPPDATA", "")
         if not localappdata:
-            path = Path.home() / "AppData" / "Local" / "StreamOfWorship" / "cache"
+            path = Path.home() / "AppData" / "Local" / "sow" / "cache"
         else:
-            path = Path(localappdata) / "StreamOfWorship" / "cache"
+            path = Path(localappdata) / "sow" / "cache"
     else:
         # Linux and others: XDG_CACHE_HOME or ~/.cache
         xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
         if xdg_cache_home:
-            path = Path(xdg_cache_home) / "stream_of_worship"
+            path = Path(xdg_cache_home) / "sow"
         else:
-            path = Path.home() / ".cache" / "stream_of_worship"
+            path = Path.home() / ".cache" / "sow"
 
     return path
 
@@ -113,7 +113,7 @@ def ensure_directories() -> None:
         data_dir / "output" / "video",
         # Cache directories
         cache_dir,
-        cache_dir / "whisper_cache",
+        cache_dir / "whisper",
         cache_dir / "temp",
     ]
 
@@ -178,7 +178,21 @@ def get_whisper_cache_path() -> Path:
     Returns:
         Path to the whisper cache directory.
     """
-    return get_cache_dir() / "whisper_cache"
+    return get_cache_dir() / "whisper"
+
+
+def get_recording_cache_path(hash_prefix: str, cache_dir: Optional[Path] = None) -> Path:
+    """Get the cache path for a specific recording by hash prefix.
+
+    Args:
+        hash_prefix: The recording's hash prefix (first 12 chars of content hash)
+        cache_dir: Optional override cache directory; defaults to get_cache_dir()
+
+    Returns:
+        Path to the recording's cache directory.
+    """
+    base = cache_dir or get_cache_dir()
+    return base / hash_prefix
 
 
 def get_song_dir(song_id: str) -> Path:

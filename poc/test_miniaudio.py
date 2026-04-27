@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Simple test to verify miniaudio playback works."""
 
+import sys
 import miniaudio
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from stream_of_worship.core.paths import get_cache_dir
+
 # Test file path
-audio_file = Path("/Users/mhuang/.config/sow-app/cache/c105e75972f7/audio/audio.mp3")
+audio_file = get_cache_dir() / "c105e75972f7" / "audio" / "audio.mp3"
 
 if not audio_file.exists():
     print(f"Audio file not found: {audio_file}")
