@@ -67,6 +67,12 @@ This runs a two-stage pipeline (BS-Roformer vocal separation → UVR de-echo) an
 copies the result to the cache directory. See `docs/manually-fix-lrc.md` Step 0
 for full details including `--dereverb-model` options and `--reuse-stage1`.
 
+**Run stem separation serially — never in parallel.** The BS-Roformer model
+loads ~2–3 GB into RAM/GPU. Running two or more instances simultaneously causes
+mutual memory starvation: chunk processing times balloon from ~38 s/chunk to
+4000–9000 s/chunk and the jobs crash without producing output. Process one song
+at a time and wait for it to finish before starting the next.
+
 When running the experiment, pass the clean vocals path via `--stem`:
 
 ```bash
