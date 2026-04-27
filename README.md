@@ -90,7 +90,7 @@ The project consists of **four architecturally separate components**:
 - **Purpose:** Validate analysis algorithms during development
 - **Runtime:** One-off script execution in Docker
 - **Technologies:** Librosa (signal processing) or All-In-One (deep learning)
-- **Status:** Archived experimental code (including `poc/transition_builder_v2/` TUI)
+- **Status:** Archived experimental code (note: the `poc/transition_builder_v2/` TUI lives on as the `stream-of-worship tui` command)
 
 ### 2. 🖥️ Admin CLI (Backend Management)
 - **Location:** `src/stream_of_worship/admin/` (Python package)
@@ -308,6 +308,102 @@ Stage 2/7: Feature Extraction
 ```bash
 # If you have a running container from Method B, use exec instead:
 docker-compose exec librosa python poc/poc_analysis.py
+```
+
+---
+
+### POC Transition Builder (Mature - Standalone)
+
+The Transition Builder is a **mature, standalone tool** for creating transition audio files between two songs. Unlike `sow-app` (which generates multi-song lyrics videos with database integration), the Transition Builder works directly with analysis JSON files and does not require a SQLite/Turso catalog.
+
+**When to Use:**
+- Quick experimentation with transition parameters between 2 songs
+- Generate standalone transition audio clips
+- Fine-tune crossfade, tempo matching, and key shifting
+- When you don't need the full database infrastructure
+
+**Key Differences from `sow-app`:**
+
+| Feature | Transition Builder | Lyrics Video Builder (`sow-app`) |
+|---------|-------------------|----------------------------------|
+| Primary output | 2-song transition audio | Multi-song lyrics video |
+| Catalog required | ❌ No (JSON files directly) | ✅ Yes (SQLite/Turso) |
+| Use case | Quick experimentation | Production songsets |
+| Video generation | ❌ No | ✅ Yes |
+| Database | Standalone | Requires admin-managed catalog |
+
+#### Step 1: Create Configuration File
+
+Create `~/.local/share/sow/config.json` (Linux) or `~/Library/Application Support/sow/config.json` (macOS):
+
+```json
+{
+  "audio_folder": "~/.local/share/sow/song_library",
+  "output_folder": "~/.local/share/sow/output/transitions",
+  "output_songs_folder": "~/.local/share/sow/output/songs",
+  "analysis_json": "poc/output_allinone/poc_full_results.json",
+  "stems_folder": "poc/output_allinone/stems",
+  "lyrics_folder": "data/lyrics/songs",
+  "audio_format": "ogg",
+  "audio_bitrate": "192k",
+  "audio_sample_rate": 48000,
+  "video_resolution": "1080p",
+  "error_logging": true,
+  "session_logging": false,
+  "llm_model": "openai/gpt-4o-mini"
+}
+```
+
+**Key paths:**
+- `analysis_json`: Path to POC analysis results (from Step 3 above)
+- `stems_folder`: Path to separated audio stems
+- `output_folder`: Where transition audio files will be saved
+- `output_songs_folder`: Where full song exports will be saved
+
+#### Step 2: Launch the Transition Builder TUI
+
+```bash
+# Install with TUI dependencies
+uv sync --extra tui
+
+# Launch Transition Builder
+uv run stream-of-worship tui
+
+# Or with custom config path
+uv run stream-of-worship tui --config /path/to/config.json
+```
+
+#### Step 3: Using the TUI
+
+1. **Select Outgoing Song** - Choose the first song (where transition starts)
+2. **Select Incoming Song** - Choose the second song (where transition ends)
+3. **Adjust Parameters:**
+   - Crossfade duration
+   - Tempo matching (BPM alignment)
+   - Key shifting (musical key alignment)
+   - Transition point selection
+4. **Preview** - Listen to the transition
+5. **Generate** - Export the transition audio file to `output_folder`
+
+#### Additional CLI Commands
+
+The `stream-of-worship` CLI also provides:
+
+```bash
+# Ingestion commands
+stream-of-worship ingest analyze --song /path/to/audio.mp3
+stream-of-worship ingest scrape-lyrics --limit 10
+stream-of-worship ingest generate-lrc --song-id "song-id"
+stream-of-worship ingest generate-metadata --song-id "song-id"
+
+# Playlist commands
+stream-of-worship playlist build --from-json playlist.json
+stream-of-worship playlist export-video --from-json playlist.json
+stream-of-worship playlist validate --from-json playlist.json
+
+# Configuration
+stream-of-worship config show
+stream-of-worship config set key value
 ```
 
 ---
