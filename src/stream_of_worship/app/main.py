@@ -176,7 +176,7 @@ def run(
     _check_catalog_health(config)
 
     # Set up logging
-    log_dir = config.cache_dir / "logs"
+    log_dir = config.log_dir
     logger = setup_logging(log_dir)
     logger.info(f"App configuration loaded from: {config_path if config_path else 'default'}")
     logger.info(f"Database: {config.db_path}")

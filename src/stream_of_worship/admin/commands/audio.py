@@ -1432,8 +1432,7 @@ def vocal_clean(
         raise typer.Exit(0)
 
     # Initialize asset cache and get audio.mp3
-    # Use cache directory adjacent to db_path
-    cache_dir = config.db_path.parent / "cache"
+    cache_dir = config.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
     audio_path = cache.download_audio(hash_prefix)
@@ -1563,6 +1562,11 @@ def vocal_clean(
         console.print("[cyan]Uploading to R2...[/cyan]")
         r2_url = r2_client.upload_stem(final_path, hash_prefix, "vocals_clean")
         console.print(f"[green]Uploaded:[/green] {r2_url}")
+        # Clean up intermediate extraction files now that upload succeeded
+        vocal_extraction_dir = cache_dir / hash_prefix / "vocal_extraction"
+        if vocal_extraction_dir.exists():
+            import shutil as _shutil
+            _shutil.rmtree(vocal_extraction_dir)
     else:
         console.print("[yellow]Skipped R2 upload (--skip-upload)[/yellow]")
 
@@ -2247,8 +2251,8 @@ def cache_assets(
     # Import AssetCache here to avoid circular imports
     from stream_of_worship.app.services.asset_cache import AssetCache
 
-    # Use the app cache directory: ~/.config/sow-app/cache
-    cache_dir = Path.home() / ".config" / "sow-app" / "cache"
+    # Use the admin cache directory
+    cache_dir = config.cache_dir
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
     console.print(f"[cyan]Caching assets for: {song_title}[/cyan]")
@@ -2542,7 +2546,7 @@ def playback_audio(
     # Initialize asset cache
     from stream_of_worship.app.services.asset_cache import AssetCache
 
-    cache_dir = Path.home() / ".config" / "sow-app" / "cache"
+    cache_dir = config.cache_dir
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
     hash_prefix = recording.hash_prefix

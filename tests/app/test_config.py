@@ -24,7 +24,7 @@ class TestAppConfigDir:
         config_dir = get_app_config_dir()
 
         assert isinstance(config_dir, Path)
-        assert "sow-app" in str(config_dir)
+        assert config_dir.name == "sow"
 
     def test_get_app_config_path_returns_toml(self):
         """Verify get_app_config_path returns path to config.toml."""
@@ -64,6 +64,14 @@ class TestAppConfigDefaults:
 
         assert isinstance(config.output_dir, Path)
         assert "output" in str(config.output_dir)
+
+    def test_default_log_dir(self):
+        """Verify log_dir defaults to data_dir/logs (not under cache_dir)."""
+        config = AppConfig()
+
+        assert isinstance(config.log_dir, Path)
+        assert str(config.log_dir).endswith("logs")
+        assert "cache" not in str(config.log_dir)
 
     def test_default_gap_beats(self):
         """Verify default value."""
@@ -210,10 +218,12 @@ class TestEnsureDirectories:
         """Verify directory creation."""
         cache_dir = tmp_path / "test_cache"
         output_dir = tmp_path / "test_output"
+        log_dir = tmp_path / "test_logs"
 
         config = AppConfig()
         config.cache_dir = cache_dir
         config.output_dir = output_dir
+        config.log_dir = log_dir
         config.db_path = tmp_path / "db" / "sow.db"
         config.songsets_db_path = tmp_path / "db" / "songsets.db"
         config.songsets_export_dir = tmp_path / "exports"
@@ -224,6 +234,8 @@ class TestEnsureDirectories:
         assert cache_dir.is_dir()
         assert output_dir.exists()
         assert output_dir.is_dir()
+        assert log_dir.exists()
+        assert log_dir.is_dir()
 
 
 class TestEnsureAppConfigExists:
@@ -330,6 +342,39 @@ default_video_resolution = "1080p"
 
         # Environment should override file
         assert config.turso_database_url == "libsql://env.turso.io"
+
+    def test_sow_cache_dir_env_overrides_toml(self, tmp_path, monkeypatch):
+        """SOW_CACHE_DIR env var wins over TOML cache_dir."""
+        monkeypatch.setenv("SOW_CACHE_DIR", "/env/cache")
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("""
+[database]
+db_path = "/test/db.sqlite"
+songsets_db_path = "/test/songsets.db"
+
+[songsets]
+backup_retention = 5
+export_dir = "/test/exports"
+
+[turso]
+database_url = ""
+readonly_token = ""
+sync_on_startup = true
+
+[app]
+cache_dir = "/toml/cache"
+output_dir = "/test/output"
+preview_buffer_ms = 500
+preview_volume = 0.8
+default_gap_beats = 2.0
+default_video_template = "dark"
+default_video_resolution = "1080p"
+""")
+
+        config = AppConfig.load(config_path)
+
+        assert config.cache_dir == Path("/env/cache")
 
     def test_turso_token_from_environment(self, tmp_path, monkeypatch):
         """Verify Turso token can be set via environment."""

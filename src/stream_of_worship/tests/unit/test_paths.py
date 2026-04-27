@@ -16,6 +16,7 @@ from stream_of_worship.core.paths import (
     get_output_path,
     get_config_path,
     get_whisper_cache_path,
+    get_recording_cache_path,
     get_song_dir,
     get_project_root,
     get_bundled_font_path,
@@ -25,11 +26,31 @@ from stream_of_worship.core.paths import (
 class TestGetUserDataDir:
     """Tests for get_user_data_dir function."""
 
-    def test_env_override(self):
-        """Test that STREAM_OF_WORSHIP_DATA_DIR environment variable overrides path."""
-        with patch.dict(os.environ, {"STREAM_OF_WORSHIP_DATA_DIR": "/custom/path"}):
+    def test_sow_data_dir_env_override(self):
+        """Test that SOW_DATA_DIR environment variable overrides path."""
+        with patch.dict(os.environ, {"SOW_DATA_DIR": "/custom/sow/path"}, clear=False):
             result = get_user_data_dir()
-            assert result == Path("/custom/path")
+            assert result == Path("/custom/sow/path")
+
+    def test_legacy_env_override(self):
+        """Test that STREAM_OF_WORSHIP_DATA_DIR is used as legacy fallback."""
+        env = {"STREAM_OF_WORSHIP_DATA_DIR": "/legacy/path"}
+        # SOW_DATA_DIR must be absent for legacy to take effect
+        with patch.dict(os.environ, env, clear=False):
+            without_new = {k: v for k, v in os.environ.items() if k != "SOW_DATA_DIR"}
+            with patch.dict(os.environ, without_new, clear=True):
+                result = get_user_data_dir()
+                assert result == Path("/legacy/path")
+
+    def test_sow_data_dir_takes_precedence_over_legacy(self):
+        """SOW_DATA_DIR wins over STREAM_OF_WORSHIP_DATA_DIR."""
+        env = {
+            "SOW_DATA_DIR": "/new/path",
+            "STREAM_OF_WORSHIP_DATA_DIR": "/legacy/path",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            result = get_user_data_dir()
+            assert result == Path("/new/path")
 
     @patch.dict(os.environ, {}, clear=True)
     def test_linux_paths(self):
@@ -40,8 +61,7 @@ class TestGetUserDataDir:
 
             with patch.dict(os.environ, {}, clear=True):
                 result = get_user_data_dir()
-                # Should use XDG_DATA_HOME or ~/.local/share
-                expected = Path.home() / ".local" / "share" / "stream_of_worship"
+                expected = Path.home() / ".local" / "share" / "sow"
                 assert result == expected
         finally:
             sys.platform = original_platform
@@ -55,7 +75,7 @@ class TestGetUserDataDir:
 
             with patch.dict(os.environ, {}, clear=True):
                 result = get_user_data_dir()
-                expected = Path.home() / "Library" / "Application Support" / "StreamOfWorship"
+                expected = Path.home() / "Library" / "Application Support" / "sow"
                 assert result == expected
         finally:
             sys.platform = original_platform
@@ -69,12 +89,11 @@ class TestGetUserDataDir:
 
             with patch.dict(os.environ, {}, clear=True):
                 result = get_user_data_dir()
-                # Should use APPDATA
                 appdata = os.environ.get("APPDATA", "")
                 if appdata:
-                    expected = Path(appdata) / "StreamOfWorship"
+                    expected = Path(appdata) / "sow"
                 else:
-                    expected = Path.home() / "AppData" / "Roaming" / "StreamOfWorship"
+                    expected = Path.home() / "AppData" / "Roaming" / "sow"
                 assert result == expected
         finally:
             sys.platform = original_platform
@@ -83,6 +102,12 @@ class TestGetUserDataDir:
 class TestGetCacheDir:
     """Tests for get_cache_dir function."""
 
+    def test_sow_cache_dir_env_override(self):
+        """Test that SOW_CACHE_DIR environment variable overrides path."""
+        with patch.dict(os.environ, {"SOW_CACHE_DIR": "/custom/cache"}, clear=False):
+            result = get_cache_dir()
+            assert result == Path("/custom/cache")
+
     @patch.dict(os.environ, {}, clear=True)
     def test_linux_cache(self):
         """Test Linux cache paths."""
@@ -90,7 +115,7 @@ class TestGetCacheDir:
         try:
             sys.platform = "linux"
             result = get_cache_dir()
-            expected = Path.home() / ".cache" / "stream_of_worship"
+            expected = Path.home() / ".cache" / "sow"
             assert result == expected
         finally:
             sys.platform = original_platform
@@ -102,7 +127,7 @@ class TestGetCacheDir:
         try:
             sys.platform = "darwin"
             result = get_cache_dir()
-            expected = Path.home() / "Library" / "Caches" / "StreamOfWorship"
+            expected = Path.home() / "Library" / "Caches" / "sow"
             assert result == expected
         finally:
             sys.platform = original_platform
@@ -116,9 +141,9 @@ class TestGetCacheDir:
             result = get_cache_dir()
             localappdata = os.environ.get("LOCALAPPDATA", "")
             if localappdata:
-                expected = Path(localappdata) / "StreamOfWorship" / "cache"
+                expected = Path(localappdata) / "sow" / "cache"
             else:
-                expected = Path.home() / "AppData" / "Local" / "StreamOfWorship" / "cache"
+                expected = Path.home() / "AppData" / "Local" / "sow" / "cache"
             assert result == expected
         finally:
             sys.platform = original_platform
@@ -150,7 +175,7 @@ class TestEnsureDirectories:
             temp_base_dir / "data" / "output" / "audio",
             temp_base_dir / "data" / "output" / "video",
             temp_base_dir / "cache",
-            temp_base_dir / "cache" / "whisper_cache",
+            temp_base_dir / "cache" / "whisper",
             temp_base_dir / "cache" / "temp",
         ]
 
@@ -216,10 +241,22 @@ class TestPathHelperFunctions:
 
     @patch("stream_of_worship.core.paths.get_cache_dir")
     def test_get_whisper_cache_path(self, mock_cache_dir):
-        """Test get_whisper_cache_path."""
+        """Test get_whisper_cache_path returns whisper subdir (not whisper_cache)."""
         mock_cache_dir.return_value = Path("/custom/cache")
         result = get_whisper_cache_path()
-        assert result == Path("/custom/cache/whisper_cache")
+        assert result == Path("/custom/cache/whisper")
+
+    def test_get_recording_cache_path_default(self):
+        """Test get_recording_cache_path with default cache dir."""
+        with patch("stream_of_worship.core.paths.get_cache_dir") as mock:
+            mock.return_value = Path("/custom/cache")
+            result = get_recording_cache_path("abc123")
+            assert result == Path("/custom/cache/abc123")
+
+    def test_get_recording_cache_path_override(self):
+        """Test get_recording_cache_path with explicit cache dir."""
+        result = get_recording_cache_path("abc123", cache_dir=Path("/override"))
+        assert result == Path("/override/abc123")
 
     @patch("stream_of_worship.core.paths.get_user_data_dir")
     def test_get_song_dir(self, mock_data_dir):
@@ -230,17 +267,12 @@ class TestPathHelperFunctions:
 
     def test_get_project_root(self):
         """Test get_project_root."""
-        # This test verifies the path traversal logic
-        # The function goes up 4 levels from core/paths.py
-        # We'll test the basic structure without mocking the traversal
         result = get_project_root()
         assert isinstance(result, Path)
-        # Result should exist and contain src/
         assert (result / "src").exists()
 
     def test_get_bundled_font_path(self):
         """Test get_bundled_font_path."""
         result = get_bundled_font_path()
-        # Path should be relative to project root
         assert "NotoSansTC-Bold.ttf" in str(result)
         assert result.name == "NotoSansTC-Bold.ttf"

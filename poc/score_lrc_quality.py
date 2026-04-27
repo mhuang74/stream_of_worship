@@ -894,8 +894,9 @@ def main(
     r2_bucket = r2_config.get("bucket")
     r2_endpoint = r2_config.get("endpoint_url")
 
-    # Cache dir is not in config, use default location
-    cache_dir = Path.home() / ".cache" / "stream-of-worship"
+    # Cache dir is not in config, use standard location
+    from stream_of_worship.core.paths import get_cache_dir as _get_cache_dir
+    cache_dir = _get_cache_dir()
 
     if not db_path.exists():
         typer.echo(f"Error: Database not found at {db_path}", err=True)

@@ -9,6 +9,7 @@ import pytest
 from stream_of_worship.admin.config import (
     AdminConfig,
     ensure_config_exists,
+    get_cache_dir,
     get_config_dir,
     get_config_path,
     get_default_db_path,
@@ -231,3 +232,48 @@ class TestEnvironmentVariables:
     def test_get_secret_not_set(self):
         """Test getting non-existent secret returns None."""
         assert get_secret("nonexistent.var") is None
+
+
+class TestAdminCacheDir:
+    """Tests for admin cache_dir resolution."""
+
+    def test_default_cache_dir_is_set(self):
+        """AdminConfig has a cache_dir field with a default."""
+        config = AdminConfig()
+        assert isinstance(config.cache_dir, Path)
+        assert "sow-admin" in str(config.cache_dir)
+
+    def test_sow_admin_cache_dir_env_override(self, monkeypatch):
+        """SOW_ADMIN_CACHE_DIR env var overrides the default."""
+        monkeypatch.setenv("SOW_ADMIN_CACHE_DIR", "/env/admin-cache")
+        result = get_cache_dir()
+        assert result == Path("/env/admin-cache")
+
+    def test_toml_cache_dir_loaded(self, tmp_path, monkeypatch):
+        """cache_dir from TOML [paths] section is loaded."""
+        monkeypatch.delenv("SOW_ADMIN_CACHE_DIR", raising=False)
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[service]
+analysis_url = "http://localhost:8000"
+
+[paths]
+cache_dir = "/toml/admin-cache"
+"""
+        )
+        config = AdminConfig.load(config_file)
+        assert config.cache_dir == Path("/toml/admin-cache")
+
+    def test_env_overrides_toml_cache_dir(self, tmp_path, monkeypatch):
+        """SOW_ADMIN_CACHE_DIR env overrides TOML cache_dir."""
+        monkeypatch.setenv("SOW_ADMIN_CACHE_DIR", "/env/override")
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[paths]
+cache_dir = "/toml/admin-cache"
+"""
+        )
+        config = AdminConfig.load(config_file)
+        assert config.cache_dir == Path("/env/override")

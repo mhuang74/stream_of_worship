@@ -60,8 +60,9 @@ An interactive Textual TUI application for worship leaders to browse the song ca
    database_url = "/path/to/sow.db"
 
    [app]
-   cache_dir = "/path/to/cache"
-   output_dir = "/path/to/output"
+   cache_dir = "/path/to/cache"   # default: ~/.cache/sow/
+   output_dir = "/path/to/output" # default: ~/sow/output/
+   log_dir = "/path/to/logs"      # default: ~/.local/share/sow/logs/
    default_gap_beats = 2.0
    default_video_template = "dark"
    ```
