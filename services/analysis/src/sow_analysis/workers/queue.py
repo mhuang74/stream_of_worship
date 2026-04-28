@@ -97,6 +97,8 @@ class JobQueue:
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
         self._separator_wrapper: Optional[Any] = None
+        self._separator_ready = asyncio.Event()
+        self._separator_init_failed = False
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         # Analysis jobs use lock for serialization (high memory/CPU with allin1)
@@ -131,6 +133,15 @@ class JobQueue:
             separator_wrapper: AudioSeparatorWrapper instance
         """
         self._separator_wrapper = separator_wrapper
+        self._separator_ready.set()
+
+    def notify_separator_init_failed(self) -> None:
+        """Signal that separator wrapper initialization failed.
+
+        Unblocks any stem separation jobs waiting for the separator.
+        """
+        self._separator_init_failed = True
+        self._separator_ready.set()
 
     async def initialize(self) -> None:
         """Initialize persistent store and recover interrupted jobs."""
@@ -589,7 +600,9 @@ class JobQueue:
                     if youtube_lrc_result:
                         lrc_path, line_count, whisper_phrases = youtube_lrc_result
                         job.stage = "youtube_transcript_done"
-                        logger.info(f"[{job.id}] YouTube transcript succeeded — skipping audio download and stem separation")
+                        logger.info(
+                            f"[{job.id}] YouTube transcript succeeded — skipping audio download and stem separation"
+                        )
 
                 # Stage 2: Whisper path — only when YouTube is unavailable or failed
                 if youtube_lrc_result is None:
@@ -715,13 +728,9 @@ class JobQueue:
                             ):
                                 vocals_stem_url = child_job.result.vocals_clean_url
                                 if vocals_stem_url:
-                                    ext = (
-                                        ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
-                                    )
+                                    ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
                                     stem_path = temp_path / f"vocals_clean{ext}"
-                                    await self.r2_client.download_audio(
-                                        vocals_stem_url, stem_path
-                                    )
+                                    await self.r2_client.download_audio(vocals_stem_url, stem_path)
                                     transcription_path = stem_path
                                     logger.info(
                                         f"[{job.id}] Downloaded clean vocals from child job: {vocals_stem_url}"
@@ -903,22 +912,57 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        # Check if separator wrapper is available
+        # Wait for separator wrapper if not yet available
         if not self._separator_wrapper:
-            job.status = JobStatus.FAILED
-            job.error_message = "Separator wrapper not initialized"
-            job.stage = "missing_separator"
-            job.updated_at = datetime.now(timezone.utc)
+            if self._separator_init_failed:
+                job.status = JobStatus.FAILED
+                job.error_message = "Separator wrapper initialization failed"
+                job.stage = "missing_separator"
+                job.updated_at = datetime.now(timezone.utc)
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="failed",
+                        stage="missing_separator",
+                        error_message="Separator wrapper initialization failed",
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+                return
             try:
-                await self.job_store.update_job(
-                    job.id,
-                    status="failed",
-                    stage="missing_separator",
-                    error_message="Separator wrapper not initialized",
+                await asyncio.wait_for(self._separator_ready.wait(), timeout=300.0)
+            except asyncio.TimeoutError:
+                job.status = JobStatus.FAILED
+                job.error_message = (
+                    "Separator wrapper not initialized (timeout waiting for initialization)"
                 )
-            except Exception as e:
-                logger.error(f"Failed to update job {job.id} in database: {e}")
-            return
+                job.stage = "missing_separator"
+                job.updated_at = datetime.now(timezone.utc)
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="failed",
+                        stage="missing_separator",
+                        error_message="Separator wrapper not initialized (timeout waiting for initialization)",
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+                return
+            if not self._separator_wrapper:
+                job.status = JobStatus.FAILED
+                job.error_message = "Separator wrapper initialization failed"
+                job.stage = "missing_separator"
+                job.updated_at = datetime.now(timezone.utc)
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="failed",
+                        stage="missing_separator",
+                        error_message="Separator wrapper initialization failed",
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+                return
 
         try:
             # Initialize R2 if not done
