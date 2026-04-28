@@ -5,7 +5,8 @@ The Analysis Service is a FastAPI-based microservice that performs CPU/GPU-inten
 ## Features
 
 - **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections
-- **Stem Separation**: Separates audio into vocals, drums, bass, and other stems using Demucs
+- **Stem Separation (Demucs)**: Separates audio into vocals, drums, bass, and other stems using Demucs
+- **Clean Vocals Generation (BS-Roformer + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal
 - **LRC Generation**: Generates timestamped lyric files using Whisper + LLM alignment
 - **R2 Storage**: Uploads/download results to/from Cloudflare R2 (S3-compatible)
 
@@ -55,8 +56,14 @@ SOW_LLM_MODEL="openai/gpt-4o-mini"
 # Processing Configuration
 SOW_MAX_CONCURRENT_ANALYSIS_JOBS=1  # Analysis jobs (default: 1, serialized for memory)
 SOW_MAX_CONCURRENT_LRC_JOBS=2       # LRC jobs (default: 2, concurrent with faster-whisper)
+SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS=1  # Stem separation jobs (default: 1, serialized)
 SOW_DEMUCS_DEVICE=cpu               # "cpu" or "cuda" (default: cpu)
 SOW_WHISPER_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
+
+# Stem Separation Model Configuration
+SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to pre-downloaded models
+SOW_BS_ROFORMER_MODEL="model_bs_roformer_ep_317_sdr_12.9755.ckpt"  # BS-Roformer model filename
+SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
 ```
 
 ## Quick Start
@@ -104,6 +111,7 @@ Expected response:
 | `/api/v1/health` | GET | Health check |
 | `/api/v1/jobs/analyze` | POST | Submit audio analysis job |
 | `/api/v1/jobs/lrc` | POST | Submit LRC generation job |
+| `/api/v1/jobs/stem-separation` | POST | Submit clean vocals stem separation job |
 | `/api/v1/jobs/{job_id}` | GET | Get job status and results |
 
 ### Submit Analysis Job
@@ -142,12 +150,112 @@ curl -X POST http://localhost:8000/api/v1/jobs/lrc \
   }'
 ```
 
+### Submit Stem Separation Job
+
+Generates clean vocals and instrumental stems using a two-stage pipeline:
+1. **Stage 1 (BS-Roformer)**: Extracts vocals from the mix
+2. **Stage 2 (UVR-De-Echo)**: Removes echo/reverb from extracted vocals
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs/stem-separation \
+  -H "Authorization: Bearer $SOW_ANALYSIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audio_url": "s3://your-bucket/hash/audio.mp3",
+    "content_hash": "abc123...",
+    "options": {
+      "force": false,
+      "dereverb_model": "UVR-De-Echo-Normal.pth"
+    }
+  }'
+```
+
+**Job Stages:**
+- `checking_cache` - Checking for existing stems in R2
+- `downloading` - Downloading source audio
+- `stage1_bs_roformer` - Running BS-Roformer vocal separation
+- `stage2_dereverb` - Running UVR-De-Echo dereverberation
+- `renaming_outputs` - Renaming outputs to canonical names
+- `caching` - Caching results locally
+- `uploading` - Uploading to R2
+- `complete` - Job complete
+
+**Output Files:**
+- `{hash_prefix}/stems/vocals_clean.flac` - Clean vocals (no echo/reverb)
+- `{hash_prefix}/stems/instrumental_clean.flac` - Instrumental accompaniment
+
+**Auto-Trigger:** The LRC job automatically triggers stem separation when `use_vocals_stem=true` and no clean vocals exist. The LRC worker:
+1. Checks for existing `vocals_clean.flac` → `vocals_clean.wav` → `vocals.wav`
+2. If not found, submits a child stem-separation job
+3. Releases its concurrency slot while waiting
+4. Re-acquires slot when child completes
+5. Uses the clean vocals for Whisper transcription and passes URL to Qwen3
+
 ### Check Job Status
 
 ```bash
 curl http://localhost:8000/api/v1/jobs/job_abc123 \
   -H "Authorization: Bearer $SOW_ANALYSIS_API_KEY"
 ```
+
+## Stem Separation Model Setup
+
+The stem separation feature requires pre-downloaded AI models on the host machine. Models are bind-mounted into the container as read-only.
+
+### One-Time Model Download
+
+Run this Python script on your host machine (outside Docker) to download the required models:
+
+```python
+# download_stem_models.py
+from audio_separator.separator import Separator
+import os
+
+# Set cache directory for models
+model_dir = os.path.expanduser("~/.cache/audio-separator")
+os.makedirs(model_dir, exist_ok=True)
+
+print("Downloading BS-Roformer model...")
+sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
+sep1.load_model(model_filename="model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+
+print("Downloading UVR-De-Echo model...")
+sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
+sep2.load_model(model_filename="UVR-De-Echo-Normal.pth")
+
+print(f"Models downloaded to: {model_dir}")
+```
+
+Or run directly:
+
+```bash
+python -c "
+from audio_separator.separator import Separator
+import os
+
+model_dir = os.path.expanduser('~/.cache/audio-separator')
+os.makedirs(model_dir, exist_ok=True)
+
+sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format='FLAC')
+sep1.load_model(model_filename='model_bs_roformer_ep_317_sdr_12.9755.ckpt')
+
+sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format='FLAC')
+sep2.load_model(model_filename='UVR-De-Echo-Normal.pth')
+
+print(f'Models downloaded to: {model_dir}')
+"
+```
+
+### Configure Environment
+
+After downloading, set the environment variable:
+
+```bash
+# Add to your .env file
+export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator"
+```
+
+The docker-compose.yml automatically mounts this directory to `/models/audio-separator:ro` in the container.
 
 ## Platform-Specific Builds
 
@@ -240,6 +348,59 @@ docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
 
 If this fails, GPU support is not properly configured.
 
+### Container has no outbound internet access (DNS works, TCP times out)
+
+If the container can resolve DNS but cannot establish TCP connections to external hosts (R2, GitHub, HuggingFace), this is typically caused by host firewall rules blocking Docker bridge traffic.
+
+**Symptoms:**
+- `Could not connect to the endpoint URL` errors when downloading audio from R2
+- `Failed to load audio-separator models: HTTPSConnectionPool ... Network is unreachable` during startup
+- LRC or stem separation jobs fail after hanging for several minutes
+
+**Diagnosis:**
+```bash
+# Test outbound TCP from inside the container
+docker compose exec analysis-dev python -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(5)
+try:
+    s.connect(('1.1.1.1', 443))
+    print('OK')
+except Exception as e:
+    print('Blocked:', e)
+"
+```
+
+**Fix (choose one):**
+
+1. **UFW** — allow Docker forwarding:
+   ```bash
+   sudo ufw allow in on docker0
+   sudo ufw default allow FORWARD
+   sudo ufw reload
+   ```
+
+2. **iptables** — add forwarding rules (replace `eth0` with your external interface):
+   ```bash
+   sudo iptables -A FORWARD -i docker0 -o eth0 -j ACCEPT
+   sudo iptables -A FORWARD -i eth0 -o docker0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+   ```
+
+3. **Quick workaround** — use host networking (no isolation):
+   Add `network_mode: host` to the `analysis-dev` service in `docker-compose.yml`. Note: this removes container network isolation and port mapping is ignored.
+
+### Models re-download every time / not found in cache directory
+
+The `audio_separator.Separator` class stores downloaded model files in `model_file_dir`, **not** `output_dir`. If `model_file_dir` is not set, it defaults to `/tmp/audio-separator-models/` which is ephemeral.
+
+**Fix:** Always pass `model_file_dir` when creating a `Separator` instance:
+```python
+sep = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
+```
+
+This applies to both the `start-dev.sh` download script and the `separator_wrapper.py` inside the container.
+
 ## Development
 
 ### Project Structure
@@ -260,12 +421,15 @@ services/analysis/
     │   └── jobs.py
     ├── storage/               # R2 and cache clients
     │   ├── cache.py
+    │   ├── db.py              # SQLite job persistence
     │   └── r2.py
     └── workers/               # Background job processors
         ├── analyzer.py
         ├── lrc.py
         ├── queue.py
-        └── separator.py
+        ├── separator.py       # Demucs stem separation
+        ├── stem_separation.py # BS-Roformer + UVR clean vocals
+        └── separator_wrapper.py # AudioSeparator model management
 ```
 
 ### Running Tests

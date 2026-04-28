@@ -11,6 +11,7 @@ from ..models import (
     JobStatus,
     JobType,
     LrcJobRequest,
+    StemSeparationJobRequest,
 )
 
 if TYPE_CHECKING:
@@ -85,6 +86,8 @@ def job_to_response(job) -> JobResponse:
             stems_url=job.result.stems_url,
             lrc_url=job.result.lrc_url,
             line_count=job.result.line_count,
+            vocals_clean_url=job.result.vocals_clean_url,
+            instrumental_clean_url=job.result.instrumental_clean_url,
         )
 
     return JobResponse(
@@ -139,6 +142,29 @@ async def submit_lrc_job(
         raise HTTPException(500, "Job queue not initialized")
 
     job = await job_queue.submit(JobType.LRC, request)
+    return job_to_response(job)
+
+
+@router.post("/jobs/stem-separation", response_model=JobResponse)
+async def submit_stem_separation_job(
+    request: StemSeparationJobRequest,
+    api_key: str = Depends(verify_api_key),
+) -> JobResponse:
+    """Submit stem separation job.
+
+    Runs BS-Roformer + UVR-De-Echo to generate clean vocals and instrumental stems.
+
+    Args:
+        request: Stem separation job request
+        api_key: Validated API key
+
+    Returns:
+        Job response with status
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    job = await job_queue.submit(JobType.STEM_SEPARATION, request)
     return job_to_response(job)
 
 

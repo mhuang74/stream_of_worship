@@ -22,6 +22,7 @@ class JobType(str, Enum):
 
     ANALYZE = "analyze"
     LRC = "lrc"
+    STEM_SEPARATION = "stem_separation"
 
 
 class AnalyzeOptions(BaseModel):
@@ -44,7 +45,9 @@ class LrcOptions(BaseModel):
     """Options for LRC generation jobs."""
 
     whisper_model: str = "large-v3"
-    llm_model: str = ""  # LLM model (e.g., "openai/gpt-4o-mini"), falls back to SOW_LLM_MODEL env var
+    llm_model: str = (
+        ""  # LLM model (e.g., "openai/gpt-4o-mini"), falls back to SOW_LLM_MODEL env var
+    )
     use_vocals_stem: bool = True  # Prefer vocals stem for cleaner transcription
     language: str = "zh"  # Whisper language hint
     force: bool = False  # Re-generate even if cached
@@ -61,6 +64,21 @@ class LrcJobRequest(BaseModel):
     lyrics_text: str
     youtube_url: str = ""  # YouTube URL for transcript-based LRC (primary path)
     options: LrcOptions = Field(default_factory=LrcOptions)
+
+
+class StemSeparationOptions(BaseModel):
+    """Options for stem separation jobs."""
+
+    force: bool = False  # Re-generate even if cached
+    dereverb_model: str = "UVR-De-Echo-Normal.pth"  # Model for echo/reverb removal
+
+
+class StemSeparationJobRequest(BaseModel):
+    """Request to submit a stem separation job."""
+
+    audio_url: str
+    content_hash: str
+    options: StemSeparationOptions = Field(default_factory=StemSeparationOptions)
 
 
 class Section(BaseModel):
@@ -91,6 +109,10 @@ class JobResult(BaseModel):
     lrc_url: Optional[str] = None
     line_count: Optional[int] = None
 
+    # Stem separation results
+    vocals_clean_url: Optional[str] = None
+    instrumental_clean_url: Optional[str] = None
+
 
 class JobResponse(BaseModel):
     """Response containing job status and results."""
@@ -113,7 +135,7 @@ class Job:
     id: str
     type: JobType
     status: JobStatus
-    request: Union[AnalyzeJobRequest, LrcJobRequest]
+    request: Union[AnalyzeJobRequest, LrcJobRequest, StemSeparationJobRequest]
     result: Optional[JobResult] = None
     error_message: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

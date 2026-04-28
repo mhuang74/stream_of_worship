@@ -96,6 +96,16 @@ async def health_check() -> dict:
     Returns:
         Service health status
     """
+    from ..workers.separator_wrapper import AudioSeparatorWrapper
+
+    separator_status = "not_installed"
+    try:
+        from ..main import separator_wrapper as sw
+
+        separator_status = "ready" if sw and sw.is_ready else "loading"
+    except ImportError:
+        pass
+
     return {
         "status": "healthy",
         "version": __version__,
@@ -103,5 +113,6 @@ async def health_check() -> dict:
             "r2": check_r2_connection(),
             "cache": check_cache_access(),
             "llm": check_llm_connection(),
+            "separator": {"status": separator_status},
         },
     }

@@ -42,10 +42,12 @@ from ..models import (
     JobType,
     LrcJobRequest,
     Section,
+    StemSeparationJobRequest,
 )
 from ..storage.cache import CacheManager
 from ..storage.db import JobStore
 from ..storage.r2 import R2Client
+
 # Optional imports for heavy dependencies
 try:
     from .analyzer import analyze_audio
@@ -61,6 +63,13 @@ except ImportError:
     LRCWorkerError = Exception
     generate_lrc = None
 
+# Optional stem separation imports - require audio-separator
+try:
+    from .stem_separation import StemSeparationWorkerError, process_stem_separation
+except ImportError:
+    StemSeparationWorkerError = Exception
+    process_stem_separation = None
+
 
 class JobQueue:
     """In-memory job queue with concurrent execution control."""
@@ -69,6 +78,7 @@ class JobQueue:
         self,
         max_concurrent_analysis: int = 1,
         max_concurrent_lrc: int = 2,
+        max_concurrent_stem_separation: int = 1,
         cache_dir: Path = Path("/cache"),
         db_path: Optional[Path] = None,
     ):
@@ -77,19 +87,24 @@ class JobQueue:
         Args:
             max_concurrent_analysis: Maximum concurrent analysis jobs (1 = serialized)
             max_concurrent_lrc: Maximum concurrent LRC jobs
+            max_concurrent_stem_separation: Maximum concurrent stem separation jobs (1 = serialized)
             cache_dir: Directory for caching results
             db_path: Path to job database (default: cache_dir / "jobs.db")
         """
         self.max_concurrent_analysis = max_concurrent_analysis
         self.max_concurrent_lrc = max_concurrent_lrc
+        self.max_concurrent_stem_separation = max_concurrent_stem_separation
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
+        self._separator_wrapper: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         # Analysis jobs use lock for serialization (high memory/CPU with allin1)
         self._analysis_lock = asyncio.Lock()
         # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
         self._lrc_semaphore = asyncio.Semaphore(max_concurrent_lrc)
+        # Stem separation uses lock for serialization (high memory/CPU with BS-Roformer)
+        self._stem_separation_lock = asyncio.Lock()
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
@@ -108,6 +123,14 @@ class JobQueue:
         self.r2_client = R2Client(bucket, endpoint_url)
         # Set cache manager on job store for job reconstruction
         self.job_store.set_cache_manager(self.cache_manager)
+
+    def set_separator_wrapper(self, separator_wrapper: Any) -> None:
+        """Set the audio separator wrapper for stem separation jobs.
+
+        Args:
+            separator_wrapper: AudioSeparatorWrapper instance
+        """
+        self._separator_wrapper = separator_wrapper
 
     async def initialize(self) -> None:
         """Initialize persistent store and recover interrupted jobs."""
@@ -141,12 +164,14 @@ class JobQueue:
             logger.info(f"Recovered {len(interrupted)} interrupted jobs")
 
     async def submit(
-        self, job_type: JobType, request: Union[AnalyzeJobRequest, LrcJobRequest]
+        self,
+        job_type: JobType,
+        request: Union[AnalyzeJobRequest, LrcJobRequest, StemSeparationJobRequest],
     ) -> Job:
         """Submit a new job to the queue.
 
         Args:
-            job_type: Type of job (analyze or lrc)
+            job_type: Type of job (analyze, lrc, or stem_separation)
             request: Job request data
 
         Returns:
@@ -194,7 +219,10 @@ class JobQueue:
             return None
 
     async def list_jobs(
-        self, status: Optional[JobStatus] = None, job_type: Optional[JobType] = None, limit: int = 100
+        self,
+        status: Optional[JobStatus] = None,
+        job_type: Optional[JobType] = None,
+        limit: int = 100,
     ) -> list[Job]:
         """List jobs with optional filtering.
 
@@ -242,6 +270,10 @@ class JobQueue:
             # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
             async with self._lrc_semaphore:
                 await self._process_lrc_job(job)
+        elif job.type == JobType.STEM_SEPARATION:
+            # Stem separation jobs use lock for serialization (BS-Roformer is memory/CPU intensive)
+            async with self._stem_separation_lock:
+                await self._process_stem_separation_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
@@ -296,9 +328,7 @@ class JobQueue:
         # Check if analysis dependencies are available
         if analyze_audio is None or separate_stems is None:
             job.status = JobStatus.FAILED
-            job.error_message = (
-                "Analysis dependencies not available (librosa, allin1, demucs)"
-            )
+            job.error_message = "Analysis dependencies not available (librosa, allin1, demucs)"
             job.stage = "missing_dependencies"
             job.updated_at = datetime.now(timezone.utc)
             try:
@@ -365,9 +395,7 @@ class JobQueue:
                     # Upload stems to R2
                     if self.r2_client:
                         hash_prefix = request.content_hash[:12]
-                        stems_url = await self.r2_client.upload_stems(
-                            hash_prefix, stems_dir
-                        )
+                        stems_url = await self.r2_client.upload_stems(hash_prefix, stems_dir)
 
                     job.progress = 0.9
 
@@ -377,14 +405,10 @@ class JobQueue:
                     analysis_data = {**analysis_result}
                     if stems_url:
                         analysis_data["stems_url"] = stems_url
-                    await self.r2_client.upload_analysis_result(
-                        hash_prefix, analysis_data
-                    )
+                    await self.r2_client.upload_analysis_result(hash_prefix, analysis_data)
 
                 # Build job result
-                sections = [
-                    Section(**s) for s in analysis_result.get("sections", [])
-                ]
+                sections = [Section(**s) for s in analysis_result.get("sections", [])]
 
                 job.result = JobResult(
                     duration_seconds=analysis_result.get("duration_seconds"),
@@ -502,7 +526,9 @@ class JobQueue:
 
         # Compute composite cache key based on audio hash + lyrics hash
         lrc_cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
-        logger.info(f"[{job.id}] LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
+        logger.info(
+            f"[{job.id}] LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)"
+        )
 
         try:
             # Check LRC result cache first (unless force=True - allows prompt improvements)
@@ -557,18 +583,135 @@ class JobQueue:
                     logger.info(f"[{job.id}] Audio download completed in {download_elapsed:.2f}s")
 
                 # Check if vocals stem exists and should be used
-                # Preference: vocals_clean > vocals
+                # Preference: vocals_clean.flac > vocals_clean.wav > vocals.wav
                 transcription_path = audio_path
+                vocals_stem_url: Optional[str] = None
+
                 if request.options.use_vocals_stem and self.r2_client:
-                    for stem_name in ["vocals_clean", "vocals"]:
-                        stem_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/{stem_name}.wav"
-                        if await self.r2_client.check_exists(stem_url):
-                            stem_path = temp_path / f"{stem_name}.wav"
-                            await self.r2_client.download_audio(stem_url, stem_path)
-                            transcription_path = stem_path
-                            logger.info(f"[{job.id}] Using {stem_name} stem for transcription")
-                            job.stage = f"using_{stem_name}_stem"
-                            break
+                    # Check for clean vocals in priority order
+                    from .stem_separation import get_clean_vocals_url
+
+                    vocals_stem_url = await get_clean_vocals_url(
+                        request.content_hash, self.r2_client
+                    )
+
+                    if vocals_stem_url:
+                        # Determine file extension for local path
+                        ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
+                        stem_path = temp_path / f"vocals_stem{ext}"
+                        await self.r2_client.download_audio(vocals_stem_url, stem_path)
+                        transcription_path = stem_path
+                        logger.info(
+                            f"[{job.id}] Using vocals stem for transcription: {vocals_stem_url}"
+                        )
+                        job.stage = "using_vocals_stem"
+                    else:
+                        # No clean vocals found - auto-trigger stem separation
+                        logger.info(
+                            f"[{job.id}] No clean vocals found, auto-triggering stem separation"
+                        )
+                        job.stage = "submitting_stem_separation_child"
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        try:
+                            await self.job_store.update_job(
+                                job.id, stage="submitting_stem_separation_child"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+                        # Submit child stem separation job
+                        child_request = StemSeparationJobRequest(
+                            audio_url=request.audio_url,
+                            content_hash=request.content_hash,
+                            options={"force": False},
+                        )
+                        child_job = await self.submit(JobType.STEM_SEPARATION, child_request)
+                        child_id = child_job.id
+                        logger.info(f"[{job.id}] Submitted child stem separation job: {child_id}")
+
+                        # Update LRC job stage to indicate waiting
+                        job.stage = f"awaiting_stem_separation:{child_id}"
+                        try:
+                            await self.job_store.update_job(
+                                job.id, stage=f"awaiting_stem_separation:{child_id}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+                        # Release LRC semaphore while waiting (allows other LRC jobs to proceed)
+                        # We'll re-acquire it when the child is complete
+                        logger.info(
+                            f"[{job.id}] Releasing LRC semaphore to wait for child job {child_id}"
+                        )
+
+                        # Poll child job status
+                        poll_interval = 3.0
+                        max_wait = 3600.0  # 1 hour timeout
+                        wait_start = time.time()
+
+                        while True:
+                            await asyncio.sleep(poll_interval)
+
+                            # Check if child job is complete
+                            child_job = await self.get_job(child_id)
+                            if not child_job:
+                                logger.error(f"[{job.id}] Child job {child_id} not found")
+                                raise LRCWorkerError(
+                                    f"Child stem separation job {child_id} not found"
+                                )
+
+                            if child_job.status == JobStatus.COMPLETED:
+                                logger.info(
+                                    f"[{job.id}] Child stem separation job {child_id} completed"
+                                )
+                                break
+                            elif child_job.status == JobStatus.FAILED:
+                                logger.error(
+                                    f"[{job.id}] Child stem separation job {child_id} failed: {child_job.error_message}"
+                                )
+                                # Don't fail the LRC job - just fall back to full audio
+                                break
+
+                            # Check timeout
+                            if time.time() - wait_start > max_wait:
+                                logger.error(
+                                    f"[{job.id}] Timeout waiting for child stem separation job {child_id}"
+                                )
+                                raise LRCWorkerError(
+                                    f"Timeout waiting for stem separation job {child_id}"
+                                )
+
+                        # Re-acquire the LRC semaphore slot before continuing
+                        logger.info(f"[{job.id}] Re-acquiring LRC semaphore slot")
+                        await self._lrc_semaphore.acquire()
+                        logger.info(f"[{job.id}] Re-acquired LRC semaphore slot")
+
+                        # Check if child succeeded and download the result
+                        child_job = await self.get_job(child_id)
+                        if (
+                            child_job
+                            and child_job.status == JobStatus.COMPLETED
+                            and child_job.result
+                        ):
+                            vocals_stem_url = child_job.result.vocals_clean_url
+                            if vocals_stem_url:
+                                ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
+                                stem_path = temp_path / f"vocals_clean{ext}"
+                                await self.r2_client.download_audio(vocals_stem_url, stem_path)
+                                transcription_path = stem_path
+                                logger.info(
+                                    f"[{job.id}] Downloaded clean vocals from child job: {vocals_stem_url}"
+                                )
+                                job.stage = "using_vocals_clean_stem"
+                            else:
+                                logger.warning(
+                                    f"[{job.id}] Child job completed but no vocals_clean_url in result"
+                                )
+                        else:
+                            logger.warning(
+                                f"[{job.id}] Child stem separation failed or incomplete, using full audio"
+                            )
 
                 # Check for cached Whisper transcription (audio hash only, not lyrics)
                 cached_phrases = None
@@ -578,8 +721,11 @@ class JobQueue:
                     cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
                     if cached_data:
                         from .lrc import WhisperPhrase
+
                         cached_phrases = [WhisperPhrase(**p) for p in cached_data]
-                        logger.info(f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases")
+                        logger.info(
+                            f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases"
+                        )
                         job.stage = "transcription_cached"
                     else:
                         logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
@@ -598,15 +744,17 @@ class JobQueue:
                     cached_phrases=cached_phrases,
                     youtube_url=request.youtube_url or None,
                     content_hash=request.content_hash,
+                    vocals_stem_url=vocals_stem_url,
                 )
 
                 # Cache the Whisper transcription for future use (if not using cache)
                 if cached_phrases is None and whisper_phrases:
                     phrases_data = [
-                        {"text": p.text, "start": p.start, "end": p.end}
-                        for p in whisper_phrases
+                        {"text": p.text, "start": p.start, "end": p.end} for p in whisper_phrases
                     ]
-                    self.cache_manager.save_whisper_transcription(request.content_hash, phrases_data)
+                    self.cache_manager.save_whisper_transcription(
+                        request.content_hash, phrases_data
+                    )
                     logger.info(f"[{job.id}] Whisper transcription cached for future use")
 
                 job.stage = "uploading"
@@ -676,6 +824,137 @@ class JobQueue:
 
         job.updated_at = datetime.now(timezone.utc)
 
+    async def _process_stem_separation_job(self, job: Job) -> None:
+        """Process a stem separation job.
+
+        Args:
+            job: Job to process
+        """
+        job_start_time = time.time()
+        logger.info(f"Starting stem separation job {job.id} for audio: {job.request.audio_url}")
+
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "starting"
+        job.progress = 0.1
+
+        # Persist state change to database
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="starting", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        request = job.request
+        if not isinstance(request, StemSeparationJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for stem separation job"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    error_message="Invalid request type for stem separation job",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        # Check if stem separation dependencies are available
+        if process_stem_separation is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "Stem separation dependencies not available (audio-separator)"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="Stem separation dependencies not available (audio-separator)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        # Check if separator wrapper is available
+        if not self._separator_wrapper:
+            job.status = JobStatus.FAILED
+            job.error_message = "Separator wrapper not initialized"
+            job.stage = "missing_separator"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_separator",
+                    error_message="Separator wrapper not initialized",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        try:
+            # Initialize R2 if not done
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+
+            # Process the stem separation
+            await process_stem_separation(
+                job=job,
+                separator_wrapper=self._separator_wrapper,
+                r2_client=self.r2_client,
+                cache_manager=self.cache_manager,
+            )
+
+            # Persist completion to database
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="completed",
+                    progress=1.0,
+                    stage="complete",
+                    result_json=job.result.model_dump_json() if job.result else None,
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+
+            total_elapsed = time.time() - job_start_time
+            logger.info(f"[{job.id}] Stem separation job completed in {total_elapsed:.2f}s")
+
+        except StemSeparationWorkerError as e:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "stem_separation_error"
+            logger.error(f"[{job.id}] Stem separation job failed: {e}")
+
+            # Persist failure to database
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", stage="stem_separation_error", error_message=str(e)
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = f"Unexpected error: {e}"
+            job.stage = "error"
+            logger.error(f"[{job.id}] Stem separation job failed with unexpected error: {e}")
+
+            # Persist failure to database
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="error",
+                    error_message=f"Unexpected error: {e}",
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+
+        job.updated_at = datetime.now(timezone.utc)
+
     async def stop(self) -> None:
         """Stop processing jobs."""
         self._running = False
@@ -690,11 +969,20 @@ class JobQueue:
         stats: Dict[JobType, Dict[JobStatus, int]] = {
             JobType.ANALYZE: {status: 0 for status in JobStatus},
             JobType.LRC: {status: 0 for status in JobStatus},
+            JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
         }
 
         # Track wait times for queued and processing jobs
-        queued_wait_times: Dict[JobType, list] = {JobType.ANALYZE: [], JobType.LRC: []}
-        processing_durations: Dict[JobType, list] = {JobType.ANALYZE: [], JobType.LRC: []}
+        queued_wait_times: Dict[JobType, list] = {
+            JobType.ANALYZE: [],
+            JobType.LRC: [],
+            JobType.STEM_SEPARATION: [],
+        }
+        processing_durations: Dict[JobType, list] = {
+            JobType.ANALYZE: [],
+            JobType.LRC: [],
+            JobType.STEM_SEPARATION: [],
+        }
 
         for job in self._jobs.values():
             stats[job.type][job.status] += 1
@@ -709,6 +997,7 @@ class JobQueue:
         # Build summary line
         analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]}"
         lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]}"
+        stem_stats = f"queued:{stats[JobType.STEM_SEPARATION][JobStatus.QUEUED]},processing:{stats[JobType.STEM_SEPARATION][JobStatus.PROCESSING]},completed:{stats[JobType.STEM_SEPARATION][JobStatus.COMPLETED]},failed:{stats[JobType.STEM_SEPARATION][JobStatus.FAILED]}"
 
         wait_time_str = ""
         if queued_wait_times[JobType.ANALYZE]:
@@ -721,15 +1010,29 @@ class JobQueue:
             if len(queued_wait_times[JobType.LRC]) > 3:
                 waits += f",...+{len(queued_wait_times[JobType.LRC]) - 3}more"
             wait_time_str += f" LRC queued=[{waits}]"
+        if queued_wait_times[JobType.STEM_SEPARATION]:
+            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.STEM_SEPARATION][:3])
+            if len(queued_wait_times[JobType.STEM_SEPARATION]) > 3:
+                waits += f",...+{len(queued_wait_times[JobType.STEM_SEPARATION]) - 3}more"
+            wait_time_str += f" STEM queued=[{waits}]"
         if processing_durations[JobType.ANALYZE]:
-            avg_dur = sum(processing_durations[JobType.ANALYZE]) / len(processing_durations[JobType.ANALYZE])
+            avg_dur = sum(processing_durations[JobType.ANALYZE]) / len(
+                processing_durations[JobType.ANALYZE]
+            )
             wait_time_str += f" ANALYZE processing={avg_dur:.0f}s"
         if processing_durations[JobType.LRC]:
-            avg_dur = sum(processing_durations[JobType.LRC]) / len(processing_durations[JobType.LRC])
+            avg_dur = sum(processing_durations[JobType.LRC]) / len(
+                processing_durations[JobType.LRC]
+            )
             wait_time_str += f" LRC processing={avg_dur:.0f}s"
+        if processing_durations[JobType.STEM_SEPARATION]:
+            avg_dur = sum(processing_durations[JobType.STEM_SEPARATION]) / len(
+                processing_durations[JobType.STEM_SEPARATION]
+            )
+            wait_time_str += f" STEM processing={avg_dur:.0f}s"
 
         logger.info(
-            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
+            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] STEM[{stem_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
         )
 
     async def _periodic_logging_loop(self) -> None:

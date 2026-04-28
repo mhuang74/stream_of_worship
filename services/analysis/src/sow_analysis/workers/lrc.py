@@ -170,7 +170,9 @@ async def _run_whisper_transcription(
 
         transcribe_elapsed = time.time() - transcribe_start
         logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
-        logger.info(f"Detected language: {info.language}, probability: {info.language_probability:.2f}")
+        logger.info(
+            f"Detected language: {info.language}, probability: {info.language_probability:.2f}"
+        )
 
         return phrases
 
@@ -208,8 +210,10 @@ def _build_alignment_prompt(lyrics_text: str, whisper_phrases: List[WhisperPhras
     """
     # Format whisper phrases as JSON for the prompt
     phrases_json = json.dumps(
-        [{"text": p.text, "start": round(p.start, 2), "end": round(p.end, 2)}
-         for p in whisper_phrases],
+        [
+            {"text": p.text, "start": round(p.start, 2), "end": round(p.end, 2)}
+            for p in whisper_phrases
+        ],
         ensure_ascii=False,
         indent=2,
     )
@@ -465,7 +469,9 @@ async def _llm_align(
             _validate_alignment_coverage(lines, whisper_phrases)
 
             total_llm_elapsed = time.time() - llm_start
-            logger.info(f"Successfully aligned {len(lines)} lyric lines (total LLM time: {total_llm_elapsed:.2f}s)")
+            logger.info(
+                f"Successfully aligned {len(lines)} lyric lines (total LLM time: {total_llm_elapsed:.2f}s)"
+            )
             return lines
 
         except json.JSONDecodeError as e:
@@ -478,9 +484,7 @@ async def _llm_align(
             last_error = e
             logger.warning(f"LLM API error (attempt {attempt + 1}): {e}")
 
-    raise LLMAlignmentError(
-        f"LLM alignment failed after {max_retries} attempts: {last_error}"
-    )
+    raise LLMAlignmentError(f"LLM alignment failed after {max_retries} attempts: {last_error}")
 
 
 def _write_lrc(lines: List[LRCLine], output_path: Path) -> int:
@@ -603,6 +607,7 @@ async def generate_lrc(
     cached_phrases: Optional[List[WhisperPhrase]] = None,
     youtube_url: Optional[str] = None,
     content_hash: Optional[str] = None,
+    vocals_stem_url: Optional[str] = None,
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
 
@@ -660,8 +665,7 @@ async def generate_lrc(
             logger.info("=" * 80)
             logger.info("LRC GENERATION: YouTube transcript path SUCCEEDED")
             logger.info(
-                f"Wrote {line_count} lines to {output_path} "
-                f"(total time: {total_elapsed:.2f}s)"
+                f"Wrote {line_count} lines to {output_path} (total time: {total_elapsed:.2f}s)"
             )
             logger.info("=" * 80)
 
@@ -755,14 +759,11 @@ async def generate_lrc(
                     )
                 except asyncio.TimeoutError as e:
                     logger.warning(
-                        f"Qwen3 service request timed out: {e}, "
-                        f"using LLM-aligned timestamps"
+                        f"Qwen3 service request timed out: {e}, using LLM-aligned timestamps"
                     )
                 except Exception as e:
                     # Catch Qwen3ClientError and any other exceptions
-                    logger.warning(
-                        f"Qwen3 refinement failed: {e}, using LLM-aligned timestamps"
-                    )
+                    logger.warning(f"Qwen3 refinement failed: {e}, using LLM-aligned timestamps")
         except ValueError as e:
             # Fallback if duration calculation fails
             logger.warning(

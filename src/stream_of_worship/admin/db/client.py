@@ -251,12 +251,15 @@ class DatabaseClient:
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
 
             for (table_name,) in tables:
                 if not table_name.startswith("sqlite_"):
                     cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+            cursor.execute("PRAGMA foreign_keys = ON")
 
         # Re-initialize schema
         self.initialize_schema()

@@ -6,7 +6,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
@@ -48,9 +48,7 @@ class R2Client:
         secret_key = os.environ.get("SOW_R2_SECRET_ACCESS_KEY", "")
 
         if not access_key or not secret_key:
-            raise ValueError(
-                "SOW_R2_ACCESS_KEY_ID and SOW_R2_SECRET_ACCESS_KEY must be set"
-            )
+            raise ValueError("SOW_R2_ACCESS_KEY_ID and SOW_R2_SECRET_ACCESS_KEY must be set")
 
         self.bucket = bucket
         self.s3 = boto3.client(
@@ -73,9 +71,7 @@ class R2Client:
         # Ensure parent directory exists
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
-        await loop.run_in_executor(
-            None, self.s3.download_file, bucket, key, str(local_path)
-        )
+        await loop.run_in_executor(None, self.s3.download_file, bucket, key, str(local_path))
 
     async def upload_stems(self, hash_prefix: str, stems_dir: Path) -> str:
         """Upload stem files to R2.
@@ -118,16 +114,12 @@ class R2Client:
         key = f"{hash_prefix}/analysis.json"
         loop = asyncio.get_event_loop()
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(result, f)
             tmp = f.name
 
         try:
-            await loop.run_in_executor(
-                None, self.s3.upload_file, tmp, self.bucket, key
-            )
+            await loop.run_in_executor(None, self.s3.upload_file, tmp, self.bucket, key)
         finally:
             os.unlink(tmp)
 
@@ -146,9 +138,7 @@ class R2Client:
         key = f"{hash_prefix}/lyrics.lrc"
         loop = asyncio.get_event_loop()
 
-        await loop.run_in_executor(
-            None, self.s3.upload_file, str(lrc_path), self.bucket, key
-        )
+        await loop.run_in_executor(None, self.s3.upload_file, str(lrc_path), self.bucket, key)
 
         return f"s3://{self.bucket}/{key}"
 
@@ -165,9 +155,54 @@ class R2Client:
         loop = asyncio.get_event_loop()
 
         try:
-            await loop.run_in_executor(
-                None, lambda: self.s3.head_object(Bucket=bucket, Key=key)
-            )
+            await loop.run_in_executor(None, lambda: self.s3.head_object(Bucket=bucket, Key=key))
             return True
         except ClientError:
             return False
+
+    async def upload_clean_stems(
+        self,
+        hash_prefix: str,
+        vocals_clean: Path,
+        instrumental_clean: Optional[Path] = None,
+    ) -> Tuple[str, Optional[str]]:
+        """Upload clean stems to R2.
+
+        Uploads vocals_clean.flac and optionally instrumental_clean.flac
+        to the stems directory.
+
+        Args:
+            hash_prefix: Content hash prefix for the path
+            vocals_clean: Path to the clean vocals FLAC file
+            instrumental_clean: Optional path to the instrumental FLAC file
+
+        Returns:
+            Tuple of (vocals_clean_url, instrumental_clean_url or None)
+        """
+        loop = asyncio.get_event_loop()
+
+        # Upload vocals_clean.flac
+        vocals_key = f"{hash_prefix}/stems/vocals_clean.flac"
+        await loop.run_in_executor(
+            None,
+            self.s3.upload_file,
+            str(vocals_clean),
+            self.bucket,
+            vocals_key,
+        )
+        vocals_url = f"s3://{self.bucket}/{vocals_key}"
+
+        # Upload instrumental_clean.flac if provided
+        instrumental_url = None
+        if instrumental_clean and instrumental_clean.exists():
+            instrumental_key = f"{hash_prefix}/stems/instrumental_clean.flac"
+            await loop.run_in_executor(
+                None,
+                self.s3.upload_file,
+                str(instrumental_clean),
+                self.bucket,
+                instrumental_key,
+            )
+            instrumental_url = f"s3://{self.bucket}/{instrumental_key}"
+
+        return vocals_url, instrumental_url

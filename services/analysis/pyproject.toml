@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-service = ["python-multipart>=0.0.6"]
+service = ["python-multipart>=0.0.6", "audio-separator>=0.30.0", "onnxruntime>=1.17.0"]
 dev = ["pytest>=7.4.0", "pytest-asyncio>=0.23.0", "pytest-cov>=4.1.0", "pytest-mock>=3.10.0"]
 
 [project.scripts]
