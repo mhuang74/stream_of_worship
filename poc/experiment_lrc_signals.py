@@ -55,9 +55,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 app = typer.Typer(help="LRC signal experiment: compare per-line timing signals on reference songs")
 
 SONGS = {
-    "dan_qin_ge_chang_zan_mei_mi_407": {"label": "NEW", "hash_prefix": "ad4d01257853"},
-    "dan_dan_ai_mi_255": {"label": "NEW", "hash_prefix": "97dc9af36c46"},
-    "wo_yao_yi_xin_cheng_xie_mi_253": {"label": "NEW", "hash_prefix": "a5c5c44d1661"},
+    "dan_dan_ai_mi_249": {"label": "BAD", "hash_prefix": "5b445438847a"},
+    "wo_yao_yi_xin_cheng_xie_mi_247": {"label": "GOOD", "hash_prefix": "c105e75972f7"},
+    "zhe_shi_sheng_jie_zhi_di_259": {"label": "", "hash_prefix": "a3c1abf9de68"},
+    "yuan_tian_huan_xi_245": {"label": "", "hash_prefix": "a1c7b8907693"},
+    "zhu_mi_shi_wo_li_liang_321": {"label": "", "hash_prefix": "10d07a66c47e"},
+    "en_dian_zhi_lu_265": {"label": "", "hash_prefix": "f69d12afd22b"},
+    "shen_gao_yang_248": {"label": "", "hash_prefix": "02fa022169b7"},
+    "wo_yao_quan_xin_zan_mei_244": {"label": "", "hash_prefix": "0ca4ea6a43f3"},
+    "huo_zhu_wei_yao_jing_bai_mi_212": {"label": "", "hash_prefix": "de04b8ee6048"},
+    "he_deng_en_dian_262": {"label": "", "hash_prefix": "aa8ee305a093"},
+    "cong_zao_chen_dao_ye_wan_130": {"label": "", "hash_prefix": "e5c16c2f35f2"},
+    "chai_qian_wo_566": {"label": "", "hash_prefix": "50a54ecf7488"},
+    "cong_xin_he_yi_195": {"label": "", "hash_prefix": "18ade95e29dc"},
+    "dan_qin_ge_chang_zan_mei_mi_401": {"label": "", "hash_prefix": "3428cfdce4f8"},
+    "dao_gao_351": {"label": "", "hash_prefix": "d48247f4fb2f"},
+    "bao_gui_shi_jia_314": {"label": "", "hash_prefix": "b39a98477bc5"},
+    "ren_ding_mi_242": {"label": "", "hash_prefix": "59fb1a19c566"},
+    "feng_sheng_de_ying_xu_250": {"label": "", "hash_prefix": "345a3688e1bc"},
+    "ye_su_de_ming_246": {"label": "", "hash_prefix": "496148cbd9f9"},
+    "ai_ke_yi_zai_geng_duo_yi_dian_dian_241": {"label": "", "hash_prefix": "11a027c6df54"},
+    "wo_yao_kan_jian_146": {"label": "", "hash_prefix": "9d2f0d65995b"},
 }
 
 OUTPUT_BASE = Path(__file__).parent / "experiment_output"
