@@ -67,6 +67,118 @@ curl http://localhost:8000/api/v1/health
 
 ---
 
+## Admin CLI (`sow-admin`)
+
+The Admin CLI is the backend management tool for administrators and DevOps. It manages the song catalog, downloads audio, and coordinates with the Analysis Service.
+
+### Features
+
+**Database Management**
+- Initialize SQLite database with Turso sync support
+- Database status and health checks
+- Reset and migration tools
+
+**Catalog Management**
+- Scrape song catalog from sop.org (Stream of Praise)
+- Search songs by title, artist, album, or lyrics
+- List albums and songs with filtering
+- Incremental updates (only new songs)
+
+**Audio Management**
+- Download audio from YouTube via yt-dlp
+- Content-hash based deduplication (SHA-256)
+- Upload to Cloudflare R2 storage
+- List recordings with status filtering
+
+**Analysis Coordination**
+- Submit audio analysis jobs to Analysis Service
+- Check analysis job status
+- Monitor stem separation progress
+
+**Songset Management**
+- Create and manage songsets
+- Export songsets to JSON
+- Backup and restore songset databases
+
+### Common Commands
+
+```bash
+# Database operations
+sow-admin db init                                    # Initialize database
+sow-admin db status                                  # Check database status
+
+# Catalog operations
+sow-admin catalog scrape                             # Scrape all songs from sop.org
+sow-admin catalog scrape --incremental              # Only new songs
+sow-admin catalog search "主祢是愛"                   # Search by title/lyrics
+sow-admin catalog list --album "敬拜讚美15"          # List songs in album
+sow-admin catalog show <song-id>                     # Show song details
+
+# Audio operations
+sow-admin audio download --song-id "zhu-ni-shi-ai-1"  # Download specific song
+sow-admin audio list                                # List all recordings
+sow-admin audio list --status pending               # List pending analyses
+sow-admin audio analyze --recording-id <id>        # Submit for analysis
+sow-admin audio status                              # Check analysis status
+
+# Songset operations
+sow-admin songset create --name "Sunday Worship"     # Create new songset
+sow-admin songset list                              # List all songsets
+sow-admin songset export --songset-id <id>         # Export to JSON
+```
+
+### Configuration
+
+Create `~/.config/sow-admin/config.toml`:
+
+```toml
+[database]
+path = "/Users/you/.local/share/sow-admin/sow.db"
+
+[r2]
+bucket = "your-r2-bucket"
+endpoint_url = "https://your-account.r2.cloudflarestorage.com"
+region = "auto"
+
+[service]
+analysis_url = "http://localhost:8000"
+
+[turso]
+database_url = "https://your-db.turso.io"
+```
+
+Environment variables (take precedence over config):
+```bash
+export SOW_R2_BUCKET="your-bucket"
+export SOW_R2_ENDPOINT_URL="https://xxx.r2.cloudflarestorage.com"
+export SOW_R2_ACCESS_KEY_ID="your-access-key"
+export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
+```
+
+### Workflow Example
+
+```bash
+# 1. Initialize the database
+uv run --extra admin sow-admin db init
+
+# 2. Scrape the song catalog from sop.org
+uv run --extra admin sow-admin catalog scrape
+
+# 3. Search for a specific song
+uv run --extra admin sow-admin catalog search "主祢是愛"
+
+# 4. Download audio for a song
+uv run --extra admin sow-admin audio download --song-id "zhu-ni-shi-ai-1"
+
+# 5. Submit for analysis (requires Analysis Service running)
+uv run --extra admin sow-admin audio analyze --recording-id "abc123def456"
+
+# 6. Check analysis status
+uv run --extra admin sow-admin audio status
+```
+
+---
+
 ## User App (`sow-app`)
 
 The User App is the primary tool for worship leaders and media teams to create multi-song sets with synchronized lyrics videos.
