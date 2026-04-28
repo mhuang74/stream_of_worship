@@ -129,10 +129,15 @@ class AudioSeparatorWrapper:
 
         def _run_stage1():
             """Synchronous stage 1 separation."""
-            return self._bs_roformer_separator.separate(
-                str(input_path),
-                custom_output_dir=str(stage1_dir),
-            )
+            sep = self._bs_roformer_separator
+            original = sep.model_instance.output_dir
+            sep.output_dir = str(stage1_dir)
+            sep.model_instance.output_dir = str(stage1_dir)
+            try:
+                return sep.separate(str(input_path))
+            finally:
+                sep.output_dir = original
+                sep.model_instance.output_dir = original
 
         stage1_outputs = await loop.run_in_executor(None, _run_stage1)
 
@@ -164,10 +169,15 @@ class AudioSeparatorWrapper:
 
         def _run_stage2():
             """Synchronous stage 2 dereverb."""
-            return self._dereverb_separator.separate(
-                str(vocals_file),
-                custom_output_dir=str(stage2_dir),
-            )
+            sep = self._dereverb_separator
+            original = sep.model_instance.output_dir
+            sep.output_dir = str(stage2_dir)
+            sep.model_instance.output_dir = str(stage2_dir)
+            try:
+                return sep.separate(str(vocals_file))
+            finally:
+                sep.output_dir = original
+                sep.model_instance.output_dir = original
 
         stage2_outputs = await loop.run_in_executor(None, _run_stage2)
 
