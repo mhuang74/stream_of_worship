@@ -689,6 +689,8 @@ async def generate_lrc(
     if output_path is None:
         output_path = audio_path.with_suffix(".lrc")
 
+    lrc_start = time.time()
+
     # Primary path: YouTube transcript + LLM correction
     if youtube_url:
         result = await try_youtube_transcript_lrc(youtube_url, lyrics_text, options, output_path)

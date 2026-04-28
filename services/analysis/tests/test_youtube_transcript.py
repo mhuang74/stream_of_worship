@@ -3,8 +3,12 @@
 import pytest
 
 from sow_analysis.workers.youtube_transcript import (
+    DEFAULT_LANGUAGES,
+    ZH_LANG_CODES,
+    _find_best_transcript,
     build_correction_prompt,
     extract_video_id,
+    fetch_youtube_transcript,
     parse_lrc_response,
 )
 
@@ -105,9 +109,7 @@ class TestGenerateLrcFallback:
         audio_path = tmp_path / "test.mp3"
         audio_path.write_bytes(b"fake audio data")
 
-        mock_phrases = [
-            type("WhisperPhrase", (), {"text": "測試", "start": 0.0, "end": 1.0})()
-        ]
+        mock_phrases = [type("WhisperPhrase", (), {"text": "測試", "start": 0.0, "end": 1.0})()]
 
         mock_lrc_lines = [LRCLine(time_seconds=0.0, text="測試")]
 
@@ -145,9 +147,7 @@ class TestGenerateLrcFallback:
         audio_path = tmp_path / "test.mp3"
         audio_path.write_bytes(b"fake audio data")
 
-        mock_phrases = [
-            type("WhisperPhrase", (), {"text": "測試", "start": 0.0, "end": 1.0})()
-        ]
+        mock_phrases = [type("WhisperPhrase", (), {"text": "測試", "start": 0.0, "end": 1.0})()]
         mock_lrc_lines = [LRCLine(time_seconds=0.0, text="測試")]
 
         with (
@@ -174,7 +174,6 @@ class TestGenerateLrcFallback:
                 youtube_url="https://www.youtube.com/watch?v=test123",
             )
 
-            # Whisper fallback should have been called
             mock_whisper.assert_called_once()
             assert count == 1
 
@@ -212,8 +211,185 @@ class TestGenerateLrcFallback:
                 youtube_url="https://www.youtube.com/watch?v=test123",
             )
 
-            # Whisper should NOT have been called
             mock_whisper.assert_not_called()
             assert count == 2
-            # YouTube path returns empty phrases list
             assert phrases == []
+
+
+class TestDefaultLanguages:
+    """Tests for the expanded default language code list."""
+
+    def test_includes_zh_tw(self):
+        assert "zh-TW" in DEFAULT_LANGUAGES
+
+    def test_includes_zh_cn(self):
+        assert "zh-CN" in DEFAULT_LANGUAGES
+
+    def test_includes_zh_hant(self):
+        assert "zh-Hant" in DEFAULT_LANGUAGES
+
+    def test_includes_zh_hans(self):
+        assert "zh-Hans" in DEFAULT_LANGUAGES
+
+    def test_zh_codes_before_en(self):
+        zh_indices = [DEFAULT_LANGUAGES.index(c) for c in ZH_LANG_CODES if c in DEFAULT_LANGUAGES]
+        en_indices = [DEFAULT_LANGUAGES.index(c) for c in DEFAULT_LANGUAGES if c.startswith("en")]
+        assert max(zh_indices) < min(en_indices)
+
+
+class TestFindBestTranscript:
+    """Tests for _find_best_transcript()."""
+
+    @staticmethod
+    def _make_transcript(language_code, language="", is_generated=False):
+        return type(
+            "Transcript",
+            (),
+            {
+                "language_code": language_code,
+                "language": language,
+                "is_generated": is_generated,
+            },
+        )()
+
+    def test_prefers_manual_zh_over_generated_zh(self):
+        manual = self._make_transcript("zh-TW", "Chinese (Taiwan)", is_generated=False)
+        generated = self._make_transcript("zh-TW", "Chinese (Taiwan)", is_generated=True)
+        result = _find_best_transcript([generated, manual])
+        assert result is manual
+
+    def test_prefers_zh_over_en(self):
+        zh_gen = self._make_transcript("zh-CN", "Chinese (China)", is_generated=True)
+        en_manual = self._make_transcript("en", "English", is_generated=False)
+        result = _find_best_transcript([en_manual, zh_gen])
+        assert result is zh_gen
+
+    def test_prefers_manual_en_over_generated_en(self):
+        manual = self._make_transcript("en", "English", is_generated=False)
+        generated = self._make_transcript("en", "English", is_generated=True)
+        result = _find_best_transcript([generated, manual])
+        assert result is manual
+
+    def test_returns_generated_zh_when_no_manual_zh(self):
+        generated = self._make_transcript("zh-HK", "Chinese (Hong Kong)", is_generated=True)
+        en_manual = self._make_transcript("en", "English", is_generated=False)
+        result = _find_best_transcript([en_manual, generated])
+        assert result is generated
+
+    def test_returns_generated_en_when_only_en_available(self):
+        generated = self._make_transcript("en", "English", is_generated=True)
+        result = _find_best_transcript([generated])
+        assert result is generated
+
+    def test_returns_none_when_no_transcripts(self):
+        result = _find_best_transcript([])
+        assert result is None
+
+    def test_returns_none_for_unsupported_language(self):
+        ja = self._make_transcript("ja", "Japanese", is_generated=False)
+        result = _find_best_transcript([ja])
+        assert result is None
+
+    def test_handles_zh_prefix_codes(self):
+        zh_unknown = self._make_transcript("zh-SG", "Chinese (Singapore)", is_generated=False)
+        result = _find_best_transcript([zh_unknown])
+        assert result is zh_unknown
+
+
+class TestFetchYoutubeTranscript:
+    """Tests for fetch_youtube_transcript() with two-phase fallback."""
+
+    @pytest.mark.asyncio
+    async def test_direct_fetch_succeeds(self):
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
+        mock_transcript = [mock_snippet]
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.return_value = mock_transcript
+            result = await fetch_youtube_transcript("testVideoId")
+
+        assert result == mock_transcript
+        mock_api.fetch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_list_when_direct_fails(self):
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "我要看見", "start": 15.0})()
+        mock_fetched = [mock_snippet]
+
+        mock_transcript_obj = type(
+            "Transcript",
+            (),
+            {
+                "language_code": "zh-TW",
+                "language": "Chinese (Taiwan)",
+                "is_generated": False,
+                "fetch": lambda s: mock_fetched,
+            },
+        )()
+
+        mock_transcript_list = [mock_transcript_obj]
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = Exception("No transcripts found")
+            mock_api.list.return_value = mock_transcript_list
+
+            result = await fetch_youtube_transcript("testVideoId")
+
+        assert len(result) == 1
+        mock_api.list.assert_called_once_with("testVideoId")
+
+    @pytest.mark.asyncio
+    async def test_raises_when_no_transcript_available(self):
+        from unittest.mock import patch
+
+        from sow_analysis.workers.youtube_transcript import YouTubeTranscriptError
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = Exception("No transcripts found")
+            mock_api.list.return_value = []
+
+            with pytest.raises(YouTubeTranscriptError, match="No suitable transcript"):
+                await fetch_youtube_transcript("testVideoId")
+
+    @pytest.mark.asyncio
+    async def test_prefers_manual_zh_tw_via_list_fallback(self):
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
+
+        zh_tw_manual = type(
+            "Transcript",
+            (),
+            {
+                "language_code": "zh-TW",
+                "language": "Chinese (Taiwan)",
+                "is_generated": False,
+                "fetch": lambda s: [mock_snippet],
+            },
+        )()
+        en_manual = type(
+            "Transcript",
+            (),
+            {
+                "language_code": "en",
+                "language": "English",
+                "is_generated": False,
+                "fetch": lambda s: [mock_snippet],
+            },
+        )()
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = Exception("No transcripts found")
+            mock_api.list.return_value = [en_manual, zh_tw_manual]
+
+            result = await fetch_youtube_transcript("testVideoId")
+
+        assert len(result) == 1

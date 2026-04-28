@@ -12,7 +12,7 @@ import asyncio
 import logging
 import re
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from ..config import settings
 from .lrc import LLMConfigError, LRCLine, LRCWorkerError
@@ -147,49 +147,124 @@ def parse_lrc_response(response: str) -> List[LRCLine]:
     return lines
 
 
+ZH_LANG_CODES = ["zh-Hant", "zh-TW", "zh-Hans", "zh-CN", "zh-HK", "zh"]
+EN_LANG_CODES = ["en-US", "en"]
+
+DEFAULT_LANGUAGES = ZH_LANG_CODES + EN_LANG_CODES
+
+
+def _find_best_transcript(transcript_list: Any) -> Optional[Any]:
+    """Find the best available transcript from a TranscriptList.
+
+    Priority order:
+    1. Manually created Chinese transcript (most accurate for lyrics)
+    2. Generated Chinese transcript
+    3. Manually created English transcript
+    4. Generated English transcript
+
+    Args:
+        transcript_list: Iterable of Transcript objects from YouTubeTranscriptApi.list()
+
+    Returns:
+        A Transcript object, or None if no suitable transcript found
+    """
+    best_zh_manual = None
+    best_zh_generated = None
+    best_en_manual = None
+    best_en_generated = None
+
+    for transcript in transcript_list:
+        code = transcript.language_code
+        is_generated = transcript.is_generated
+
+        if code in ZH_LANG_CODES or code.startswith("zh"):
+            if not is_generated and best_zh_manual is None:
+                best_zh_manual = transcript
+            elif is_generated and best_zh_generated is None:
+                best_zh_generated = transcript
+        elif code in EN_LANG_CODES or code.startswith("en"):
+            if not is_generated and best_en_manual is None:
+                best_en_manual = transcript
+            elif is_generated and best_en_generated is None:
+                best_en_generated = transcript
+
+    return best_zh_manual or best_zh_generated or best_en_manual or best_en_generated
+
+
 async def fetch_youtube_transcript(
     video_id: str,
     languages: Optional[List[str]] = None,
 ) -> list:
     """Download captions from YouTube via youtube-transcript-api.
 
-    Tries multiple language codes in order. Returns transcript snippet objects.
+    Two-phase approach:
+    1. Try fetching directly with the given language codes (fast path).
+    2. On failure, list all available transcripts and pick the best one
+       (handles region-specific codes like zh-TW, zh-CN that differ from
+       BCP-47 codes like zh-Hant, zh-Hans).
 
     Args:
         video_id: YouTube video ID
-        languages: Language codes to try (default: zh-Hant, zh-Hans, zh, en)
+        languages: Language codes to try (default: zh-Hant, zh-TW, zh-Hans,
+            zh-CN, zh-HK, zh, en-US, en)
 
     Returns:
-        List of transcript snippet objects
+        FetchedTranscript object with .snippets
 
     Raises:
         YouTubeTranscriptError: If transcript cannot be fetched
     """
     if languages is None:
-        languages = ["zh-Hant", "zh-Hans", "zh", "en-US", "en"]
+        languages = DEFAULT_LANGUAGES
 
     loop = asyncio.get_event_loop()
 
-    def _fetch():
+    def _fetch_direct():
         from youtube_transcript_api import YouTubeTranscriptApi
 
         ytt_api = YouTubeTranscriptApi()
         return ytt_api.fetch(video_id, languages=languages)
 
+    def _fetch_via_list():
+        from youtube_transcript_api import YouTubeTranscriptApi
+
+        ytt_api = YouTubeTranscriptApi()
+        transcript_list = ytt_api.list(video_id)
+        best = _find_best_transcript(transcript_list)
+        if best is None:
+            return None
+        logger.info(
+            f"Found transcript via list fallback: {best.language_code} "
+            f"({best.language}) generated={best.is_generated}"
+        )
+        return best.fetch()
+
+    # Phase 1: Direct fetch with language codes
     try:
-        transcript = await loop.run_in_executor(None, _fetch)
+        transcript = await loop.run_in_executor(None, _fetch_direct)
+        if transcript:
+            logger.info(f"Fetched {len(transcript)} transcript segments from YouTube")
+            return transcript
+    except Exception as e:
+        logger.info(f"Direct fetch failed for {video_id}, trying list fallback: {e}")
+
+    # Phase 2: List available transcripts and pick the best one
+    try:
+        transcript = await loop.run_in_executor(None, _fetch_via_list)
+        if transcript:
+            logger.info(
+                f"Fetched {len(transcript)} transcript segments from YouTube (via list fallback)"
+            )
+            return transcript
+        raise YouTubeTranscriptError(
+            f"No suitable transcript found for video {video_id} (tried languages: {languages})"
+        )
+    except YouTubeTranscriptError:
+        raise
     except Exception as e:
         raise YouTubeTranscriptError(
             f"Failed to fetch YouTube transcript for video {video_id}: {e}"
         ) from e
-
-    if not transcript:
-        raise YouTubeTranscriptError(
-            f"YouTube returned empty transcript for video {video_id}"
-        )
-
-    logger.info(f"Fetched {len(transcript)} transcript segments from YouTube")
-    return transcript
 
 
 async def _llm_correct(
@@ -278,9 +353,7 @@ async def youtube_transcript_to_lrc(
     # Step 1: Extract video ID
     video_id = extract_video_id(youtube_url)
     if not video_id:
-        raise YouTubeTranscriptError(
-            f"Could not extract video ID from URL: {youtube_url}"
-        )
+        raise YouTubeTranscriptError(f"Could not extract video ID from URL: {youtube_url}")
     logger.info(f"Extracted video ID: {video_id}")
 
     # Step 2: Fetch transcript
@@ -317,8 +390,6 @@ async def youtube_transcript_to_lrc(
         raise YouTubeTranscriptError(f"Failed to parse LLM response: {e}") from e
 
     elapsed = time.time() - start_time
-    logger.info(
-        f"YouTube transcript -> LRC completed: {len(lrc_lines)} lines in {elapsed:.2f}s"
-    )
+    logger.info(f"YouTube transcript -> LRC completed: {len(lrc_lines)} lines in {elapsed:.2f}s")
 
     return lrc_lines
