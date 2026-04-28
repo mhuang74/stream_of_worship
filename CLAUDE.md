@@ -10,18 +10,6 @@ The end goal is to:
 - interactive tool to select multiple songs from song library, experiment with transition parameters, and generate output audio/video file with multiple songs with smooth transition between songs
 - admin tool to manage song library (via scraping sop.org), and perform song analysis and lyrics LRC generation
 
-## Issue Tracking (beads)
-
-This project uses **bd** (beads) for issue tracking:
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
-
 ## Development Commands
 
 **Package Manager:** `uv` (always use `uv add` to add dependencies)
@@ -111,7 +99,6 @@ Work is NOT complete until `git push` succeeds:
 
 ```bash
 git pull --rebase
-bd sync
 git push
 git status  # MUST show "up to date with origin"
 ```
