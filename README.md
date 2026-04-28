@@ -229,6 +229,50 @@ default_video_template = "dark"
 default_video_resolution = "1080p"
 ```
 
+### Commands
+
+```bash
+# Run the interactive TUI
+sow-app run
+
+# Run with custom config
+sow-app run --config /path/to/config.toml
+
+# Database operations
+sow-app db sync                    # Sync with Turso cloud database
+sow-app db status                  # Check database sync status
+
+# Songset operations
+sow-app songset list              # List all songsets
+sow-app songset create "Worship Set"  # Create new songset
+sow-app songset export <id>       # Export songset to JSON
+sow-app songset import <file>     # Import songset from JSON
+
+# Configuration
+sow-app config show               # Display current configuration
+```
+
+### Common Usage Workflow
+
+```bash
+# 1. Run the TUI
+uv run --extra app sow-app run
+
+# 2. In the TUI:
+#    - Browse catalog (press 'b')
+#    - Search for songs
+#    - Select songs to add to songset
+#    - Adjust transition parameters
+#    - Preview transitions
+#    - Export audio or video
+
+# 3. Sync database (if needed)
+uv run --extra app sow-app db sync
+
+# 4. Export songset for sharing
+uv run --extra app sow-app songset export <songset-id>
+```
+
 ---
 
 ## POC Transition Builder (Standalone)
