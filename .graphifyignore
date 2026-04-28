@@ -1,0 +1,51 @@
+# .graphifyignore example
+AGENTS.md          # graphify install files — don't extract your own instructions as knowledge
+CLAUDE.md
+GEMINI.md
+.gemini/
+.opencode/
+
+# Tool/Cache directories
+.git/
+.venv/
+.claude/
+.pytest_cache/
+.ruff_cache/
+~/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build/Package artifacts
+worship_music_system.egg-info/
+*.egg-info/
+graphify-out/
+
+# Input/Output data directories
+audio_input/
+audio_output/
+assets/
+data/
+output_songs/
+output_transitions/
+poc_audio/
+poc_output/
+poc_output_allinone/
+stems_output/
+tmp_output/
+tmp/
+
+# Low Priority Source
+poc/
+tests/
+
+
+# Archive files
+allinone_cache.tar.Z
+*.tar.Z
+
+# Documentation/Planning
+.planning/
+docs/
+specs/
+reports/

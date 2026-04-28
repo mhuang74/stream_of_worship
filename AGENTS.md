@@ -1,1 +1,1 @@
-/home/mhuang/Development/sow_db_sync/CLAUDE.md
+CLAUDE.md
