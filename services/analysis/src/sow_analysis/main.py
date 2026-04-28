@@ -53,6 +53,7 @@ async def _init_separator_wrapper(job_queue: JobQueue, cfg) -> None:
             "Check that model files exist in: %s",
             cfg.SOW_AUDIO_SEPARATOR_MODEL_DIR,
         )
+        job_queue.notify_separator_init_failed()
 
 
 @asynccontextmanager
