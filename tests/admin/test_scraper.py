@@ -432,3 +432,64 @@ class TestCatalogScraperHelpers:
         assert len(sections) == 1
         assert sections[0]["section_type"] == "unknown"
         assert sections[0]["lines"] == lines
+
+    @patch("stream_of_worship.admin.services.scraper.requests.get")
+    def test_scrape_duplicate_rows_first_seen_wins(self, mock_get, scraper_no_db):
+        """Test that duplicate rows are skipped with first-seen-wins ordering."""
+        # Two rows with identical (title, composer, lyricist) should hash to same id
+        html_content = """
+        <table id="tablepress-3">
+            <tr>
+                <th>曲名</th>
+                <th>作曲</th>
+                <th>作詞</th>
+                <th>專輯名稱</th>
+                <th>專輯系列</th>
+                <th>調性</th>
+                <th>歌詞</th>
+            </tr>
+            <tr>
+                <td>Duplicate Song</td>
+                <td>Same Composer</td>
+                <td>Same Lyricist</td>
+                <td>First Album</td>
+                <td>Series A</td>
+                <td>G</td>
+                <td>First lyrics version</td>
+            </tr>
+            <tr>
+                <td>Duplicate Song</td>
+                <td>Same Composer</td>
+                <td>Same Lyricist</td>
+                <td>Second Album</td>
+                <td>Series B</td>
+                <td>C</td>
+                <td>Second lyrics version</td>
+            </tr>
+            <tr>
+                <td>Unique Song</td>
+                <td>Different Composer</td>
+                <td>Different Lyricist</td>
+                <td>Third Album</td>
+                <td>Series C</td>
+                <td>D</td>
+                <td>Unique lyrics</td>
+            </tr>
+        </table>
+        """
+        mock_response = Mock()
+        mock_response.text = html_content
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        songs = scraper_no_db.scrape_all_songs()
+
+        # Should only return 2 songs (first duplicate kept, second skipped)
+        assert len(songs) == 2
+        assert scraper_no_db.last_run_duplicate_count == 1
+
+        # First-seen-wins: the returned song should have row 1's album, not row 2's
+        duplicate_song = [s for s in songs if s.title == "Duplicate Song"][0]
+        assert duplicate_song.table_row_number == 1
+        assert duplicate_song.album_name == "First Album"
+        assert duplicate_song.musical_key == "G"

@@ -103,6 +103,12 @@ def scrape_catalog(
 
     console.print(f"[green]Found {len(songs)} songs[/green]")
 
+    if scraper.last_run_duplicate_count:
+        console.print(
+            f"[yellow]Skipped {scraper.last_run_duplicate_count} duplicate row(s) "
+            f"in source table (first occurrence kept)[/yellow]"
+        )
+
     # Preview table
     preview_table = Table(title="Scraped Songs Preview")
     preview_table.add_column("Row", style="dim")

@@ -43,6 +43,9 @@ class CatalogScraper:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         }
 
+        # Track duplicate count from last run
+        self.last_run_duplicate_count: int = 0
+
     def scrape_all_songs(
         self,
         limit: Optional[int] = None,
@@ -118,6 +121,7 @@ class CatalogScraper:
             logger.info(f"Found {len(existing_ids)} existing songs in database")
 
         seen_ids = set()
+        duplicate_count = 0
         for row_num, row in enumerate(data_rows, 1):
             cells = row.find_all(["td", "th"])
             if not cells:
@@ -125,21 +129,38 @@ class CatalogScraper:
 
             try:
                 song = self._parse_row(cells, col_indices, row_num)
-                if song:
-                    seen_ids.add(song.id)
-                    # Skip if already exists and incremental mode (stable ID check)
-                    if incremental and not force and song.id in existing_ids:
-                        logger.debug(f"Skipping existing song: {song.id}")
-                        continue
+                if not song:
+                    continue
 
-                    songs.append(song)
+                # In-run dedup: first-seen wins.
+                if song.id in seen_ids:
+                    duplicate_count += 1
+                    logger.debug(
+                        f"Skipping duplicate row {row_num}: id={song.id} "
+                        f"title={song.title!r} (first seen earlier in this run)"
+                    )
+                    continue
+                seen_ids.add(song.id)
 
-                    if row_num % 100 == 0:
-                        logger.info(f"Processed {row_num}/{len(data_rows)} songs...")
+                # Cross-run incremental skip (existing behavior).
+                if incremental and not force and song.id in existing_ids:
+                    logger.debug(f"Skipping existing song: {song.id}")
+                    continue
+
+                songs.append(song)
+
+                if row_num % 100 == 0:
+                    logger.info(f"Processed {row_num}/{len(data_rows)} songs...")
 
             except Exception as e:
                 logger.warning(f"Failed to parse row {row_num}: {e}")
                 continue
+
+        if duplicate_count:
+            logger.info(
+                f"Skipped {duplicate_count} duplicate row(s) within this scrape "
+                f"(same title/composer/lyricist as an earlier row)"
+            )
 
         # Soft-delete songs not seen this run (full scrape only)
         if soft_delete_missing and self.db_client and not limit:
@@ -150,6 +171,7 @@ class CatalogScraper:
                     self.db_client.soft_delete_song(song_id)
                     logger.debug(f"Soft-deleted song: {song_id}")
 
+        self.last_run_duplicate_count = duplicate_count
         logger.info(f"Successfully parsed {len(songs)} songs")
         return songs
 
