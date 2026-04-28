@@ -14,6 +14,7 @@ from ..models import (
     JobType,
     LrcJobRequest,
     Section,
+    StemSeparationJobRequest,
 )
 from .cache import CacheManager
 
@@ -64,7 +65,7 @@ class JobStore:
                 content_hash    TEXT NOT NULL,
 
                 CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
-                CHECK (type IN ('analyze', 'lrc'))
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -172,16 +173,21 @@ class JobStore:
         job_type = JobType(job_type_str)
         status = JobStatus(status_str)
 
-        # Deserialize request
+        # Deserialize request based on job type
         if job_type == JobType.ANALYZE:
             request = AnalyzeJobRequest.model_validate_json(request_json)
-        else:  # LRC
+        elif job_type == JobType.LRC:
             request = LrcJobRequest.model_validate_json(request_json)
+        elif job_type == JobType.STEM_SEPARATION:
+            request = StemSeparationJobRequest.model_validate_json(request_json)
+        else:
+            raise ValueError(f"Unknown job type: {job_type}")
 
         # Deserialize result if present
         result = None
         if result_json:
             from ..models import JobResult
+
             result = JobResult.model_validate_json(result_json)
 
         # Parse timestamps
@@ -213,9 +219,7 @@ class JobStore:
         if not self._db:
             raise RuntimeError("JobStore not initialized")
 
-        async with self._db.execute(
-            "SELECT * FROM jobs WHERE id = ?", (job_id,)
-        ) as cursor:
+        async with self._db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)) as cursor:
             row = await cursor.fetchone()
 
         if row is None:
@@ -273,7 +277,10 @@ class JobStore:
         return deleted_count
 
     async def list_jobs(
-        self, status: Optional[JobStatus] = None, job_type: Optional[JobType] = None, limit: int = 100
+        self,
+        status: Optional[JobStatus] = None,
+        job_type: Optional[JobType] = None,
+        limit: int = 100,
     ) -> list[Job]:
         """List jobs with optional filtering.
 

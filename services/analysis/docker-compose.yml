@@ -9,7 +9,11 @@ x-common-env: &common-env
   SOW_ANALYSIS_API_KEY: ${SOW_ANALYSIS_API_KEY}
   SOW_MAX_CONCURRENT_ANALYSIS_JOBS: ${SOW_MAX_CONCURRENT_ANALYSIS_JOBS:-1}
   SOW_MAX_CONCURRENT_LRC_JOBS: ${SOW_MAX_CONCURRENT_LRC_JOBS:-2}
+  SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS: ${SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS:-1}
   SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
+  SOW_AUDIO_SEPARATOR_MODEL_DIR: ${SOW_AUDIO_SEPARATOR_MODEL_DIR:-/models/audio-separator}
+  SOW_BS_ROFORMER_MODEL: ${SOW_BS_ROFORMER_MODEL:-model_bs_roformer_ep_317_sdr_12.9755.ckpt}
+  SOW_DEREVERB_MODEL: ${SOW_DEREVERB_MODEL:-UVR-De-Echo-Normal.pth}
   NATTEN_LOG_LEVEL: error
   # LLM Configuration for LRC generation
   SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
@@ -40,6 +44,7 @@ services:
       <<: *common-env
     volumes:
       - analysis-cache:/cache
+      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:
@@ -62,6 +67,7 @@ services:
     volumes:
       - analysis-cache:/cache
       - ./src:/workspace/src:ro
+      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:
