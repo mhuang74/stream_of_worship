@@ -568,194 +568,219 @@ class JobQueue:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
                 hash_prefix = request.content_hash[:12]
+                lrc_path = temp_path / "lyrics.lrc"
+                whisper_phrases = []
+                line_count = 0
 
-                # Download audio from R2
-                job.stage = "downloading"
-                job.progress = 0.2
-                job.updated_at = datetime.now(timezone.utc)
+                # Stage 1: Try YouTube transcript first — no audio download or stem needed
+                youtube_lrc_result = None
+                if request.youtube_url:
+                    from .lrc import try_youtube_transcript_lrc
 
-                audio_path = temp_path / "audio.mp3"
-                if self.r2_client:
-                    logger.info(f"[{job.id}] Downloading audio from R2...")
-                    download_start = time.time()
-                    await self.r2_client.download_audio(request.audio_url, audio_path)
-                    download_elapsed = time.time() - download_start
-                    logger.info(f"[{job.id}] Audio download completed in {download_elapsed:.2f}s")
-
-                # Check if vocals stem exists and should be used
-                # Preference: vocals_clean.flac > vocals_clean.wav > vocals.wav
-                transcription_path = audio_path
-                vocals_stem_url: Optional[str] = None
-
-                if request.options.use_vocals_stem and self.r2_client:
-                    # Check for clean vocals in priority order
-                    from .stem_separation import get_clean_vocals_url
-
-                    vocals_stem_url = await get_clean_vocals_url(
-                        request.content_hash, self.r2_client
+                    job.stage = "trying_youtube_transcript"
+                    job.progress = 0.2
+                    job.updated_at = datetime.now(timezone.utc)
+                    youtube_lrc_result = await try_youtube_transcript_lrc(
+                        request.youtube_url,
+                        request.lyrics_text,
+                        request.options,
+                        lrc_path,
                     )
+                    if youtube_lrc_result:
+                        lrc_path, line_count, whisper_phrases = youtube_lrc_result
+                        job.stage = "youtube_transcript_done"
+                        logger.info(f"[{job.id}] YouTube transcript succeeded — skipping audio download and stem separation")
 
-                    if vocals_stem_url:
-                        # Determine file extension for local path
-                        ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
-                        stem_path = temp_path / f"vocals_stem{ext}"
-                        await self.r2_client.download_audio(vocals_stem_url, stem_path)
-                        transcription_path = stem_path
-                        logger.info(
-                            f"[{job.id}] Using vocals stem for transcription: {vocals_stem_url}"
-                        )
-                        job.stage = "using_vocals_stem"
-                    else:
-                        # No clean vocals found - auto-trigger stem separation
-                        logger.info(
-                            f"[{job.id}] No clean vocals found, auto-triggering stem separation"
-                        )
-                        job.stage = "submitting_stem_separation_child"
-                        job.updated_at = datetime.now(timezone.utc)
+                # Stage 2: Whisper path — only when YouTube is unavailable or failed
+                if youtube_lrc_result is None:
+                    # Download audio from R2
+                    job.stage = "downloading"
+                    job.progress = 0.2
+                    job.updated_at = datetime.now(timezone.utc)
 
-                        try:
-                            await self.job_store.update_job(
-                                job.id, stage="submitting_stem_separation_child"
+                    audio_path = temp_path / "audio.mp3"
+                    if self.r2_client:
+                        logger.info(f"[{job.id}] Downloading audio from R2...")
+                        download_start = time.time()
+                        await self.r2_client.download_audio(request.audio_url, audio_path)
+                        download_elapsed = time.time() - download_start
+                        logger.info(
+                            f"[{job.id}] Audio download completed in {download_elapsed:.2f}s"
+                        )
+
+                    # Check if vocals stem exists and should be used for Whisper
+                    # Preference: vocals_clean.flac > vocals_clean.wav > vocals.wav
+                    transcription_path = audio_path
+                    vocals_stem_url: Optional[str] = None
+
+                    if request.options.use_vocals_stem and self.r2_client:
+                        # Check for clean vocals in priority order
+                        from .stem_separation import get_clean_vocals_url
+
+                        vocals_stem_url = await get_clean_vocals_url(
+                            request.content_hash, self.r2_client
+                        )
+
+                        if vocals_stem_url:
+                            ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
+                            stem_path = temp_path / f"vocals_stem{ext}"
+                            await self.r2_client.download_audio(vocals_stem_url, stem_path)
+                            transcription_path = stem_path
+                            logger.info(
+                                f"[{job.id}] Using vocals stem for transcription: {vocals_stem_url}"
                             )
-                        except Exception as e:
-                            logger.error(f"Failed to update job {job.id} in database: {e}")
-
-                        # Submit child stem separation job
-                        child_request = StemSeparationJobRequest(
-                            audio_url=request.audio_url,
-                            content_hash=request.content_hash,
-                            options={"force": False},
-                        )
-                        child_job = await self.submit(JobType.STEM_SEPARATION, child_request)
-                        child_id = child_job.id
-                        logger.info(f"[{job.id}] Submitted child stem separation job: {child_id}")
-
-                        # Update LRC job stage to indicate waiting
-                        job.stage = f"awaiting_stem_separation:{child_id}"
-                        try:
-                            await self.job_store.update_job(
-                                job.id, stage=f"awaiting_stem_separation:{child_id}"
+                            job.stage = "using_vocals_stem"
+                        else:
+                            # No clean vocals cached — auto-trigger stem separation
+                            logger.info(
+                                f"[{job.id}] No clean vocals found, auto-triggering stem separation"
                             )
-                        except Exception as e:
-                            logger.error(f"Failed to update job {job.id} in database: {e}")
+                            job.stage = "submitting_stem_separation_child"
+                            job.updated_at = datetime.now(timezone.utc)
 
-                        # Release LRC semaphore while waiting (allows other LRC jobs to proceed)
-                        # We'll re-acquire it when the child is complete
-                        logger.info(
-                            f"[{job.id}] Releasing LRC semaphore to wait for child job {child_id}"
-                        )
+                            try:
+                                await self.job_store.update_job(
+                                    job.id, stage="submitting_stem_separation_child"
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to update job {job.id} in database: {e}")
 
-                        # Poll child job status
-                        poll_interval = 3.0
-                        max_wait = 3600.0  # 1 hour timeout
-                        wait_start = time.time()
+                            child_request = StemSeparationJobRequest(
+                                audio_url=request.audio_url,
+                                content_hash=request.content_hash,
+                                options={"force": False},
+                            )
+                            child_job = await self.submit(JobType.STEM_SEPARATION, child_request)
+                            child_id = child_job.id
+                            logger.info(
+                                f"[{job.id}] Submitted child stem separation job: {child_id}"
+                            )
 
-                        while True:
-                            await asyncio.sleep(poll_interval)
+                            job.stage = f"awaiting_stem_separation:{child_id}"
+                            try:
+                                await self.job_store.update_job(
+                                    job.id, stage=f"awaiting_stem_separation:{child_id}"
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to update job {job.id} in database: {e}")
 
-                            # Check if child job is complete
+                            logger.info(
+                                f"[{job.id}] Releasing LRC semaphore to wait for child job {child_id}"
+                            )
+
+                            # Poll child job status
+                            poll_interval = 3.0
+                            max_wait = 7200.0  # 2 hour timeout
+                            wait_start = time.time()
+
+                            while True:
+                                await asyncio.sleep(poll_interval)
+
+                                child_job = await self.get_job(child_id)
+                                if not child_job:
+                                    logger.error(f"[{job.id}] Child job {child_id} not found")
+                                    raise LRCWorkerError(
+                                        f"Child stem separation job {child_id} not found"
+                                    )
+
+                                if child_job.status == JobStatus.COMPLETED:
+                                    logger.info(
+                                        f"[{job.id}] Child stem separation job {child_id} completed"
+                                    )
+                                    break
+                                elif child_job.status == JobStatus.FAILED:
+                                    logger.error(
+                                        f"[{job.id}] Child stem separation job {child_id} failed: {child_job.error_message}"
+                                    )
+                                    break
+
+                                # Timeout — fall back to full audio rather than failing the LRC job
+                                if time.time() - wait_start > max_wait:
+                                    logger.warning(
+                                        f"[{job.id}] Timeout waiting for child stem separation job {child_id} "
+                                        f"after {max_wait:.0f}s — falling back to full audio for transcription"
+                                    )
+                                    break
+
+                            # Re-acquire the LRC semaphore slot before continuing
+                            logger.info(f"[{job.id}] Re-acquiring LRC semaphore slot")
+                            await self._lrc_semaphore.acquire()
+                            logger.info(f"[{job.id}] Re-acquired LRC semaphore slot")
+
                             child_job = await self.get_job(child_id)
-                            if not child_job:
-                                logger.error(f"[{job.id}] Child job {child_id} not found")
-                                raise LRCWorkerError(
-                                    f"Child stem separation job {child_id} not found"
-                                )
-
-                            if child_job.status == JobStatus.COMPLETED:
-                                logger.info(
-                                    f"[{job.id}] Child stem separation job {child_id} completed"
-                                )
-                                break
-                            elif child_job.status == JobStatus.FAILED:
-                                logger.error(
-                                    f"[{job.id}] Child stem separation job {child_id} failed: {child_job.error_message}"
-                                )
-                                # Don't fail the LRC job - just fall back to full audio
-                                break
-
-                            # Check timeout
-                            if time.time() - wait_start > max_wait:
-                                logger.error(
-                                    f"[{job.id}] Timeout waiting for child stem separation job {child_id}"
-                                )
-                                raise LRCWorkerError(
-                                    f"Timeout waiting for stem separation job {child_id}"
-                                )
-
-                        # Re-acquire the LRC semaphore slot before continuing
-                        logger.info(f"[{job.id}] Re-acquiring LRC semaphore slot")
-                        await self._lrc_semaphore.acquire()
-                        logger.info(f"[{job.id}] Re-acquired LRC semaphore slot")
-
-                        # Check if child succeeded and download the result
-                        child_job = await self.get_job(child_id)
-                        if (
-                            child_job
-                            and child_job.status == JobStatus.COMPLETED
-                            and child_job.result
-                        ):
-                            vocals_stem_url = child_job.result.vocals_clean_url
-                            if vocals_stem_url:
-                                ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
-                                stem_path = temp_path / f"vocals_clean{ext}"
-                                await self.r2_client.download_audio(vocals_stem_url, stem_path)
-                                transcription_path = stem_path
-                                logger.info(
-                                    f"[{job.id}] Downloaded clean vocals from child job: {vocals_stem_url}"
-                                )
-                                job.stage = "using_vocals_clean_stem"
+                            if (
+                                child_job
+                                and child_job.status == JobStatus.COMPLETED
+                                and child_job.result
+                            ):
+                                vocals_stem_url = child_job.result.vocals_clean_url
+                                if vocals_stem_url:
+                                    ext = (
+                                        ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
+                                    )
+                                    stem_path = temp_path / f"vocals_clean{ext}"
+                                    await self.r2_client.download_audio(
+                                        vocals_stem_url, stem_path
+                                    )
+                                    transcription_path = stem_path
+                                    logger.info(
+                                        f"[{job.id}] Downloaded clean vocals from child job: {vocals_stem_url}"
+                                    )
+                                    job.stage = "using_vocals_clean_stem"
+                                else:
+                                    logger.warning(
+                                        f"[{job.id}] Child job completed but no vocals_clean_url in result"
+                                    )
                             else:
                                 logger.warning(
-                                    f"[{job.id}] Child job completed but no vocals_clean_url in result"
+                                    f"[{job.id}] Child stem separation failed or incomplete, using full audio"
                                 )
-                        else:
-                            logger.warning(
-                                f"[{job.id}] Child stem separation failed or incomplete, using full audio"
-                            )
 
-                # Check for cached Whisper transcription (audio hash only, not lyrics)
-                cached_phrases = None
-                if request.options.force_whisper:
-                    logger.info(f"[{job.id}] Whisper cache bypassed (force_whisper=True)")
-                else:
-                    cached_data = self.cache_manager.get_whisper_transcription(request.content_hash)
-                    if cached_data:
-                        from .lrc import WhisperPhrase
-
-                        cached_phrases = [WhisperPhrase(**p) for p in cached_data]
-                        logger.info(
-                            f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases"
-                        )
-                        job.stage = "transcription_cached"
+                    # Check for cached Whisper transcription (audio hash only, not lyrics)
+                    cached_phrases = None
+                    if request.options.force_whisper:
+                        logger.info(f"[{job.id}] Whisper cache bypassed (force_whisper=True)")
                     else:
-                        logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
+                        cached_data = self.cache_manager.get_whisper_transcription(
+                            request.content_hash
+                        )
+                        if cached_data:
+                            from .lrc import WhisperPhrase
 
-                # Run Whisper transcription (or use cached)
-                job.stage = "transcribing"
-                job.progress = 0.4
-                job.updated_at = datetime.now(timezone.utc)
+                            cached_phrases = [WhisperPhrase(**p) for p in cached_data]
+                            logger.info(
+                                f"[{job.id}] Whisper cache hit - using {len(cached_phrases)} cached phrases"
+                            )
+                            job.stage = "transcription_cached"
+                        else:
+                            logger.info(f"[{job.id}] Whisper cache miss - will run transcription")
 
-                lrc_path = temp_path / "lyrics.lrc"
-                lrc_path, line_count, whisper_phrases = await generate_lrc(
-                    transcription_path,
-                    request.lyrics_text,
-                    request.options,
-                    output_path=lrc_path,
-                    cached_phrases=cached_phrases,
-                    youtube_url=request.youtube_url or None,
-                    content_hash=request.content_hash,
-                    vocals_stem_url=vocals_stem_url,
-                )
+                    # Run Whisper transcription (or use cached); youtube_url=None since we already tried it
+                    job.stage = "transcribing"
+                    job.progress = 0.4
+                    job.updated_at = datetime.now(timezone.utc)
 
-                # Cache the Whisper transcription for future use (if not using cache)
-                if cached_phrases is None and whisper_phrases:
-                    phrases_data = [
-                        {"text": p.text, "start": p.start, "end": p.end} for p in whisper_phrases
-                    ]
-                    self.cache_manager.save_whisper_transcription(
-                        request.content_hash, phrases_data
+                    lrc_path, line_count, whisper_phrases = await generate_lrc(
+                        transcription_path,
+                        request.lyrics_text,
+                        request.options,
+                        output_path=lrc_path,
+                        cached_phrases=cached_phrases,
+                        youtube_url=None,
+                        content_hash=request.content_hash,
+                        vocals_stem_url=vocals_stem_url,
                     )
-                    logger.info(f"[{job.id}] Whisper transcription cached for future use")
+
+                    # Cache the Whisper transcription for future use (if not using cache)
+                    if cached_phrases is None and whisper_phrases:
+                        phrases_data = [
+                            {"text": p.text, "start": p.start, "end": p.end}
+                            for p in whisper_phrases
+                        ]
+                        self.cache_manager.save_whisper_transcription(
+                            request.content_hash, phrases_data
+                        )
+                        logger.info(f"[{job.id}] Whisper transcription cached for future use")
 
                 job.stage = "uploading"
                 job.progress = 0.8

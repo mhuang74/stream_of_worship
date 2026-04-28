@@ -599,6 +599,61 @@ def _get_audio_duration(whisper_phrases: List[WhisperPhrase]) -> float:
     return max(p.end for p in whisper_phrases)
 
 
+async def try_youtube_transcript_lrc(
+    youtube_url: str,
+    lyrics_text: str,
+    options: LrcOptions,
+    output_path: Path,
+) -> Optional[tuple[Path, int, List[WhisperPhrase]]]:
+    """Attempt LRC generation via YouTube transcript (primary path).
+
+    Returns (path, line_count, []) on success, None on failure.
+    Logs scraped lyrics and result regardless of outcome.
+    """
+    from .youtube_transcript import YouTubeTranscriptError, youtube_transcript_to_lrc
+
+    logger.info("=" * 80)
+    logger.info("SCRAPED LYRICS (Input)")
+    logger.info("=" * 80)
+    for line in lyrics_text.split("\n"):
+        logger.info(line)
+    logger.info("=" * 80)
+
+    lrc_start = time.time()
+
+    logger.info("=" * 80)
+    logger.info("LRC GENERATION: Attempting YouTube transcript path (primary)")
+    logger.info(f"YouTube URL: {youtube_url}")
+    logger.info("=" * 80)
+    try:
+        lrc_lines = await youtube_transcript_to_lrc(
+            youtube_url=youtube_url,
+            lyrics_text=lyrics_text,
+            llm_model=options.llm_model,
+        )
+        line_count = _write_lrc(lrc_lines, output_path)
+        total_elapsed = time.time() - lrc_start
+        logger.info("=" * 80)
+        logger.info("LRC GENERATION: YouTube transcript path SUCCEEDED")
+        logger.info(f"Wrote {line_count} lines to {output_path} (total time: {total_elapsed:.2f}s)")
+        logger.info("=" * 80)
+        logger.info("=" * 80)
+        logger.info("FINAL LRC FILE CONTENTS (via YouTube transcript)")
+        logger.info("=" * 80)
+        with open(output_path, "r", encoding="utf-8") as f:
+            for lrc_line in f:
+                logger.info(lrc_line.rstrip("\n"))
+        logger.info("=" * 80)
+        return output_path, line_count, []
+    except (YouTubeTranscriptError, Exception) as e:
+        logger.warning("=" * 80)
+        logger.warning("LRC GENERATION: YouTube transcript path FAILED")
+        logger.warning(f"Reason: {e}")
+        logger.warning("Falling back to Whisper transcription + LLM alignment...")
+        logger.warning("=" * 80)
+        return None
+
+
 async def generate_lrc(
     audio_path: Path,
     lyrics_text: str,
@@ -634,62 +689,22 @@ async def generate_lrc(
     if output_path is None:
         output_path = audio_path.with_suffix(".lrc")
 
-    # Log scraped lyrics input
-    logger.info("=" * 80)
-    logger.info("SCRAPED LYRICS (Input)")
-    logger.info("=" * 80)
-    for line in lyrics_text.split("\n"):
-        logger.info(line)
-    logger.info("=" * 80)
-
-    lrc_start = time.time()
-
     # Primary path: YouTube transcript + LLM correction
     if youtube_url:
+        result = await try_youtube_transcript_lrc(youtube_url, lyrics_text, options, output_path)
+        if result is not None:
+            return result
+
+    # Log scraped lyrics and announce Whisper path when YouTube is not being attempted
+    if not youtube_url:
         logger.info("=" * 80)
-        logger.info("LRC GENERATION: Attempting YouTube transcript path (primary)")
-        logger.info(f"YouTube URL: {youtube_url}")
+        logger.info("SCRAPED LYRICS (Input)")
         logger.info("=" * 80)
-        try:
-            from .youtube_transcript import YouTubeTranscriptError, youtube_transcript_to_lrc
-
-            lrc_lines = await youtube_transcript_to_lrc(
-                youtube_url=youtube_url,
-                lyrics_text=lyrics_text,
-                llm_model=options.llm_model,
-            )
-
-            # Write LRC file
-            line_count = _write_lrc(lrc_lines, output_path)
-            total_elapsed = time.time() - lrc_start
-            logger.info("=" * 80)
-            logger.info("LRC GENERATION: YouTube transcript path SUCCEEDED")
-            logger.info(
-                f"Wrote {line_count} lines to {output_path} (total time: {total_elapsed:.2f}s)"
-            )
-            logger.info("=" * 80)
-
-            # Log final LRC file contents
-            logger.info("=" * 80)
-            logger.info("FINAL LRC FILE CONTENTS (via YouTube transcript)")
-            logger.info("=" * 80)
-            with open(output_path, "r", encoding="utf-8") as f:
-                for lrc_line in f:
-                    logger.info(lrc_line.rstrip("\n"))
-            logger.info("=" * 80)
-
-            # YouTube path doesn't produce Whisper phrases — return empty list
-            return output_path, line_count, []
-
-        except (YouTubeTranscriptError, Exception) as e:
-            logger.warning("=" * 80)
-            logger.warning("LRC GENERATION: YouTube transcript path FAILED")
-            logger.warning(f"Reason: {e}")
-            logger.warning("Falling back to Whisper transcription + LLM alignment...")
-            logger.warning("=" * 80)
-    else:
+        for line in lyrics_text.split("\n"):
+            logger.info(line)
         logger.info("=" * 80)
-        logger.info("LRC GENERATION: No YouTube URL provided, using Whisper transcription directly")
+        logger.info("=" * 80)
+        logger.info("LRC GENERATION: Using Whisper transcription directly")
         logger.info("=" * 80)
 
     # Fallback path: Whisper transcription + LLM alignment
