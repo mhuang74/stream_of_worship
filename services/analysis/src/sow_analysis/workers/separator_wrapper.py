@@ -64,7 +64,7 @@ class AudioSeparatorWrapper:
             # Load BS-Roformer model
             logger.info(f"Loading BS-Roformer model: {self.bs_roformer_model}")
             bs_separator = Separator(
-                output_dir=str(self.model_dir),
+                output_dir=str(settings.CACHE_DIR),
                 model_file_dir=str(self.model_dir),
                 output_format=self.output_format,
             )
@@ -74,7 +74,7 @@ class AudioSeparatorWrapper:
             # Load UVR-De-Echo model
             logger.info(f"Loading UVR-De-Echo model: {self.dereverb_model}")
             dereverb_separator = Separator(
-                output_dir=str(self.model_dir),
+                output_dir=str(settings.CACHE_DIR),
                 model_file_dir=str(self.model_dir),
                 output_format=self.output_format,
             )
@@ -129,14 +129,10 @@ class AudioSeparatorWrapper:
 
         def _run_stage1():
             """Synchronous stage 1 separation."""
-            # Temporarily change output dir
-            original_output_dir = self._bs_roformer_separator.output_dir
-            self._bs_roformer_separator.output_dir = str(stage1_dir)
-            try:
-                outputs = self._bs_roformer_separator.separate(str(input_path))
-                return outputs
-            finally:
-                self._bs_roformer_separator.output_dir = original_output_dir
+            return self._bs_roformer_separator.separate(
+                str(input_path),
+                custom_output_dir=str(stage1_dir),
+            )
 
         stage1_outputs = await loop.run_in_executor(None, _run_stage1)
 
@@ -168,14 +164,10 @@ class AudioSeparatorWrapper:
 
         def _run_stage2():
             """Synchronous stage 2 dereverb."""
-            # Temporarily change output dir
-            original_output_dir = self._dereverb_separator.output_dir
-            self._dereverb_separator.output_dir = str(stage2_dir)
-            try:
-                outputs = self._dereverb_separator.separate(str(vocals_file))
-                return outputs
-            finally:
-                self._dereverb_separator.output_dir = original_output_dir
+            return self._dereverb_separator.separate(
+                str(vocals_file),
+                custom_output_dir=str(stage2_dir),
+            )
 
         stage2_outputs = await loop.run_in_executor(None, _run_stage2)
 
