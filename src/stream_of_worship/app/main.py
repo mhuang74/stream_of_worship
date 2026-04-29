@@ -235,6 +235,7 @@ def sync(
         turso_token=config.turso_readonly_token,
     )
     songset_client = SongsetClient(config.songsets_db_path)
+    songset_client.initialize_schema()  # Ensure _sync_metadata table exists
 
     sync_service = AppSyncService(
         read_client=read_client,
