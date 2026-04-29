@@ -190,7 +190,7 @@ curl -X POST http://localhost:8000/api/v1/jobs/stem-separation \
 - `{hash_prefix}/stems/instrumental_clean.flac` - Instrumental accompaniment
 
 **Auto-Trigger:** The LRC job automatically triggers stem separation when `use_vocals_stem=true` and no clean vocals exist. The LRC worker:
-1. Checks for existing `vocals_clean.flac` → `vocals_clean.wav` → `vocals.wav`
+1. Checks for existing `vocals_clean.flac`
 2. If not found, submits a child stem-separation job
 3. Releases its concurrency slot while waiting
 4. Re-acquires slot when child completes

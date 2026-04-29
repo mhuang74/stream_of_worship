@@ -236,7 +236,7 @@ self._stem_separation_lock = asyncio.Lock()                 # 1 STEM_SEPARATION
 
 **LRC Auto-Trigger Flow:**
 1. LRC worker holds `_lrc_semaphore` slot, downloads audio
-2. Stem lookup: checks R2 for `vocals_clean.flac` → `vocals_clean.wav` → `vocals.wav`
+2. Stem lookup: checks R2 for `vocals_clean.flac`
 3. If none found and `use_vocals_stem=True`:
    - Submit child `STEM_SEPARATION` job via `JobQueue.submit()`
    - **Release `_lrc_semaphore` slot**

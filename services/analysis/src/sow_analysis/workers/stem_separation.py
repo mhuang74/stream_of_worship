@@ -227,8 +227,9 @@ async def get_clean_vocals_url(
 ) -> Optional[str]:
     """Get the URL for clean vocals if it exists.
 
-    Checks for vocals_clean.flac first, then vocals_clean.wav (legacy),
-    then vocals.wav (Demucs).
+    Only checks for vocals_clean.flac (the canonical clean-vocal stem
+    produced by the two-stage BS-Roformer + UVR-De-Echo pipeline).
+    If not found, the caller should trigger stem separation to generate it.
 
     Args:
         content_hash: Full content hash
@@ -240,16 +241,9 @@ async def get_clean_vocals_url(
     hash_prefix = content_hash[:12]
     bucket = settings.SOW_R2_BUCKET
 
-    # Check in priority order
-    checks = [
-        ("vocals_clean.flac", f"s3://{bucket}/{hash_prefix}/stems/vocals_clean.flac"),
-        ("vocals_clean.wav", f"s3://{bucket}/{hash_prefix}/stems/vocals_clean.wav"),
-        ("vocals.wav", f"s3://{bucket}/{hash_prefix}/stems/vocals.wav"),
-    ]
-
-    for name, url in checks:
-        if await r2_client.check_exists(url):
-            logger.debug(f"Found vocals stem: {name} at {url}")
-            return url
+    url = f"s3://{bucket}/{hash_prefix}/stems/vocals_clean.flac"
+    if await r2_client.check_exists(url):
+        logger.debug(f"Found clean vocals: {url}")
+        return url
 
     return None

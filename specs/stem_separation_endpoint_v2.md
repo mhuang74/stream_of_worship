@@ -95,7 +95,7 @@ The analysis container today downloads-on-first-use into the `analysis-cache` na
 | `services/analysis/src/sow_analysis/models.py` | Add `JobType.STEM_SEPARATION`; add `StemSeparationOptions`, `StemSeparationJobRequest`; extend `JobResult` with `vocals_clean_url`, `instrumental_clean_url`; extend `Job.request` Union |
 | `services/analysis/src/sow_analysis/workers/stem_separation.py` (new) | Two-stage worker; ports algorithm from `poc/gen_clean_vocal_stem.py:21-199`; uses pre-loaded `Separator` instances from a wrapper |
 | `services/analysis/src/sow_analysis/workers/separator_wrapper.py` (new) | `AudioSeparatorWrapper` (mirroring `services/qwen3/.../aligner.py`) — holds two pre-loaded `Separator` instances; thread-pool executor for blocking calls |
-| `services/analysis/src/sow_analysis/workers/queue.py` | Add `_stem_separation_lock`; add `_process_stem_separation_job`; add third dispatch branch in `_process_job_with_semaphore` (line 235); modify `_process_lrc_job` stem-lookup block (lines 559-571) to: (a) check for `vocals_clean.flac` → `vocals_clean.wav` → `vocals.wav`, (b) when missing, submit a child STEM_SEPARATION job, release `_lrc_semaphore`, poll until complete, re-acquire; pass clean-vocals URL to `_qwen3_refine` |
+| `services/analysis/src/sow_analysis/workers/queue.py` | Add `_stem_separation_lock`; add `_process_stem_separation_job`; add third dispatch branch in `_process_job_with_semaphore` (line 235); modify `_process_lrc_job` stem-lookup block (lines 559-571) to: (a) check for `vocals_clean.flac`, (b) when missing, submit a child STEM_SEPARATION job, release `_lrc_semaphore`, poll until complete, re-acquire; pass clean-vocals URL to `_qwen3_refine` |
 | `services/analysis/src/sow_analysis/workers/lrc.py` | Modify `_qwen3_refine` (~line 548-551) to accept and forward a clean-vocals URL when available; fall back to `audio.mp3` |
 | `services/analysis/src/sow_analysis/storage/r2.py` | Add `upload_clean_stems(hash_prefix, vocals_clean, instrumental_clean) -> tuple[str, str]` writing keys `{hash_prefix}/stems/vocals_clean.flac` and `{hash_prefix}/stems/instrumental_clean.flac` |
 | `services/analysis/src/sow_analysis/storage/db.py` | Wipe `jobs.db` on startup if schema CHECK constraint mismatch detected (or unconditionally on first run with the new image); fix `_row_to_job` (lines 176-179) to explicit per-type branching including `STEM_SEPARATION` |
@@ -125,7 +125,7 @@ self._stem_separation_lock = asyncio.Lock()                          # 1 STEM_SE
 
 LRC auto-trigger flow:
 1. LRC worker holds `_lrc_semaphore` slot, downloads audio.
-2. Stem lookup: check R2 for `vocals_clean.flac` → `vocals_clean.wav` → `vocals.wav`.
+2. Stem lookup: check R2 for `vocals_clean.flac`.
 3. If none found and `use_vocals_stem=True`:
    - Submit a child `STEM_SEPARATION` job via `JobQueue.submit()`.
    - **Release `_lrc_semaphore` slot.**
