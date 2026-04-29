@@ -657,8 +657,8 @@ class JobQueue:
                             f"Audio download completed in {download_elapsed:.2f}s"
                         )
 
-                    # Check if vocals stem exists and should be used for Whisper
-                    # Preference: vocals_clean.flac > vocals_clean.wav > vocals.wav
+                    # Check if clean vocals stem exists and should be used for Whisper
+                    # Only vocals_clean.flac is accepted; if missing, trigger stem separation
                     transcription_path = audio_path
                     vocals_stem_url: Optional[str] = None
 
