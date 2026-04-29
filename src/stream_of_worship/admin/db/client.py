@@ -367,6 +367,7 @@ class DatabaseClient:
         key: Optional[str] = None,
         limit: Optional[int] = None,
         include_deleted: bool = False,
+        sort_by: str = "album",
     ) -> list[Song]:
         """List songs with optional filters.
 
@@ -375,6 +376,7 @@ class DatabaseClient:
             key: Filter by musical key
             limit: Maximum number of results
             include_deleted: Whether to include soft-deleted songs
+            sort_by: Sort order - "album" (album_name, title), "title", or "id"
 
         Returns:
             List of songs matching the filters
@@ -395,7 +397,12 @@ class DatabaseClient:
             query += " AND musical_key = ?"
             params.append(key)
 
-        query += " ORDER BY id"
+        order_map = {
+            "album": "album_name, title",
+            "title": "title",
+            "id": "id",
+        }
+        query += f" ORDER BY {order_map.get(sort_by, 'album_name, title')}"
 
         if limit:
             query += f" LIMIT {limit}"
@@ -405,6 +412,32 @@ class DatabaseClient:
         results = []
         for row in cursor.fetchall():
             results.append(Song.from_row(tuple(row)))
+        return results
+
+    def list_albums(self, include_deleted: bool = False) -> list[tuple[str, int]]:
+        """List distinct album names with song counts.
+
+        Args:
+            include_deleted: Whether to include soft-deleted songs
+
+        Returns:
+            List of (album_name, song_count) tuples sorted by album_name
+        """
+        cursor = self.connection.cursor()
+
+        query = "SELECT album_name, COUNT(*) as cnt FROM songs WHERE 1=1"
+        params: list = []
+
+        if not include_deleted:
+            query += " AND deleted_at IS NULL"
+
+        query += " GROUP BY album_name ORDER BY album_name"
+
+        cursor.execute(query, params)
+
+        results = []
+        for row in cursor.fetchall():
+            results.append((row[0], row[1]))
         return results
 
     def search_songs(

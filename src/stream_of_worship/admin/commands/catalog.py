@@ -166,6 +166,17 @@ def list_songs(
         "-c",
         help="Filter by composer",
     ),
+    sort: str = typer.Option(
+        "album",
+        "--sort",
+        "-s",
+        help="Sort order (album|title|id)",
+    ),
+    albums: bool = typer.Option(
+        False,
+        "--albums",
+        help="Show album names with song counts instead of individual songs",
+    ),
     limit: Optional[int] = typer.Option(
         None,
         "--limit",
@@ -187,8 +198,13 @@ def list_songs(
     """List songs from catalog.
 
     Display songs from the local catalog database with optional filtering.
-    Use --format ids to output one song ID per line for piping.
+    Use --sort to change sort order (default: album). Use --albums to show
+    only album names with song counts. Use --format ids for piping.
     """
+    if sort not in ("album", "title", "id"):
+        console.print(f"[red]Invalid sort option: {sort}. Choose from: album, title, id[/red]")
+        raise typer.Exit(1)
+
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
     except FileNotFoundError:
@@ -203,8 +219,29 @@ def list_songs(
 
     db_client = get_db_client(config)
 
+    if albums:
+        try:
+            album_list = db_client.list_albums()
+        except Exception as e:
+            console.print(f"[red]Error listing albums: {e}[/red]")
+            raise typer.Exit(1)
+
+        if not album_list:
+            console.print("[yellow]No albums found.[/yellow]")
+            return
+
+        table = Table(title=f"Albums ({len(album_list)} total)")
+        table.add_column("Album", style="yellow")
+        table.add_column("Songs", style="cyan", justify="right")
+
+        for album_name, count in album_list:
+            table.add_row(album_name or "-", str(count))
+
+        console.print(table)
+        return
+
     try:
-        songs = db_client.list_songs(album=album, key=key, limit=limit)
+        songs = db_client.list_songs(album=album, key=key, limit=limit, sort_by=sort)
     except Exception as e:
         console.print(f"[red]Error listing songs: {e}[/red]")
         raise typer.Exit(1)
