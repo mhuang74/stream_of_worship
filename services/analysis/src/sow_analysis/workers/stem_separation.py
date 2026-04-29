@@ -56,7 +56,7 @@ async def process_stem_separation(
     hash_32 = content_hash[:32]
 
     job.stage = "checking_cache"
-    logger.info(f"[{job.id}] Checking for existing clean stems in R2...")
+    logger.info("Checking for existing clean stems in R2...")
 
     # Check if already exists (short-circuit)
     vocals_clean_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/vocals_clean.flac"
@@ -71,7 +71,7 @@ async def process_stem_separation(
         reverb_exists = await r2_client.check_exists(vocals_reverb_url)
 
         if vocals_exists and instrumental_exists and reverb_exists:
-            logger.info(f"[{job.id}] Clean stems already exist in R2, skipping")
+            logger.info("Clean stems already exist in R2, skipping")
             job.result = JobResult(
                 vocals_clean_url=vocals_clean_url,
                 instrumental_clean_url=instrumental_clean_url,
@@ -95,7 +95,7 @@ async def process_stem_separation(
         and cache_vocals_reverb.exists()
         and not request.options.force
     ):
-        logger.info(f"[{job.id}] Using cached clean stems from {cache_dir}")
+        logger.info(f"Using cached clean stems from {cache_dir}")
         job.stage = "uploading"
         job.progress = 0.8
 
@@ -116,7 +116,7 @@ async def process_stem_separation(
         job.progress = 1.0
         job.stage = "complete"
         job.updated_at = datetime.now(timezone.utc)
-        logger.info(f"[{job.id}] Stem separation completed (cached)")
+        logger.info("Stem separation completed (cached)")
         return
 
     # Download audio from R2
@@ -128,9 +128,9 @@ async def process_stem_separation(
         temp_path = Path(temp_dir)
         audio_path = temp_path / "audio.mp3"
 
-        logger.info(f"[{job.id}] Downloading audio from R2...")
+        logger.info("Downloading audio from R2...")
         await r2_client.download_audio(request.audio_url, audio_path)
-        logger.info(f"[{job.id}] Audio download complete: {audio_path}")
+        logger.info(f"Audio download complete: {audio_path}")
 
         # Stage 1: BS-Roformer separation
         job.stage = "stage1_bs_roformer"
@@ -138,7 +138,7 @@ async def process_stem_separation(
         job.updated_at = datetime.now(timezone.utc)
 
         stage_output_dir = temp_path / "separation"
-        logger.info(f"[{job.id}] Starting BS-Roformer separation...")
+        logger.info("Starting BS-Roformer separation...")
 
         try:
             (
@@ -156,7 +156,7 @@ async def process_stem_separation(
 
         # Rename outputs to canonical names
         job.stage = "renaming_outputs"
-        logger.info(f"[{job.id}] Renaming outputs to canonical names...")
+        logger.info("Renaming outputs to canonical names...")
 
         final_vocals = temp_path / "vocals_clean.flac"
         final_instrumental = temp_path / "instrumental_clean.flac"
@@ -167,17 +167,17 @@ async def process_stem_separation(
         if instrumental_path and instrumental_path.exists():
             shutil.copy2(instrumental_path, final_instrumental)
         else:
-            logger.warning(f"[{job.id}] No instrumental file generated")
+            logger.warning("No instrumental file generated")
 
         if vocals_reverb_path and vocals_reverb_path.exists():
             shutil.copy2(vocals_reverb_path, final_vocals_reverb)
         else:
-            logger.warning(f"[{job.id}] No vocals_reverb (Stage 1 vocals) file generated")
+            logger.warning("No vocals_reverb (Stage 1 vocals) file generated")
 
         # Cache locally
         job.stage = "caching"
         job.progress = 0.8
-        logger.info(f"[{job.id}] Caching results locally...")
+        logger.info("Caching results locally...")
 
         cache_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(final_vocals, cache_vocals)
@@ -191,7 +191,7 @@ async def process_stem_separation(
         job.progress = 0.9
         job.updated_at = datetime.now(timezone.utc)
 
-        logger.info(f"[{job.id}] Uploading clean stems to R2...")
+        logger.info("Uploading clean stems to R2...")
         vocals_upload = cache_vocals if cache_vocals.exists() else final_vocals
         instrumental_upload = (
             cache_instrumental if cache_instrumental.exists() else final_instrumental
@@ -218,7 +218,7 @@ async def process_stem_separation(
         job.stage = "complete"
         job.updated_at = datetime.now(timezone.utc)
 
-        logger.info(f"[{job.id}] Stem separation completed successfully")
+        logger.info("Stem separation completed successfully")
 
 
 async def get_clean_vocals_url(

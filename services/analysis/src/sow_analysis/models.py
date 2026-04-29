@@ -15,6 +15,7 @@ class JobStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class JobType(str, Enum):
@@ -126,6 +127,7 @@ class JobResponse(BaseModel):
     progress: float = 0.0
     stage: str = ""
     error_message: Optional[str] = None
+    warning: Optional[str] = None
     result: Optional[JobResult] = None
 
 

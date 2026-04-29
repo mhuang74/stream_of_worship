@@ -138,6 +138,23 @@ class TestJobResponse:
         assert response.job_type == JobType.ANALYZE
         assert response.progress == 0.0
 
+    def test_response_with_warning(self):
+        """Test creating a response with warning field."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        response = JobResponse(
+            job_id="job_abc123",
+            status=JobStatus.CANCELLED,
+            job_type=JobType.ANALYZE,
+            created_at=now,
+            updated_at=now,
+            warning="Job was PROCESSING. The running task continues until service restart.",
+        )
+        assert response.job_id == "job_abc123"
+        assert response.status == JobStatus.CANCELLED
+        assert response.warning == "Job was PROCESSING. The running task continues until service restart."
+
 
 class TestJobStatus:
     """Test JobStatus enum."""
@@ -148,6 +165,7 @@ class TestJobStatus:
         assert JobStatus.PROCESSING == "processing"
         assert JobStatus.COMPLETED == "completed"
         assert JobStatus.FAILED == "failed"
+        assert JobStatus.CANCELLED == "cancelled"
 
 
 class TestJobType:

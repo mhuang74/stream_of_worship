@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # API Security
     SOW_ANALYSIS_API_KEY: str = ""
+    SOW_ADMIN_API_KEY: str = ""  # Admin API key for privileged operations (cancel jobs, etc.)
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")

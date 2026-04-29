@@ -44,6 +44,9 @@ SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 # API Security (shared secret with Admin CLI)
 SOW_ANALYSIS_API_KEY="your-random-api-key"
 
+# Admin API Security (for job cancellation, clear queue)
+SOW_ADMIN_API_KEY="your-secure-admin-key"  # Optional but recommended
+
 # LLM Configuration (for LRC generation)
 SOW_LLM_API_KEY="sk-or-v1-..."  # OpenRouter, OpenAI, etc.
 SOW_LLM_BASE_URL="https://openrouter.ai/api/v1"
@@ -113,6 +116,8 @@ Expected response:
 | `/api/v1/jobs/lrc` | POST | Submit LRC generation job |
 | `/api/v1/jobs/stem-separation` | POST | Submit clean vocals stem separation job |
 | `/api/v1/jobs/{job_id}` | GET | Get job status and results |
+| `/api/v1/jobs/{job_id}/cancel` | POST | **(Admin)** Cancel a job |
+| `/api/v1/jobs/clear-queue` | POST | **(Admin)** Cancel all queued jobs |
 
 ### Submit Analysis Job
 
