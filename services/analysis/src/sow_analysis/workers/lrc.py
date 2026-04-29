@@ -536,12 +536,17 @@ def _parse_qwen3_lrc(lrc_content: str) -> List[LRCLine]:
     return lines
 
 
-async def _qwen3_refine(content_hash: str, lyrics_text: str) -> str:
+async def _qwen3_refine(
+    content_hash: str, lyrics_text: str, vocals_stem_url: Optional[str] = None
+) -> str:
     """Run Qwen3 forced alignment for timestamp refinement.
 
     Args:
         content_hash: Full content hash (will be truncated to 12-char prefix)
         lyrics_text: Lyrics text to align with audio
+        vocals_stem_url: Optional R2 URL for clean vocals stem. When provided,
+            Qwen3 aligns against the de-reverbed vocals instead of the full mix,
+            improving timestamp precision.
 
     Returns:
         Refined LRC content string
@@ -549,11 +554,13 @@ async def _qwen3_refine(content_hash: str, lyrics_text: str) -> str:
     Raises:
         Exception: If Qwen3 service call fails
     """
-    # Construct R2 URL in s3:// format
-    # Audio files are stored at: s3://{bucket}/{12-char-hash-prefix}/audio.mp3
-    hash_prefix = content_hash[:12]
-    audio_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/audio.mp3"
-    logger.info(f"Constructing R2 audio URL: {audio_url}")
+    if vocals_stem_url:
+        audio_url = vocals_stem_url
+        logger.info(f"Using clean vocals stem for Qwen3 alignment: {audio_url}")
+    else:
+        hash_prefix = content_hash[:12]
+        audio_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/audio.mp3"
+        logger.info(f"Constructing R2 audio URL from full mix: {audio_url}")
 
     # Instantiate Qwen3 client
     client = Qwen3Client(
@@ -677,6 +684,8 @@ async def generate_lrc(
         cached_phrases: Optional cached Whisper transcription phrases to skip transcription
         youtube_url: Optional YouTube URL for transcript-based LRC (primary path)
         content_hash: Optional content hash for Qwen3 audio URL construction (s3://{bucket}/audio/{hash}.mp3)
+        vocals_stem_url: Optional R2 URL for clean vocals stem; passed to Qwen3 alignment so it
+            uses de-reverbed vocals instead of the full mix for better timestamp precision
 
     Returns:
         Tuple of (path to LRC file, number of lines, transcription phrases)
@@ -756,6 +765,7 @@ async def generate_lrc(
                     refined_lrc_text = await _qwen3_refine(
                         content_hash=content_hash,
                         lyrics_text=lyrics_text,
+                        vocals_stem_url=vocals_stem_url,
                     )
                     # Parse refined LRC to update lrc_lines
                     refined_lines = _parse_qwen3_lrc(refined_lrc_text)
