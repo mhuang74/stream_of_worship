@@ -1,0 +1,105 @@
+# Admin CLI Configuration Example
+# Stream of Worship (sow-admin)
+# ================================================
+
+# The Admin CLI is the backend management tool that manages the song catalog,
+# downloads audio, and coordinates with the Analysis Service.
+#
+# Place this file at: ~/.config/sow-admin/config.toml
+# Or use the --config flag: sow-admin --config /path/to/config.toml
+
+# ================================================
+# [database] - SQLite Database Settings
+# ================================================
+[database]
+# Path to the local SQLite database file.
+# This stores song metadata, catalog info, and download status.
+# The database can sync with Turso cloud for multi-device access.
+path = "/Users/you/.local/share/sow-admin/sow.db"
+
+# ================================================
+# [r2] - Cloudflare R2 Object Storage Settings
+# ================================================
+[r2]
+# Your R2 bucket name (e.g., "stream-of-worship-audio")
+# Used for storing audio files and analysis artifacts
+bucket = "your-r2-bucket"
+
+# R2 endpoint URL - specific to your Cloudflare account
+# Format: https://<account-id>.r2.cloudflarestorage.com
+endpoint_url = "https://your-account.r2.cloudflarestorage.com"
+
+# Region - typically "auto" for R2, but can be set if needed
+region = "auto"
+
+# Note: R2 credentials (access key and secret key) should be set via
+# environment variables for security (see below)
+
+# ================================================
+# [service] - External Service URLs
+# ================================================
+[service]
+# URL of the Analysis Service (microservice running in Docker)
+# The Admin CLI submits audio analysis jobs to this service
+analysis_url = "http://localhost:8000"
+
+# ================================================
+# [turso] - Turso Database Sync Settings
+# ================================================
+[turso]
+# Turso cloud database URL for syncing
+# Format: https://<database-name>-<username>.turso.io
+# or libsql://<database-name>-<username>.turso.io
+# The Admin CLI syncs TO Turso (write operations)
+# The User App syncs FROM Turso (read-only)
+database_url = "https://your-db.turso.io"
+
+# ================================================
+# [logging] - Logging Configuration
+# ================================================
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# Use DEBUG for troubleshooting, INFO for normal operation
+level = "INFO"
+
+# Optional: Log file path (if not set, logs to console only)
+# file = "/Users/you/.local/share/sow-admin/logs/sow-admin.log"
+
+# ================================================
+# Environment Variables (Override Config File)
+# ================================================
+# For security, sensitive values can be set via environment variables.
+# Environment variables take precedence over values in this file.
+#
+# Required Environment Variables:
+#   SOW_R2_ACCESS_KEY_ID       - Your R2 access key ID
+#   SOW_R2_SECRET_ACCESS_KEY   - Your R2 secret access key
+#
+# Optional Environment Variables:
+#   SOW_R2_BUCKET              - Override R2 bucket name
+#   SOW_R2_ENDPOINT_URL        - Override R2 endpoint URL
+#   SOW_TURSO_AUTH_TOKEN       - Turso authentication token (for admin writes)
+#
+# Example .bashrc/.zshrc additions:
+#   export SOW_R2_ACCESS_KEY_ID="your-access-key-id"
+#   export SOW_R2_SECRET_ACCESS_KEY="your-secret-access-key"
+
+# ================================================
+# Quick Reference: Common Commands
+# ================================================
+# db init                      - Initialize the database
+# db status                    - Check database and sync status
+# catalog scrape               - Scrape all songs from sop.org
+# catalog scrape --incremental - Only scrape new songs
+# audio download --song-id "xx"  - Download audio for a specific song
+# audio analyze --recording-id   - Submit audio for ML analysis
+# songset create --name "xxx"    - Create a new songset
+
+# ================================================
+# Security Best Practices
+# ================================================
+# 1. NEVER commit this file with real credentials to version control
+# 2. Add ~/.config/sow-admin/ to your .gitignore
+# 3. Use environment variables for all sensitive values
+# 4. Rotate R2 access keys regularly
+# 5. Use read-only Turso tokens for User App, full access for Admin CLI
