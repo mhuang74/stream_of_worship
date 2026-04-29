@@ -5,6 +5,8 @@ reset operations, and Turso sync.
 """
 
 import os
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -402,11 +404,19 @@ def turso_bootstrap(
     Creates the schema on the Turso master database and optionally copies
     all local data to initialize the remote.
 
+    Auto-migration: If a vanilla SQLite database exists without libsql metadata
+    (detected by missing '-info' sidecar file), it is automatically backed up
+    to a timestamped directory (sow.db.bak-<timestamp>/) before proceeding.
+    Use --seed to migrate the data, or --force to discard it.
+
     Prerequisites:
     - Turso database created: turso db create sow-catalog
     - Turso token configured: SOW_TURSO_TOKEN environment variable
     - libsql installed: uv add --extra turso libsql
-    - Local database exists at configured path
+
+    Options:
+        --seed: Copy local data to remote (also migrates vanilla SQLite if detected)
+        --force: Overwrite remote even if it has data (also bypasses migration prompt)
     """
     # Check libsql availability
     if not LIBSQL_AVAILABLE:
@@ -432,13 +442,45 @@ def turso_bootstrap(
         console.print("Set SOW_TURSO_TOKEN environment variable.")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Local database not found: {config.db_path}[/red]")
-        raise typer.Exit(1)
-
     console.print("[bold]Bootstrapping Turso database...[/bold]")
     console.print(f"Local DB: {config.db_path}")
     console.print(f"Turso URL: {config.turso_database_url}")
+
+    # Detect vanilla SQLite vs libsql replica
+    info_path = config.db_path.parent / f"{config.db_path.name}-info"
+    source_db_path = None
+
+    if config.db_path.exists() and not info_path.exists():
+        # Vanilla SQLite detected - requires migration
+        if not seed and not force:
+            console.print("\n[yellow]Detected existing SQLite database without libsql metadata.[/yellow]")
+            console.print("Options:")
+            console.print("  --seed   Migrate data and create embedded replica")
+            console.print("  --force  Discard data and create fresh embedded replica")
+            raise typer.Exit(1)
+
+        # Create timestamped backup directory
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        backup_dir = config.db_path.parent / f"{config.db_path.name}.bak-{timestamp}"
+        backup_dir.mkdir(parents=False, exist_ok=False)
+
+        # Move db file and all sidecar files into backup
+        shutil.move(config.db_path, backup_dir / config.db_path.name)
+        for sibling in config.db_path.parent.glob(f"{config.db_path.name}-*"):
+            shutil.move(sibling, backup_dir / sibling.name)
+
+        if seed:
+            source_db_path = backup_dir / config.db_path.name
+            console.print(f"[green]Migrated database to {backup_dir}[/green]")
+        else:
+            console.print(f"[yellow]Discarded database (backed up to {backup_dir})[/yellow]")
+
+    elif config.db_path.exists() and info_path.exists():
+        # Already a libsql replica - proceed normally
+        pass
+    else:
+        # Fresh replica (neither exists) - proceed normally
+        pass
 
     # Connect to Turso with embedded replica
     try:
@@ -476,6 +518,9 @@ def turso_bootstrap(
         if seed:
             console.print("\n[yellow]Checking remote data...[/yellow]")
 
+            # Sync first to reflect remote state (crucial for vanilla SQLite migration)
+            conn.sync()
+
             # Check if remote already has data
             cursor.execute("SELECT COUNT(*) FROM songs")
             remote_song_count = cursor.fetchone()[0]
@@ -487,52 +532,85 @@ def turso_bootstrap(
                 # Copy local data to remote
                 console.print("\n[yellow]Seeding remote database...[/yellow]")
 
-                # Connect to local database directly
                 import sqlite3
 
-                local_conn = sqlite3.connect(config.db_path)
+                # Use backup as seed source if migrating, otherwise use current db_path
+                seed_source = source_db_path if source_db_path else config.db_path
+                local_conn = sqlite3.connect(seed_source)
                 local_conn.row_factory = sqlite3.Row
                 local_cursor = local_conn.cursor()
 
-                # Copy songs
-                local_cursor.execute("SELECT * FROM songs")
-                songs = local_cursor.fetchall()
-                if songs:
-                    console.print(f"Copying {len(songs)} songs...")
-                    columns = ", ".join(songs[0].keys())
-                    placeholders = ", ".join(["?" for _ in songs[0].keys()])
-                    sql = f"INSERT OR REPLACE INTO songs ({columns}) VALUES ({placeholders})"
-                    cursor.executemany(sql, [tuple(song) for song in songs])
+                try:
+                    # Begin explicit transaction
+                    cursor.execute("BEGIN")
 
-                # Copy recordings
-                local_cursor.execute("SELECT * FROM recordings")
-                recordings = local_cursor.fetchall()
-                if recordings:
-                    console.print(f"Copying {len(recordings)} recordings...")
-                    columns = ", ".join(recordings[0].keys())
-                    placeholders = ", ".join(["?" for _ in recordings[0].keys()])
-                    sql = f"INSERT OR REPLACE INTO recordings ({columns}) VALUES ({placeholders})"
-                    cursor.executemany(sql, [tuple(recording) for recording in recordings])
+                    # Copy songs (skip if table doesn't exist)
+                    try:
+                        local_cursor.execute("SELECT * FROM songs")
+                        songs = local_cursor.fetchall()
+                        if songs:
+                            console.print(f"Copying {len(songs)} songs...")
+                            columns = ", ".join(songs[0].keys())
+                            placeholders = ", ".join(["?" for _ in songs[0].keys()])
+                            sql = f"INSERT OR REPLACE INTO songs ({columns}) VALUES ({placeholders})"
+                            cursor.executemany(sql, [tuple(song) for song in songs])
+                    except sqlite3.OperationalError as e:
+                        if "no such table" in str(e):
+                            console.print("[yellow]Source has no 'songs' table, skipping...[/yellow]")
+                        else:
+                            raise
 
-                # Copy sync_metadata
-                local_cursor.execute("SELECT * FROM sync_metadata")
-                metadata = local_cursor.fetchall()
-                if metadata:
-                    console.print(f"Copying {len(metadata)} sync metadata entries...")
-                    columns = ", ".join(metadata[0].keys())
-                    placeholders = ", ".join(["?" for _ in metadata[0].keys()])
-                    sql = (
-                        f"INSERT OR REPLACE INTO sync_metadata ({columns}) VALUES ({placeholders})"
-                    )
-                    cursor.executemany(sql, [tuple(meta) for meta in metadata])
+                    # Copy recordings (skip if table doesn't exist)
+                    try:
+                        local_cursor.execute("SELECT * FROM recordings")
+                        recordings = local_cursor.fetchall()
+                        if recordings:
+                            console.print(f"Copying {len(recordings)} recordings...")
+                            columns = ", ".join(recordings[0].keys())
+                            placeholders = ", ".join(["?" for _ in recordings[0].keys()])
+                            sql = f"INSERT OR REPLACE INTO recordings ({columns}) VALUES ({placeholders})"
+                            cursor.executemany(sql, [tuple(recording) for recording in recordings])
+                    except sqlite3.OperationalError as e:
+                        if "no such table" in str(e):
+                            console.print("[yellow]Source has no 'recordings' table, skipping...[/yellow]")
+                        else:
+                            raise
 
-                local_conn.close()
-                console.print("[green]Data seeded successfully![/green]")
+                    # Copy sync_metadata (skip if table doesn't exist)
+                    try:
+                        local_cursor.execute("SELECT * FROM sync_metadata")
+                        metadata = local_cursor.fetchall()
+                        if metadata:
+                            console.print(f"Copying {len(metadata)} sync metadata entries...")
+                            columns = ", ".join(metadata[0].keys())
+                            placeholders = ", ".join(["?" for _ in metadata[0].keys()])
+                            sql = (
+                                f"INSERT OR REPLACE INTO sync_metadata ({columns}) VALUES ({placeholders})"
+                            )
+                            cursor.executemany(sql, [tuple(meta) for meta in metadata])
+                    except sqlite3.OperationalError as e:
+                        if "no such table" in str(e):
+                            console.print("[yellow]Source has no 'sync_metadata' table, skipping...[/yellow]")
+                        else:
+                            raise
 
-        # Step 3: Sync
-        console.print("\n[yellow]Syncing with Turso...[/yellow]")
-        conn.sync()
-        console.print("[green]Sync completed![/green]")
+                    # Commit transaction and sync to remote
+                    conn.commit()
+                    conn.sync()
+                    console.print("[green]Data seeded successfully![/green]")
+
+                except Exception as e:
+                    conn.rollback()
+                    console.print(f"[red]Seed failed, transaction rolled back: {e}[/red]")
+                    raise typer.Exit(1)
+                finally:
+                    local_conn.close()
+
+        # Step 3: Sync (only if not seeded - seed path handles its own sync)
+        if not seed:
+            console.print("\n[yellow]Syncing with Turso...[/yellow]")
+            conn.sync()
+            console.print("[green]Sync completed![/green]")
 
         console.print("\n[bold green]Turso bootstrap completed successfully![/bold green]")
 
