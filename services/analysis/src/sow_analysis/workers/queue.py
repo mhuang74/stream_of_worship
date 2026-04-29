@@ -680,45 +680,49 @@ class JobQueue:
                             logger.info(
                                 f"[{job.id}] Releasing LRC semaphore to wait for child job {child_id}"
                             )
+                            self._lrc_semaphore.release()
 
-                            # Poll child job status
+                            # Poll child job status; try/finally ensures re-acquire is balanced
+                            # even if polling raises, preventing the outer `async with` exit
+                            # from double-releasing and inflating semaphore capacity.
                             poll_interval = 3.0
                             max_wait = 7200.0  # 2 hour timeout
                             wait_start = time.time()
 
-                            while True:
-                                await asyncio.sleep(poll_interval)
+                            try:
+                                while True:
+                                    await asyncio.sleep(poll_interval)
 
-                                child_job = await self.get_job(child_id)
-                                if not child_job:
-                                    logger.error(f"[{job.id}] Child job {child_id} not found")
-                                    raise LRCWorkerError(
-                                        f"Child stem separation job {child_id} not found"
-                                    )
+                                    child_job = await self.get_job(child_id)
+                                    if not child_job:
+                                        logger.error(f"[{job.id}] Child job {child_id} not found")
+                                        raise LRCWorkerError(
+                                            f"Child stem separation job {child_id} not found"
+                                        )
 
-                                if child_job.status == JobStatus.COMPLETED:
-                                    logger.info(
-                                        f"[{job.id}] Child stem separation job {child_id} completed"
-                                    )
-                                    break
-                                elif child_job.status == JobStatus.FAILED:
-                                    logger.error(
-                                        f"[{job.id}] Child stem separation job {child_id} failed: {child_job.error_message}"
-                                    )
-                                    break
+                                    if child_job.status == JobStatus.COMPLETED:
+                                        logger.info(
+                                            f"[{job.id}] Child stem separation job {child_id} completed"
+                                        )
+                                        break
+                                    elif child_job.status == JobStatus.FAILED:
+                                        logger.error(
+                                            f"[{job.id}] Child stem separation job {child_id} failed: {child_job.error_message}"
+                                        )
+                                        break
 
-                                # Timeout — fall back to full audio rather than failing the LRC job
-                                if time.time() - wait_start > max_wait:
-                                    logger.warning(
-                                        f"[{job.id}] Timeout waiting for child stem separation job {child_id} "
-                                        f"after {max_wait:.0f}s — falling back to full audio for transcription"
-                                    )
-                                    break
-
-                            # Re-acquire the LRC semaphore slot before continuing
-                            logger.info(f"[{job.id}] Re-acquiring LRC semaphore slot")
-                            await self._lrc_semaphore.acquire()
-                            logger.info(f"[{job.id}] Re-acquired LRC semaphore slot")
+                                    # Timeout — fall back to full audio rather than failing the LRC job
+                                    if time.time() - wait_start > max_wait:
+                                        logger.warning(
+                                            f"[{job.id}] Timeout waiting for child stem separation job {child_id} "
+                                            f"after {max_wait:.0f}s — falling back to full audio for transcription"
+                                        )
+                                        break
+                            finally:
+                                # Re-acquire the LRC semaphore slot before continuing
+                                logger.info(f"[{job.id}] Re-acquiring LRC semaphore slot")
+                                await self._lrc_semaphore.acquire()
+                                logger.info(f"[{job.id}] Re-acquired LRC semaphore slot")
 
                             child_job = await self.get_job(child_id)
                             if (
