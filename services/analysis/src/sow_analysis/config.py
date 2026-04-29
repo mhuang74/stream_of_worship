@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     SOW_BS_ROFORMER_MODEL: str = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
     SOW_DEREVERB_MODEL: str = "UVR-De-Echo-Normal.pth"
 
+    # Queue Configuration
+    SOW_QUEUE_START_DELAY_SECONDS: int = 30  # Delay before processing starts (window to cancel/clear jobs)
+
     # Qwen3 Alignment Service Configuration
     SOW_QWEN3_BASE_URL: str = "http://qwen3:8000"  # Base URL for Qwen3 Alignment Service
     SOW_QWEN3_API_KEY: str = ""  # Optional API key for Qwen3 service authentication

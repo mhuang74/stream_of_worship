@@ -102,7 +102,7 @@ if job and job.status == JobStatus.CANCELLED:
 
 **Auth:** `verify_admin_api_key`
 
-**Behavior:** Sets all jobs with status `QUEUED` to `CANCELLED`. Persists each to SQLite.
+**Behavior:** Sets all jobs with status `QUEUED` or `PROCESSING` to `CANCELLED`. Persists each to SQLite.
 
 **Request:** No body, no query params.
 
@@ -121,8 +121,8 @@ if job and job.status == JobStatus.CANCELLED:
 
 ### Implementation notes
 
-- Iterate over `self._jobs` dict to find all `QUEUED` jobs.
-- Also query SQLite for `QUEUED` jobs not in memory (edge case: if a job was persisted but not yet loaded).
+- Iterate over `self._jobs` dict to find all `QUEUED` and `PROCESSING` jobs.
+- Also query SQLite for `QUEUED` and `PROCESSING` jobs not in memory (edge case: if a job was persisted but not yet loaded).
 - Set each to `CANCELLED` and persist.
 - The `asyncio.Queue` entries for these jobs will be discarded lazily by the processing loop guard.
 
@@ -137,7 +137,7 @@ In `JobQueue.initialize()`, update the recovery logic:
 **Updated:**
 - Find `PROCESSING` jobs → reset to `QUEUED` → re-queue (unchanged)
 - Find `QUEUED` jobs → re-queue (unchanged)
-- Find `CANCELLED` jobs → load into `_jobs` dict for queryability, but **do not** re-queue
+- Find `CANCELLED` jobs → do not load into memory (terminal state, queryable via DB fallback)
 - Update `_cleanup_finished_job()` to also handle `CANCELLED` jobs (evict from memory after 5-min delay, same as COMPLETED/FAILED)
 
 ## 6. JobResponse Model Update
@@ -153,9 +153,22 @@ Add optional `warning: Optional[str] = None` field to `JobResponse` in `models.p
 | `queue.py` | Add `cancel_job()` method; add `clear_queue()` method; add processing loop guard for cancelled jobs; update `_cleanup_finished_job()` for `CANCELLED` state; update recovery logic in `initialize()` |
 | `routes.py` | Add `POST /jobs/{job_id}/cancel` endpoint; add `POST /jobs/clear-queue` endpoint |
 | `auth.py` (new) or `routes.py` | Add `verify_admin_api_key` dependency |
-| `config.py` | Add `admin_api_key` setting from `SOW_ADMIN_API_KEY` env var |
+| `config.py` | Add `admin_api_key` setting from `SOW_ADMIN_API_KEY` env var; add `SOW_QUEUE_START_DELAY_SECONDS` |
 
-## 8. Out of Scope
+## 8. Startup Processing Delay
+
+**New env var:** `SOW_QUEUE_START_DELAY_SECONDS` (default: 30)
+
+After service restart, `process_jobs()` pauses for this many seconds before dequeuing any jobs. This gives the operator a window to call `clear-queue` before recovered jobs transition from QUEUED to PROCESSING.
+
+The delay is implemented as a 1-second-polling loop so that `stop()` is responsive during the delay period.
+
+## 9. Log Cleanup
+
+- **Periodic queue state log:** Exclude `cancelled` count from the per-type summary (cancelled is a terminal state like completed/failed, which are already evicted from memory after 5 min).
+- **Startup log:** Cancelled jobs are not loaded into memory on startup (terminal state, queryable via DB fallback).
+
+## 10. Out of Scope
 
 The following are explicitly **not** part of this spec:
 
@@ -165,7 +178,7 @@ The following are explicitly **not** part of this spec:
 - **Job timeout:** Not addressed.
 - **Partial result cleanup on cancel:** Temp files are handled by `TemporaryDirectory`; R2 uploads are not cleaned up on cancellation.
 
-## 9. Decision Rationale
+## 11. Decision Rationale
 
 | Decision | Rationale |
 |---|---|
@@ -174,4 +187,7 @@ The following are explicitly **not** part of this spec:
 | Separate admin API key | Allows operators to rotate admin credentials independently from regular API keys. |
 | No-op on COMPLETED/FAILED | Terminal states represent immutable truth. Cancelling them would be semantically confusing. |
 | Clear-queue clears ALL queued | Simplest mental model for operators. No filtering needed. |
+| Clear-queue also clears PROCESSING | After restart, recovered jobs quickly transition QUEUED→PROCESSING. Without this, clear-queue is ineffective for the race-condition batch. |
+| Startup processing delay | Gives operator a reliable window to cancel/clear jobs before they start processing. 30s default is generous for interactive use. |
 | Lazy queue removal | `asyncio.Queue` doesn't support targeted removal. Checking status at dequeue time is simpler and race-condition-free. |
+| Exclude cancelled from periodic log | Cancelled is a terminal state. Including it clutters the log with stale counts that grow unbounded until 7-day purge. |

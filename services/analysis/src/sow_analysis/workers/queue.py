@@ -192,15 +192,6 @@ class JobQueue:
         if queued:
             logger.info(f"Loaded {len(queued)} queued jobs from database")
 
-        # Load cancelled jobs into memory for queryability, but don't re-queue
-        cancelled = await self.job_store.get_cancelled_jobs()
-        for job in cancelled:
-            if job.id not in self._jobs:
-                self._jobs[job.id] = job
-
-        if cancelled:
-            logger.info(f"Loaded {len(cancelled)} cancelled jobs from database")
-
     async def submit(
         self,
         job_type: JobType,
@@ -282,6 +273,17 @@ class JobQueue:
         """Background task that processes queued jobs."""
         self._running = True
         self._start_periodic_logging()
+
+        start_delay = settings.SOW_QUEUE_START_DELAY_SECONDS
+        if start_delay > 0:
+            logger.info(
+                f"Queue processing paused for {start_delay}s — use this window to cancel/clear jobs"
+            )
+            for _ in range(start_delay):
+                if not self._running:
+                    return
+                await asyncio.sleep(1.0)
+            logger.info("Queue processing starting")
 
         while self._running:
             try:
@@ -1127,16 +1129,16 @@ class JobQueue:
         return job, warning
 
     async def clear_queue(self) -> list[Job]:
-        """Cancel all queued jobs.
+        """Cancel all queued and processing jobs.
 
         Returns:
             List of jobs that were cancelled
         """
         cancelled_jobs: list[Job] = []
 
-        # Find all QUEUED jobs in memory
+        # Find all QUEUED and PROCESSING jobs in memory
         for job_id, job in list(self._jobs.items()):
-            if job.status == JobStatus.QUEUED:
+            if job.status in (JobStatus.QUEUED, JobStatus.PROCESSING):
                 job.status = JobStatus.CANCELLED
                 job.updated_at = datetime.now(timezone.utc)
                 job.stage = "cancelled"
@@ -1174,6 +1176,31 @@ class JobQueue:
                     cancelled_jobs.append(job)
         except Exception as e:
             logger.error(f"Failed to list queued jobs from database: {e}")
+
+        # Also query DB for PROCESSING jobs not in memory
+        try:
+            db_processing_jobs = await self.job_store.list_jobs(
+                status=JobStatus.PROCESSING, limit=1000
+            )
+            for job in db_processing_jobs:
+                if job.id not in self._jobs:
+                    job.status = JobStatus.CANCELLED
+                    job.updated_at = datetime.now(timezone.utc)
+                    job.stage = "cancelled"
+
+                    try:
+                        await self.job_store.update_job(
+                            job.id,
+                            status="cancelled",
+                            stage="cancelled",
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update cancelled job {job.id} in database: {e}")
+
+                    self._jobs[job.id] = job
+                    cancelled_jobs.append(job)
+        except Exception as e:
+            logger.error(f"Failed to list processing jobs from database: {e}")
 
         return cancelled_jobs
 
@@ -1217,9 +1244,9 @@ class JobQueue:
                 processing_durations[job.type].append(duration)
 
         # Build summary line
-        analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]},cancelled:{stats[JobType.ANALYZE][JobStatus.CANCELLED]}"
-        lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]},cancelled:{stats[JobType.LRC][JobStatus.CANCELLED]}"
-        stem_stats = f"queued:{stats[JobType.STEM_SEPARATION][JobStatus.QUEUED]},processing:{stats[JobType.STEM_SEPARATION][JobStatus.PROCESSING]},completed:{stats[JobType.STEM_SEPARATION][JobStatus.COMPLETED]},failed:{stats[JobType.STEM_SEPARATION][JobStatus.FAILED]},cancelled:{stats[JobType.STEM_SEPARATION][JobStatus.CANCELLED]}"
+        analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]}"
+        lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]}"
+        stem_stats = f"queued:{stats[JobType.STEM_SEPARATION][JobStatus.QUEUED]},processing:{stats[JobType.STEM_SEPARATION][JobStatus.PROCESSING]},completed:{stats[JobType.STEM_SEPARATION][JobStatus.COMPLETED]},failed:{stats[JobType.STEM_SEPARATION][JobStatus.FAILED]}"
 
         wait_time_str = ""
         if queued_wait_times[JobType.ANALYZE]:
