@@ -540,59 +540,31 @@ def turso_bootstrap(
                 local_conn.row_factory = sqlite3.Row
                 local_cursor = local_conn.cursor()
 
+                def seed_table(table_name):
+                    try:
+                        local_cursor.execute(f"SELECT * FROM {table_name}")
+                        first_batch = True
+                        while True:
+                            rows = local_cursor.fetchmany(100)
+                            if not rows:
+                                break
+                            if first_batch:
+                                console.print(f"Copying {table_name}...")
+                                columns = ", ".join(rows[0].keys())
+                                placeholders = ", ".join(["?" for _ in rows[0].keys()])
+                                sql = f"INSERT OR REPLACE INTO {table_name} ({columns}) VALUES ({placeholders})"
+                                first_batch = False
+                            cursor.executemany(sql, [tuple(row) for row in rows])
+                    except sqlite3.OperationalError as e:
+                        if "no such table" in str(e):
+                            console.print(f"[yellow]Source has no '{table_name}' table, skipping...[/yellow]")
+                        else:
+                            raise
+
                 try:
-                    # Begin explicit transaction
-                    cursor.execute("BEGIN")
-
-                    # Copy songs (skip if table doesn't exist)
-                    try:
-                        local_cursor.execute("SELECT * FROM songs")
-                        songs = local_cursor.fetchall()
-                        if songs:
-                            console.print(f"Copying {len(songs)} songs...")
-                            columns = ", ".join(songs[0].keys())
-                            placeholders = ", ".join(["?" for _ in songs[0].keys()])
-                            sql = f"INSERT OR REPLACE INTO songs ({columns}) VALUES ({placeholders})"
-                            cursor.executemany(sql, [tuple(song) for song in songs])
-                    except sqlite3.OperationalError as e:
-                        if "no such table" in str(e):
-                            console.print("[yellow]Source has no 'songs' table, skipping...[/yellow]")
-                        else:
-                            raise
-
-                    # Copy recordings (skip if table doesn't exist)
-                    try:
-                        local_cursor.execute("SELECT * FROM recordings")
-                        recordings = local_cursor.fetchall()
-                        if recordings:
-                            console.print(f"Copying {len(recordings)} recordings...")
-                            columns = ", ".join(recordings[0].keys())
-                            placeholders = ", ".join(["?" for _ in recordings[0].keys()])
-                            sql = f"INSERT OR REPLACE INTO recordings ({columns}) VALUES ({placeholders})"
-                            cursor.executemany(sql, [tuple(recording) for recording in recordings])
-                    except sqlite3.OperationalError as e:
-                        if "no such table" in str(e):
-                            console.print("[yellow]Source has no 'recordings' table, skipping...[/yellow]")
-                        else:
-                            raise
-
-                    # Copy sync_metadata (skip if table doesn't exist)
-                    try:
-                        local_cursor.execute("SELECT * FROM sync_metadata")
-                        metadata = local_cursor.fetchall()
-                        if metadata:
-                            console.print(f"Copying {len(metadata)} sync metadata entries...")
-                            columns = ", ".join(metadata[0].keys())
-                            placeholders = ", ".join(["?" for _ in metadata[0].keys()])
-                            sql = (
-                                f"INSERT OR REPLACE INTO sync_metadata ({columns}) VALUES ({placeholders})"
-                            )
-                            cursor.executemany(sql, [tuple(meta) for meta in metadata])
-                    except sqlite3.OperationalError as e:
-                        if "no such table" in str(e):
-                            console.print("[yellow]Source has no 'sync_metadata' table, skipping...[/yellow]")
-                        else:
-                            raise
+                    seed_table("songs")
+                    seed_table("recordings")
+                    seed_table("sync_metadata")
 
                     # Commit transaction and sync to remote
                     conn.commit()
