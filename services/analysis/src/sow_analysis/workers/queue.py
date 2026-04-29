@@ -718,9 +718,6 @@ class JobQueue:
                             )
                             self._lrc_semaphore.release()
 
-                            # Poll child job status; try/finally ensures re-acquire is balanced
-                            # even if polling raises, preventing the outer `async with` exit
-                            # from double-releasing and inflating semaphore capacity.
                             poll_interval = 3.0
                             max_wait = 7200.0  # 2 hour timeout
                             wait_start = time.time()
@@ -754,10 +751,23 @@ class JobQueue:
                                             f"after {max_wait:.0f}s — falling back to full audio for transcription"
                                         )
                                         break
+                            except asyncio.CancelledError:
+                                logger.warning(
+                                    f"[{job.id}] Cancelled while polling for child job {child_id}"
+                                )
+                                raise
                             finally:
-                                # Re-acquire the LRC semaphore slot before continuing
+                                # Re-acquire the LRC semaphore slot before continuing.
+                                # asyncio.shield prevents CancelledError from interrupting
+                                # the acquire, ensuring the semaphore stays balanced with
+                                # the outer async with on line 316.
                                 logger.info(f"Re-acquiring LRC semaphore slot")
-                                await self._lrc_semaphore.acquire()
+                                try:
+                                    await asyncio.shield(self._lrc_semaphore.acquire())
+                                except asyncio.CancelledError:
+                                    # shield's inner future completed but we were
+                                    # cancelled externally — acquire still succeeded
+                                    pass
                                 logger.info(f"Re-acquired LRC semaphore slot")
 
                             child_job = await self.get_job(child_id)
