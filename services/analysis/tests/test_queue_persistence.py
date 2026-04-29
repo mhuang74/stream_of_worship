@@ -341,3 +341,89 @@ async def test_old_jobs_purged_on_startup(temp_dir: Path) -> None:
     assert retrieved.status == JobStatus.COMPLETED
 
     await queue2.stop()
+
+
+@pytest.mark.asyncio
+async def test_clear_queue_cancels_processing_jobs(temp_dir: Path) -> None:
+    """Test that clear_queue cancels both QUEUED and PROCESSING jobs."""
+    queue = JobQueue(
+        max_concurrent_analysis=1,
+        max_concurrent_lrc=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    # Submit a queued job
+    queued_job = await queue.submit(
+        JobType.ANALYZE,
+        AnalyzeJobRequest(audio_url="s3://test/queued.mp3", content_hash="queued1"),
+    )
+
+    # Submit a job and set it to PROCESSING
+    processing_job = await queue.submit(
+        JobType.ANALYZE,
+        AnalyzeJobRequest(audio_url="s3://test/processing.mp3", content_hash="proc1"),
+    )
+    processing_job.status = JobStatus.PROCESSING
+    processing_job.stage = "analyzing"
+    await queue.job_store.update_job(
+        processing_job.id, status="processing", stage="analyzing"
+    )
+
+    # Clear queue should cancel both
+    cancelled = await queue.clear_queue()
+    cancelled_ids = {j.id for j in cancelled}
+    assert queued_job.id in cancelled_ids
+    assert processing_job.id in cancelled_ids
+
+    # Verify status in memory
+    assert queued_job.status == JobStatus.CANCELLED
+    assert processing_job.status == JobStatus.CANCELLED
+
+    # Verify status in DB
+    db_queued = await queue.job_store.get_job(queued_job.id)
+    db_processing = await queue.job_store.get_job(processing_job.id)
+    assert db_queued.status == JobStatus.CANCELLED
+    assert db_processing.status == JobStatus.CANCELLED
+
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_clear_queue_skips_completed_failed_cancelled(temp_dir: Path) -> None:
+    """Test that clear_queue does not affect terminal-state jobs."""
+    queue = JobQueue(
+        max_concurrent_analysis=1,
+        max_concurrent_lrc=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    completed_job = await queue.submit(
+        JobType.ANALYZE,
+        AnalyzeJobRequest(audio_url="s3://test/comp.mp3", content_hash="comp1"),
+    )
+    completed_job.status = JobStatus.COMPLETED
+    completed_job.stage = "complete"
+    await queue.job_store.update_job(completed_job.id, status="completed", stage="complete")
+
+    cancelled_job = await queue.submit(
+        JobType.ANALYZE,
+        AnalyzeJobRequest(audio_url="s3://test/canc.mp3", content_hash="canc1"),
+    )
+    cancelled_job.status = JobStatus.CANCELLED
+    cancelled_job.stage = "cancelled"
+    await queue.job_store.update_job(cancelled_job.id, status="cancelled", stage="cancelled")
+
+    # Clear queue should not cancel these
+    cancelled = await queue.clear_queue()
+    cancelled_ids = {j.id for j in cancelled}
+    assert completed_job.id not in cancelled_ids
+    assert cancelled_job.id not in cancelled_ids
+
+    assert completed_job.status == JobStatus.COMPLETED
+    assert cancelled_job.status == JobStatus.CANCELLED
+
+    await queue.stop()

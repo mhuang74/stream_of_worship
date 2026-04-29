@@ -287,7 +287,7 @@ async def cancel_job(
 async def clear_queue(
     admin_key: str = Depends(verify_admin_api_key),
 ) -> ClearQueueResponse:
-    """Cancel all queued jobs.
+    """Cancel all queued and processing jobs.
 
     Args:
         admin_key: Validated admin API key
