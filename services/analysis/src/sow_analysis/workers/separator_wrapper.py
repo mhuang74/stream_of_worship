@@ -101,7 +101,7 @@ class AudioSeparatorWrapper:
         self,
         input_path: Path,
         output_dir: Path,
-    ) -> Tuple[Optional[Path], Optional[Path]]:
+    ) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """Run two-stage stem separation.
 
         Stage 1: Extract vocals and instrumental using BS-Roformer
@@ -112,7 +112,10 @@ class AudioSeparatorWrapper:
             output_dir: Directory for output files
 
         Returns:
-            Tuple of (vocals_clean_path, instrumental_path) or (None, None) on failure
+            Tuple of (vocals_clean_path, vocals_reverb_path, instrumental_path).
+            vocals_reverb_path is the Stage 1 vocals before de-echo (still contains
+            reverb), useful for transition processing. Any element may be None if
+            the corresponding stage failed to produce output.
 
         Raises:
             RuntimeError: If models are not ready
@@ -158,7 +161,7 @@ class AudioSeparatorWrapper:
 
         if not vocals_file or not vocals_file.exists():
             logger.error("Stage 1 failed: No vocals file found")
-            return None, None
+            return None, None, None
 
         if not instrumental_file or not instrumental_file.exists():
             logger.warning("Stage 1: No instrumental file found")
@@ -202,9 +205,9 @@ class AudioSeparatorWrapper:
 
         if not dry_vocals_file or not dry_vocals_file.exists():
             logger.error("Stage 2 failed: No dry vocals file found")
-            return None, instrumental_file
+            return None, vocals_file, instrumental_file
 
-        return dry_vocals_file, instrumental_file
+        return dry_vocals_file, vocals_file, instrumental_file
 
     async def cleanup(self) -> None:
         """Unload models and release resources."""

@@ -111,6 +111,7 @@ class JobResult(BaseModel):
 
     # Stem separation results
     vocals_clean_url: Optional[str] = None
+    vocals_reverb_url: Optional[str] = None
     instrumental_clean_url: Optional[str] = None
 
 

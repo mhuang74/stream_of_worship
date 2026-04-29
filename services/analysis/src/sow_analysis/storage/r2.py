@@ -165,19 +165,21 @@ class R2Client:
         hash_prefix: str,
         vocals_clean: Path,
         instrumental_clean: Optional[Path] = None,
-    ) -> Tuple[str, Optional[str]]:
+        vocals_reverb: Optional[Path] = None,
+    ) -> Tuple[str, Optional[str], Optional[str]]:
         """Upload clean stems to R2.
 
-        Uploads vocals_clean.flac and optionally instrumental_clean.flac
-        to the stems directory.
+        Uploads vocals_clean.flac and optionally instrumental_clean.flac and
+        vocals_reverb.flac to the stems directory.
 
         Args:
             hash_prefix: Content hash prefix for the path
-            vocals_clean: Path to the clean vocals FLAC file
+            vocals_clean: Path to the clean (de-echoed) vocals FLAC file
             instrumental_clean: Optional path to the instrumental FLAC file
+            vocals_reverb: Optional path to the Stage 1 vocals (with reverb) FLAC file
 
         Returns:
-            Tuple of (vocals_clean_url, instrumental_clean_url or None)
+            Tuple of (vocals_clean_url, instrumental_clean_url or None, vocals_reverb_url or None)
         """
         loop = asyncio.get_event_loop()
 
@@ -205,4 +207,17 @@ class R2Client:
             )
             instrumental_url = f"s3://{self.bucket}/{instrumental_key}"
 
-        return vocals_url, instrumental_url
+        # Upload vocals_reverb.flac if provided
+        vocals_reverb_url = None
+        if vocals_reverb and vocals_reverb.exists():
+            reverb_key = f"{hash_prefix}/stems/vocals_reverb.flac"
+            await loop.run_in_executor(
+                None,
+                self.s3.upload_file,
+                str(vocals_reverb),
+                self.bucket,
+                reverb_key,
+            )
+            vocals_reverb_url = f"s3://{self.bucket}/{reverb_key}"
+
+        return vocals_url, instrumental_url, vocals_reverb_url
