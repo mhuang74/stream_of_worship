@@ -3,9 +3,12 @@
 Allows browsing and searching the song catalog to add songs to a songset.
 """
 
+import logging
 from typing import Optional
 
 from textual.app import ComposeResult
+
+logger = logging.getLogger("sow_app.screens.browse")
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
@@ -148,15 +151,32 @@ class BrowseScreen(Screen):
         Args:
             query: Optional search query
         """
+        # Get catalog stats for logging
+        stats = self.catalog.get_stats()
+        logger.info(
+            f"Catalog stats: total_songs={stats['total_songs']}, "
+            f"total_recordings={stats['total_recordings']}, "
+            f"analyzed={stats['analyzed_recordings']}"
+        )
+        logger.info(
+            f"LRC ready count: {self.catalog.db_client.get_lrc_ready_count()}"
+        )
+
         if query:
             search_query, field = self._parse_search_query(query)
+            logger.info(f"Searching: query='{search_query}', field={field}")
             self.songs = self.catalog.search_songs_with_recordings(
                 search_query, field=field, limit=50
             )
         else:
+            logger.info("Loading all LRC-ready songs (limit=50)")
             self.songs = self.catalog.list_songs_with_recordings(
                 only_with_lrc=True, limit=50
             )
+
+        logger.info(f"Loaded {len(self.songs)} songs for display")
+        for i, song in enumerate(self.songs[:20]):  # Log first 20 for debugging
+            logger.info(f"  Song {i+1}: {song.song.title} (analysis={song.recording.analysis_status if song.recording else 'none'})")
 
         table = self.query_one("#song_table", DataTable)
         table.clear()

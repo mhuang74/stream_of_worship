@@ -4,10 +4,13 @@ Provides high-level catalog operations combining songs and recordings data
 for display in the TUI. Acts as a facade over the read-only database client.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 from stream_of_worship.admin.db.models import Recording, Song
+
+logger = logging.getLogger("sow_app.catalog")
 from stream_of_worship.admin.db.schema import (
     RECORDING_COLUMNS_FOR_JOIN,
     SONG_COLUMNS_FOR_JOIN,
@@ -285,18 +288,25 @@ class CatalogService:
             recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
             result.append(SongWithRecording(song=song, recording=recording))
 
+        logger.debug(
+            f"LRC songs query: album={album}, key={key}, limit={limit}, offset={offset} -> {len(result)} results"
+        )
         return result
 
     def search_songs_with_recordings(
         self, query: str, field: str = "all", limit: int = 20, only_with_lrc: bool = True
     ) -> list[SongWithRecording]:
         """Search songs with their recordings."""
+        logger.debug(
+            f"Search songs: query='{query}', field={field}, limit={limit}, only_with_lrc={only_with_lrc}"
+        )
         if not only_with_lrc:
             songs = self.db_client.search_songs(query, field=field, limit=limit)
             result = []
             for song in songs:
                 recording = self.db_client.get_recording_by_song_id(song.id)
                 result.append(SongWithRecording(song=song, recording=recording))
+            logger.debug(f"Search returned {len(result)} results")
             return result
 
         return self._search_lrc_songs(query, field=field, limit=limit)
@@ -405,13 +415,14 @@ class CatalogService:
         total_songs = stats["total_songs"]
         total_recordings = stats["total_recordings"]
         analyzed = stats["analyzed_recordings"]
+        lrc_ready = self.db_client.get_lrc_ready_count()
 
         if total_songs == 0:
             return {
                 "status": "empty",
                 "total_songs": 0,
                 "total_recordings": 0,
-                "analyzed_recordings": 0,
+                "lrc_ready": 0,
                 "guidance": "No songs found. Run: sow-admin catalog scrape",
             }
 
@@ -420,25 +431,25 @@ class CatalogService:
                 "status": "no_recordings",
                 "total_songs": total_songs,
                 "total_recordings": 0,
-                "analyzed_recordings": 0,
+                "lrc_ready": 0,
                 "guidance": f"Found {total_songs} songs but no audio files. Download audio: sow-admin audio download <song_id>",
             }
 
-        if analyzed == 0:
+        if lrc_ready == 0:
             return {
-                "status": "no_analysis",
+                "status": "no_lrc",
                 "total_songs": total_songs,
                 "total_recordings": total_recordings,
-                "analyzed_recordings": 0,
-                "guidance": f"Found {total_songs} songs and {total_recordings} recording(s), but no analysis completed. Run: sow-admin audio analyze <song_id>",
+                "lrc_ready": 0,
+                "guidance": f"Found {total_songs} songs and {total_recordings} recording(s), but no LRC lyrics ready. Run: sow-admin audio lrc <song_id>",
             }
 
         return {
             "status": "ready",
             "total_songs": total_songs,
             "total_recordings": total_recordings,
-            "analyzed_recordings": analyzed,
-            "guidance": f"Catalog ready: {analyzed} analyzed recording(s) available",
+            "lrc_ready": lrc_ready,
+            "guidance": f"Catalog ready: {lrc_ready} song(s) with lyrics available",
         }
 
     def get_songset_with_items(

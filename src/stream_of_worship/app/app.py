@@ -110,19 +110,19 @@ class SowApp(App):
         logger.info("App mounted, navigating to initial screen: SONGSET_LIST")
 
         if self.config.sync_on_startup and self.config.is_turso_configured:
-            self.run_worker(self._sync_in_background, thread=True, exclusive=True)
+            self.run_worker(self._sync_in_background, exclusive=True)
 
         self.navigate_to(AppScreen.SONGSET_LIST)
 
-    def _sync_in_background(self) -> None:
+    async def _sync_in_background(self) -> None:
         """Run sync in background thread with error handling."""
         try:
             result = self.sync_service.execute_sync()
             logger.info(f"Background sync completed: {result.message}")
-            self.call_from_thread(self.notify, f"Sync completed: {result.message}")
+            self.notify(f"Sync completed: {result.message}")
         except Exception as e:
             logger.warning(f"Background sync failed: {e}")
-            self.call_from_thread(self.notify, f"Sync failed: {e}", severity="error")
+            self.notify(f"Sync failed: {e}", severity="error")
 
     def action_sync_catalog(self) -> None:
         """Sync catalog on demand (capital S key)."""
@@ -130,14 +130,14 @@ class SowApp(App):
             self.notify("Turso sync not configured", severity="warning")
             return
 
-        def do_sync():
+        async def do_sync():
             try:
                 result = self.sync_service.execute_sync()
-                self.call_from_thread(self.notify, f"Sync completed: {result.message}")
+                self.notify(f"Sync completed: {result.message}")
             except Exception as e:
-                self.call_from_thread(self.notify, f"Sync failed: {e}", severity="error")
+                self.notify(f"Sync failed: {e}", severity="error")
 
-        self.run_worker(do_sync, thread=True, exclusive=True)
+        self.run_worker(do_sync, exclusive=True)
 
     def _create_screen(self, screen: AppScreen):
         """Create a fresh screen instance.
@@ -222,6 +222,15 @@ class SowApp(App):
     def action_quit(self) -> None:
         """Quit the application with cleanup."""
         self.playback.stop()
+
+        # Show exit message with catalog stats
+        try:
+            catalog = CatalogService(self.read_client)
+            lrc_ready = self.read_client.get_lrc_ready_count()
+            logger.info(f"App exiting: {lrc_ready} song(s) with lyrics available")
+        except Exception:
+            pass  # Don't fail on logging
+
         self.read_client.close()
         self.songset_client.close()
         self.exit()
