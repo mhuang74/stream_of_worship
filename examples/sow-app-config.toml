@@ -1,0 +1,194 @@
+# User App Configuration Example
+# Stream of Worship (sow-app)
+# ================================================
+
+# The User App is the interactive TUI for worship leaders to browse songs,
+# create multi-song sets with smooth transitions, and export lyrics videos.
+#
+# Place this file at: ~/.config/sow/config.toml
+# Or use the --config flag: sow-app run --config /path/to/config.toml
+
+# ================================================
+# [database] - Local Database Paths
+# ================================================
+[database]
+# Path to the main database (synced from Turso cloud).
+# This is a read-only local cache of the cloud catalog.
+# The User App never writes directly to Turso - it only syncs FROM Turso.
+db_path = "/Users/you/.config/sow/db/sow.db"
+
+# Path to the songsets database (local-only, stores your created songsets).
+# This stores your custom songsets, transition settings, and export history.
+# This database is NOT synced to cloud - it's personal to your device.
+songsets_db_path = "/Users/you/.config/sow/db/songsets.db"
+
+# ================================================
+# [turso] - Turso Cloud Database Sync Settings
+# ================================================
+[turso]
+# Turso database URL for syncing FROM cloud.
+# Format: libsql://<database-name>-<username>.turso.io
+# NOTE: Use the libsql:// protocol for embedded replicas (faster sync)
+database_url = "libsql://your-db.turso.io"
+
+# READ-ONLY authentication token (safety feature).
+# The User App only needs to READ from Turso, never write.
+# This token should have read-only permissions.
+# 
+# To generate this token:
+#   turso db tokens create sow-catalog --read-only
+#
+# IMPORTANT: Never use a full-access token here - it could accidentally
+# corrupt the catalog if there's a bug in the sync logic.
+readonly_token = "your-readonly-token-here"
+
+# Automatically sync with Turso when the app starts.
+# If false, you'll need to manually run: sow-app db sync
+# Recommended: true for most users
+sync_on_startup = true
+
+# Sync interval in minutes (0 = only sync on startup/manual sync).
+# Background sync keeps your local cache up to date.
+sync_interval = 30
+
+# ================================================
+# [app] - Application Settings
+# ================================================
+[app]
+# Directory for caching downloaded files (audio previews, images, etc.).
+# This can grow large - consider using a path with sufficient space.
+cache_dir = "/Users/you/.cache/sow"
+
+# Output directory for generated files (transitions, songs, videos).
+# All exports will be saved here by default.
+output_dir = "/Users/you/sow/output"
+
+# Default volume for audio preview (0.0 - 1.0).
+# Lower this if previews are too loud, raise if too quiet.
+preview_volume = 0.8
+
+# Default gap between songs in beats.
+# This is the silence between the end of one song and start of transition.
+# 2.0 beats = 2 quarter notes at the target tempo.
+default_gap_beats = 2.0
+
+# Default video template for lyrics video generation.
+# Available options: "dark", "gradient_warm", "gradient_blue"
+default_video_template = "dark"
+
+# Default video resolution for exports.
+# Available options: "720p", "1080p", "1440p", "4K"
+# Higher resolutions take longer to render and create larger files.
+default_video_resolution = "1080p"
+
+# ================================================
+# [transition] - Default Transition Parameters
+# ================================================
+[transition]
+# Default crossfade duration in seconds.
+# Longer crossfades = smoother but more overlap.
+# Recommended: 2.0 - 4.0 for worship music.
+crossfade_duration = 3.0
+
+# Default tempo matching strategy.
+# "auto" - Automatically align tempos (recommended)
+# "none" - Don't adjust tempo
+# "manual" - Use manually specified BPM
+tempo_matching = "auto"
+
+# Default key matching strategy.
+# "auto" - Automatically find best key transition
+# "none" - Keep original keys
+# "manual" - Use manually specified key
+key_matching = "auto"
+
+# ================================================
+# [audio] - Audio Processing Settings
+# ================================================
+[audio]
+# Default output format for audio exports.
+# Options: "mp3", "ogg", "flac", "wav"
+# mp3 = good compression, widely compatible
+# ogg = better quality at smaller size
+# flac = lossless, large files
+# wav = uncompressed, very large
+output_format = "ogg"
+
+# Audio bitrate for compressed formats (mp3, ogg).
+# Higher = better quality but larger files.
+# Recommended: "192k" for general use, "320k" for highest quality
+bitrate = "192k"
+
+# ================================================
+# [video] - Video Generation Settings
+# ================================================
+[video]
+# FFmpeg preset for encoding speed vs compression.
+# "fast" = quicker rendering, larger files
+# "slow" = slower rendering, smaller files
+# Options: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+ffmpeg_preset = "medium"
+
+# Font settings for lyrics display.
+# Path to a TrueType/OpenType font file.
+# If not set, uses system default.
+# font_path = "/System/Library/Fonts/PingFang.ttc"
+
+# Font size for lyrics (in pixels).
+# Automatically scaled based on resolution if not set.
+# font_size = 64
+
+# ================================================
+# Environment Variables (Override Config File)
+# ================================================
+# Environment variables take precedence over values in this file.
+#
+# Optional Environment Variables:
+#   SOW_TURSO_DATABASE_URL        - Override Turso database URL
+#   SOW_TURSO_READONLY_TOKEN      - Override Turso read-only token
+#   SOW_CACHE_DIR                 - Override cache directory
+#   SOW_OUTPUT_DIR                - Override output directory
+#
+# Example .bashrc/.zshrc additions:
+#   export SOW_TURSO_READONLY_TOKEN="your-token-here"
+
+# ================================================
+# Quick Reference: Common Commands
+# ================================================
+# run                          - Start the interactive TUI
+# db sync                      - Manually sync with Turso
+# db status                    - Check sync status
+# songset list                 - List all your songsets
+# songset create "Name"        - Create a new songset
+# songset export <id>          - Export a songset to JSON
+# songset import <file>        - Import a songset from JSON
+# config show                  - Display current configuration
+
+# ================================================
+# File Organization Tips
+# ================================================
+# Recommended directory structure:
+#
+# ~/.config/sow/
+# ├── config.toml          # This file
+# └── db/
+#     ├── sow.db           # Synced catalog (read-only)
+#     └── songsets.db      # Your personal songsets
+#
+# ~/.cache/sow/            # Temporary files (can be deleted anytime)
+# └── previews/
+#     └── ...
+#
+# ~/sow/output/            # Generated files
+# ├── transitions/         # Transition audio files
+# ├── songs/              # Full song exports
+# └── videos/             # Lyrics videos
+
+# ================================================
+# Security Best Practices
+# ================================================
+# 1. NEVER commit this file with real tokens to version control
+# 2. Add ~/.config/sow/ to your .gitignore
+# 3. Use a READ-ONLY Turso token (the User App doesn't need write access)
+# 4. Rotate tokens periodically
+# 5. Keep your songsets database backed up (it contains your work!)
