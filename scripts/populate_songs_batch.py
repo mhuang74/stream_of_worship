@@ -30,9 +30,10 @@ def run_command(cmd, timeout=300):
         return False, "", str(e)
 
 
-def get_catalog_ids():
-    """Fetch all song IDs from catalog"""
-    cmd = "PYTHONPATH=src uv run --python 3.11 --extra admin python -m stream_of_worship.admin.main catalog list --format ids"
+def get_catalog_ids(album=None):
+    """Fetch all song IDs from catalog, optionally filtered by album"""
+    album_opt = f'--album "{album}"' if album else ""
+    cmd = f"PYTHONPATH=src uv run --python 3.11 --extra admin python -m stream_of_worship.admin.main catalog list --format ids {album_opt}"
     success, stdout, stderr = run_command(cmd, timeout=60)
 
     if not success:
@@ -68,10 +69,12 @@ def get_audio_ids():
     return ids
 
 
-def get_unpopulated_songs(limit):
-    """Get songs from catalog that don't have audio yet"""
+def get_unpopulated_songs(limit, album=None):
+    """Get songs from catalog that don't have audio yet, optionally filtered by album"""
     print("Fetching catalog...")
-    catalog_ids = get_catalog_ids()
+    if album:
+        print(f"  Filtering by album: {album}")
+    catalog_ids = get_catalog_ids(album)
     print(f"  Found {len(catalog_ids)} songs in catalog")
 
     print("Fetching existing recordings...")
@@ -202,6 +205,12 @@ def main():
         default="reports",
         help="Directory for reports (default: reports)"
     )
+    parser.add_argument(
+        "-a", "--album",
+        type=str,
+        default=None,
+        help="Filter by album name (exact match)"
+    )
     args = parser.parse_args()
 
     start_time = datetime.now()
@@ -211,10 +220,12 @@ def main():
     print("="*60)
     print(f"Start time: {start_time.isoformat()}")
     print(f"Target count: {args.count}")
+    if args.album:
+        print(f"Album filter: {args.album}")
     print()
 
     # Get unpopulated songs
-    song_ids = get_unpopulated_songs(args.count)
+    song_ids = get_unpopulated_songs(args.count, album=args.album)
 
     if not song_ids:
         print("No unpopulated songs found!")
@@ -255,7 +266,8 @@ def main():
             "end_time": end_time.isoformat(),
             "duration_seconds": duration,
             "requested_count": args.count,
-            "processed_count": len(song_ids)
+            "processed_count": len(song_ids),
+            "album_filter": args.album
         },
         "catalog_stats": {
             "total_songs": total_catalog,
@@ -307,6 +319,7 @@ def generate_markdown_report(summary):
     stats = summary["catalog_stats"]
     cats = summary["results_by_category"]
 
+    album_display = batch.get('album_filter') or 'All albums'
     md = f"""# Song Population Report
 
 ## Batch Summary
@@ -318,6 +331,7 @@ def generate_markdown_report(summary):
 | Duration | {batch['duration_seconds']/60:.1f} minutes |
 | Requested | {batch['requested_count']} |
 | Processed | {batch['processed_count']} |
+| Album Filter | {album_display} |
 
 ## Catalog Statistics
 
