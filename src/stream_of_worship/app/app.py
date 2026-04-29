@@ -225,7 +225,6 @@ class SowApp(App):
 
         # Show exit message with catalog stats
         try:
-            catalog = CatalogService(self.read_client)
             lrc_ready = self.read_client.get_lrc_ready_count()
             logger.info(f"App exiting: {lrc_ready} song(s) with lyrics available")
         except Exception:
