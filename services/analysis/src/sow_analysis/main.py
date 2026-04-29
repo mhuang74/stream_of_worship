@@ -6,11 +6,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+from .logging_config import configure_logging
+
+# Configure logging with job_id support
+configure_logging(level=logging.INFO, suppress_external=True)
 logger = logging.getLogger(__name__)
 
 from . import __version__
