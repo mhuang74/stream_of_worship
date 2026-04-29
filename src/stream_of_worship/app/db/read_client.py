@@ -4,11 +4,14 @@ Provides read-only access to songs and recordings tables managed by the admin CL
 Supports libsql/Turso embedded replicas for sync with the cloud database.
 """
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional, Union
 
 from stream_of_worship.admin.db.models import Recording, Song
+
+logger = logging.getLogger("sow_app.db")
 
 # Optional libsql import for Turso support
 try:
@@ -436,4 +439,24 @@ class ReadOnlyClient:
         cursor = self.connection.cursor()
         cursor.execute("SELECT COUNT(*) FROM songs WHERE deleted_at IS NULL")
         result = cursor.fetchone()
-        return result[0] if result else 0
+        count = result[0] if result else 0
+        logger.debug(f"Total songs in database: {count}")
+        return count
+
+    def get_lrc_ready_count(self) -> int:
+        """Get number of songs with LRC ready (completed + published).
+
+        Returns:
+            Count of LRC-ready songs
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """SELECT COUNT(*) FROM songs s
+            JOIN recordings r ON s.id = r.song_id
+            WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
+            AND r.deleted_at IS NULL AND s.deleted_at IS NULL"""
+        )
+        result = cursor.fetchone()
+        count = result[0] if result else 0
+        logger.debug(f"Songs with LRC ready: {count}")
+        return count

@@ -4,6 +4,7 @@ Provides the `sow-app` command for launching the Textual interface,
 syncing with Turso, and managing songset exports/imports.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -117,9 +118,18 @@ def _check_catalog_health(config: AppConfig) -> None:
         catalog = CatalogService(read_client)
         health = catalog.get_catalog_health()
 
+        # Log detailed stats for transparency
+        lrc_ready = health.get("lrc_ready", 0)
+        logging.getLogger("sow_app").info(
+            f"Catalog health check: status={health['status']}, "
+            f"total_songs={health['total_songs']}, "
+            f"total_recordings={health['total_recordings']}, "
+            f"lrc_ready={lrc_ready}"
+        )
+
         if health["status"] == "ready":
             console.print(
-                f"[green]✓[/green] Catalog ready: {health['analyzed_recordings']} analyzed recording(s)"
+                f"[green]✓[/green] Catalog ready: {lrc_ready} song(s) with lyrics available"
             )
             return
 
@@ -129,7 +139,7 @@ def _check_catalog_health(config: AppConfig) -> None:
                 f"[bold yellow]Catalog Incomplete[/bold yellow]\n\n"
                 f"Songs: {health['total_songs']}\n"
                 f"Recordings: {health['total_recordings']}\n"
-                f"Analyzed: {health['analyzed_recordings']}\n\n"
+                f"LRC Ready: {lrc_ready}\n\n"
                 f"[cyan]{health['guidance']}[/cyan]\n\n"
                 "You can still launch the app, but the Browse screen will be empty.",
                 title="Warning",
@@ -172,13 +182,13 @@ def run(
     if not _check_database(config):
         raise typer.Exit(1)
 
-    # Check catalog health
-    _check_catalog_health(config)
-
-    # Set up logging
+    # Set up logging first
     log_dir = config.log_dir
     logger = setup_logging(log_dir)
     logger.info(f"App configuration loaded from: {config_path if config_path else 'default'}")
+
+    # Check catalog health
+    _check_catalog_health(config)
     logger.info(f"Database: {config.db_path}")
     logger.info(f"Songsets DB: {config.songsets_db_path}")
     logger.info(f"Cache dir: {config.cache_dir}")
