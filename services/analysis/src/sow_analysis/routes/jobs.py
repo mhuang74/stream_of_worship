@@ -87,6 +87,7 @@ def job_to_response(job) -> JobResponse:
             lrc_url=job.result.lrc_url,
             line_count=job.result.line_count,
             vocals_clean_url=job.result.vocals_clean_url,
+            vocals_reverb_url=job.result.vocals_reverb_url,
             instrumental_clean_url=job.result.instrumental_clean_url,
         )
 
