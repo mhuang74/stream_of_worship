@@ -149,9 +149,9 @@ class AppConfig:
         if "database" in data:
             db = data["database"]
             if "db_path" in db:
-                config.db_path = Path(db["db_path"])
+                config.db_path = Path(db["db_path"]).expanduser()
             if "songsets_db_path" in db:
-                config.songsets_db_path = Path(db["songsets_db_path"])
+                config.songsets_db_path = Path(db["songsets_db_path"]).expanduser()
 
         # Load songset settings
         if "songsets" in data:
@@ -160,7 +160,7 @@ class AppConfig:
                 "backup_retention", config.songsets_backup_retention
             )
             if "export_dir" in songsets:
-                config.songsets_export_dir = Path(songsets["export_dir"])
+                config.songsets_export_dir = Path(songsets["export_dir"]).expanduser()
 
         # Load Turso settings
         if "turso" in data:
@@ -182,11 +182,11 @@ class AppConfig:
         if "app" in data:
             app_data = data["app"]
             if "cache_dir" in app_data:
-                config.cache_dir = Path(app_data["cache_dir"])
+                config.cache_dir = Path(app_data["cache_dir"]).expanduser()
             if "output_dir" in app_data:
-                config.output_dir = Path(app_data["output_dir"])
+                config.output_dir = Path(app_data["output_dir"]).expanduser()
             if "log_dir" in app_data:
-                config.log_dir = Path(app_data["log_dir"])
+                config.log_dir = Path(app_data["log_dir"]).expanduser()
             config.preview_buffer_ms = app_data.get("preview_buffer_ms", config.preview_buffer_ms)
             config.preview_volume = app_data.get("preview_volume", config.preview_volume)
             config.default_gap_beats = app_data.get("default_gap_beats", config.default_gap_beats)
