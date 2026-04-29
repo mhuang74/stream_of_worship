@@ -399,6 +399,7 @@ class DatabaseClient:
 
         order_map = {
             "album": "album_name, title",
+            "series": "album_series, album_name, title",
             "title": "title",
             "id": "id",
         }
@@ -414,18 +415,22 @@ class DatabaseClient:
             results.append(Song.from_row(tuple(row)))
         return results
 
-    def list_albums(self, include_deleted: bool = False) -> list[tuple[str, int]]:
+    def list_albums(self, include_deleted: bool = False) -> list[tuple[str, str, int]]:
         """List distinct album names with song counts.
 
         Args:
             include_deleted: Whether to include soft-deleted songs
 
         Returns:
-            List of (album_name, song_count) tuples sorted by album_name
+            List of (album_name, album_series, song_count) tuples sorted by album_name
         """
         cursor = self.connection.cursor()
 
-        query = "SELECT album_name, COUNT(*) as cnt FROM songs WHERE 1=1"
+        query = (
+            "SELECT album_name, "
+            "MAX(album_series) as album_series, "
+            "COUNT(*) as cnt FROM songs WHERE 1=1"
+        )
         params: list = []
 
         if not include_deleted:
@@ -437,7 +442,7 @@ class DatabaseClient:
 
         results = []
         for row in cursor.fetchall():
-            results.append((row[0], row[1]))
+            results.append((row[0], row[1], row[2]))
         return results
 
     def search_songs(

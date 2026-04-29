@@ -4,6 +4,7 @@ Provides CLI commands for scraping, listing, searching, and viewing
 songs in the Stream of Worship catalog.
 """
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +20,20 @@ from stream_of_worship.admin.services.scraper import CatalogScraper
 
 console = Console()
 app = typer.Typer(help="Catalog operations")
+
+
+def _extract_series_number(series: Optional[str]) -> int:
+    """Extract numeric portion from album_series for sorting.
+
+    Examples:
+        '敬拜讚美15' -> 15
+        '兒童敬拜讚美 (14EP)' -> 14
+        None or no digits -> 0
+    """
+    if not series:
+        return 0
+    match = re.search(r"\d+", series)
+    return int(match.group()) if match else 0
 
 
 def get_db_client(config: AdminConfig) -> DatabaseClient:
@@ -170,7 +185,7 @@ def list_songs(
         "album",
         "--sort",
         "-s",
-        help="Sort order (album|title|id)",
+        help="Sort order (album|series|title|id)",
     ),
     albums: bool = typer.Option(
         False,
@@ -198,11 +213,14 @@ def list_songs(
     """List songs from catalog.
 
     Display songs from the local catalog database with optional filtering.
-    Use --sort to change sort order (default: album). Use --albums to show
-    only album names with song counts. Use --format ids for piping.
+    Use --sort to change sort order (default: album). Use --sort series to
+    sort by album series number (e.g. 敬拜讚美15 → 15). Use --albums to
+    show only album names with song counts. Use --format ids for piping.
     """
-    if sort not in ("album", "title", "id"):
-        console.print(f"[red]Invalid sort option: {sort}. Choose from: album, title, id[/red]")
+    if sort not in ("album", "series", "title", "id"):
+        console.print(
+            f"[red]Invalid sort option: {sort}. Choose from: album, series, title, id[/red]"
+        )
         raise typer.Exit(1)
 
     try:
@@ -230,12 +248,20 @@ def list_songs(
             console.print("[yellow]No albums found.[/yellow]")
             return
 
+        if sort == "series":
+            album_list.sort(key=lambda a: _extract_series_number(a[1]))
+
         table = Table(title=f"Albums ({len(album_list)} total)")
         table.add_column("Album", style="yellow")
+        if sort == "series":
+            table.add_column("Series", style="magenta")
         table.add_column("Songs", style="cyan", justify="right")
 
-        for album_name, count in album_list:
-            table.add_row(album_name or "-", str(count))
+        for album_name, album_series, count in album_list:
+            if sort == "series":
+                table.add_row(album_name or "-", album_series or "-", str(count))
+            else:
+                table.add_row(album_name or "-", str(count))
 
         console.print(table)
         return
@@ -253,6 +279,10 @@ def list_songs(
     # Apply composer filter in memory (since list_songs doesn't support it directly)
     if composer:
         songs = [s for s in songs if s.composer and composer.lower() in s.composer.lower()]
+
+    # Re-sort by series number in memory (SQL sort is lexicographic on album_series text)
+    if sort == "series":
+        songs.sort(key=lambda s: (_extract_series_number(s.album_series), s.album_name or ""))
 
     if not songs:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
