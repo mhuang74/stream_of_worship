@@ -64,7 +64,7 @@ class JobStore:
 
                 content_hash    TEXT NOT NULL,
 
-                CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+                CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
                 CHECK (type IN ('analyze', 'lrc', 'stem_separation'))
             );
 
@@ -228,7 +228,11 @@ class JobStore:
         return self._row_to_job(row)
 
     async def get_interrupted_jobs(self) -> list[Job]:
-        """Return jobs with status QUEUED or PROCESSING (for restart recovery).
+        """Return jobs with status PROCESSING (for restart recovery).
+
+        Only PROCESSING jobs need recovery - they were interrupted mid-execution.
+        QUEUED jobs don't need recovery; they will be picked up by the new worker
+        naturally from the database.
 
         Returns:
             List of jobs that were interrupted
@@ -237,7 +241,7 @@ class JobStore:
             raise RuntimeError("JobStore not initialized")
 
         async with self._db.execute(
-            "SELECT * FROM jobs WHERE status IN ('queued', 'processing')"
+            "SELECT * FROM jobs WHERE status = 'processing'"
         ) as cursor:
             rows = await cursor.fetchall()
 
@@ -245,11 +249,53 @@ class JobStore:
         logger.info(f"Found {len(jobs)} interrupted jobs in database")
         return jobs
 
+    async def get_queued_jobs(self) -> list[Job]:
+        """Return jobs with status QUEUED.
+
+        These jobs are loaded into memory on startup so they can be processed.
+        Unlike interrupted jobs, their status doesn't need to change.
+
+        Returns:
+            List of queued jobs
+        """
+        if not self._db:
+            raise RuntimeError("JobStore not initialized")
+
+        async with self._db.execute(
+            "SELECT * FROM jobs WHERE status = 'queued'"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        jobs = [self._row_to_job(row) for row in rows]
+        logger.info(f"Found {len(jobs)} queued jobs in database")
+        return jobs
+
+    async def get_cancelled_jobs(self) -> list[Job]:
+        """Return jobs with status CANCELLED.
+
+        These jobs are loaded into memory on startup for queryability,
+        but are not re-queued for processing.
+
+        Returns:
+            List of cancelled jobs
+        """
+        if not self._db:
+            raise RuntimeError("JobStore not initialized")
+
+        async with self._db.execute(
+            "SELECT * FROM jobs WHERE status = 'cancelled'"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        jobs = [self._row_to_job(row) for row in rows]
+        logger.info(f"Found {len(jobs)} cancelled jobs in database")
+        return jobs
+
     async def purge_old_jobs(self, max_age_days: int = 7) -> int:
-        """Delete completed/failed jobs older than max_age_days.
+        """Delete completed/failed/cancelled jobs older than max_age_days.
 
         Args:
-            max_age_days: Maximum age in days to keep completed/failed jobs
+            max_age_days: Maximum age in days to keep completed/failed/cancelled jobs
 
         Returns:
             Number of jobs deleted
@@ -263,7 +309,7 @@ class JobStore:
         cursor = await self._db.execute(
             """
             DELETE FROM jobs
-            WHERE status IN ('completed', 'failed')
+            WHERE status IN ('completed', 'failed', 'cancelled')
             AND created_at < ?
             """,
             (cutoff_str,),

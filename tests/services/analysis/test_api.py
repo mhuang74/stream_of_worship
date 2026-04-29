@@ -64,10 +64,12 @@ def mock_settings():
     with patch(
         "sow_analysis.routes.jobs.settings",
         SOW_ANALYSIS_API_KEY="test-api-key",
+        SOW_ADMIN_API_KEY="test-admin-key",
     ):
         with patch(
             "sow_analysis.routes.health.settings",
             SOW_ANALYSIS_API_KEY="test-api-key",
+            SOW_ADMIN_API_KEY="test-admin-key",
             SOW_R2_BUCKET="test-bucket",
             SOW_R2_ENDPOINT_URL="",
             CACHE_DIR="/tmp/test-cache",
@@ -246,3 +248,138 @@ class TestJobsEndpoints:
         )
 
         assert response.status_code == 200
+
+
+class TestAdminEndpoints:
+    """Test admin API endpoints (cancel, clear-queue)."""
+
+    def test_cancel_job_queued(self, client, mock_job_queue):
+        """Test cancelling a queued job."""
+        async def mock_cancel_job(job_id):
+            now = datetime.now(timezone.utc)
+            return Job(
+                id=job_id,
+                type=JobType.ANALYZE,
+                status=JobStatus.CANCELLED,
+                request=MagicMock(),
+                created_at=now,
+                updated_at=now,
+                progress=0.0,
+                stage="cancelled",
+            ), None
+
+        mock_job_queue.cancel_job = mock_cancel_job
+
+        response = client.post(
+            "/api/v1/jobs/job_abc123/cancel",
+            headers={"Authorization": "Bearer test-admin-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job_abc123"
+        assert data["status"] == "cancelled"
+
+    def test_cancel_job_processing(self, client, mock_job_queue):
+        """Test cancelling a processing job returns warning."""
+        async def mock_cancel_job_processing(job_id):
+            now = datetime.now(timezone.utc)
+            return Job(
+                id=job_id,
+                type=JobType.ANALYZE,
+                status=JobStatus.CANCELLED,
+                request=MagicMock(),
+                created_at=now,
+                updated_at=now,
+                progress=0.5,
+                stage="cancelled",
+            ), "Job was PROCESSING. The running task continues until service restart."
+
+        mock_job_queue.cancel_job = mock_cancel_job_processing
+
+        response = client.post(
+            "/api/v1/jobs/job_processing/cancel",
+            headers={"Authorization": "Bearer test-admin-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job_processing"
+        assert data["status"] == "cancelled"
+        assert data["warning"] == "Job was PROCESSING. The running task continues until service restart."
+
+    def test_cancel_job_not_found(self, client, mock_job_queue):
+        """Test cancelling non-existent job returns 404."""
+        async def mock_cancel_job_not_found(job_id):
+            return None, None
+
+        mock_job_queue.cancel_job = mock_cancel_job_not_found
+
+        response = client.post(
+            "/api/v1/jobs/job_missing/cancel",
+            headers={"Authorization": "Bearer test-admin-key"},
+        )
+
+        assert response.status_code == 404
+
+    def test_cancel_job_no_admin_key(self, client):
+        """Test cancelling without admin key fails."""
+        response = client.post(
+            "/api/v1/jobs/job_abc123/cancel",
+            headers={"Authorization": "Bearer test-api-key"},  # Regular key, not admin
+        )
+
+        assert response.status_code == 401
+
+    def test_cancel_job_no_auth(self, client):
+        """Test cancelling without auth fails."""
+        response = client.post(
+            "/api/v1/jobs/job_abc123/cancel",
+        )
+
+        assert response.status_code == 401
+
+    def test_clear_queue(self, client, mock_job_queue):
+        """Test clearing the queue."""
+        async def mock_clear_queue():
+            now = datetime.now(timezone.utc)
+            return [
+                Job(
+                    id="job_abc123",
+                    type=JobType.ANALYZE,
+                    status=JobStatus.CANCELLED,
+                    request=MagicMock(),
+                    created_at=now,
+                    updated_at=now,
+                ),
+                Job(
+                    id="job_def456",
+                    type=JobType.LRC,
+                    status=JobStatus.CANCELLED,
+                    request=MagicMock(),
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+
+        mock_job_queue.clear_queue = mock_clear_queue
+
+        response = client.post(
+            "/api/v1/jobs/clear-queue",
+            headers={"Authorization": "Bearer test-admin-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cancelled_count"] == 2
+        assert "job_abc123" in data["cancelled_job_ids"]
+        assert "job_def456" in data["cancelled_job_ids"]
+
+    def test_clear_queue_no_admin_key(self, client):
+        """Test clearing queue without admin key fails."""
+        response = client.post(
+            "/api/v1/jobs/clear-queue",
+            headers={"Authorization": "Bearer test-api-key"},  # Regular key, not admin
+        )
+
+        assert response.status_code == 401

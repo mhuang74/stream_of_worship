@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
 from ..config import settings
 from ..models import (
@@ -18,7 +19,6 @@ if TYPE_CHECKING:
     from ..workers.queue import JobQueue
 
 router = APIRouter()
-
 # Global job queue reference - set in main.py
 job_queue: Optional["JobQueue"] = None
 
@@ -59,11 +59,38 @@ async def verify_api_key(authorization: Optional[str] = Header(None)) -> str:
     return token
 
 
-def job_to_response(job) -> JobResponse:
+async def verify_admin_api_key(authorization: Optional[str] = Header(None)) -> str:
+    """Verify Bearer token matches SOW_ADMIN_API_KEY.
+
+    Args:
+        authorization: Authorization header value
+
+    Returns:
+        Validated token
+
+    Raises:
+        HTTPException: If token is invalid or admin key not configured
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing or invalid Authorization header")
+
+    token = authorization[7:]
+
+    if not settings.SOW_ADMIN_API_KEY:
+        raise HTTPException(503, "Admin API key not configured on server")
+
+    if token != settings.SOW_ADMIN_API_KEY:
+        raise HTTPException(401, "Invalid admin API key")
+
+    return token
+
+
+def job_to_response(job, warning: Optional[str] = None) -> JobResponse:
     """Convert Job to JobResponse.
 
     Args:
         job: Job instance
+        warning: Optional warning message
 
     Returns:
         JobResponse model
@@ -100,6 +127,7 @@ def job_to_response(job) -> JobResponse:
         progress=job.progress,
         stage=job.stage,
         error_message=job.error_message,
+        warning=warning,
         result=result,
     )
 
@@ -218,3 +246,61 @@ async def get_job_status(
         raise HTTPException(404, "Job not found")
 
     return job_to_response(job)
+
+
+class ClearQueueResponse(BaseModel):
+    """Response for clear-queue endpoint."""
+
+    cancelled_count: int
+    cancelled_job_ids: list[str]
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+async def cancel_job(
+    job_id: str,
+    admin_key: str = Depends(verify_admin_api_key),
+) -> JobResponse:
+    """Cancel a job by ID.
+
+    Args:
+        job_id: Job ID to cancel
+        admin_key: Validated admin API key
+
+    Returns:
+        Job response with updated status
+
+    Raises:
+        HTTPException: If job not found
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    job, warning = await job_queue.cancel_job(job_id)
+
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    return job_to_response(job, warning=warning)
+
+
+@router.post("/jobs/clear-queue", response_model=ClearQueueResponse)
+async def clear_queue(
+    admin_key: str = Depends(verify_admin_api_key),
+) -> ClearQueueResponse:
+    """Cancel all queued jobs.
+
+    Args:
+        admin_key: Validated admin API key
+
+    Returns:
+        Response with count and list of cancelled job IDs
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    cancelled_jobs = await job_queue.clear_queue()
+
+    return ClearQueueResponse(
+        cancelled_count=len(cancelled_jobs),
+        cancelled_job_ids=[job.id for job in cancelled_jobs],
+    )

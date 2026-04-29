@@ -173,7 +173,7 @@ async def test_update_job_status(job_store: JobStore) -> None:
 
 @pytest.mark.asyncio
 async def test_get_interrupted_jobs(job_store: JobStore) -> None:
-    """Verify only QUEUED/PROCESSING jobs are returned."""
+    """Verify only PROCESSING jobs are returned for recovery."""
     requests = [
         AnalyzeJobRequest(
             audio_url=f"s3://test/bucket/audio{i}.mp3",
@@ -190,12 +190,37 @@ async def test_get_interrupted_jobs(job_store: JobStore) -> None:
     await job_store.insert_job(Job(id="job_failed1", type=JobType.ANALYZE, status=JobStatus.FAILED, request=requests[3], error_message="Error"))
     await job_store.insert_job(Job(id="job_failed2", type=JobType.LRC, status=JobStatus.FAILED, request=LrcJobRequest(audio_url="s3://test/lrc2.mp3", content_hash="lrc2", lyrics_text="lyrics"), error_message="Error"))
 
-    # Get interrupted jobs
+    # Get interrupted jobs (only PROCESSING, not QUEUED)
     interrupted = await job_store.get_interrupted_jobs()
 
-    assert len(interrupted) == 2
-    interrupted_ids = {job.id for job in interrupted}
-    assert interrupted_ids == {"job_queued", "job_processing"}
+    assert len(interrupted) == 1
+    assert interrupted[0].id == "job_processing"
+
+
+@pytest.mark.asyncio
+async def test_get_queued_jobs(job_store: JobStore) -> None:
+    """Verify QUEUED jobs are returned for loading into memory."""
+    requests = [
+        AnalyzeJobRequest(
+            audio_url=f"s3://test/bucket/audio{i}.mp3",
+            content_hash=f"hash{i}",
+        )
+        for i in range(4)
+    ]
+
+    # Create jobs with different statuses
+    await job_store.insert_job(Job(id="job_queued1", type=JobType.ANALYZE, status=JobStatus.QUEUED, request=requests[0]))
+    await job_store.insert_job(Job(id="job_queued2", type=JobType.LRC, status=JobStatus.QUEUED, request=LrcJobRequest(audio_url="s3://test/lrc.mp3", content_hash="lrc1", lyrics_text="lyrics")))
+    await job_store.insert_job(Job(id="job_processing", type=JobType.ANALYZE, status=JobStatus.PROCESSING, request=requests[1]))
+    await job_store.insert_job(Job(id="job_completed", type=JobType.ANALYZE, status=JobStatus.COMPLETED, request=requests[2]))
+    await job_store.insert_job(Job(id="job_failed", type=JobType.ANALYZE, status=JobStatus.FAILED, request=requests[3], error_message="Error"))
+
+    # Get queued jobs
+    queued = await job_store.get_queued_jobs()
+
+    assert len(queued) == 2
+    queued_ids = {job.id for job in queued}
+    assert queued_ids == {"job_queued1", "job_queued2"}
 
 
 @pytest.mark.asyncio
@@ -339,3 +364,62 @@ async def test_get_nonexistent_job(job_store: JobStore) -> None:
     """Test getting a non-existent job returns None."""
     result = await job_store.get_job("job_does_not_exist")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_cancelled_jobs(job_store: JobStore) -> None:
+    """Verify CANCELLED jobs are returned for loading into memory."""
+    # Create jobs with different statuses including cancelled
+    await job_store.insert_job(Job(id="job_queued", type=JobType.ANALYZE, status=JobStatus.QUEUED, request=AnalyzeJobRequest(audio_url="s3://test/q.mp3", content_hash="q")))
+    await job_store.insert_job(Job(id="job_processing", type=JobType.ANALYZE, status=JobStatus.PROCESSING, request=AnalyzeJobRequest(audio_url="s3://test/p.mp3", content_hash="p")))
+    await job_store.insert_job(Job(id="job_cancelled1", type=JobType.ANALYZE, status=JobStatus.CANCELLED, request=AnalyzeJobRequest(audio_url="s3://test/c1.mp3", content_hash="c1")))
+    await job_store.insert_job(Job(id="job_cancelled2", type=JobType.LRC, status=JobStatus.CANCELLED, request=LrcJobRequest(audio_url="s3://test/c2.mp3", content_hash="c2", lyrics_text="lyrics")))
+    await job_store.insert_job(Job(id="job_completed", type=JobType.ANALYZE, status=JobStatus.COMPLETED, request=AnalyzeJobRequest(audio_url="s3://test/d.mp3", content_hash="d")))
+    await job_store.insert_job(Job(id="job_failed", type=JobType.ANALYZE, status=JobStatus.FAILED, request=AnalyzeJobRequest(audio_url="s3://test/f.mp3", content_hash="f")))
+
+    # Get cancelled jobs
+    cancelled = await job_store.get_cancelled_jobs()
+
+    assert len(cancelled) == 2
+    cancelled_ids = {job.id for job in cancelled}
+    assert cancelled_ids == {"job_cancelled1", "job_cancelled2"}
+
+
+@pytest.mark.asyncio
+async def test_purge_includes_cancelled_jobs(job_store: JobStore) -> None:
+    """Verify old cancelled jobs are also purged."""
+    now = datetime.now(timezone.utc)
+
+    # Create old cancelled job (>7 days ago)
+    old_cancelled = Job(
+        id="job_old_cancelled",
+        type=JobType.ANALYZE,
+        status=JobStatus.CANCELLED,
+        request=AnalyzeJobRequest(audio_url="s3://old_cancelled.mp3", content_hash="old_c"),
+        created_at=now - timedelta(days=10),
+        updated_at=now - timedelta(days=10),
+    )
+
+    # Create recent cancelled job (<7 days ago)
+    recent_cancelled = Job(
+        id="job_recent_cancelled",
+        type=JobType.ANALYZE,
+        status=JobStatus.CANCELLED,
+        request=AnalyzeJobRequest(audio_url="s3://recent_cancelled.mp3", content_hash="recent_c"),
+        created_at=now - timedelta(days=2),
+        updated_at=now - timedelta(days=2),
+    )
+
+    for job in [old_cancelled, recent_cancelled]:
+        await job_store.insert_job(job)
+
+    # Purge jobs older than 7 days
+    purged = await job_store.purge_old_jobs(max_age_days=7)
+
+    assert purged == 1
+
+    # Verify old cancelled job is gone
+    assert await job_store.get_job("job_old_cancelled") is None
+
+    # Verify recent cancelled job remains
+    assert await job_store.get_job("job_recent_cancelled") is not None
