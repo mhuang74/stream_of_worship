@@ -46,6 +46,10 @@ class JobStore:
         """Create tables if not exist. Called once at startup."""
         self._db = await aiosqlite.connect(self.db_path)
         await self._db.execute("PRAGMA journal_mode=WAL")
+
+        # Check if we need to migrate from old schema (without 'cancelled')
+        await self._migrate_cancelled_status()
+
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -75,6 +79,86 @@ class JobStore:
         )
         await self._db.commit()
         logger.info(f"JobStore initialized with database at {self.db_path}")
+
+    async def _migrate_cancelled_status(self) -> None:
+        """Migrate old schema to support 'cancelled' status.
+
+        SQLite doesn't support ALTER TABLE for CHECK constraints,
+        so we need to recreate the table if it has the old schema.
+        """
+        if not self._db:
+            return
+
+        try:
+            # Check if table exists
+            async with self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return  # Table doesn't exist yet, will be created normally
+
+            # Get current schema
+            async with self._db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                schema = row[0]
+                # Check if old schema (without 'cancelled')
+                if "'cancelled'" in schema:
+                    return  # Already has cancelled
+
+                logger.warning("Migrating database schema to support CANCELLED status")
+
+                # SQLite doesn't support ALTER TABLE for CHECK constraints
+                # Need to recreate the table
+                await self._db.executescript(
+                    """
+                    -- Rename old table
+                    ALTER TABLE jobs RENAME TO jobs_old;
+
+                    -- Create new table with updated schema
+                    CREATE TABLE jobs (
+                        id              TEXT PRIMARY KEY,
+                        type            TEXT NOT NULL,
+                        status          TEXT NOT NULL DEFAULT 'queued',
+                        progress        REAL NOT NULL DEFAULT 0.0,
+                        stage           TEXT NOT NULL DEFAULT '',
+                        error_message   TEXT,
+
+                        request_json    TEXT NOT NULL,
+                        result_json     TEXT,
+
+                        created_at      TEXT NOT NULL,
+                        updated_at      TEXT NOT NULL,
+
+                        content_hash    TEXT NOT NULL,
+
+                        CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
+                        CHECK (type IN ('analyze', 'lrc', 'stem_separation'))
+                    );
+
+                    -- Copy data from old table
+                    INSERT INTO jobs SELECT * FROM jobs_old;
+
+                    -- Recreate indexes
+                    CREATE INDEX idx_jobs_status ON jobs(status);
+                    CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                    CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+
+                    -- Drop old table
+                    DROP TABLE jobs_old;
+                    """
+                )
+                await self._db.commit()
+                logger.info("Database migration complete")
+
+        except Exception as e:
+            logger.error(f"Database migration failed: {e}")
+            raise
 
     async def insert_job(self, job: Job) -> None:
         """Insert a new job record.
