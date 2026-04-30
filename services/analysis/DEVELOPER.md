@@ -48,7 +48,7 @@ docker compose logs -f analysis-dev
 ### Audio-Separator Models (Required for Stem Separation)
 
 Models are automatically downloaded by the startup script (see Quick Start above). The script will:
-- Check for missing models (BS-Roformer and UVR-De-Echo)
+- Check for missing models (MelBand Roformer and UVR-De-Echo)
 - Download them to `~/.cache/audio-separator` (or `$SOW_AUDIO_SEPARATOR_MODEL_ROOT` if set)
 - Start the development server
 
@@ -164,12 +164,11 @@ logging.basicConfig(
 
 ### Check Model Loading
 
-Look for these log messages on startup:
+Look for these log messages when the first stem separation job triggers lazy initialization:
 ```
-Loading audio-separator models...
-Loading BS-Roformer model: model_bs_roformer_ep_317_sdr_12.9755.ckpt
-Loading UVR-De-Echo model: UVR-De-Echo-Normal.pth
-Audio-separator models loaded and ready
+Validating vocal separation model: model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt
+Validating UVR-De-Echo model: UVR-De-Echo-Normal.pth
+Audio-separator models validated and ready
 ```
 
 If you see:
@@ -258,7 +257,7 @@ services/analysis/src/sow_analysis/
     ├── lrc.py              # LRC generation (Whisper + LLM)
     ├── queue.py            # Job queue and concurrency management
     ├── separator.py        # Demucs stem separation
-    ├── stem_separation.py  # BS-Roformer + UVR clean vocals
+        ├── stem_separation.py  # Vocal separation (MelBand Roformer) + UVR clean vocals
     └── separator_wrapper.py # AudioSeparator model management
 ```
 

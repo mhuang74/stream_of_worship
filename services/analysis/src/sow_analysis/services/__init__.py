@@ -1,5 +1,11 @@
 """Analysis service external integrations."""
 
+from .mvsep_client import (
+    MvsepClient,
+    MvsepClientError,
+    MvsepNonRetriableError,
+    MvsepTimeoutError,
+)
 from .qwen3_client import (
     AlignRequest,
     AlignResponse,
@@ -14,4 +20,8 @@ __all__ = [
     "OutputFormat",
     "Qwen3Client",
     "Qwen3ClientError",
+    "MvsepClient",
+    "MvsepClientError",
+    "MvsepNonRetriableError",
+    "MvsepTimeoutError",
 ]

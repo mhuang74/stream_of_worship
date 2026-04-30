@@ -1,7 +1,7 @@
-"""Async wrapper for audio-separator with lifecycle management.
+"""Async wrapper for audio-separator with lazy initialization.
 
 Mirrors the Qwen3AlignerWrapper pattern from services/qwen3.
-Validates model availability at startup and creates per-call Separator
+Validates model availability on first use and creates per-call Separator
 instances for thread safety.
 """
 
@@ -16,16 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 class AudioSeparatorWrapper:
-    """Async wrapper for audio-separator with startup validation.
+    """Async wrapper for audio-separator with lazy initialization.
 
-    Validates that both BS-Roformer and UVR-De-Echo model files are
-    loadable at startup via initialize(). Each call to separate_stems()
-    creates its own Separator instances with per-call output directories,
-    making the wrapper inherently thread-safe without shared mutable state.
+    Models are validated on first use via _ensure_ready(), not at startup.
+    Each call to separate_stems() creates its own Separator instances with
+    per-call output directories, making the wrapper inherently thread-safe
+    without shared mutable state.
 
     Attributes:
         model_dir: Directory containing model files
-        bs_roformer_model: Name of BS-Roformer model file
+        vocal_model: Name of vocal separation model file
         dereverb_model: Name of UVR-De-Echo model file
         output_format: Output audio format (FLAC or WAV)
     """
@@ -33,16 +33,28 @@ class AudioSeparatorWrapper:
     def __init__(
         self,
         model_dir: Optional[Path] = None,
-        bs_roformer_model: Optional[str] = None,
+        vocal_model: Optional[str] = None,
         dereverb_model: Optional[str] = None,
         output_format: str = "FLAC",
     ) -> None:
         self.model_dir = model_dir or settings.SOW_AUDIO_SEPARATOR_MODEL_DIR
-        self.bs_roformer_model = bs_roformer_model or settings.SOW_BS_ROFORMER_MODEL
+        self.vocal_model = vocal_model or settings.SOW_VOCAL_SEPARATION_MODEL
         self.dereverb_model = dereverb_model or settings.SOW_DEREVERB_MODEL
         self.output_format = output_format
 
         self._ready = False
+        self._init_lock = asyncio.Lock()
+
+    async def _ensure_ready(self) -> None:
+        """Lazily initialize models on first use. Thread-safe via lock."""
+        if self._ready:
+            return
+        async with self._init_lock:
+            if self._ready:
+                return
+            await self.initialize()
+            if not self._ready:
+                raise RuntimeError("Model validation failed. Check that model files exist.")
 
     async def initialize(self) -> None:
         """Validate model availability by loading then discarding instances.
@@ -56,24 +68,24 @@ class AudioSeparatorWrapper:
         def _validate_models() -> None:
             from audio_separator.separator import Separator
 
-            logger.info(f"Validating BS-Roformer model: {self.bs_roformer_model}")
-            bs_sep = Separator(
+            logger.info(f"Validating vocal separation model: {self.vocal_model}")
+            sep1 = Separator(
                 output_dir=str(settings.CACHE_DIR),
                 model_file_dir=str(self.model_dir),
                 output_format=self.output_format,
             )
-            bs_sep.load_model(model_filename=self.bs_roformer_model)
-            del bs_sep
-            logger.info(f"BS-Roformer model validated: {self.bs_roformer_model}")
+            sep1.load_model(model_filename=self.vocal_model)
+            del sep1
+            logger.info(f"Vocal separation model validated: {self.vocal_model}")
 
             logger.info(f"Validating UVR-De-Echo model: {self.dereverb_model}")
-            dereverb_sep = Separator(
+            sep2 = Separator(
                 output_dir=str(settings.CACHE_DIR),
                 model_file_dir=str(self.model_dir),
                 output_format=self.output_format,
             )
-            dereverb_sep.load_model(model_filename=self.dereverb_model)
-            del dereverb_sep
+            sep2.load_model(model_filename=self.dereverb_model)
+            del sep2
             logger.info(f"UVR-De-Echo model validated: {self.dereverb_model}")
 
         try:
@@ -91,7 +103,7 @@ class AudioSeparatorWrapper:
     ) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """Run two-stage stem separation.
 
-        Stage 1: Extract vocals and instrumental using BS-Roformer
+        Stage 1: Extract vocals and instrumental
         Stage 2: Remove echo/reverb from vocals using UVR-De-Echo
 
         Each stage creates its own Separator instance with the correct
@@ -109,10 +121,9 @@ class AudioSeparatorWrapper:
             the corresponding stage failed to produce output.
 
         Raises:
-            RuntimeError: If models are not ready
+            RuntimeError: If model validation fails on first use
         """
-        if not self._ready:
-            raise RuntimeError("Models not ready. Call initialize() first.")
+        await self._ensure_ready()
 
         loop = asyncio.get_running_loop()
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +139,7 @@ class AudioSeparatorWrapper:
                 model_file_dir=str(self.model_dir),
                 output_format=self.output_format,
             )
-            sep.load_model(model_filename=self.bs_roformer_model)
+            sep.load_model(model_filename=self.vocal_model)
             return sep.separate(str(input_path))
 
         stage1_outputs = await loop.run_in_executor(None, _run_stage1)
@@ -155,42 +166,72 @@ class AudioSeparatorWrapper:
             logger.warning("Stage 1: No instrumental file found")
 
         stage2_dir = output_dir / "stage2"
-        stage2_dir.mkdir(exist_ok=True)
-
-        def _run_stage2():
-            from audio_separator.separator import Separator
-
-            sep = Separator(
-                output_dir=str(stage2_dir),
-                model_file_dir=str(self.model_dir),
-                output_format=self.output_format,
-            )
-            sep.load_model(model_filename=self.dereverb_model)
-            return sep.separate(str(vocals_file))
-
-        stage2_outputs = await loop.run_in_executor(None, _run_stage2)
-
-        dry_vocals_file: Optional[Path] = None
-        for output_file in stage2_outputs:
-            output_path = Path(output_file)
-            if not output_path.is_absolute():
-                output_path = stage2_dir / output_path
-
-            name_lower = output_path.name.lower()
-            if "no echo" in name_lower or "dry" in name_lower or "no_echo" in name_lower:
-                dry_vocals_file = output_path
-                break
-
-        if not dry_vocals_file and stage2_outputs:
-            dry_vocals_file = Path(stage2_outputs[0])
-            if not dry_vocals_file.is_absolute():
-                dry_vocals_file = stage2_dir / dry_vocals_file
+        dry_vocals_file, _ = await self.remove_reverb(vocals_file, stage2_dir)
 
         if not dry_vocals_file or not dry_vocals_file.exists():
             logger.error("Stage 2 failed: No dry vocals file found")
             return None, vocals_file, instrumental_file
 
         return dry_vocals_file, vocals_file, instrumental_file
+
+    async def remove_reverb(
+        self,
+        vocals_path: Path,
+        output_dir: Path,
+    ) -> tuple[Optional[Path], Optional[Path]]:
+        """Run Stage 2 only: remove echo/reverb from vocals using UVR-De-Echo.
+
+        Used as a local fallback when MVSEP Stage 1 succeeds but Stage 2 fails,
+        avoiding re-running Stage 1 locally.
+
+        Args:
+            vocals_path: Path to vocals file (Stage 1 output)
+            output_dir: Directory for output files
+
+        Returns:
+            Tuple of (dry_vocals_path, reverb_path).
+            Either element may be None if the stage failed to produce output.
+
+        Raises:
+            RuntimeError: If model validation fails on first use
+        """
+        await self._ensure_ready()
+
+        loop = asyncio.get_running_loop()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        def _run_stage2():
+            from audio_separator.separator import Separator
+
+            sep = Separator(
+                output_dir=str(output_dir),
+                model_file_dir=str(self.model_dir),
+                output_format=self.output_format,
+            )
+            sep.load_model(model_filename=self.dereverb_model)
+            return sep.separate(str(vocals_path))
+
+        stage2_outputs = await loop.run_in_executor(None, _run_stage2)
+
+        dry_vocals_file: Optional[Path] = None
+        reverb_file: Optional[Path] = None
+        for output_file in stage2_outputs:
+            output_path = Path(output_file)
+            if not output_path.is_absolute():
+                output_path = output_dir / output_path
+
+            name_lower = output_path.name.lower()
+            if "no echo" in name_lower or "dry" in name_lower or "no_echo" in name_lower:
+                dry_vocals_file = output_path
+            elif "reverb" in name_lower or "echo" in name_lower:
+                reverb_file = output_path
+
+        if not dry_vocals_file and stage2_outputs:
+            dry_vocals_file = Path(stage2_outputs[0])
+            if not dry_vocals_file.is_absolute():
+                dry_vocals_file = output_dir / dry_vocals_file
+
+        return dry_vocals_file, reverb_file
 
     async def cleanup(self) -> None:
         """Release resources (no persistent models to unload)."""

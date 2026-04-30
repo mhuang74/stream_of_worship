@@ -98,15 +98,14 @@ class JobQueue:
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
         self._separator_wrapper: Optional[Any] = None
-        self._separator_ready = asyncio.Event()
-        self._separator_init_failed = False
+        self._mvsep_client: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         # Analysis jobs use lock for serialization (high memory/CPU with allin1)
         self._analysis_lock = asyncio.Lock()
         # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
         self._lrc_semaphore = asyncio.Semaphore(max_concurrent_lrc)
-        # Stem separation uses lock for serialization (high memory/CPU with BS-Roformer)
+        # Stem separation uses lock for serialization (high memory/CPU with vocal model)
         self._stem_separation_lock = asyncio.Lock()
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
@@ -134,15 +133,14 @@ class JobQueue:
             separator_wrapper: AudioSeparatorWrapper instance
         """
         self._separator_wrapper = separator_wrapper
-        self._separator_ready.set()
 
-    def notify_separator_init_failed(self) -> None:
-        """Signal that separator wrapper initialization failed.
+    def set_mvsep_client(self, mvsep_client: Any) -> None:
+        """Set the MVSEP client for cloud stem separation.
 
-        Unblocks any stem separation jobs waiting for the separator.
+        Args:
+            mvsep_client: MvsepClient instance
         """
-        self._separator_init_failed = True
-        self._separator_ready.set()
+        self._mvsep_client = mvsep_client
 
     async def initialize(self) -> None:
         """Initialize persistent store and recover interrupted jobs."""
@@ -964,57 +962,22 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        # Wait for separator wrapper if not yet available
+        # Check if separator wrapper is available (it lazy-initializes on first use)
         if not self._separator_wrapper:
-            if self._separator_init_failed:
-                job.status = JobStatus.FAILED
-                job.error_message = "Separator wrapper initialization failed"
-                job.stage = "missing_separator"
-                job.updated_at = datetime.now(timezone.utc)
-                try:
-                    await self.job_store.update_job(
-                        job.id,
-                        status="failed",
-                        stage="missing_separator",
-                        error_message="Separator wrapper initialization failed",
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to update job {job.id} in database: {e}")
-                return
+            job.status = JobStatus.FAILED
+            job.error_message = "Separator wrapper not available"
+            job.stage = "missing_separator"
+            job.updated_at = datetime.now(timezone.utc)
             try:
-                await asyncio.wait_for(self._separator_ready.wait(), timeout=300.0)
-            except asyncio.TimeoutError:
-                job.status = JobStatus.FAILED
-                job.error_message = (
-                    "Separator wrapper not initialized (timeout waiting for initialization)"
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_separator",
+                    error_message="Separator wrapper not available",
                 )
-                job.stage = "missing_separator"
-                job.updated_at = datetime.now(timezone.utc)
-                try:
-                    await self.job_store.update_job(
-                        job.id,
-                        status="failed",
-                        stage="missing_separator",
-                        error_message="Separator wrapper not initialized (timeout waiting for initialization)",
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to update job {job.id} in database: {e}")
-                return
-            if not self._separator_wrapper:
-                job.status = JobStatus.FAILED
-                job.error_message = "Separator wrapper initialization failed"
-                job.stage = "missing_separator"
-                job.updated_at = datetime.now(timezone.utc)
-                try:
-                    await self.job_store.update_job(
-                        job.id,
-                        status="failed",
-                        stage="missing_separator",
-                        error_message="Separator wrapper initialization failed",
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to update job {job.id} in database: {e}")
-                return
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
 
         try:
             # Initialize R2 if not done
@@ -1027,6 +990,7 @@ class JobQueue:
                 separator_wrapper=self._separator_wrapper,
                 r2_client=self.r2_client,
                 cache_manager=self.cache_manager,
+                mvsep_client=self._mvsep_client,
             )
 
             # Persist completion to database
