@@ -646,6 +646,98 @@ class DatabaseClient:
             results.append(Recording.from_row(tuple(row)))
         return results
 
+    def list_recordings_with_songs(
+        self,
+        status: Optional[str] = None,
+        visibility: Optional[str] = None,
+        lrc_status: Optional[str] = None,
+        album: Optional[str] = None,
+        sort_by: str = "imported",
+        limit: Optional[int] = None,
+        include_deleted: bool = False,
+    ) -> list[tuple[Recording, Optional[str], Optional[str], Optional[str]]]:
+        """List recordings with joined song data for efficient querying.
+
+        Uses LEFT JOIN to fetch recording and song data in a single query,
+        avoiding the N+1 query problem. Supports filtering by album name
+        and sorting by various fields.
+
+        Args:
+            status: Filter by analysis status
+            visibility: Filter by visibility status (published|review|hold)
+            lrc_status: Filter by LRC status (pending|processing|completed|failed|incomplete)
+            album: Filter by album name (case-insensitive substring match)
+            sort_by: Sort order - "album", "series", "title", or "imported" (default)
+            limit: Maximum number of results
+            include_deleted: Whether to include soft-deleted recordings
+
+        Returns:
+            List of tuples (Recording, song_title, album_name, album_series)
+        """
+        cursor = self.connection.cursor()
+
+        # Build query with LEFT JOIN to songs table
+        query = """
+            SELECT r.*, s.title as song_title, s.album_name, s.album_series
+            FROM recordings r
+            LEFT JOIN songs s ON r.song_id = s.id
+            WHERE 1=1
+        """
+        params: list = []
+
+        if not include_deleted:
+            query += " AND r.deleted_at IS NULL"
+
+        if status:
+            query += " AND r.analysis_status = ?"
+            params.append(status)
+
+        if visibility:
+            query += " AND r.visibility_status = ?"
+            params.append(visibility)
+
+        if lrc_status:
+            if lrc_status == "incomplete":
+                query += " AND r.lrc_status IN ('pending', 'processing', 'failed')"
+            else:
+                query += " AND r.lrc_status = ?"
+                params.append(lrc_status)
+
+        if album:
+            query += " AND s.album_name LIKE ?"
+            params.append(f"%{album}%")
+
+        # ORDER BY clause based on sort_by
+        order_map = {
+            "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
+            "series": "s.album_series ASC NULLS LAST, s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
+            "title": "s.title ASC NULLS LAST",
+            "imported": "r.imported_at DESC",
+        }
+        query += f" ORDER BY {order_map.get(sort_by, 'r.imported_at DESC')}"
+
+        if limit:
+            query += f" LIMIT {limit}"
+
+        cursor.execute(query, params)
+
+        results = []
+        for row in cursor.fetchall():
+            # Extract song data from row (last 3 columns)
+            row_tuple = tuple(row)
+            song_title = row_tuple[-3]
+            album_name = row_tuple[-2]
+            album_series = row_tuple[-3]  # Actually -3 is song_title, let's be careful
+            # Re-extract: row has recording columns + song_title + album_name + album_series
+            # The Recording.from_row expects only recording columns
+            recording_cols = row_tuple[:-3]
+            song_title = row_tuple[-3]
+            album_name = row_tuple[-2]
+            album_series_val = row_tuple[-1]
+            recording = Recording.from_row(recording_cols)
+            results.append((recording, song_title, album_name, album_series_val))
+        return results
+
     def update_recording_status(
         self,
         hash_prefix: str,

@@ -1047,45 +1047,28 @@ def list_recordings(
         raise typer.Exit(1)
 
     db_client = DatabaseClient(config.db_path)
-    recordings = db_client.list_recordings(
-        status=status, visibility=visibility, lrc_status=lrc, limit=limit
+    # Use the efficient method with JOIN to avoid N+1 queries
+    # Album filtering and sorting are now handled at the database layer
+    enriched = db_client.list_recordings_with_songs(
+        status=status,
+        visibility=visibility,
+        lrc_status=lrc,
+        album=album,
+        sort_by=sort,
+        limit=limit,
     )
 
-    if not recordings:
+    if not enriched:
         console.print("[yellow]No recordings found.[/yellow]")
         return
 
-    # Enrich recordings with song data (title, album_name, album_series)
-    enriched: list[tuple[Recording, Optional[str], Optional[str], Optional[str]]] = []
-    for rec in recordings:
-        song_title: Optional[str] = None
-        album_name: Optional[str] = None
-        album_series: Optional[str] = None
-        if rec.song_id:
-            song = db_client.get_song(rec.song_id)
-            if song:
-                song_title = song.title
-                album_name = song.album_name
-                album_series = song.album_series
-        enriched.append((rec, song_title, album_name, album_series))
-
-    # Filter by album name if requested
-    if album:
-        enriched = [
-            (rec, title, an, aseries)
-            for rec, title, an, aseries in enriched
-            if an and album.lower() in an.lower()
-        ]
-
-    if not enriched:
-        console.print("[yellow]No recordings found matching the criteria.[/yellow]")
-        return
-
-    # Sort
-    if sort == "album":
+    # For "series" sort, we need to re-sort because SQLite can't extract the series number
+    # For "album" and "title", DB sort is sufficient but we do Python sort as fallback
+    if sort == "series":
+        enriched.sort(key=lambda t: (_extract_series_number(t[3] or ""), t[2] or "", t[1] or ""))
+    elif sort == "album":
+        # DB already sorted by album, title - but re-sort for consistency with null handling
         enriched.sort(key=lambda t: (t[2] or "", t[1] or ""))
-    elif sort == "series":
-        enriched.sort(key=lambda t: (_extract_series_number(t[3]), t[2] or "", t[1] or ""))
     elif sort == "title":
         enriched.sort(key=lambda t: t[1] or "")
     # "imported" — already sorted by imported_at DESC from DB
@@ -2371,9 +2354,8 @@ def view_lrc(
     # Handle stdin input if '-' is provided
     song_ids = song_id
     if song_id == ["-"]:
-        # Read song IDs from stdin
-        lines = sys.stdin.read().strip().split("\n")
-        song_ids = [line.strip() for line in lines if line.strip()]
+        # Read song IDs from stdin using the helper function
+        song_ids = _read_song_ids_from_stdin()
         if not song_ids:
             console.print("[yellow]No song IDs provided via stdin[/yellow]")
             raise typer.Exit(0)

@@ -42,7 +42,9 @@ def submit_job(
 
     with open(audio_path, "rb") as f:
         files = {"audiofile": (audio_path.name, f)}
-        resp = requests.post(f"{MVSEP_API_BASE}/create", data=data, files=files)
+        resp = requests.post(
+            f"{MVSEP_API_BASE}/create", data=data, files=files, timeout=60
+        )
 
     resp.raise_for_status()
     body = resp.json()
@@ -61,7 +63,9 @@ def poll_job(job_hash: str, timeout: float = DEFAULT_TIMEOUT) -> dict:
         if elapsed > timeout:
             raise TimeoutError(f"Job {job_hash} timed out after {elapsed:.0f}s")
 
-        resp = requests.get(f"{MVSEP_API_BASE}/get", params={"hash": job_hash})
+        resp = requests.get(
+            f"{MVSEP_API_BASE}/get", params={"hash": job_hash}, timeout=30
+        )
         resp.raise_for_status()
         body = resp.json()
 
@@ -90,7 +94,7 @@ def download_files(file_entries: list[dict], output_dir: Path) -> list[Path]:
             continue
         filename = entry.get("name") or url.split("/")[-1].split("?")[0]
         dest = output_dir / filename
-        with requests.get(url, stream=True) as r:
+        with requests.get(url, stream=True, timeout=300) as r:
             r.raise_for_status()
             with open(dest, "wb") as f:
                 for chunk in r.iter_content(chunk_size=65536):
