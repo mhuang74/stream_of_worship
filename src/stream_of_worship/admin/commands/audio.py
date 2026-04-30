@@ -25,6 +25,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 
+from stream_of_worship.admin.commands.catalog import _extract_series_number
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
@@ -91,7 +92,9 @@ def _display_video_preview(
 
     if is_long:
         lines.append("")
-        lines.append(f"[yellow bold]⚠ Warning: Video exceeds {threshold // 60} minutes[/yellow bold]")
+        lines.append(
+            f"[yellow bold]⚠ Warning: Video exceeds {threshold // 60} minutes[/yellow bold]"
+        )
 
     border_style = "yellow" if is_long else "green"
 
@@ -350,7 +353,9 @@ def _submit_lrc_job(
     # Look up song for lyrics
     song = db_client.get_song(song_id)
     if not song or not song.lyrics_raw:
-        console.print(f"[yellow]⚠ No lyrics found for song {song_id}, skipping LRC generation[/yellow]")
+        console.print(
+            f"[yellow]⚠ No lyrics found for song {song_id}, skipping LRC generation[/yellow]"
+        )
         return None
 
     youtube_url = "" if no_youtube else (recording.youtube_url or "")
@@ -390,30 +395,20 @@ def _submit_lrc_job(
 @app.command("download")
 def download_audio(
     song_id: str = typer.Argument(..., help="Song ID to download audio for"),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", "-n", help="Preview without downloading"
-    ),
-    url: Optional[str] = typer.Option(
-        None, "--url", "-u", help="Direct YouTube URL (skip search)"
-    ),
-    skip_confirm: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation prompt"
-    ),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without downloading"),
+    url: Optional[str] = typer.Option(None, "--url", "-u", help="Direct YouTube URL (skip search)"),
+    skip_confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
     force: bool = typer.Option(
         False, "--force", "-f", help="Replace existing recording if it exists"
     ),
     analyze: bool = typer.Option(
         False, "--analyze", "-a", help="Submit for analysis after download"
     ),
-    lrc: bool = typer.Option(
-        False, "--lrc", "-l", help="Submit for LRC generation after download"
-    ),
+    lrc: bool = typer.Option(False, "--lrc", "-l", help="Submit for LRC generation after download"),
     all: bool = typer.Option(
         False, "--all", "-A", help="Submit for both analysis and LRC after download"
     ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Download audio from YouTube for a song.
 
@@ -632,12 +627,8 @@ def download_audio(
 @app.command("delete")
 def delete_recording(
     song_id: str = typer.Argument(..., help="Song ID to delete recording for"),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation prompt"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Delete a recording and all associated R2 files.
 
@@ -684,7 +675,9 @@ def delete_recording(
         f"[cyan]Song Title:[/cyan] {song_title}",
         f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
         f"[cyan]Filename:[/cyan] {recording.original_filename}",
-        f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}" if recording.file_size_bytes else "[cyan]Size:[/cyan] -- MB",
+        f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}"
+        if recording.file_size_bytes
+        else "[cyan]Size:[/cyan] -- MB",
     ]
 
     # List R2 resources
@@ -734,7 +727,6 @@ def list_recordings(
     status: Optional[str] = typer.Option(
         None,
         "--status",
-        "-s",
         help="Filter by analysis status (pending|processing|completed|failed)",
     ),
     visibility: Optional[str] = typer.Option(
@@ -743,20 +735,28 @@ def list_recordings(
         "-v",
         help="Filter by visibility status (published|review|hold)",
     ),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table|ids)"
+    album: Optional[str] = typer.Option(
+        None,
+        "--album",
+        "-a",
+        help="Filter by album name",
     ),
-    limit: Optional[int] = typer.Option(
-        None, "--limit", "-l", help="Maximum number of results"
+    sort: str = typer.Option(
+        "album",
+        "--sort",
+        "-s",
+        help="Sort order (album|series|title|imported)",
     ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum number of results"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """List audio recordings.
 
     Display recordings from the database with optional status filtering.
-    Use ``--format ids`` for one song ID per line (pipeable).
+    Use ``--sort`` to change sort order (default: album). Use ``--sort series``
+    to sort by album series number (e.g. 敬拜讚美15 → 15). Use ``--album`` to
+    filter by album name. Use ``--format ids`` for one song ID per line (pipeable).
     """
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
@@ -777,6 +777,14 @@ def list_recordings(
             )
             raise typer.Exit(1)
 
+    # Validate sort option
+    valid_sorts = {"album", "series", "title", "imported"}
+    if sort not in valid_sorts:
+        console.print(
+            f"[red]Invalid sort option: {sort}. Choose from: {', '.join(sorted(valid_sorts))}[/red]"
+        )
+        raise typer.Exit(1)
+
     db_client = DatabaseClient(config.db_path)
     recordings = db_client.list_recordings(status=status, visibility=visibility, limit=limit)
 
@@ -784,8 +792,43 @@ def list_recordings(
         console.print("[yellow]No recordings found.[/yellow]")
         return
 
+    # Enrich recordings with song data (title, album_name, album_series)
+    enriched: list[tuple[Recording, Optional[str], Optional[str], Optional[str]]] = []
+    for rec in recordings:
+        song_title: Optional[str] = None
+        album_name: Optional[str] = None
+        album_series: Optional[str] = None
+        if rec.song_id:
+            song = db_client.get_song(rec.song_id)
+            if song:
+                song_title = song.title
+                album_name = song.album_name
+                album_series = song.album_series
+        enriched.append((rec, song_title, album_name, album_series))
+
+    # Filter by album name if requested
+    if album:
+        enriched = [
+            (rec, title, an, aseries)
+            for rec, title, an, aseries in enriched
+            if an and album.lower() in an.lower()
+        ]
+
+    if not enriched:
+        console.print("[yellow]No recordings found matching the criteria.[/yellow]")
+        return
+
+    # Sort
+    if sort == "album":
+        enriched.sort(key=lambda t: (t[2] or "", t[1] or ""))
+    elif sort == "series":
+        enriched.sort(key=lambda t: (_extract_series_number(t[3]), t[2] or "", t[1] or ""))
+    elif sort == "title":
+        enriched.sort(key=lambda t: t[1] or "")
+    # "imported" — already sorted by imported_at DESC from DB
+
     if format == "ids":
-        for rec in recordings:
+        for rec, _title, _album, _series in enriched:
             console.print(rec.song_id if rec.song_id else rec.hash_prefix)
     else:
         # Build title with filters
@@ -794,8 +837,11 @@ def list_recordings(
             filter_parts.append(f"status={status}")
         if visibility:
             filter_parts.append(f"visibility={visibility}")
+        if album:
+            filter_parts.append(f"album={album}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
-        table = Table(title=f"Recordings ({len(recordings)} total){filter_str}")
+        table = Table(title=f"Recordings ({len(enriched)} total){filter_str}")
+        table.add_column("Album", style="yellow")
         table.add_column("Song Title", style="green")
         table.add_column("Visibility", justify="center")
         table.add_column("Size", style="magenta", justify="right")
@@ -805,14 +851,8 @@ def list_recordings(
         table.add_column("Filename", style="yellow")
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
 
-        for rec in recordings:
+        for rec, song_title, album_name, _album_series in enriched:
             song_id = rec.song_id or "-"
-            song_title = "-"
-            if rec.song_id:
-                song = db_client.get_song(rec.song_id)
-                if song:
-                    song_title = song.title
-
             size_str = _format_size_mb(rec.file_size_bytes) if rec.file_size_bytes else "-- MB"
 
             # Visibility status with visual indicator
@@ -822,10 +862,13 @@ def list_recordings(
             lrc_text = _colorize_status(rec.lrc_status)
 
             # Format duration if available (from analysis results)
-            duration_str = _format_duration(rec.duration_seconds) if rec.duration_seconds else "--:--"
+            duration_str = (
+                _format_duration(rec.duration_seconds) if rec.duration_seconds else "--:--"
+            )
 
             table.add_row(
-                song_title,
+                album_name or "-",
+                song_title or "-",
                 visibility_text,
                 size_str,
                 lrc_text,
@@ -840,12 +883,8 @@ def list_recordings(
 
 @app.command("show")
 def show_recording(
-    song_id: str = typer.Argument(
-        ..., help="Song ID to show recording for"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    song_id: str = typer.Argument(..., help="Song ID to show recording for"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Show detailed info for a recording.
 
@@ -868,8 +907,7 @@ def show_recording(
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
         console.print(
-            f"[red]No recording found for {song_id}. "
-            f"Run 'sow-admin audio download {song_id}'[/red]"
+            f"[red]No recording found for {song_id}. Run 'sow-admin audio download {song_id}'[/red]"
         )
         raise typer.Exit(1)
 
@@ -883,17 +921,21 @@ def show_recording(
     if song:
         info_lines.append(f"[cyan]Song Title:[/cyan] {song.title}")
 
-    info_lines.extend([
-        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
-        f"[cyan]Full Hash:[/cyan] {recording.content_hash}",
-    ])
+    info_lines.extend(
+        [
+            f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
+            f"[cyan]Full Hash:[/cyan] {recording.content_hash}",
+        ]
+    )
 
-    info_lines.extend([
-        f"[cyan]Filename:[/cyan] {recording.original_filename}",
-        f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}",
-        f"[cyan]Duration:[/cyan] {_format_duration(recording.duration_seconds)}",
-        f"[cyan]Imported:[/cyan] {recording.imported_at}",
-    ])
+    info_lines.extend(
+        [
+            f"[cyan]Filename:[/cyan] {recording.original_filename}",
+            f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}",
+            f"[cyan]Duration:[/cyan] {_format_duration(recording.duration_seconds)}",
+            f"[cyan]Imported:[/cyan] {recording.imported_at}",
+        ]
+    )
 
     if recording.r2_audio_url:
         info_lines.append(f"[cyan]Audio URL:[/cyan] {recording.r2_audio_url}")
@@ -909,7 +951,9 @@ def show_recording(
     info_lines.append(f"[cyan]LRC Status:[/cyan] {recording.lrc_status}")
     if recording.lrc_job_id:
         info_lines.append(f"[cyan]LRC Job:[/cyan] {recording.lrc_job_id}")
-    info_lines.append(f"[cyan]Visibility:[/cyan] {_colorize_visibility(recording.visibility_status)}")
+    info_lines.append(
+        f"[cyan]Visibility:[/cyan] {_colorize_visibility(recording.visibility_status)}"
+    )
 
     # Analysis results (only shown when analysis is complete)
     if recording.has_analysis:
@@ -928,17 +972,21 @@ def show_recording(
         if recording.loudness_db is not None:
             info_lines.append(f"[cyan]Loudness:[/cyan] {recording.loudness_db:.1f} dB")
 
-    console.print(Panel.fit(
-        "\n".join(info_lines),
-        title=f"Recording: {song_id}",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            "\n".join(info_lines),
+            title=f"Recording: {song_id}",
+            border_style="green",
+        )
+    )
 
 
 @app.command("set-visibility")
 def set_visibility(
     song_id: str = typer.Argument(..., help="Song ID to update visibility for"),
-    status: str = typer.Option(..., "--status", "-s", help="Visibility status (published|review|hold)"),
+    status: str = typer.Option(
+        ..., "--status", "-s", help="Visibility status (published|review|hold)"
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Set the visibility status for a recording.
@@ -993,15 +1041,9 @@ def set_visibility(
 def analyze_recording(
     song_id: str = typer.Argument(..., help="Song ID to analyze"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
-    no_stems: bool = typer.Option(
-        False, "--no-stems", help="Skip stem separation"
-    ),
-    wait: bool = typer.Option(
-        False, "--wait", "-w", help="Wait for analysis to complete"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    no_stems: bool = typer.Option(False, "--no-stems", help="Skip stem separation"),
+    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for analysis to complete"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for analysis.
 
@@ -1032,9 +1074,7 @@ def analyze_recording(
 
     # Validate r2_audio_url exists
     if not recording.r2_audio_url:
-        console.print(
-            f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]"
-        )
+        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
 
     # Check if already analyzed
@@ -1105,15 +1145,11 @@ def analyze_recording(
             TextColumn("{task.fields[stage]}"),
             console=console,
         ) as progress:
-            task = progress.add_task(
-                "Analyzing...", total=100, stage="", completed=0
-            )
+            task = progress.add_task("Analyzing...", total=100, stage="", completed=0)
 
             def update_progress(job_info: JobInfo) -> None:
                 pct = int(job_info.progress * 100)
-                progress.update(
-                    task, completed=pct, stage=f"[{job_info.stage}]"
-                )
+                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
 
             try:
                 final_job = client.wait_for_completion(
@@ -1151,9 +1187,7 @@ def analyze_recording(
                 key_confidence=result.key_confidence,
                 loudness_db=result.loudness_db,
                 beats=json.dumps(result.beats) if result.beats else None,
-                downbeats=json.dumps(result.downbeats)
-                if result.downbeats
-                else None,
+                downbeats=json.dumps(result.downbeats) if result.downbeats else None,
                 sections=json.dumps(result.sections) if result.sections else None,
                 embeddings_shape=json.dumps(result.embeddings_shape)
                 if result.embeddings_shape
@@ -1168,9 +1202,7 @@ def analyze_recording(
             if final_job.result.musical_key:
                 console.print(f"  Key: {final_job.result.musical_key}")
             if final_job.result.duration_seconds:
-                console.print(
-                    f"  Duration: {_format_duration(final_job.result.duration_seconds)}"
-                )
+                console.print(f"  Duration: {_format_duration(final_job.result.duration_seconds)}")
 
 
 @app.command("lrc")
@@ -1189,12 +1221,8 @@ def lrc_recording(
     no_qwen3: bool = typer.Option(
         False, "--no-qwen3", help="Skip Qwen3 timestamp refinement (use LLM alignment only)"
     ),
-    wait: bool = typer.Option(
-        False, "--wait", "-w", help="Wait for LRC generation to complete"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for LRC generation to complete"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for lyrics alignment (LRC generation).
 
@@ -1219,9 +1247,7 @@ def lrc_recording(
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(
-            f"[red]No recording found for {song_id}.[/red]"
-        )
+        console.print(f"[red]No recording found for {song_id}.[/red]")
         raise typer.Exit(1)
 
     # Look up song for lyrics
@@ -1232,9 +1258,7 @@ def lrc_recording(
 
     # Validate r2_audio_url exists
     if not recording.r2_audio_url:
-        console.print(
-            f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]"
-        )
+        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
 
     # Check if already has LRC
@@ -1308,15 +1332,11 @@ def lrc_recording(
             TextColumn("{task.fields[stage]}"),
             console=console,
         ) as progress:
-            task = progress.add_task(
-                "Generating LRC...", total=100, stage="", completed=0
-            )
+            task = progress.add_task("Generating LRC...", total=100, stage="", completed=0)
 
             def update_progress(job_info: JobInfo) -> None:
                 pct = int(job_info.progress * 100)
-                progress.update(
-                    task, completed=pct, stage=f"[{job_info.stage}]"
-                )
+                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
 
             try:
                 final_job = client.wait_for_completion(
@@ -1368,12 +1388,8 @@ def vocal_clean(
         help="UVR model for reverb removal",
     ),
     force: bool = typer.Option(False, "--force", "-f", help="Re-generate if exists"),
-    skip_upload: bool = typer.Option(
-        False, "--skip-upload", help="Skip R2 upload (local only)"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    skip_upload: bool = typer.Option(False, "--skip-upload", help="Skip R2 upload (local only)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Generate clean vocals (de-reverb) and upload to R2.
 
@@ -1554,6 +1570,7 @@ def vocal_clean(
     final_path.parent.mkdir(parents=True, exist_ok=True)
 
     import shutil
+
     shutil.copy2(dry_vocals_file, final_path)
     console.print(f"[cyan]Local file:[/cyan] {final_path}")
 
@@ -1566,6 +1583,7 @@ def vocal_clean(
         vocal_extraction_dir = cache_dir / hash_prefix / "vocal_extraction"
         if vocal_extraction_dir.exists():
             import shutil as _shutil
+
             _shutil.rmtree(vocal_extraction_dir)
     else:
         console.print("[yellow]Skipped R2 upload (--skip-upload)[/yellow]")
@@ -1580,14 +1598,16 @@ def check_status(
         False, "--sync", "-s", help="Sync pending statuses from analysis service"
     ),
     force_status: Optional[str] = typer.Option(
-        None, "--force-status", help="Force update status (completed, failed, pending). Use when Analysis Service has lost state."
+        None,
+        "--force-status",
+        help="Force update status (completed, failed, pending). Use when Analysis Service has lost state.",
     ),
     force_url: Optional[str] = typer.Option(
-        None, "--force-url", help="URL to set when using --force-status (stems_url for analysis, lrc_url for lrc)"
+        None,
+        "--force-url",
+        help="URL to set when using --force-status (stems_url for analysis, lrc_url for lrc)",
     ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Check analysis status.
 
@@ -1626,9 +1646,7 @@ def check_status(
                 console.print(f"[red]No recording found with job_id: {job_id}[/red]")
                 raise typer.Exit(1)
 
-            _update_recording_status_force(
-                db_client, rec, force_status, force_url, console
-            )
+            _update_recording_status_force(db_client, rec, force_status, force_url, console)
             return
         elif sync:
             # Force update all pending recordings
@@ -1683,9 +1701,7 @@ def check_status(
             lines.append("[bold]Results:[/bold]")
             if job.job_type == "analysis":
                 if job.result.duration_seconds:
-                    lines.append(
-                        f"  Duration: {_format_duration(job.result.duration_seconds)}"
-                    )
+                    lines.append(f"  Duration: {_format_duration(job.result.duration_seconds)}")
                 if job.result.tempo_bpm:
                     lines.append(f"  Tempo: {job.result.tempo_bpm:.1f} BPM")
                 if job.result.musical_key:
@@ -1698,11 +1714,13 @@ def check_status(
                 if job.result.lrc_url:
                     lines.append(f"  LRC URL: {job.result.lrc_url}")
 
-        console.print(Panel.fit(
-            "\n".join(lines),
-            title=f"Job: {job.job_id}",
-            border_style="green" if job.status == "completed" else "yellow",
-        ))
+        console.print(
+            Panel.fit(
+                "\n".join(lines),
+                title=f"Job: {job.job_id}",
+                border_style="green" if job.status == "completed" else "yellow",
+            )
+        )
         return
 
     # Mode B: Sync and list pending recordings
@@ -1717,14 +1735,18 @@ def check_status(
         # Get all recordings with pending/processing analysis or LRC status
         pending_recordings = db_client.list_recordings(status="processing")
         pending_recordings.extend(db_client.list_recordings(status="pending"))
-        
+
         # Also check for pending LRC jobs
         cursor = db_client.connection.cursor()
-        cursor.execute("SELECT hash_prefix FROM recordings WHERE lrc_status IN ('pending', 'processing')")
+        cursor.execute(
+            "SELECT hash_prefix FROM recordings WHERE lrc_status IN ('pending', 'processing')"
+        )
         lrc_pending_hashes = [row[0] for row in cursor.fetchall()]
-        
+
         # Merge hashes to sync
-        hashes_to_sync = set(rec.hash_prefix for rec in pending_recordings) | set(lrc_pending_hashes)
+        hashes_to_sync = set(rec.hash_prefix for rec in pending_recordings) | set(
+            lrc_pending_hashes
+        )
 
         if hashes_to_sync:
             console.print(f"[cyan]Syncing {len(hashes_to_sync)} pending recording(s)...[/cyan]")
@@ -1743,16 +1765,26 @@ def check_status(
                         if job.status == "completed":
                             db_client.update_recording_analysis(
                                 hash_prefix=rec.hash_prefix,
-                                duration_seconds=job.result.duration_seconds if job.result else None,
+                                duration_seconds=job.result.duration_seconds
+                                if job.result
+                                else None,
                                 tempo_bpm=job.result.tempo_bpm if job.result else None,
                                 musical_key=job.result.musical_key if job.result else None,
                                 musical_mode=job.result.musical_mode if job.result else None,
                                 key_confidence=job.result.key_confidence if job.result else None,
                                 loudness_db=job.result.loudness_db if job.result else None,
-                                beats=json.dumps(job.result.beats) if job.result and job.result.beats else None,
-                                downbeats=json.dumps(job.result.downbeats) if job.result and job.result.downbeats else None,
-                                sections=json.dumps(job.result.sections) if job.result and job.result.sections else None,
-                                embeddings_shape=json.dumps(job.result.embeddings_shape) if job.result and job.result.embeddings_shape else None,
+                                beats=json.dumps(job.result.beats)
+                                if job.result and job.result.beats
+                                else None,
+                                downbeats=json.dumps(job.result.downbeats)
+                                if job.result and job.result.downbeats
+                                else None,
+                                sections=json.dumps(job.result.sections)
+                                if job.result and job.result.sections
+                                else None,
+                                embeddings_shape=json.dumps(job.result.embeddings_shape)
+                                if job.result and job.result.embeddings_shape
+                                else None,
                                 r2_stems_url=job.result.stems_url if job.result else None,
                             )
                             synced_count += 1
@@ -1763,7 +1795,9 @@ def check_status(
                             )
                             synced_count += 1
                     except AnalysisServiceError as e:
-                        console.print(f"[dim]Could not sync analysis {rec.analysis_job_id}: {e}[/dim]")
+                        console.print(
+                            f"[dim]Could not sync analysis {rec.analysis_job_id}: {e}[/dim]"
+                        )
                         failed_count += 1
 
                 # Sync LRC job
@@ -2033,9 +2067,7 @@ def _display_lrc(
             # Raw mode: display with syntax highlighting
             syntax = Syntax(content, "lrc", theme="monokai", line_numbers=True)
             console.print(
-                Panel.fit(
-                    syntax, title=f"LRC Content: {song.title}", border_style="cyan"
-                )
+                Panel.fit(syntax, title=f"LRC Content: {song.title}", border_style="cyan")
             )
         elif no_timestamps:
             # No timestamps mode: parse and display text only
@@ -2094,14 +2126,14 @@ def _display_lrc(
 
 @app.command("view-lrc")
 def view_lrc(
-    song_id: list[str] = typer.Argument(..., help="Song ID(s) to view LRC for. Use '-' to read from stdin."),
+    song_id: list[str] = typer.Argument(
+        ..., help="Song ID(s) to view LRC for. Use '-' to read from stdin."
+    ),
     raw: bool = typer.Option(False, "--raw", "-r", help="Display raw LRC file"),
     no_timestamps: bool = typer.Option(
         False, "--no-timestamps", "-t", help="Show lyrics text only"
     ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """View LRC (synchronized lyrics) contents for one or more recordings.
 
@@ -2140,7 +2172,7 @@ def view_lrc(
     song_ids = song_id
     if song_id == ["-"]:
         # Read song IDs from stdin
-        lines = sys.stdin.read().strip().split('\n')
+        lines = sys.stdin.read().strip().split("\n")
         song_ids = [line.strip() for line in lines if line.strip()]
         if not song_ids:
             console.print("[yellow]No song IDs provided via stdin[/yellow]")
@@ -2183,30 +2215,26 @@ def view_lrc(
         console.print()
         console.print(Rule(style="dim"))
         if error_count == 0:
-            console.print(f"[green]✓ Successfully displayed LRC for {success_count} recording(s)[/green]")
+            console.print(
+                f"[green]✓ Successfully displayed LRC for {success_count} recording(s)[/green]"
+            )
         else:
-            console.print(f"[yellow]Completed: {success_count} succeeded, {error_count} failed[/yellow]")
+            console.print(
+                f"[yellow]Completed: {success_count} succeeded, {error_count} failed[/yellow]"
+            )
             raise typer.Exit(1)
 
 
 @app.command("cache")
 def cache_assets(
     song_id: str = typer.Argument(..., help="Song ID to cache assets for"),
-    audio: bool = typer.Option(
-        True, "--audio/--no-audio", help="Download main audio file"
-    ),
+    audio: bool = typer.Option(True, "--audio/--no-audio", help="Download main audio file"),
     stems: bool = typer.Option(
         True, "--stems/--no-stems", help="Download stem files (vocals, drums, bass, other)"
     ),
-    lrc: bool = typer.Option(
-        True, "--lrc/--no-lrc", help="Download LRC lyrics file"
-    ),
-    force: bool = typer.Option(
-        False, "--force", "-f", help="Re-download even if files exist"
-    ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    lrc: bool = typer.Option(True, "--lrc/--no-lrc", help="Download LRC lyrics file"),
+    force: bool = typer.Option(False, "--force", "-f", help="Re-download even if files exist"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Download song assets from R2 to local cache.
 
@@ -2310,7 +2338,9 @@ def cache_assets(
                 downloaded.append(f"LRC: {path.name}")
                 console.print(f"[green]  ✓ {path.name}[/green]")
             else:
-                console.print("[yellow]  ! No LRC available (run 'sow-admin audio lrc' first)[/yellow]")
+                console.print(
+                    "[yellow]  ! No LRC available (run 'sow-admin audio lrc' first)[/yellow]"
+                )
 
     # Summary
     console.print()
@@ -2336,9 +2366,7 @@ def cache_assets(
 def upload_lrc(
     song_id: str = typer.Argument(..., help="Song ID to upload LRC for"),
     lrc_file: Path = typer.Argument(..., help="Path to LRC file", exists=True),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Upload a manually created LRC file to R2.
 
@@ -2442,15 +2470,17 @@ def upload_lrc(
 
     # Display success summary
     console.print()
-    console.print(Panel.fit(
-        f"[green]LRC uploaded successfully![/green]\n\n"
-        f"[cyan]Song:[/cyan] {song_title}\n"
-        f"[cyan]Lines:[/cyan] {lrc_data.line_count}\n"
-        f"[cyan]Duration:[/cyan] {format_duration(lrc_data.duration_seconds)}\n"
-        f"[cyan]R2 URL:[/cyan] {r2_url}",
-        title="Upload Complete",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[green]LRC uploaded successfully![/green]\n\n"
+            f"[cyan]Song:[/cyan] {song_title}\n"
+            f"[cyan]Lines:[/cyan] {lrc_data.line_count}\n"
+            f"[cyan]Duration:[/cyan] {format_duration(lrc_data.duration_seconds)}\n"
+            f"[cyan]R2 URL:[/cyan] {r2_url}",
+            title="Upload Complete",
+            border_style="green",
+        )
+    )
 
 
 def _read_key_nonblocking() -> Optional[str]:
@@ -2575,7 +2605,9 @@ def playback_audio(
 
     # Validate start position
     if start >= playback.duration_seconds:
-        console.print(f"[red]Start position ({start:.1f}s) exceeds duration ({playback.duration_seconds:.1f}s)[/red]")
+        console.print(
+            f"[red]Start position ({start:.1f}s) exceeds duration ({playback.duration_seconds:.1f}s)[/red]"
+        )
         raise typer.Exit(1)
 
     # Start playback
