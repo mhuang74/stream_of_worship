@@ -73,8 +73,7 @@ class DatabaseClient:
         """
         self.db_path = db_path
         self.turso_url = turso_url
-        # Token priority: parameter > SOW_TURSO_TOKEN env var > SOW_TURSO_READONLY_TOKEN env var
-        self.turso_token = turso_token or os.environ.get("SOW_TURSO_TOKEN") or os.environ.get("SOW_TURSO_READONLY_TOKEN")
+        self.turso_token = turso_token or os.environ.get("SOW_TURSO_TOKEN")
         self._connection: Optional[Union[sqlite3.Connection, "libsql.Connection"]] = None
 
     @property
