@@ -358,15 +358,39 @@ class MvsepClient:
         file_entries = result.get("data", {}).get("files", [])
         downloaded = await self._download_files(file_entries, output_dir)
 
-        # Identify outputs by filename
+        # Build map of download filenames to their API type (robust classification)
+        entry_type_by_download: dict[str, str] = {}
+        for entry in file_entries:
+            download_name = (entry.get("download") or "").lower()
+            file_type = entry.get("type", "").lower()
+            if download_name and file_type:
+                entry_type_by_download[download_name] = file_type
+
+        # Identify outputs by API type first, then filename fallback
         vocals_file: Optional[Path] = None
         instrumental_file: Optional[Path] = None
 
         for path in downloaded:
             name_lower = path.name.lower()
+
+            # Primary: match by API type field using download filename
+            matched = False
+            for dl_name, file_type in entry_type_by_download.items():
+                if dl_name in name_lower:
+                    if file_type == "vocals":
+                        vocals_file = path
+                    elif file_type in ("other", "instrumental", "accompaniment", "music"):
+                        instrumental_file = path
+                    matched = True
+                    break
+
+            if matched:
+                continue
+
+            # Fallback: filename pattern matching
             if "vocal" in name_lower:
                 vocals_file = path
-            elif "instrumental" in name_lower or "accompaniment" in name_lower:
+            elif "instrumental" in name_lower or "accompaniment" in name_lower or "other" in name_lower:
                 instrumental_file = path
 
         return vocals_file, instrumental_file
