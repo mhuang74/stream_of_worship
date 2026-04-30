@@ -1,14 +1,15 @@
 """Stem separation worker for generating clean vocals and instrumental.
 
 Ports the algorithm from poc/gen_clean_vocal_stem.py to run as an analysis service job.
-Uses pre-loaded AudioSeparatorWrapper for BS-Roformer + UVR-De-Echo processing.
+Uses AudioSeparatorWrapper for vocal separation + UVR-De-Echo processing.
 """
 
 import logging
 import shutil
 import tempfile
+import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..config import settings
 from ..models import Job, JobResult, JobStatus, StemSeparationJobRequest
@@ -16,7 +17,12 @@ from ..storage.cache import CacheManager
 from ..storage.r2 import R2Client
 from .separator_wrapper import AudioSeparatorWrapper
 
+if TYPE_CHECKING:
+    from ..services.mvsep_client import MvsepClient
+
 logger = logging.getLogger(__name__)
+
+MVSEP_MAX_RETRIES = 3
 
 
 class StemSeparationWorkerError(Exception):
@@ -25,15 +31,134 @@ class StemSeparationWorkerError(Exception):
     pass
 
 
+def _set_job_stage(job: Job, stage: str) -> None:
+    """Update job stage and persist to store."""
+    from datetime import datetime, timezone
+
+    job.stage = stage
+    job.updated_at = datetime.now(timezone.utc)
+
+
+async def _separate_with_mvsep_fallback(
+    input_path: Path,
+    output_dir: Path,
+    job: Job,
+    mvsep_client: Optional["MvsepClient"],
+    separator_wrapper: AudioSeparatorWrapper,
+) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
+    """Try MVSEP per-stage with cross-backend handoff; fall back to local on failure.
+
+    Args:
+        input_path: Path to input audio file
+        output_dir: Directory for output files
+        job: Job being processed (for stage updates)
+        mvsep_client: Optional MVSEP client (None = use local only)
+        separator_wrapper: Local separator wrapper for fallback
+
+    Returns:
+        Tuple of (vocals_clean_path, vocals_reverb_path, instrumental_path)
+    """
+    total_start = time.monotonic()
+
+    # Check if MVSEP is available
+    if not mvsep_client or not mvsep_client.is_available:
+        logger.info("MVSEP not available, using local audio-separator")
+        return await separator_wrapper.separate_stems(input_path, output_dir)
+
+    def _time_remaining() -> float:
+        return settings.SOW_MVSEP_TOTAL_TIMEOUT - (time.monotonic() - total_start)
+
+    # Helper to update job stage
+    def stage_callback(stage: str) -> None:
+        _set_job_stage(job, stage)
+        logger.info(f"MVSEP stage: {stage}")
+
+    # --- Stage 1: Vocal separation ---
+    stage1_dir = output_dir / "mvsep_stage1"
+    stage1_result = None
+
+    for attempt in range(1, MVSEP_MAX_RETRIES + 1):
+        if _time_remaining() <= 0:
+            logger.warning("MVSEP total timeout exceeded, falling back to local")
+            break
+
+        try:
+            vocals, instrumental = await mvsep_client.separate_vocals(
+                input_path, stage1_dir, stage_callback
+            )
+            stage1_result = (vocals, instrumental)
+            logger.info(f"MVSEP Stage 1 succeeded on attempt {attempt}")
+            break
+        except Exception as e:
+            from ..services.mvsep_client import MvsepNonRetriableError
+
+            if isinstance(e, MvsepNonRetriableError):
+                logger.error(f"MVSEP Stage 1 non-retriable error: {e}")
+                break
+            logger.warning(f"MVSEP Stage 1 attempt {attempt} failed: {e}")
+            if attempt >= MVSEP_MAX_RETRIES:
+                logger.error(f"MVSEP Stage 1 exhausted all {MVSEP_MAX_RETRIES} retries")
+
+    if stage1_result is None:
+        # Stage 1 MVSEP failed — fall back to full local pipeline
+        logger.info("MVSEP Stage 1 failed, falling back to full local pipeline")
+        _set_job_stage(job, "fallback_local")
+        return await separator_wrapper.separate_stems(input_path, output_dir)
+
+    vocals, instrumental = stage1_result
+
+    if not vocals:
+        logger.error("MVSEP Stage 1 succeeded but no vocals file produced")
+        _set_job_stage(job, "fallback_local")
+        return await separator_wrapper.separate_stems(input_path, output_dir)
+
+    # --- Stage 2: De-reverb ---
+    stage2_dir = output_dir / "mvsep_stage2"
+    stage2_result = None
+
+    for attempt in range(1, MVSEP_MAX_RETRIES + 1):
+        if _time_remaining() <= 0:
+            logger.warning("MVSEP total timeout exceeded during Stage 2, using local fallback")
+            break
+
+        try:
+            dry_vocals, reverb = await mvsep_client.remove_reverb(
+                vocals, stage2_dir, stage_callback
+            )
+            stage2_result = (dry_vocals, reverb)
+            logger.info(f"MVSEP Stage 2 succeeded on attempt {attempt}")
+            break
+        except Exception as e:
+            from ..services.mvsep_client import MvsepNonRetriableError
+
+            if isinstance(e, MvsepNonRetriableError):
+                logger.error(f"MVSEP Stage 2 non-retriable error: {e}")
+                break
+            logger.warning(f"MVSEP Stage 2 attempt {attempt} failed: {e}")
+            if attempt >= MVSEP_MAX_RETRIES:
+                logger.error(f"MVSEP Stage 2 exhausted all {MVSEP_MAX_RETRIES} retries")
+
+    if stage2_result is None:
+        # Stage 2 MVSEP failed — local Stage 2 only (cross-backend handoff)
+        logger.info("MVSEP Stage 2 failed, using local Stage 2 fallback")
+        _set_job_stage(job, "fallback_local_stage2")
+        dry_vocals, _ = await separator_wrapper.remove_reverb(vocals, stage2_dir)
+        stage2_result = (dry_vocals, None)
+
+    dry_vocals, _ = stage2_result
+    return (dry_vocals, vocals, instrumental)
+
+
 async def process_stem_separation(
     job: Job,
     separator_wrapper: AudioSeparatorWrapper,
     r2_client: R2Client,
     cache_manager: CacheManager,
+    mvsep_client: Optional["MvsepClient"] = None,
 ) -> None:
     """Process a stem separation job.
 
-    Downloads audio from R2, runs two-stage separation (BS-Roformer + UVR-De-Echo),
+    Downloads audio from R2, runs two-stage separation (vocal model + UVR-De-Echo),
     uploads results to R2, and caches locally.
 
     Args:
@@ -132,20 +257,18 @@ async def process_stem_separation(
         await r2_client.download_audio(request.audio_url, audio_path)
         logger.info(f"Audio download complete: {audio_path}")
 
-        # Stage 1: BS-Roformer separation
-        job.stage = "stage1_bs_roformer"
-        job.progress = 0.3
-        job.updated_at = datetime.now(timezone.utc)
-
+        # Stem separation with MVSEP fallback
         stage_output_dir = temp_path / "separation"
-        logger.info("Starting BS-Roformer separation...")
+        logger.info("Starting stem separation (MVSEP with local fallback)...")
 
         try:
             (
                 vocals_clean_path,
                 vocals_reverb_path,
                 instrumental_path,
-            ) = await separator_wrapper.separate_stems(audio_path, stage_output_dir)
+            ) = await _separate_with_mvsep_fallback(
+                audio_path, stage_output_dir, job, mvsep_client, separator_wrapper
+            )
         except Exception as e:
             raise StemSeparationWorkerError(f"Stem separation failed: {e}") from e
 
@@ -228,7 +351,7 @@ async def get_clean_vocals_url(
     """Get the URL for clean vocals if it exists.
 
     Only checks for vocals_clean.flac (the canonical clean-vocal stem
-    produced by the two-stage BS-Roformer + UVR-De-Echo pipeline).
+    produced by the two-stage vocal separation + UVR-De-Echo pipeline).
     If not found, the caller should trigger stem separation to generate it.
 
     Args:
