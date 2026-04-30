@@ -6,7 +6,7 @@ The Analysis Service is a FastAPI-based microservice that performs CPU/GPU-inten
 
 - **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections
 - **Stem Separation (Demucs)**: Separates audio into vocals, drums, bass, and other stems using Demucs
-- **Clean Vocals Generation (BS-Roformer + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal
+- **Clean Vocals Generation (Vocal Separation + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal
 - **LRC Generation**: Generates timestamped lyric files using Whisper + LLM alignment
 - **R2 Storage**: Uploads/download results to/from Cloudflare R2 (S3-compatible)
 
@@ -65,7 +65,7 @@ SOW_WHISPER_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
 
 # Stem Separation Model Configuration
 SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to pre-downloaded models
-SOW_BS_ROFORMER_MODEL="model_bs_roformer_ep_317_sdr_12.9755.ckpt"  # BS-Roformer model filename
+SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"  # Vocal separation model filename
 SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
 ```
 
@@ -158,7 +158,7 @@ curl -X POST http://localhost:8000/api/v1/jobs/lrc \
 ### Submit Stem Separation Job
 
 Generates clean vocals and instrumental stems using a two-stage pipeline:
-1. **Stage 1 (BS-Roformer)**: Extracts vocals from the mix
+1. **Stage 1 (Vocal Separation)**: Extracts vocals from the mix
 2. **Stage 2 (UVR-De-Echo)**: Removes echo/reverb from extracted vocals
 
 ```bash
@@ -178,7 +178,7 @@ curl -X POST http://localhost:8000/api/v1/jobs/stem-separation \
 **Job Stages:**
 - `checking_cache` - Checking for existing stems in R2
 - `downloading` - Downloading source audio
-- `stage1_bs_roformer` - Running BS-Roformer vocal separation
+- `stage1_vocal_separation` - Running MelBand Roformer vocal separation
 - `stage2_dereverb` - Running UVR-De-Echo dereverberation
 - `renaming_outputs` - Renaming outputs to canonical names
 - `caching` - Caching results locally
@@ -220,9 +220,9 @@ import os
 model_dir = os.path.expanduser("~/.cache/audio-separator")
 os.makedirs(model_dir, exist_ok=True)
 
-print("Downloading BS-Roformer model...")
-sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-sep1.load_model(model_filename="model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+    print("Downloading MelBand Roformer model...")
+    sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
+    sep1.load_model(model_filename="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt")
 
 print("Downloading UVR-De-Echo model...")
 sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
@@ -242,7 +242,7 @@ model_dir = os.path.expanduser('~/.cache/audio-separator')
 os.makedirs(model_dir, exist_ok=True)
 
 sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format='FLAC')
-sep1.load_model(model_filename='model_bs_roformer_ep_317_sdr_12.9755.ckpt')
+sep1.load_model(model_filename='model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt')
 
 sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format='FLAC')
 sep2.load_model(model_filename='UVR-De-Echo-Normal.pth')
@@ -359,7 +359,7 @@ If the container can resolve DNS but cannot establish TCP connections to externa
 
 **Symptoms:**
 - `Could not connect to the endpoint URL` errors when downloading audio from R2
-- `Failed to load audio-separator models: HTTPSConnectionPool ... Network is unreachable` during startup
+- `Failed to load audio-separator models: HTTPSConnectionPool ... Network is unreachable` during first stem separation job (lazy initialization)
 - LRC or stem separation jobs fail after hanging for several minutes
 
 **Diagnosis:**
@@ -433,7 +433,7 @@ services/analysis/
         ├── lrc.py
         ├── queue.py
         ├── separator.py       # Demucs stem separation
-        ├── stem_separation.py # BS-Roformer + UVR clean vocals
+        ├── stem_separation.py # Vocal separation (MelBand Roformer) + UVR clean vocals
         └── separator_wrapper.py # AudioSeparator model management
 ```
 

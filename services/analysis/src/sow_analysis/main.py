@@ -24,35 +24,19 @@ try:
 except ImportError:
     AudioSeparatorWrapper = None
 
+try:
+    from .services.mvsep_client import MvsepClient
+except ImportError:
+    MvsepClient = None
+
 # Global job queue instance
 job_queue: JobQueue
 
 # Global separator wrapper instance
 separator_wrapper: "AudioSeparatorWrapper | None" = None
 
-
-async def _init_separator_wrapper(job_queue: JobQueue, cfg) -> None:
-    """Load separator models in background; set on queue when ready."""
-    global separator_wrapper
-    wrapper = AudioSeparatorWrapper(
-        model_dir=cfg.SOW_AUDIO_SEPARATOR_MODEL_DIR,
-        bs_roformer_model=cfg.SOW_BS_ROFORMER_MODEL,
-        dereverb_model=cfg.SOW_DEREVERB_MODEL,
-        output_format="FLAC",
-    )
-    await wrapper.initialize()
-    if wrapper.is_ready:
-        separator_wrapper = wrapper
-        job_queue.set_separator_wrapper(wrapper)
-        logger.info("Audio separator wrapper initialized and ready")
-    else:
-        logger.error(
-            "Audio separator wrapper initialization failed - "
-            "stem separation jobs will fail. "
-            "Check that model files exist in: %s",
-            cfg.SOW_AUDIO_SEPARATOR_MODEL_DIR,
-        )
-        job_queue.notify_separator_init_failed()
+# Global MVSEP client instance
+mvsep_client: "MvsepClient | None" = None
 
 
 @asynccontextmanager
@@ -65,7 +49,7 @@ async def lifespan(app: FastAPI):
     Yields:
         None
     """
-    global job_queue, separator_wrapper
+    global job_queue, separator_wrapper, mvsep_client
 
     # Startup
     job_queue = JobQueue(
@@ -82,36 +66,50 @@ async def lifespan(app: FastAPI):
     if settings.SOW_R2_ENDPOINT_URL:
         job_queue.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
+    # Initialize MVSEP client if configured
+    if MvsepClient is not None:
+        if settings.SOW_MVSEP_API_KEY and settings.SOW_MVSEP_ENABLED:
+            mvsep_client = MvsepClient()
+            job_queue.set_mvsep_client(mvsep_client)
+            logger.info("MVSEP client initialized (cloud stem separation enabled)")
+        else:
+            logger.info("MVSEP not configured (using local audio-separator only)")
+    else:
+        logger.warning("MvsepClient not available")
+
+    # Create separator wrapper (lazy init — models validated on first use, not at startup)
+    if AudioSeparatorWrapper is not None:
+        separator_wrapper = AudioSeparatorWrapper(
+            model_dir=settings.SOW_AUDIO_SEPARATOR_MODEL_DIR,
+            vocal_model=settings.SOW_VOCAL_SEPARATION_MODEL,
+            dereverb_model=settings.SOW_DEREVERB_MODEL,
+            output_format="FLAC",
+        )
+        job_queue.set_separator_wrapper(separator_wrapper)
+        logger.info("Audio separator wrapper created (lazy init on first use)")
+    else:
+        logger.warning("AudioSeparatorWrapper not available (audio-separator not installed)")
+
     # Set job queue in routes
     set_job_queue(job_queue)
 
     # Start background job processor
     task = asyncio.create_task(job_queue.process_jobs())
 
-    # Initialize separator wrapper in background so the service
-    # starts accepting requests immediately (LRC jobs don't need it)
-    bg_separator_task = None
-    if AudioSeparatorWrapper is not None:
-        bg_separator_task = asyncio.create_task(_init_separator_wrapper(job_queue, settings))
-    else:
-        logger.warning("AudioSeparatorWrapper not available (audio-separator not installed)")
-
     yield
 
     # Shutdown
-    if bg_separator_task is not None:
-        bg_separator_task.cancel()
-        try:
-            await bg_separator_task
-        except asyncio.CancelledError:
-            pass
-
     await job_queue.stop()
 
     # Cleanup separator wrapper
     if separator_wrapper is not None:
         await separator_wrapper.cleanup()
         logger.info("Audio separator wrapper cleaned up")
+
+    # Cleanup MVSEP client
+    if mvsep_client is not None:
+        await mvsep_client.aclose()
+        logger.info("MVSEP client closed")
 
     task.cancel()
     try:

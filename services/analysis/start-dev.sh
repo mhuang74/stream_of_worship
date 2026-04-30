@@ -27,19 +27,19 @@ fi
 echo -e "${YELLOW}Checking for audio-separator models...${NC}"
 mkdir -p "$MODEL_DIR"
 
-BS_MODEL="model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+VOCAL_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
 UVR_MODEL="UVR-De-Echo-Normal.pth"
 
-BS_MODEL_PATH="$MODEL_DIR/$BS_MODEL"
+VOCAL_MODEL_PATH="$MODEL_DIR/$VOCAL_MODEL"
 UVR_MODEL_PATH="$MODEL_DIR/$UVR_MODEL"
 
 NEED_DOWNLOAD=false
 
-if [[ ! -f "$BS_MODEL_PATH" ]]; then
-    echo -e "  ${YELLOW}Missing: $BS_MODEL${NC}"
+if [[ ! -f "$VOCAL_MODEL_PATH" ]]; then
+    echo -e "  ${YELLOW}Missing: $VOCAL_MODEL${NC}"
     NEED_DOWNLOAD=true
 else
-    echo -e "  ${GREEN}Found: $BS_MODEL${NC}"
+    echo -e "  ${GREEN}Found: $VOCAL_MODEL${NC}"
 fi
 
 if [[ ! -f "$UVR_MODEL_PATH" ]]; then
@@ -56,7 +56,7 @@ if [[ "$NEED_DOWNLOAD" == true ]]; then
     echo ""
 
     cd "$PROJECT_ROOT"
-    uv run --extra stem_separation python << EOF
+    uv run --python 3.11 --extra stem_separation python << EOF
 from audio_separator.separator import Separator
 import os
 
@@ -64,12 +64,12 @@ model_dir = os.path.expanduser("$MODEL_DIR")
 os.makedirs(model_dir, exist_ok=True)
 
 try:
-    print("Downloading BS-Roformer model...")
+    print("Downloading MelBand Roformer model...")
     sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-    sep1.load_model(model_filename="$BS_MODEL")
-    print(f"  ✓ BS-Roformer downloaded successfully")
+    sep1.load_model(model_filename="$VOCAL_MODEL")
+    print(f"  ✓ MelBand Roformer downloaded successfully")
 except Exception as e:
-    print(f"  ✗ Failed to download BS-Roformer: {e}")
+    print(f"  ✗ Failed to download MelBand Roformer: {e}")
     exit(1)
 
 try:
