@@ -347,3 +347,63 @@ async def test_poll_error_status(client, mock_response):
 
         with pytest.raises(MvsepNonRetriableError, match="Server error"):
             await client._poll_job("abc123")
+
+
+@pytest.mark.asyncio
+async def test_separate_vocals_handles_other_type(client, tmp_path, mock_response):
+    """Test that 'Other' type from MelBand Roformer is correctly identified as instrumental.
+
+    MelBand Roformer (sep_type=48) labels instrumental as 'Other' rather than 'Instrumental'.
+    This test verifies the fix for the bug where instrumental files weren't being matched.
+    """
+    # Simulate the actual API response from MelBand Roformer
+    mock_response.json.side_effect = [
+        {"success": True, "data": {"hash": "test123", "link": "https://mvsep.com/result"}},
+        {
+            "success": True,
+            "status": "done",
+            "data": {
+                "hash": "20260430153526-ff12686013-audio.mp3",
+                "algorithm": "MelBand Roformer (vocals, instrumental)",
+                "output_format": "flac (lossless, 16 bit)",
+                "files": [
+                    {
+                        "type": "Vocals",
+                        "url": "https://mvsep.com/storage/processed/20260430153526-ff12686013-audio_melroformer_mt_11_vocals.flac",
+                        "download": "audio_melroformer_mt_11_vocals.flac"
+                    },
+                    {
+                        "type": "Other",
+                        "url": "https://mvsep.com/storage/processed/20260430153526-ff12686013-audio_melroformer_mt_11_other.flac",
+                        "download": "audio_melroformer_mt_11_other.flac"
+                    }
+                ]
+            }
+        }
+    ]
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
+        with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
+            with patch.object(client, "_download_files", new_callable=AsyncMock) as mock_download:
+                # Simulate the downloaded files with the actual filenames
+                vocals_file = output_dir / "audio_melroformer_mt_11_vocals.flac"
+                other_file = output_dir / "audio_melroformer_mt_11_other.flac"
+                vocals_file.write_text("fake vocals")
+                other_file.write_text("fake other")
+                mock_download.return_value = [vocals_file, other_file]
+
+                mock_post.return_value = mock_response
+                mock_get.return_value = mock_response
+
+                result_vocals, result_instrumental = await client.separate_vocals(
+                    client._test_audio, output_dir
+                )
+
+                assert result_vocals == vocals_file
+                assert result_instrumental == other_file, (
+                    f"Expected Other file to be identified as instrumental, "
+                    f"but got: {result_instrumental}"
+                )

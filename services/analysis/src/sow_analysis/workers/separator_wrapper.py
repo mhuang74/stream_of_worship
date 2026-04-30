@@ -156,7 +156,7 @@ class AudioSeparatorWrapper:
             name_lower = output_path.name.lower()
             if "vocals" in name_lower:
                 vocals_file = output_path
-            elif "instrumental" in name_lower:
+            elif "instrumental" in name_lower or "other" in name_lower:
                 instrumental_file = output_path
 
         if not vocals_file or not vocals_file.exists():
