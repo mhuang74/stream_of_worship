@@ -741,6 +741,11 @@ def list_recordings(
         "-a",
         help="Filter by album name",
     ),
+    lrc: Optional[str] = typer.Option(
+        None,
+        "--lrc",
+        help="Filter by LRC status (pending|processing|completed|failed|incomplete)",
+    ),
     sort: str = typer.Option(
         "album",
         "--sort",
@@ -777,6 +782,15 @@ def list_recordings(
             )
             raise typer.Exit(1)
 
+    # Validate LRC status filter
+    if lrc:
+        valid_lrc_statuses = {"pending", "processing", "completed", "failed", "incomplete"}
+        if lrc not in valid_lrc_statuses:
+            console.print(
+                f"[red]Invalid LRC status: {lrc}. Must be one of: {', '.join(valid_lrc_statuses)}[/red]"
+            )
+            raise typer.Exit(1)
+
     # Validate sort option
     valid_sorts = {"album", "series", "title", "imported"}
     if sort not in valid_sorts:
@@ -786,7 +800,9 @@ def list_recordings(
         raise typer.Exit(1)
 
     db_client = DatabaseClient(config.db_path)
-    recordings = db_client.list_recordings(status=status, visibility=visibility, limit=limit)
+    recordings = db_client.list_recordings(
+        status=status, visibility=visibility, lrc_status=lrc, limit=limit
+    )
 
     if not recordings:
         console.print("[yellow]No recordings found.[/yellow]")
@@ -839,6 +855,8 @@ def list_recordings(
             filter_parts.append(f"visibility={visibility}")
         if album:
             filter_parts.append(f"album={album}")
+        if lrc:
+            filter_parts.append(f"lrc={lrc}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
         table = Table(title=f"Recordings ({len(enriched)} total){filter_str}")
         table.add_column("Album", style="yellow")
