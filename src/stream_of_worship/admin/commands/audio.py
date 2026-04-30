@@ -267,6 +267,253 @@ def _colorize_visibility(visibility: Optional[str]) -> str:
         return "[dim]- none[/dim]"
 
 
+def _read_song_ids_from_stdin() -> list[str]:
+    """Read song IDs from stdin, one per line.
+
+    Returns:
+        List of non-empty, stripped song IDs
+    """
+    song_ids = []
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            song_ids.append(line)
+    return song_ids
+
+
+def _submit_lrc_single(
+    song_id: str,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    force: bool,
+    whisper_model: str,
+    language: str,
+    no_vocals: bool,
+    no_youtube: bool,
+    no_whisper_cache: bool,
+    no_qwen3: bool,
+    wait: bool,
+    console: Console,
+) -> None:
+    """Submit LRC for a single recording (original behavior with wait support)."""
+    # Look up recording by song_id
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for {song_id}.[/red]")
+        raise typer.Exit(1)
+
+    # Look up song for lyrics
+    song = db_client.get_song(song_id)
+    if not song or not song.lyrics_raw:
+        console.print(f"[red]No lyrics found for song {song_id}.[/red]")
+        raise typer.Exit(1)
+
+    # Validate r2_audio_url exists
+    if not recording.r2_audio_url:
+        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
+        raise typer.Exit(1)
+
+    # Check if already has LRC
+    if recording.lrc_status == "completed" and not force:
+        console.print(
+            f"[yellow]Recording {recording.hash_prefix} already has LRC. "
+            f"Use --force to re-generate.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    # Check if already processing
+    skip_submission = False
+    job_id = None
+    if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
+        if not wait:
+            console.print(
+                f"[yellow]LRC generation already in progress for "
+                f"{recording.hash_prefix} (job: {recording.lrc_job_id})[/yellow]"
+            )
+            raise typer.Exit(0)
+        job_id = recording.lrc_job_id
+        skip_submission = True
+
+    # Submit LRC (unless we're polling an existing job)
+    if not skip_submission:
+        youtube_url = "" if no_youtube else (recording.youtube_url or "")
+        try:
+            job = analysis_client.submit_lrc(
+                audio_url=recording.r2_audio_url,
+                content_hash=recording.content_hash,
+                lyrics_text=song.lyrics_raw,
+                whisper_model=whisper_model,
+                language=language,
+                use_vocals_stem=not no_vocals,
+                force=force,
+                force_whisper=no_whisper_cache,
+                youtube_url=youtube_url,
+                use_qwen3=not no_qwen3,
+            )
+        except AnalysisServiceError as e:
+            console.print(f"[red]Failed to submit LRC job: {e}[/red]")
+            raise typer.Exit(1)
+
+        job_id = job.job_id
+
+        # Update DB
+        db_client.update_recording_status(
+            hash_prefix=recording.hash_prefix,
+            lrc_status="processing",
+            lrc_job_id=job_id,
+        )
+
+        console.print(f"[green]LRC job submitted (job: {job_id})[/green]")
+    else:
+        console.print(f"[cyan]Polling existing job: {job_id}[/cyan]")
+
+    # Wait mode with progress
+    if wait:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("{task.fields[stage]}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Generating LRC...", total=100, stage="", completed=0)
+
+            def update_progress(job_info: JobInfo) -> None:
+                pct = int(job_info.progress * 100)
+                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
+
+            try:
+                final_job = analysis_client.wait_for_completion(
+                    job_id,
+                    poll_interval=30.0,
+                    timeout=600.0,
+                    callback=update_progress,
+                )
+            except AnalysisServiceError as e:
+                console.print(f"[red]{e}[/red]")
+                db_client.update_recording_status(
+                    hash_prefix=recording.hash_prefix,
+                    lrc_status="failed",
+                )
+                raise typer.Exit(1)
+
+        if final_job.status == "failed":
+            error_msg = final_job.error_message or "Unknown error"
+            console.print(f"[red]LRC generation failed: {error_msg}[/red]")
+            db_client.update_recording_status(
+                hash_prefix=recording.hash_prefix,
+                lrc_status="failed",
+            )
+            raise typer.Exit(1)
+
+        # Store results
+        if final_job.result and final_job.result.lrc_url:
+            db_client.update_recording_lrc(
+                hash_prefix=recording.hash_prefix,
+                r2_lrc_url=final_job.result.lrc_url,
+            )
+
+        console.print(f"[green]LRC generation completed for {song_id}[/green]")
+        if final_job.result and final_job.result.lrc_url:
+            console.print(f"  LRC URL: {final_job.result.lrc_url}")
+
+
+def _submit_lrc_batch(
+    song_ids: list[str],
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    force: bool,
+    whisper_model: str,
+    language: str,
+    no_vocals: bool,
+    no_youtube: bool,
+    no_whisper_cache: bool,
+    no_qwen3: bool,
+    console: Console,
+) -> None:
+    """Submit LRC for multiple recordings (batch mode, no wait)."""
+    submitted = 0
+    skipped = 0
+    errors = 0
+
+    for i, song_id in enumerate(song_ids, 1):
+        console.print(f"[{i}/{len(song_ids)}] Processing {song_id}...")
+
+        # Look up recording by song_id
+        recording = db_client.get_recording_by_song_id(song_id)
+        if not recording:
+            console.print("  [red]No recording found[/red]")
+            errors += 1
+            continue
+
+        # Look up song for lyrics
+        song = db_client.get_song(song_id)
+        if not song or not song.lyrics_raw:
+            console.print("  [red]No lyrics found[/red]")
+            errors += 1
+            continue
+
+        # Validate r2_audio_url exists
+        if not recording.r2_audio_url:
+            console.print("  [red]No audio URL[/red]")
+            errors += 1
+            continue
+
+        # Check if already has LRC
+        if recording.lrc_status == "completed" and not force:
+            console.print("  [yellow]Already has LRC (skipped)[/yellow]")
+            skipped += 1
+            continue
+
+        # Check if already processing
+        if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
+            console.print("  [yellow]Already in progress (skipped)[/yellow]")
+            skipped += 1
+            continue
+
+        # Submit LRC
+        youtube_url = "" if no_youtube else (recording.youtube_url or "")
+        try:
+            job = analysis_client.submit_lrc(
+                audio_url=recording.r2_audio_url,
+                content_hash=recording.content_hash,
+                lyrics_text=song.lyrics_raw,
+                whisper_model=whisper_model,
+                language=language,
+                use_vocals_stem=not no_vocals,
+                force=force,
+                force_whisper=no_whisper_cache,
+                youtube_url=youtube_url,
+                use_qwen3=not no_qwen3,
+            )
+
+            # Update DB
+            db_client.update_recording_status(
+                hash_prefix=recording.hash_prefix,
+                lrc_status="processing",
+                lrc_job_id=job.job_id,
+            )
+
+            console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
+            submitted += 1
+
+        except AnalysisServiceError as e:
+            console.print(f"  [red]Failed to submit: {e}[/red]")
+            errors += 1
+        except Exception as e:
+            console.print(f"  [red]Unexpected error: {e}[/red]")
+            errors += 1
+
+    # Summary
+    console.print("")
+    console.print("[cyan]Batch Summary:[/cyan]")
+    console.print(f"  Submitted: {submitted}")
+    console.print(f"  Skipped: {skipped}")
+    console.print(f"  Errors: {errors}")
+    console.print(f"  Total: {len(song_ids)}")
+
+
 def _submit_analysis_job(
     recording: Recording,
     analysis_url: str,
@@ -1225,8 +1472,9 @@ def analyze_recording(
 
 @app.command("lrc")
 def lrc_recording(
-    song_id: str = typer.Argument(..., help="Song ID to generate LRC for"),
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to generate LRC for"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-generation"),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
     language: str = typer.Option("zh", "--lang", help="Language hint"),
     no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
@@ -1248,7 +1496,21 @@ def lrc_recording(
     then falls back to Whisper transcription with Qwen3 timestamp refinement.
     Use --no-youtube to skip the YouTube path and use Whisper directly.
     Use --no-qwen3 to skip Qwen3 refinement and use LLM alignment only.
+
+    For batch processing, pipe song IDs via stdin:
+        sow-admin audio list --lrc incomplete --format ids | sow-admin audio lrc --stdin
     """
+    # Validate mutually exclusive inputs
+    if not song_id and not stdin:
+        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+    if song_id and stdin:
+        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+    if stdin and wait:
+        console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
+        raise typer.Exit(1)
+
     # Standard config/db boilerplate
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
@@ -1262,134 +1524,54 @@ def lrc_recording(
 
     db_client = DatabaseClient(config.db_path)
 
-    # Look up recording by song_id
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(f"[red]No recording found for {song_id}.[/red]")
-        raise typer.Exit(1)
-
-    # Look up song for lyrics
-    song = db_client.get_song(song_id)
-    if not song or not song.lyrics_raw:
-        console.print(f"[red]No lyrics found for song {song_id}.[/red]")
-        raise typer.Exit(1)
-
-    # Validate r2_audio_url exists
-    if not recording.r2_audio_url:
-        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
-        raise typer.Exit(1)
-
-    # Check if already has LRC
-    if recording.lrc_status == "completed" and not force:
-        console.print(
-            f"[yellow]Recording {recording.hash_prefix} already has LRC. "
-            f"Use --force to re-generate.[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    # Check if already processing
-    if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
-        if not wait:
-            console.print(
-                f"[yellow]LRC generation already in progress for "
-                f"{recording.hash_prefix} (job: {recording.lrc_job_id})[/yellow]"
-            )
-            raise typer.Exit(0)
-        job_id = recording.lrc_job_id
-        skip_submission = True
-    else:
-        skip_submission = False
-
-    # Create analysis client
+    # Create analysis client (shared for batch mode)
     try:
-        client = AnalysisClient(config.analysis_url)
+        analysis_client = AnalysisClient(config.analysis_url)
     except ValueError as e:
         console.print(f"[red]Analysis service not configured: {e}[/red]")
         raise typer.Exit(1)
 
-    # Submit LRC (unless we're polling an existing job)
-    if not skip_submission:
-        youtube_url = "" if no_youtube else (recording.youtube_url or "")
-        try:
-            job = client.submit_lrc(
-                audio_url=recording.r2_audio_url,
-                content_hash=recording.content_hash,
-                lyrics_text=song.lyrics_raw,
-                whisper_model=whisper_model,
-                language=language,
-                use_vocals_stem=not no_vocals,
-                force=force,
-                force_whisper=no_whisper_cache,
-                youtube_url=youtube_url,
-                use_qwen3=not no_qwen3,
-            )
-        except AnalysisServiceError as e:
-            console.print(f"[red]Failed to submit LRC job: {e}[/red]")
-            raise typer.Exit(1)
-
-        job_id = job.job_id
-
-        # Update DB
-        db_client.update_recording_status(
-            hash_prefix=recording.hash_prefix,
-            lrc_status="processing",
-            lrc_job_id=job_id,
-        )
-
-        console.print(f"[green]LRC job submitted (job: {job_id})[/green]")
+    # Collect song IDs to process
+    if stdin:
+        song_ids = _read_song_ids_from_stdin()
+        if not song_ids:
+            console.print("[yellow]No song IDs provided via stdin[/yellow]")
+            raise typer.Exit(0)
     else:
-        console.print(f"[cyan]Polling existing job: {job_id}[/cyan]")
+        song_ids = [song_id]
 
-    # Wait mode with progress
-    if wait:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TextColumn("{task.fields[stage]}"),
+    # Process all songs
+    if len(song_ids) == 1:
+        # Single song mode - original behavior with wait support
+        _submit_lrc_single(
+            song_id=song_ids[0],
+            db_client=db_client,
+            analysis_client=analysis_client,
+            force=force,
+            whisper_model=whisper_model,
+            language=language,
+            no_vocals=no_vocals,
+            no_youtube=no_youtube,
+            no_whisper_cache=no_whisper_cache,
+            no_qwen3=no_qwen3,
+            wait=wait,
             console=console,
-        ) as progress:
-            task = progress.add_task("Generating LRC...", total=100, stage="", completed=0)
-
-            def update_progress(job_info: JobInfo) -> None:
-                pct = int(job_info.progress * 100)
-                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
-
-            try:
-                final_job = client.wait_for_completion(
-                    job_id,
-                    poll_interval=30.0,
-                    timeout=600.0,
-                    callback=update_progress,
-                )
-            except AnalysisServiceError as e:
-                console.print(f"[red]{e}[/red]")
-                db_client.update_recording_status(
-                    hash_prefix=recording.hash_prefix,
-                    lrc_status="failed",
-                )
-                raise typer.Exit(1)
-
-        if final_job.status == "failed":
-            error_msg = final_job.error_message or "Unknown error"
-            console.print(f"[red]LRC generation failed: {error_msg}[/red]")
-            db_client.update_recording_status(
-                hash_prefix=recording.hash_prefix,
-                lrc_status="failed",
-            )
-            raise typer.Exit(1)
-
-        # Store results
-        if final_job.result and final_job.result.lrc_url:
-            db_client.update_recording_lrc(
-                hash_prefix=recording.hash_prefix,
-                r2_lrc_url=final_job.result.lrc_url,
-            )
-
-        console.print(f"[green]LRC generation completed for {song_id}[/green]")
-        if final_job.result and final_job.result.lrc_url:
-            console.print(f"  LRC URL: {final_job.result.lrc_url}")
+        )
+    else:
+        # Batch mode - no wait support, process all
+        _submit_lrc_batch(
+            song_ids=song_ids,
+            db_client=db_client,
+            analysis_client=analysis_client,
+            force=force,
+            whisper_model=whisper_model,
+            language=language,
+            no_vocals=no_vocals,
+            no_youtube=no_youtube,
+            no_whisper_cache=no_whisper_cache,
+            no_qwen3=no_qwen3,
+            console=console,
+        )
 
 
 @app.command("vocal")
