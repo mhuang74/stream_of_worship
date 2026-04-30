@@ -36,16 +36,18 @@ class MockSettings:
 
 
 # Mock the config module before importing mvsep_client
-config_module = type(sys)("sow_analysis.config")
+import types
+config_module = types.ModuleType("sow_analysis.config")
 config_module.settings = MockSettings()
 sys.modules["sow_analysis.config"] = config_module
 
-# Also mock the parent module to prevent other imports
-sow_analysis_module = type(sys)("sow_analysis")
-sow_analysis_module.config = config_module
-sys.modules["sow_analysis"] = sow_analysis_module
+# Ensure sow_analysis is importable as a real package but with mocked config
+# We need sow_analysis.__path__ set so Python can find subpackages
+import sow_analysis
+sow_analysis.config = config_module
+sys.modules["sow_analysis.config"] = config_module
 
-# Now import mvsep_client directly (it will add itself to sys.modules)
+# Now import mvsep_client — it will resolve the config import from our mock
 from sow_analysis.services.mvsep_client import (
     MvsepClient,
     MvsepClientError,
@@ -55,9 +57,11 @@ from sow_analysis.services.mvsep_client import (
 
 
 @pytest.fixture
-def client():
-    """Create a test MVSEP client."""
-    return MvsepClient(
+def client(tmp_path):
+    """Create a test MVSEP client with a temp audio file."""
+    test_audio = tmp_path / "test.mp3"
+    test_audio.write_bytes(b"fake audio data")
+    client = MvsepClient(
         api_token="test-token",
         enabled=True,
         stage1_sep_type=48,
@@ -70,6 +74,8 @@ def client():
         stage_timeout=300,
         daily_job_limit=50,
     )
+    client._test_audio = test_audio
+    return client
 
 
 @pytest.fixture
@@ -83,13 +89,13 @@ def mock_response():
 @pytest.mark.asyncio
 async def test_submit_success(client, mock_response):
     """Test successful job submission returns job hash."""
-    mock_response.json.return_value = {"hash": "abc123"}
+    mock_response.json.return_value = {"success": True, "data": {"hash": "abc123", "link": "https://mvsep.com/..."}}
 
     with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = mock_response
 
         result = await client._submit_job(
-            Path("/tmp/test.mp3"),
+            client._test_audio,
             sep_type=48,
             add_opt1=11,
         )
@@ -100,14 +106,14 @@ async def test_submit_success(client, mock_response):
 @pytest.mark.asyncio
 async def test_submit_api_error(client, mock_response):
     """Test API error response raises MvsepClientError."""
-    mock_response.json.return_value = {"error": "some_error", "message": "API error"}
+    mock_response.json.return_value = {"success": False, "data": {"message": "API error"}}
 
     with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = mock_response
 
         with pytest.raises(MvsepClientError, match="API error"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -129,7 +135,7 @@ async def test_submit_401_raises_non_retriable(client):
 
         with pytest.raises(MvsepNonRetriableError, match="Authentication failed"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -153,7 +159,7 @@ async def test_submit_403_raises_non_retriable(client):
 
         with pytest.raises(MvsepNonRetriableError, match="Authentication failed"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -172,8 +178,9 @@ def test_is_available_disabled_after_non_retriable(client):
 async def test_poll_done(client, mock_response):
     """Test polling returns data when status is done."""
     mock_response.json.return_value = {
+        "success": True,
         "status": "done",
-        "files": [{"url": "http://example.com/vocals.flac", "name": "vocals.flac"}],
+        "data": {"files": [{"url": "http://example.com/vocals.flac", "name": "vocals.flac"}]},
     }
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
@@ -182,7 +189,7 @@ async def test_poll_done(client, mock_response):
         result = await client._poll_job("abc123")
 
         assert result["status"] == "done"
-        assert "files" in result
+        assert "files" in result.get("data", {})
 
 
 @pytest.mark.asyncio
@@ -191,7 +198,9 @@ async def test_poll_timeout(client):
     client.stage_timeout = 0.1  # Very short timeout
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value.json.return_value = {"status": "processing"}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"success": True, "status": "processing"}
+        mock_get.return_value = mock_resp
 
         with pytest.raises(MvsepTimeoutError):
             await client._poll_job("abc123")
@@ -200,7 +209,7 @@ async def test_poll_timeout(client):
 @pytest.mark.asyncio
 async def test_poll_failed_status(client, mock_response):
     """Test polling raises MvsepNonRetriableError on failed status."""
-    mock_response.json.return_value = {"status": "failed", "message": "Job failed"}
+    mock_response.json.return_value = {"success": True, "status": "failed", "data": {"message": "Job failed"}}
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
@@ -214,7 +223,7 @@ def test_is_available_with_key(client):
     assert client.is_available is True
 
 
-def test_is_available_without_key():
+def test_is_available_without_key(tmp_path):
     """Test is_available returns False when no API key."""
     client = MvsepClient(api_token="", enabled=True)
     assert client.is_available is False
@@ -252,14 +261,14 @@ async def test_aclose_closes_httpx_client(client):
 @pytest.mark.asyncio
 async def test_submit_invalid_key_error(client, mock_response):
     """Test invalid key error in response body disables client."""
-    mock_response.json.return_value = {"error": "invalid_key", "message": "Invalid API key"}
+    mock_response.json.return_value = {"success": False, "data": {"message": "Invalid API key"}}
 
     with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = mock_response
 
         with pytest.raises(MvsepNonRetriableError, match="Invalid API key"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -271,8 +280,8 @@ async def test_submit_invalid_key_error(client, mock_response):
 async def test_submit_insufficient_credits_error(client, mock_response):
     """Test insufficient credits error in response body disables client."""
     mock_response.json.return_value = {
-        "error": "insufficient_credits",
-        "message": "Insufficient credits",
+        "success": False,
+        "data": {"message": "Insufficient credits"},
     }
 
     with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
@@ -280,7 +289,7 @@ async def test_submit_insufficient_credits_error(client, mock_response):
 
         with pytest.raises(MvsepNonRetriableError, match="Insufficient credits"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -296,7 +305,7 @@ async def test_submit_timeout_error(client):
 
         with pytest.raises(MvsepClientError, match="Request timed out"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -310,7 +319,7 @@ async def test_submit_request_error(client):
 
         with pytest.raises(MvsepClientError, match="Connection failed"):
             await client._submit_job(
-                Path("/tmp/test.mp3"),
+                client._test_audio,
                 sep_type=40,
                 add_opt1=81,
             )
@@ -319,7 +328,7 @@ async def test_submit_request_error(client):
 @pytest.mark.asyncio
 async def test_poll_not_found_status(client, mock_response):
     """Test polling raises MvsepNonRetriableError on not_found status."""
-    mock_response.json.return_value = {"status": "not_found"}
+    mock_response.json.return_value = {"success": False, "status": "not_found"}
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
@@ -331,7 +340,7 @@ async def test_poll_not_found_status(client, mock_response):
 @pytest.mark.asyncio
 async def test_poll_error_status(client, mock_response):
     """Test polling raises MvsepNonRetriableError on error status."""
-    mock_response.json.return_value = {"status": "error", "message": "Server error"}
+    mock_response.json.return_value = {"success": False, "status": "error", "data": {"message": "Server error"}}
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
