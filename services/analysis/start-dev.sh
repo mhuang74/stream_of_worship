@@ -56,7 +56,7 @@ if [[ "$NEED_DOWNLOAD" == true ]]; then
     echo ""
 
     cd "$PROJECT_ROOT"
-    uv run --extra stem_separation python << EOF
+    uv run --python 3.11 --extra stem_separation python << EOF
 from audio_separator.separator import Separator
 import os
 
