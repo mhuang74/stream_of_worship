@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Define common environment variables using YAML anchor
 x-common-env: &common-env
   SOW_R2_BUCKET: ${SOW_R2_BUCKET}

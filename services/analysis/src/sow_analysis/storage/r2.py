@@ -11,6 +11,13 @@ from typing import Optional, Tuple
 import boto3
 from botocore.exceptions import ClientError
 
+# Legacy stem name mappings for backward compatibility
+STEM_LEGACY_NAMES = {
+    "vocals_dry": "vocals_clean",
+    "vocals": "vocals_reverb",
+    "instrumental": "instrumental_clean",
+}
+
 
 def parse_s3_url(s3_url: str) -> Tuple[str, str]:
     """Parse s3://bucket/key to (bucket, key).
@@ -160,64 +167,94 @@ class R2Client:
         except ClientError:
             return False
 
-    async def upload_clean_stems(
-        self,
-        hash_prefix: str,
-        vocals_clean: Path,
-        instrumental_clean: Optional[Path] = None,
-        vocals_reverb: Optional[Path] = None,
-    ) -> Tuple[str, Optional[str], Optional[str]]:
-        """Upload clean stems to R2.
-
-        Uploads vocals_clean.flac and optionally instrumental_clean.flac and
-        vocals_reverb.flac to the stems directory.
+    async def check_stem_exists(
+        self, hash_prefix: str, stem_name: str, extension: str = "flac"
+    ) -> Optional[str]:
+        """Check if a stem exists in R2, trying new name then legacy fallback.
 
         Args:
             hash_prefix: Content hash prefix for the path
-            vocals_clean: Path to the clean (de-echoed) vocals FLAC file
-            instrumental_clean: Optional path to the instrumental FLAC file
-            vocals_reverb: Optional path to the Stage 1 vocals (with reverb) FLAC file
+            stem_name: Stem name (e.g., "vocals_dry", "vocals", "instrumental")
+            extension: File extension (default: "flac")
 
         Returns:
-            Tuple of (vocals_clean_url, instrumental_clean_url or None, vocals_reverb_url or None)
+            S3 URL if found, None otherwise.
+        """
+        primary_key = f"{hash_prefix}/stems/{stem_name}.{extension}"
+        primary_url = f"s3://{self.bucket}/{primary_key}"
+        if await self.check_exists(primary_url):
+            return primary_url
+
+        legacy_name = STEM_LEGACY_NAMES.get(stem_name)
+        if legacy_name:
+            legacy_key = f"{hash_prefix}/stems/{legacy_name}.{extension}"
+            legacy_url = f"s3://{self.bucket}/{legacy_key}"
+            if await self.check_exists(legacy_url):
+                return legacy_url
+
+        return None
+
+    async def upload_clean_stems(
+        self,
+        hash_prefix: str,
+        vocals_dry: Path,
+        instrumental: Optional[Path] = None,
+        vocals: Optional[Path] = None,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Upload clean stems to R2.
+
+        Uploads vocals_dry.flac (Stage 2 output) and optionally vocals.flac
+        (Stage 1 output) and instrumental.flac to the stems directory.
+
+        Args:
+            hash_prefix: Content hash prefix for the path
+            vocals_dry: Path to the dry (de-reverb) vocals FLAC file
+            instrumental: Optional path to the instrumental FLAC file
+            vocals: Optional path to the Stage 1 vocals FLAC file
+
+        Returns:
+            Tuple of (vocals_dry_url, vocals_url or None, instrumental_url or None).
+            Order matches separate_stems() return: (vocals_dry, vocals, instrumental).
         """
         loop = asyncio.get_event_loop()
 
-        # Upload vocals_clean.flac
-        vocals_key = f"{hash_prefix}/stems/vocals_clean.flac"
-        await loop.run_in_executor(
-            None,
-            self.s3.upload_file,
-            str(vocals_clean),
-            self.bucket,
-            vocals_key,
-        )
-        vocals_url = f"s3://{self.bucket}/{vocals_key}"
-
-        # Upload instrumental_clean.flac if provided
-        instrumental_url = None
-        if instrumental_clean and instrumental_clean.exists():
-            instrumental_key = f"{hash_prefix}/stems/instrumental_clean.flac"
+        # Upload vocals_dry.flac (Stage 2 output)
+        vocals_dry_url: Optional[str] = None
+        if vocals_dry and vocals_dry.exists():
+            dry_key = f"{hash_prefix}/stems/vocals_dry.flac"
             await loop.run_in_executor(
                 None,
                 self.s3.upload_file,
-                str(instrumental_clean),
+                str(vocals_dry),
+                self.bucket,
+                dry_key,
+            )
+            vocals_dry_url = f"s3://{self.bucket}/{dry_key}"
+
+        # Upload vocals.flac (Stage 1 output) if provided
+        vocals_url: Optional[str] = None
+        if vocals and vocals.exists():
+            vocals_key = f"{hash_prefix}/stems/vocals.flac"
+            await loop.run_in_executor(
+                None,
+                self.s3.upload_file,
+                str(vocals),
+                self.bucket,
+                vocals_key,
+            )
+            vocals_url = f"s3://{self.bucket}/{vocals_key}"
+
+        # Upload instrumental.flac if provided
+        instrumental_url: Optional[str] = None
+        if instrumental and instrumental.exists():
+            instrumental_key = f"{hash_prefix}/stems/instrumental.flac"
+            await loop.run_in_executor(
+                None,
+                self.s3.upload_file,
+                str(instrumental),
                 self.bucket,
                 instrumental_key,
             )
             instrumental_url = f"s3://{self.bucket}/{instrumental_key}"
 
-        # Upload vocals_reverb.flac if provided
-        vocals_reverb_url = None
-        if vocals_reverb and vocals_reverb.exists():
-            reverb_key = f"{hash_prefix}/stems/vocals_reverb.flac"
-            await loop.run_in_executor(
-                None,
-                self.s3.upload_file,
-                str(vocals_reverb),
-                self.bucket,
-                reverb_key,
-            )
-            vocals_reverb_url = f"s3://{self.bucket}/{reverb_key}"
-
-        return vocals_url, instrumental_url, vocals_reverb_url
+        return vocals_dry_url, vocals_url, instrumental_url

@@ -115,8 +115,9 @@ class AudioSeparatorWrapper:
             output_dir: Directory for output files
 
         Returns:
-            Tuple of (vocals_clean_path, vocals_reverb_path, instrumental_path).
-            vocals_reverb_path is the Stage 1 vocals before de-echo (still contains
+            Tuple of (vocals_dry_path, vocals_path, instrumental_path).
+            vocals_dry_path is the Stage 2 output (de-reverb/dry vocals).
+            vocals_path is the Stage 1 output before de-echo (still contains
             reverb), useful for transition processing. Any element may be None if
             the corresponding stage failed to produce output.
 
@@ -189,7 +190,8 @@ class AudioSeparatorWrapper:
             output_dir: Directory for output files
 
         Returns:
-            Tuple of (dry_vocals_path, reverb_path).
+            Tuple of (vocals_dry_path, reverb_path).
+            vocals_dry_path is the dry (de-reverb) vocals output.
             Either element may be None if the stage failed to produce output.
 
         Raises:

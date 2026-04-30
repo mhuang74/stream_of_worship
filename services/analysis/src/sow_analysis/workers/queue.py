@@ -657,16 +657,16 @@ class JobQueue:
                             f"Audio download completed in {download_elapsed:.2f}s"
                         )
 
-                    # Check if clean vocals stem exists and should be used for Whisper
-                    # Only vocals_clean.flac is accepted; if missing, trigger stem separation
+                    # Check if dry vocals stem exists and should be used for Whisper
+                    # Only vocals_dry.flac is preferred; if missing, trigger stem separation
                     transcription_path = audio_path
                     vocals_stem_url: Optional[str] = None
 
                     if request.options.use_vocals_stem and self.r2_client:
-                        # Check for clean vocals in priority order
-                        from .stem_separation import get_clean_vocals_url
+                        # Check for dry vocals in priority order (with fallback to legacy)
+                        from .stem_separation import get_vocals_dry_url
 
-                        vocals_stem_url = await get_clean_vocals_url(
+                        vocals_stem_url = await get_vocals_dry_url(
                             request.content_hash, self.r2_client
                         )
 
@@ -776,19 +776,20 @@ class JobQueue:
                                 and child_job.status == JobStatus.COMPLETED
                                 and child_job.result
                             ):
-                                vocals_stem_url = child_job.result.vocals_clean_url
+                                # Prefer dry vocals for transcription; fall back to raw vocals
+                                vocals_stem_url = child_job.result.vocals_dry_url or child_job.result.vocals_url
                                 if vocals_stem_url:
                                     ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
-                                    stem_path = temp_path / f"vocals_clean{ext}"
+                                    stem_path = temp_path / f"vocals_dry{ext}"
                                     await self.r2_client.download_audio(vocals_stem_url, stem_path)
                                     transcription_path = stem_path
                                     logger.info(
-                                        f"Downloaded clean vocals from child job: {vocals_stem_url}"
+                                        f"Downloaded vocals from child job: {vocals_stem_url}"
                                     )
-                                    job.stage = "using_vocals_clean_stem"
+                                    job.stage = "using_vocals_dry_stem"
                                 else:
-                                    logger.warning(
-                                        f"Child job completed but no vocals_clean_url in result"
+                                    logger.error(
+                                        f"Child job completed but no vocals URL in result"
                                     )
                             else:
                                 logger.warning(

@@ -186,15 +186,16 @@ curl -X POST http://localhost:8000/api/v1/jobs/stem-separation \
 - `complete` - Job complete
 
 **Output Files:**
-- `{hash_prefix}/stems/vocals_clean.flac` - Clean vocals (no echo/reverb)
-- `{hash_prefix}/stems/instrumental_clean.flac` - Instrumental accompaniment
+- `{hash_prefix}/stems/vocals_dry.flac` - Dry vocals (no echo/reverb, Stage 2 output)
+- `{hash_prefix}/stems/vocals.flac` - Vocals with reverb (Stage 1 output)
+- `{hash_prefix}/stems/instrumental.flac` - Instrumental accompaniment
 
-**Auto-Trigger:** The LRC job automatically triggers stem separation when `use_vocals_stem=true` and no clean vocals exist. The LRC worker:
-1. Checks for existing `vocals_clean.flac`
+**Auto-Trigger:** The LRC job automatically triggers stem separation when `use_vocals_stem=true` and no dry vocals exist. The LRC worker:
+1. Checks for existing `vocals_dry.flac` (with fallback to legacy `vocals_clean.flac`)
 2. If not found, submits a child stem-separation job
 3. Releases its concurrency slot while waiting
 4. Re-acquires slot when child completes
-5. Uses the clean vocals for Whisper transcription and passes URL to Qwen3
+5. Uses the dry vocals for Whisper transcription and passes URL to Qwen3
 
 ### Check Job Status
 

@@ -1,6 +1,9 @@
 """Service configuration using pydantic-settings."""
 
+from typing import Optional
+
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,12 +50,40 @@ class Settings(BaseSettings):
     # MVSEP Cloud API Configuration
     SOW_MVSEP_API_KEY: str = ""
     SOW_MVSEP_ENABLED: bool = True
-    SOW_MVSEP_VOCAL_MODEL: int = 81       # sep_type=40 add_opt1 (BS Roformer 2025.07)
-    SOW_MVSEP_DEREVERB_MODEL: int = 0     # sep_type=22 add_opt1 (FoxJoy MDX23C)
-    SOW_MVSEP_HTTP_TIMEOUT: int = 60      # seconds per HTTP request
-    SOW_MVSEP_STAGE_TIMEOUT: int = 300    # max seconds per stage (submit+poll)
-    SOW_MVSEP_TOTAL_TIMEOUT: int = 900     # max seconds for entire MVSEP attempt per song
-    SOW_MVSEP_DAILY_JOB_LIMIT: int = 50   # max MVSEP jobs per UTC day (cost cap)
+
+    # Stage 1 (Vocal Separation)
+    SOW_MVSEP_STAGE1_SEP_TYPE: int = 48
+    SOW_MVSEP_STAGE1_ADD_OPT1: int = 11
+    SOW_MVSEP_STAGE1_ADD_OPT2: Optional[int] = None
+
+    # Stage 2 (Reverb Removal) — None = skip Stage 2
+    SOW_MVSEP_STAGE2_SEP_TYPE: Optional[int] = 22
+    SOW_MVSEP_STAGE2_ADD_OPT1: Optional[int] = 0
+    SOW_MVSEP_STAGE2_ADD_OPT2: Optional[int] = 1
+
+    # Timeouts & limits
+    SOW_MVSEP_HTTP_TIMEOUT: int = 60
+    SOW_MVSEP_STAGE_TIMEOUT: int = 300
+    SOW_MVSEP_TOTAL_TIMEOUT: int = 900
+    SOW_MVSEP_DAILY_JOB_LIMIT: int = 50
+
+    @field_validator(
+        "SOW_MVSEP_STAGE2_SEP_TYPE",
+        "SOW_MVSEP_STAGE2_ADD_OPT1",
+        "SOW_MVSEP_STAGE2_ADD_OPT2",
+        mode="before",
+    )
+    @classmethod
+    def _empty_str_to_none(cls, v):
+        """Convert empty-string env vars to None for Optional[int] fields.
+
+        pydantic-settings reads env vars as strings; an empty string (e.g.
+        SOW_MVSEP_STAGE2_SEP_TYPE=) cannot be parsed as int. This validator
+        converts "" / whitespace-only values to None before type coercion.
+        """
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     # Queue Configuration
     SOW_QUEUE_START_DELAY_SECONDS: int = 30  # Delay before processing starts (window to cancel/clear jobs)

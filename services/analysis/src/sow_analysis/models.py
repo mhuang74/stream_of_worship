@@ -111,9 +111,9 @@ class JobResult(BaseModel):
     line_count: Optional[int] = None
 
     # Stem separation results
-    vocals_clean_url: Optional[str] = None
-    vocals_reverb_url: Optional[str] = None
-    instrumental_clean_url: Optional[str] = None
+    vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)
+    vocals_url: Optional[str] = None  # Stage 1 output (raw vocals)
+    instrumental_url: Optional[str] = None  # Stage 1 output (instrumental)
 
 
 class JobResponse(BaseModel):
