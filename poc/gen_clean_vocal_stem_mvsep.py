@@ -73,7 +73,7 @@ def poll_job(job_hash: str, timeout: float = DEFAULT_TIMEOUT) -> dict:
             raise RuntimeError(f"MVSEP API error on poll: {body}")
 
         data = body["data"]
-        status = data.get("status", "unknown")
+        status = body.get("status", "unknown")
         print(f"  Status: {status} (elapsed {elapsed:.0f}s)")
 
         if status == "done":
@@ -92,7 +92,7 @@ def download_files(file_entries: list[dict], output_dir: Path) -> list[Path]:
         url = entry.get("download_link") or entry.get("url") or entry.get("link")
         if not url:
             continue
-        filename = entry.get("name") or url.split("/")[-1].split("?")[0]
+        filename = entry.get("name") or entry.get("download") or url.split("/")[-1].split("?")[0]
         dest = output_dir / filename
         with requests.get(url, stream=True, timeout=300) as r:
             r.raise_for_status()
