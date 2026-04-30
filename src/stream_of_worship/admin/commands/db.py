@@ -44,10 +44,12 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
     Returns:
         DatabaseClient instance
     """
+    # Token priority: SOW_TURSO_TOKEN env var > config.turso_readonly_token
+    turso_token = os.environ.get("SOW_TURSO_TOKEN") or config.turso_readonly_token
     return DatabaseClient(
         db_path=config.db_path,
         turso_url=config.turso_database_url,
-        turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+        turso_token=turso_token,
     )
 
 
@@ -349,6 +351,11 @@ def sync_db(
     else:
         console.print("Last sync: [dim]Never[/dim]")
 
+    # Check for metadata corruption that would require recovery
+    if config.db_path.exists() and not sync_status.last_sync_at:
+        console.print("\n[yellow]Note: Local database exists but has no sync metadata.[/yellow]")
+        console.print("[yellow]Will attempt recovery by syncing fresh from Turso...[/yellow]")
+
     console.print("\n[yellow]Syncing with Turso...[/yellow]")
 
     # Execute sync
@@ -365,9 +372,21 @@ def sync_db(
         console.print(f"\n[red]Configuration error: {e}[/red]")
         raise typer.Exit(1)
     except SyncNetworkError as e:
+        error_msg = str(e).lower()
         console.print(f"\n[red]Network error: {e}[/red]")
         if e.status_code:
             console.print(f"Status code: {e.status_code}")
+        
+        # Provide helpful messages for common errors
+        if "write" in error_msg and ("forbidden" in error_msg or "blocked" in error_msg or "permission" in error_msg):
+            console.print("\n[yellow]Tip: Your Turso token has read-only permissions.[/yellow]")
+            console.print("[yellow]Sync operations require a token with write access.[/yellow]")
+            console.print("[dim]Generate a full-access token with:[/dim]")
+            console.print("  [dim]turso db tokens create sow-catalog-mhuang --full-access[/dim]")
+        elif "metadata file" in error_msg:
+            console.print("\n[yellow]Tip: Database metadata is corrupted.[/yellow]")
+            console.print("[yellow]Run 'sow-admin db reset' to reset local database, then sync again.[/yellow]")
+        
         raise typer.Exit(1)
     except SyncError as e:
         console.print(f"\n[red]Sync error: {e}[/red]")
