@@ -4,6 +4,7 @@ Provides SQLite database operations for local storage of song catalog
 and recording metadata. Supports libsql/Turso for embedded replica sync.
 """
 
+import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -68,11 +69,12 @@ class DatabaseClient:
         Args:
             db_path: Path to the SQLite database file
             turso_url: Turso database URL for sync (optional)
-            turso_token: Turso auth token (optional)
+            turso_token: Turso auth token (optional, falls back to SOW_TURSO_TOKEN env var)
         """
         self.db_path = db_path
         self.turso_url = turso_url
-        self.turso_token = turso_token
+        # Token priority: parameter > SOW_TURSO_TOKEN env var > SOW_TURSO_READONLY_TOKEN env var
+        self.turso_token = turso_token or os.environ.get("SOW_TURSO_TOKEN") or os.environ.get("SOW_TURSO_READONLY_TOKEN")
         self._connection: Optional[Union[sqlite3.Connection, "libsql.Connection"]] = None
 
     @property
