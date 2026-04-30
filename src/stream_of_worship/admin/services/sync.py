@@ -186,7 +186,26 @@ class SyncService:
             error_msg = "; ".join(errors)
             raise SyncConfigError(error_msg)
 
-        # Execute sync
+        # Execute sync with metadata recovery handling
+        return self._execute_sync_with_recovery()
+
+    def _execute_sync_with_recovery(self, attempt: int = 1, max_attempts: int = 2) -> SyncResult:
+        """Execute sync with automatic recovery from metadata corruption.
+
+        If sync fails due to missing metadata file, automatically recovers
+        by deleting the local db file and re-syncing from Turso.
+
+        Args:
+            attempt: Current attempt number (for recursion tracking)
+            max_attempts: Maximum number of attempts before giving up
+
+        Returns:
+            SyncResult with operation outcome
+
+        Raises:
+            SyncConfigError: If configuration is invalid
+            SyncNetworkError: If network operation fails
+        """
         client = DatabaseClient(
             self.db_path,
             turso_url=self.turso_url,
@@ -196,18 +215,58 @@ class SyncService:
         try:
             client.sync()
 
-            # Get updated stats
-            stats = client.get_stats()
-
             return SyncResult(
                 success=True,
                 message="Sync completed successfully",
                 records_synced=None,  # libsql doesn't expose this
             )
         except SyncError as e:
+            error_msg = str(e)
+
+            # Check if this is a metadata file corruption error
+            if "metadata file does not" in error_msg.lower() and attempt < max_attempts:
+                # Close client before deleting files
+                client.close()
+
+                # Recovery: Delete local db and let libsql recreate from Turso
+                self._recover_from_missing_metadata()
+
+                # Retry sync
+                return self._execute_sync_with_recovery(attempt=attempt + 1, max_attempts=max_attempts)
+
             raise SyncNetworkError(f"Sync failed: {e}")
         finally:
             client.close()
+
+    def _recover_from_missing_metadata(self) -> None:
+        """Recover from missing metadata file by removing local db.
+
+        libsql embedded replicas require both a db file and metadata file.
+        If metadata is missing, we must delete the local db and let libsql
+        recreate everything from Turso.
+        """
+        # Close any open connections first
+        # Delete the local database file - libsql will recreate from Turso
+        if self.db_path.exists():
+            self.db_path.unlink()
+
+        # Also delete any related libsql metadata files
+        db_dir = self.db_path.parent
+        db_name = self.db_path.stem
+
+        # Look for common metadata file patterns
+        meta_patterns = [
+            self.db_path.with_suffix(".meta"),
+            self.db_path.with_suffix(".db-shm"),
+            self.db_path.with_suffix(".db-wal"),
+            db_dir / f".{db_name}-journal",
+            db_dir / f".{db_name}-shm",
+            db_dir / f".{db_name}-wal",
+        ]
+
+        for meta_file in meta_patterns:
+            if meta_file.exists():
+                meta_file.unlink()
 
     def _ensure_device_id(self) -> str:
         """Ensure local device ID exists in database.
