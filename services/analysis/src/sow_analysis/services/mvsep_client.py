@@ -15,7 +15,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-MVSEP_API_BASE_URL = "https://api.mvsep.com"
+MVSEP_API_BASE_URL = "https://mvsep.com/api/separation"
 MVSEP_MAX_POLL_INTERVAL = 30.0  # Maximum seconds between poll attempts
 
 
@@ -164,30 +164,33 @@ class MvsepClient:
         url = f"{MVSEP_API_BASE_URL}/create"
 
         data = {
-            "sep_type": sep_type,
-            "add_opt1": add_opt1,
-            "output_format": output_format,
+            "api_token": self.api_token,
+            "sep_type": str(sep_type),
+            "add_opt1": str(add_opt1),
+            "output_format": str(output_format),
         }
         if add_opt2 is not None:
-            data["add_opt2"] = add_opt2
+            data["add_opt2"] = str(add_opt2)
+
+        if not audio_path.exists():
+            raise MvsepClientError(f"Audio file not found: {audio_path}")
 
         files = {
-            "audio_file": (audio_path.name, open(audio_path, "rb"), "audio/mpeg"),
+            "audiofile": (audio_path.name, open(audio_path, "rb"), "audio/mpeg"),
         }
-
-        headers = {}
-        if self.api_token:
-            headers["Authorization"] = f"Bearer {self.api_token}"
 
         try:
             response = await self._client.post(
-                url, data=data, files=files, headers=headers
+                url, data=data, files=files
             )
             response.raise_for_status()
             result = response.json()
 
-            if "error" in result and result["error"]:
-                error_msg = result.get("message", result["error"])
+            success = result.get("success", False)
+            result_data = result.get("data", {})
+
+            if not success:
+                error_msg = result_data.get("message", "Unknown error")
                 if "invalid" in error_msg.lower() and "key" in error_msg.lower():
                     self._disabled = True
                     raise MvsepNonRetriableError(f"Invalid API key: {error_msg}")
@@ -196,7 +199,7 @@ class MvsepClient:
                     raise MvsepNonRetriableError(f"Insufficient credits: {error_msg}")
                 raise MvsepClientError(f"MVSEP API error: {error_msg}")
 
-            job_hash = result.get("hash") or result.get("job_hash")
+            job_hash = result_data.get("hash")
             if not job_hash:
                 raise MvsepClientError("No job hash in response")
 
@@ -256,9 +259,15 @@ class MvsepClient:
             if status == "done":
                 return result
             elif status in ("failed", "error"):
-                raise MvsepNonRetriableError(f"MVSEP job failed: {result.get('message', status)}")
+                raise MvsepNonRetriableError(
+                    f"MVSEP job failed: {result.get('data', {}).get('message', status)}"
+                )
             elif status == "not_found":
                 raise MvsepNonRetriableError(f"MVSEP job not found: {job_hash}")
+
+            if not result.get("success", False):
+                error_msg = result.get("data", {}).get("message", status)
+                raise MvsepClientError(f"MVSEP poll error: {error_msg}")
 
             # Exponential backoff: 1.5x factor, max 30s
             poll_interval = min(poll_interval * 1.5, MVSEP_MAX_POLL_INTERVAL)
@@ -346,7 +355,7 @@ class MvsepClient:
         if stage_callback:
             stage_callback("mvsep_stage1_downloading")
 
-        file_entries = result.get("files", [])
+        file_entries = result.get("data", {}).get("files", [])
         downloaded = await self._download_files(file_entries, output_dir)
 
         # Identify outputs by filename
@@ -399,7 +408,7 @@ class MvsepClient:
         if stage_callback:
             stage_callback("mvsep_stage2_downloading")
 
-        file_entries = result.get("files", [])
+        file_entries = result.get("data", {}).get("files", [])
         downloaded = await self._download_files(file_entries, output_dir)
 
         # Identify outputs by filename
