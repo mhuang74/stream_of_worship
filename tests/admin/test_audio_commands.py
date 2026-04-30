@@ -15,6 +15,9 @@ from stream_of_worship.admin.services.analysis import AnalysisServiceError, JobI
 runner = CliRunner()
 
 
+WIDE_ENV = {"COLUMNS": "200"}
+
+
 def _setup_db(tmp_path):
     """Create a temp database seeded with one song and return paths."""
     db_path = tmp_path / "test.db"
@@ -397,13 +400,14 @@ class TestAudioListCommand:
         result = runner.invoke(
             app,
             ["audio", "list", "--config", str(setup_with_recordings["config_path"])],
+            env=WIDE_ENV,
         )
 
         assert result.exit_code == 0
         assert "aaaaaaaaaaaa" in result.output
         assert "bbbbbbbbbbbb" in result.output
-        assert "song1.mp3" in result.output
-        assert "song2.mp3" in result.output
+        assert "song_001" in result.output
+        assert "song_002" in result.output
         assert "2 total" in result.output
 
     def test_list_with_status_filter(self, setup_with_recordings):
@@ -415,6 +419,7 @@ class TestAudioListCommand:
                 "--config", str(setup_with_recordings["config_path"]),
                 "--status", "completed",
             ],
+            env=WIDE_ENV,
         )
 
         assert result.exit_code == 0
@@ -445,6 +450,7 @@ class TestAudioListCommand:
                 "--config", str(setup_with_recordings["config_path"]),
                 "--limit", "1",
             ],
+            env=WIDE_ENV,
         )
 
         assert result.exit_code == 0
@@ -455,11 +461,193 @@ class TestAudioListCommand:
         result = runner.invoke(
             app,
             ["audio", "list", "--config", str(setup_with_recordings["config_path"])],
+            env=WIDE_ENV,
         )
 
         assert result.exit_code == 0
         assert "第一首歌" in result.output
         assert "第二首歌" in result.output
+
+    def test_list_shows_album_column(self, setup_with_recordings):
+        """Album column is present in the table."""
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(setup_with_recordings["config_path"])],
+            env=WIDE_ENV,
+        )
+
+        assert result.exit_code == 0
+        assert "Album" in result.output
+
+    def test_list_invalid_sort(self, setup_with_recordings):
+        """Invalid sort option shows error."""
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(setup_with_recordings["config_path"]),
+                "--sort",
+                "invalid",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid sort option" in result.output
+
+    def test_list_album_filter(self, tmp_path):
+        """Album filter returns only matching recordings."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        songs = [
+            Song(
+                id="song_001",
+                title="Song A",
+                source_url="https://example.com/1",
+                scraped_at=datetime.now().isoformat(),
+                album_name="Album Alpha",
+            ),
+            Song(
+                id="song_002",
+                title="Song B",
+                source_url="https://example.com/2",
+                scraped_at=datetime.now().isoformat(),
+                album_name="Album Beta",
+            ),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
+        recordings = [
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaaaaaaaaaaa",
+                song_id="song_001",
+                original_filename="a.mp3",
+                file_size_bytes=1024,
+                imported_at="2024-01-15T10:30:00",
+            ),
+            Recording(
+                content_hash="b" * 64,
+                hash_prefix="bbbbbbbbbbbb",
+                song_id="song_002",
+                original_filename="b.mp3",
+                file_size_bytes=2048,
+                imported_at="2024-01-16T10:30:00",
+            ),
+        ]
+        for rec in recordings:
+            client.insert_recording(rec)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'[database]\npath = "{db_path}"\n')
+
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--album",
+                "Alpha",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "song_001" in result.output
+        assert "song_002" not in result.output
+
+    def test_list_sort_by_title(self, tmp_path):
+        """Sort by title orders recordings by song title."""
+        db_path = tmp_path / "test.db"
+        client = DatabaseClient(db_path)
+        client.initialize_schema()
+
+        songs = [
+            Song(
+                id="song_z",
+                title="Zebra Song",
+                source_url="https://example.com/z",
+                scraped_at=datetime.now().isoformat(),
+                album_name="Album Z",
+            ),
+            Song(
+                id="song_a",
+                title="Apple Song",
+                source_url="https://example.com/a",
+                scraped_at=datetime.now().isoformat(),
+                album_name="Album A",
+            ),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
+        recordings = [
+            Recording(
+                content_hash="z" * 64,
+                hash_prefix="zzzzzzzzzzzz",
+                song_id="song_z",
+                original_filename="z.mp3",
+                file_size_bytes=1024,
+                imported_at="2024-01-15T10:30:00",
+            ),
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaaaaaaaaaaa",
+                song_id="song_a",
+                original_filename="a.mp3",
+                file_size_bytes=2048,
+                imported_at="2024-01-16T10:30:00",
+            ),
+        ]
+        for rec in recordings:
+            client.insert_recording(rec)
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(f'[database]\npath = "{db_path}"\n')
+
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--sort",
+                "title",
+                "--format",
+                "ids",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = result.output.strip().split("\n")
+        assert ids == ["song_a", "song_z"]
+
+    def test_list_sort_by_imported(self, setup_with_recordings):
+        """Sort by imported uses DB default order (imported_at DESC)."""
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(setup_with_recordings["config_path"]),
+                "--sort",
+                "imported",
+                "--format",
+                "ids",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = result.output.strip().split("\n")
+        assert ids[0] == "song_002"
+        assert ids[1] == "song_001"
 
 
 class TestAudioShowCommand:
