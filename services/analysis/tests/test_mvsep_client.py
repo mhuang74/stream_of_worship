@@ -18,8 +18,17 @@ class MockSettings:
 
     SOW_MVSEP_API_KEY = ""
     SOW_MVSEP_ENABLED = True
-    SOW_MVSEP_VOCAL_MODEL = 81
-    SOW_MVSEP_DEREVERB_MODEL = 0
+
+    # Stage 1 (Vocal Separation)
+    SOW_MVSEP_STAGE1_SEP_TYPE = 48
+    SOW_MVSEP_STAGE1_ADD_OPT1 = 11
+    SOW_MVSEP_STAGE1_ADD_OPT2 = None
+
+    # Stage 2 (Reverb Removal) — None = skip Stage 2
+    SOW_MVSEP_STAGE2_SEP_TYPE = 22
+    SOW_MVSEP_STAGE2_ADD_OPT1 = 0
+    SOW_MVSEP_STAGE2_ADD_OPT2 = 1
+
     SOW_MVSEP_HTTP_TIMEOUT = 60
     SOW_MVSEP_STAGE_TIMEOUT = 300
     SOW_MVSEP_TOTAL_TIMEOUT = 900
@@ -36,7 +45,7 @@ sow_analysis_module = type(sys)("sow_analysis")
 sow_analysis_module.config = config_module
 sys.modules["sow_analysis"] = sow_analysis_module
 
-# Now import mvsep_client directly
+# Now import mvsep_client directly (it will add itself to sys.modules)
 from sow_analysis.services.mvsep_client import (
     MvsepClient,
     MvsepClientError,
@@ -51,8 +60,12 @@ def client():
     return MvsepClient(
         api_token="test-token",
         enabled=True,
-        vocal_model=81,
-        dereverb_model=0,
+        stage1_sep_type=48,
+        stage1_add_opt1=11,
+        stage1_add_opt2=None,
+        stage2_sep_type=22,
+        stage2_add_opt1=0,
+        stage2_add_opt2=1,
         http_timeout=60,
         stage_timeout=300,
         daily_job_limit=50,
@@ -77,8 +90,8 @@ async def test_submit_success(client, mock_response):
 
         result = await client._submit_job(
             Path("/tmp/test.mp3"),
-            sep_type=40,
-            add_opt1=81,
+            sep_type=48,
+            add_opt1=11,
         )
 
         assert result == "abc123"

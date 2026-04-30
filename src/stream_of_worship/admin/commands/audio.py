@@ -1622,11 +1622,20 @@ def vocal_clean(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Check if vocals_clean already exists in R2
-    vocals_clean_key = f"{hash_prefix}/stems/vocals_clean.wav"
-    if not force and r2_client.file_exists(vocals_clean_key):
+    # Check if vocals_dry already exists in R2 (with fallback to legacy)
+    vocals_dry_key = f"{hash_prefix}/stems/vocals_dry.flac"
+    vocals_dry_exists = r2_client.file_exists(vocals_dry_key)
+
+    if not vocals_dry_exists:
+        # Fallback to legacy key for backward compatibility
+        legacy_key = f"{hash_prefix}/stems/vocals_clean.flac"
+        if r2_client.file_exists(legacy_key):
+            vocals_dry_exists = True
+            logger.info(f"Found legacy vocals stem: {legacy_key}")
+
+    if not force and vocals_dry_exists:
         console.print(
-            "[yellow]vocals_clean.wav already exists in R2. Use --force to re-generate.[/yellow]"
+            "[yellow]vocals_dry.flac already exists in R2. Use --force to re-generate.[/yellow]"
         )
         raise typer.Exit(0)
 
@@ -1717,7 +1726,7 @@ def vocal_clean(
 
         separator_dereverb = Separator(
             output_dir=str(stage2_dir),
-            output_format="WAV",  # Output as WAV for R2 upload
+            output_format="FLAC",  # Output as FLAC to align with analysis service
             log_level=logging.WARNING,
         )
         separator_dereverb.load_model(model_filename=dereverb_model)
@@ -1748,8 +1757,8 @@ def vocal_clean(
 
     console.print(f"[green]Stage 2 complete:[/green] {dry_vocals_file.name}")
 
-    # Copy to final location as vocals_clean.wav
-    final_path = cache.get_stem_path(hash_prefix, "vocals_clean")
+    # Copy to final location as vocals_dry.flac
+    final_path = cache.get_stem_path(hash_prefix, "vocals_dry")
     final_path.parent.mkdir(parents=True, exist_ok=True)
 
     import shutil
@@ -1760,7 +1769,7 @@ def vocal_clean(
     # Upload to R2
     if not skip_upload:
         console.print("[cyan]Uploading to R2...[/cyan]")
-        r2_url = r2_client.upload_stem(final_path, hash_prefix, "vocals_clean")
+        r2_url = r2_client.upload_stem(final_path, hash_prefix, "vocals_dry")
         console.print(f"[green]Uploaded:[/green] {r2_url}")
         # Clean up intermediate extraction files now that upload succeeded
         vocal_extraction_dir = cache_dir / hash_prefix / "vocal_extraction"

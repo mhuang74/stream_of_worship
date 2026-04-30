@@ -163,9 +163,9 @@ def resolve_song_audio_path(
             audio_path = clean_vocals_path
             typer.echo(f"Using cached clean vocal stem: {audio_path}", err=True)
 
-        # Fall back to vocals stem (vocal.wav)
+        # Fall back to vocals stem (try new name first, then legacy)
         if audio_path is None:
-            for stem_name in ["vocals_clean", "vocals"]:
+            for stem_name in ["vocals_dry", "vocals_clean", "vocals"]:
                 stem_path = cache.get_stem_path(hash_prefix, stem_name)
                 if stem_path.exists():
                     audio_path = stem_path

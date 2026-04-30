@@ -1,8 +1,8 @@
 """MVSEP Cloud API client for stem separation.
 
 Async client using httpx.AsyncClient for cloud-based vocal stem separation.
-Provides two-stage separation: Stage 1 (BS Roformer) + Stage 2 (Reverb Removal).
-Follows the Qwen3Client pattern from services/qwen3_client.py.
+Provides configurable two-stage separation: Stage 1 (vocal/instrumental separation)
++ optional Stage 2 (reverb removal). Follows the Qwen3Client pattern from services/qwen3_client.py.
 """
 
 import asyncio
@@ -43,9 +43,9 @@ class MvsepTimeoutError(MvsepClientError):
 class MvsepClient:
     """Async HTTP client for MVSEP Cloud API stem separation.
 
-    Provides two-stage stem separation:
-    - Stage 1: BS Roformer vocal/instrumental separation
-    - Stage 2: Reverb removal from vocals
+    Provides configurable two-stage stem separation:
+    - Stage 1: Vocal/instrumental separation (configurable sep_type)
+    - Stage 2: Optional reverb removal from vocals (can be skipped)
 
     Includes daily cost tracking with UTC-day rollover and service-wide
     disable on non-retriable errors.
@@ -55,8 +55,12 @@ class MvsepClient:
         self,
         api_token: Optional[str] = None,
         enabled: Optional[bool] = None,
-        vocal_model: Optional[int] = None,
-        dereverb_model: Optional[int] = None,
+        stage1_sep_type: Optional[int] = None,
+        stage1_add_opt1: Optional[int] = None,
+        stage1_add_opt2: Optional[int] = None,
+        stage2_sep_type: Optional[int] = None,
+        stage2_add_opt1: Optional[int] = None,
+        stage2_add_opt2: Optional[int] = None,
         http_timeout: Optional[int] = None,
         stage_timeout: Optional[int] = None,
         daily_job_limit: Optional[int] = None,
@@ -66,8 +70,12 @@ class MvsepClient:
         Args:
             api_token: MVSEP API token. Defaults to settings.SOW_MVSEP_API_KEY.
             enabled: Whether MVSEP is enabled. Defaults to settings.SOW_MVSEP_ENABLED.
-            vocal_model: Vocal separation model ID. Defaults to settings.SOW_MVSEP_VOCAL_MODEL.
-            dereverb_model: De-reverb model ID. Defaults to settings.SOW_MVSEP_DEREVERB_MODEL.
+            stage1_sep_type: Separation type for Stage 1. Defaults to settings.SOW_MVSEP_STAGE1_SEP_TYPE.
+            stage1_add_opt1: Model option for Stage 1. Defaults to settings.SOW_MVSEP_STAGE1_ADD_OPT1.
+            stage1_add_opt2: Additional option for Stage 1. Defaults to settings.SOW_MVSEP_STAGE1_ADD_OPT2.
+            stage2_sep_type: Separation type for Stage 2 (None to skip). Defaults to settings.SOW_MVSEP_STAGE2_SEP_TYPE.
+            stage2_add_opt1: Model option for Stage 2. Defaults to settings.SOW_MVSEP_STAGE2_ADD_OPT1.
+            stage2_add_opt2: Additional option for Stage 2. Defaults to settings.SOW_MVSEP_STAGE2_ADD_OPT2.
             http_timeout: Seconds per HTTP request. Defaults to settings.SOW_MVSEP_HTTP_TIMEOUT.
             stage_timeout: Max seconds per stage. Defaults to settings.SOW_MVSEP_STAGE_TIMEOUT.
             daily_job_limit: Max jobs per UTC day. Defaults to settings.SOW_MVSEP_DAILY_JOB_LIMIT.
@@ -76,8 +84,12 @@ class MvsepClient:
 
         self.api_token = api_token if api_token is not None else settings.SOW_MVSEP_API_KEY
         self.enabled = enabled if enabled is not None else settings.SOW_MVSEP_ENABLED
-        self.vocal_model = vocal_model if vocal_model is not None else settings.SOW_MVSEP_VOCAL_MODEL
-        self.dereverb_model = dereverb_model if dereverb_model is not None else settings.SOW_MVSEP_DEREVERB_MODEL
+        self.stage1_sep_type = stage1_sep_type if stage1_sep_type is not None else settings.SOW_MVSEP_STAGE1_SEP_TYPE
+        self.stage1_add_opt1 = stage1_add_opt1 if stage1_add_opt1 is not None else settings.SOW_MVSEP_STAGE1_ADD_OPT1
+        self.stage1_add_opt2 = stage1_add_opt2 if stage1_add_opt2 is not None else settings.SOW_MVSEP_STAGE1_ADD_OPT2
+        self.stage2_sep_type = stage2_sep_type if stage2_sep_type is not None else settings.SOW_MVSEP_STAGE2_SEP_TYPE
+        self.stage2_add_opt1 = stage2_add_opt1 if stage2_add_opt1 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT1
+        self.stage2_add_opt2 = stage2_add_opt2 if stage2_add_opt2 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT2
         self.http_timeout = http_timeout if http_timeout is not None else settings.SOW_MVSEP_HTTP_TIMEOUT
         self.stage_timeout = stage_timeout if stage_timeout is not None else settings.SOW_MVSEP_STAGE_TIMEOUT
         self.daily_job_limit = daily_job_limit if daily_job_limit is not None else settings.SOW_MVSEP_DAILY_JOB_LIMIT
@@ -137,7 +149,7 @@ class MvsepClient:
 
         Args:
             audio_path: Path to input audio file
-            sep_type: Separation type code (40 = BS Roformer, 22 = Reverb Removal)
+            sep_type: Separation type code (e.g., 48 = MelBand Roformer, 40 = BS Roformer, 22 = Reverb Removal)
             add_opt1: Model option (specific to sep_type)
             add_opt2: Additional option for sep_type=22
             output_format: Output format (2 = FLAC 16-bit)
@@ -303,7 +315,7 @@ class MvsepClient:
     ) -> tuple[Optional[Path], Optional[Path]]:
         """Run Stage 1: Separate vocals from instrumental.
 
-        Uses BS Roformer model (sep_type=40).
+        Uses configured sep_type and add_opt1/add_opt2 from settings.
 
         Args:
             input_path: Path to input audio file
@@ -320,8 +332,9 @@ class MvsepClient:
 
         job_hash = await self._submit_job(
             audio_path=input_path,
-            sep_type=40,
-            add_opt1=self.vocal_model,
+            sep_type=self.stage1_sep_type,
+            add_opt1=self.stage1_add_opt1,
+            add_opt2=self.stage1_add_opt2,
             output_format=2,  # FLAC 16-bit
         )
 
@@ -357,7 +370,7 @@ class MvsepClient:
     ) -> tuple[Optional[Path], Optional[Path]]:
         """Run Stage 2: Remove reverb/echo from vocals.
 
-        Uses FoxJoy MDX23C model (sep_type=22, add_opt2=1).
+        Uses configured sep_type and add_opt1/add_opt2 from settings.
 
         Args:
             vocals_path: Path to vocals file (Stage 1 output)
@@ -372,9 +385,9 @@ class MvsepClient:
 
         job_hash = await self._submit_job(
             audio_path=vocals_path,
-            sep_type=22,
-            add_opt1=self.dereverb_model,
-            add_opt2=1,  # Reverb removal mode
+            sep_type=self.stage2_sep_type,
+            add_opt1=self.stage2_add_opt1,
+            add_opt2=self.stage2_add_opt2,
             output_format=2,  # FLAC 16-bit
         )
 
@@ -414,14 +427,18 @@ class MvsepClient:
     ) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """Run full two-stage stem separation pipeline.
 
+        Stage 2 is optional; if stage2_sep_type is None, only Stage 1 runs
+        and vocals_dry_path will be None.
+
         Args:
             input_path: Path to input audio file
             output_dir: Directory for output files
             stage_callback: Optional callback for stage updates
 
         Returns:
-            Tuple of (vocals_clean_path, vocals_reverb_path, instrumental_path)
-            vocals_reverb_path is Stage 1 vocals (before de-reverb)
+            Tuple of (vocals_dry_path, vocals_path, instrumental_path).
+            vocals_dry_path is None when Stage 2 is skipped.
+            vocals_path is Stage 1 vocals (before de-reverb).
         """
         stage1_dir = output_dir / "stage1"
         stage2_dir = output_dir / "stage2"
@@ -434,7 +451,11 @@ class MvsepClient:
         if not vocals_file:
             raise MvsepClientError("Stage 1 failed: No vocals file produced")
 
-        # Stage 2: De-reverb
+        # Stage 2: De-reverb (optional)
+        if self.stage2_sep_type is None:
+            logger.info("MVSEP Stage 2 disabled (stage2_sep_type not set), skipping")
+            return None, vocals_file, instrumental_file
+
         dry_vocals_file, _ = await self.remove_reverb(
             vocals_file, stage2_dir, stage_callback
         )

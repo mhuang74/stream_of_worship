@@ -1,4 +1,4 @@
-"""Stem separation worker for generating clean vocals and instrumental.
+"""Stem separation worker for generating dry vocals and instrumental.
 
 Ports the algorithm from poc/gen_clean_vocal_stem.py to run as an analysis service job.
 Uses AudioSeparatorWrapper for vocal separation + UVR-De-Echo processing.
@@ -24,11 +24,75 @@ logger = logging.getLogger(__name__)
 
 MVSEP_MAX_RETRIES = 3
 
+# Legacy stem name mappings for cache backward compatibility
+CACHE_STEM_LEGACY_NAMES = {
+    "vocals_dry": "vocals_clean",
+    "vocals": "vocals_reverb",
+    "instrumental": "instrumental_clean",
+}
+
+CACHE_DIR_LEGACY = "stems_clean"
+
 
 class StemSeparationWorkerError(Exception):
     """Base exception for stem separation worker errors."""
 
     pass
+
+
+def find_cached_stem(cache_manager: "CacheManager", hash_32: str, stem_name: str) -> Optional[Path]:
+    """Find a cached stem file, trying new name/dir then legacy fallback.
+
+    Checks the new cache directory (stems/) first, then the old directory
+    (stems_clean/) for backward compatibility. When a legacy file is found,
+    it is lazily migrated (renamed) to the new path to avoid repeated
+    fallback lookups.
+
+    Args:
+        cache_manager: Cache manager instance
+        hash_32: 32-character content hash
+        stem_name: Stem name (e.g., "vocals_dry", "vocals", "instrumental")
+
+    Returns:
+        Path if found (possibly after migration), None otherwise.
+    """
+    new_dir = cache_manager.cache_dir / "stems" / hash_32
+    old_dir = cache_manager.cache_dir / CACHE_DIR_LEGACY / hash_32
+
+    # Try new directory, new name
+    primary = new_dir / f"{stem_name}.flac"
+    if primary.exists():
+        return primary
+
+    # Try new directory, legacy name
+    legacy_name = CACHE_STEM_LEGACY_NAMES.get(stem_name)
+    if legacy_name:
+        legacy_in_new = new_dir / f"{legacy_name}.flac"
+        if legacy_in_new.exists():
+            # Migrate: rename legacy file to new name in new dir
+            primary.parent.mkdir(parents=True, exist_ok=True)
+            legacy_in_new.rename(primary)
+            return primary
+
+    # Try old directory, new name
+    if old_dir.exists():
+        primary_in_old = old_dir / f"{stem_name}.flac"
+        if primary_in_old.exists():
+            # Migrate: move file from old dir to new dir
+            primary.parent.mkdir(parents=True, exist_ok=True)
+            primary_in_old.rename(primary)
+            return primary
+
+    # Try old directory, legacy name
+    if legacy_name and old_dir.exists():
+        legacy_in_old = old_dir / f"{legacy_name}.flac"
+        if legacy_in_old.exists():
+            # Migrate: move file from old dir to new dir with new name
+            primary.parent.mkdir(parents=True, exist_ok=True)
+            legacy_in_old.rename(primary)
+            return primary
+
+    return None
 
 
 def _set_job_stage(job: Job, stage: str) -> None:
@@ -56,7 +120,8 @@ async def _separate_with_mvsep_fallback(
         separator_wrapper: Local separator wrapper for fallback
 
     Returns:
-        Tuple of (vocals_clean_path, vocals_reverb_path, instrumental_path)
+        Tuple of (vocals_dry_path, vocals_path, instrumental_path).
+        vocals_dry_path is None when Stage 2 is disabled or skipped.
     """
     total_start = time.monotonic()
 
@@ -112,7 +177,13 @@ async def _separate_with_mvsep_fallback(
         _set_job_stage(job, "fallback_local")
         return await separator_wrapper.separate_stems(input_path, output_dir)
 
-    # --- Stage 2: De-reverb ---
+    # --- Stage 2: De-reverb (optional) ---
+    stage2_enabled = mvsep_client.stage2_sep_type is not None
+
+    if not stage2_enabled:
+        logger.info("MVSEP Stage 2 disabled (stage2_sep_type not set), skipping")
+        return None, vocals, instrumental
+
     stage2_dir = output_dir / "mvsep_stage2"
     stage2_result = None
 
@@ -166,6 +237,7 @@ async def process_stem_separation(
         separator_wrapper: Pre-initialized AudioSeparatorWrapper
         r2_client: R2 client for upload/download
         cache_manager: Cache manager for local caching
+        mvsep_client: Optional MVSEP client for cloud processing
 
     Raises:
         StemSeparationWorkerError: If processing fails
@@ -180,62 +252,81 @@ async def process_stem_separation(
     hash_prefix = content_hash[:12]
     hash_32 = content_hash[:32]
 
-    job.stage = "checking_cache"
-    logger.info("Checking for existing clean stems in R2...")
+    # Check if Stage 2 is enabled (determines which stems are required)
+    stage2_enabled = mvsep_client is not None and mvsep_client.stage2_sep_type is not None
 
-    # Check if already exists (short-circuit)
-    vocals_clean_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/vocals_clean.flac"
-    instrumental_clean_url = (
-        f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/instrumental_clean.flac"
-    )
-    vocals_reverb_url = f"s3://{settings.SOW_R2_BUCKET}/{hash_prefix}/stems/vocals_reverb.flac"
+    job.stage = "checking_cache"
+    logger.info("Checking for existing stems in R2...")
+
+    # Check if already exists (short-circuit) with fallback chain
+    vocals_dry_url = await r2_client.check_stem_exists(hash_prefix, "vocals_dry", "flac")
+    vocals_url = await r2_client.check_stem_exists(hash_prefix, "vocals", "flac")
+    instrumental_url = await r2_client.check_stem_exists(hash_prefix, "instrumental", "flac")
 
     if not request.options.force:
-        vocals_exists = await r2_client.check_exists(vocals_clean_url)
-        instrumental_exists = await r2_client.check_exists(instrumental_clean_url)
-        reverb_exists = await r2_client.check_exists(vocals_reverb_url)
+        if stage2_enabled:
+            # All 3 stems required when Stage 2 is enabled
+            if vocals_dry_url and vocals_url and instrumental_url:
+                logger.info("Stems already exist in R2, skipping")
+                job.result = JobResult(
+                    vocals_dry_url=vocals_dry_url,
+                    vocals_url=vocals_url,
+                    instrumental_url=instrumental_url,
+                )
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+                job.updated_at = datetime.now(timezone.utc)
+                return
+        else:
+            # Only vocals + instrumental required when Stage 2 is skipped
+            if vocals_url and instrumental_url:
+                logger.info("Stems already exist in R2, skipping")
+                job.result = JobResult(
+                    vocals_dry_url=vocals_dry_url,  # May be None
+                    vocals_url=vocals_url,
+                    instrumental_url=instrumental_url,
+                )
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+                job.updated_at = datetime.now(timezone.utc)
+                return
 
-        if vocals_exists and instrumental_exists and reverb_exists:
-            logger.info("Clean stems already exist in R2, skipping")
-            job.result = JobResult(
-                vocals_clean_url=vocals_clean_url,
-                instrumental_clean_url=instrumental_clean_url,
-                vocals_reverb_url=vocals_reverb_url,
-            )
-            job.status = JobStatus.COMPLETED
-            job.progress = 1.0
-            job.stage = "complete"
-            job.updated_at = datetime.now(timezone.utc)
-            return
+    # Check local cache using find_cached_stem with fallback chain
+    cache_vocals_dry = find_cached_stem(cache_manager, hash_32, "vocals_dry")
+    cache_vocals = find_cached_stem(cache_manager, hash_32, "vocals")
+    cache_instrumental = find_cached_stem(cache_manager, hash_32, "instrumental")
 
-    # Check local cache
-    cache_dir = cache_manager.cache_dir / "stems_clean" / hash_32
-    cache_vocals = cache_dir / "vocals_clean.flac"
-    cache_instrumental = cache_dir / "instrumental_clean.flac"
-    cache_vocals_reverb = cache_dir / "vocals_reverb.flac"
+    cache_complete = False
+    if not request.options.force:
+        if stage2_enabled:
+            cache_complete = cache_vocals_dry is not None and cache_vocals is not None and cache_instrumental is not None
+        else:
+            cache_complete = cache_vocals is not None and cache_instrumental is not None
 
-    if (
-        cache_vocals.exists()
-        and cache_instrumental.exists()
-        and cache_vocals_reverb.exists()
-        and not request.options.force
-    ):
-        logger.info(f"Using cached clean stems from {cache_dir}")
+    if cache_complete:
+        logger.info(f"Using cached stems from {cache_manager.cache_dir / 'stems' / hash_32}")
         job.stage = "uploading"
         job.progress = 0.8
 
         # Upload cached files to R2
-        vocals_url, instrumental_url, reverb_url = await r2_client.upload_clean_stems(
+        # Return order: (vocals_dry_url, vocals_url, instrumental_url)
+        vocals_dry_upload = cache_vocals_dry if cache_vocals_dry and cache_vocals_dry.exists() else None
+        vocals_upload = cache_vocals if cache_vocals and cache_vocals.exists() else None
+        instrumental_upload = cache_instrumental if cache_instrumental and cache_instrumental.exists() else None
+
+        vocals_dry_r2_url, vocals_r2_url, instrumental_r2_url = await r2_client.upload_clean_stems(
             hash_prefix,
-            cache_vocals,
-            cache_instrumental,
-            cache_vocals_reverb,
+            vocals_dry_upload,
+            instrumental_upload,
+            vocals_upload,
         )
 
         job.result = JobResult(
-            vocals_clean_url=vocals_url,
-            instrumental_clean_url=instrumental_url,
-            vocals_reverb_url=reverb_url,
+            vocals_dry_url=vocals_dry_r2_url,
+            vocals_url=vocals_r2_url,
+            instrumental_url=instrumental_r2_url,
         )
         job.status = JobStatus.COMPLETED
         job.progress = 1.0
@@ -263,8 +354,8 @@ async def process_stem_separation(
 
         try:
             (
-                vocals_clean_path,
-                vocals_reverb_path,
+                vocals_dry_path,
+                vocals_path,
                 instrumental_path,
             ) = await _separate_with_mvsep_fallback(
                 audio_path, stage_output_dir, job, mvsep_client, separator_wrapper
@@ -272,8 +363,9 @@ async def process_stem_separation(
         except Exception as e:
             raise StemSeparationWorkerError(f"Stem separation failed: {e}") from e
 
-        if not vocals_clean_path or not vocals_clean_path.exists():
-            raise StemSeparationWorkerError("Stage 2 failed: No clean vocals file generated")
+        # When Stage 2 is enabled, vocals_dry is required. When skipped, vocals is the primary output.
+        if stage2_enabled and (not vocals_dry_path or not vocals_dry_path.exists()):
+            raise StemSeparationWorkerError("Stage 2 failed: No dry vocals file generated")
 
         job.progress = 0.7
 
@@ -281,60 +373,61 @@ async def process_stem_separation(
         job.stage = "renaming_outputs"
         logger.info("Renaming outputs to canonical names...")
 
-        final_vocals = temp_path / "vocals_clean.flac"
-        final_instrumental = temp_path / "instrumental_clean.flac"
-        final_vocals_reverb = temp_path / "vocals_reverb.flac"
+        final_vocals_dry = temp_path / "vocals_dry.flac"
+        final_vocals = temp_path / "vocals.flac"
+        final_instrumental = temp_path / "instrumental.flac"
 
-        shutil.copy2(vocals_clean_path, final_vocals)
+        if vocals_dry_path and vocals_dry_path.exists():
+            shutil.copy2(vocals_dry_path, final_vocals_dry)
+
+        if vocals_path and vocals_path.exists():
+            shutil.copy2(vocals_path, final_vocals)
+        else:
+            logger.warning("No vocals (Stage 1) file generated")
 
         if instrumental_path and instrumental_path.exists():
             shutil.copy2(instrumental_path, final_instrumental)
         else:
             logger.warning("No instrumental file generated")
 
-        if vocals_reverb_path and vocals_reverb_path.exists():
-            shutil.copy2(vocals_reverb_path, final_vocals_reverb)
-        else:
-            logger.warning("No vocals_reverb (Stage 1 vocals) file generated")
-
         # Cache locally
         job.stage = "caching"
         job.progress = 0.8
         logger.info("Caching results locally...")
 
+        cache_dir = cache_manager.cache_dir / "stems" / hash_32
         cache_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(final_vocals, cache_vocals)
+
+        if final_vocals_dry.exists():
+            shutil.copy2(final_vocals_dry, cache_dir / "vocals_dry.flac")
+        if final_vocals.exists():
+            shutil.copy2(final_vocals, cache_dir / "vocals.flac")
         if final_instrumental.exists():
-            shutil.copy2(final_instrumental, cache_instrumental)
-        if final_vocals_reverb.exists():
-            shutil.copy2(final_vocals_reverb, cache_vocals_reverb)
+            shutil.copy2(final_instrumental, cache_dir / "instrumental.flac")
 
         # Upload to R2
         job.stage = "uploading"
         job.progress = 0.9
         job.updated_at = datetime.now(timezone.utc)
 
-        logger.info("Uploading clean stems to R2...")
-        vocals_upload = cache_vocals if cache_vocals.exists() else final_vocals
-        instrumental_upload = (
-            cache_instrumental if cache_instrumental.exists() else final_instrumental
-        )
-        reverb_upload = (
-            cache_vocals_reverb if cache_vocals_reverb.exists() else final_vocals_reverb
-        )
+        logger.info("Uploading stems to R2...")
+        vocals_dry_upload = final_vocals_dry if final_vocals_dry.exists() else None
+        vocals_upload = final_vocals if final_vocals.exists() else None
+        instrumental_upload = final_instrumental if final_instrumental.exists() else None
 
-        vocals_url, instrumental_url, vocals_reverb_url = await r2_client.upload_clean_stems(
+        # Return order: (vocals_dry_url, vocals_url, instrumental_url)
+        vocals_dry_url, vocals_r2_url, instrumental_url = await r2_client.upload_clean_stems(
             hash_prefix,
+            vocals_dry_upload,
+            instrumental_upload,
             vocals_upload,
-            instrumental_upload if instrumental_upload.exists() else None,
-            reverb_upload if reverb_upload.exists() else None,
         )
 
         # Set result
         job.result = JobResult(
-            vocals_clean_url=vocals_url,
-            instrumental_clean_url=instrumental_url,
-            vocals_reverb_url=vocals_reverb_url,
+            vocals_dry_url=vocals_dry_url,
+            vocals_url=vocals_r2_url,
+            instrumental_url=instrumental_url,
         )
         job.status = JobStatus.COMPLETED
         job.progress = 1.0
@@ -344,15 +437,17 @@ async def process_stem_separation(
         logger.info("Stem separation completed successfully")
 
 
-async def get_clean_vocals_url(
+async def get_vocals_dry_url(
     content_hash: str,
     r2_client: R2Client,
 ) -> Optional[str]:
-    """Get the URL for clean vocals if it exists.
+    """Get the URL for dry vocals if it exists.
 
-    Only checks for vocals_clean.flac (the canonical clean-vocal stem
-    produced by the two-stage vocal separation + UVR-De-Echo pipeline).
-    If not found, the caller should trigger stem separation to generate it.
+    Checks for vocals_dry.flac first (the canonical dry-vocal stem
+    produced by the two-stage vocal separation + UVR-De-Echo pipeline),
+    then falls back to vocals_clean.flac (legacy name) for backward
+    compatibility. If not found, the caller should trigger stem
+    separation to generate it.
 
     Args:
         content_hash: Full content hash
@@ -364,9 +459,16 @@ async def get_clean_vocals_url(
     hash_prefix = content_hash[:12]
     bucket = settings.SOW_R2_BUCKET
 
-    url = f"s3://{bucket}/{hash_prefix}/stems/vocals_clean.flac"
+    # Try new name first
+    url = f"s3://{bucket}/{hash_prefix}/stems/vocals_dry.flac"
     if await r2_client.check_exists(url):
-        logger.debug(f"Found clean vocals: {url}")
+        logger.debug(f"Found dry vocals: {url}")
         return url
+
+    # Fallback to legacy name
+    legacy_url = f"s3://{bucket}/{hash_prefix}/stems/vocals_clean.flac"
+    if await r2_client.check_exists(legacy_url):
+        logger.debug(f"Found dry vocals (legacy): {legacy_url}")
+        return legacy_url
 
     return None
