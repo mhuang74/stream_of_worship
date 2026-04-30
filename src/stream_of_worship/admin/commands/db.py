@@ -44,12 +44,10 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
     Returns:
         DatabaseClient instance
     """
-    # Token priority: SOW_TURSO_TOKEN env var > config.turso_readonly_token
-    turso_token = os.environ.get("SOW_TURSO_TOKEN") or config.turso_readonly_token
     return DatabaseClient(
         db_path=config.db_path,
         turso_url=config.turso_database_url,
-        turso_token=turso_token,
+        turso_token=os.environ.get("SOW_TURSO_TOKEN"),
     )
 
 

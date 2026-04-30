@@ -26,7 +26,6 @@ class AdminConfig:
         r2_endpoint_url: R2 endpoint URL
         r2_region: R2 region (usually "auto")
         turso_database_url: Turso database URL for sync
-        turso_readonly_token: Turso read-only token for embedded replica
         sync_on_startup: Whether to sync at startup
         db_path: Local SQLite database path
         cache_dir: Local cache directory for admin operations
@@ -42,7 +41,6 @@ class AdminConfig:
 
     # Turso (for sync)
     turso_database_url: str = ""
-    turso_readonly_token: str = ""
     sync_on_startup: bool = True
 
     # Local Database
@@ -103,17 +101,12 @@ class AdminConfig:
         if "turso" in data:
             turso = data["turso"]
             config.turso_database_url = turso.get("database_url", config.turso_database_url)
-            config.turso_readonly_token = turso.get("readonly_token", config.turso_readonly_token)
             config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
 
         # Override Turso from environment
         env_url = os.environ.get("SOW_TURSO_DATABASE_URL")
         if env_url:
             config.turso_database_url = env_url
-
-        env_token = os.environ.get("SOW_TURSO_READONLY_TOKEN")
-        if env_token:
-            config.turso_readonly_token = env_token
 
         # Load database path
         if "database" in data:
@@ -133,15 +126,6 @@ class AdminConfig:
             config.cache_dir = Path(env_cache_dir)
 
         return config
-
-    @property
-    def is_turso_configured(self) -> bool:
-        """Check if Turso sync is configured.
-
-        Returns:
-            True if Turso URL and token are configured
-        """
-        return bool(self.turso_database_url and self.turso_readonly_token)
 
     def save(self, path: Optional[Path] = None) -> None:
         """Save configuration to TOML file.
@@ -165,7 +149,6 @@ class AdminConfig:
             },
             "turso": {
                 "database_url": self.turso_database_url,
-                "readonly_token": self.turso_readonly_token,
                 "sync_on_startup": self.sync_on_startup,
             },
             "database": {"path": str(self.db_path)},
