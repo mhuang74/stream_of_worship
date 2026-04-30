@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     SOW_MVSEP_DAILY_JOB_LIMIT: int = 50
 
     @field_validator(
+        "SOW_MVSEP_STAGE1_ADD_OPT2",
         "SOW_MVSEP_STAGE2_SEP_TYPE",
         "SOW_MVSEP_STAGE2_ADD_OPT1",
         "SOW_MVSEP_STAGE2_ADD_OPT2",
