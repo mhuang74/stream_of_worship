@@ -595,6 +595,7 @@ class DatabaseClient:
         self,
         status: Optional[str] = None,
         visibility: Optional[str] = None,
+        lrc_status: Optional[str] = None,
         limit: Optional[int] = None,
         include_deleted: bool = False,
     ) -> list[Recording]:
@@ -603,6 +604,7 @@ class DatabaseClient:
         Args:
             status: Filter by analysis status
             visibility: Filter by visibility status (published|review|hold)
+            lrc_status: Filter by LRC status (pending|processing|completed|failed|incomplete)
             limit: Maximum number of results
             include_deleted: Whether to include soft-deleted recordings
 
@@ -624,6 +626,13 @@ class DatabaseClient:
         if visibility:
             query += " AND visibility_status = ?"
             params.append(visibility)
+
+        if lrc_status:
+            if lrc_status == "incomplete":
+                query += " AND lrc_status IN ('pending', 'processing', 'failed')"
+            else:
+                query += " AND lrc_status = ?"
+                params.append(lrc_status)
 
         query += " ORDER BY imported_at DESC"
 
