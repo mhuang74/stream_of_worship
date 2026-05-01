@@ -621,8 +621,11 @@ class DatabaseClient:
             query += " AND deleted_at IS NULL"
 
         if status:
-            query += " AND analysis_status = ?"
-            params.append(status)
+            if status == "incomplete":
+                query += " AND analysis_status IN ('pending', 'processing', 'failed')"
+            else:
+                query += " AND analysis_status = ?"
+                params.append(status)
 
         if visibility:
             query += " AND visibility_status = ?"

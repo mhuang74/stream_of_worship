@@ -5,8 +5,10 @@ exposes an S3-compatible API.  Credentials are read from environment
 variables so they never appear in config files.
 """
 
+import json
 import os
 from pathlib import Path
+from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -128,13 +130,19 @@ class R2Client:
 
         Returns:
             True if ``{hash_prefix}/audio.mp3`` exists in the bucket
+
+        Raises:
+            ClientError: On non-404 errors (permission, credential, network).
         """
+        s3_key = f"{hash_prefix}/audio.mp3"
         try:
-            s3_key = f"{hash_prefix}/audio.mp3"
             self._client.head_object(Bucket=self.bucket, Key=s3_key)
             return True
-        except ClientError:
-            return False
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return False
+            raise
 
     def download_file(self, s3_key: str, dest_path: Path) -> Path:
         """Download a file from R2 by its S3 key.
@@ -158,12 +166,83 @@ class R2Client:
 
         Returns:
             True if the object exists in the bucket
+
+        Raises:
+            ClientError: On non-404 errors (permission, credential, network).
         """
         try:
             self._client.head_object(Bucket=self.bucket, Key=s3_key)
             return True
-        except ClientError:
-            return False
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return False
+            raise
+
+    def lrc_exists(self, hash_prefix: str) -> Optional[str]:
+        """Check whether an LRC file exists in R2.
+
+        Args:
+            hash_prefix: 12-character hash prefix
+
+        Returns:
+            S3 URL of the LRC file if it exists, None if not found.
+
+        Raises:
+            ClientError: On non-404 errors (permission, credential, network).
+        """
+        s3_key = f"{hash_prefix}/lyrics.lrc"
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=s3_key)
+            return f"s3://{self.bucket}/{s3_key}"
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+
+    def analysis_exists(self, hash_prefix: str) -> Optional[str]:
+        """Check whether an analysis.json file exists in R2.
+
+        Args:
+            hash_prefix: 12-character hash prefix
+
+        Returns:
+            S3 URL of the analysis.json if it exists, None if not found.
+
+        Raises:
+            ClientError: On non-404 errors (permission, credential, network).
+        """
+        s3_key = f"{hash_prefix}/analysis.json"
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=s3_key)
+            return f"s3://{self.bucket}/{s3_key}"
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+
+    def download_analysis_json(self, hash_prefix: str) -> dict:
+        """Download and parse analysis.json from R2.
+
+        Args:
+            hash_prefix: 12-character hash prefix
+
+        Returns:
+            Parsed analysis result dictionary with keys:
+            duration_seconds, tempo_bpm, musical_key, musical_mode,
+            key_confidence, loudness_db, beats, downbeats, sections,
+            embeddings_shape, stems_url
+
+        Raises:
+            ClientError: On any R2 error (including 404).
+            json.JSONDecodeError: If the file is not valid JSON.
+        """
+        s3_key = f"{hash_prefix}/analysis.json"
+        response = self._client.get_object(Bucket=self.bucket, Key=s3_key)
+        body = response["Body"].read().decode("utf-8")
+        return json.loads(body)
 
     @staticmethod
     def parse_s3_url(s3_url: str) -> tuple[str, str]:
