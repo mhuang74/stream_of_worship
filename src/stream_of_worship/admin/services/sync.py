@@ -5,6 +5,7 @@ embedded replica synchronization.
 """
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -252,21 +253,21 @@ class SyncService:
 
         # Also delete any related libsql metadata files
         db_dir = self.db_path.parent
-        db_name = self.db_path.stem
 
-        # Look for common metadata file patterns
+        # Look for common metadata file/directory patterns
         meta_patterns = [
-            self.db_path.with_suffix(".meta"),
-            self.db_path.with_suffix(".db-shm"),
-            self.db_path.with_suffix(".db-wal"),
-            db_dir / f".{db_name}-journal",
-            db_dir / f".{db_name}-shm",
-            db_dir / f".{db_name}-wal",
+            db_dir / (self.db_path.name + "-shm"),
+            db_dir / (self.db_path.name + "-wal"),
+            db_dir / (self.db_path.name + "-journal"),
+            db_dir / (self.db_path.name + "-info"),
         ]
 
-        for meta_file in meta_patterns:
-            if meta_file.exists():
-                meta_file.unlink()
+        for meta_path in meta_patterns:
+            if meta_path.exists():
+                if meta_path.is_dir():
+                    shutil.rmtree(meta_path)
+                else:
+                    meta_path.unlink()
 
     def _ensure_device_id(self) -> str:
         """Ensure local device ID exists in database.

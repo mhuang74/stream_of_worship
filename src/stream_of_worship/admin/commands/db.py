@@ -349,10 +349,10 @@ def sync_db(
     else:
         console.print("Last sync: [dim]Never[/dim]")
 
-    # Check for metadata corruption that would require recovery
+    # Check for missing sync history (fresh installation or metadata corruption)
     if config.db_path.exists() and not sync_status.last_sync_at:
-        console.print("\n[yellow]Note: Local database exists but has no sync metadata.[/yellow]")
-        console.print("[yellow]Will attempt recovery by syncing fresh from Turso...[/yellow]")
+        console.print("\n[yellow]Note: Local database exists but has no sync history.[/yellow]")
+        console.print("[yellow]Will perform initial sync from Turso...[/yellow]")
 
     console.print("\n[yellow]Syncing with Turso...[/yellow]")
 
@@ -380,7 +380,7 @@ def sync_db(
             console.print("\n[yellow]Tip: Your Turso token has read-only permissions.[/yellow]")
             console.print("[yellow]Sync operations require a token with write access.[/yellow]")
             console.print("[dim]Generate a full-access token with:[/dim]")
-            console.print("  [dim]turso db tokens create sow-catalog-mhuang --full-access[/dim]")
+            console.print("  [dim]turso db tokens create sow-catalog --full-access[/dim]")
         elif "metadata file" in error_msg:
             console.print("\n[yellow]Tip: Database metadata is corrupted.[/yellow]")
             console.print("[yellow]Run 'sow-admin db reset' to reset local database, then sync again.[/yellow]")
