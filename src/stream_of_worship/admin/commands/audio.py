@@ -922,9 +922,11 @@ def delete_recording(
         f"[cyan]Song Title:[/cyan] {song_title}",
         f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
         f"[cyan]Filename:[/cyan] {recording.original_filename}",
-        f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}"
-        if recording.file_size_bytes
-        else "[cyan]Size:[/cyan] -- MB",
+        (
+            f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}"
+            if recording.file_size_bytes
+            else "[cyan]Size:[/cyan] -- MB"
+        ),
     ]
 
     # List R2 resources
@@ -1437,9 +1439,9 @@ def analyze_recording(
                 beats=json.dumps(result.beats) if result.beats else None,
                 downbeats=json.dumps(result.downbeats) if result.downbeats else None,
                 sections=json.dumps(result.sections) if result.sections else None,
-                embeddings_shape=json.dumps(result.embeddings_shape)
-                if result.embeddings_shape
-                else None,
+                embeddings_shape=(
+                    json.dumps(result.embeddings_shape) if result.embeddings_shape else None
+                ),
                 r2_stems_url=result.stems_url,
             )
 
@@ -1799,14 +1801,21 @@ def check_status(
         "--force-url",
         help="URL to set when using --force-status (stems_url for analysis, lrc_url for lrc)",
     ),
+    reconcile: bool = typer.Option(
+        False,
+        "--reconcile",
+        "-r",
+        help="Reconcile LRC and analysis status by scanning R2 (robust against service restarts)",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Check analysis status.
 
     With JOB_ID: query the service for that job's status.
     Without: list all recordings with pending/processing/failed status.
-    Use --sync to update local database with latest statuses from service.
-    Use --force-status when Analysis Service has restarted and lost job state.
+    Use --reconcile to update LRC and analysis status by scanning R2 (robust against service restarts).
+    Use --sync to poll the analysis service (unreliable if service restarted).
+    Use --force-status when you need to manually override status.
     """
     # Standard config/db boilerplate
     try:
@@ -1847,6 +1856,128 @@ def check_status(
         else:
             console.print("[red]--force-status requires either a JOB_ID or --sync flag[/red]")
             raise typer.Exit(1)
+
+    # Handle --reconcile mode
+    if reconcile:
+        try:
+            r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+        except ValueError as e:
+            console.print(f"[red]R2 not configured: {e}[/red]")
+            raise typer.Exit(1)
+
+        incomplete_lrc = db_client.list_recordings(lrc_status="incomplete")
+        incomplete_analysis = db_client.list_recordings(status="incomplete")
+
+        # Deduplicate: a recording may be incomplete on both
+        all_hashes = set()
+        reconcile_queue = []
+        for rec in incomplete_lrc:
+            if rec.hash_prefix not in all_hashes:
+                all_hashes.add(rec.hash_prefix)
+                reconcile_queue.append(rec)
+        for rec in incomplete_analysis:
+            if rec.hash_prefix not in all_hashes:
+                all_hashes.add(rec.hash_prefix)
+                reconcile_queue.append(rec)
+
+        if not reconcile_queue:
+            console.print("[green]No recordings with incomplete LRC or analysis status.[/green]")
+        else:
+            console.print(f"[cyan]Scanning R2 across {len(reconcile_queue)} recording(s)...[/cyan]")
+            reconciled_lrc = 0
+            reconciled_analysis = 0
+            error_count = 0
+
+            for rec in reconcile_queue:
+                # LRC reconciliation
+                if rec.lrc_status in ("pending", "processing", "failed"):
+                    try:
+                        lrc_url = r2_client.lrc_exists(rec.hash_prefix)
+                        if lrc_url:
+                            db_client.update_recording_lrc(
+                                hash_prefix=rec.hash_prefix,
+                                r2_lrc_url=lrc_url,
+                            )
+                            reconciled_lrc += 1
+                            console.print(
+                                f"  [green]✓[/green] {rec.song_id or rec.hash_prefix}: "
+                                f"LRC {rec.lrc_status} → completed"
+                            )
+                    except ClientError as e:
+                        error_count += 1
+                        console.print(
+                            f"  [red]✗[/red] {rec.hash_prefix}: R2 error checking LRC: {e}"
+                        )
+
+                # Analysis reconciliation
+                if rec.analysis_status in ("pending", "processing", "failed"):
+                    try:
+                        analysis_url = r2_client.analysis_exists(rec.hash_prefix)
+                        if analysis_url:
+                            analysis_data = r2_client.download_analysis_json(rec.hash_prefix)
+                            db_client.update_recording_analysis(
+                                hash_prefix=rec.hash_prefix,
+                                duration_seconds=analysis_data.get("duration_seconds"),
+                                tempo_bpm=analysis_data.get("tempo_bpm"),
+                                musical_key=analysis_data.get("musical_key"),
+                                musical_mode=analysis_data.get("musical_mode"),
+                                key_confidence=analysis_data.get("key_confidence"),
+                                loudness_db=analysis_data.get("loudness_db"),
+                                beats=(
+                                    json.dumps(analysis_data["beats"])
+                                    if "beats" in analysis_data
+                                    else None
+                                ),
+                                downbeats=(
+                                    json.dumps(analysis_data["downbeats"])
+                                    if "downbeats" in analysis_data
+                                    else None
+                                ),
+                                sections=(
+                                    json.dumps(analysis_data["sections"])
+                                    if "sections" in analysis_data
+                                    else None
+                                ),
+                                embeddings_shape=(
+                                    json.dumps(analysis_data["embeddings_shape"])
+                                    if "embeddings_shape" in analysis_data
+                                    else None
+                                ),
+                                r2_stems_url=analysis_data.get("stems_url"),
+                            )
+                            reconciled_analysis += 1
+                            console.print(
+                                f"  [green]✓[/green] {rec.song_id or rec.hash_prefix}: "
+                                f"analysis {rec.analysis_status} → completed"
+                            )
+                    except ClientError as e:
+                        error_count += 1
+                        console.print(
+                            f"  [red]✗[/red] {rec.hash_prefix}: R2 error checking analysis: {e}"
+                        )
+                    except (json.JSONDecodeError, KeyError) as e:
+                        error_count += 1
+                        console.print(
+                            f"  [red]✗[/red] {rec.hash_prefix}: error parsing analysis.json: {e}"
+                        )
+
+            parts = []
+            if reconciled_lrc > 0:
+                parts.append(f"{reconciled_lrc} LRC")
+            if reconciled_analysis > 0:
+                parts.append(f"{reconciled_analysis} analysis")
+            if parts:
+                console.print(
+                    f"[green]Reconciled {' and '.join(parts)} status(es) from R2.[/green]"
+                )
+            else:
+                console.print("[dim]No completed files found in R2 for pending recordings.[/dim]")
+            if error_count > 0:
+                console.print(
+                    f"[yellow]{error_count} R2 error(s) encountered (see above).[/yellow]"
+                )
+            console.print("")
+    # Fall through to list pending recordings table
 
     # Mode A: Query specific job
     if job_id:
@@ -1918,6 +2049,11 @@ def check_status(
     # Mode B: Sync and list pending recordings
     # If --sync, query analysis service for all pending jobs and update local DB
     if sync:
+        console.print(
+            "[yellow]Warning: --sync is unreliable if the Analysis Service has restarted. "
+            "For LRC and analysis status, consider using --reconcile instead, "
+            "which scans R2 directly.[/yellow]"
+        )
         try:
             client = AnalysisClient(config.analysis_url)
         except ValueError as e:
@@ -1957,26 +2093,34 @@ def check_status(
                         if job.status == "completed":
                             db_client.update_recording_analysis(
                                 hash_prefix=rec.hash_prefix,
-                                duration_seconds=job.result.duration_seconds
-                                if job.result
-                                else None,
+                                duration_seconds=(
+                                    job.result.duration_seconds if job.result else None
+                                ),
                                 tempo_bpm=job.result.tempo_bpm if job.result else None,
                                 musical_key=job.result.musical_key if job.result else None,
                                 musical_mode=job.result.musical_mode if job.result else None,
                                 key_confidence=job.result.key_confidence if job.result else None,
                                 loudness_db=job.result.loudness_db if job.result else None,
-                                beats=json.dumps(job.result.beats)
-                                if job.result and job.result.beats
-                                else None,
-                                downbeats=json.dumps(job.result.downbeats)
-                                if job.result and job.result.downbeats
-                                else None,
-                                sections=json.dumps(job.result.sections)
-                                if job.result and job.result.sections
-                                else None,
-                                embeddings_shape=json.dumps(job.result.embeddings_shape)
-                                if job.result and job.result.embeddings_shape
-                                else None,
+                                beats=(
+                                    json.dumps(job.result.beats)
+                                    if job.result and job.result.beats
+                                    else None
+                                ),
+                                downbeats=(
+                                    json.dumps(job.result.downbeats)
+                                    if job.result and job.result.downbeats
+                                    else None
+                                ),
+                                sections=(
+                                    json.dumps(job.result.sections)
+                                    if job.result and job.result.sections
+                                    else None
+                                ),
+                                embeddings_shape=(
+                                    json.dumps(job.result.embeddings_shape)
+                                    if job.result and job.result.embeddings_shape
+                                    else None
+                                ),
                                 r2_stems_url=job.result.stems_url if job.result else None,
                             )
                             synced_count += 1
@@ -2021,15 +2165,13 @@ def check_status(
 
     # List pending recordings
     cursor = db_client.connection.cursor()
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT r.*, s.title as song_title
         FROM recordings r
         LEFT JOIN songs s ON r.song_id = s.id
         WHERE r.analysis_status != 'completed' OR r.lrc_status != 'completed'
         ORDER BY r.imported_at DESC
-        """
-    )
+        """)
 
     rows = cursor.fetchall()
     if not rows:
@@ -2135,13 +2277,11 @@ def _force_sync_all_pending(
     """Force update all pending recordings."""
     # Get all non-completed recordings
     cursor = db_client.connection.cursor()
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT * FROM recordings
         WHERE analysis_status IN ('pending', 'processing', 'failed')
            OR lrc_status IN ('pending', 'processing', 'failed')
-        """
-    )
+        """)
     rows = cursor.fetchall()
 
     if not rows:

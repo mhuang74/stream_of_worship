@@ -1,5 +1,6 @@
 """Tests for R2 storage client."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -110,9 +111,7 @@ class TestDownloadAudio:
     """Tests for R2Client.download_audio."""
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_download_calls_s3_with_correct_key(
-        self, mock_boto_client, r2_env, tmp_path
-    ):
+    def test_download_calls_s3_with_correct_key(self, mock_boto_client, r2_env, tmp_path):
         """download_file is called with the right parameters."""
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -271,3 +270,145 @@ class TestDeleteFile:
 
         with pytest.raises(ClientError):
             client.delete_file("abc123def456/audio.mp3")
+
+
+class TestLrcExists:
+    """Tests for R2Client.lrc_exists."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_lrc_exists_returns_url_when_found(self, mock_boto_client, r2_env):
+        """Returns S3 URL when LRC file exists."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.lrc_exists("abc123def456")
+
+        assert result == "s3://sow-audio/abc123def456/lyrics.lrc"
+        mock_s3.head_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123def456/lyrics.lrc"
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_lrc_exists_returns_none_on_404(self, mock_boto_client, r2_env):
+        """Returns None when LRC file not found (404 error)."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.lrc_exists("abc123def456")
+
+        assert result is None
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_lrc_exists_raises_on_permission_error(self, mock_boto_client, r2_env):
+        """Raises ClientError on non-404 errors (permission denied)."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "403", "Message": "Access Denied"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        with pytest.raises(ClientError):
+            client.lrc_exists("abc123def456")
+
+
+class TestAnalysisExists:
+    """Tests for R2Client.analysis_exists."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_analysis_exists_returns_url_when_found(self, mock_boto_client, r2_env):
+        """Returns S3 URL when analysis.json exists."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.analysis_exists("abc123def456")
+
+        assert result == "s3://sow-audio/abc123def456/analysis.json"
+        mock_s3.head_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123def456/analysis.json"
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_analysis_exists_returns_none_on_404(self, mock_boto_client, r2_env):
+        """Returns None when analysis.json not found (404 error)."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.analysis_exists("abc123def456")
+
+        assert result is None
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_analysis_exists_raises_on_permission_error(self, mock_boto_client, r2_env):
+        """Raises ClientError on non-404 errors (permission denied)."""
+        from unittest.mock import MagicMock
+
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "403", "Message": "Access Denied"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        with pytest.raises(ClientError):
+            client.analysis_exists("abc123def456")
+
+
+class TestDownloadAnalysisJson:
+    """Tests for R2Client.download_analysis_json."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_download_analysis_json_parses_and_returns_dict(self, mock_boto_client, r2_env):
+        """Downloads and parses analysis.json into dictionary."""
+        import io
+
+        mock_s3 = MagicMock()
+        analysis = {
+            "tempo_bpm": 120.0,
+            "musical_key": "C",
+            "musical_mode": "major",
+            "duration_seconds": 180.5,
+        }
+        mock_response = {"Body": io.BytesIO(json.dumps(analysis).encode())}
+        mock_s3.get_object.return_value = mock_response
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.download_analysis_json("abc123def456")
+
+        assert result["tempo_bpm"] == 120.0
+        assert result["musical_key"] == "C"
+        mock_s3.get_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123def456/analysis.json"
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_download_analysis_json_raises_on_404(self, mock_boto_client, r2_env):
+        """Raises ClientError when file not found (including 404)."""
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "GetObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        with pytest.raises(ClientError):
+            client.download_analysis_json("abc123def456")
