@@ -84,29 +84,11 @@ class AdminConfig:
             config.r2_endpoint_url = r2.get("endpoint_url", config.r2_endpoint_url)
             config.r2_region = r2.get("region", config.r2_region)
 
-        # Override R2 config from environment variables (takes precedence)
-        env_bucket = os.environ.get("SOW_R2_BUCKET")
-        if env_bucket:
-            config.r2_bucket = env_bucket
-
-        env_endpoint = os.environ.get("SOW_R2_ENDPOINT_URL")
-        if env_endpoint:
-            config.r2_endpoint_url = env_endpoint
-
-        env_region = os.environ.get("SOW_R2_REGION")
-        if env_region:
-            config.r2_region = env_region
-
         # Load Turso config
         if "turso" in data:
             turso = data["turso"]
             config.turso_database_url = turso.get("database_url", config.turso_database_url)
             config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
-
-        # Override Turso from environment
-        env_url = os.environ.get("SOW_TURSO_DATABASE_URL")
-        if env_url:
-            config.turso_database_url = env_url
 
         # Load database path
         if "database" in data:
@@ -119,11 +101,6 @@ class AdminConfig:
             toml_cache_dir = data["paths"].get("cache_dir")
             if toml_cache_dir:
                 config.cache_dir = Path(toml_cache_dir)
-
-        # Env override wins over TOML (SOW_ADMIN_CACHE_DIR)
-        env_cache_dir = os.environ.get("SOW_ADMIN_CACHE_DIR")
-        if env_cache_dir:
-            config.cache_dir = Path(env_cache_dir)
 
         return config
 
@@ -222,15 +199,9 @@ class AdminConfig:
 def get_cache_dir() -> Path:
     """Get the platform-specific cache directory for sow-admin.
 
-    Resolution order: SOW_ADMIN_CACHE_DIR env > platform default.
-
     Returns:
         Path to the cache directory for sow-admin.
     """
-    env_override = os.environ.get("SOW_ADMIN_CACHE_DIR")
-    if env_override:
-        return Path(env_override)
-
     if sys.platform == "darwin" or sys.platform == "linux":
         xdg_cache = os.environ.get("XDG_CACHE_HOME")
         if xdg_cache:

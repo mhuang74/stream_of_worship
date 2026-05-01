@@ -67,6 +67,10 @@ SOW_WHISPER_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
 SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to pre-downloaded models
 SOW_BS_ROFORMER_MODEL="model_bs_roformer_ep_317_sdr_12.9755.ckpt"  # BS-Roformer model filename
 SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
+
+# Qwen3 Model Configuration (Required for LRC refinement with forced alignment)
+SOW_QWEN3_MODEL_ROOT="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
+SOW_QWEN3_MODEL_SNAPSHOT="c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
 ```
 
 ## Quick Start
@@ -261,6 +265,47 @@ export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator"
 ```
 
 The docker-compose.yml automatically mounts this directory to `/models/audio-separator:ro` in the container.
+
+## Qwen3 Model Setup (for LRC Refinement)
+
+The LRC generation feature uses Qwen3 Forced Aligner for precise lyric-to-audio alignment. The model must be pre-downloaded on the host machine and bind-mounted into the container.
+
+### One-Time Model Download
+
+```bash
+# Install huggingface-cli if not already installed
+pip install huggingface-hub
+
+# Download the Qwen3 Forced Aligner model
+huggingface-cli download Qwen/Qwen3-ForcedAligner-0.6B
+```
+
+### Find Model Paths
+
+After downloading, locate the model root and snapshot hash:
+
+```bash
+# Find the model root directory
+ls ~/.cache/huggingface/hub/ | grep Qwen
+
+# Output example: models--Qwen--Qwen3-ForcedAligner-0.6B
+
+# Find the snapshot hash
+ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
+
+# Output example: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
+```
+
+### Configure Environment
+
+Add to your `.env` file:
+
+```bash
+SOW_QWEN3_MODEL_ROOT="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
+SOW_QWEN3_MODEL_SNAPSHOT="c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+```
+
+**Note:** The snapshot hash changes when the model is updated. If LRC jobs fail with model loading errors, check for a new snapshot hash after re-downloading.
 
 ## Platform-Specific Builds
 

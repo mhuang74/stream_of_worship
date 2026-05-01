@@ -71,49 +71,6 @@ path = "/custom/path/sow.db"
         with pytest.raises(FileNotFoundError):
             AdminConfig.load(tmp_path / "nonexistent.toml")
 
-    def test_load_from_file_with_env_override(self, tmp_path, monkeypatch):
-        """Test that environment variables override file config."""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            """
-[r2]
-bucket = "file-bucket"
-endpoint_url = "https://file.r2.cloudflarestorage.com"
-region = "file-region"
-"""
-        )
-
-        # Set environment variables
-        monkeypatch.setenv("SOW_R2_BUCKET", "env-bucket")
-        monkeypatch.setenv("SOW_R2_ENDPOINT_URL", "https://env.r2.cloudflarestorage.com")
-        monkeypatch.setenv("SOW_R2_REGION", "env-region")
-
-        config = AdminConfig.load(config_file)
-
-        # Environment variables should take precedence
-        assert config.r2_bucket == "env-bucket"
-        assert config.r2_endpoint_url == "https://env.r2.cloudflarestorage.com"
-        assert config.r2_region == "env-region"
-
-    def test_load_env_vars_only(self, tmp_path, monkeypatch):
-        """Test loading config when only env vars are set (no file values)."""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text("""
-[service]
-analysis_url = "http://localhost:8000"
-""")
-
-        # Set environment variables
-        monkeypatch.setenv("SOW_R2_BUCKET", "env-only-bucket")
-        monkeypatch.setenv("SOW_R2_ENDPOINT_URL", "https://env-only.r2.cloudflarestorage.com")
-
-        config = AdminConfig.load(config_file)
-
-        # Should use env vars for R2, defaults for others
-        assert config.r2_bucket == "env-only-bucket"
-        assert config.r2_endpoint_url == "https://env-only.r2.cloudflarestorage.com"
-        assert config.r2_region == "auto"  # default
-
     def test_save_and_load(self, tmp_path, monkeypatch):
         """Test saving and loading config preserves values."""
         # Clear environment variables that might override file config
@@ -243,15 +200,8 @@ class TestAdminCacheDir:
         assert isinstance(config.cache_dir, Path)
         assert "sow-admin" in str(config.cache_dir)
 
-    def test_sow_admin_cache_dir_env_override(self, monkeypatch):
-        """SOW_ADMIN_CACHE_DIR env var overrides the default."""
-        monkeypatch.setenv("SOW_ADMIN_CACHE_DIR", "/env/admin-cache")
-        result = get_cache_dir()
-        assert result == Path("/env/admin-cache")
-
     def test_toml_cache_dir_loaded(self, tmp_path, monkeypatch):
         """cache_dir from TOML [paths] section is loaded."""
-        monkeypatch.delenv("SOW_ADMIN_CACHE_DIR", raising=False)
         config_file = tmp_path / "config.toml"
         config_file.write_text(
             """
@@ -264,16 +214,3 @@ cache_dir = "/toml/admin-cache"
         )
         config = AdminConfig.load(config_file)
         assert config.cache_dir == Path("/toml/admin-cache")
-
-    def test_env_overrides_toml_cache_dir(self, tmp_path, monkeypatch):
-        """SOW_ADMIN_CACHE_DIR env overrides TOML cache_dir."""
-        monkeypatch.setenv("SOW_ADMIN_CACHE_DIR", "/env/override")
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            """
-[paths]
-cache_dir = "/toml/admin-cache"
-"""
-        )
-        config = AdminConfig.load(config_file)
-        assert config.cache_dir == Path("/env/override")

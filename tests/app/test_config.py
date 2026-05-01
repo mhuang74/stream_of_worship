@@ -120,9 +120,12 @@ class TestAppConfigProperties:
 class TestAppConfigSaveLoad:
     """Tests for config persistence."""
 
-    def test_load_reads_existing_config(self, tmp_path):
+    def test_load_reads_existing_config(self, tmp_path, monkeypatch):
         """Verify load() reads TOML."""
         config_path = tmp_path / "config.toml"
+
+        # Set token via env var (no longer stored in config file)
+        monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "test-token")
 
         # Create a config file
         config_path.write_text("""
@@ -136,7 +139,6 @@ export_dir = "/test/exports"
 
 [turso]
 database_url = "libsql://test.turso.io"
-readonly_token = "test-token"
 sync_on_startup = false
 
 [app]
@@ -290,94 +292,26 @@ default_video_resolution = "1080p"
 class TestTursoConfig:
     """Tests for Turso configuration."""
 
-    def test_is_turso_configured_requires_url_and_token(self):
+    def test_is_turso_configured_requires_url_and_token(self, monkeypatch):
         """Verify Turso config requires both URL and token."""
         config = AppConfig()
 
         # Neither set
+        monkeypatch.delenv("SOW_TURSO_READONLY_TOKEN", raising=False)
         config.turso_database_url = ""
-        config.turso_readonly_token = ""
         assert config.is_turso_configured is False
 
         # Only URL set
         config.turso_database_url = "libsql://test.turso.io"
-        config.turso_readonly_token = ""
         assert config.is_turso_configured is False
 
-        # Both set
+        # Both set (token via env var)
         config.turso_database_url = "libsql://test.turso.io"
-        config.turso_readonly_token = "test-token"
+        monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "test-token")
         assert config.is_turso_configured is True
 
-    def test_turso_url_from_environment(self, tmp_path, monkeypatch):
-        """Verify Turso URL can be set via environment."""
-        monkeypatch.setenv("SOW_TURSO_DATABASE_URL", "libsql://env.turso.io")
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text("""
-[database]
-db_path = "/test/db.sqlite"
-songsets_db_path = "/test/songsets.db"
-
-[songsets]
-backup_retention = 5
-export_dir = "/test/exports"
-
-[turso]
-database_url = "libsql://file.turso.io"
-readonly_token = ""
-sync_on_startup = true
-
-[app]
-cache_dir = "/test/cache"
-output_dir = "/test/output"
-preview_buffer_ms = 500
-preview_volume = 0.8
-default_gap_beats = 2.0
-default_video_template = "dark"
-default_video_resolution = "1080p"
-""")
-
-        config = AppConfig.load(config_path)
-
-        # Environment should override file
-        assert config.turso_database_url == "libsql://env.turso.io"
-
-    def test_sow_cache_dir_env_overrides_toml(self, tmp_path, monkeypatch):
-        """SOW_CACHE_DIR env var wins over TOML cache_dir."""
-        monkeypatch.setenv("SOW_CACHE_DIR", "/env/cache")
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text("""
-[database]
-db_path = "/test/db.sqlite"
-songsets_db_path = "/test/songsets.db"
-
-[songsets]
-backup_retention = 5
-export_dir = "/test/exports"
-
-[turso]
-database_url = ""
-readonly_token = ""
-sync_on_startup = true
-
-[app]
-cache_dir = "/toml/cache"
-output_dir = "/test/output"
-preview_buffer_ms = 500
-preview_volume = 0.8
-default_gap_beats = 2.0
-default_video_template = "dark"
-default_video_resolution = "1080p"
-""")
-
-        config = AppConfig.load(config_path)
-
-        assert config.cache_dir == Path("/env/cache")
-
     def test_turso_token_from_environment(self, tmp_path, monkeypatch):
-        """Verify Turso token can be set via environment."""
+        """Verify Turso token is read from environment variable only."""
         monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "env-token")
 
         config_path = tmp_path / "config.toml"
@@ -392,7 +326,6 @@ export_dir = "/test/exports"
 
 [turso]
 database_url = ""
-readonly_token = "file-token"
 sync_on_startup = true
 
 [app]
@@ -407,5 +340,5 @@ default_video_resolution = "1080p"
 
         config = AppConfig.load(config_path)
 
-        # Environment should override file
+        # Token should come from environment variable only
         assert config.turso_readonly_token == "env-token"

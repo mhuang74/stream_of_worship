@@ -198,9 +198,8 @@ class AppSyncService:
         elif not self.turso_url.startswith("libsql://"):
             errors.append(f"Invalid Turso URL format: {self.turso_url}")
 
-        # Check Turso token
-        token = self.turso_token or os.environ.get("SOW_TURSO_READONLY_TOKEN")
-        if not token:
+        # Check Turso token (from SOW_TURSO_READONLY_TOKEN env var)
+        if not self.turso_token:
             errors.append("Turso token not configured (set SOW_TURSO_READONLY_TOKEN)")
 
         return len(errors) == 0, errors

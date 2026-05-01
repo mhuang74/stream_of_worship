@@ -104,22 +104,21 @@ path = "/custom/path/sow.db"
 
 ### Environment Variables
 
-Configuration values can be set via environment variables (takes precedence over config file):
+Sensitive credentials should be set via environment variables:
 
 ```bash
-# R2 Configuration (non-sensitive)
-export SOW_R2_BUCKET="your-bucket-name"
-export SOW_R2_ENDPOINT_URL="https://xxx.r2.cloudflarestorage.com"
-export SOW_R2_REGION="auto"
+# Turso full-access token (Admin CLI only - env var only for security)
+export SOW_TURSO_TOKEN="your-turso-token"
 
 # R2 Credentials (sensitive - never commit these)
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
 export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 
-# Other services
+# Analysis service API key
 export SOW_ANALYSIS_API_KEY="your-api-key"
-export SOW_TURSO_AUTH_TOKEN="your-turso-token"
 ```
+
+**Note:** Non-sensitive settings like `turso.database_url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
 
 ## Database Commands
 
