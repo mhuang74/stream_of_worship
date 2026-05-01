@@ -20,6 +20,9 @@ from .separator_wrapper import AudioSeparatorWrapper
 if TYPE_CHECKING:
     from ..services.mvsep_client import MvsepClient
 
+# Import exception at module level to avoid local imports in retry loops
+from ..services.mvsep_client import MvsepNonRetriableError
+
 logger = logging.getLogger(__name__)
 
 MVSEP_MAX_RETRIES = 3
@@ -96,7 +99,7 @@ def find_cached_stem(cache_manager: "CacheManager", hash_32: str, stem_name: str
 
 
 def _set_job_stage(job: Job, stage: str) -> None:
-    """Update job stage and persist to store."""
+    """Update job stage in memory (does not persist to store)."""
     from datetime import datetime, timezone
 
     job.stage = stage
@@ -155,8 +158,6 @@ async def _separate_with_mvsep_fallback(
             logger.info(f"MVSEP Stage 1 succeeded on attempt {attempt}")
             break
         except Exception as e:
-            from ..services.mvsep_client import MvsepNonRetriableError
-
             if isinstance(e, MvsepNonRetriableError):
                 logger.error(f"MVSEP Stage 1 non-retriable error: {e}")
                 break
@@ -200,8 +201,6 @@ async def _separate_with_mvsep_fallback(
             logger.info(f"MVSEP Stage 2 succeeded on attempt {attempt}")
             break
         except Exception as e:
-            from ..services.mvsep_client import MvsepNonRetriableError
-
             if isinstance(e, MvsepNonRetriableError):
                 logger.error(f"MVSEP Stage 2 non-retriable error: {e}")
                 break
