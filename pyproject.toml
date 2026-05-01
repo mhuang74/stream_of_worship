@@ -184,6 +184,24 @@ poc_qwen3_mlx = [
     "zhconv>=1.4.0",
 ]
 
+# Qwen3-ASR POC dependencies (Phase 0 evaluation)
+# Includes both ONNX and PyTorch backends for comparison
+poc_qwen3_asr = [
+    "qwen-asr>=0.0.6",           # PyTorch Qwen3-ASR
+    "huggingface-hub>=0.20.0",    # Model download
+    "onnxruntime>=1.17.0",        # ONNX backend
+    "transformers>=4.40.0",       # Tokenizer for ONNX
+    "torch>=2.8.0,<2.9.0",        # PyTorch
+    "torchaudio>=2.8.0,<2.9.0",   # Audio loading
+    "numpy>=2.0.2,<2.1.0",
+    "librosa>=0.10.0",
+    "typer>=0.12.0",
+    "rapidfuzz>=3.0.0",
+    "zhconv>=1.4.0",
+    "pypinyin>=0.52.0",
+    "dashscope>=1.14.0",          # For comparison baseline
+]
+
 # LRC quality scoring via TTS round-trip (Apple Silicon only)
 # Note: mlx-audio>=0.4.0 must be installed separately due to dependency conflicts.
 # To use this feature:
@@ -222,7 +240,7 @@ score_lrc = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,turso,app]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,turso,app,poc_qwen3_asr]",
 ]
 
 [project.scripts]
