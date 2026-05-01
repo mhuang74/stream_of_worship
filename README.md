@@ -132,28 +132,39 @@ sow-admin songset export --songset-id <id>         # Export to JSON
 Create `~/.config/sow-admin/config.toml`:
 
 ```toml
-[database]
-path = "/Users/you/.local/share/sow-admin/sow.db"
-
-[r2]
-bucket = "your-r2-bucket"
-endpoint_url = "https://your-account.r2.cloudflarestorage.com"
-region = "auto"
-
 [service]
 analysis_url = "http://localhost:8000"
 
+[r2]
+bucket = "your-r2-bucket"
+endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
+region = "auto"
+
 [turso]
-database_url = "https://your-db.turso.io"
+database_url = "libsql://<database-name>.turso.io"
+sync_on_startup = true
+
+[database]
+path = "/Users/you/.config/sow-admin/db/sow.db"
+
+[paths]
+cache_dir = "/Users/you/.cache/sow-admin"
 ```
 
-Environment variables (take precedence over config):
+**Required Environment Variables** (for sensitive credentials):
 ```bash
-export SOW_R2_BUCKET="your-bucket"
-export SOW_R2_ENDPOINT_URL="https://xxx.r2.cloudflarestorage.com"
+# Turso full-access token (Admin CLI only - never store in config)
+export SOW_TURSO_TOKEN="your-turso-token"
+
+# R2 credentials
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
 export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
+
+# Analysis service API key
+export SOW_ANALYSIS_API_KEY="your-api-key"
 ```
+
+**Note:** Non-sensitive settings like `turso.database_url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
 
 ### Workflow Example
 
@@ -216,9 +227,13 @@ db_path = "/Users/you/.config/sow/db/sow.db"
 songsets_db_path = "/Users/you/.config/sow/db/songsets.db"
 
 [turso]
-database_url = "libsql://your-db.turso.io"
-readonly_token = "your-token"
+database_url = "libsql://<database-name>.turso.io"
 sync_on_startup = true
+
+[r2]
+bucket = "your-r2-bucket"
+endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
+region = "auto"
 
 [app]
 cache_dir = "/Users/you/.cache/sow"
@@ -228,6 +243,18 @@ default_gap_beats = 2.0
 default_video_template = "dark"
 default_video_resolution = "1080p"
 ```
+
+**Required Environment Variables** (for sensitive credentials):
+```bash
+# Turso read-only token (required - env var only for security)
+export SOW_TURSO_READONLY_TOKEN="your-readonly-token"
+
+# R2 credentials (required for downloading audio assets)
+export SOW_R2_ACCESS_KEY_ID="your-access-key"
+export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
+```
+
+**Note:** The Turso read-only token is read from the `SOW_TURSO_READONLY_TOKEN` environment variable only and is never stored in the config file for security.
 
 ### Commands
 

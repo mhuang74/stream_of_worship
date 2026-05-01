@@ -83,8 +83,10 @@ class AppConfig:
         songsets_backup_retention: Number of songset backups to keep
         songsets_export_dir: Directory for songset JSON exports
         turso_database_url: Turso database URL for sync
-        turso_readonly_token: Turso read-only token
         sync_on_startup: Whether to sync at app startup
+        r2_bucket: R2 bucket name for audio storage
+        r2_endpoint_url: R2 endpoint URL
+        r2_region: R2 region
         cache_dir: Local directory for cached R2 assets
         output_dir: Directory for exported audio/video files
         preview_buffer_ms: Audio buffer size for playback in milliseconds
@@ -92,6 +94,10 @@ class AppConfig:
         default_gap_beats: Default gap duration between songs (in beats)
         default_video_template: Default video template name
         default_video_resolution: Default video resolution (e.g., "1080p")
+
+    Note:
+        Turso read-only token is read from SOW_TURSO_READONLY_TOKEN environment
+        variable only (not stored in config file for security).
     """
 
     # Database paths
@@ -102,10 +108,14 @@ class AppConfig:
     songsets_backup_retention: int = 5
     songsets_export_dir: Path = field(default_factory=get_default_export_dir)
 
-    # Turso sync settings
+    # Turso sync settings (token via SOW_TURSO_READONLY_TOKEN env var only)
     turso_database_url: str = ""
-    turso_readonly_token: str = ""
     sync_on_startup: bool = True
+
+    # R2 storage settings
+    r2_bucket: str = "sow-audio"
+    r2_endpoint_url: str = ""
+    r2_region: str = "auto"
 
     # App-specific paths
     cache_dir: Path = field(default_factory=_get_core_cache_dir)
@@ -162,21 +172,18 @@ class AppConfig:
             if "export_dir" in songsets:
                 config.songsets_export_dir = Path(songsets["export_dir"]).expanduser()
 
-        # Load Turso settings
+        # Load Turso settings (database_url from config, token from env var only)
         if "turso" in data:
             turso = data["turso"]
             config.turso_database_url = turso.get("database_url", config.turso_database_url)
-            config.turso_readonly_token = turso.get("readonly_token", config.turso_readonly_token)
             config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
 
-        # Override from environment
-        env_url = os.environ.get("SOW_TURSO_DATABASE_URL")
-        if env_url:
-            config.turso_database_url = env_url
-
-        env_token = os.environ.get("SOW_TURSO_READONLY_TOKEN")
-        if env_token:
-            config.turso_readonly_token = env_token
+        # Load R2 settings
+        if "r2" in data:
+            r2 = data["r2"]
+            config.r2_bucket = r2.get("bucket", config.r2_bucket)
+            config.r2_endpoint_url = r2.get("endpoint_url", config.r2_endpoint_url)
+            config.r2_region = r2.get("region", config.r2_region)
 
         # Load app-specific settings
         if "app" in data:
@@ -196,11 +203,6 @@ class AppConfig:
             config.default_video_resolution = app_data.get(
                 "default_video_resolution", config.default_video_resolution
             )
-
-        # SOW_CACHE_DIR env var wins over TOML cache_dir
-        env_cache_dir = os.environ.get("SOW_CACHE_DIR")
-        if env_cache_dir:
-            config.cache_dir = Path(env_cache_dir)
 
         return config
 
@@ -228,8 +230,12 @@ class AppConfig:
             },
             "turso": {
                 "database_url": self.turso_database_url,
-                "readonly_token": self.turso_readonly_token,
                 "sync_on_startup": self.sync_on_startup,
+            },
+            "r2": {
+                "bucket": self.r2_bucket,
+                "endpoint_url": self.r2_endpoint_url,
+                "region": self.r2_region,
             },
             "app": {
                 "cache_dir": str(self.cache_dir),
@@ -256,6 +262,15 @@ class AppConfig:
         self.songsets_export_dir.mkdir(parents=True, exist_ok=True)
 
     @property
+    def turso_readonly_token(self) -> str:
+        """Get Turso read-only token from environment variable.
+
+        Returns:
+            Turso read-only token from SOW_TURSO_READONLY_TOKEN env var
+        """
+        return os.environ.get("SOW_TURSO_READONLY_TOKEN", "")
+
+    @property
     def is_turso_configured(self) -> bool:
         """Check if Turso sync is configured.
 
@@ -263,33 +278,6 @@ class AppConfig:
             True if Turso URL and token are configured
         """
         return bool(self.turso_database_url and self.turso_readonly_token)
-
-    @property
-    def r2_bucket(self) -> str:
-        """Get R2 bucket (from environment or default).
-
-        Returns:
-            R2 bucket name
-        """
-        return os.environ.get("SOW_R2_BUCKET", "sow-audio")
-
-    @property
-    def r2_endpoint_url(self) -> str:
-        """Get R2 endpoint (from environment).
-
-        Returns:
-            R2 endpoint URL
-        """
-        return os.environ.get("SOW_R2_ENDPOINT_URL", "")
-
-    @property
-    def r2_region(self) -> str:
-        """Get R2 region (from environment or default).
-
-        Returns:
-            R2 region
-        """
-        return os.environ.get("SOW_R2_REGION", "auto")
 
 
 def ensure_app_config_exists() -> AppConfig:
