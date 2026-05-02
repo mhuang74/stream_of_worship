@@ -3025,14 +3025,26 @@ def batch(
     album: Optional[str] = typer.Option(None, "--album", help="Filter by album name (exact match)"),
     song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
     lrc_status: Optional[str] = typer.Option(None, "--lrc-status", help="Filter by LRC status"),
-    download_status: Optional[str] = typer.Option(None, "--download-status", help="Filter by download status"),
-    analysis_status: Optional[str] = typer.Option(None, "--analysis-status", help="Filter by analysis status"),
+    download_status: Optional[str] = typer.Option(
+        None, "--download-status", help="Filter by download status"
+    ),
+    analysis_status: Optional[str] = typer.Option(
+        None, "--analysis-status", help="Filter by analysis status"
+    ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (pipe-friendly)"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
-    skip_download: bool = typer.Option(False, "--skip-download", help="Skip download step (assume audio already on R2)"),
+    skip_download: bool = typer.Option(
+        False, "--skip-download", help="Skip download step (assume audio already on R2)"
+    ),
     skip_lrc: bool = typer.Option(False, "--skip-lrc", help="Skip LRC step"),
-    stale_after: int = typer.Option(120, "--stale-after", help="Minutes after which a 'processing' song is treated as lost (default: 120)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be processed without executing"),
+    stale_after: int = typer.Option(
+        120,
+        "--stale-after",
+        help="Minutes after which a 'processing' song is treated as lost (default: 120)",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be processed without executing"
+    ),
     format: str = typer.Option("rich", "--format", help="Output format (rich, json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -3087,7 +3099,9 @@ def batch(
     db_client = DatabaseClient(config.db_path)
 
     # Resolve song IDs to process
-    song_ids = _resolve_song_ids(db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit)
+    song_ids = _resolve_song_ids(
+        db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
+    )
     if not song_ids:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
         raise typer.Exit(0)
@@ -3164,32 +3178,25 @@ def _resolve_song_ids(
     # Otherwise, query database with filters
     song_ids = set()
 
-    # Get all recordings with matching status filters
-    recordings = db_client.list_recordings(
+    # Use JOIN query to avoid N+1 lookups for song data
+    rows = db_client.list_recordings_with_songs(
         status=analysis_status,
         lrc_status=lrc_status,
-        limit=None,  # Apply limit after filtering
+        limit=None,
     )
 
-    # Additional filtering for download_status (not in list_recordings)
-    if download_status:
-        recordings = [r for r in recordings if r.download_status == download_status]
-
-    for recording in recordings:
+    for recording, song_title, album_name, album_series in rows:
         if not recording.song_id:
             continue
 
-        # Filter by album if specified
-        if album:
-            song = db_client.get_song(recording.song_id)
-            if not song or song.album_name != album:
-                continue
+        if download_status and recording.download_status != download_status:
+            continue
 
-        # Filter by song name if specified
-        if song:
-            song_obj = db_client.get_song(recording.song_id)
-            if not song_obj or song.lower() not in song_obj.title.lower():
-                continue
+        if album and album_name != album:
+            continue
+
+        if song and (not song_title or song.lower() not in song_title.lower()):
+            continue
 
         song_ids.add(recording.song_id)
 
@@ -3325,7 +3332,6 @@ def _process_batch(
         Dict with results for each song
     """
     results = {}
-    start_time = time.time()
 
     # Phase 1: Download (if needed)
     if not skip_download:
@@ -3368,7 +3374,8 @@ def _process_batch(
         console.print("[cyan]Phase 2: Submitting LRC jobs[/cyan]")
 
         songs_needing_lrc = [
-            sid for sid in song_ids
+            sid
+            for sid in song_ids
             if results.get(sid, {}).get("download") != "failed"
             and results.get(sid, {}).get("lrc") != "completed"
         ]
@@ -3398,12 +3405,18 @@ def _process_batch(
             if recording.lrc_status == "processing" and recording.lrc_job_id:
                 from datetime import datetime, timezone, timedelta
 
-                updated_at = datetime.fromisoformat(recording.updated_at) if recording.updated_at else None
+                updated_at = (
+                    datetime.fromisoformat(recording.updated_at) if recording.updated_at else None
+                )
                 if updated_at:
+                    if updated_at.tzinfo is None:
+                        updated_at = updated_at.replace(tzinfo=timezone.utc)
                     staleness = datetime.now(timezone.utc) - updated_at
                     if staleness < timedelta(minutes=stale_after_minutes):
                         active_jobs[song_id] = recording.lrc_job_id
-                        console.print(f"  [yellow]→ {song_id} (reusing existing job: {recording.lrc_job_id})[/yellow]")
+                        console.print(
+                            f"  [yellow]→ {song_id} (reusing existing job: {recording.lrc_job_id})[/yellow]"
+                        )
                         continue
 
             # Submit new job
@@ -3482,6 +3495,9 @@ def _poll_all_jobs(
     last_completion_time = time.time()
     stale_warning_seconds = stale_after_minutes * 60
     job_timing = {}  # song_id -> (start_time, elapsed)
+    batch_start_time = time.time()
+    resubmit_counts = {}  # song_id -> count of resubmissions
+    max_resubmits = 3
 
     # Record start times for all jobs
     for song_id, job_id in active_jobs.items():
@@ -3523,9 +3539,13 @@ def _poll_all_jobs(
                             # Get song for display
                             song = db_client.get_song(song_id)
                             song_name = song.title if song else song_id
-                            console.print(f"  [green]✓[/green] {song_name} — LRC completed ({elapsed:.1f}s)")
+                            console.print(
+                                f"  [green]✓[/green] {song_name} — LRC completed ({elapsed:.1f}s)"
+                            )
                         else:
-                            console.print(f"  [yellow]→ {song_id}: Job completed but LRC not on R2 yet, retrying...[/yellow]")
+                            console.print(
+                                f"  [yellow]→ {song_id}: Job completed but LRC not on R2 yet, retrying...[/yellow]"
+                            )
                             continue
 
                     elif job.status == "failed":
@@ -3540,7 +3560,9 @@ def _poll_all_jobs(
 
                         song = db_client.get_song(song_id)
                         song_name = song.title if song else song_id
-                        console.print(f"  [red]✗[/red] {song_name} — LRC failed: {job.error_message or 'Unknown error'}")
+                        console.print(
+                            f"  [red]✗[/red] {song_name} — LRC failed: {job.error_message or 'Unknown error'}"
+                        )
 
                 except AnalysisServiceError as e:
                     if e.status_code == 404:
@@ -3559,14 +3581,78 @@ def _poll_all_jobs(
 
                             song = db_client.get_song(song_id)
                             song_name = song.title if song else song_id
-                            console.print(f"  [green]✓[/green] {song_name} — LRC found on R2 (job was lost)")
+                            console.print(
+                                f"  [green]✓[/green] {song_name} — LRC found on R2 (job was lost)"
+                            )
                         else:
-                            console.print(f"  [yellow]→ {song_id}: Job lost (404), resubmitting...[/yellow]")
-                            # Could resubmit here, but for now we'll just mark as failed
-                            # because we need context to resubmit properly
-                            results[song_id]["lrc"] = "failed"
-                            results[song_id]["lrc_error"] = "Job lost (404) and not found on R2"
-                            del active_jobs[song_id]
+                            resubmit_count = resubmit_counts.get(song_id, 0)
+                            if resubmit_count >= max_resubmits:
+                                console.print(
+                                    f"  [red]✗ {song_id}: Job lost (404) after "
+                                    f"{max_resubmits} resubmits, marking as failed[/red]"
+                                )
+                                results[song_id]["lrc"] = "failed"
+                                results[song_id][
+                                    "lrc_error"
+                                ] = f"Job lost (404) and not found on R2 after {max_resubmits} resubmits"
+                                db_client.update_recording_status(
+                                    hash_prefix=recording.hash_prefix,
+                                    lrc_status="failed",
+                                )
+                                del active_jobs[song_id]
+                                any_completed_this_cycle = True
+                            else:
+                                console.print(
+                                    f"  [yellow]→ {song_id}: Job lost (404), "
+                                    f"resubmitting (attempt {resubmit_count + 1}/{max_resubmits})...[/yellow]"
+                                )
+                                try:
+                                    song = db_client.get_song(song_id)
+                                    if not song or not song.lyrics_raw:
+                                        results[song_id]["lrc"] = "failed"
+                                        results[song_id][
+                                            "lrc_error"
+                                        ] = "Job lost and no lyrics available for resubmit"
+                                        db_client.update_recording_status(
+                                            hash_prefix=recording.hash_prefix,
+                                            lrc_status="failed",
+                                        )
+                                        del active_jobs[song_id]
+                                        any_completed_this_cycle = True
+                                        continue
+
+                                    new_job = analysis_client.submit_lrc(
+                                        audio_url=recording.r2_audio_url,
+                                        content_hash=recording.content_hash,
+                                        lyrics_text=song.lyrics_raw,
+                                        whisper_model="large-v3",
+                                        language="zh",
+                                        use_vocals_stem=True,
+                                        force=False,
+                                        force_whisper=False,
+                                        youtube_url=recording.youtube_url or "",
+                                        use_qwen3=True,
+                                    )
+                                    db_client.update_recording_status(
+                                        hash_prefix=recording.hash_prefix,
+                                        lrc_status="processing",
+                                        lrc_job_id=new_job.job_id,
+                                    )
+                                    active_jobs[song_id] = new_job.job_id
+                                    resubmit_counts[song_id] = resubmit_count + 1
+                                    job_timing[song_id] = (time.time(), 0)
+                                except AnalysisServiceError as submit_err:
+                                    console.print(
+                                        f"  [red]✗ {song_id}: Resubmit failed: {submit_err}[/red]"
+                                    )
+                                    results[song_id]["lrc"] = "failed"
+                                    results[song_id]["lrc_error"] = f"Resubmit failed: {submit_err}"
+                                    db_client.update_recording_status(
+                                        hash_prefix=recording.hash_prefix,
+                                        lrc_status="failed",
+                                    )
+                                    del active_jobs[song_id]
+                                    any_completed_this_cycle = True
                     else:
                         console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
                 except Exception as e:
@@ -3593,7 +3679,8 @@ def _poll_all_jobs(
                 last_completion_time = time.time()
 
             # Print progress
-            _print_progress(active_jobs, results, start_time=job_timing[list(active_jobs.keys())[0]][0])
+            if active_jobs:
+                _print_progress(active_jobs, results, start_time=batch_start_time)
 
             if active_jobs:
                 time.sleep(poll_interval)
@@ -3729,6 +3816,7 @@ def _print_stats(
     """
     if format == "json":
         import json
+
         console.print(json.dumps(results, indent=2))
         return
 
@@ -3743,7 +3831,9 @@ def _print_stats(
     # LRC stats
     lrc_completed = sum(1 for r in results.values() if r.get("lrc") == "completed")
     lrc_failed = sum(1 for r in results.values() if r.get("lrc") == "failed")
-    lrc_skipped_existing = sum(1 for r in results.values() if r.get("lrc_source") == "r2_preexisting")
+    lrc_skipped_existing = sum(
+        1 for r in results.values() if r.get("lrc_source") == "r2_preexisting"
+    )
     lrc_skipped_download = sum(1 for r in results.values() if r.get("download") == "failed")
 
     # LRC timing stats (only for ASR-generated LRCs)
@@ -3781,21 +3871,25 @@ def _print_stats(
 
     if lrc_completed > 0 and lrc_skipped_existing < lrc_completed:
         asr_count = lrc_completed - lrc_skipped_existing
-        lines.extend([
-            f"│ {'':<30} {'':>18} │",
-            f"│ {'LRC source:':<30} {'':>18} │",
-            f"│ {'  R2 pre-existing:':<30} {lrc_skipped_existing:>18} │",
-            f"│ {'  ASR (generated):':<30} {asr_count:>18} │",
-        ])
+        lines.extend(
+            [
+                f"│ {'':<30} {'':>18} │",
+                f"│ {'LRC source:':<30} {'':>18} │",
+                f"│ {'  R2 pre-existing:':<30} {lrc_skipped_existing:>18} │",
+                f"│ {'  ASR (generated):':<30} {asr_count:>18} │",
+            ]
+        )
 
     if avg_lrc_time is not None:
-        lines.extend([
-            f"│ {'':<30} {'':>18} │",
-            f"│ {'LRC timing (ASR jobs only):':<30} {'':>18} │",
-            f"│ {'  Average:':<30} {avg_lrc_time:.1f}s{'':>12} │",
-            f"│ {'  Median:':<30} {med_lrc_time:.1f}s{'':>12} │",
-            f"│ {'  Min/Max:':<30} {min_lrc_time:.1f}s / {max_lrc_time:.1f}s   │",
-        ])
+        lines.extend(
+            [
+                f"│ {'':<30} {'':>18} │",
+                f"│ {'LRC timing (ASR jobs only):':<30} {'':>18} │",
+                f"│ {'  Average:':<30} {avg_lrc_time:.1f}s{'':>12} │",
+                f"│ {'  Median:':<30} {med_lrc_time:.1f}s{'':>12} │",
+                f"│ {'  Min/Max:':<30} {min_lrc_time:.1f}s / {max_lrc_time:.1f}s   │",
+            ]
+        )
 
     lines.append("╰" + "─" * 52 + "╯")
 
@@ -3803,9 +3897,7 @@ def _print_stats(
 
     # Print failed downloads
     failed_downloads = [
-        (song_id, r.get("error"))
-        for song_id, r in results.items()
-        if r.get("download") == "failed"
+        (song_id, r.get("error")) for song_id, r in results.items() if r.get("download") == "failed"
     ]
     if failed_downloads:
         console.print("\n[bold red]Failed downloads:[/bold red]")
@@ -3816,9 +3908,7 @@ def _print_stats(
 
     # Print failed LRCs
     failed_lrcs = [
-        (song_id, r.get("lrc_error"))
-        for song_id, r in results.items()
-        if r.get("lrc") == "failed"
+        (song_id, r.get("lrc_error")) for song_id, r in results.items() if r.get("lrc") == "failed"
     ]
     if failed_lrcs:
         console.print("\n[bold red]Failed LRC:[/bold red]")
@@ -3826,4 +3916,3 @@ def _print_stats(
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
             console.print(f"  - {song_name}: {error}")
-
