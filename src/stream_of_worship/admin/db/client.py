@@ -227,6 +227,12 @@ class DatabaseClient:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: add download_status column if it doesn't exist (idempotent)
+            try:
+                cursor.execute("ALTER TABLE recordings ADD COLUMN download_status TEXT DEFAULT 'pending'")
+            except sqlite3.OperationalError:
+                pass
+
             # Now create indexes (they can reference migrated columns)
             for statement in CREATE_INDEXES:
                 cursor.execute(statement)
@@ -518,8 +524,8 @@ class DatabaseClient:
                     musical_mode, key_confidence, loudness_db, beats,
                     downbeats, sections, embeddings_shape, analysis_status,
                     analysis_job_id, lrc_status, lrc_job_id, visibility_status,
-                    created_at, updated_at, youtube_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    download_status, created_at, updated_at, youtube_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     recording.content_hash,
@@ -546,6 +552,7 @@ class DatabaseClient:
                     recording.lrc_status,
                     recording.lrc_job_id,
                     recording.visibility_status,
+                    recording.download_status or "pending",
                     recording.created_at or datetime.now().isoformat(),
                     recording.updated_at or datetime.now().isoformat(),
                     recording.youtube_url,
@@ -681,6 +688,8 @@ class DatabaseClient:
         cursor = self.connection.cursor()
 
         # Build query with LEFT JOIN to songs table
+        # Build query with LEFT JOIN to songs table
+        # Note: r.* returns all recording columns including download_status (29 cols total)
         query = """
             SELECT r.*, s.title as song_title, s.album_name, s.album_series
             FROM recordings r
@@ -728,13 +737,9 @@ class DatabaseClient:
         results = []
         for row in cursor.fetchall():
             # Extract song data from row (last 3 columns)
+            # Row structure: [29 recording columns] + [song_title, album_name, album_series] = 32 columns total
             row_tuple = tuple(row)
-            song_title = row_tuple[-3]
-            album_name = row_tuple[-2]
-            album_series = row_tuple[-3]  # Actually -3 is song_title, let's be careful
-            # Re-extract: row has recording columns + song_title + album_name + album_series
-            # The Recording.from_row expects only recording columns
-            recording_cols = row_tuple[:-3]
+            recording_cols = row_tuple[:-3]  # First 29 columns are recording columns
             song_title = row_tuple[-3]
             album_name = row_tuple[-2]
             album_series_val = row_tuple[-1]
@@ -923,6 +928,39 @@ class DatabaseClient:
             """
 
             cursor.execute(sql, (r2_lrc_url, hash_prefix))
+
+    def update_recording_download(
+        self,
+        hash_prefix: str,
+        download_status: str,
+    ) -> None:
+        """Update download status for a recording.
+
+        Args:
+            hash_prefix: The hash prefix of the recording
+            download_status: New download status (pending|processing|completed|failed)
+
+        Raises:
+            ValueError: If download_status is not valid
+        """
+        valid_statuses = {"pending", "processing", "completed", "failed"}
+        if download_status not in valid_statuses:
+            raise ValueError(
+                f"Invalid download_status: {download_status}. "
+                f"Must be one of: {', '.join(valid_statuses)}"
+            )
+
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+
+            sql = """
+                UPDATE recordings SET
+                    download_status = ?,
+                    updated_at = datetime('now')
+                WHERE hash_prefix = ?
+            """
+
+            cursor.execute(sql, (download_status, hash_prefix))
 
     def update_recording_visibility(
         self,

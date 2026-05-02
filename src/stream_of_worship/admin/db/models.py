@@ -186,6 +186,7 @@ class Recording:
     lrc_status: str = "pending"
     lrc_job_id: Optional[str] = None
     visibility_status: Optional[str] = None
+    download_status: str = "pending"
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     deleted_at: Optional[str] = None
@@ -206,33 +207,45 @@ class Recording:
             - 26 columns: with youtube_url at the end, no visibility_status
             - 27 columns: with visibility_status at the end (after youtube_url)
             - 28 columns: with deleted_at at the end
+            - 29 columns: with download_status at the end (after deleted_at)
         """
         row_len = len(row)
 
-        if row_len == 28:
+        if row_len >= 29:
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
             deleted_at = row[27]
+            download_status = row[28]
+        elif row_len == 28:
+            created_at = row[23]
+            updated_at = row[24]
+            youtube_url = row[25]
+            visibility_status = row[26]
+            deleted_at = row[27]
+            download_status = None
         elif row_len == 27:
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
             deleted_at = None
+            download_status = None
         elif row_len == 26:
             visibility_status = None
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             deleted_at = None
+            download_status = None
         else:
             visibility_status = None
             created_at = row[23] if row_len > 23 else None
             updated_at = row[24] if row_len > 24 else None
             youtube_url = None
             deleted_at = None
+            download_status = None
 
         return cls(
             content_hash=row[0],
@@ -260,6 +273,7 @@ class Recording:
             lrc_status=row[21],
             lrc_job_id=row[22],
             visibility_status=visibility_status,
+            download_status=download_status or "pending",
             created_at=created_at,
             updated_at=updated_at,
             deleted_at=deleted_at,
@@ -297,6 +311,7 @@ class Recording:
             "lrc_status": self.lrc_status,
             "lrc_job_id": self.lrc_job_id,
             "visibility_status": self.visibility_status,
+            "download_status": self.download_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "deleted_at": self.deleted_at,
