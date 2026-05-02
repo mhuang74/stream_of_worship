@@ -11,7 +11,7 @@ import tempfile
 import termios
 import time
 import tty
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -3018,3 +3018,812 @@ def playback_audio(
         console.print("[yellow]Playback stopped.[/yellow]")
     else:
         console.print("[green]Playback finished.[/green]")
+
+
+@app.command("batch")
+def batch(
+    album: Optional[str] = typer.Option(None, "--album", help="Filter by album name (exact match)"),
+    song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
+    lrc_status: Optional[str] = typer.Option(None, "--lrc-status", help="Filter by LRC status"),
+    download_status: Optional[str] = typer.Option(None, "--download-status", help="Filter by download status"),
+    analysis_status: Optional[str] = typer.Option(None, "--analysis-status", help="Filter by analysis status"),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (pipe-friendly)"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
+    skip_download: bool = typer.Option(False, "--skip-download", help="Skip download step (assume audio already on R2)"),
+    skip_lrc: bool = typer.Option(False, "--skip-lrc", help="Skip LRC step"),
+    stale_after: int = typer.Option(120, "--stale-after", help="Minutes after which a 'processing' song is treated as lost (default: 120)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be processed without executing"),
+    format: str = typer.Option("rich", "--format", help="Output format (rich, json)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Batch process songs: download audio and generate LRC.
+
+    Processes multiple songs end-to-end: downloads audio (if needed),
+    submits LRC jobs, polls for completion, and prints summary stats.
+    Uses submit-all-then-poll with hybrid polling (service-first, R2-fallback).
+
+    Examples:
+        sow-admin audio batch --album "敬拜精选"
+        sow-admin audio list --lrc-status failed --format ids | sow-admin audio batch --stdin
+    """
+    # Validate format
+    if format not in ("rich", "json"):
+        console.print(f"[red]Invalid format: {format}. Must be 'rich' or 'json'[/red]")
+        raise typer.Exit(1)
+
+    # Validate status filters
+    valid_lrc_statuses = {"pending", "processing", "completed", "failed", "incomplete"}
+    if lrc_status and lrc_status not in valid_lrc_statuses:
+        console.print(
+            f"[red]Invalid LRC status: {lrc_status}. Must be one of: {', '.join(valid_lrc_statuses)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    valid_download_statuses = {"pending", "processing", "completed", "failed"}
+    if download_status and download_status not in valid_download_statuses:
+        console.print(
+            f"[red]Invalid download status: {download_status}. Must be one of: {', '.join(valid_download_statuses)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    valid_analysis_statuses = {"pending", "processing", "completed", "failed", "incomplete"}
+    if analysis_status and analysis_status not in valid_analysis_statuses:
+        console.print(
+            f"[red]Invalid analysis status: {analysis_status}. Must be one of: {', '.join(valid_analysis_statuses)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Load config
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if not config.db_path.exists():
+        console.print(f"[red]Database not found at {config.db_path}[/red]")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(config.db_path)
+
+    # Resolve song IDs to process
+    song_ids = _resolve_song_ids(db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit)
+    if not song_ids:
+        console.print("[yellow]No songs found matching the criteria.[/yellow]")
+        raise typer.Exit(0)
+
+    if dry_run:
+        _print_dry_run(db_client, song_ids)
+        return
+
+    # Initialize R2 and Analysis clients
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        analysis_client = AnalysisClient(config.analysis_url)
+    except ValueError as e:
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Process all songs
+    results = _process_batch(
+        db_client=db_client,
+        r2_client=r2_client,
+        analysis_client=analysis_client,
+        song_ids=song_ids,
+        skip_download=skip_download,
+        skip_lrc=skip_lrc,
+        stale_after_minutes=stale_after,
+        console=console,
+    )
+
+    # Print final stats
+    _print_stats(results, db_client, console, format)
+
+
+def _resolve_song_ids(
+    db_client: DatabaseClient,
+    album: Optional[str],
+    song: Optional[str],
+    lrc_status: Optional[str],
+    download_status: Optional[str],
+    analysis_status: Optional[str],
+    stdin: bool,
+    limit: Optional[int],
+) -> list[str]:
+    """Resolve song IDs based on filters.
+
+    Args:
+        db_client: Database client
+        album: Filter by album name (exact match)
+        song: Filter by song name (partial match, case-insensitive)
+        lrc_status: Filter by LRC status
+        download_status: Filter by download status
+        analysis_status: Filter by analysis status
+        stdin: Read song IDs from stdin
+        limit: Maximum number of songs to return
+
+    Returns:
+        List of song IDs to process
+    """
+    # If stdin, read from pipe
+    if stdin:
+        song_ids = _read_song_ids_from_stdin()
+        if limit:
+            song_ids = song_ids[:limit]
+        return song_ids
+
+    # Otherwise, query database with filters
+    song_ids = set()
+
+    # Get all recordings with matching status filters
+    recordings = db_client.list_recordings(
+        status=analysis_status,
+        lrc_status=lrc_status,
+        limit=None,  # Apply limit after filtering
+    )
+
+    # Additional filtering for download_status (not in list_recordings)
+    if download_status:
+        recordings = [r for r in recordings if r.download_status == download_status]
+
+    for recording in recordings:
+        if not recording.song_id:
+            continue
+
+        # Filter by album if specified
+        if album:
+            song = db_client.get_song(recording.song_id)
+            if not song or song.album_name != album:
+                continue
+
+        # Filter by song name if specified
+        if song:
+            song_obj = db_client.get_song(recording.song_id)
+            if not song_obj or song.lower() not in song_obj.title.lower():
+                continue
+
+        song_ids.add(recording.song_id)
+
+    result = list(song_ids)
+    if limit:
+        result = result[:limit]
+    return result
+
+
+def _print_dry_run(db_client: DatabaseClient, song_ids: list[str]) -> None:
+    """Print dry run information showing what would be processed.
+
+    Args:
+        db_client: Database client
+        song_ids: List of song IDs to show
+    """
+    console.print("[cyan]Dry run mode - would process the following songs:[/cyan]")
+    console.print()
+
+    for song_id in song_ids:
+        song = db_client.get_song(song_id)
+        recording = db_client.get_recording_by_song_id(song_id)
+
+        if song and recording:
+            console.print(f"  [cyan]•[/cyan] {song.title} ({recording.hash_prefix})")
+            console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
+            console.print(f"    [dim]Download:[/dim] {recording.download_status}")
+            console.print(f"    [dim]LRC:[/dim] {recording.lrc_status}")
+        else:
+            console.print(f"  [yellow]•[/yellow] {song_id} (no recording found)")
+
+    console.print(f"\n[dim]Total: {len(song_ids)} song(s)[/dim]")
+
+
+def _download_if_needed(
+    song_id: str,
+    recording: Recording,
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    console: Console,
+) -> dict:
+    """Download audio if not on R2. Sets download_status in DB.
+
+    Args:
+        song_id: Song ID
+        recording: Recording object
+        db_client: Database client
+        r2_client: R2 client
+        console: Rich console
+
+    Returns:
+        Dict with download result: {'download': 'completed'|'skipped'|'failed', 'error': str}
+    """
+    hash_prefix = recording.hash_prefix
+
+    # Check R2 first
+    if r2_client.audio_exists(hash_prefix):
+        db_client.update_recording_download(hash_prefix, "completed")
+        return {"download": "skipped_r2"}
+
+    # Download audio
+    db_client.update_recording_download(hash_prefix, "processing")
+
+    try:
+        # Look up song for metadata
+        song = db_client.get_song(song_id)
+        if not song:
+            raise ValueError(f"Song not found: {song_id}")
+
+        # Initialize downloader
+        downloader = YouTubeDownloader()
+
+        # Build search query
+        query = downloader.build_search_query(
+            title=song.title,
+            composer=song.composer,
+            album_name=song.album_name,
+            suffix=OFFICIAL_LYRICS_SUFFIX,
+        )
+
+        # Download
+        console.print(f"[{song_id}] Downloading audio from YouTube...")
+        audio_path = downloader.download(query)
+
+        # Compute hash and upload to R2
+        content_hash = compute_file_hash(audio_path)
+        prefix = get_hash_prefix(content_hash)
+
+        r2_url = r2_client.upload_audio(audio_path, prefix)
+        console.print(f"[{song_id}] [green]→[/green] Uploaded to R2")
+
+        # Update recording with R2 URL
+        db_client.update_recording_status(
+            hash_prefix=hash_prefix,
+            r2_audio_url=r2_url,
+        )
+        db_client.update_recording_download(hash_prefix, "completed")
+
+        # Clean up temp file
+        audio_path.unlink(missing_ok=True)
+
+        return {"download": "completed"}
+
+    except Exception as e:
+        db_client.update_recording_download(hash_prefix, "failed")
+        console.print(f"[{song_id}] [red]✗[/red] Download failed: {e}")
+        return {"download": "failed", "error": str(e)}
+
+
+def _process_batch(
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    analysis_client: AnalysisClient,
+    song_ids: list[str],
+    skip_download: bool,
+    skip_lrc: bool,
+    stale_after_minutes: int,
+    console: Console,
+) -> dict:
+    """Process all songs in batch.
+
+    Args:
+        db_client: Database client
+        r2_client: R2 client
+        analysis_client: Analysis service client
+        song_ids: List of song IDs to process
+        skip_download: Skip download step
+        skip_lrc: Skip LRC step
+        stale_after_minutes: Staleness threshold for processing jobs
+        console: Rich console
+
+    Returns:
+        Dict with results for each song
+    """
+    results = {}
+    start_time = time.time()
+
+    # Phase 1: Download (if needed)
+    if not skip_download:
+        console.print("[cyan]Phase 1: Downloading audio[/cyan]")
+        downloaded_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        for i, song_id in enumerate(song_ids, 1):
+            console.print(f"[{i}/{len(song_ids)}] {song_id}...")
+
+            recording = db_client.get_recording_by_song_id(song_id)
+            if not recording:
+                console.print(f"  [red]✗ No recording found[/red]")
+                results[song_id] = {
+                    "download": "failed",
+                    "error": "No recording found",
+                }
+                failed_count += 1
+                continue
+
+            result = _download_if_needed(song_id, recording, db_client, r2_client, console)
+            results[song_id] = result
+
+            if result["download"] == "completed":
+                downloaded_count += 1
+            elif result["download"] == "skipped_r2":
+                skipped_count += 1
+            else:
+                failed_count += 1
+
+        console.print(f"  [green]Downloaded: {downloaded_count}[/green]")
+        console.print(f"  [dim]Skipped: {skipped_count}[/dim]")
+        console.print(f"  [red]Failed: {failed_count}[/red]")
+        console.print()
+
+    # Phase 2: Submit LRC jobs
+    active_jobs = {}  # song_id -> job_id
+    if not skip_lrc:
+        console.print("[cyan]Phase 2: Submitting LRC jobs[/cyan]")
+
+        songs_needing_lrc = [
+            sid for sid in song_ids
+            if results.get(sid, {}).get("download") != "failed"
+            and results.get(sid, {}).get("lrc") != "completed"
+        ]
+
+        for song_id in songs_needing_lrc:
+            recording = db_client.get_recording_by_song_id(song_id)
+            if not recording:
+                continue
+
+            # Get song for lyrics
+            song = db_client.get_song(song_id)
+            if not song or not song.lyrics_raw:
+                console.print(f"  [yellow]→ {song_id} (no lyrics, skipping)[/yellow]")
+                continue
+
+            # Check if R2 already has LRC
+            lrc_url = r2_client.lrc_exists(recording.hash_prefix)
+            if lrc_url:
+                db_client.update_recording_lrc(recording.hash_prefix, lrc_url)
+                results[song_id] = results.get(song_id, {})
+                results[song_id]["lrc"] = "completed"
+                results[song_id]["lrc_source"] = "r2_preexisting"
+                console.print(f"  [green]→ {song_id} (LRC already on R2, skipping)[/green]")
+                continue
+
+            # Check for existing processing job (not stale)
+            if recording.lrc_status == "processing" and recording.lrc_job_id:
+                from datetime import datetime, timezone, timedelta
+
+                updated_at = datetime.fromisoformat(recording.updated_at) if recording.updated_at else None
+                if updated_at:
+                    staleness = datetime.now(timezone.utc) - updated_at
+                    if staleness < timedelta(minutes=stale_after_minutes):
+                        active_jobs[song_id] = recording.lrc_job_id
+                        console.print(f"  [yellow]→ {song_id} (reusing existing job: {recording.lrc_job_id})[/yellow]")
+                        continue
+
+            # Submit new job
+            try:
+                youtube_url = recording.youtube_url or ""
+
+                job = analysis_client.submit_lrc(
+                    audio_url=recording.r2_audio_url,
+                    content_hash=recording.content_hash,
+                    lyrics_text=song.lyrics_raw,
+                    whisper_model="large-v3",
+                    language="zh",
+                    use_vocals_stem=True,
+                    force=False,
+                    force_whisper=False,
+                    youtube_url=youtube_url,
+                    use_qwen3=True,
+                )
+
+                db_client.update_recording_status(
+                    hash_prefix=recording.hash_prefix,
+                    lrc_status="processing",
+                    lrc_job_id=job.job_id,
+                )
+
+                active_jobs[song_id] = job.job_id
+                console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+
+            except AnalysisServiceError as e:
+                console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+                results[song_id] = results.get(song_id, {})
+                results[song_id]["lrc"] = "failed"
+                results[song_id]["lrc_error"] = str(e)
+
+        console.print(f"  Submitted: {len(active_jobs)} job(s)")
+        console.print()
+
+    # Phase 3: Poll all jobs
+    if active_jobs and not skip_lrc:
+        console.print("[cyan]Phase 3: Polling LRC jobs[/cyan]")
+        _poll_all_jobs(
+            active_jobs=active_jobs,
+            results=results,
+            db_client=db_client,
+            analysis_client=analysis_client,
+            r2_client=r2_client,
+            stale_after_minutes=stale_after_minutes,
+            console=console,
+        )
+
+    # Phase 4: Print stats (done by caller)
+    return results
+
+
+def _poll_all_jobs(
+    active_jobs: dict,
+    results: dict,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    r2_client: R2Client,
+    stale_after_minutes: int,
+    console: Console,
+) -> None:
+    """Poll all active jobs until terminal state or Ctrl+C.
+
+    Args:
+        active_jobs: Dict of song_id -> job_id
+        results: Results dict to update
+        db_client: Database client
+        analysis_client: Analysis service client
+        r2_client: R2 client
+        stale_after_minutes: Staleness threshold
+        console: Rich console
+    """
+    poll_interval = 30.0
+    last_completion_time = time.time()
+    stale_warning_seconds = stale_after_minutes * 60
+    job_timing = {}  # song_id -> (start_time, elapsed)
+
+    # Record start times for all jobs
+    for song_id, job_id in active_jobs.items():
+        job_timing[song_id] = (time.time(), 0)
+
+    try:
+        while active_jobs:
+            any_completed_this_cycle = False
+
+            for song_id in list(active_jobs.keys()):
+                job_id = active_jobs[song_id]
+                try:
+                    job = analysis_client.get_job(job_id)
+
+                    if job.status == "completed":
+                        # R2 confirmation check
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        lrc_url = _confirm_r2_lrc(r2_client, recording.hash_prefix, console)
+
+                        if lrc_url:
+                            db_client.update_recording_lrc(
+                                recording.hash_prefix,
+                                lrc_url,
+                            )
+                            results[song_id]["lrc"] = "completed"
+
+                            # Track timing
+                            start_time, _ = job_timing.get(song_id, (time.time(), 0))
+                            elapsed = time.time() - start_time
+                            job_timing[song_id] = (start_time, elapsed)
+
+                            # Store timing in results for stats
+                            results[song_id]["start_time"] = start_time
+                            results[song_id]["elapsed"] = elapsed
+
+                            del active_jobs[song_id]
+                            any_completed_this_cycle = True
+
+                            # Get song for display
+                            song = db_client.get_song(song_id)
+                            song_name = song.title if song else song_id
+                            console.print(f"  [green]✓[/green] {song_name} — LRC completed ({elapsed:.1f}s)")
+                        else:
+                            console.print(f"  [yellow]→ {song_id}: Job completed but LRC not on R2 yet, retrying...[/yellow]")
+                            continue
+
+                    elif job.status == "failed":
+                        db_client.update_recording_status(
+                            hash_prefix=recording.hash_prefix,
+                            lrc_status="failed",
+                        )
+                        results[song_id]["lrc"] = "failed"
+                        results[song_id]["lrc_error"] = job.error_message or "Unknown error"
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        song = db_client.get_song(song_id)
+                        song_name = song.title if song else song_id
+                        console.print(f"  [red]✗[/red] {song_name} — LRC failed: {job.error_message or 'Unknown error'}")
+
+                except AnalysisServiceError as e:
+                    if e.status_code == 404:
+                        # Job lost — check R2, resubmit if needed
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        lrc_url = r2_client.lrc_exists(recording.hash_prefix)
+
+                        if lrc_url:
+                            db_client.update_recording_lrc(
+                                recording.hash_prefix,
+                                lrc_url,
+                            )
+                            results[song_id]["lrc"] = "completed"
+                            del active_jobs[song_id]
+                            any_completed_this_cycle = True
+
+                            song = db_client.get_song(song_id)
+                            song_name = song.title if song else song_id
+                            console.print(f"  [green]✓[/green] {song_name} — LRC found on R2 (job was lost)")
+                        else:
+                            console.print(f"  [yellow]→ {song_id}: Job lost (404), resubmitting...[/yellow]")
+                            # Could resubmit here, but for now we'll just mark as failed
+                            # because we need context to resubmit properly
+                            results[song_id]["lrc"] = "failed"
+                            results[song_id]["lrc_error"] = "Job lost (404) and not found on R2"
+                            del active_jobs[song_id]
+                    else:
+                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                except Exception as e:
+                    console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+
+            if any_completed_this_cycle:
+                last_completion_time = time.time()
+
+            # Staleness warning
+            elapsed_since_completion = time.time() - last_completion_time
+            if elapsed_since_completion > stale_warning_seconds and active_jobs:
+                hours = int(elapsed_since_completion // 3600)
+                mins = int((elapsed_since_completion % 3600) // 60)
+                console.print()
+                console.print(
+                    f"[yellow]⚠ WARNING: No jobs completed in {hours}h {mins}m. "
+                    f"Analysis Service may be hung or restarting.[/yellow]"
+                )
+                console.print(
+                    "[yellow]Press Ctrl+C to stop and reconcile, "
+                    "or wait for service recovery.[/yellow]"
+                )
+                console.print()
+                last_completion_time = time.time()
+
+            # Print progress
+            _print_progress(active_jobs, results, start_time=job_timing[list(active_jobs.keys())[0]][0])
+
+            if active_jobs:
+                time.sleep(poll_interval)
+
+    except KeyboardInterrupt:
+        _reconcile_on_interrupt(active_jobs, results, db_client, r2_client, console)
+
+
+def _confirm_r2_lrc(
+    r2_client: R2Client,
+    hash_prefix: str,
+    console: Console,
+    max_retries: int = 3,
+    retry_delay: float = 5.0,
+) -> Optional[str]:
+    """Confirm LRC file exists on R2 after service reports completion.
+
+    Args:
+        r2_client: R2 client
+        hash_prefix: Recording hash prefix
+        console: Rich console
+        max_retries: Maximum number of retries
+        retry_delay: Delay between retries in seconds
+
+    Returns:
+        LRC URL if found, None if not confirmed
+    """
+    for attempt in range(max_retries):
+        lrc_url = r2_client.lrc_exists(hash_prefix)
+        if lrc_url:
+            return lrc_url
+        if attempt < max_retries - 1:
+            time.sleep(retry_delay)
+    return None
+
+
+def _reconcile_on_interrupt(
+    active_jobs: dict,
+    results: dict,
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    console: Console,
+) -> None:
+    """Reconcile status for in-progress jobs on Ctrl+C.
+
+    Args:
+        active_jobs: Dict of song_id -> job_id still in progress
+        results: Results dict to update
+        db_client: Database client
+        r2_client: R2 client
+        console: Rich console
+    """
+    console.print()
+    console.print("[yellow]Batch interrupted. Reconciling status...[/yellow]")
+
+    for song_id, job_id in active_jobs.items():
+        recording = db_client.get_recording_by_song_id(song_id)
+        if not recording:
+            continue
+
+        hash_prefix = recording.hash_prefix
+
+        # Check R2 for LRC
+        lrc_url = r2_client.lrc_exists(hash_prefix)
+        if lrc_url:
+            db_client.update_recording_lrc(hash_prefix, lrc_url)
+            results[song_id]["lrc"] = "completed"
+
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  [green]✓[/green] {song_name}: LRC found on R2 (completed)")
+        else:
+            db_client.update_recording_status(
+                hash_prefix=hash_prefix,
+                lrc_status="failed",
+            )
+            results[song_id]["lrc"] = "failed"
+            results[song_id]["lrc_error"] = "Batch interrupted, LRC not on R2"
+
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  [red]✗[/red] {song_name}: LRC not on R2 (marked failed)")
+
+    console.print()
+    console.print(
+        "[dim]Tip: Run 'sow-admin audio status --reconcile' later to catch "
+        "late completions after the service finishes processing.[/dim]"
+    )
+
+
+def _print_progress(
+    active_jobs: dict,
+    results: dict,
+    start_time: float,
+    console: Console,
+) -> None:
+    """Print polling progress.
+
+    Args:
+        active_jobs: Dict of song_id -> job_id still in progress
+        results: Results dict
+        start_time: Batch start time
+        console: Rich console
+    """
+    completed_count = sum(1 for r in results.values() if r.get("lrc") == "completed")
+    failed_count = sum(1 for r in results.values() if r.get("lrc") == "failed")
+    in_progress_count = len(active_jobs)
+
+    elapsed = time.time() - start_time
+    elapsed_mins = int(elapsed // 60)
+    elapsed_secs = int(elapsed % 60)
+
+    console.print(
+        f"⏳ Polling {len(active_jobs)} job(s)... "
+        f"{completed_count} completed, {failed_count} failed, {in_progress_count} in progress "
+        f"(elapsed: {elapsed_mins}m {elapsed_secs}s)"
+    )
+
+
+def _print_stats(
+    results: dict,
+    db_client: DatabaseClient,
+    console: Console,
+    format: str,
+) -> None:
+    """Print final batch statistics.
+
+    Args:
+        results: Results dict from batch processing
+        db_client: Database client for looking up song info
+        console: Rich console
+        format: Output format (rich or json)
+    """
+    if format == "json":
+        import json
+        console.print(json.dumps(results, indent=2))
+        return
+
+    # Rich format
+    total = len(results)
+
+    # Download stats
+    download_completed = sum(1 for r in results.values() if r.get("download") == "completed")
+    download_skipped = sum(1 for r in results.values() if r.get("download") == "skipped_r2")
+    download_failed = sum(1 for r in results.values() if r.get("download") == "failed")
+
+    # LRC stats
+    lrc_completed = sum(1 for r in results.values() if r.get("lrc") == "completed")
+    lrc_failed = sum(1 for r in results.values() if r.get("lrc") == "failed")
+    lrc_skipped_existing = sum(1 for r in results.values() if r.get("lrc_source") == "r2_preexisting")
+    lrc_skipped_download = sum(1 for r in results.values() if r.get("download") == "failed")
+
+    # LRC timing stats (only for ASR-generated LRCs)
+    lrc_timings = []
+    for song_id, t in results.items():
+        # Only track timings for jobs that were actually generated by ASR
+        if "elapsed" in t and t.get("lrc_source") != "r2_preexisting":
+            # Add to timings list
+            lrc_timings.append(t["elapsed"])
+
+    if lrc_timings:
+        avg_lrc_time = sum(lrc_timings) / len(lrc_timings)
+        med_lrc_time = sorted(lrc_timings)[len(lrc_timings) // 2]
+        min_lrc_time = min(lrc_timings)
+        max_lrc_time = max(lrc_timings)
+    else:
+        avg_lrc_time = med_lrc_time = min_lrc_time = max_lrc_time = None
+
+    # Build summary table
+    lines = [
+        f"╭─ {'Batch Summary':^50} ╮",
+        f"│ {'Songs processed:':<30} {total:>18} │",
+        f"│ {'':<30} {'':>18} │",
+        f"│ {'Downloads:':<30} {'':>18} │",
+        f"│ {'  Completed:':<30} {download_completed:>18} │",
+        f"│ {'  Skipped (R2):':<30} {download_skipped:>18} │",
+        f"│ {'  Failed:':<30} {download_failed:>18} │",
+        f"│ {'':<30} {'':>18} │",
+        f"│ {'LRC:':<30} {'':>18} │",
+        f"│ {'  Completed:':<30} {lrc_completed:>18} │",
+        f"│ {'  Failed:':<30} {lrc_failed:>18} │",
+        f"│ {'  Skipped (R2):':<30} {lrc_skipped_existing:>18} │",
+        f"│ {'  Skipped (dl failed):':<30} {lrc_skipped_download:>18} │",
+    ]
+
+    if lrc_completed > 0 and lrc_skipped_existing < lrc_completed:
+        asr_count = lrc_completed - lrc_skipped_existing
+        lines.extend([
+            f"│ {'':<30} {'':>18} │",
+            f"│ {'LRC source:':<30} {'':>18} │",
+            f"│ {'  R2 pre-existing:':<30} {lrc_skipped_existing:>18} │",
+            f"│ {'  ASR (generated):':<30} {asr_count:>18} │",
+        ])
+
+    if avg_lrc_time is not None:
+        lines.extend([
+            f"│ {'':<30} {'':>18} │",
+            f"│ {'LRC timing (ASR jobs only):':<30} {'':>18} │",
+            f"│ {'  Average:':<30} {avg_lrc_time:.1f}s{'':>12} │",
+            f"│ {'  Median:':<30} {med_lrc_time:.1f}s{'':>12} │",
+            f"│ {'  Min/Max:':<30} {min_lrc_time:.1f}s / {max_lrc_time:.1f}s   │",
+        ])
+
+    lines.append("╰" + "─" * 52 + "╯")
+
+    console.print("\n".join(lines))
+
+    # Print failed downloads
+    failed_downloads = [
+        (song_id, r.get("error"))
+        for song_id, r in results.items()
+        if r.get("download") == "failed"
+    ]
+    if failed_downloads:
+        console.print("\n[bold red]Failed downloads:[/bold red]")
+        for song_id, error in failed_downloads:
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  - {song_name}: {error}")
+
+    # Print failed LRCs
+    failed_lrcs = [
+        (song_id, r.get("lrc_error"))
+        for song_id, r in results.items()
+        if r.get("lrc") == "failed"
+    ]
+    if failed_lrcs:
+        console.print("\n[bold red]Failed LRC:[/bold red]")
+        for song_id, error in failed_lrcs:
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  - {song_name}: {error}")
+
