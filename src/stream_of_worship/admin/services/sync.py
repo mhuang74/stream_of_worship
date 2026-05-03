@@ -272,7 +272,7 @@ class SyncService:
                     )
 
             # Existing recovery for metadata file corruption
-            if ("metadata file does not" in error_msg.lower() or "metadata is missing" in error_msg.lower()) and attempt < max_attempts:
+            if ("metadata file does not" in error_msg.lower() or "metadata is missing" in error_msg.lower() or "not a database" in error_msg.lower()) and attempt < max_attempts:
                 # Close client before deleting files
                 client.close()
 

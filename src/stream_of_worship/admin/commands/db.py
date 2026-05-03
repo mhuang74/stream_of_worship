@@ -15,21 +15,12 @@ from rich.panel import Panel
 from rich.table import Table
 
 from stream_of_worship.admin.config import get_config_path, AdminConfig
-from stream_of_worship.admin.db.client import DatabaseClient, SyncError
+from stream_of_worship.admin.db.client import DatabaseClient, LIBSQL_AVAILABLE, SyncError
 from stream_of_worship.admin.services.sync import (
     SyncConfigError,
     SyncNetworkError,
     get_sync_service_from_config,
 )
-
-# Optional libsql import for Turso bootstrap
-try:
-    import libsql
-
-    LIBSQL_AVAILABLE = True
-except ImportError:
-    LIBSQL_AVAILABLE = False
-    libsql = None  # type: ignore
 
 console = Console()
 app = typer.Typer(help="Database operations")
@@ -85,21 +76,104 @@ def init_db(
 
     if force and db_path.exists():
         console.print(f"[red]Resetting database at {db_path}...[/red]")
-        client = DatabaseClient(db_path)
-        client.reset_database()
-        console.print("[green]Database reset and re-initialized successfully![/green]")
+        # Delete existing db + sidecar files for clean slate
+        db_path.unlink()
+        for f in db_path.parent.glob(f"{db_path.name}-*"):
+            if f.is_dir():
+                import shutil
+                shutil.rmtree(f)
+            else:
+                f.unlink(missing_ok=True)
+
+        turso_url = config.effective_turso_url
+        if turso_url and LIBSQL_AVAILABLE:
+            client = DatabaseClient(
+                db_path,
+                turso_url=turso_url,
+                turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+            )
+            try:
+                client.sync()
+                console.print("[green]Database reset and synced from Turso![/green]")
+            except SyncError as e:
+                client.close()
+                if db_path.exists():
+                    db_path.unlink()
+                for f in db_path.parent.glob(f"{db_path.name}-*"):
+                    if f.is_dir():
+                        import shutil
+                        shutil.rmtree(f)
+                    else:
+                        f.unlink(missing_ok=True)
+                console.print(f"[yellow]Turso sync failed: {e}[/yellow]")
+                console.print("[yellow]Falling back to local-only reset...[/yellow]")
+                client = DatabaseClient(db_path)
+                client.initialize_schema()
+                console.print("[green]Database reset locally (run 'db sync' later).[/green]")
+        else:
+            client = DatabaseClient(db_path)
+            client.reset_database()
+            console.print("[green]Database reset and re-initialized successfully![/green]")
     elif db_path.exists():
-        # Database exists, run migrations to apply any schema updates
         console.print(f"[yellow]Database already exists at {db_path}[/yellow]")
         console.print("Running migrations...")
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-        console.print("[green]Migrations applied successfully![/green]")
+        turso_url = config.effective_turso_url
+        if turso_url and LIBSQL_AVAILABLE:
+            # Use libsql to apply migrations and push to Turso
+            client = DatabaseClient(
+                db_path,
+                turso_url=turso_url,
+                turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+            )
+            try:
+                client.sync()
+                console.print("[green]Migrations applied and synced with Turso![/green]")
+            except SyncError as e:
+                console.print(f"[yellow]Sync failed ({e}), applying migrations locally only.[/yellow]")
+                client.close()
+                client = DatabaseClient(db_path)
+                client.initialize_schema()
+                console.print("[green]Migrations applied locally.[/green]")
+        else:
+            client = DatabaseClient(db_path)
+            client.initialize_schema()
+            console.print("[green]Migrations applied successfully![/green]")
     else:
         console.print(f"Creating database at {db_path}...")
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-        console.print("[green]Database initialized successfully![/green]")
+        turso_url = config.effective_turso_url
+        if turso_url and LIBSQL_AVAILABLE:
+            # Turso configured: create libsql replica and sync from remote
+            # Do NOT call initialize_schema() — let sync pull schema from Turso
+            client = DatabaseClient(
+                db_path,
+                turso_url=turso_url,
+                turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+            )
+            try:
+                client.sync()
+                console.print("[green]Database initialized and synced from Turso![/green]")
+            except SyncError as e:
+                # If sync fails, fall back to local-only init
+                client.close()
+                if db_path.exists():
+                    db_path.unlink()
+                # Delete any sidecar files
+                for f in db_path.parent.glob(f"{db_path.name}-*"):
+                    if f.is_dir():
+                        import shutil
+                        shutil.rmtree(f)
+                    else:
+                        f.unlink(missing_ok=True)
+                console.print(f"[yellow]Turso sync failed: {e}[/yellow]")
+                console.print("[yellow]Falling back to local-only initialization...[/yellow]")
+                client = DatabaseClient(db_path)
+                client.initialize_schema()
+                console.print("[green]Database initialized locally (run 'db sync' later to pull data).[/green]")
+        else:
+            # No Turso: standard local-only init
+            client = DatabaseClient(db_path)
+            client.initialize_schema()
+            console.print("[green]Database initialized successfully![/green]")
 
     # Show status after init
     show_status(config_path)
