@@ -145,7 +145,8 @@ class DatabaseClient:
         """Sync with Turso cloud database.
 
         Performs integrity check, schema migration, and post-sync validation to prevent
-        schema sync corruption.
+        schema sync corruption. For first-time sync, skips pre-sync migrations to allow
+        libsql to pull full schema from Turso.
 
         Raises:
             SyncError: If sync fails, database is corrupted, or schema drift detected
@@ -155,54 +156,55 @@ class DatabaseClient:
 
         cursor = self.connection.cursor()
 
-        # Pre-sync: check local DB integrity
-        try:
-            cursor.execute("PRAGMA integrity_check")
-            result = cursor.fetchone()
-            if result and result[0] != "ok":
-                raise SyncError(
-                    f"Local database is corrupted ('{result[0]}'). "
-                    f"Recovery: run 'db sync --force' to recreate from Turso, "
-                    f"or manually delete {self.db_path} and all sidecar files."
-                )
-        except sqlite3.DatabaseError as e:
-            if "malformed" in str(e).lower():
-                raise SyncError(
-                    f"Local database is corrupted. "
-                    f"Recovery: run 'db sync --force' to recreate from Turso, "
-                    f"or manually delete {self.db_path} and all sidecar files. "
-                    f"Original error: {e}"
-                )
-            raise
-        except sqlite3.OperationalError:
-            # Database might be empty - that's okay, sync will pull from remote
-            pass
-        except (*_LIBSQL_ERROR, Exception) as e:
-            # libsql.Error from missing metadata sidecar or other libsql issues
-            error_msg = str(e).lower()
-            if "metadata file does not" in error_msg or "invalid local state" in error_msg:
-                raise SyncError(
-                    f"Local database metadata is missing or invalid. "
-                    f"This typically happens when a vanilla SQLite database was created "
-                    f"by 'db init' and needs to be migrated to a libsql embedded replica. "
-                    f"Auto-recovery will recreate the database from Turso. "
-                    f"Original error: {e}"
-                )
-            if "malformed" in error_msg:
-                raise SyncError(
-                    f"Local database is corrupted. "
-                    f"Recovery: run 'db sync' to recreate from Turso, "
-                    f"or manually delete {self.db_path} and all sidecar files. "
-                    f"Original error: {e}"
-                )
-            raise SyncError(f"Local database error: {e}")
+        # Check if tables exist (determines if this is first sync or subsequent)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='songs'")
+        tables_exist = cursor.fetchone() is not None
 
-        # Pre-sync: ensure local schema is up to date
-        apply_column_migrations(cursor)
+        if tables_exist:
+            # Existing replica: integrity check + pre-sync migrations
+            try:
+                cursor.execute("PRAGMA integrity_check")
+                result = cursor.fetchone()
+                if result and result[0] != "ok":
+                    raise SyncError(
+                        f"Local database is corrupted ('{result[0]}'). "
+                        f"Recovery: run 'db sync --force' to recreate from Turso, "
+                        f"or manually delete {self.db_path} and all sidecar files."
+                    )
+            except sqlite3.DatabaseError as e:
+                if "malformed" in str(e).lower():
+                    raise SyncError(
+                        f"Local database is corrupted. "
+                        f"Recovery: run 'db sync --force' to recreate from Turso, "
+                        f"or manually delete {self.db_path} and all sidecar files. "
+                        f"Original error: {e}"
+                    )
+                raise
+            except sqlite3.OperationalError:
+                # Database might be empty - that's okay, sync will pull from remote
+                pass
+            except (*_LIBSQL_ERROR, Exception) as e:
+                error_msg = str(e).lower()
+                if "metadata file does not" in error_msg or "invalid local state" in error_msg:
+                    raise SyncError(
+                        f"Local database metadata is missing or invalid. "
+                        f"This typically happens when a vanilla SQLite database was created "
+                        f"by 'db init' and needs to be migrated to a libsql embedded replica. "
+                        f"Auto-recovery will recreate the database from Turso. "
+                        f"Original error: {e}"
+                    )
+                if "malformed" in error_msg:
+                    raise SyncError(
+                        f"Local database is corrupted. "
+                        f"Recovery: run 'db sync' to recreate from Turso, "
+                        f"or manually delete {self.db_path} and all sidecar files. "
+                        f"Original error: {e}"
+                    )
+                raise SyncError(f"Local database error: {e}")
 
-        # Commit schema changes BEFORE syncing
-        # CRITICAL: ensures DDL is committed before WAL frame application
-        self.connection.commit()
+            # Pre-sync: ensure local schema is up to date (only for existing replicas)
+            apply_column_migrations(cursor)
+            self.connection.commit()
 
         # Sync with Turso (bidirectional: pushes local changes, pulls remote changes)
         try:

@@ -255,24 +255,10 @@ class SyncService:
                 # Step 3: Delete local DB and sidecar files
                 self._delete_local_db()
 
-                # Step 4: Initialize schema before retry (tables must exist for migrations)
-                try:
-                    init_client = DatabaseClient(
-                        self.db_path,
-                        turso_url=self.turso_url,
-                        turso_token=self.turso_token or os.environ.get("SOW_TURSO_TOKEN"),
-                    )
-                    init_client.initialize_schema()
-                    init_client.close()
-                except Exception as init_err:
-                    raise SyncNetworkError(
-                        f"Recovery failed during schema initialization. "
-                        f"Backup saved at: {backup_dir}. "
-                        f"To restore: cp {backup_dir}/sow.db {self.db_path}. "
-                        f"Error: {init_err}"
-                    )
-
-                # Step 5: Retry sync
+                # Step 4: Retry sync (libsql will pull schema + data from Turso)
+                # IMPORTANT: Do NOT call initialize_schema() here!
+                # If tables exist locally before first sync, libsql treats them as
+                # authoritative and won't pull remote data.
                 try:
                     return self._execute_sync_with_recovery(
                         attempt=attempt + 1, max_attempts=max_attempts
