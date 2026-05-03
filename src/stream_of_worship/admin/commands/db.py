@@ -153,7 +153,9 @@ def show_status(
 
     # Get database stats
     try:
-        client = get_db_client(config)
+        # Use sqlite3-only client for local stats (avoids libsql metadata error
+        # when local DB is a vanilla SQLite file created by db init)
+        client = DatabaseClient(db_path)
         stats = client.get_stats()
 
         # Stats table
@@ -314,8 +316,10 @@ def sync_db(
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
     except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
+        # Create default config for new users
+        config = AdminConfig()
+        config.save()
+        console.print(f"[yellow]Created default config at {get_config_path()}[/yellow]")
 
     # Check if Turso is configured
     if not config.turso_database_url:

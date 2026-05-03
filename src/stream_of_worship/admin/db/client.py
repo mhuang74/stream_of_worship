@@ -34,9 +34,11 @@ try:
     import libsql
 
     LIBSQL_AVAILABLE = True
+    _LIBSQL_ERROR: tuple = (libsql.Error,)
 except ImportError:
     LIBSQL_AVAILABLE = False
     libsql = None  # type: ignore
+    _LIBSQL_ERROR = ()
 
 
 class SyncError(Exception):
@@ -161,6 +163,25 @@ class DatabaseClient:
         except sqlite3.OperationalError:
             # Database might be empty - that's okay, sync will pull from remote
             pass
+        except (*_LIBSQL_ERROR, Exception) as e:
+            # libsql.Error from missing metadata sidecar or other libsql issues
+            error_msg = str(e).lower()
+            if "metadata file does not" in error_msg or "invalid local state" in error_msg:
+                raise SyncError(
+                    f"Local database metadata is missing or invalid. "
+                    f"This typically happens when a vanilla SQLite database was created "
+                    f"by 'db init' and needs to be migrated to a libsql embedded replica. "
+                    f"Auto-recovery will recreate the database from Turso. "
+                    f"Original error: {e}"
+                )
+            if "malformed" in error_msg:
+                raise SyncError(
+                    f"Local database is corrupted. "
+                    f"Recovery: run 'db sync' to recreate from Turso, "
+                    f"or manually delete {self.db_path} and all sidecar files. "
+                    f"Original error: {e}"
+                )
+            raise SyncError(f"Local database error: {e}")
 
         # Pre-sync: ensure local schema is up to date
         apply_column_migrations(cursor)
@@ -202,7 +223,7 @@ class DatabaseClient:
                         f"expected {expected_count}. This may indicate a migration was not "
                         f"applied. Run 'db init' to apply missing migrations."
                     )
-            except sqlite3.OperationalError:
+            except (sqlite3.OperationalError, *_LIBSQL_ERROR):
                 pass  # Table doesn't exist yet (fresh DB)
 
     def update_sync_metadata(self, key: str, value: str) -> None:

@@ -164,8 +164,8 @@ class SyncService:
         except ImportError:
             errors.append("libsql not installed. Run: uv add --extra turso libsql")
 
-        # Check database exists
-        if not self.db_path.exists():
+        # Check database exists (only required when not using Turso — libsql can create from scratch)
+        if not self.turso_url and not self.db_path.exists():
             errors.append(f"Database not found: {self.db_path}")
 
         # Check Turso URL
@@ -217,6 +217,9 @@ class SyncService:
             SyncConfigError: If configuration is invalid
             SyncNetworkError: If network operation fails
         """
+        # Ensure parent directory exists (new users won't have it)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
         client = DatabaseClient(
             self.db_path,
             turso_url=self.turso_url,
