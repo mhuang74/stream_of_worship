@@ -182,21 +182,24 @@ FOREIGN_KEYS_QUERY = "PRAGMA foreign_keys;"
 
 # Column migrations for existing databases
 # Each entry represents a column added over time. Must maintain historical order.
-COLUMN_MIGRATIONS = [
-    ("recordings", "youtube_url", "TEXT"),
-    ("recordings", "visibility_status", "TEXT"),
-    ("songs", "deleted_at", "TIMESTAMP"),
-    ("recordings", "deleted_at", "TIMESTAMP"),
-    ("recordings", "download_status", "TEXT DEFAULT 'pending'"),
-]
+# Note: These columns are already included in the CREATE TABLE DDL above,
+# so this list starts empty. Add new migrations here when schema changes require
+# ALTER TABLE ADD COLUMN for existing databases.
+COLUMN_MIGRATIONS: list[tuple[str, str, str]] = []
+
+try:
+    import libsql as _libsql_module
+
+    _LIBSQL_ERROR: tuple = (_libsql_module.Error,)
+except ImportError:
+    _LIBSQL_ERROR = ()
 
 
 def apply_column_migrations(cursor) -> None:
     """Apply all column migrations to a database cursor.
 
-    This function attempts to add columns to tables using ALTER TABLE statements.
-    If a column already exists (OperationalError), it silently continues, making
-    this function safe to run on databases at any schema version.
+    Idempotent: silently skips columns that already exist, regardless of
+    whether the cursor is from sqlite3 or libsql.
 
     Args:
         cursor: Database cursor to execute migrations on.
@@ -204,7 +207,7 @@ def apply_column_migrations(cursor) -> None:
     for table, column, col_type in COLUMN_MIGRATIONS:
         try:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, *_LIBSQL_ERROR):
             pass
 
 
