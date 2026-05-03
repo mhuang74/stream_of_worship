@@ -91,10 +91,10 @@ fi
 export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$MODEL_DIR"
 
 # Check if .env file exists
-if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
-    echo -e "${YELLOW}Warning: .env file not found at $SCRIPT_DIR/.env${NC}"
+if [[ ! -f "/opt/sow/.env" ]]; then
+    echo -e "${YELLOW}Warning: .env file not found at /opt/sow/.env${NC}"
     echo -e "Copy from .env.example and configure your environment variables:"
-    echo -e "  cp $SCRIPT_DIR/.env.example $SCRIPT_DIR/.env"
+    echo -e "  cp /opt/sow/.env.example /opt/sow/.env"
     echo ""
     read -p "Continue anyway? [y/N] " -n 1 -r
     echo
@@ -116,4 +116,4 @@ echo "  API will be available at: http://localhost:8000"
 echo ""
 
 cd "$SCRIPT_DIR"
-docker compose up analysis-dev "$@"
+docker compose --env-file /opt/sow/.env up analysis-dev "$@"
