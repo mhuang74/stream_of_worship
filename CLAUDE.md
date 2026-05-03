@@ -93,6 +93,23 @@ The project consists of **four architecturally separate components**:
   - Verify file existence before reading/processing.
 - Update `report/current_impl_status.md` and MEMORY after completion of each phase, typically triggered by git commit
 
+## Database Column Addition Checklist
+
+When adding a new column to the songs or recordings tables:
+
+1. **Add to DDL** (`admin/db/schema.py`): Add the column to `CREATE_SONGS_TABLE` or `CREATE_RECORDINGS_TABLE`
+2. **Add to migrations** (`admin/db/schema.py`): Append new entry to `COLUMN_MIGRATIONS` list — **must be last (append, not reorder)**
+3. **Update from_row** (`admin/db/models.py`): Add the field to dict mapping in `Song.from_row()` or `Recording.from_row()`
+4. **Update column count** (`admin/db/schema.py`): Update `SONG_COLUMN_COUNT` or `RECORDING_COLUMN_COUNT` constant
+5. **Update tests**: Add `description` fixture entry and column to test row tuples
+
+Why order matters: SQLite's `ALTER TABLE ADD COLUMN` appends columns. Reordering entries would change physical column positions in existing DBs.
+
+The centralized `COLUMN_MIGRATIONS` in schema.py ensures all code paths use the same migrations:
+- `client.py:initialize_schema()` — admin local DB init
+- `commands/infra.py:turso_init` — Turso remote schema
+- `app/db/read_client.py:_migrate_schema()` — app read-only replica
+
 ## Session Completion (MANDATORY)
 
 Work is NOT complete until `git push` succeeds:
