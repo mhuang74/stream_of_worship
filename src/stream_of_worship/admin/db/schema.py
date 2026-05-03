@@ -4,6 +4,10 @@ Defines the database schema for storing song catalog and recording metadata.
 Uses SQLite with libsql compatibility for Turso sync support.
 """
 
+import sqlite3
+
+
+
 # SQL to create the songs table (scraped catalog)
 CREATE_SONGS_TABLE = """
 CREATE TABLE IF NOT EXISTS songs (
@@ -62,15 +66,10 @@ CREATE TABLE IF NOT EXISTS recordings (
 
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-
-    -- YouTube URL (for transcript-based LRC generation)
     youtube_url TEXT,
-
-    -- Visibility status for User App (published, review, hold)
-    visibility_status TEXT DEFAULT NULL,
-
-    -- Soft delete timestamp (NULL = active)
-    deleted_at TIMESTAMP
+    visibility_status TEXT,
+    deleted_at TIMESTAMP,
+    download_status TEXT DEFAULT 'pending'
 );
 """
 
@@ -181,6 +180,34 @@ INTEGRITY_CHECK_QUERY = "PRAGMA integrity_check;"
 # SQL to get foreign key status
 FOREIGN_KEYS_QUERY = "PRAGMA foreign_keys;"
 
+# Column migrations for existing databases
+# Each entry represents a column added over time. Must maintain historical order.
+COLUMN_MIGRATIONS = [
+    ("recordings", "youtube_url", "TEXT"),
+    ("recordings", "visibility_status", "TEXT"),
+    ("songs", "deleted_at", "TIMESTAMP"),
+    ("recordings", "deleted_at", "TIMESTAMP"),
+    ("recordings", "download_status", "TEXT DEFAULT 'pending'"),
+]
+
+
+def apply_column_migrations(cursor) -> None:
+    """Apply all column migrations to a database cursor.
+
+    This function attempts to add columns to tables using ALTER TABLE statements.
+    If a column already exists (OperationalError), it silently continues, making
+    this function safe to run on databases at any schema version.
+
+    Args:
+        cursor: Database cursor to execute migrations on.
+    """
+    for table, column, col_type in COLUMN_MIGRATIONS:
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+        except sqlite3.OperationalError:
+            pass
+
+
 SONG_COLUMNS_FOR_JOIN = """
     s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
     s.album_name, s.album_series, s.musical_key, s.lyrics_raw,
@@ -194,12 +221,13 @@ RECORDING_COLUMNS_FOR_JOIN = """
     r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
     r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
     r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-    r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.youtube_url,
-    r.visibility_status, r.download_status, r.created_at, r.updated_at, r.deleted_at
+    r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
+    r.updated_at, r.youtube_url, r.visibility_status, r.deleted_at,
+    r.download_status
 """
 
 SONG_COLUMN_COUNT = 17
-RECORDING_COLUMN_COUNT = 29
+RECORDING_COLUMN_COUNT = 30
 
 # Default sync metadata values
 DEFAULT_SYNC_METADATA = {

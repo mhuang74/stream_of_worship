@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.schema import apply_column_migrations
 
 logger = logging.getLogger("sow_app.db")
 
@@ -110,11 +111,7 @@ class ReadOnlyClient:
     def _migrate_schema(self) -> None:
         """Run schema migrations for the read-only catalog replica."""
         cursor = self._connection.cursor()
-        for table in ("songs", "recordings"):
-            try:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TIMESTAMP")
-            except Exception:
-                pass
+        apply_column_migrations(cursor)
 
     def sync(self) -> None:
         """Sync with Turso cloud database.
@@ -159,7 +156,7 @@ class ReadOnlyClient:
         row = cursor.fetchone()
 
         if row:
-            return Song.from_row(tuple(row))
+            return Song.from_row(tuple(row), cursor.description)
         return None
 
     def get_song_including_deleted(self, song_id: str) -> Optional[Song]:
@@ -220,10 +217,11 @@ class ReadOnlyClient:
             query += f" OFFSET {offset}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
-            results.append(Song.from_row(tuple(row)))
+            results.append(Song.from_row(tuple(row), description))
         return results
 
     def search_songs(
@@ -266,10 +264,11 @@ class ReadOnlyClient:
         sql += f" ORDER BY title LIMIT {limit}"
 
         cursor.execute(sql, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
-            results.append(Song.from_row(tuple(row)))
+            results.append(Song.from_row(tuple(row), description))
         return results
 
     def list_albums(self) -> list[str]:
@@ -328,7 +327,7 @@ class ReadOnlyClient:
         row = cursor.fetchone()
 
         if row:
-            return Recording.from_row(tuple(row))
+            return Recording.from_row(tuple(row), cursor.description)
         return None
 
     def get_recording_by_song_id(
@@ -357,7 +356,7 @@ class ReadOnlyClient:
         row = cursor.fetchone()
 
         if row:
-            return Recording.from_row(tuple(row))
+            return Recording.from_row(tuple(row), cursor.description)
         return None
 
     def list_recordings(
@@ -399,10 +398,11 @@ class ReadOnlyClient:
             query += f" LIMIT {limit}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
-            results.append(Recording.from_row(tuple(row)))
+            results.append(Recording.from_row(tuple(row), description))
         return results
 
     def get_recording_count(self) -> int:

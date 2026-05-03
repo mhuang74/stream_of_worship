@@ -10,6 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from datetime import datetime, timezone
+
+try:
+    import libsql
+
+    LIBSQL_AVAILABLE = True
+except ImportError:
+    LIBSQL_AVAILABLE = False
+    libsql = None  # type: ignore
+
 from stream_of_worship.admin.db.client import DatabaseClient, SyncError
 
 
@@ -224,7 +234,55 @@ class SyncService:
         except SyncError as e:
             error_msg = str(e)
 
-            # Check if this is a metadata file corruption error
+            # Auto-recovery for "malformed" corruption
+            if "malformed" in error_msg.lower() and attempt < max_attempts:
+                client.close()
+
+                # Step 1: Verify Turso is healthy AND has data before nuking local
+                if not self._verify_turso_health():
+                    raise SyncNetworkError(
+                        "Cannot auto-recover: Turso remote appears unhealthy or empty. "
+                        "Manual intervention required. "
+                        f"Original error: {e}"
+                    )
+
+                # Step 2: Create timestamped backup (copy, not move — crash-safe)
+                backup_dir = self._backup_local_db()
+
+                # Step 3: Delete local DB and sidecar files
+                self._delete_local_db()
+
+                # Step 4: Initialize schema before retry (tables must exist for migrations)
+                try:
+                    init_client = DatabaseClient(
+                        self.db_path,
+                        turso_url=self.turso_url,
+                        turso_token=self.turso_token or os.environ.get("SOW_TURSO_TOKEN"),
+                    )
+                    init_client.initialize_schema()
+                    init_client.close()
+                except Exception as init_err:
+                    raise SyncNetworkError(
+                        f"Recovery failed during schema initialization. "
+                        f"Backup saved at: {backup_dir}. "
+                        f"To restore: cp {backup_dir}/sow.db {self.db_path}. "
+                        f"Error: {init_err}"
+                    )
+
+                # Step 5: Retry sync
+                try:
+                    return self._execute_sync_with_recovery(
+                        attempt=attempt + 1, max_attempts=max_attempts
+                    )
+                except Exception as retry_err:
+                    raise SyncNetworkError(
+                        f"Recovery sync failed. "
+                        f"Backup saved at: {backup_dir}. "
+                        f"To restore: cp {backup_dir}/sow.db {self.db_path}. "
+                        f"Error: {retry_err}"
+                    )
+
+            # Existing recovery for metadata file corruption
             if "metadata file does not" in error_msg.lower() and attempt < max_attempts:
                 # Close client before deleting files
                 client.close()
@@ -238,6 +296,77 @@ class SyncService:
             raise SyncNetworkError(f"Sync failed: {e}")
         finally:
             client.close()
+
+    def _verify_turso_health(self) -> bool:
+        """Check that Turso remote is reachable, has valid schema, and has data.
+
+        Only returns True if Turso has a recordings table with columns AND
+        at least one song row. This prevents auto-recovery from nuking local
+        data when Turso is empty (e.g., re-bootstrapped without --seed).
+
+        Returns:
+            True if Turso is healthy and has data, False otherwise
+        """
+        if not LIBSQL_AVAILABLE:
+            return False
+
+        try:
+            import libsql
+
+            conn = libsql.connect(
+                ":memory:",
+                sync_url=self.turso_url,
+                auth_token=self.turso_token or os.environ.get("SOW_TURSO_TOKEN", ""),
+            )
+            conn.sync()
+            cursor = conn.cursor()
+
+            # Check schema exists
+            cursor.execute("PRAGMA table_info(recordings)")
+            columns = cursor.fetchall()
+            if len(columns) == 0:
+                return False
+
+            # Check data exists — refuse recovery if Turso is empty
+            cursor.execute("SELECT COUNT(*) FROM songs")
+            song_count = cursor.fetchone()[0]
+            if song_count == 0:
+                return False
+
+            conn.close()
+            return True
+        except Exception:
+            return False
+
+    def _backup_local_db(self) -> Path:
+        """Create timestamped backup of local DB before recovery.
+
+        Uses copy (not move) so a crash during backup leaves originals intact.
+
+        Returns:
+            Path to backup directory containing DB and sidecar files
+        """
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        backup_dir = self.db_path.parent / f"{self.db_path.name}.bak-{timestamp}"
+        backup_dir.mkdir(parents=True, exist_ok=False)
+
+        # Copy db file and all sidecar files into backup
+        if self.db_path.exists():
+            shutil.copy2(self.db_path, backup_dir / self.db_path.name)
+        for sibling in self.db_path.parent.glob(f"{self.db_path.name}-*"):
+            shutil.copy2(sibling, backup_dir / sibling.name)
+
+        return backup_dir
+
+    def _delete_local_db(self) -> None:
+        """Delete local DB and all sidecar files."""
+        if self.db_path.exists():
+            self.db_path.unlink()
+        for f in self.db_path.parent.glob(f"{self.db_path.name}-*"):
+            if f.is_dir():
+                shutil.rmtree(f)
+            else:
+                f.unlink(missing_ok=True)
 
     def _recover_from_missing_metadata(self) -> None:
         """Recover from missing metadata file by removing local db.

@@ -13,6 +13,7 @@ from stream_of_worship.admin import __version__
 from stream_of_worship.admin.commands import audio as audio_commands
 from stream_of_worship.admin.commands import catalog as catalog_commands
 from stream_of_worship.admin.commands import db as db_commands
+from stream_of_worship.admin.commands import infra as infra_commands
 console = Console()
 
 # Create the main Typer app
@@ -24,6 +25,7 @@ app = typer.Typer(
 
 # Add subcommand groups
 app.add_typer(db_commands.app, name="db", help="Database operations")
+app.add_typer(infra_commands.app, name="infra", help="Infrastructure operations")
 app.add_typer(catalog_commands.app, name="catalog", help="Catalog operations")
 app.add_typer(audio_commands.app, name="audio", help="Audio recording operations")
 

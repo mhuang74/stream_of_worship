@@ -30,6 +30,7 @@ class TestSong:
             "2024-01-15T10:30:00",  # scraped_at
             "2024-01-15T10:30:00",  # created_at
             "2024-01-15T10:30:00",  # updated_at
+            None,  # deleted_at
         )
 
     @pytest.fixture
@@ -45,9 +46,32 @@ class TestSong:
             lyrics_raw="第一行歌詞\n第二行歌詞",
         )
 
-    def test_from_row(self, sample_song_row):
+    @pytest.fixture
+    def sample_song_description(self):
+        """Return column description for song test."""
+        return [
+            ("id", "", "", "", "", "", "",),
+            ("title", "", "", "", "", "", "",),
+            ("title_pinyin", "", "", "", "", "", "",),
+            ("composer", "", "", "", "", "", "",),
+            ("lyricist", "", "", "", "", "", "",),
+            ("album_name", "", "", "", "", "", "",),
+            ("album_series", "", "", "", "", "", "",),
+            ("musical_key", "", "", "", "", "", "",),
+            ("lyrics_raw", "", "", "", "", "", "",),
+            ("lyrics_lines", "", "", "", "", "", "",),
+            ("sections", "", "", "", "", "", "",),
+            ("source_url", "", "", "", "", "", "",),
+            ("table_row_number", "", "", "", "", "", "",),
+            ("scraped_at", "", "", "", "", "", "",),
+            ("created_at", "", "", "", "", "", "",),
+            ("updated_at", "", "", "", "", "", "",),
+            ("deleted_at", "", "", "", "", "", "",),
+        ]
+
+    def test_from_row(self, sample_song_row, sample_song_description):
         """Test creating Song from database row."""
-        song = Song.from_row(sample_song_row)
+        song = Song.from_row(sample_song_row, sample_song_description)
 
         assert song.id == "song_0001"
         assert song.title == "將天敞開"
@@ -98,7 +122,7 @@ class TestRecording:
 
     @pytest.fixture
     def sample_recording_row(self):
-        """Return a sample database row tuple for a recording."""
+        """Return a sample database row tuple for a recording (30 columns)."""
         return (
             "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # content_hash
             "c6de4449928d",  # hash_prefix
@@ -125,6 +149,10 @@ class TestRecording:
             None,  # lrc_job_id
             "2024-01-15T10:30:00",  # created_at
             "2024-01-15T10:30:00",  # updated_at
+            "https://youtube.com/watch?v=x",  # youtube_url
+            "published",  # visibility_status
+            None,  # deleted_at
+            "completed",  # download_status
         )
 
     @pytest.fixture
@@ -141,9 +169,44 @@ class TestRecording:
             analysis_status="completed",
         )
 
-    def test_from_row(self, sample_recording_row):
+    @pytest.fixture
+    def sample_recording_description(self):
+        """Return column description for recording test (30 columns)."""
+        return [
+            ("content_hash", "", "", "", "", "", "",),
+            ("hash_prefix", "", "", "", "", "", "",),
+            ("song_id", "", "", "", "", "", "",),
+            ("original_filename", "", "", "", "", "", "",),
+            ("file_size_bytes", "", "", "", "", "", "",),
+            ("imported_at", "", "", "", "", "", "",),
+            ("r2_audio_url", "", "", "", "", "", "",),
+            ("r2_stems_url", "", "", "", "", "", "",),
+            ("r2_lrc_url", "", "", "", "", "", "",),
+            ("duration_seconds", "", "", "", "", "", "",),
+            ("tempo_bpm", "", "", "", "", "", "",),
+            ("musical_key", "", "", "", "", "", "",),
+            ("musical_mode", "", "", "", "", "", "",),
+            ("key_confidence", "", "", "", "", "", "",),
+            ("loudness_db", "", "", "", "", "", "",),
+            ("beats", "", "", "", "", "", "",),
+            ("downbeats", "", "", "", "", "", "",),
+            ("sections", "", "", "", "", "", "",),
+            ("embeddings_shape", "", "", "", "", "", "",),
+            ("analysis_status", "", "", "", "", "", "",),
+            ("analysis_job_id", "", "", "", "", "", "",),
+            ("lrc_status", "", "", "", "", "", "",),
+            ("lrc_job_id", "", "", "", "", "", "",),
+            ("created_at", "", "", "", "", "", "",),
+            ("updated_at", "", "", "", "", "", "",),
+            ("youtube_url", "", "", "", "", "", "",),
+            ("visibility_status", "", "", "", "", "", "",),
+            ("deleted_at", "", "", "", "", "", "",),
+            ("download_status", "", "", "", "", "", "",),
+        ]
+
+    def test_from_row(self, sample_recording_row, sample_recording_description):
         """Test creating Recording from database row."""
-        recording = Recording.from_row(sample_recording_row)
+        recording = Recording.from_row(sample_recording_row, sample_recording_description)
 
         assert recording.content_hash == "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908"
         assert recording.hash_prefix == "c6de4449928d"
@@ -221,151 +284,86 @@ class TestRecording:
 
         assert recording.formatted_duration == "--:--"
 
-    def test_recording_from_row_28_columns(self):
-        """Test Recording.from_row with 28-column schema."""
-        row = (
-            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
-            "c6de4449928d",
+    def test_from_row_dict_mapping(self, sample_recording_description):
+        """Test Recording.from_row uses dict-based mapping, independent of column order."""
+        # Create a row with columns in a different order than the dataclass definition
+        # but with the same values and description
+        row_with_reordered_columns = (
+            "completed",  # analysis_status (at position 19 normally, now first)
+            "2024-01-15T10:30:00",  # updated_at (at position 24 normally, now second)
+            "completed",  # lrc_status (at position 21 normally, now third)
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # content_hash (at position 0 normally, now fourth)
+            "c6de4449928d",  # hash_prefix
             "song_0001",
             "original.mp3",
             5242880,
             "2024-01-15T10:30:00",
-            None,
-            None,
-            None,
+            "s3://bucket/c6de4449928d/audio.mp3",
+            "s3://bucket/c6de4449928d/stems/",
+            "s3://bucket/c6de4449928d/lyrics.lrc",
             245.3,
             128.5,
             "G",
             "major",
             0.87,
             -8.2,
+            "[0.23, 0.70, 1.17]",
+            "[0.23, 2.10]",
+            '[{"label": "intro", "start": 0.0, "end": 15.2}]',
+            "[4, 512, 24]",
+            "job_abc123",
             None,
             None,
-            None,
-            None,
-            "completed",
-            None,
-            "completed",
-            None,
-            "2024-01-01",
-            "2024-01-02",
+            "2024-01-15T10:30:00",
             "https://youtube.com/watch?v=x",
             "published",
-            "2026-01-01",
+            None,
+            "pending",
         )
-        recording = Recording.from_row(row)
 
-        assert recording.youtube_url == "https://youtube.com/watch?v=x"
-        assert recording.visibility_status == "published"
-        assert recording.deleted_at == "2026-01-01"
+        # Create a description that reflects the reordered columns
+        reordered_description = [
+            ("analysis_status", "", "", "", "", "", "",),
+            ("updated_at", "", "", "", "", "", "",),
+            ("lrc_status", "", "", "", "", "", "",),
+            ("content_hash", "", "", "", "", "", "",),
+            ("hash_prefix", "", "", "", "", "", "",),
+            ("song_id", "", "", "", "", "", "",),
+            ("original_filename", "", "", "", "", "", "",),
+            ("file_size_bytes", "", "", "", "", "", "",),
+            ("imported_at", "", "", "", "", "", "",),
+            ("r2_audio_url", "", "", "", "", "", "",),
+            ("r2_stems_url", "", "", "", "", "", "",),
+            ("r2_lrc_url", "", "", "", "", "", "",),
+            ("duration_seconds", "", "", "", "", "", "",),
+            ("tempo_bpm", "", "", "", "", "", "",),
+            ("musical_key", "", "", "", "", "", "",),
+            ("musical_mode", "", "", "", "", "", "",),
+            ("key_confidence", "", "", "", "", "", "",),
+            ("loudness_db", "", "", "", "", "", "",),
+            ("beats", "", "", "", "", "", "",),
+            ("downbeats", "", "", "", "", "", "",),
+            ("sections", "", "", "", "", "", "",),
+            ("embeddings_shape", "", "", "", "", "", "",),
+            ("analysis_job_id", "", "", "", "", "", "",),
+            ("lrc_job_id", "", "", "", "", "", "",),
+            ("created_at", "", "", "", "", "", "",),
+            ("youtube_url", "", "", "", "", "", "",),
+            ("visibility_status", "", "", "", "", "", "",),
+            ("deleted_at", "", "", "", "", "", "",),
+            ("download_status", "", "", "", "", "", "",),
+        ]
 
-    def test_recording_from_row_27_columns(self):
-        """Test Recording.from_row with 27-column schema."""
-        row = (
-            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
-            "c6de4449928d",
-            "song_0001",
-            "original.mp3",
-            5242880,
-            "2024-01-15T10:30:00",
-            None,
-            None,
-            None,
-            245.3,
-            128.5,
-            "G",
-            "major",
-            0.87,
-            -8.2,
-            None,
-            None,
-            None,
-            None,
-            "completed",
-            None,
-            "completed",
-            None,
-            "2024-01-01",
-            "2024-01-02",
-            "https://youtube.com/watch?v=x",
-            "published",
-        )
-        recording = Recording.from_row(row)
+        # Since dict-based mapping is used, the recording should be created correctly
+        # with values mapped by column name, not position
+        recording = Recording.from_row(row_with_reordered_columns, reordered_description)
 
-        assert recording.youtube_url == "https://youtube.com/watch?v=x"
-        assert recording.visibility_status == "published"
-        assert recording.deleted_at is None
-
-    def test_recording_from_row_26_columns(self):
-        """Test Recording.from_row with 26-column schema."""
-        row = (
-            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
-            "c6de4449928d",
-            "song_0001",
-            "original.mp3",
-            5242880,
-            "2024-01-15T10:30:00",
-            None,
-            None,
-            None,
-            245.3,
-            128.5,
-            "G",
-            "major",
-            0.87,
-            -8.2,
-            None,
-            None,
-            None,
-            None,
-            "completed",
-            None,
-            "completed",
-            None,
-            "2024-01-01",
-            "2024-01-02",
-            "https://youtube.com/watch?v=x",
-        )
-        recording = Recording.from_row(row)
-
-        assert recording.youtube_url == "https://youtube.com/watch?v=x"
-        assert recording.visibility_status is None
-        assert recording.deleted_at is None
-
-    def test_recording_from_row_25_columns(self):
-        """Test Recording.from_row with 25-column schema."""
-        row = (
-            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",
-            "c6de4449928d",
-            "song_0001",
-            "original.mp3",
-            5242880,
-            "2024-01-15T10:30:00",
-            None,
-            None,
-            None,
-            245.3,
-            128.5,
-            "G",
-            "major",
-            0.87,
-            -8.2,
-            None,
-            None,
-            None,
-            None,
-            "completed",
-            None,
-            "completed",
-            None,
-            "2024-01-01",
-            "2024-01-02",
-        )
-        recording = Recording.from_row(row)
-
-        assert recording.youtube_url is None
-        assert recording.visibility_status is None
-        assert recording.deleted_at is None
+        # Verify that values are correctly mapped despite the reorder
+        assert recording.content_hash == "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908"
+        assert recording.hash_prefix == "c6de4449928d"
+        assert recording.analysis_status == "completed"
+        assert recording.lrc_status == "completed"
+        assert recording.youtube_url == "https://youtube.com/watch?v/x"
 
 
 class TestDatabaseStats:

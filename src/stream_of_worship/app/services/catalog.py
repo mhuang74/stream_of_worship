@@ -233,12 +233,15 @@ class CatalogService:
             query += f" OFFSET {offset}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         result = []
         for row in cursor.fetchall():
             row_tuple = tuple(row)
-            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT])
-            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
+            song_desc = description[:SONG_COLUMN_COUNT]
+            rec_desc = description[SONG_COLUMN_COUNT:]
+            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT], song_desc)
+            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:], rec_desc)
             result.append(SongWithRecording(song=song, recording=recording))
 
         return result
@@ -280,12 +283,15 @@ class CatalogService:
             query += f" OFFSET {offset}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         result = []
         for row in cursor.fetchall():
             row_tuple = tuple(row)
-            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT])
-            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
+            song_desc = description[:SONG_COLUMN_COUNT]
+            rec_desc = description[SONG_COLUMN_COUNT:]
+            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT], song_desc)
+            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:], rec_desc)
             result.append(SongWithRecording(song=song, recording=recording))
 
         logger.debug(
@@ -349,12 +355,15 @@ class CatalogService:
         params.append(limit)
 
         cursor.execute(sql, params)
+        description = cursor.description
 
         result = []
         for row in cursor.fetchall():
             row_tuple = tuple(row)
-            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT])
-            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:])
+            song_desc = description[:SONG_COLUMN_COUNT]
+            rec_desc = description[SONG_COLUMN_COUNT:]
+            song = Song.from_row(row_tuple[0:SONG_COLUMN_COUNT], song_desc)
+            recording = Recording.from_row(row_tuple[SONG_COLUMN_COUNT:], rec_desc)
             result.append(SongWithRecording(song=song, recording=recording))
 
         return result

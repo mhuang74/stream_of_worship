@@ -51,39 +51,40 @@ class Song:
     deleted_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: tuple) -> "Song":
+    def from_row(cls, row: tuple, description: tuple) -> "Song":
         """Create a Song from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order
+            row: Database row tuple.
+            description: Column descriptions from cursor.description. Required.
 
         Returns:
             Song instance
 
         Note:
-            Handles schema versions:
-            - 16 columns: before deleted_at was added
-            - 17 columns: with deleted_at at index 16
+            Maps columns by name rather than position, making this robust
+            to schema changes and column order variations.
         """
-        row_len = len(row)
+        col_names = [desc[0] for desc in description]
+        values = dict(zip(col_names, row))
         return cls(
-            id=row[0],
-            title=row[1],
-            title_pinyin=row[2],
-            composer=row[3],
-            lyricist=row[4],
-            album_name=row[5],
-            album_series=row[6],
-            musical_key=row[7],
-            lyrics_raw=row[8],
-            lyrics_lines=row[9],
-            sections=row[10],
-            source_url=row[11],
-            table_row_number=row[12],
-            scraped_at=row[13],
-            created_at=row[14],
-            updated_at=row[15],
-            deleted_at=row[16] if row_len > 16 else None,
+            id=values.get("id", ""),
+            title=values.get("title", ""),
+            title_pinyin=values.get("title_pinyin"),
+            composer=values.get("composer"),
+            lyricist=values.get("lyricist"),
+            album_name=values.get("album_name"),
+            album_series=values.get("album_series"),
+            musical_key=values.get("musical_key"),
+            lyrics_raw=values.get("lyrics_raw"),
+            lyrics_lines=values.get("lyrics_lines"),
+            sections=values.get("sections"),
+            source_url=values.get("source_url", ""),
+            table_row_number=values.get("table_row_number"),
+            scraped_at=values.get("scraped_at", ""),
+            created_at=values.get("created_at"),
+            updated_at=values.get("updated_at"),
+            deleted_at=values.get("deleted_at"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -192,91 +193,52 @@ class Recording:
     deleted_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: tuple) -> "Recording":
+    def from_row(cls, row: tuple, description: tuple) -> "Recording":
         """Create a Recording from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order
+            row: Database row tuple.
+            description: Column descriptions from cursor.description. Required.
 
         Returns:
             Recording instance
 
         Note:
-            Handles schema versions:
-            - 25 columns: before youtube_url was added
-            - 26 columns: with youtube_url at the end, no visibility_status
-            - 27 columns: with visibility_status at the end (after youtube_url)
-            - 28 columns: with deleted_at at the end
-            - 29 columns: with download_status at the end (after deleted_at)
+            Maps columns by name rather than position, making this robust
+            to schema changes and column order variations.
         """
-        row_len = len(row)
-
-        if row_len >= 29:
-            created_at = row[23]
-            updated_at = row[24]
-            youtube_url = row[25]
-            visibility_status = row[26]
-            deleted_at = row[27]
-            download_status = row[28]
-        elif row_len == 28:
-            created_at = row[23]
-            updated_at = row[24]
-            youtube_url = row[25]
-            visibility_status = row[26]
-            deleted_at = row[27]
-            download_status = None
-        elif row_len == 27:
-            created_at = row[23]
-            updated_at = row[24]
-            youtube_url = row[25]
-            visibility_status = row[26]
-            deleted_at = None
-            download_status = None
-        elif row_len == 26:
-            visibility_status = None
-            created_at = row[23]
-            updated_at = row[24]
-            youtube_url = row[25]
-            deleted_at = None
-            download_status = None
-        else:
-            visibility_status = None
-            created_at = row[23] if row_len > 23 else None
-            updated_at = row[24] if row_len > 24 else None
-            youtube_url = None
-            deleted_at = None
-            download_status = None
-
+        col_names = [desc[0] for desc in description]
+        values = dict(zip(col_names, row))
         return cls(
-            content_hash=row[0],
-            hash_prefix=row[1],
-            song_id=row[2],
-            original_filename=row[3],
-            file_size_bytes=row[4],
-            imported_at=row[5],
-            r2_audio_url=row[6],
-            r2_stems_url=row[7],
-            r2_lrc_url=row[8],
-            youtube_url=youtube_url,
-            duration_seconds=row[9],
-            tempo_bpm=row[10],
-            musical_key=row[11],
-            musical_mode=row[12],
-            key_confidence=row[13],
-            loudness_db=row[14],
-            beats=row[15],
-            downbeats=row[16],
-            sections=row[17],
-            embeddings_shape=row[18],
-            analysis_status=row[19],
-            analysis_job_id=row[20],
-            lrc_status=row[21],
-            lrc_job_id=row[22],
-            visibility_status=visibility_status,
-            download_status=download_status or "pending",
-            created_at=created_at,
-            updated_at=updated_at,
-            deleted_at=deleted_at,
+            content_hash=values.get("content_hash", ""),
+            hash_prefix=values.get("hash_prefix", ""),
+            song_id=values.get("song_id"),
+            original_filename=values.get("original_filename", ""),
+            file_size_bytes=values.get("file_size_bytes", 0),
+            imported_at=values.get("imported_at", ""),
+            r2_audio_url=values.get("r2_audio_url"),
+            r2_stems_url=values.get("r2_stems_url"),
+            r2_lrc_url=values.get("r2_lrc_url"),
+            youtube_url=values.get("youtube_url"),
+            duration_seconds=values.get("duration_seconds"),
+            tempo_bpm=values.get("tempo_bpm"),
+            musical_key=values.get("musical_key"),
+            musical_mode=values.get("musical_mode"),
+            key_confidence=values.get("key_confidence"),
+            loudness_db=values.get("loudness_db"),
+            beats=values.get("beats"),
+            downbeats=values.get("downbeats"),
+            sections=values.get("sections"),
+            embeddings_shape=values.get("embeddings_shape"),
+            analysis_status=values.get("analysis_status", "pending"),
+            analysis_job_id=values.get("analysis_job_id"),
+            lrc_status=values.get("lrc_status", "pending"),
+            lrc_job_id=values.get("lrc_job_id"),
+            visibility_status=values.get("visibility_status"),
+            deleted_at=values.get("deleted_at"),
+            download_status=values.get("download_status", "pending"),
+            created_at=values.get("created_at"),
+            updated_at=values.get("updated_at"),
         )
 
     def to_dict(self) -> dict[str, Any]:

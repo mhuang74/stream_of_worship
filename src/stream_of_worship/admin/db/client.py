@@ -17,6 +17,7 @@ from stream_of_worship.admin.db.schema import (
     CREATE_INDEXES,
     CREATE_RECORDINGS_TABLE,
     CREATE_RECORDINGS_UPDATE_TRIGGER,
+    RECORDING_COLUMN_COUNT,
     CREATE_SONGS_TABLE,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_SYNC_METADATA_TABLE,
@@ -24,6 +25,8 @@ from stream_of_worship.admin.db.schema import (
     FOREIGN_KEYS_QUERY,
     INTEGRITY_CHECK_QUERY,
     ROW_COUNT_QUERY,
+    SONG_COLUMN_COUNT,
+    apply_column_migrations,
 )
 
 # Optional libsql import for Turso support
@@ -125,21 +128,82 @@ class DatabaseClient:
     def sync(self) -> None:
         """Sync with Turso cloud database.
 
+        Performs integrity check, schema migration, and post-sync validation to prevent
+        schema sync corruption.
+
         Raises:
-            SyncError: If sync fails or Turso is not configured
+            SyncError: If sync fails, database is corrupted, or schema drift detected
         """
         if not self.is_turso_enabled:
             raise SyncError("Turso sync is not configured")
 
+        cursor = self.connection.cursor()
+
+        # Pre-sync: check local DB integrity
         try:
-            # Cast to libsql.Connection for type checking
+            cursor.execute("PRAGMA integrity_check")
+            result = cursor.fetchone()
+            if result and result[0] != "ok":
+                raise SyncError(
+                    f"Local database is corrupted ('{result[0]}'). "
+                    f"Recovery: run 'db sync --force' to recreate from Turso, "
+                    f"or manually delete {self.db_path} and all sidecar files."
+                )
+        except sqlite3.DatabaseError as e:
+            if "malformed" in str(e).lower():
+                raise SyncError(
+                    f"Local database is corrupted. "
+                    f"Recovery: run 'db sync --force' to recreate from Turso, "
+                    f"or manually delete {self.db_path} and all sidecar files. "
+                    f"Original error: {e}"
+                )
+            raise
+        except sqlite3.OperationalError:
+            # Database might be empty - that's okay, sync will pull from remote
+            pass
+
+        # Pre-sync: ensure local schema is up to date
+        apply_column_migrations(cursor)
+
+        # Commit schema changes BEFORE syncing
+        # CRITICAL: ensures DDL is committed before WAL frame application
+        self.connection.commit()
+
+        # Sync with Turso (bidirectional: pushes local changes, pulls remote changes)
+        try:
             conn = self.connection
             conn.sync()  # type: ignore
-
-            # Update last sync timestamp
-            self.update_sync_metadata("last_sync_at", datetime.now().isoformat())
         except Exception as e:
             raise SyncError(f"Sync failed: {e}", cause=e)
+
+        # Post-sync validation: verify schema matches expected column counts
+        self._validate_schema(cursor)
+
+        # Update last sync timestamp
+        self.update_sync_metadata("last_sync_at", datetime.now().isoformat())
+
+    def _validate_schema(self, cursor) -> None:
+        """Validate that tables have expected column counts.
+
+        Args:
+            cursor: Database cursor to execute queries on.
+
+        Raises:
+            SyncError: If schema mismatch detected after sync.
+        """
+        expected = {"recordings": RECORDING_COLUMN_COUNT, "songs": SONG_COLUMN_COUNT}
+        for table, expected_count in expected.items():
+            try:
+                cursor.execute(f"PRAGMA table_info({table})")
+                actual_count = len(cursor.fetchall())
+                if actual_count != expected_count:
+                    raise SyncError(
+                        f"Schema mismatch after sync: {table} has {actual_count} columns, "
+                        f"expected {expected_count}. This may indicate a migration was not "
+                        f"applied. Run 'db init' to apply missing migrations."
+                    )
+            except sqlite3.OperationalError:
+                pass  # Table doesn't exist yet (fresh DB)
 
     def update_sync_metadata(self, key: str, value: str) -> None:
         """Update sync metadata value.
@@ -196,41 +260,16 @@ class DatabaseClient:
             cursor.execute(CREATE_SYNC_METADATA_TABLE)
 
             # Run column migrations BEFORE creating indexes (indexes may reference new columns)
-            # Migration: add youtube_url column if it doesn't exist (idempotent)
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN youtube_url TEXT")
-            except sqlite3.OperationalError:
-                # Column already exists - ignore
-                pass
+            apply_column_migrations(cursor)
 
-            # Migration: add visibility_status column if it doesn't exist (idempotent)
+            # Migrate existing completed LRC recordings to 'published' (data migration, not schema)
             try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN visibility_status TEXT")
-                # Migrate existing completed LRC recordings to 'published'
                 cursor.execute("""
                     UPDATE recordings SET visibility_status = 'published'
                     WHERE lrc_status = 'completed' AND visibility_status IS NULL
                 """)
             except sqlite3.OperationalError:
-                # Column already exists - ignore
-                pass
-
-            # Migration: add deleted_at column to songs if it doesn't exist
-            try:
-                cursor.execute("ALTER TABLE songs ADD COLUMN deleted_at TIMESTAMP")
-            except sqlite3.OperationalError:
-                pass
-
-            # Migration: add deleted_at column to recordings if it doesn't exist
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN deleted_at TIMESTAMP")
-            except sqlite3.OperationalError:
-                pass
-
-            # Migration: add download_status column if it doesn't exist (idempotent)
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN download_status TEXT DEFAULT 'pending'")
-            except sqlite3.OperationalError:
+                # visibility_status column doesn't exist yet
                 pass
 
             # Now create indexes (they can reference migrated columns)
@@ -368,7 +407,7 @@ class DatabaseClient:
         row = cursor.fetchone()
 
         if row:
-            return Song.from_row(tuple(row))
+            return Song.from_row(tuple(row), cursor.description)
         return None
 
     def list_songs(
@@ -419,10 +458,11 @@ class DatabaseClient:
             query += f" LIMIT {limit}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
-            results.append(Song.from_row(tuple(row)))
+            results.append(Song.from_row(tuple(row), description))
         return results
 
     def list_albums(self, include_deleted: bool = False) -> list[tuple[str, str, int]]:
@@ -499,10 +539,11 @@ class DatabaseClient:
         sql += f" ORDER BY id LIMIT {limit}"
 
         cursor.execute(sql, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
-            results.append(Song.from_row(tuple(row)))
+            results.append(Song.from_row(tuple(row), description))
         return results
 
     # Recording operations
@@ -576,7 +617,7 @@ class DatabaseClient:
         row = cursor.fetchone()
 
         if row:
-            return Recording.from_row(tuple(row))
+            return Recording.from_row(tuple(row), cursor.description)
         return None
 
     def get_recording_by_song_id(self, song_id: str) -> Optional[Recording]:
@@ -596,7 +637,7 @@ class DatabaseClient:
         row = cursor.fetchone()
 
         if row:
-            return Recording.from_row(tuple(row))
+            return Recording.from_row(tuple(row), cursor.description)
         return None
 
     def list_recordings(
@@ -651,10 +692,11 @@ class DatabaseClient:
             query += f" LIMIT {limit}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
-            results.append(Recording.from_row(tuple(row)))
+            results.append(Recording.from_row(tuple(row), description))
         return results
 
     def list_recordings_with_songs(
@@ -688,8 +730,7 @@ class DatabaseClient:
         cursor = self.connection.cursor()
 
         # Build query with LEFT JOIN to songs table
-        # Build query with LEFT JOIN to songs table
-        # Note: r.* returns all recording columns including download_status (29 cols total)
+        # Note: r.* returns all recording columns including download_status (RECORDING_COLUMN_COUNT cols total)
         query = """
             SELECT r.*, s.title as song_title, s.album_name, s.album_series
             FROM recordings r
@@ -733,17 +774,19 @@ class DatabaseClient:
             query += f" LIMIT {limit}"
 
         cursor.execute(query, params)
+        description = cursor.description
 
         results = []
         for row in cursor.fetchall():
             # Extract song data from row (last 3 columns)
-            # Row structure: [29 recording columns] + [song_title, album_name, album_series] = 32 columns total
+            # Row structure: [RECORDING_COLUMN_COUNT recording columns] + [song_title, album_name, album_series]
             row_tuple = tuple(row)
-            recording_cols = row_tuple[:-3]  # First 29 columns are recording columns
-            song_title = row_tuple[-3]
-            album_name = row_tuple[-2]
-            album_series_val = row_tuple[-1]
-            recording = Recording.from_row(recording_cols)
+            recording_cols = row_tuple[:RECORDING_COLUMN_COUNT]
+            song_title = row_tuple[RECORDING_COLUMN_COUNT]
+            album_name = row_tuple[RECORDING_COLUMN_COUNT + 1]
+            album_series_val = row_tuple[RECORDING_COLUMN_COUNT + 2]
+            rec_description = description[:RECORDING_COLUMN_COUNT]
+            recording = Recording.from_row(recording_cols, rec_description)
             results.append((recording, song_title, album_name, album_series_val))
         return results
 
@@ -825,7 +868,7 @@ class DatabaseClient:
         row = cursor.fetchone()
 
         if row:
-            return Recording.from_row(tuple(row))
+            return Recording.from_row(tuple(row), cursor.description)
         return None
 
     def update_recording_analysis(
@@ -1034,9 +1077,10 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM songs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC")
+        description = cursor.description
         results = []
         for row in cursor.fetchall():
-            results.append(Song.from_row(tuple(row)))
+            results.append(Song.from_row(tuple(row), description))
         return results
 
     def list_deleted_recordings(self) -> list[Recording]:
@@ -1049,9 +1093,10 @@ class DatabaseClient:
         cursor.execute(
             "SELECT * FROM recordings WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
         )
+        description = cursor.description
         results = []
         for row in cursor.fetchall():
-            results.append(Recording.from_row(tuple(row)))
+            results.append(Recording.from_row(tuple(row), description))
         return results
 
     def restore_song(self, song_id: str) -> bool:
