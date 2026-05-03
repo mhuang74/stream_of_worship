@@ -103,11 +103,25 @@ class DatabaseClient:
 
             if self.is_turso_enabled:
                 # Use libsql for Turso embedded replica
-                self._connection = libsql.connect(
-                    str(self.db_path),
-                    sync_url=self.turso_url,
-                    auth_token=self.turso_token or "",
-                )
+                try:
+                    self._connection = libsql.connect(
+                        str(self.db_path),
+                        sync_url=self.turso_url,
+                        auth_token=self.turso_token or "",
+                    )
+                except (ValueError, *_LIBSQL_ERROR) as e:
+                    # libsql can raise ValueError for sync/metadata errors
+                    # Convert to SyncError so recovery logic can handle it
+                    error_msg = str(e).lower()
+                    if "metadata" in error_msg or "sync" in error_msg or "local state" in error_msg:
+                        raise SyncError(
+                            f"Local database metadata is missing or invalid. "
+                            f"This typically happens when a vanilla SQLite database was created "
+                            f"by 'db init' and needs to be migrated to a libsql embedded replica. "
+                            f"Auto-recovery will recreate the database from Turso. "
+                            f"Original error: {e}"
+                        )
+                    raise SyncError(f"Failed to connect to Turso: {e}")
             else:
                 # Use standard sqlite3
                 self._connection = sqlite3.connect(
@@ -196,6 +210,17 @@ class DatabaseClient:
             conn.sync()  # type: ignore
         except Exception as e:
             raise SyncError(f"Sync failed: {e}", cause=e)
+
+        # Post-sync: re-apply migrations (remote may have fewer columns than DDL)
+        apply_column_migrations(cursor)
+        self.connection.commit()
+
+        # Push new columns back to Turso so remote schema stays current
+        try:
+            conn = self.connection
+            conn.sync()  # type: ignore
+        except Exception:
+            pass  # Non-fatal: local is correct, remote will get updated next sync
 
         # Post-sync validation: verify schema matches expected column counts
         self._validate_schema(cursor)

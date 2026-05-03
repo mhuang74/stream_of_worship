@@ -180,12 +180,19 @@ INTEGRITY_CHECK_QUERY = "PRAGMA integrity_check;"
 # SQL to get foreign key status
 FOREIGN_KEYS_QUERY = "PRAGMA foreign_keys;"
 
-# Column migrations for existing databases
-# Each entry represents a column added over time. Must maintain historical order.
-# Note: These columns are already included in the CREATE TABLE DDL above,
-# so this list starts empty. Add new migrations here when schema changes require
-# ALTER TABLE ADD COLUMN for existing databases.
-COLUMN_MIGRATIONS: list[tuple[str, str, str]] = []
+# Column migrations for existing databases (including Turso remote).
+# These MUST remain even though the columns are in CREATE TABLE DDL above.
+# Reason: Turso remote and any DBs created before these columns were added
+# still have the old schema. ALTER TABLE ADD COLUMN is idempotent here
+# because apply_column_migrations() catches "duplicate column" errors.
+# MUST append only — never reorder (SQLite appends columns physically).
+COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("recordings", "youtube_url", "TEXT"),
+    ("recordings", "visibility_status", "TEXT"),
+    ("songs", "deleted_at", "TIMESTAMP"),
+    ("recordings", "deleted_at", "TIMESTAMP"),
+    ("recordings", "download_status", "TEXT DEFAULT 'pending'"),
+]
 
 try:
     import libsql as _libsql_module
@@ -196,19 +203,31 @@ except ImportError:
 
 
 def apply_column_migrations(cursor) -> None:
-    """Apply all column migrations to a database cursor.
+    """Apply column migrations only for columns that don't exist yet.
 
-    Idempotent: silently skips columns that already exist, regardless of
-    whether the cursor is from sqlite3 or libsql.
+    Uses PRAGMA table_info to check existence first, avoiding ALTER TABLE
+    on columns that already exist. This is critical for libsql connections
+    where a caught ALTER TABLE error still gets replicated to Turso via Hrana,
+    causing "duplicate column name" errors on sync.
 
     Args:
         cursor: Database cursor to execute migrations on.
     """
-    for table, column, col_type in COLUMN_MIGRATIONS:
+    tables_needed = {table for table, _, _ in COLUMN_MIGRATIONS}
+    existing_columns: dict[str, set[str]] = {}
+    for table in tables_needed:
         try:
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            cursor.execute(f"PRAGMA table_info({table})")
+            existing_columns[table] = {row[1] for row in cursor.fetchall()}
         except (sqlite3.OperationalError, *_LIBSQL_ERROR):
-            pass
+            existing_columns[table] = set()
+
+    for table, column, col_type in COLUMN_MIGRATIONS:
+        if column not in existing_columns.get(table, set()):
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            except (sqlite3.OperationalError, *_LIBSQL_ERROR):
+                pass
 
 
 SONG_COLUMNS_FOR_JOIN = """
@@ -230,7 +249,7 @@ RECORDING_COLUMNS_FOR_JOIN = """
 """
 
 SONG_COLUMN_COUNT = 17
-RECORDING_COLUMN_COUNT = 30
+RECORDING_COLUMN_COUNT = 29
 
 # Default sync metadata values
 DEFAULT_SYNC_METADATA = {

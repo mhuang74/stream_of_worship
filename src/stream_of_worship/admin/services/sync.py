@@ -286,7 +286,7 @@ class SyncService:
                     )
 
             # Existing recovery for metadata file corruption
-            if "metadata file does not" in error_msg.lower() and attempt < max_attempts:
+            if ("metadata file does not" in error_msg.lower() or "metadata is missing" in error_msg.lower()) and attempt < max_attempts:
                 # Close client before deleting files
                 client.close()
 
@@ -446,6 +446,8 @@ class SyncService:
 def get_sync_service_from_config(config) -> SyncService:
     """Create SyncService from AdminConfig.
 
+    Uses effective_turso_url which checks SOW_TURSO_URL env var.
+
     Args:
         config: AdminConfig instance
 
@@ -454,6 +456,6 @@ def get_sync_service_from_config(config) -> SyncService:
     """
     return SyncService(
         db_path=config.db_path,
-        turso_url=config.turso_database_url,
+        turso_url=config.effective_turso_url,
         turso_token=os.environ.get("SOW_TURSO_TOKEN"),
     )
