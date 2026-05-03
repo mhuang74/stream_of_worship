@@ -7,8 +7,10 @@ Handles loading, saving, and validating TOML configuration stored in:
 """
 
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -35,7 +37,7 @@ class AdminConfig:
     analysis_url: str = "http://localhost:8000"
 
     # Cloudflare R2
-    r2_bucket: str = "sow-audio"
+    r2_bucket: str = "stream-of-worship"
     r2_endpoint_url: str = ""
     r2_region: str = "auto"
 
@@ -104,17 +106,38 @@ class AdminConfig:
 
         return config
 
+    @property
+    def effective_turso_url(self) -> str:
+        """Get effective Turso URL (from env var or config).
+
+        Environment variable SOW_TURSO_URL takes precedence over config file.
+
+        Returns:
+            Turso database URL or empty string if not configured.
+        """
+        return os.environ.get("SOW_TURSO_URL", self.turso_database_url)
+
     def save(self, path: Optional[Path] = None) -> None:
         """Save configuration to TOML file.
+
+        Creates a backup of existing config before overwriting (Fix for config loss).
 
         Args:
             path: Path to save config (defaults to standard location)
         """
         if path is None:
             path = get_config_path()
+        elif isinstance(path, str):
+            path = Path(path)
 
         # Ensure directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Backup existing config before overwriting
+        if path.exists():
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+            backup_path = path.with_suffix(f".toml.bak-{timestamp}")
+            shutil.copy2(path, backup_path)
 
         # Build TOML structure
         data = {

@@ -38,6 +38,8 @@ app = typer.Typer(help="Database operations")
 def get_db_client(config: AdminConfig) -> DatabaseClient:
     """Get a database client from config.
 
+    Uses effective_turso_url which checks SOW_TURSO_URL env var.
+
     Args:
         config: Admin configuration
 
@@ -46,7 +48,7 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
     """
     return DatabaseClient(
         db_path=config.db_path,
-        turso_url=config.turso_database_url,
+        turso_url=config.effective_turso_url,
         turso_token=os.environ.get("SOW_TURSO_TOKEN"),
     )
 
@@ -200,7 +202,7 @@ def show_status(
             else "[red]Not Installed[/red]",
         )
 
-        if config.turso_database_url:
+        if config.effective_turso_url:
             sync_table.add_row("Device ID", sync_status.local_device_id or "[dim]Not set[/dim]")
             sync_table.add_row("Sync Version", sync_status.sync_version)
             sync_table.add_row("Turso URL", sync_status.turso_url)
@@ -301,6 +303,12 @@ def sync_db(
         "-c",
         help="Path to config file",
     ),
+    turso_url: str = typer.Option(
+        None,
+        "--turso-url",
+        "-u",
+        help="Turso database URL (overrides config and SOW_TURSO_URL env var)",
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -312,19 +320,53 @@ def sync_db(
 
     Synchronizes the local SQLite database with Turso cloud using
     embedded replicas. Requires Turso URL to be configured.
-    """
-    try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
-    except FileNotFoundError:
-        # Create default config for new users
-        config = AdminConfig()
-        config.save()
-        console.print(f"[yellow]Created default config at {get_config_path()}[/yellow]")
 
-    # Check if Turso is configured
-    if not config.turso_database_url:
+    Turso URL priority: --turso-url flag > SOW_TURSO_URL env var > config file
+    """
+    # Check if we need to create a new config (onboarding scenario)
+    config_path_to_use = config_path if config_path else get_config_path()
+    config_exists = config_path_to_use.exists()
+
+    if not config_exists and not turso_url and not os.environ.get("SOW_TURSO_URL"):
+        console.print("[yellow]Config file not found and Turso URL not specified.[/yellow]")
+        console.print()
+        console.print("To sync from Turso, provide the URL via one of these methods:")
+        console.print()
+        console.print("  1. Use --turso-url flag:")
+        console.print("     [dim]$ sow-admin db sync --turso-url libsql://your-db.turso.io[/dim]")
+        console.print()
+        console.print("  2. Set SOW_TURSO_URL environment variable:")
+        console.print("     [dim]$ export SOW_TURSO_URL=libsql://your-db.turso.io[/dim]")
+        console.print("     [dim]$ sow-admin db sync[/dim]")
+        console.print()
+        console.print("  3. Run 'db init' first to create config, then edit it:")
+        console.print("     [dim]$ sow-admin db init[/dim]")
+        console.print("     [dim]$ sow-admin config set turso.database_url libsql://your-db.turso.io[/dim]")
+        console.print("     [dim]$ sow-admin db sync[/dim]")
+        console.print()
+        raise typer.Exit(1)
+
+    # Load or create config
+    if config_exists:
+        config = AdminConfig.load(config_path)
+    else:
+        # Create config with provided Turso URL
+        config = AdminConfig()
+
+    # If --turso-url is provided, save it to config for future use
+    if turso_url:
+        config.turso_database_url = turso_url
+        config.save(config_path)
+        console.print(f"[green]Saved Turso URL to config at {config_path_to_use}[/green]")
+
+    # Check if Turso is configured (use effective URL which checks env var)
+    effective_url = turso_url or config.effective_turso_url
+    if not effective_url:
         console.print("[red]Turso database URL not configured.[/red]")
-        console.print("Set turso.database_url in your config file.")
+        console.print()
+        console.print("Provide the URL via one of these methods:")
+        console.print("  --turso-url flag, SOW_TURSO_URL env var, or config file")
+        console.print()
         raise typer.Exit(1)
 
     sync_service = get_sync_service_from_config(config)

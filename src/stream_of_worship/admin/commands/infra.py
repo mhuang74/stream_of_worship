@@ -10,7 +10,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from stream_of_worship.admin.config import AdminConfig
+from stream_of_worship.admin.config import AdminConfig, get_config_path
 from stream_of_worship.admin.db.schema import (
     ALL_SCHEMA_STATEMENTS,
     apply_column_migrations,
@@ -36,6 +36,12 @@ def turso_init(
         "-c",
         help="Path to config file",
     ),
+    turso_url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Turso database URL (saved to config if provided)",
+    ),
     seed: bool = typer.Option(
         False,
         "--seed",
@@ -59,6 +65,7 @@ def turso_init(
     - libsql installed: uv add --extra turso libsql
 
     Options:
+        --url: Turso database URL (saved to config)
         --seed: Copy local data to remote (requires local DB to exist)
         --force: Overwrite remote even if it has data (requires confirmation)
     """
@@ -68,17 +75,33 @@ def turso_init(
         console.print("Install with: uv add --extra turso libsql")
         raise typer.Exit(1)
 
-    try:
+    # Handle config loading/creation
+    config_path_to_use = config_path if config_path else get_config_path()
+    config_exists = config_path_to_use.exists()
+
+    if config_exists:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
-    except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+    else:
+        # Create default config for new users
+        config = AdminConfig()
+        console.print(f"[yellow]Created default config at {config_path_to_use}[/yellow]")
+
+    # Handle Turso URL (CLI flag takes precedence, then env var, then config)
+    effective_url = turso_url or os.environ.get("SOW_TURSO_URL") or config.effective_turso_url
+
+    if not effective_url:
+        console.print("[red]Turso database URL not configured.[/red]")
+        console.print()
+        console.print("Provide the URL via one of these methods:")
+        console.print("  --url flag, SOW_TURSO_URL env var, or config file")
+        console.print()
         raise typer.Exit(1)
 
-    # Check prerequisites
-    if not config.turso_database_url:
-        console.print("[red]Turso database URL not configured.[/red]")
-        console.print("Set turso.database_url in your config file.")
-        raise typer.Exit(1)
+    # Save Turso URL to config if provided via flag
+    if turso_url:
+        config.turso_database_url = turso_url
+        config.save(config_path)
+        console.print(f"[green]Saved Turso URL to config at {config_path_to_use}[/green]")
 
     turso_token = os.environ.get("SOW_TURSO_TOKEN")
     if not turso_token:
@@ -88,7 +111,7 @@ def turso_init(
 
     console.print("[bold]Initializing Turso database...[/bold]")
     console.print(f"Local DB: {config.db_path}")
-    console.print(f"Turso URL: {config.turso_database_url}")
+    console.print(f"Turso URL: {effective_url}")
 
     if seed and not config.db_path.exists():
         console.print("[red]Local database not found for seeding.[/red]")
@@ -99,7 +122,7 @@ def turso_init(
     try:
         conn = libsql.connect(
             str(config.db_path),
-            sync_url=config.turso_database_url,
+            sync_url=effective_url,
             auth_token=turso_token,
         )
     except Exception as e:
