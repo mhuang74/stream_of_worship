@@ -311,7 +311,7 @@ class TestTursoConfig:
         assert config.is_turso_configured is True
 
     def test_turso_token_from_environment(self, tmp_path, monkeypatch):
-        """Verify env var takes precedence over config file token."""
+        """Verify Turso token is read from environment variable only."""
         monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "env-token")
 
         config_path = tmp_path / "config.toml"
@@ -326,7 +326,6 @@ export_dir = "/test/exports"
 
 [turso]
 database_url = ""
-readonly_token = "config-token"
 sync_on_startup = true
 
 [app]
@@ -341,40 +340,5 @@ default_video_resolution = "1080p"
 
         config = AppConfig.load(config_path)
 
-        # Env var should take precedence over config file
+        # Token should come from environment variable only
         assert config.turso_readonly_token == "env-token"
-
-    def test_turso_token_fallback_to_config(self, tmp_path, monkeypatch):
-        """Verify config file token is used when env var is not set."""
-        monkeypatch.delenv("SOW_TURSO_READONLY_TOKEN", raising=False)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text("""
-[database]
-db_path = "/test/db.sqlite"
-songsets_db_path = "/test/songsets.db"
-
-[songsets]
-backup_retention = 5
-export_dir = "/test/exports"
-
-[turso]
-database_url = "libsql://test.turso.io"
-readonly_token = "config-token"
-sync_on_startup = true
-
-[app]
-cache_dir = "/test/cache"
-output_dir = "/test/output"
-preview_buffer_ms = 500
-preview_volume = 0.8
-default_gap_beats = 2.0
-default_video_template = "dark"
-default_video_resolution = "1080p"
-""")
-
-        config = AppConfig.load(config_path)
-
-        # Token should come from config file when env var is not set
-        assert config.turso_readonly_token == "config-token"
-        assert config.is_turso_configured is True
