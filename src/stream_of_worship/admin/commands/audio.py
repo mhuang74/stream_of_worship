@@ -2187,14 +2187,18 @@ def check_status(
     table.add_column("Song ID", style="dim", no_wrap=True)
     table.add_column("Hash", style="dim", no_wrap=True)
 
+    description = cursor.description
+    col_names = [desc[0] for desc in description]
+
     for row in rows:
-        song_id = row[2] if row[2] else "-"
-        hash_prefix = row[1]
-        song_title = row[25] if row[25] else "-"
-        analysis_status = row[19]
-        analysis_job_id = row[20] if row[20] else "-"
-        lrc_status = row[21]
-        lrc_job_id = row[22] if row[22] else "-"
+        row_dict = dict(zip(col_names, row))
+        song_id = row_dict.get("song_id") or "-"
+        hash_prefix = row_dict.get("hash_prefix", "")
+        song_title = row_dict.get("song_title") or "-"
+        analysis_status = row_dict.get("analysis_status", "pending")
+        analysis_job_id = row_dict.get("analysis_job_id") or "-"
+        lrc_status = row_dict.get("lrc_status", "pending")
+        lrc_job_id = row_dict.get("lrc_job_id") or "-"
 
         table.add_row(
             song_title,
@@ -2292,7 +2296,7 @@ def _force_sync_all_pending(
 
     updated = 0
     for row in rows:
-        rec = Recording.from_row(row)
+        rec = Recording.from_row(row, cursor.description)
 
         # Update analysis if pending/processing/failed
         if rec.analysis_status in ("pending", "processing", "failed"):

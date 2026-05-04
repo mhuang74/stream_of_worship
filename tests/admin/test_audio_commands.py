@@ -1556,6 +1556,33 @@ class TestStatusCommand:
         assert "Pending Recordings" in result.output
         assert "song_001" in result.output
 
+    def test_status_no_args_pending_with_youtube_url(self, setup):
+        """Regression: youtube_url must not leak into Title column."""
+        db_client = DatabaseClient(setup["db_path"])
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="aaaaaaaaaaaa",
+            song_id="song_001",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            youtube_url="https://www.youtube.com/watch?v=cyo4B6MsK3g",
+            analysis_status="pending",
+            lrc_status="pending",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            ["audio", "status", "--config", str(setup["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        assert "Pending Recordings" in result.output
+        assert "測試" in result.output
+        assert "cyo4B6MsK3g" not in result.output
+
     def test_status_empty_database(self, tmp_path):
         """Empty DB handling."""
         db_path = tmp_path / "test.db"
