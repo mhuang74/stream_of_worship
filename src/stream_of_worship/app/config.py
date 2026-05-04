@@ -97,7 +97,7 @@ class AppConfig:
 
     Note:
         Turso read-only token is read from SOW_TURSO_READONLY_TOKEN environment
-        variable only (not stored in config file for security).
+        variable, with config file value as fallback.
     """
 
     # Database paths
@@ -108,8 +108,9 @@ class AppConfig:
     songsets_backup_retention: int = 5
     songsets_export_dir: Path = field(default_factory=get_default_export_dir)
 
-    # Turso sync settings (token via SOW_TURSO_READONLY_TOKEN env var only)
+    # Turso sync settings (token from SOW_TURSO_READONLY_TOKEN env var, with config fallback)
     turso_database_url: str = ""
+    _readonly_token: str = ""
     sync_on_startup: bool = True
 
     # R2 storage settings
@@ -172,10 +173,11 @@ class AppConfig:
             if "export_dir" in songsets:
                 config.songsets_export_dir = Path(songsets["export_dir"]).expanduser()
 
-        # Load Turso settings (database_url from config, token from env var only)
+        # Load Turso settings (database_url from config, token from env var with config fallback)
         if "turso" in data:
             turso = data["turso"]
             config.turso_database_url = turso.get("database_url", config.turso_database_url)
+            config._readonly_token = turso.get("readonly_token", config._readonly_token)
             config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
 
         # Load R2 settings
@@ -230,6 +232,7 @@ class AppConfig:
             },
             "turso": {
                 "database_url": self.turso_database_url,
+                "readonly_token": self._readonly_token,
                 "sync_on_startup": self.sync_on_startup,
             },
             "r2": {
@@ -263,12 +266,13 @@ class AppConfig:
 
     @property
     def turso_readonly_token(self) -> str:
-        """Get Turso read-only token from environment variable.
+        """Get Turso read-only token from env var or config file.
 
         Returns:
-            Turso read-only token from SOW_TURSO_READONLY_TOKEN env var
+            Turso read-only token from SOW_TURSO_READONLY_TOKEN env var,
+            falling back to config file value.
         """
-        return os.environ.get("SOW_TURSO_READONLY_TOKEN", "")
+        return os.environ.get("SOW_TURSO_READONLY_TOKEN", self._readonly_token)
 
     @property
     def is_turso_configured(self) -> bool:
