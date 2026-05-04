@@ -8,6 +8,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -19,6 +20,7 @@ from stream_of_worship.admin.db.client import DatabaseClient, LIBSQL_AVAILABLE, 
 from stream_of_worship.admin.services.sync import (
     SyncConfigError,
     SyncNetworkError,
+    SyncService,
     get_sync_service_from_config,
 )
 
@@ -42,6 +44,25 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
         turso_url=config.effective_turso_url,
         turso_token=os.environ.get("SOW_TURSO_TOKEN"),
     )
+
+
+def _get_turso_counts(turso_url: str, turso_token: Optional[str]) -> tuple[int, int]:
+    """Query Turso for song and recording counts via in-memory sync."""
+    import libsql
+
+    conn = libsql.connect(
+        ":memory:",
+        sync_url=turso_url,
+        auth_token=turso_token or os.environ.get("SOW_TURSO_TOKEN", ""),
+    )
+    conn.sync()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM songs")
+    songs = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM recordings")
+    recordings = cursor.fetchone()[0]
+    conn.close()
+    return songs, recordings
 
 
 @app.command("init")
@@ -75,42 +96,69 @@ def init_db(
     db_path = config.db_path
 
     if force and db_path.exists():
-        console.print(f"[red]Resetting database at {db_path}...[/red]")
-        # Delete existing db + sidecar files for clean slate
-        db_path.unlink()
-        for f in db_path.parent.glob(f"{db_path.name}-*"):
-            if f.is_dir():
-                import shutil
-                shutil.rmtree(f)
-            else:
-                f.unlink(missing_ok=True)
-
         turso_url = config.effective_turso_url
+        turso_token = os.environ.get("SOW_TURSO_TOKEN")
+
         if turso_url and LIBSQL_AVAILABLE:
+            sync_service = SyncService(
+                db_path=db_path,
+                turso_url=turso_url,
+                turso_token=turso_token,
+            )
+
+            if not sync_service._verify_turso_health():
+                console.print(
+                    "[red]Cannot reset: Turso remote appears unhealthy or empty.[/red]"
+                )
+                console.print(
+                    "[dim]If you want a local-only reset, disconnect Turso first.[/dim]"
+                )
+                raise typer.Exit(1)
+
+            local_client = DatabaseClient(db_path)
+            local_stats = local_client.get_stats()
+            local_client.close()
+
+            turso_songs, turso_recordings = _get_turso_counts(turso_url, turso_token)
+            if local_stats.total_songs > turso_songs or local_stats.total_recordings > turso_recordings:
+                console.print(
+                    f"[yellow]Warning: Local DB has more rows than Turso "
+                    f"(songs: {local_stats.total_songs} local vs {turso_songs} remote, "
+                    f"recordings: {local_stats.total_recordings} local vs {turso_recordings} remote). "
+                    f"Local-only rows will be lost.[/yellow]"
+                )
+
+            if not typer.confirm("This will delete the local DB and re-sync from Turso. Continue?"):
+                raise typer.Exit(0)
+
+            backup_dir = sync_service._backup_local_db()
+            console.print(f"[dim]Backed up to {backup_dir}[/dim]")
+
+            sync_service._delete_local_db()
+            console.print(f"[red]Resetting database at {db_path}...[/red]")
+
             client = DatabaseClient(
                 db_path,
                 turso_url=turso_url,
-                turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+                turso_token=turso_token,
             )
             try:
                 client.sync()
                 console.print("[green]Database reset and synced from Turso![/green]")
             except SyncError as e:
-                client.close()
-                if db_path.exists():
-                    db_path.unlink()
-                for f in db_path.parent.glob(f"{db_path.name}-*"):
-                    if f.is_dir():
-                        import shutil
-                        shutil.rmtree(f)
-                    else:
-                        f.unlink(missing_ok=True)
-                console.print(f"[yellow]Turso sync failed: {e}[/yellow]")
-                console.print("[yellow]Falling back to local-only reset...[/yellow]")
-                client = DatabaseClient(db_path)
-                client.initialize_schema()
-                console.print("[green]Database reset locally (run 'db sync' later).[/green]")
+                console.print(f"[red]Turso sync failed: {e}[/red]")
+                console.print(f"[yellow]Your backup is at {backup_dir}[/yellow]")
+                raise typer.Exit(1)
         else:
+            console.print(f"[red]Resetting database at {db_path}...[/red]")
+            db_path.unlink()
+            for f in db_path.parent.glob(f"{db_path.name}-*"):
+                if f.is_dir():
+                    import shutil
+                    shutil.rmtree(f)
+                else:
+                    f.unlink(missing_ok=True)
+
             client = DatabaseClient(db_path)
             client.reset_database()
             console.print("[green]Database reset and re-initialized successfully![/green]")
@@ -239,8 +287,8 @@ def show_status(
         stats_table.add_column("Metric", style="cyan")
         stats_table.add_column("Value", style="green")
 
-        stats_table.add_row("Songs", f"{stats.total_songs:,}")
-        stats_table.add_row("Recordings", f"{stats.total_recordings:,}")
+        stats_table.add_row("Songs", f"{stats.active_songs:,} active / {stats.total_songs:,} total")
+        stats_table.add_row("Recordings", f"{stats.active_recordings:,} active / {stats.total_recordings:,} total")
         stats_table.add_row(
             "Integrity Check", "[green]OK[/green]" if stats.integrity_ok else "[red]FAILED[/red]"
         )

@@ -1001,7 +1001,7 @@ def list_recordings(
         "-s",
         help="Sort order (album|series|title|imported)",
     ),
-    format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
+    format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids|count)"),
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum number of results"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -1075,7 +1075,9 @@ def list_recordings(
         enriched.sort(key=lambda t: t[1] or "")
     # "imported" — already sorted by imported_at DESC from DB
 
-    if format == "ids":
+    if format == "count":
+        console.print(len(enriched))
+    elif format == "ids":
         for rec, _title, _album, _series in enriched:
             console.print(rec.song_id if rec.song_id else rec.hash_prefix)
     else:
@@ -1116,6 +1118,10 @@ def list_recordings(
                 _format_duration(rec.duration_seconds) if rec.duration_seconds else "--:--"
             )
 
+            filename_display = rec.original_filename or "-"
+            if len(filename_display) > 30:
+                filename_display = filename_display[:27] + "..."
+
             table.add_row(
                 album_name or "-",
                 song_title or "-",
@@ -1124,7 +1130,7 @@ def list_recordings(
                 lrc_text,
                 duration_str,
                 song_id,
-                rec.original_filename,
+                filename_display,
                 rec.hash_prefix,
             )
 

@@ -349,6 +349,7 @@ class DatabaseStats:
     """
 
     table_counts: dict[str, int] = field(default_factory=dict)
+    active_counts: dict[str, int] = field(default_factory=dict)
     integrity_ok: bool = True
     foreign_keys_enabled: bool = False
     last_sync_at: Optional[str] = None
@@ -373,3 +374,11 @@ class DatabaseStats:
             Number of recordings in the database
         """
         return self.table_counts.get("recordings", 0)
+
+    @property
+    def active_songs(self) -> int:
+        return self.active_counts.get("songs", 0)
+
+    @property
+    def active_recordings(self) -> int:
+        return self.active_counts.get("recordings", 0)

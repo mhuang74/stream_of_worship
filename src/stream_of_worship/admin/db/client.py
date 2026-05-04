@@ -22,6 +22,7 @@ from stream_of_worship.admin.db.schema import (
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_SYNC_METADATA_TABLE,
     DEFAULT_SYNC_METADATA,
+    ACTIVE_ROW_COUNT_QUERY,
     FOREIGN_KEYS_QUERY,
     INTEGRITY_CHECK_QUERY,
     ROW_COUNT_QUERY,
@@ -370,6 +371,10 @@ class DatabaseClient:
         cursor.execute(ROW_COUNT_QUERY)
         table_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
+        # Get active (non-deleted) row counts
+        cursor.execute(ACTIVE_ROW_COUNT_QUERY)
+        active_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
         # Run integrity check
         cursor.execute(INTEGRITY_CHECK_QUERY)
         integrity_result = cursor.fetchone()
@@ -392,6 +397,7 @@ class DatabaseClient:
 
         return DatabaseStats(
             table_counts=table_counts,
+            active_counts=active_counts,
             integrity_ok=integrity_ok,
             foreign_keys_enabled=foreign_keys_enabled,
             last_sync_at=sync_meta.get("last_sync_at") or None,

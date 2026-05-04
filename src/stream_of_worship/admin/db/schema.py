@@ -174,6 +174,20 @@ SELECT
 FROM sync_metadata;
 """
 
+ACTIVE_ROW_COUNT_QUERY = """
+SELECT
+    'songs' as table_name,
+    COUNT(*) as row_count
+FROM songs
+WHERE deleted_at IS NULL
+UNION ALL
+SELECT
+    'recordings' as table_name,
+    COUNT(*) as row_count
+FROM recordings
+WHERE deleted_at IS NULL;
+"""
+
 # SQL to check database integrity
 INTEGRITY_CHECK_QUERY = "PRAGMA integrity_check;"
 

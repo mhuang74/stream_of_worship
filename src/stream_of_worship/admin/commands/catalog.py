@@ -202,7 +202,7 @@ def list_songs(
         "table",
         "--format",
         "-f",
-        help="Output format (table|ids)",
+        help="Output format (table|ids|count)",
     ),
     config_path: Path = typer.Option(
         None,
@@ -288,7 +288,9 @@ def list_songs(
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
         return
 
-    if format == "ids":
+    if format == "count":
+        console.print(len(songs))
+    elif format == "ids":
         # Output one ID per line for piping
         for song in songs:
             console.print(song.id)
