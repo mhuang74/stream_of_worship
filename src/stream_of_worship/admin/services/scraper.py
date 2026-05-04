@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -21,12 +22,30 @@ from stream_of_worship.admin.db.models import Song
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _SongCandidate:
+    """Lightweight pre-Song data used during two-pass dedup."""
+
+    song_id: str
+    title: str
+    composer: Optional[str]
+    lyricist: Optional[str]
+    album_name: Optional[str]
+    album_series: Optional[str]
+    musical_key: Optional[str]
+    lyrics_raw: Optional[str]
+    lyrics_lines: List[str]
+    table_row_number: int
+
+
 class CatalogScraper:
     """Scraper for sop.org/songs catalog.
 
     Refactored from the original LyricsScraper to integrate with the
     sow-admin database instead of writing to JSON files.
     """
+
+    PREFERRED_SERIES_PREFIX = "敬拜讚美"
 
     def __init__(self, db_client: Optional[DatabaseClient] = None):
         """Initialize the scraper.
@@ -120,47 +139,55 @@ class CatalogScraper:
             existing_ids = self._get_existing_song_ids()
             logger.info(f"Found {len(existing_ids)} existing songs in database")
 
-        seen_ids = set()
-        duplicate_count = 0
+        # First pass: collect all candidates and group by song_id
+        groups: Dict[str, List[_SongCandidate]] = {}
         for row_num, row in enumerate(data_rows, 1):
             cells = row.find_all(["td", "th"])
             if not cells:
                 continue
 
             try:
-                song = self._parse_row(cells, col_indices, row_num)
-                if not song:
+                candidate = self._parse_row_to_candidate(cells, col_indices, row_num)
+                if not candidate:
                     continue
-
-                # In-run dedup: first-seen wins.
-                if song.id in seen_ids:
-                    duplicate_count += 1
-                    logger.debug(
-                        f"Skipping duplicate row {row_num}: id={song.id} "
-                        f"title={song.title!r} (first seen earlier in this run)"
-                    )
-                    continue
-                seen_ids.add(song.id)
-
-                # Cross-run incremental skip (existing behavior).
-                if incremental and not force and song.id in existing_ids:
-                    logger.debug(f"Skipping existing song: {song.id}")
-                    continue
-
-                songs.append(song)
-
-                if row_num % 100 == 0:
-                    logger.info(f"Processed {row_num}/{len(data_rows)} songs...")
+                groups.setdefault(candidate.song_id, []).append(candidate)
 
             except Exception as e:
                 logger.warning(f"Failed to parse row {row_num}: {e}")
                 continue
 
+        # Count duplicates for logging
+        duplicate_count = sum(len(cands) - 1 for cands in groups.values() if len(cands) > 1)
+
         if duplicate_count:
             logger.info(
-                f"Skipped {duplicate_count} duplicate row(s) within this scrape "
+                f"Found {duplicate_count} duplicate row(s) within this scrape "
                 f"(same title/composer/lyricist as an earlier row)"
             )
+
+        # Second pass: select best candidate for each song_id group
+        seen_ids = set()
+        for song_id, candidates in groups.items():
+            if len(candidates) == 1:
+                selected = candidates[0]
+            else:
+                selected = self._select_best_candidate(candidates)
+                logger.debug(
+                    f"Selected best candidate for {song_id}: "
+                    f"album_series={selected.album_series!r}, table_row={selected.table_row_number}"
+                )
+
+            seen_ids.add(selected.song_id)
+
+            # Incremental skip (existing behavior): skip if ID already exists in DB
+            if incremental and not force and selected.song_id in existing_ids:
+                logger.debug(f"Skipping existing song: {selected.song_id}")
+                continue
+
+            # Convert selected candidate to Song and add to results
+            songs.append(self._candidate_to_song(selected))
+
+        logger.info(f"Successfully parsed {len(songs)} songs")
 
         # Soft-delete songs not seen this run (full scrape only)
         if soft_delete_missing and self.db_client and not limit:
@@ -172,7 +199,6 @@ class CatalogScraper:
                     logger.debug(f"Soft-deleted song: {song_id}")
 
         self.last_run_duplicate_count = duplicate_count
-        logger.info(f"Successfully parsed {len(songs)} songs")
         return songs
 
     def _get_existing_song_ids(self) -> set:
@@ -226,8 +252,10 @@ class CatalogScraper:
                 return i
         return None
 
-    def _parse_row(self, cells: List, col_indices: Dict, row_num: int) -> Optional[Song]:
-        """Parse a single table row into a Song object."""
+    def _parse_row_to_candidate(
+        self, cells: List, col_indices: Dict, row_num: int
+    ) -> Optional[_SongCandidate]:
+        """Parse a single table row into a _SongCandidate (lightweight)."""
         # Extract basic metadata
         title = (
             cells[col_indices["title"]].get_text(strip=True)
@@ -268,30 +296,70 @@ class CatalogScraper:
         # Generate stable song ID
         song_id = self._compute_song_id(title, composer, lyricist)
 
-        # Generate pinyin for title
-        title_pinyin = "_".join(lazy_pinyin(title))
-
-        # Create Song object
-        song = Song(
-            id=song_id,
+        return _SongCandidate(
+            song_id=song_id,
             title=title,
-            title_pinyin=title_pinyin,
-            composer=composer,
-            lyricist=lyricist,
-            album_name=album,
-            album_series=series,
-            musical_key=key,
+            composer=composer or None,
+            lyricist=lyricist or None,
+            album_name=album or None,
+            album_series=series or None,
+            musical_key=key or None,
             lyrics_raw=lyrics_data["lyrics_raw"],
-            lyrics_lines=json.dumps(lyrics_data["lyrics_lines"], ensure_ascii=False),
-            sections=json.dumps(
-                self._detect_sections(lyrics_data["lyrics_lines"]), ensure_ascii=False
-            ),
-            source_url=self.url,
+            lyrics_lines=lyrics_data["lyrics_lines"],
             table_row_number=row_num,
+        )
+
+    def _candidate_to_song(self, candidate: _SongCandidate) -> Song:
+        """Convert a _SongCandidate to a full Song object."""
+        # Generate pinyin for title
+        title_pinyin = "_".join(lazy_pinyin(candidate.title))
+
+        return Song(
+            id=candidate.song_id,
+            title=candidate.title,
+            title_pinyin=title_pinyin,
+            composer=candidate.composer,
+            lyricist=candidate.lyricist,
+            album_name=candidate.album_name,
+            album_series=candidate.album_series,
+            musical_key=candidate.musical_key,
+            lyrics_raw=candidate.lyrics_raw,
+            lyrics_lines=json.dumps(candidate.lyrics_lines, ensure_ascii=False),
+            sections=json.dumps(self._detect_sections(candidate.lyrics_lines), ensure_ascii=False),
+            source_url=self.url,
+            table_row_number=candidate.table_row_number,
             scraped_at=datetime.now().isoformat(),
         )
 
-        return song
+    def _select_best_candidate(self, candidates: List[_SongCandidate]) -> _SongCandidate:
+        """Select the best candidate from a group based on album_series preference.
+
+        Preference rules:
+        1. If any candidate has album_series starting with 敬拜讚美, select the LAST such candidate.
+        2. Otherwise, select the FIRST candidate (preserves backward compatibility).
+        """
+        if len(candidates) == 1:
+            return candidates[0]
+
+        jingbai_candidates = [
+            c
+            for c in candidates
+            if c.album_series and c.album_series.startswith(self.PREFERRED_SERIES_PREFIX)
+        ]
+        if jingbai_candidates:
+            logger.debug(
+                f"Selected 敬拜讚美 candidate (last of {len(jingbai_candidates)} matching): "
+                f"album_series={jingbai_candidates[-1].album_series!r}, "
+                f"table_row={jingbai_candidates[-1].table_row_number}"
+            )
+            return jingbai_candidates[-1]
+
+        logger.debug(
+            f"No 敬拜讚美 candidates found, selecting first: "
+            f"album_series={candidates[0].album_series!r}, "
+            f"table_row={candidates[0].table_row_number}"
+        )
+        return candidates[0]
 
     def _parse_lyrics_cell(self, cell) -> Dict:
         """Extract lyrics from table cell, preserving line breaks."""
