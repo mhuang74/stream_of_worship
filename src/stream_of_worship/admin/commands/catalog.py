@@ -121,7 +121,7 @@ def scrape_catalog(
     if scraper.last_run_duplicate_count:
         console.print(
             f"[yellow]Skipped {scraper.last_run_duplicate_count} duplicate row(s) "
-            f"in source table (first occurrence kept)[/yellow]"
+            f"in source table (敬拜讚美 preference applied)[/yellow]"
         )
 
     # Preview table
