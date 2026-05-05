@@ -244,6 +244,35 @@ def apply_column_migrations(cursor) -> None:
                 pass
 
 
+def apply_column_migrations_remote(client: "DatabaseClient") -> None:
+    """Apply COLUMN_MIGRATIONS to the Turso remote via HTTP API.
+
+    Queries remote schema via PRAGMA table_info before issuing ALTER TABLE,
+    matching the behavior of the local apply_column_migrations(). Suppresses
+    'duplicate column name' errors for safety.
+
+    Args:
+        client: DatabaseClient with Turso enabled (has http_pipeline_url).
+    """
+    from stream_of_worship.admin.db.client import SyncError
+
+    tables_needed = {table for table, _, _ in COLUMN_MIGRATIONS}
+    existing_columns: dict[str, set[str]] = {}
+
+    for table in tables_needed:
+        result = client._execute_remote(f"PRAGMA table_info({table})")
+        rows = result.get("rows", [])
+        existing_columns[table] = {row[1] for row in rows if row}
+
+    for table, column, col_type in COLUMN_MIGRATIONS:
+        if column not in existing_columns.get(table, set()):
+            try:
+                client._execute_remote(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            except SyncError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+
+
 SONG_COLUMNS_FOR_JOIN = """
     s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
     s.album_name, s.album_series, s.musical_key, s.lyrics_raw,

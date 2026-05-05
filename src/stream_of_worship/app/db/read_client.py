@@ -114,19 +114,36 @@ class ReadOnlyClient:
         apply_column_migrations(cursor)
 
     def sync(self) -> None:
-        """Sync with Turso cloud database.
+        """Pull catalog from Turso. Auto-recovers from WAL/metadata corruption.
 
         Raises:
             SyncError: If sync fails or Turso is not configured
         """
         if not self.is_turso_enabled:
             raise SyncError("Turso sync is not configured")
-
         try:
-            conn = self.connection
-            conn.sync()  # type: ignore
+            self.connection.sync()  # type: ignore
         except Exception as e:
-            raise SyncError(f"Sync failed: {e}", cause=e)
+            error_msg = str(e).lower()
+            if any(
+                kw in error_msg
+                for kw in ("walconflict", "wal", "metadata", "malformed", "corrupt")
+            ):
+                self._recover_replica()
+                try:
+                    self.connection.sync()  # type: ignore
+                except Exception as e2:
+                    raise SyncError(f"Sync failed even after recovery: {e2}", cause=e2)
+            else:
+                raise SyncError(f"Sync failed: {e}", cause=e)
+
+    def _recover_replica(self) -> None:
+        """Delete local DB and sidecar files to force clean pull from Turso."""
+        self.close()
+        for suffix in ("", "-wal", "-shm", "-info"):
+            p = Path(str(self.db_path) + suffix) if suffix else self.db_path
+            if p.exists():
+                p.unlink()
 
     def __enter__(self) -> "ReadOnlyClient":
         """Context manager entry."""

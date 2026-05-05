@@ -308,11 +308,10 @@ sow-admin audio lrc HASH_PREFIX [--force]
 sow-admin audio status [JOB_ID]
 ```
 
-### Sync Commands (Phase 7)
+### Pull Command
 
 ```bash
-sow-admin db sync [--dry-run]
-sow-admin catalog sync [--dry-run]
+sow-admin db pull
 ```
 
 ## License

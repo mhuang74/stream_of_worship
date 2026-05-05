@@ -4,6 +4,7 @@ Provides CLI commands for scraping, listing, searching, and viewing
 songs in the Stream of Worship catalog.
 """
 
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -39,13 +40,19 @@ def _extract_series_number(series: Optional[str]) -> int:
 def get_db_client(config: AdminConfig) -> DatabaseClient:
     """Get a database client from config.
 
+    Uses effective_turso_url which checks SOW_TURSO_URL env var.
+
     Args:
         config: Admin configuration
 
     Returns:
         DatabaseClient instance
     """
-    return DatabaseClient(config.db_path)
+    return DatabaseClient(
+        db_path=config.db_path,
+        turso_url=config.effective_turso_url,
+        turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+    )
 
 
 @app.command("scrape")

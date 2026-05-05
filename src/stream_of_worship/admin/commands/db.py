@@ -1,12 +1,10 @@
 """Database commands for sow-admin.
 
 Provides CLI commands for database initialization, status checking,
-reset operations, and Turso sync.
+reset operations, and Turso pull.
 """
 
 import os
-import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -167,7 +165,7 @@ def init_db(
         console.print("Running migrations...")
         turso_url = config.effective_turso_url
         if turso_url and LIBSQL_AVAILABLE:
-            # Use libsql to apply migrations and push to Turso
+            # Use libsql to apply migrations and pull from Turso
             client = DatabaseClient(
                 db_path,
                 turso_url=turso_url,
@@ -216,7 +214,7 @@ def init_db(
                 console.print("[yellow]Falling back to local-only initialization...[/yellow]")
                 client = DatabaseClient(db_path)
                 client.initialize_schema()
-                console.print("[green]Database initialized locally (run 'db sync' later to pull data).[/green]")
+                console.print("[green]Database initialized locally (run 'db pull' later to pull data).[/green]")
         else:
             # No Turso: standard local-only init
             client = DatabaseClient(db_path)
@@ -417,8 +415,8 @@ def show_path(
     console.print(config.db_path)
 
 
-@app.command("sync")
-def sync_db(
+@app.command("pull")
+def pull_db(
     config_path: Path = typer.Option(
         None,
         "--config",
@@ -438,12 +436,16 @@ def sync_db(
         help="Force sync even if configuration appears invalid",
     ),
 ) -> None:
-    """Sync database with Turso cloud.
+    """Pull database from Turso cloud.
 
-    Synchronizes the local SQLite database with Turso cloud using
-    embedded replicas. Requires Turso URL to be configured.
+    Pulls the latest data from Turso cloud to the local SQLite database.
+    This is a read-only operation that updates local data from the remote.
 
     Turso URL priority: --turso-url flag > SOW_TURSO_URL env var > config file
+
+    To recover from corruption:
+      1. Delete local DB: rm <db_path> <db_path>-wal <db_path>-shm <db_path>-info
+      2. Re-run: sow-admin db pull
     """
     # Check if we need to create a new config (onboarding scenario)
     config_path_to_use = config_path if config_path else get_config_path()
@@ -452,19 +454,19 @@ def sync_db(
     if not config_exists and not turso_url and not os.environ.get("SOW_TURSO_URL"):
         console.print("[yellow]Config file not found and Turso URL not specified.[/yellow]")
         console.print()
-        console.print("To sync from Turso, provide the URL via one of these methods:")
+        console.print("To pull from Turso, provide the URL via one of these methods:")
         console.print()
         console.print("  1. Use --turso-url flag:")
-        console.print("     [dim]$ sow-admin db sync --turso-url libsql://your-db.turso.io[/dim]")
+        console.print("     [dim]$ sow-admin db pull --turso-url libsql://your-db.turso.io[/dim]")
         console.print()
         console.print("  2. Set SOW_TURSO_URL environment variable:")
         console.print("     [dim]$ export SOW_TURSO_URL=libsql://your-db.turso.io[/dim]")
-        console.print("     [dim]$ sow-admin db sync[/dim]")
+        console.print("     [dim]$ sow-admin db pull[/dim]")
         console.print()
         console.print("  3. Run 'db init' first to create config, then edit it:")
         console.print("     [dim]$ sow-admin db init[/dim]")
         console.print("     [dim]$ sow-admin config set turso.database_url libsql://your-db.turso.io[/dim]")
-        console.print("     [dim]$ sow-admin db sync[/dim]")
+        console.print("     [dim]$ sow-admin db pull[/dim]")
         console.print()
         raise typer.Exit(1)
 
@@ -503,26 +505,26 @@ def sync_db(
     # Validate configuration
     is_valid, errors = sync_service.validate_config()
     if not is_valid and not force:
-        console.print("[red]Sync configuration errors:[/red]")
+        console.print("[red]Pull configuration errors:[/red]")
         for error in errors:
             console.print(f"  - {error}")
-        console.print("\nUse --force to attempt sync anyway.")
+        console.print("\nUse --force to attempt pull anyway.")
         raise typer.Exit(1)
 
     # Show sync status before starting
     console.print(f"Database: {config.db_path}")
     console.print(f"Turso URL: {sync_status.turso_url}")
     if sync_status.last_sync_at:
-        console.print(f"Last sync: {sync_status.last_sync_at}")
+        console.print(f"Last pull: {sync_status.last_sync_at}")
     else:
-        console.print("Last sync: [dim]Never[/dim]")
+        console.print("Last pull: [dim]Never[/dim]")
 
     # Check for missing sync history (fresh installation or metadata corruption)
     if config.db_path.exists() and not sync_status.last_sync_at:
-        console.print("\n[yellow]Note: Local database exists but has no sync history.[/yellow]")
-        console.print("[yellow]Will perform initial sync from Turso...[/yellow]")
+        console.print("\n[yellow]Note: Local database exists but has no pull history.[/yellow]")
+        console.print("[yellow]Will perform initial pull from Turso...[/yellow]")
 
-    console.print("\n[yellow]Syncing with Turso...[/yellow]")
+    console.print("\n[yellow]Pulling from Turso...[/yellow]")
 
     # Execute sync
     try:
@@ -532,7 +534,7 @@ def sync_db(
         # Show updated status
         updated_status = sync_service.get_sync_status()
         if updated_status.last_sync_at:
-            console.print(f"Last sync: {updated_status.last_sync_at}")
+            console.print(f"Last pull: {updated_status.last_sync_at}")
 
     except SyncConfigError as e:
         console.print(f"\n[red]Configuration error: {e}[/red]")
@@ -544,14 +546,12 @@ def sync_db(
             console.print(f"Status code: {e.status_code}")
         
         # Provide helpful messages for common errors
-        if "write" in error_msg and ("forbidden" in error_msg or "blocked" in error_msg or "permission" in error_msg):
-            console.print("\n[yellow]Tip: Your Turso token has read-only permissions.[/yellow]")
-            console.print("[yellow]Sync operations require a token with write access.[/yellow]")
-            console.print("[dim]Generate a full-access token with:[/dim]")
-            console.print("  [dim]turso db tokens create sow-catalog --full-access[/dim]")
+        if "forbidden" in error_msg or "unauthorized" in error_msg or "permission" in error_msg:
+            console.print("\n[yellow]Tip: Check your Turso token and URL are correct.[/yellow]")
+            console.print("[dim]Generate a token with: turso db tokens create <db-name>[/dim]")
         elif "metadata file" in error_msg:
             console.print("\n[yellow]Tip: Database metadata is corrupted.[/yellow]")
-            console.print("[yellow]Run 'sow-admin db reset' to reset local database, then sync again.[/yellow]")
+            console.print("[yellow]Run 'sow-admin db reset' to reset local database, then pull again.[/yellow]")
         
         raise typer.Exit(1)
     except SyncError as e:

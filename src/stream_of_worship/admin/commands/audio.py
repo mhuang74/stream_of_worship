@@ -5,6 +5,7 @@ recordings, and viewing recording details.
 """
 
 import json
+import os
 import select
 import sys
 import tempfile
@@ -27,7 +28,7 @@ from rich.table import Table
 
 from stream_of_worship.admin.commands.catalog import _extract_series_number
 from stream_of_worship.admin.config import AdminConfig
-from stream_of_worship.admin.db.client import DatabaseClient
+from stream_of_worship.admin.db.client import DatabaseClient, SyncError
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
@@ -1834,7 +1835,11 @@ def check_status(
         console.print(f"[red]Database not found at {config.db_path}[/red]")
         raise typer.Exit(1)
 
-    db_client = DatabaseClient(config.db_path)
+    db_client = DatabaseClient(
+        config.db_path,
+        turso_url=config.effective_turso_url,
+        turso_token=os.environ.get("SOW_TURSO_TOKEN"),
+    )
 
     # Validate force_status if provided
     if force_status and force_status not in ("completed", "failed", "pending"):
@@ -1870,6 +1875,15 @@ def check_status(
         except ValueError as e:
             console.print(f"[red]R2 not configured: {e}[/red]")
             raise typer.Exit(1)
+
+        # Force sync before reading — reconcile writes to remote based on local reads
+        if db_client.is_turso_enabled:
+            try:
+                db_client._sync_replica(fatal=True)
+            except SyncError as e:
+                console.print(f"[red]Sync failed before reconcile: {e}[/red]")
+                console.print("Aborting reconcile to prevent stale reads.")
+                raise typer.Exit(1)
 
         incomplete_lrc = db_client.list_recordings(lrc_status="incomplete")
         incomplete_analysis = db_client.list_recordings(status="incomplete")

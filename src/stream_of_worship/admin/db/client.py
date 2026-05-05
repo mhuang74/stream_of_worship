@@ -4,6 +4,9 @@ Provides SQLite database operations for local storage of song catalog
 and recording metadata. Supports libsql/Turso for embedded replica sync.
 """
 
+import base64
+import json
+import logging
 import os
 import sqlite3
 import uuid
@@ -11,6 +14,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Generator, Optional, Union
+
+import requests
+
+logger = logging.getLogger("sow_admin.db")
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
@@ -28,6 +35,7 @@ from stream_of_worship.admin.db.schema import (
     ROW_COUNT_QUERY,
     SONG_COLUMN_COUNT,
     apply_column_migrations,
+    apply_column_migrations_remote,
 )
 
 # Optional libsql import for Turso support
@@ -48,6 +56,31 @@ class SyncError(Exception):
     def __init__(self, message: str, cause: Optional[Exception] = None):
         super().__init__(message)
         self.cause = cause
+
+
+def _format_param(value) -> dict:
+    """Format a Python value for the Turso HTTP API /v2/pipeline.
+
+    Args:
+        value: Python value to format.
+
+    Returns:
+        Dict with type and value for HTTP API.
+    """
+    if value is None:
+        return {"type": "null"}
+    elif isinstance(value, bool):
+        return {"type": "integer", "value": "1" if value else "0"}
+    elif isinstance(value, int):
+        return {"type": "integer", "value": str(value)}
+    elif isinstance(value, float):
+        return {"type": "float", "value": str(value)}
+    elif isinstance(value, str):
+        return {"type": "text", "value": value}
+    elif isinstance(value, bytes):
+        return {"type": "blob", "base64": base64.b64encode(value).decode()}
+    else:
+        return {"type": "text", "value": str(value)}
 
 
 class DatabaseClient:
@@ -90,6 +123,20 @@ class DatabaseClient:
             True if Turso URL is configured and libsql is available
         """
         return bool(self.turso_url and LIBSQL_AVAILABLE)
+
+    @property
+    def http_pipeline_url(self) -> Optional[str]:
+        """Derive HTTPS pipeline URL from libsql:// URL.
+
+        Returns:
+            HTTPS URL for /v2/pipeline endpoint, or None if Turso not configured.
+        """
+        if not self.turso_url:
+            return None
+        url = self.turso_url.replace("libsql://", "https://")
+        if not url.startswith("https://"):
+            url = "https://" + url.split("://", 1)[-1]
+        return url.rstrip("/") + "/v2/pipeline"
 
     @property
     def connection(self) -> Union[sqlite3.Connection, "libsql.Connection"]:
@@ -142,93 +189,174 @@ class DatabaseClient:
             self._connection.close()
             self._connection = None
 
-    def sync(self) -> None:
-        """Sync with Turso cloud database.
+    def _execute_remote_pipeline(
+        self,
+        requests_payload: list[dict],
+        timeout: int = 30,
+    ) -> list[dict]:
+        """Execute a pipeline of SQL statements on Turso Cloud via HTTP API.
 
-        Performs integrity check, schema migration, and post-sync validation to prevent
-        schema sync corruption. For first-time sync, skips pre-sync migrations to allow
-        libsql to pull full schema from Turso.
+        Args:
+            requests_payload: List of request dicts for /v2/pipeline.
+                Each dict is {"type": "execute", "stmt": {"sql": ..., "args": [...]}}
+                or {"type": "close"}.
+            timeout: HTTP timeout in seconds.
+
+        Returns:
+            List of result dicts from the pipeline response.
 
         Raises:
-            SyncError: If sync fails, database is corrupted, or schema drift detected
+            SyncError: If HTTP request fails or any statement returns an error.
+        """
+        url = self.http_pipeline_url
+        if not url:
+            raise SyncError("Turso not configured: no URL available")
+
+        payload = {"requests": requests_payload}
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {self.turso_token}",
+                    "Content-Type": "application/json",
+                },
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+        except requests.exceptions.Timeout:
+            raise SyncError(
+                f"Remote write timed out after {timeout}s. "
+                "The write may have succeeded — verify with 'db pull' before retrying."
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise SyncError(f"Cannot connect to Turso: {e}")
+        except requests.exceptions.RequestException as e:
+            raise SyncError(f"Remote write failed: {e}")
+
+        results = result.get("results", [])
+        return results
+
+    def _check_pipeline_results(
+        self, results: list[dict], ignore_sql_errors: Optional[set[str]] = None
+    ) -> None:
+        """Check pipeline results for errors, optionally ignoring specific SQL error codes.
+
+        Args:
+            results: Results list from _execute_remote_pipeline().
+            ignore_sql_errors: Set of SQL error message substrings to suppress (case-insensitive).
+                Use for DDL idempotency (e.g., {"duplicate column name", "already exists"}).
+
+        Raises:
+            SyncError: If any result is an error that is not in ignore_sql_errors.
+        """
+        for r in results:
+            if r.get("type") == "error":
+                error_obj = r.get("error", {})
+                msg = error_obj.get("message", "unknown error")
+                if ignore_sql_errors:
+                    msg_lower = msg.lower()
+                    if any(pattern in msg_lower for pattern in ignore_sql_errors):
+                        continue
+                raise SyncError(f"Remote execute failed: {msg}")
+
+    def _execute_remote(self, sql: str, params: tuple = (), timeout: int = 10) -> dict:
+        """Execute a single DML statement on Turso Cloud. Returns result dict.
+
+        Args:
+            sql: SQL statement to execute.
+            params: Parameters for the SQL statement.
+            timeout: HTTP timeout in seconds.
+
+        Returns:
+            Result dict from the execute response (may include rows for SELECT/PRAGMA).
+        """
+        stmt = {"sql": sql, "args": [_format_param(p) for p in params]}
+        results = self._execute_remote_pipeline(
+            [{"type": "execute", "stmt": stmt}, {"type": "close"}],
+            timeout=timeout,
+        )
+        self._check_pipeline_results(results)
+        for r in results:
+            if r.get("type") == "ok":
+                resp = r.get("response", {})
+                if resp.get("type") == "execute":
+                    return resp.get("result", {})
+        return {}
+
+    def _execute_remote_transaction(
+        self,
+        statements: list[tuple[str, tuple]],
+        timeout: int = 30,
+    ) -> None:
+        """Execute multiple DML statements in a single remote transaction.
+
+        All statements are sent in one HTTP pipeline request with BEGIN/COMMIT.
+
+        Args:
+            statements: List of (sql, params) tuples.
+            timeout: HTTP timeout in seconds.
+        """
+        pipeline = [{"type": "execute", "stmt": {"sql": "BEGIN", "args": []}}]
+        for sql, params in statements:
+            pipeline.append(
+                {
+                    "type": "execute",
+                    "stmt": {"sql": sql, "args": [_format_param(p) for p in params]},
+                }
+            )
+        pipeline.append({"type": "execute", "stmt": {"sql": "COMMIT", "args": []}})
+        pipeline.append({"type": "close"})
+
+        results = self._execute_remote_pipeline(pipeline, timeout=timeout)
+        self._check_pipeline_results(results)
+
+    def _sync_replica(self, fatal: bool = False) -> None:
+        """Pull remote changes to local embedded replica.
+
+        Since no DML writes go to the replica in the new model, conn.sync()
+        is effectively pull-only (nothing to push).
+
+        Args:
+            fatal: If True, raise SyncError on failure. If False, log warning only.
+                Use fatal=True before any operation that reads locally then writes remotely.
+        """
+        if not self.is_turso_enabled or self._connection is None:
+            return
+        try:
+            self._connection.sync()  # type: ignore
+            self.update_sync_metadata("last_sync_at", datetime.now().isoformat())
+        except Exception as e:
+            if fatal:
+                raise SyncError(
+                    f"Replica sync failed before read-then-write operation: {e}. "
+                    "Aborting to prevent stale reads. Run 'db pull' to recover.",
+                    cause=e,
+                )
+            logger.warning(f"Replica sync after write failed (non-fatal): {e}")
+
+    def sync(self) -> None:
+        """Pull remote changes from Turso to local embedded replica.
+
+        In the remote-write model, this is pull-only: the replica has no local
+        DML writes to push, so conn.sync() fetches remote changes without conflict.
+
+        Raises:
+            SyncError: If sync fails or schema is invalid after pull.
         """
         if not self.is_turso_enabled:
             raise SyncError("Turso sync is not configured")
 
-        cursor = self.connection.cursor()
-
-        # Check if tables exist (determines if this is first sync or subsequent)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='songs'")
-        tables_exist = cursor.fetchone() is not None
-
-        if tables_exist:
-            # Existing replica: integrity check + pre-sync migrations
-            try:
-                cursor.execute("PRAGMA integrity_check")
-                result = cursor.fetchone()
-                if result and result[0] != "ok":
-                    raise SyncError(
-                        f"Local database is corrupted ('{result[0]}'). "
-                        f"Recovery: run 'db sync --force' to recreate from Turso, "
-                        f"or manually delete {self.db_path} and all sidecar files."
-                    )
-            except sqlite3.DatabaseError as e:
-                if "malformed" in str(e).lower():
-                    raise SyncError(
-                        f"Local database is corrupted. "
-                        f"Recovery: run 'db sync --force' to recreate from Turso, "
-                        f"or manually delete {self.db_path} and all sidecar files. "
-                        f"Original error: {e}"
-                    )
-                raise
-            except sqlite3.OperationalError:
-                # Database might be empty - that's okay, sync will pull from remote
-                pass
-            except (*_LIBSQL_ERROR, Exception) as e:
-                error_msg = str(e).lower()
-                if "metadata file does not" in error_msg or "invalid local state" in error_msg:
-                    raise SyncError(
-                        f"Local database metadata is missing or invalid. "
-                        f"This typically happens when a vanilla SQLite database was created "
-                        f"by 'db init' and needs to be migrated to a libsql embedded replica. "
-                        f"Auto-recovery will recreate the database from Turso. "
-                        f"Original error: {e}"
-                    )
-                if "malformed" in error_msg:
-                    raise SyncError(
-                        f"Local database is corrupted. "
-                        f"Recovery: run 'db sync' to recreate from Turso, "
-                        f"or manually delete {self.db_path} and all sidecar files. "
-                        f"Original error: {e}"
-                    )
-                raise SyncError(f"Local database error: {e}")
-
-            # Pre-sync: ensure local schema is up to date (only for existing replicas)
-            apply_column_migrations(cursor)
-            self.connection.commit()
-
-        # Sync with Turso (bidirectional: pushes local changes, pulls remote changes)
         try:
             conn = self.connection
             conn.sync()  # type: ignore
         except Exception as e:
             raise SyncError(f"Sync failed: {e}", cause=e)
 
-        # Post-sync: re-apply migrations (remote may have fewer columns than DDL)
-        apply_column_migrations(cursor)
-        self.connection.commit()
-
-        # Push new columns back to Turso so remote schema stays current
-        try:
-            conn = self.connection
-            conn.sync()  # type: ignore
-        except Exception:
-            pass  # Non-fatal: local is correct, remote will get updated next sync
-
-        # Post-sync validation: verify schema matches expected column counts
+        cursor = self.connection.cursor()
         self._validate_schema(cursor)
 
-        # Update last sync timestamp
         self.update_sync_metadata("last_sync_at", datetime.now().isoformat())
 
     def _validate_schema(self, cursor) -> None:
@@ -299,45 +427,64 @@ class DatabaseClient:
 
         Creates all tables, indexes, and triggers if they don't exist.
         Runs migrations before creating indexes to handle column additions.
+
+        For Turso: sends DDL to remote via HTTP API.
+        For sqlite3: applies locally.
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-
-            # First, create tables if they don't exist
-            cursor.execute(CREATE_SONGS_TABLE)
-            cursor.execute(CREATE_RECORDINGS_TABLE)
-            cursor.execute(CREATE_SYNC_METADATA_TABLE)
-
-            # Run column migrations BEFORE creating indexes (indexes may reference new columns)
-            apply_column_migrations(cursor)
-
-            # Migrate existing completed LRC recordings to 'published' (data migration, not schema)
+        if self.is_turso_enabled:
+            for stmt in [CREATE_SONGS_TABLE, CREATE_RECORDINGS_TABLE, CREATE_SYNC_METADATA_TABLE]:
+                try:
+                    self._execute_remote(stmt)
+                except SyncError as e:
+                    if "already exists" not in str(e).lower():
+                        raise
+            apply_column_migrations_remote(self)
             try:
-                cursor.execute("""
-                    UPDATE recordings SET visibility_status = 'published'
-                    WHERE lrc_status = 'completed' AND visibility_status IS NULL
-                """)
-            except sqlite3.OperationalError:
-                # visibility_status column doesn't exist yet
-                pass
-
-            # Now create indexes (they can reference migrated columns)
-            for statement in CREATE_INDEXES:
-                cursor.execute(statement)
-
-            # Create triggers
-            cursor.execute(CREATE_SONGS_UPDATE_TRIGGER)
-            cursor.execute(CREATE_RECORDINGS_UPDATE_TRIGGER)
-
-            # Initialize sync metadata if empty
-            for key, value in DEFAULT_SYNC_METADATA.items():
-                cursor.execute(
-                    """
-                    INSERT OR IGNORE INTO sync_metadata (key, value)
-                    VALUES (?, ?)
-                    """,
-                    (key, value),
+                self._execute_remote(
+                    "UPDATE recordings SET visibility_status = 'published' "
+                    "WHERE lrc_status = 'completed' AND visibility_status IS NULL"
                 )
+            except SyncError:
+                pass
+            for stmt in CREATE_INDEXES:
+                try:
+                    self._execute_remote(stmt)
+                except SyncError as e:
+                    if "already exists" not in str(e).lower():
+                        raise
+            for stmt in [CREATE_SONGS_UPDATE_TRIGGER, CREATE_RECORDINGS_UPDATE_TRIGGER]:
+                try:
+                    self._execute_remote(stmt)
+                except SyncError as e:
+                    if "already exists" not in str(e).lower():
+                        raise
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(CREATE_SONGS_TABLE)
+                cursor.execute(CREATE_RECORDINGS_TABLE)
+                cursor.execute(CREATE_SYNC_METADATA_TABLE)
+                apply_column_migrations(cursor)
+                try:
+                    cursor.execute("""
+                        UPDATE recordings SET visibility_status = 'published'
+                        WHERE lrc_status = 'completed' AND visibility_status IS NULL
+                    """)
+                except sqlite3.OperationalError:
+                    pass
+                for statement in CREATE_INDEXES:
+                    cursor.execute(statement)
+                cursor.execute(CREATE_SONGS_UPDATE_TRIGGER)
+                cursor.execute(CREATE_RECORDINGS_UPDATE_TRIGGER)
+                for key, value in DEFAULT_SYNC_METADATA.items():
+                    cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO sync_metadata (key, value)
+                        VALUES (?, ?)
+                        """,
+                        (key, value),
+                    )
 
     def reset_database(self) -> None:
         """Reset the database by dropping all tables.
@@ -416,36 +563,108 @@ class DatabaseClient:
         Args:
             song: Song to insert
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO songs (
-                    id, title, title_pinyin, composer, lyricist,
-                    album_name, album_series, musical_key, lyrics_raw,
-                    lyrics_lines, sections, source_url, table_row_number,
-                    scraped_at, created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-                """,
+        sql = """
+            INSERT OR REPLACE INTO songs (
+                id, title, title_pinyin, composer, lyricist,
+                album_name, album_series, musical_key, lyrics_raw,
+                lyrics_lines, sections, source_url, table_row_number,
+                scraped_at, created_at, updated_at, deleted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        """
+        params = (
+            song.id,
+            song.title,
+            song.title_pinyin,
+            song.composer,
+            song.lyricist,
+            song.album_name,
+            song.album_series,
+            song.musical_key,
+            song.lyrics_raw,
+            song.lyrics_lines,
+            song.sections,
+            song.source_url,
+            song.table_row_number,
+            song.scraped_at,
+            song.created_at or datetime.now().isoformat(),
+            song.updated_at or datetime.now().isoformat(),
+        )
+        if self.is_turso_enabled:
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
+
+    def bulk_insert_songs(self, songs: list[Song]) -> None:
+        """Insert multiple songs in a single remote transaction.
+
+        Args:
+            songs: List of songs to insert.
+        """
+        if not songs:
+            return
+        sql = """
+            INSERT OR REPLACE INTO songs (
+                id, title, title_pinyin, composer, lyricist,
+                album_name, album_series, musical_key, lyrics_raw,
+                lyrics_lines, sections, source_url, table_row_number,
+                scraped_at, created_at, updated_at, deleted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        """
+        if self.is_turso_enabled:
+            statements = [
                 (
-                    song.id,
-                    song.title,
-                    song.title_pinyin,
-                    song.composer,
-                    song.lyricist,
-                    song.album_name,
-                    song.album_series,
-                    song.musical_key,
-                    song.lyrics_raw,
-                    song.lyrics_lines,
-                    song.sections,
-                    song.source_url,
-                    song.table_row_number,
-                    song.scraped_at,
-                    song.created_at or datetime.now().isoformat(),
-                    song.updated_at or datetime.now().isoformat(),
-                ),
-            )
+                    sql,
+                    (
+                        s.id,
+                        s.title,
+                        s.title_pinyin,
+                        s.composer,
+                        s.lyricist,
+                        s.album_name,
+                        s.album_series,
+                        s.musical_key,
+                        s.lyrics_raw,
+                        s.lyrics_lines,
+                        s.sections,
+                        s.source_url,
+                        s.table_row_number,
+                        s.scraped_at,
+                        s.created_at or datetime.now().isoformat(),
+                        s.updated_at or datetime.now().isoformat(),
+                    ),
+                )
+                for s in songs
+            ]
+            self._execute_remote_transaction(statements)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                for song in songs:
+                    cursor.execute(
+                        sql,
+                        (
+                            song.id,
+                            song.title,
+                            song.title_pinyin,
+                            song.composer,
+                            song.lyricist,
+                            song.album_name,
+                            song.album_series,
+                            song.musical_key,
+                            song.lyrics_raw,
+                            song.lyrics_lines,
+                            song.sections,
+                            song.source_url,
+                            song.table_row_number,
+                            song.scraped_at,
+                            song.created_at or datetime.now().isoformat(),
+                            song.updated_at or datetime.now().isoformat(),
+                        ),
+                    )
 
     def get_song(self, song_id: str) -> Optional[Song]:
         """Get a song by ID.
@@ -608,51 +827,54 @@ class DatabaseClient:
         Args:
             recording: Recording to insert
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO recordings (
-                    content_hash, hash_prefix, song_id, original_filename,
-                    file_size_bytes, imported_at, r2_audio_url, r2_stems_url,
-                    r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
-                    musical_mode, key_confidence, loudness_db, beats,
-                    downbeats, sections, embeddings_shape, analysis_status,
-                    analysis_job_id, lrc_status, lrc_job_id, visibility_status,
-                    download_status, created_at, updated_at, youtube_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    recording.content_hash,
-                    recording.hash_prefix,
-                    recording.song_id,
-                    recording.original_filename,
-                    recording.file_size_bytes,
-                    recording.imported_at,
-                    recording.r2_audio_url,
-                    recording.r2_stems_url,
-                    recording.r2_lrc_url,
-                    recording.duration_seconds,
-                    recording.tempo_bpm,
-                    recording.musical_key,
-                    recording.musical_mode,
-                    recording.key_confidence,
-                    recording.loudness_db,
-                    recording.beats,
-                    recording.downbeats,
-                    recording.sections,
-                    recording.embeddings_shape,
-                    recording.analysis_status,
-                    recording.analysis_job_id,
-                    recording.lrc_status,
-                    recording.lrc_job_id,
-                    recording.visibility_status,
-                    recording.download_status or "pending",
-                    recording.created_at or datetime.now().isoformat(),
-                    recording.updated_at or datetime.now().isoformat(),
-                    recording.youtube_url,
-                ),
-            )
+        sql = """
+            INSERT OR REPLACE INTO recordings (
+                content_hash, hash_prefix, song_id, original_filename,
+                file_size_bytes, imported_at, r2_audio_url, r2_stems_url,
+                r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
+                musical_mode, key_confidence, loudness_db, beats,
+                downbeats, sections, embeddings_shape, analysis_status,
+                analysis_job_id, lrc_status, lrc_job_id, visibility_status,
+                download_status, created_at, updated_at, youtube_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            recording.content_hash,
+            recording.hash_prefix,
+            recording.song_id,
+            recording.original_filename,
+            recording.file_size_bytes,
+            recording.imported_at,
+            recording.r2_audio_url,
+            recording.r2_stems_url,
+            recording.r2_lrc_url,
+            recording.duration_seconds,
+            recording.tempo_bpm,
+            recording.musical_key,
+            recording.musical_mode,
+            recording.key_confidence,
+            recording.loudness_db,
+            recording.beats,
+            recording.downbeats,
+            recording.sections,
+            recording.embeddings_shape,
+            recording.analysis_status,
+            recording.analysis_job_id,
+            recording.lrc_status,
+            recording.lrc_job_id,
+            recording.visibility_status,
+            recording.download_status or "pending",
+            recording.created_at or datetime.now().isoformat(),
+            recording.updated_at or datetime.now().isoformat(),
+            recording.youtube_url,
+        )
+        if self.is_turso_enabled:
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
 
     def get_recording_by_hash(self, hash_prefix: str) -> Optional[Recording]:
         """Get a recording by its hash prefix.
@@ -861,40 +1083,42 @@ class DatabaseClient:
             lrc_status: New LRC status
             lrc_job_id: New LRC job ID
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
+        updates = []
+        params: list = []
 
-            updates = []
-            params: list = []
+        if analysis_status:
+            updates.append("analysis_status = ?")
+            params.append(analysis_status)
 
-            if analysis_status:
-                updates.append("analysis_status = ?")
-                params.append(analysis_status)
+        if analysis_job_id:
+            updates.append("analysis_job_id = ?")
+            params.append(analysis_job_id)
 
-            if analysis_job_id:
-                updates.append("analysis_job_id = ?")
-                params.append(analysis_job_id)
+        if lrc_status:
+            updates.append("lrc_status = ?")
+            params.append(lrc_status)
 
-            if lrc_status:
-                updates.append("lrc_status = ?")
-                params.append(lrc_status)
+        if lrc_job_id:
+            updates.append("lrc_job_id = ?")
+            params.append(lrc_job_id)
 
-            if lrc_job_id:
-                updates.append("lrc_job_id = ?")
-                params.append(lrc_job_id)
+        if not updates:
+            return
 
-            if not updates:
-                return
+        params.append(hash_prefix)
+        sql = f"""
+            UPDATE recordings
+            SET {", ".join(updates)}, updated_at = datetime('now')
+            WHERE hash_prefix = ?
+        """
 
-            params.append(hash_prefix)
-
-            sql = f"""
-                UPDATE recordings
-                SET {", ".join(updates)}, updated_at = datetime('now')
-                WHERE hash_prefix = ?
-            """
-
-            cursor.execute(sql, params)
+        if self.is_turso_enabled:
+            self._execute_remote(sql, tuple(params))
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
 
     def get_recording_by_job_id(
         self, job_id: str, job_type: str = "analysis"
@@ -956,44 +1180,44 @@ class DatabaseClient:
             embeddings_shape: JSON array of dimensions
             r2_stems_url: R2 URL for stems directory
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-
-            sql = """
-                UPDATE recordings SET
-                    duration_seconds = ?,
-                    tempo_bpm = ?,
-                    musical_key = ?,
-                    musical_mode = ?,
-                    key_confidence = ?,
-                    loudness_db = ?,
-                    beats = ?,
-                    downbeats = ?,
-                    sections = ?,
-                    embeddings_shape = ?,
-                    r2_stems_url = COALESCE(?, r2_stems_url),
-                    analysis_status = 'completed',
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
-            """
-
-            cursor.execute(
-                sql,
-                (
-                    duration_seconds,
-                    tempo_bpm,
-                    musical_key,
-                    musical_mode,
-                    key_confidence,
-                    loudness_db,
-                    beats,
-                    downbeats,
-                    sections,
-                    embeddings_shape,
-                    r2_stems_url,
-                    hash_prefix,
-                ),
-            )
+        sql = """
+            UPDATE recordings SET
+                duration_seconds = ?,
+                tempo_bpm = ?,
+                musical_key = ?,
+                musical_mode = ?,
+                key_confidence = ?,
+                loudness_db = ?,
+                beats = ?,
+                downbeats = ?,
+                sections = ?,
+                embeddings_shape = ?,
+                r2_stems_url = COALESCE(?, r2_stems_url),
+                analysis_status = 'completed',
+                updated_at = datetime('now')
+            WHERE hash_prefix = ?
+        """
+        params = (
+            duration_seconds,
+            tempo_bpm,
+            musical_key,
+            musical_mode,
+            key_confidence,
+            loudness_db,
+            beats,
+            downbeats,
+            sections,
+            embeddings_shape,
+            r2_stems_url,
+            hash_prefix,
+        )
+        if self.is_turso_enabled:
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
 
     def update_recording_lrc(
         self,
@@ -1010,21 +1234,22 @@ class DatabaseClient:
             hash_prefix: The hash prefix of the recording
             r2_lrc_url: R2 URL for the generated LRC file
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-
-            # Auto-publish only when visibility_status is NULL (first-time LRC)
-            # COALESCE keeps existing status if already set (review/hold)
-            sql = """
-                UPDATE recordings SET
-                    r2_lrc_url = ?,
-                    lrc_status = 'completed',
-                    visibility_status = COALESCE(visibility_status, 'published'),
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
-            """
-
-            cursor.execute(sql, (r2_lrc_url, hash_prefix))
+        sql = """
+            UPDATE recordings SET
+                r2_lrc_url = ?,
+                lrc_status = 'completed',
+                visibility_status = COALESCE(visibility_status, 'published'),
+                updated_at = datetime('now')
+            WHERE hash_prefix = ?
+        """
+        params = (r2_lrc_url, hash_prefix)
+        if self.is_turso_enabled:
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
 
     def update_recording_download(
         self,
@@ -1047,17 +1272,20 @@ class DatabaseClient:
                 f"Must be one of: {', '.join(valid_statuses)}"
             )
 
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-
-            sql = """
-                UPDATE recordings SET
-                    download_status = ?,
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
-            """
-
-            cursor.execute(sql, (download_status, hash_prefix))
+        sql = """
+            UPDATE recordings SET
+                download_status = ?,
+                updated_at = datetime('now')
+            WHERE hash_prefix = ?
+        """
+        params = (download_status, hash_prefix)
+        if self.is_turso_enabled:
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
 
     def update_recording_visibility(
         self,
@@ -1083,18 +1311,28 @@ class DatabaseClient:
                 f"Must be one of: {', '.join(valid_statuses)}"
             )
 
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-
-            sql = """
-                UPDATE recordings SET
-                    visibility_status = ?,
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
-            """
-
-            cursor.execute(sql, (visibility_status, hash_prefix))
-            return cursor.rowcount > 0
+        sql = """
+            UPDATE recordings SET
+                visibility_status = ?,
+                updated_at = datetime('now')
+            WHERE hash_prefix = ?
+        """
+        params = (visibility_status, hash_prefix)
+        if self.is_turso_enabled:
+            result = self._execute_remote(
+                f"SELECT 1 FROM recordings WHERE hash_prefix = ? LIMIT 1", (hash_prefix,)
+            )
+            exists = len(result.get("rows", [])) > 0
+            if not exists:
+                return False
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+            return True
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
+                return cursor.rowcount > 0
 
     def delete_recording(self, hash_prefix: str) -> None:
         """Soft-delete a recording by hash_prefix.
@@ -1102,12 +1340,15 @@ class DatabaseClient:
         Args:
             hash_prefix: The hash prefix of the recording to delete
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE recordings SET deleted_at = datetime('now') WHERE hash_prefix = ?",
-                (hash_prefix,),
-            )
+        sql = "UPDATE recordings SET deleted_at = datetime('now') WHERE hash_prefix = ?"
+        params = (hash_prefix,)
+        if self.is_turso_enabled:
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
 
     def soft_delete_song(self, song_id: str) -> bool:
         """Soft-delete a song by ID.
@@ -1118,10 +1359,23 @@ class DatabaseClient:
         Returns:
             True if song was marked as deleted, False if not found
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?", (song_id,))
-            return cursor.rowcount > 0
+        sql = "UPDATE songs SET deleted_at = datetime('now') WHERE id = ?"
+        params = (song_id,)
+        if self.is_turso_enabled:
+            result = self._execute_remote(
+                f"SELECT 1 FROM songs WHERE id = ? LIMIT 1", (song_id,)
+            )
+            exists = len(result.get("rows", [])) > 0
+            if not exists:
+                return False
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+            return True
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
+                return cursor.rowcount > 0
 
     def list_deleted_songs(self) -> list[Song]:
         """List all soft-deleted songs.
@@ -1162,10 +1416,23 @@ class DatabaseClient:
         Returns:
             True if song was restored, False if not found
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE songs SET deleted_at = NULL WHERE id = ?", (song_id,))
-            return cursor.rowcount > 0
+        sql = "UPDATE songs SET deleted_at = NULL WHERE id = ?"
+        params = (song_id,)
+        if self.is_turso_enabled:
+            result = self._execute_remote(
+                f"SELECT 1 FROM songs WHERE id = ? LIMIT 1", (song_id,)
+            )
+            exists = len(result.get("rows", [])) > 0
+            if not exists:
+                return False
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+            return True
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
+                return cursor.rowcount > 0
 
     def restore_recording(self, hash_prefix: str) -> bool:
         """Restore a soft-deleted recording.
@@ -1176,9 +1443,20 @@ class DatabaseClient:
         Returns:
             True if recording was restored, False if not found
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE recordings SET deleted_at = NULL WHERE hash_prefix = ?", (hash_prefix,)
+        sql = "UPDATE recordings SET deleted_at = NULL WHERE hash_prefix = ?"
+        params = (hash_prefix,)
+        if self.is_turso_enabled:
+            result = self._execute_remote(
+                f"SELECT 1 FROM recordings WHERE hash_prefix = ? LIMIT 1", (hash_prefix,)
             )
-            return cursor.rowcount > 0
+            exists = len(result.get("rows", [])) > 0
+            if not exists:
+                return False
+            self._execute_remote(sql, params)
+            self._sync_replica(fatal=False)
+            return True
+        else:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
+                return cursor.rowcount > 0

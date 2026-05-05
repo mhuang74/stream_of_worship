@@ -11,6 +11,7 @@ from stream_of_worship.admin.db.client import (
     DatabaseClient,
     LIBSQL_AVAILABLE,
     SyncError,
+    _format_param,
 )
 from stream_of_worship.admin.db.models import Recording, Song
 
@@ -379,17 +380,19 @@ class TestRecordingOperations:
         assert retrieved.original_filename == "other.mp3"
 
     def test_delete_recording_success(self, client, sample_recording):
-        """Deletes recording by hash_prefix."""
+        """Soft-deletes recording by hash_prefix."""
         client.insert_recording(sample_recording)
 
         # Verify recording exists
         assert client.get_recording_by_hash("c6de4449928d") is not None
 
-        # Delete recording
+        # Delete recording (soft delete)
         client.delete_recording("c6de4449928d")
 
-        # Verify recording is deleted
-        assert client.get_recording_by_hash("c6de4449928d") is None
+        # Verify recording is soft-deleted (has deleted_at set)
+        deleted = client.get_recording_by_hash("c6de4449928d")
+        assert deleted is not None
+        assert deleted.deleted_at is not None
 
     def test_delete_recording_not_found(self, client):
         """Deleting non-existent recording does not raise error."""
@@ -442,13 +445,13 @@ class TestSyncFeatures:
 
     def test_is_turso_enabled_with_config(self, temp_db_path):
         """Test Turso detection with configuration."""
-        client = DatabaseClient(
-            temp_db_path,
-            turso_url="libsql://test.turso.io",
-            turso_token="test-token",
-        )
-        # Will be False because libsql is not available in test environment
-        assert client.is_turso_enabled is False
+        with patch("stream_of_worship.admin.db.client.LIBSQL_AVAILABLE", False):
+            client = DatabaseClient(
+                temp_db_path,
+                turso_url="libsql://test.turso.io",
+                turso_token="test-token",
+            )
+            assert client.is_turso_enabled is False
 
     def test_sync_raises_error_when_not_configured(self, temp_db_path):
         """Test that sync raises error when Turso is not configured."""
@@ -461,7 +464,7 @@ class TestSyncFeatures:
         """Test getting stats when sync metadata is not initialized."""
         stats = client.get_stats()
 
-        assert stats.sync_version == "1"
+        assert stats.sync_version == "2"
         assert stats.local_device_id == ""
         assert stats.turso_configured is False
 
@@ -516,3 +519,380 @@ class TestSyncFeatures:
             sync_url="libsql://test.turso.io",
             auth_token="test-token",
         )
+
+
+class TestFormatParam:
+    """Tests for _format_param() helper function."""
+
+    def test_none(self):
+        assert _format_param(None) == {"type": "null"}
+
+    def test_bool_true(self):
+        assert _format_param(True) == {"type": "integer", "value": "1"}
+
+    def test_bool_false(self):
+        assert _format_param(False) == {"type": "integer", "value": "0"}
+
+    def test_int(self):
+        assert _format_param(42) == {"type": "integer", "value": "42"}
+
+    def test_negative_int(self):
+        assert _format_param(-1) == {"type": "integer", "value": "-1"}
+
+    def test_float(self):
+        assert _format_param(3.14) == {"type": "float", "value": "3.14"}
+
+    def test_str(self):
+        assert _format_param("hello") == {"type": "text", "value": "hello"}
+
+    def test_empty_str(self):
+        assert _format_param("") == {"type": "text", "value": ""}
+
+    def test_bytes(self):
+        import base64
+
+        data = b"\x00\x01\x02"
+        result = _format_param(data)
+        assert result["type"] == "blob"
+        assert result["base64"] == base64.b64encode(data).decode()
+
+    def test_other_type(self):
+        result = _format_param(object())
+        assert result["type"] == "text"
+        assert "object" in result["value"]
+
+
+class TestHttpPipelineUrl:
+    """Tests for http_pipeline_url property."""
+
+    def test_libsql_url(self, temp_db_path):
+        client = DatabaseClient(temp_db_path, turso_url="libsql://my-db.turso.io")
+        assert client.http_pipeline_url == "https://my-db.turso.io/v2/pipeline"
+
+    def test_https_url_passthrough(self, temp_db_path):
+        client = DatabaseClient(temp_db_path, turso_url="https://my-db.turso.io")
+        assert client.http_pipeline_url == "https://my-db.turso.io/v2/pipeline"
+
+    def test_no_url(self, temp_db_path):
+        client = DatabaseClient(temp_db_path)
+        assert client.http_pipeline_url is None
+
+    def test_trailing_slash_stripped(self, temp_db_path):
+        client = DatabaseClient(temp_db_path, turso_url="libsql://my-db.turso.io/")
+        assert client.http_pipeline_url == "https://my-db.turso.io/v2/pipeline"
+
+
+class TestExecuteRemotePipeline:
+    """Tests for _execute_remote_pipeline() with mocked HTTP."""
+
+    @pytest.fixture
+    def turso_client(self, temp_db_path):
+        return DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+
+    def test_successful_pipeline(self, turso_client):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {"type": "ok", "response": {"type": "execute", "result": {"rows": []}}},
+                {"type": "ok", "response": {"type": "close"}},
+            ]
+        }
+
+        with patch("stream_of_worship.admin.db.client.requests.post", return_value=mock_response) as mock_post:
+            results = turso_client._execute_remote_pipeline(
+                [{"type": "execute", "stmt": {"sql": "SELECT 1", "args": []}}, {"type": "close"}]
+            )
+
+            assert len(results) == 2
+            mock_post.assert_called_once()
+            call_kwargs = mock_post.call_args
+            assert call_kwargs[1]["headers"]["Authorization"] == "Bearer test-token"
+            assert call_kwargs[1]["json"]["requests"][0]["type"] == "execute"
+
+    def test_timeout_raises_sync_error(self, turso_client):
+        import requests as http_requests
+
+        with patch(
+            "stream_of_worship.admin.db.client.requests.post",
+            side_effect=http_requests.exceptions.Timeout(),
+        ):
+            with pytest.raises(SyncError, match="timed out"):
+                turso_client._execute_remote_pipeline([{"type": "close"}])
+
+    def test_connection_error_raises_sync_error(self, turso_client):
+        import requests as http_requests
+
+        with patch(
+            "stream_of_worship.admin.db.client.requests.post",
+            side_effect=http_requests.exceptions.ConnectionError("refused"),
+        ):
+            with pytest.raises(SyncError, match="Cannot connect to Turso"):
+                turso_client._execute_remote_pipeline([{"type": "close"}])
+
+    def test_no_url_raises_sync_error(self, temp_db_path):
+        client = DatabaseClient(temp_db_path)
+        with pytest.raises(SyncError, match="Turso not configured"):
+            client._execute_remote_pipeline([{"type": "close"}])
+
+
+class TestCheckPipelineResults:
+    """Tests for _check_pipeline_results()."""
+
+    @pytest.fixture
+    def turso_client(self, temp_db_path):
+        return DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+
+    def test_all_ok(self, turso_client):
+        results = [{"type": "ok", "response": {"type": "execute"}}]
+        turso_client._check_pipeline_results(results)
+
+    def test_error_raises(self, turso_client):
+        results = [{"type": "error", "error": {"message": "syntax error"}}]
+        with pytest.raises(SyncError, match="syntax error"):
+            turso_client._check_pipeline_results(results)
+
+    def test_ignored_error_suppressed(self, turso_client):
+        results = [{"type": "error", "error": {"message": "duplicate column name: foo"}}]
+        turso_client._check_pipeline_results(results, ignore_sql_errors={"duplicate column name"})
+
+    def test_non_ignored_error_raises(self, turso_client):
+        results = [{"type": "error", "error": {"message": "no such table: songs"}}]
+        with pytest.raises(SyncError, match="no such table"):
+            turso_client._check_pipeline_results(results, ignore_sql_errors={"duplicate column name"})
+
+
+class TestExecuteRemote:
+    """Tests for _execute_remote() single-statement helper."""
+
+    @pytest.fixture
+    def turso_client(self, temp_db_path):
+        return DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+
+    def test_returns_result_dict(self, turso_client):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "type": "ok",
+                    "response": {
+                        "type": "execute",
+                        "result": {"rows": [[1, "col1"], [2, "col2"]], "cols": [{"name": "cid"}, {"name": "name"}]},
+                    },
+                },
+                {"type": "ok", "response": {"type": "close"}},
+            ]
+        }
+
+        with patch("stream_of_worship.admin.db.client.requests.post", return_value=mock_response):
+            result = turso_client._execute_remote("PRAGMA table_info(songs)")
+            assert "rows" in result
+            assert len(result["rows"]) == 2
+
+    def test_formats_params_correctly(self, turso_client):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {"type": "ok", "response": {"type": "execute", "result": {}}},
+                {"type": "ok", "response": {"type": "close"}},
+            ]
+        }
+
+        with patch("stream_of_worship.admin.db.client.requests.post", return_value=mock_response) as mock_post:
+            turso_client._execute_remote("INSERT INTO songs (id) VALUES (?)", ("song_001",))
+
+            payload = mock_post.call_args[1]["json"]
+            args = payload["requests"][0]["stmt"]["args"]
+            assert args[0] == {"type": "text", "value": "song_001"}
+
+    def test_empty_result_on_no_ok_response(self, turso_client):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [{"type": "ok", "response": {"type": "close"}}]
+        }
+
+        with patch("stream_of_worship.admin.db.client.requests.post", return_value=mock_response):
+            result = turso_client._execute_remote("COMMIT")
+            assert result == {}
+
+
+class TestExecuteRemoteTransaction:
+    """Tests for _execute_remote_transaction()."""
+
+    @pytest.fixture
+    def turso_client(self, temp_db_path):
+        return DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+
+    def test_sends_begin_and_commit(self, turso_client):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {"type": "ok", "response": {"type": "execute"}},
+                {"type": "ok", "response": {"type": "execute"}},
+                {"type": "ok", "response": {"type": "execute"}},
+                {"type": "ok", "response": {"type": "close"}},
+            ]
+        }
+
+        with patch("stream_of_worship.admin.db.client.requests.post", return_value=mock_response) as mock_post:
+            turso_client._execute_remote_transaction(
+                [("INSERT INTO songs (id) VALUES (?)", ("s1",)), ("INSERT INTO songs (id) VALUES (?)", ("s2",))]
+            )
+
+            payload = mock_post.call_args[1]["json"]
+            requests_list = payload["requests"]
+            assert requests_list[0]["stmt"]["sql"] == "BEGIN"
+            assert requests_list[1]["stmt"]["sql"].startswith("INSERT")
+            assert requests_list[2]["stmt"]["sql"].startswith("INSERT")
+            assert requests_list[3]["stmt"]["sql"] == "COMMIT"
+            assert requests_list[4]["type"] == "close"
+
+
+class TestSyncReplica:
+    """Tests for _sync_replica() with fatal vs non-fatal modes."""
+
+    @patch("stream_of_worship.admin.db.client.LIBSQL_AVAILABLE", True)
+    @patch("stream_of_worship.admin.db.client.libsql")
+    def test_fatal_raises_on_failure(self, mock_libsql, temp_db_path):
+        mock_conn = MagicMock()
+        mock_conn.sync.side_effect = RuntimeError("WAL conflict")
+        mock_libsql.connect.return_value = mock_conn
+
+        client = DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+        _ = client.connection
+
+        with pytest.raises(SyncError, match="Replica sync failed"):
+            client._sync_replica(fatal=True)
+
+    @patch("stream_of_worship.admin.db.client.LIBSQL_AVAILABLE", True)
+    @patch("stream_of_worship.admin.db.client.libsql")
+    def test_non_fatal_logs_warning(self, mock_libsql, temp_db_path):
+        mock_conn = MagicMock()
+        mock_conn.sync.side_effect = RuntimeError("WAL conflict")
+        mock_libsql.connect.return_value = mock_conn
+
+        client = DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+        _ = client.connection
+
+        client._sync_replica(fatal=False)
+
+    def test_noop_when_turso_disabled(self, temp_db_path):
+        client = DatabaseClient(temp_db_path)
+        client._sync_replica(fatal=True)
+
+    def test_noop_when_no_connection(self, temp_db_path):
+        client = DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+        client._sync_replica(fatal=True)
+
+
+class TestApplyColumnMigrationsRemote:
+    """Tests for apply_column_migrations_remote() in schema.py."""
+
+    @pytest.fixture
+    def turso_client(self, temp_db_path):
+        return DatabaseClient(
+            temp_db_path,
+            turso_url="libsql://test.turso.io",
+            turso_token="test-token",
+        )
+
+    def test_idempotent_when_columns_exist(self, turso_client):
+        from stream_of_worship.admin.db.schema import apply_column_migrations_remote, COLUMN_MIGRATIONS
+
+        tables = {t for t, _, _ in COLUMN_MIGRATIONS}
+        pragma_results = {}
+        for table in tables:
+            pragma_results[table] = {
+                "rows": [[i, col, "TEXT", 0, None, 0] for i, (t, col, _) in enumerate(COLUMN_MIGRATIONS) if t == table],
+                "cols": [{"name": "cid"}, {"name": "name"}, {"name": "type"}, {"name": "notnull"}, {"name": "dflt_value"}, {"name": "pk"}],
+            }
+
+        call_count = 0
+
+        def mock_execute_remote(sql, params=(), timeout=10):
+            nonlocal call_count
+            call_count += 1
+            if sql.startswith("PRAGMA table_info"):
+                for table in tables:
+                    if table in sql:
+                        return pragma_results[table]
+            return {}
+
+        turso_client._execute_remote = mock_execute_remote
+        apply_column_migrations_remote(turso_client)
+
+        assert call_count == len(tables)
+
+    def test_issues_alter_when_column_missing(self, turso_client):
+        from stream_of_worship.admin.db.schema import apply_column_migrations_remote, COLUMN_MIGRATIONS
+
+        tables = {t for t, _, _ in COLUMN_MIGRATIONS}
+        alter_statements = []
+
+        def mock_execute_remote(sql, params=(), timeout=10):
+            if sql.startswith("PRAGMA table_info"):
+                for table in tables:
+                    if table in sql:
+                        return {"rows": [], "cols": []}
+            elif sql.startswith("ALTER TABLE"):
+                alter_statements.append(sql)
+            return {}
+
+        turso_client._execute_remote = mock_execute_remote
+        apply_column_migrations_remote(turso_client)
+
+        assert len(alter_statements) == len(COLUMN_MIGRATIONS)
+
+    def test_suppresses_duplicate_column_error(self, turso_client):
+        from stream_of_worship.admin.db.schema import apply_column_migrations_remote
+
+        call_idx = 0
+
+        def mock_execute_remote(sql, params=(), timeout=10):
+            nonlocal call_idx
+            call_idx += 1
+            if sql.startswith("PRAGMA"):
+                return {"rows": [], "cols": []}
+            if sql.startswith("ALTER TABLE") and call_idx > 2:
+                raise SyncError("duplicate column name: foo")
+            return {}
+
+        turso_client._execute_remote = mock_execute_remote
+        apply_column_migrations_remote(turso_client)

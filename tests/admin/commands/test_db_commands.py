@@ -50,8 +50,9 @@ class TestGetDbClient:
         assert client.turso_url == "libsql://test.turso.io"
         assert client.turso_token == "test-token-from-env"
 
-    def test_creates_client_without_turso_config(self, temp_db_path):
+    def test_creates_client_without_turso_config(self, temp_db_path, monkeypatch):
         """Test that get_db_client works without Turso config."""
+        monkeypatch.delenv("SOW_TURSO_TOKEN", raising=False)
         config = AdminConfig()
         config.db_path = temp_db_path
         config.turso_database_url = ""
@@ -133,32 +134,32 @@ class TestShowStatusCommand:
         assert "Enabled" in result.output
 
 
-class TestSyncCommand:
-    """Tests for db sync command."""
+class TestPullCommand:
+    """Tests for db pull command."""
 
-    def test_sync_when_config_not_found(self, tmp_path):
-        """Test sync when config file doesn't exist."""
+    def test_pull_when_config_not_found(self, tmp_path):
+        """Test pull when config file doesn't exist."""
         nonexistent_config = tmp_path / "nonexistent.toml"
 
-        result = runner.invoke(app, ["sync", "--config", str(nonexistent_config)])
+        result = runner.invoke(app, ["pull", "--config", str(nonexistent_config)])
 
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_sync_when_turso_not_configured(self, initialized_db, tmp_path):
-        """Test sync when Turso URL is not configured."""
+    def test_pull_when_turso_not_configured(self, initialized_db, tmp_path):
+        """Test pull when Turso URL is not configured."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n'
         config_path.write_text(config_content)
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 1
         assert "Turso database URL not configured" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_when_libsql_not_installed(self, mock_get_service, initialized_db, tmp_path):
-        """Test sync when libsql is not installed."""
+    def test_pull_when_libsql_not_installed(self, mock_get_service, initialized_db, tmp_path):
+        """Test pull when libsql is not installed."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -177,14 +178,14 @@ class TestSyncCommand:
         mock_service.get_sync_status.return_value = mock_status
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 1
         assert "libsql is not installed" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_with_validation_errors_no_force(self, mock_get_service, initialized_db, tmp_path):
-        """Test sync with validation errors and no force flag."""
+    def test_pull_with_validation_errors_no_force(self, mock_get_service, initialized_db, tmp_path):
+        """Test pull with validation errors and no force flag."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -204,16 +205,16 @@ class TestSyncCommand:
         mock_service.validate_config.return_value = (False, ["Turso token not configured"])
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 1
-        assert "Sync configuration errors" in result.output
+        assert "Pull configuration errors" in result.output
         assert "Turso token not configured" in result.output
         assert "--force" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_with_validation_errors_with_force(self, mock_get_service, initialized_db, tmp_path):
-        """Test sync with validation errors but with force flag."""
+    def test_pull_with_validation_errors_with_force(self, mock_get_service, initialized_db, tmp_path):
+        """Test pull with validation errors but with force flag."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -237,15 +238,15 @@ class TestSyncCommand:
         )
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path), "--force"])
+        result = runner.invoke(app, ["pull", "--config", str(config_path), "--force"])
 
         assert result.exit_code == 0
-        assert "Syncing with Turso" in result.output
+        assert "Pulling from Turso" in result.output
         assert "Sync completed successfully" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_successful_sync(self, mock_get_service, initialized_db, tmp_path):
-        """Test successful sync operation."""
+    def test_successful_pull(self, mock_get_service, initialized_db, tmp_path):
+        """Test successful pull operation."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -269,16 +270,16 @@ class TestSyncCommand:
         )
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 0
-        assert "Syncing with Turso" in result.output
+        assert "Pulling from Turso" in result.output
         assert "Sync completed successfully" in result.output
         mock_service.execute_sync.assert_called_once()
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_config_error_handling(self, mock_get_service, initialized_db, tmp_path):
-        """Test SyncConfigError handling during sync."""
+    def test_pull_config_error_handling(self, mock_get_service, initialized_db, tmp_path):
+        """Test SyncConfigError handling during pull."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -299,15 +300,15 @@ class TestSyncCommand:
         mock_service.execute_sync.side_effect = SyncConfigError("Invalid configuration")
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 1
         assert "Configuration error" in result.output
         assert "Invalid configuration" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_network_error_handling(self, mock_get_service, initialized_db, tmp_path):
-        """Test SyncNetworkError handling during sync."""
+    def test_pull_network_error_handling(self, mock_get_service, initialized_db, tmp_path):
+        """Test SyncNetworkError handling during pull."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -328,7 +329,7 @@ class TestSyncCommand:
         mock_service.execute_sync.side_effect = SyncNetworkError("Connection failed", status_code=500)
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 1
         assert "Network error" in result.output
@@ -336,8 +337,8 @@ class TestSyncCommand:
         assert "Status code: 500" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_generic_exception_handling(self, mock_get_service, initialized_db, tmp_path):
-        """Test generic exception handling during sync."""
+    def test_pull_generic_exception_handling(self, mock_get_service, initialized_db, tmp_path):
+        """Test generic exception handling during pull."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -358,14 +359,14 @@ class TestSyncCommand:
         mock_service.execute_sync.side_effect = Exception("Unexpected error")
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 1
         assert "Unexpected error" in result.output
 
     @patch("stream_of_worship.admin.commands.db.get_sync_service_from_config")
-    def test_sync_status_display_before_after(self, mock_get_service, initialized_db, tmp_path):
-        """Test that sync shows status before and after."""
+    def test_pull_status_display_before_after(self, mock_get_service, initialized_db, tmp_path):
+        """Test that pull shows status before and after."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n\n[turso]\ndatabase_url = "libsql://test.turso.io"\n'
         config_path.write_text(config_content)
@@ -398,7 +399,7 @@ class TestSyncCommand:
         )
         mock_get_service.return_value = mock_service
 
-        result = runner.invoke(app, ["sync", "--config", str(config_path)])
+        result = runner.invoke(app, ["pull", "--config", str(config_path)])
 
         assert result.exit_code == 0
         assert "Never" in result.output
@@ -425,15 +426,15 @@ class TestInitCommand:
         assert "initialized successfully" in result.output
 
     def test_init_with_existing_database_shows_warning(self, initialized_db, tmp_path):
-        """Test that init with existing database shows warning."""
+        """Test that init with existing database applies migrations."""
         config_path = tmp_path / "config.toml"
         config_content = f'[database]\npath = "{initialized_db}"\n'
         config_path.write_text(config_content)
 
         result = runner.invoke(app, ["init", "--config", str(config_path)])
 
-        assert result.exit_code == 1
-        assert "Database already exists" in result.output
+        assert result.exit_code == 0
+        assert "already exists" in result.output or "Migrations applied" in result.output
 
     def test_init_force_resets_database(self, initialized_db, tmp_path):
         """Test that init --force resets existing database."""
