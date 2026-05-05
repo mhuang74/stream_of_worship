@@ -72,6 +72,25 @@ Both the admin and user app connect using `libsql.connect()` with a local file p
 
 **Turso bootstrap** (`admin/commands/db.py` line 399): One-time `sow-admin db turso-bootstrap` command that initializes the Turso cloud database, creates schema, and optionally seeds data.
 
+### libsql Sync Semantics (2026-05-05 findings)
+
+**`conn.sync()` is always bidirectional** — the libsql Python SDK (v0.1.11) provides no push-only or pull-only API. The method takes no parameters. Directional behavior is achieved through:
+
+- **Token permissions**: Read-only token prevents push; read-write token allows both directions
+- **Pre-conditions**: Deleting local DB before sync = effective pull-only. WAL checkpoint before sync = clean push.
+
+**WAL conflict risk**: When local writes accumulate WAL frames between syncs, `conn.sync()` may fail with `WalConflict` because the Rust replicator's `InjectorWal` detects page-level conflicts between local and remote WAL frame histories. The fix is to `PRAGMA wal_checkpoint(TRUNCATE)` before syncing to collapse local WAL.
+
+**Sidecar files**: libsql embedded replicas create additional files alongside the main `.db`:
+- `.db-shm` — shared memory (WAL index)
+- `.db-wal` — write-ahead log
+- `.db-journal` — rollback journal (rare)
+- `.db-info` — libsql replication metadata (frame counter, etc.)
+
+All sidecar files must be deleted together when resetting local state.
+
+**Planned change**: Replacing `db sync` with explicit `db publish` (push) and `db update` (pull) commands. See `specs/simplify_turso_sync_publish_update.md`.
+
 ## Database File Locations
 
 - **Admin catalog DB**: `~/.config/sow-admin/db/sow.db`

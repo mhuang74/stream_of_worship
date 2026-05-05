@@ -95,6 +95,43 @@ This means `--lrc incomplete` matches recordings where `lrc_status` is any of `p
 
 **IMPORTANT: The Admin CLI has NO automatic/periodic sync.** The `sync_on_startup` config field exists but is never consumed by the Admin CLI -- it is only used by the User App. The Admin CLI requires manual `sow-admin db sync` invocation.
 
+### Critical Finding: libsql `.sync()` is Always Bidirectional (2026-05-05)
+
+**`conn.sync()` takes no parameters and always performs bidirectional replication** — there is no push-only or pull-only mode in the libsql Python SDK (v0.1.11). The full `libsql.connect()` signature supports:
+
+```python
+libsql.connect(
+    database,
+    timeout=5.0,
+    isolation_level=Ellipsis,
+    _check_same_thread=True,
+    _uri=False,
+    sync_url=None,
+    sync_interval=None,  # Auto-sync interval (unused in this project)
+    offline=False,        # Offline mode (unused in this project)
+    auth_token='',
+    encryption_key=None,
+)
+```
+
+The Connection object has only these methods: `close`, `commit`, `cursor`, `execute`, `executemany`, `executescript`, `in_transaction`, `isolation_level`, `rollback`, `sync`. There is no separate `push()` or `pull()` method.
+
+**Achieving directional behavior:**
+- **Push-only** (admin): Write locally → WAL checkpoint → `conn.sync()`. Since admin is the only Turso writer, the "pull" half is a no-op.
+- **Pull-only** (app): Uses `SOW_TURSO_READONLY_TOKEN`. Server rejects any push attempts from a read-only token.
+- **Fresh pull** (recovery): Delete local DB files → `conn.sync()`. With no local state, push is no-op.
+
+### Known WAL Conflict Issue (2026-05-05)
+
+The current `DatabaseClient.sync()` flow has a design flaw that causes `WalConflict` errors:
+
+1. `apply_column_migrations()` runs pre-sync (line 207) — writes WAL frames
+2. Any local data writes (scrape, reconcile, etc.) also accumulate WAL frames
+3. `conn.sync()` (line 213) tries to inject remote WAL frames — conflicts with local frames
+4. Rust replicator raises `WalConflict` / `"WAL frame insert conflict"`
+
+**Fix (spec'd in `specs/simplify_turso_sync_publish_update.md`):** Replace bidirectional `db sync` with explicit `db publish` (with WAL checkpoint before sync) and `db update` (delete local + re-pull).
+
 ### B. Analysis Service Job Status Sync
 
 **`sow-admin audio status --sync`** (audio.py lines 1918-2020):
