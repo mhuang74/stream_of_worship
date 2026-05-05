@@ -304,19 +304,21 @@ def list_songs(
     else:
         # Table format
         table = Table(title=f"Songs ({len(songs)} total)")
-        table.add_column("ID", style="dim", no_wrap=True)
         table.add_column("Title", style="cyan")
-        table.add_column("Composer", style="green")
-        table.add_column("Album", style="yellow")
         table.add_column("Key", style="magenta", justify="center")
+        table.add_column("Album", style="yellow")
+        table.add_column("Album Series", style="white")
+        table.add_column("Composer", style="green")
+        table.add_column("ID", style="dim", no_wrap=True)
 
         for song in songs:
             table.add_row(
-                song.id,
                 song.title,
-                song.composer or "-",
-                song.album_name or "-",
                 song.musical_key or "-",
+                song.album_name or "-",
+                song.album_series or "-",
+                song.composer or "-",
+                song.id,
             )
 
         console.print(table)
