@@ -9,7 +9,6 @@ from datetime import datetime
 
 import psycopg
 import pytest
-from testcontainers.postgres import PostgresContainer
 
 from stream_of_worship.app.db.songset_client import SongsetClient, MissingReferenceError
 from stream_of_worship.app.db.models import Songset, SongsetItem
@@ -17,18 +16,7 @@ from stream_of_worship.app.db.schema import ALL_APP_SCHEMA_STATEMENTS
 from stream_of_worship.db.connection import ConnectionProvider
 
 
-def _pg_url(pg: PostgresContainer) -> str:
-    return pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-
-
 @pytest.fixture(scope="module")
-def postgres_url():
-    """Start a Postgres container for the module."""
-    with PostgresContainer("postgres:16-alpine") as pg:
-        yield _pg_url(pg)
-
-
-@pytest.fixture
 def schema_provider(postgres_url):
     """Create a Postgres database with all tables (catalog + app).
 
@@ -79,6 +67,15 @@ def songset_client(schema_provider):
 def sample_songset(songset_client):
     """Create a sample songset for item tests."""
     return songset_client.create_songset("Test Songset", "A description")
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(schema_provider):
+    """Truncate tables between tests for isolation."""
+    conn = schema_provider.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("TRUNCATE TABLE songsets, songset_items CASCADE")
+    conn.commit()
 
 
 class TestSongsetCRUD:
