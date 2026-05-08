@@ -12,7 +12,6 @@ from stream_of_worship.admin.config import (
     get_cache_dir,
     get_config_dir,
     get_config_path,
-    get_default_db_path,
     get_env_var_name,
     get_secret,
 )
@@ -29,7 +28,7 @@ class TestAdminConfig:
         assert config.r2_bucket == "sow-audio"
         assert config.r2_endpoint_url == ""
         assert config.r2_region == "auto"
-        assert config.turso_database_url == ""
+        assert config.database_url == ""
 
     def test_load_from_file(self, tmp_path, monkeypatch):
         """Test loading config from TOML file."""
@@ -39,8 +38,7 @@ class TestAdminConfig:
         monkeypatch.delenv("SOW_R2_REGION", raising=False)
 
         config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 [service]
 analysis_url = "https://analysis.example.com"
 
@@ -49,13 +47,12 @@ bucket = "my-bucket"
 endpoint_url = "https://xxx.r2.cloudflarestorage.com"
 region = "us-east-1"
 
-[turso]
-database_url = "libsql://my-db.turso.io"
-
 [database]
-path = "/custom/path/sow.db"
-"""
-        )
+url = "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow?sslmode=require"
+
+[paths]
+cache_dir = "/custom/cache"
+""")
 
         config = AdminConfig.load(config_file)
 
@@ -63,8 +60,11 @@ path = "/custom/path/sow.db"
         assert config.r2_bucket == "my-bucket"
         assert config.r2_endpoint_url == "https://xxx.r2.cloudflarestorage.com"
         assert config.r2_region == "us-east-1"
-        assert config.turso_database_url == "libsql://my-db.turso.io"
-        assert str(config.db_path) == "/custom/path/sow.db"
+        assert (
+            config.database_url
+            == "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow?sslmode=require"
+        )
+        assert config.cache_dir == Path("/custom/cache")
 
     def test_load_missing_file(self, tmp_path):
         """Test that loading missing file raises FileNotFoundError."""
@@ -122,6 +122,54 @@ path = "/custom/path/sow.db"
         pass
 
 
+class TestConnectionUrl:
+    """Tests for get_connection_url()."""
+
+    def test_returns_database_url_when_no_password(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.delenv("SOW_DATABASE_PASSWORD", raising=False)
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        assert config.get_connection_url() == "postgresql://user@host/db"
+
+    def test_injects_password_from_env(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.setenv("SOW_DATABASE_PASSWORD", "secret")
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        assert config.get_connection_url() == "postgresql://user:secret@host/db"
+
+    def test_sow_database_url_env_overrides_toml(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.setenv("SOW_DATABASE_URL", "postgresql://other@host/other")
+        monkeypatch.delenv("SOW_DATABASE_PASSWORD", raising=False)
+        assert config.get_connection_url() == "postgresql://other@host/other"
+
+    def test_raises_when_empty(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = ""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        with pytest.raises(ValueError, match="database_url is not configured"):
+            config.get_connection_url()
+
+    def test_ignores_old_turso_section(self, tmp_path, monkeypatch):
+        """Old [turso] section is silently ignored."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("""
+[turso]
+database_url = "libsql://old.turso.io"
+sync_on_startup = true
+
+[database]
+url = "postgresql://user@host/db"
+""")
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config = AdminConfig.load(config_file)
+        assert config.database_url == "postgresql://user@host/db"
+        assert config.get_connection_url() == "postgresql://user@host/db"
+
+
 class TestConfigPaths:
     """Tests for config path functions."""
 
@@ -136,12 +184,6 @@ class TestConfigPaths:
         config_path = get_config_path()
         assert isinstance(config_path, Path)
         assert config_path.name == "config.toml"
-
-    def test_get_default_db_path(self):
-        """Test that get_default_db_path returns correct path."""
-        db_path = get_default_db_path()
-        assert isinstance(db_path, Path)
-        assert db_path.name == "sow.db"
 
 
 class TestEnsureConfigExists:
@@ -178,7 +220,7 @@ class TestEnvironmentVariables:
         """Test that env var names are formatted correctly."""
         assert get_env_var_name("r2.access_key_id") == "SOW_R2_ACCESS_KEY_ID"
         assert get_env_var_name("analysis_url") == "SOW_ANALYSIS_URL"
-        assert get_env_var_name("turso.auth_token") == "SOW_TURSO_AUTH_TOKEN"
+        assert get_env_var_name("database.password") == "SOW_DATABASE_PASSWORD"
 
     def test_get_secret_from_env(self, monkeypatch):
         """Test getting secrets from environment."""
@@ -203,14 +245,12 @@ class TestAdminCacheDir:
     def test_toml_cache_dir_loaded(self, tmp_path, monkeypatch):
         """cache_dir from TOML [paths] section is loaded."""
         config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 [service]
 analysis_url = "http://localhost:8000"
 
 [paths]
 cache_dir = "/toml/admin-cache"
-"""
-        )
+""")
         config = AdminConfig.load(config_file)
         assert config.cache_dir == Path("/toml/admin-cache")
