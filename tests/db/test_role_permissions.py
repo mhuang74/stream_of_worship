@@ -26,8 +26,11 @@ def restricted_connection(postgres_url):
     with conn.cursor() as cur:
         for stmt in ALL_SCHEMA_STATEMENTS:
             cur.execute(stmt)
+    conn.commit()
 
     # Create restricted role (re-create each time for isolation)
+    # Must use autocommit for CREATE ROLE (cannot be in transaction)
+    conn.autocommit = True
     with conn.cursor() as cur:
         cur.execute("DROP ROLE IF EXISTS sow_app_test;")
         cur.execute("CREATE ROLE sow_app_test WITH LOGIN PASSWORD 'testpass';")
@@ -44,7 +47,7 @@ def restricted_connection(postgres_url):
         cur.execute("GRANT ALL ON songset_items TO sow_app_test;")
         # Allow sequence usage for songset inserts
         cur.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sow_app_test;")
-        cur.execute("COMMIT")
+    conn.autocommit = False
 
     # Build restricted URL using the *same* database
     restricted_url = (
@@ -54,10 +57,10 @@ def restricted_connection(postgres_url):
     yield conn, restricted_url
 
     # Cleanup: drop role's owned objects first, then the role itself
+    conn.autocommit = True
     with conn.cursor() as cur:
         cur.execute("DROP OWNED BY sow_app_test CASCADE;")
         cur.execute("DROP ROLE IF EXISTS sow_app_test;")
-        cur.execute("COMMIT")
     conn.close()
 
 

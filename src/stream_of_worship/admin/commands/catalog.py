@@ -224,12 +224,6 @@ def list_songs(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    db_path = config.db_path
-
-    if not db_path.exists():
-        console.print(f"[red]Database not found at {db_path}[/red]")
-        raise typer.Exit(1)
-
     db_client = get_db_client(config)
 
     if albums:
@@ -343,12 +337,6 @@ def search_songs(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    db_path = config.db_path
-
-    if not db_path.exists():
-        console.print(f"[red]Database not found at {db_path}[/red]")
-        raise typer.Exit(1)
-
     db_client = get_db_client(config)
 
     try:
@@ -402,12 +390,6 @@ def show_song(
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
-
-    db_path = config.db_path
-
-    if not db_path.exists():
-        console.print(f"[red]Database not found at {db_path}[/red]")
         raise typer.Exit(1)
 
     db_client = get_db_client(config)
