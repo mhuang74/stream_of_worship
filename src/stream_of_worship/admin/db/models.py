@@ -231,29 +231,29 @@ class Recording:
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
-            deleted_at = row[27]
-            download_status = row[28]
+            download_status = row[27]
+            deleted_at = row[28]
         elif row_len == 28:
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
-            deleted_at = row[27]
-            download_status = None
+            download_status = row[27]
+            deleted_at = None
         elif row_len == 27:
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
-            deleted_at = None
             download_status = None
+            deleted_at = None
         elif row_len == 26:
             visibility_status = None
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
-            deleted_at = None
             download_status = None
+            deleted_at = None
         else:
             visibility_status = None
             created_at = row[23] if row_len > 23 else None

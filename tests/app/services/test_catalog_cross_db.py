@@ -1,94 +1,98 @@
-"""Tests for CatalogService cross-DB lookups.
+"""Tests for CatalogService with unified Postgres database.
 
-Tests the two-step Python-side JOIN replacement for songset items.
+Previously these tests created two separate SQLite databases (catalog + songsets).
+Now all tables live in a single Postgres database, so the tests initialize
+one shared schema and use a single ConnectionProvider.
 """
 
-import sqlite3
-from pathlib import Path
+import pytest
 from unittest.mock import MagicMock
 
-import pytest
-
+from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.services.catalog import CatalogService, SongsetItemWithDetails
+from stream_of_worship.db.connection import ConnectionProvider
+from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
+
+
+@pytest.fixture(scope="function")
+def unified_db(postgres_url):
+    """Set up a unified Postgres database with all tables.
+
+    Returns:
+        Tuple of (DatabaseClient, ReadOnlyClient, SongsetClient).
+    """
+    provider = ConnectionProvider(postgres_url)
+    conn = provider.get_connection()
+
+    # Create schema
+    with conn.cursor() as cur:
+        for stmt in ALL_SCHEMA_STATEMENTS:
+            cur.execute(stmt)
+
+    admin_client = DatabaseClient(provider)
+    read_client = ReadOnlyClient(provider)
+    songset_client = SongsetClient(provider)
+
+    yield admin_client, read_client, songset_client
+
+    # Cleanup (use fresh connection in case provider was closed by a test)
+    try:
+        cleanup_provider = ConnectionProvider(postgres_url)
+        with cleanup_provider.get_connection().cursor() as cur:
+            cur.execute("""
+                DROP TABLE IF EXISTS songset_items CASCADE;
+                DROP TABLE IF EXISTS songsets CASCADE;
+                DROP TABLE IF EXISTS recordings CASCADE;
+                DROP TABLE IF EXISTS songs CASCADE;
+                DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+            """)
+        cleanup_provider.close()
+    except Exception:
+        pass
 
 
 class TestCrossDBLookup:
-    """Test suite for cross-DB songset item lookups."""
+    """Test suite for songset item lookups in unified Postgres DB."""
 
-    def test_get_songset_with_items_resolves_references(self, tmp_path):
+    def test_get_songset_with_items_resolves_references(self, unified_db):
         """Test that songset items resolve song/recording references."""
-        # Create catalog database
-        catalog_db = tmp_path / "catalog.db"
-        conn = sqlite3.connect(catalog_db)
-        conn.execute("""
-            CREATE TABLE songs (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                source_url TEXT NOT NULL,
-                scraped_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE recordings (
-                content_hash TEXT PRIMARY KEY,
-                hash_prefix TEXT NOT NULL,
-                song_id TEXT,
-                original_filename TEXT NOT NULL,
-                file_size_bytes INTEGER NOT NULL,
-                imported_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
-            )
-        """)
-        conn.execute(
-            "INSERT INTO songs VALUES ('song_1', 'Test Song', 'http://test', '2024-01-01', NULL)"
-        )
-        conn.execute(
-            "INSERT INTO recordings VALUES ('full_hash', 'abc123', 'song_1', 'test.mp3', 1000, '2024-01-01', NULL)"
-        )
-        conn.commit()
-        conn.close()
+        admin_client, read_client, songset_client = unified_db
 
-        # Create songsets database
-        songsets_db = tmp_path / "songsets.db"
-        conn = sqlite3.connect(songsets_db)
-        conn.execute("""
-            CREATE TABLE songsets (id TEXT PRIMARY KEY, name TEXT NOT NULL)
-        """)
-        conn.execute("""
-            CREATE TABLE songset_items (
-                id TEXT PRIMARY KEY,
-                songset_id TEXT NOT NULL,
-                song_id TEXT NOT NULL,
-                recording_hash_prefix TEXT,
-                position INTEGER NOT NULL,
-                gap_beats REAL DEFAULT 2.0,
-                crossfade_enabled INTEGER DEFAULT 0,
-                crossfade_duration_seconds REAL,
-                key_shift_semitones INTEGER DEFAULT 0,
-                tempo_ratio REAL DEFAULT 1.0,
-                created_at TEXT
+        # Insert catalog data
+        admin_client.insert_song(
+            Song(
+                id="song_1",
+                title="Test Song",
+                source_url="http://test",
+                scraped_at="2024-01-01T00:00:00",
             )
-        """)
-        conn.execute("INSERT INTO songsets VALUES ('set_1', 'Test Set')")
-        conn.execute(
-            "INSERT INTO songset_items VALUES ('item_1', 'set_1', 'song_1', 'abc123', 0, 2.0, 0, NULL, 0, 1.0, '2024-01-01')"
         )
-        conn.commit()
-        conn.close()
+        admin_client.insert_recording(
+            Recording(
+                content_hash="f" * 64,
+                hash_prefix="abc123",
+                song_id="song_1",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+            )
+        )
 
-        # Create clients
-        read_client = ReadOnlyClient(catalog_db)
-        songset_client = SongsetClient(songsets_db)
+        # Insert songset data
+        songset = songset_client.create_songset("Test Set")
+        songset_client.add_item(
+            songset_id=songset.id,
+            song_id="song_1",
+            recording_hash_prefix="abc123",
+            position=0,
+        )
 
         catalog = CatalogService(read_client)
-
-        # Get songset with items
-        items, orphan_count = catalog.get_songset_with_items("set_1", songset_client)
+        items, orphan_count = catalog.get_songset_with_items(songset.id, songset_client)
 
         assert len(items) == 1
         assert orphan_count == 0
@@ -101,71 +105,22 @@ class TestCrossDBLookup:
         assert item.recording.hash_prefix == "abc123"
         assert item.is_orphan is False
 
-    def test_get_songset_with_items_detects_orphans(self, tmp_path):
+    def test_get_songset_with_items_detects_orphans(self, unified_db):
         """Test that missing references are marked as orphans."""
-        # Create catalog database (empty - no songs/recordings)
-        catalog_db = tmp_path / "catalog.db"
-        conn = sqlite3.connect(catalog_db)
-        conn.execute("""
-            CREATE TABLE songs (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                source_url TEXT NOT NULL,
-                scraped_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE recordings (
-                content_hash TEXT PRIMARY KEY,
-                hash_prefix TEXT NOT NULL,
-                song_id TEXT,
-                original_filename TEXT NOT NULL,
-                file_size_bytes INTEGER NOT NULL,
-                imported_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
-            )
-        """)
-        conn.commit()
-        conn.close()
+        _, read_client, songset_client = unified_db
 
-        # Create songsets database with orphaned items
-        songsets_db = tmp_path / "songsets.db"
-        conn = sqlite3.connect(songsets_db)
-        conn.execute("""
-            CREATE TABLE songsets (id TEXT PRIMARY KEY, name TEXT NOT NULL)
-        """)
-        conn.execute("""
-            CREATE TABLE songset_items (
-                id TEXT PRIMARY KEY,
-                songset_id TEXT NOT NULL,
-                song_id TEXT NOT NULL,
-                recording_hash_prefix TEXT,
-                position INTEGER NOT NULL,
-                gap_beats REAL DEFAULT 2.0,
-                crossfade_enabled INTEGER DEFAULT 0,
-                crossfade_duration_seconds REAL,
-                key_shift_semitones INTEGER DEFAULT 0,
-                tempo_ratio REAL DEFAULT 1.0,
-                created_at TEXT
-            )
-        """)
-        conn.execute("INSERT INTO songsets VALUES ('set_1', 'Test Set')")
-        # Item references non-existent recording
-        conn.execute(
-            "INSERT INTO songset_items VALUES ('item_1', 'set_1', 'song_1', 'missing_hash', 0, 2.0, 0, NULL, 0, 1.0, '2024-01-01')"
+        # No catalog data - empty songs/recordings tables
+
+        songset = songset_client.create_songset("Test Set")
+        songset_client.add_item(
+            songset_id=songset.id,
+            song_id="song_1",
+            recording_hash_prefix="missing_hash",
+            position=0,
         )
-        conn.commit()
-        conn.close()
-
-        # Create clients
-        read_client = ReadOnlyClient(catalog_db)
-        songset_client = SongsetClient(songsets_db)
 
         catalog = CatalogService(read_client)
-
-        # Get songset with items
-        items, orphan_count = catalog.get_songset_with_items("set_1", songset_client)
+        items, orphan_count = catalog.get_songset_with_items(songset.id, songset_client)
 
         assert len(items) == 1
         assert orphan_count == 1
@@ -176,89 +131,49 @@ class TestCrossDBLookup:
         assert item.recording is None
         assert item.display_title == "Unknown"
 
-    def test_get_songset_with_items_detects_soft_deleted(self, tmp_path):
+    def test_get_songset_with_items_detects_soft_deleted(self, unified_db):
         """Test that soft-deleted songs are marked as orphans."""
-        # Create catalog with soft-deleted song
-        catalog_db = tmp_path / "catalog.db"
-        conn = sqlite3.connect(catalog_db)
-        conn.execute("""
-            CREATE TABLE songs (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                source_url TEXT NOT NULL,
-                scraped_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE recordings (
-                content_hash TEXT PRIMARY KEY,
-                hash_prefix TEXT NOT NULL,
-                song_id TEXT,
-                original_filename TEXT NOT NULL,
-                file_size_bytes INTEGER NOT NULL,
-                imported_at TEXT NOT NULL,
-                deleted_at TIMESTAMP
-            )
-        """)
-        # Soft-deleted song
-        conn.execute(
-            "INSERT INTO songs VALUES ('song_1', 'Deleted Song', 'http://test', '2024-01-01', '2024-01-02')"
-        )
-        # Soft-deleted recording
-        conn.execute(
-            "INSERT INTO recordings VALUES ('full_hash', 'abc123', 'song_1', 'test.mp3', 1000, '2024-01-01', '2024-01-02')"
-        )
-        conn.commit()
-        conn.close()
+        admin_client, read_client, songset_client = unified_db
 
-        # Create songsets database
-        songsets_db = tmp_path / "songsets.db"
-        conn = sqlite3.connect(songsets_db)
-        conn.execute("""
-            CREATE TABLE songsets (id TEXT PRIMARY KEY, name TEXT NOT NULL)
-        """)
-        conn.execute("""
-            CREATE TABLE songset_items (
-                id TEXT PRIMARY KEY,
-                songset_id TEXT NOT NULL,
-                song_id TEXT NOT NULL,
-                recording_hash_prefix TEXT,
-                position INTEGER NOT NULL,
-                gap_beats REAL DEFAULT 2.0,
-                crossfade_enabled INTEGER DEFAULT 0,
-                crossfade_duration_seconds REAL,
-                key_shift_semitones INTEGER DEFAULT 0,
-                tempo_ratio REAL DEFAULT 1.0,
-                created_at TEXT
+        # Insert soft-deleted song and recording
+        admin_client.insert_song(
+            Song(
+                id="song_1",
+                title="Deleted Song",
+                source_url="http://test",
+                scraped_at="2024-01-01T00:00:00",
             )
-        """)
-        conn.execute("INSERT INTO songsets VALUES ('set_1', 'Test Set')")
-        conn.execute(
-            "INSERT INTO songset_items VALUES ('item_1', 'set_1', 'song_1', 'abc123', 0, 2.0, 0, NULL, 0, 1.0, '2024-01-01')"
         )
-        conn.commit()
-        conn.close()
+        admin_client.insert_recording(
+            Recording(
+                content_hash="f" * 64,
+                hash_prefix="abc123",
+                song_id="song_1",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+            )
+        )
+        # Soft delete both
+        admin_client.soft_delete_song("song_1")
+        admin_client.delete_recording("abc123")
 
-        # Create clients
-        read_client = ReadOnlyClient(catalog_db)
-        songset_client = SongsetClient(songsets_db)
+        songset = songset_client.create_songset("Test Set")
+        songset_client.add_item(
+            songset_id=songset.id,
+            song_id="song_1",
+            recording_hash_prefix="abc123",
+            position=0,
+        )
 
         catalog = CatalogService(read_client)
-
-        # Get songset with items
-        items, orphan_count = catalog.get_songset_with_items("set_1", songset_client)
+        items, orphan_count = catalog.get_songset_with_items(songset.id, songset_client)
 
         assert len(items) == 1
-        # Song and recording exist but are soft-deleted
-        # The read_client.get_song_including_deleted will find them
-        # But item.is_orphan should be True because recording is deleted
-        # (depends on business logic - currently we mark as orphan if deleted)
-
+        # Both song and recording exist but are soft-deleted
+        # is_orphan should be True because recording is deleted
         item = items[0]
-        # Soft-deleted items are found via including_deleted=True
-        # but should be treated as orphans for display purposes
-        # This depends on the exact implementation
+        assert item.is_orphan is True
 
 
 class TestSongsetItemWithDetails:
@@ -306,7 +221,7 @@ class TestSongsetItemWithDetails:
             id="song_1",
             title="Test Song",
             source_url="http://test",
-            scraped_at="2024-01-01",
+            scraped_at="2024-01-01T00:00:00",
         )
         item = SongsetItem(
             id="item_1",
@@ -330,103 +245,56 @@ class TestSongsetItemWithDetails:
 
 
 class TestJoinColumnOffset:
-    """Test JOIN query splits at correct offset (R6.1)."""
+    """Test JOIN query splits at correct offset."""
 
-    def test_join_query_splits_at_correct_offset(self, tmp_path):
-        """Verify _list_analyzed_songs splits rows correctly at SONG_COLUMN_COUNT."""
-        from stream_of_worship.admin.db.schema import SONG_COLUMN_COUNT
+    def test_join_query_splits_at_correct_offset(self, unified_db):
+        """Verify _list_analyzed_songs splits rows correctly.
+        Using SONG_COLUMN_COUNT from schema to split joined rows.
+        """
+        admin_client, read_client, _ = unified_db
 
-        catalog_db = tmp_path / "catalog.db"
-        conn = sqlite3.connect(catalog_db)
-
-        # Create full 17-column songs table
-        conn.execute("""
-            CREATE TABLE songs (
-                id TEXT PRIMARY KEY, title TEXT, title_pinyin TEXT, composer TEXT,
-                lyricist TEXT, album_name TEXT, album_series TEXT, musical_key TEXT,
-                lyrics_raw TEXT, lyrics_lines TEXT, sections TEXT, source_url TEXT,
-                table_row_number INTEGER, scraped_at TEXT, created_at TEXT, updated_at TEXT,
-                deleted_at TIMESTAMP
+        # Insert full song
+        admin_client.insert_song(
+            Song(
+                id="song_1",
+                title="Test Song",
+                title_pinyin="test_pinyin",
+                composer="Composer",
+                lyricist="Lyricist",
+                album_name="Album",
+                album_series=None,
+                musical_key="G",
+                lyrics_raw="raw",
+                lyrics_lines="lines",
+                sections=None,
+                source_url="http://test",
+                table_row_number=1,
+                scraped_at="2024-01-01T00:00:00",
             )
-        """)
-
-        # Create recordings table
-        conn.execute("""
-            CREATE TABLE recordings (
-                content_hash TEXT PRIMARY KEY, hash_prefix TEXT, song_id TEXT,
-                original_filename TEXT, file_size_bytes INTEGER, imported_at TEXT,
-                r2_audio_url TEXT, r2_stems_url TEXT, r2_lrc_url TEXT,
-                duration_seconds REAL, tempo_bpm REAL, musical_key TEXT, musical_mode TEXT,
-                key_confidence REAL, loudness_db REAL, beats TEXT, downbeats TEXT,
-                sections TEXT, embeddings_shape TEXT, analysis_status TEXT,
-                analysis_job_id TEXT, lrc_status TEXT, lrc_job_id TEXT,
-                youtube_url TEXT, visibility_status TEXT, created_at TEXT, updated_at TEXT,
-                deleted_at TIMESTAMP
-            )
-        """)
-
-        # Insert 17-column song with deleted_at at index 16
-        conn.execute(
-            """INSERT INTO songs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "song_1",
-                "Test Song",
-                "test_pinyin",
-                "Composer",
-                "Lyricist",
-                "Album",
-                None,
-                "G",
-                "raw",
-                "lines",
-                None,
-                "http://test",
-                1,
-                "2024-01-01",
-                "2024-01-01",
-                "2024-01-01",
-                None,
-            ),
         )
 
-        # Insert 28-column recording
-        conn.execute(
-            """INSERT INTO recordings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "hash1" * 8,
-                "abc123",
-                "song_1",
-                "test.mp3",
-                1000,
-                "2024-01-01",
-                None,
-                None,
-                None,
-                180.0,
-                120.0,
-                "G",
-                "major",
-                0.9,
-                -8.0,
-                None,
-                None,
-                None,
-                None,
-                "completed",
-                None,
-                "completed",
-                None,
-                "2024-01-01",
-                "2024-01-01",
-                "https://yt.com",
-                "published",
-                None,
-            ),
+        # Insert full recording
+        admin_client.insert_recording(
+            Recording(
+                content_hash="h" * 64,
+                hash_prefix="abc123",
+                song_id="song_1",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                duration_seconds=180.0,
+                tempo_bpm=120.0,
+                musical_key="G",
+                musical_mode="major",
+                key_confidence=0.9,
+                loudness_db=-8.0,
+                analysis_status="completed",
+                lrc_status="completed",
+                youtube_url="https://yt.com",
+                visibility_status="published",
+            )
         )
-        conn.commit()
-        conn.close()
 
-        read_client = ReadOnlyClient(catalog_db)
         catalog = CatalogService(read_client)
 
         # Test _list_analyzed_songs
@@ -436,30 +304,59 @@ class TestJoinColumnOffset:
         song = songs[0]
         assert song.song.id == "song_1"
         assert song.song.title == "Test Song"
-        assert song.recording.content_hash == "hash1" * 8
+        assert song.recording.content_hash == "h" * 64
         assert song.recording.visibility_status == "published"
 
-    def test_join_query_with_deleted_at_populated(self, tmp_path):
+    def test_join_query_with_deleted_at_populated(self, unified_db):
         """Test soft-deleted songs filtered out."""
-        catalog_db = tmp_path / "catalog.db"
-        conn = sqlite3.connect(catalog_db)
-        conn.execute("""
-            CREATE TABLE songs (id TEXT PRIMARY KEY, title TEXT, scraped_at TEXT, deleted_at TIMESTAMP)
-        """)
-        conn.execute("""
-            CREATE TABLE recordings (content_hash TEXT PRIMARY KEY, song_id TEXT, analysis_status TEXT, deleted_at TIMESTAMP)
-        """)
-        conn.execute("INSERT INTO songs VALUES ('song_1', 'Active Song', '2024-01-01', NULL)")
-        conn.execute(
-            "INSERT INTO songs VALUES ('song_2', 'Deleted Song', '2024-01-01', '2024-01-02')"
+        admin_client, read_client, _ = unified_db
+
+        admin_client.insert_song(
+            Song(
+                id="song_1",
+                title="Active Song",
+                source_url="http://test",
+                scraped_at="2024-01-01T00:00:00",
+            )
         )
-        conn.execute("INSERT INTO recordings VALUES ('hash1', 'song_1', 'completed', None)")
-        conn.commit()
-        conn.close()
+        admin_client.insert_song(
+            Song(
+                id="song_2",
+                title="Deleted Song",
+                source_url="http://test",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        # Soft delete song_2 via raw SQL
+        conn = admin_client.connection
+        with conn.cursor() as cur:
+            cur.execute("UPDATE songs SET deleted_at = NOW() WHERE id = %s", ("song_2",))
 
-        read_client = ReadOnlyClient(catalog_db)
+        admin_client.insert_recording(
+            Recording(
+                content_hash="h1" + "a" * 62,
+                hash_prefix="hash1",
+                song_id="song_1",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                analysis_status="completed",
+            )
+        )
+        # Insert recording for deleted song too
+        admin_client.insert_recording(
+            Recording(
+                content_hash="h2" + "b" * 62,
+                hash_prefix="hash2",
+                song_id="song_2",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                analysis_status="completed",
+            )
+        )
+
         catalog = CatalogService(read_client)
-
         songs = catalog._list_analyzed_songs()
 
         # Only active song should be returned
