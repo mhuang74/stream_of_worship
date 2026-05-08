@@ -96,13 +96,6 @@ postgres = [
     "psycopg[binary]>=3.2.0",
 ]
 
-# Turso sync dependencies (deprecated - now included in app extra)
-turso = [
-    "libsql>=0.1.0",
-]
-
-# libsql is now included in app extra by default
-
 # Admin CLI dependencies
 admin = [
     "stream-of-worship[postgres]",
@@ -246,7 +239,7 @@ score_lrc = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,turso,app,poc_qwen3_asr]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,app,poc_qwen3_asr]",
 ]
 
 [project.scripts]
