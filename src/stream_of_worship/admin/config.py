@@ -11,6 +11,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import tomllib
 import tomli_w
@@ -65,8 +66,8 @@ class AdminConfig:
             proto, rest = url.split("://", 1)
             user_host = rest.split("@", 1)
             if len(user_host) == 2 and ":" not in user_host[0]:
-                # No password currently in DSN → insert one
-                url = f"{proto}://{user_host[0]}:{password}@{user_host[1]}"
+                encoded_password = quote(password, safe="")
+                url = f"{proto}://{user_host[0]}:{encoded_password}@{user_host[1]}"
         return url
 
     @classmethod

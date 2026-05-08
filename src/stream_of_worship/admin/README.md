@@ -6,11 +6,10 @@ Administrative command-line tool for managing Stream of Worship song catalogs, a
 
 `sow-admin` provides a unified interface for:
 
-- Managing the song catalog (scraped from sop.org)
+`- Managing the song catalog (scraped from sop.org)
 - Tracking audio recordings with hash-based identifiers
 - Processing audio through the analysis service
 - Generating synchronized lyrics (LRC files)
-- Syncing data across devices via Turso
 
 ## Installation
 
@@ -95,20 +94,19 @@ bucket = "sow-audio"
 endpoint_url = "https://xxx.r2.cloudflarestorage.com"
 region = "auto"
 
-[turso]
-database_url = "libsql://your-db.turso.io"
-
 [database]
-path = "/custom/path/sow.db"
+url = "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow"
 ```
+
+Note: The database URL for Neon should include `sslmode=require` in the query string for production use. The application uses `sslmode=prefer` by default, which attempts SSL first but allows fallback for testing environments.
 
 ### Environment Variables
 
 Sensitive credentials should be set via environment variables:
 
 ```bash
-# Turso full-access token (Admin CLI only - env var only for security)
-export SOW_TURSO_TOKEN="your-turso-token"
+# Database password (required for Neon connection)
+export SOW_DATABASE_PASSWORD="your-password"
 
 # R2 Credentials (sensitive - never commit these)
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
@@ -118,21 +116,21 @@ export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 export SOW_ANALYSIS_API_KEY="your-api-key"
 ```
 
-**Note:** Non-sensitive settings like `turso.database_url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
+**Note:** Non-sensitive settings like `database.url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
 
 ## Database Commands
 
-The local database uses SQLite for storing song catalog and recording metadata.
+The database uses PostgreSQL (hosted on Neon) for storing song catalog and recording metadata.
 
 ### Initialize Database
 
-Create a new database with the schema:
+Create the database schema on a new PostgreSQL database:
 
 ```bash
 sow-admin db init
 ```
 
-Force re-initialization (destructive - deletes all data):
+Force re-initialization (re-runs schema creation on an existing database):
 
 ```bash
 sow-admin db init --force
@@ -146,37 +144,30 @@ sow-admin db status
 
 Output example:
 ```
-                    Database Information
-┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Property      ┃ Value                          ┃
-┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ Database Path │ ~/.config/sow-admin/db/sow.db │
-│ Exists        │ Yes                            │
-│ File Size     │ 53,248 bytes (0.05 MB)         │
-└───────────────┴────────────────────────────────┘
+             Database Connection             
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Property      ┃ Value                    ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Database URL  │ postgresql://sow_admin_… │
+│ Password      │ Set via env var          │
+│ Health        │ Connected                │
+└───────────────┴──────────────────────────┘
 
-     Database Statistics
-┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
-┃ Metric          ┃ Value   ┃
-┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
-│ Songs           │ 150     │
-│ Recordings      │ 45      │
-│ Integrity Check │ OK      │
-│ Foreign Keys    │ Enabled │
-│ Last Sync       │ Never   │
-└─────────────────┴─────────┘
+           Database Statistics           
+┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Metric         ┃ Value                ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ Songs          │ 150                  │
+│ Recordings     │ 45                   │
+│ Health Check   │ OK                   │
+│ Schema Version │ 3                    │
+└────────────────┴──────────────────────┘
 ```
 
-### Show Database Path
+### Show Database URL
 
 ```bash
-sow-admin db path
-```
-
-### Reset Database (DESTRUCTIVE)
-
-```bash
-sow-admin db reset --confirm
+sow-admin db url
 ```
 
 ## Database Schema
