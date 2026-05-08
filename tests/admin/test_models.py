@@ -376,8 +376,9 @@ class TestDatabaseStats:
         stats = DatabaseStats()
 
         assert stats.table_counts == {}
-        assert stats.integrity_ok is True
-        assert stats.foreign_keys_enabled is False
+        assert stats.is_healthy is True
+        assert stats.last_sync_at is None
+        assert stats.sync_version == "3"
 
     def test_total_songs(self):
         """Test total_songs property."""

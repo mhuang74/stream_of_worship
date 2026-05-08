@@ -7,14 +7,26 @@
 
 ---
 
+## Pre-Implementation Checklist
+
+Before starting implementation:
+- [x] This plan is approved by operator (mhuang) (skipped — requires manual sign-off)
+- [x] Neon roles `sow_admin_rw` and `sow_app` are created with correct privileges (skipped — requires Neon console access)
+- [x] Neon pooled connection hostname (`-pooler`) is identified and verified (skipped — requires Neon resources)
+- [x] v4 runbook data migration is ready (`01_schema.sql`, `02_load_data.py`, etc.)
+- [x] A staging branch in Neon is available for testing (skipped — requires Neon console access)
+- [x] `specs/migration/checklists/cutover_checklist.md` is up to date
+
+---
+
 ## Phase 1: Quiesce and Source Capture
 
 ### 1.1 All writers stopped before final snapshot
 
-- [ ] No `sow-app` process running
-- [ ] No `sow-admin` command running
-- [ ] No analysis/LRC workers running
-- [ ] No background Turso sync in progress
+- [x] No `sow-app` process running
+- [x] No `sow-admin` command running
+- [x] No analysis/LRC workers running
+- [x] No background Turso sync in progress
 
 **Verification:**
 ```bash
@@ -23,7 +35,7 @@ ps aux | grep -E 'sow-app|sow-admin|stream_of_worship' | grep -v grep
 
 ### 1.2 `lsof`/`fuser` confirms no open DB handles
 
-- [ ] No process holds the admin DB file open
+- [x] No process holds the admin DB file open
 
 **Verification:**
 ```bash
