@@ -217,11 +217,11 @@ class CatalogService:
         params: list = []
 
         if album:
-            query += " AND s.album_name = ?"
+            query += " AND s.album_name = %s"
             params.append(album)
 
         if key:
-            query += " AND s.musical_key = ?"
+            query += " AND s.musical_key = %s"
             params.append(key)
 
         query += " ORDER BY s.title"
@@ -264,11 +264,11 @@ class CatalogService:
         params: list = []
 
         if album:
-            query += " AND s.album_name = ?"
+            query += " AND s.album_name = %s"
             params.append(album)
 
         if key:
-            query += " AND s.musical_key = ?"
+            query += " AND s.musical_key = %s"
             params.append(key)
 
         query += " ORDER BY s.title"
@@ -330,22 +330,22 @@ class CatalogService:
         """
 
         if field == "title":
-            where_clause = "s.title LIKE ? OR s.title_pinyin LIKE ?"
+            where_clause = "s.title LIKE %s OR s.title_pinyin LIKE %s"
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            where_clause = "s.lyrics_raw LIKE ?"
+            where_clause = "s.lyrics_raw LIKE %s"
             params = [search_pattern]
         elif field == "composer":
-            where_clause = "s.composer LIKE ? OR s.lyricist LIKE ?"
+            where_clause = "s.composer LIKE %s OR s.lyricist LIKE %s"
             params = [search_pattern, search_pattern]
         else:  # all
             where_clause = """
-                s.title LIKE ? OR s.title_pinyin LIKE ? OR
-                s.lyrics_raw LIKE ? OR s.composer LIKE ? OR s.lyricist LIKE ?
+                s.title LIKE %s OR s.title_pinyin LIKE %s OR
+                s.lyrics_raw LIKE %s OR s.composer LIKE %s OR s.lyricist LIKE %s
             """
             params = [search_pattern] * 5
 
-        sql = base_sql + where_clause + ") ORDER BY s.title LIMIT ?"
+        sql = base_sql + where_clause + ") ORDER BY s.title LIMIT %s"
         params.append(limit)
 
         cursor.execute(sql, params)
