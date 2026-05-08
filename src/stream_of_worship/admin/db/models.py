@@ -234,13 +234,15 @@ class Recording:
             download_status = row[27]
             deleted_at = row[28]
         elif row_len == 28:
+            # Old schema: no download_status, deleted_at at index 27
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
             visibility_status = row[26]
-            download_status = row[27]
-            deleted_at = None
+            download_status = None
+            deleted_at = row[27]
         elif row_len == 27:
+            # Older schema: no download_status, no deleted_at
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
@@ -248,6 +250,7 @@ class Recording:
             download_status = None
             deleted_at = None
         elif row_len == 26:
+            # Even older: no visibility_status, download_status, or deleted_at
             visibility_status = None
             created_at = row[23]
             updated_at = row[24]

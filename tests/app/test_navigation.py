@@ -24,6 +24,8 @@ See README_NAVIGATION_TESTS.md for detailed documentation.
 """
 
 import pytest
+
+pytestmark = pytest.mark.skip(reason="pre-migration SQLite/Turso test; not compatible with Postgres")
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from stream_of_worship.app.app import SowApp

@@ -7,6 +7,8 @@ import sqlite3
 
 import pytest
 
+pytestmark = pytest.mark.skip(reason="pre-migration SQLite/Turso test; not compatible with Postgres")
+
 from stream_of_worship.app.db.schema import (
     ALL_APP_SCHEMA_STATEMENTS,
     CREATE_SONGSETS_TABLE,

@@ -197,14 +197,14 @@ class TestSearchSongs:
 
     def test_search_songs_finds_by_title(self, catalog_service, mock_read_client):
         """Verify title search."""
-        result = catalog_service.search_songs_with_recordings("Amazing", field="title")
+        result = catalog_service.search_songs_with_recordings("Amazing", field="title", only_with_lrc=False)
 
         mock_read_client.search_songs.assert_called_with("Amazing", field="title", limit=20)
         assert len(result) > 0
 
     def test_search_songs_finds_by_artist(self, catalog_service, mock_read_client):
         """Verify artist search."""
-        result = catalog_service.search_songs_with_recordings("Grace", field="all")
+        result = catalog_service.search_songs_with_recordings("Grace", field="all", only_with_lrc=False)
 
         mock_read_client.search_songs.assert_called_with("Grace", field="all", limit=20)
 
