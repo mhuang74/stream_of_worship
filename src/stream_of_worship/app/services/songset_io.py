@@ -191,6 +191,7 @@ class SongsetIOService:
                 if not recording:
                     warnings.append(f"Recording not found: {recording_hash}, importing as orphan")
                     orphaned_count += 1
+                    recording_hash = None  # Import as orphan (no recording link)
 
             try:
                 self.songset_client.add_item(

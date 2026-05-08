@@ -99,6 +99,10 @@ class TestForeignKeyConstraints:
         """Database with full schema."""
         cursor = conn.cursor()
 
+        # Ensure a clean slate for this test class
+        for tbl in ['songset_items', 'songsets', 'songs']:
+            cursor.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
+
         # Create admin tables (simplified, just enough for FK to work)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS songs (
@@ -166,6 +170,10 @@ class TestConstraints:
     def schema_db(self, conn):
         """Database with full schema."""
         cursor = conn.cursor()
+
+        # Ensure a clean slate for this test class
+        for tbl in ['songset_items', 'songsets', 'songs']:
+            cursor.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS songs (
