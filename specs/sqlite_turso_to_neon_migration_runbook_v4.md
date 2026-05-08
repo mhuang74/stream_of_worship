@@ -8,15 +8,17 @@ Migrate the existing SQLite/Turso-backed catalog database to Neon Postgres with:
 - explicit Postgres schema and application compatibility gates
 - offline cutover optimized for the current operating model: one operator, one user
 - rollback that does not risk losing writes accepted after cutover
-- unambiguous Neon branch, endpoint, and DSN promotion semantics
+- unambiguous Neon branch, endpoint, and DSN switch semantics
 
 This version updates v3 by closing the remaining high-priority gaps from the
-risk review:
+risk review, while keeping the default execution path appropriate for a
+one-person offline migration:
 
 - source freshness must be proven, not only asserted after a local sync
-- the final `cutover-<timestamp>` branch must be explicitly promoted by DSN/endpoint
+- the final `cutover-<timestamp>` branch must be explicitly selected by DSN/endpoint
 - read-only DSN write tests must fail for permission reasons, not constraint reasons
-- accidental-write recovery must not depend only on `updated_at` unless audit coverage exists
+- heavier audit and accidental-write recovery controls are optional hardening, not
+  default blockers
 
 ## Operating Assumptions
 
@@ -34,6 +36,38 @@ risk review:
 
 If any of these assumptions stop being true, use stricter multi-user controls:
 longer write freeze, formal incident log, and explicit write replay plan.
+
+## Execution Profiles
+
+Use the **one-person offline profile** by default. It is intentionally rigorous
+only where mistakes are likely to cause data loss or confusing rollback.
+
+Required gates for the one-person offline profile:
+
+- source freshness proof, or explicit local-authority sign-off
+- SQLite `.backup`, integrity checks, and raw sidecar archive
+- JSON validity scan for JSON-like payload columns
+- atomic/idempotent loader
+- staging dry run
+- row counts, checksums, status distributions, and app-critical query parity
+- local `songsets.db` reference validation
+- fresh `cutover-<timestamp>` branch
+- branch/endpoint check before config switch and once after app/admin restart
+- valid admin/app DSN permission probes
+- legacy config backup before DSN switch
+- rollback smoke test before accepting real Neon writes
+
+Optional hardening for this one-person migration:
+
+- temporary stabilization audit triggers
+- testing post-cutover accidental-write export/replay tooling before cutover
+- branch promotion/rename/reset workflows
+- detailed DSN identity reports for every rehearsal command
+- cold-start latency as a cutover gate
+
+Use the optional hardening items if the migration window becomes multi-user,
+if real writes must be accepted immediately after cutover, or if you cannot
+re-run the migration cheaply from the verified SQLite snapshot.
 
 ## Scope
 
@@ -91,12 +125,15 @@ Prepare these files during implementation:
 - `specs/migration/scripts/02_load_data.py` (must be atomic and retry-safe)
 - `specs/migration/sql/03_post_load.sql`
 - `specs/migration/sql/04_verify.sql`
-- `specs/migration/scripts/05_export_post_cutover.py`
-- `specs/migration/sql/06_stabilization_audit.sql`
 - `specs/migration/checklists/cutover_checklist.md`
 - `specs/migration/reports/<timestamp>_source_inventory.md`
 - `specs/migration/reports/<timestamp>_verification.md`
 - `specs/migration/reports/<timestamp>_branch_dsn_verification.md`
+
+Optional hardening artifacts:
+
+- `specs/migration/scripts/05_export_post_cutover.py`
+- `specs/migration/sql/06_stabilization_audit.sql`
 
 ## Phase 0: Environment, Branch, and Role Preparation
 
@@ -105,11 +142,11 @@ Prepare these files during implementation:
    - `staging` branch for rehearsals
    - `cutover-<timestamp>` branch for final load before DSN switch
 2. Never delete or recreate the existing `production` branch before cutover acceptance.
-3. Decide and document the promotion mechanism before any final load:
-   - preferred: production config/env DSNs are switched to the validated
-     `cutover-<timestamp>` branch endpoint after all gates pass
-   - alternate: a documented Neon branch promotion/rename/reset workflow is used,
-     with branch IDs and endpoints recorded before and after promotion
+3. Use the simple one-person cutover mechanism:
+   - production config/env DSNs are switched to the validated `cutover-<timestamp>`
+     branch endpoint after all gates pass
+   - do not use branch promotion/rename/reset unless you explicitly opt into the
+     optional hardening path and document before/after branch IDs and endpoints
 4. Create separate Neon roles/DSNs:
    - admin read-write DSN for the final target branch
    - app read-only DSN for the final target branch
@@ -129,18 +166,19 @@ Prepare these files during implementation:
    - `SOW_R2_ACCESS_KEY_ID`
    - `SOW_R2_SECRET_ACCESS_KEY`
    - `[r2]` config section
-8. Verify Neon auto-suspend settings for the app read-only compute. Document expected
-   cold-start latency and test at least once before cutover.
-9. Record branch IDs, endpoint hostnames, database name, and role names for all DSNs.
+8. Record branch IDs, endpoint hostnames, database name, and role names for the
+   staging and cutover DSNs used by app/admin.
+9. Optional: verify Neon auto-suspend settings for the app read-only compute and
+   document expected cold-start latency.
 
 Exit criteria:
 
 - Neon project, branches, roles, and DSNs exist.
-- Promotion mechanism is documented before execution.
+- DSN switch target is documented before execution.
 - Final target branch ID and endpoint hostnames are known.
 - Read-only app DSN cannot write catalog tables for permission reasons.
 - Legacy config and tokens are available for rollback.
-- Neon cold-start latency is documented and acceptable.
+- Optional cold-start latency check is documented if performed.
 
 ## Phase 1: Quiesce and Capture a Trusted Source Snapshot
 
@@ -286,10 +324,11 @@ Exit criteria:
    - indexes used by current queries and filters
 6. Recreate `updated_at` behavior with Postgres triggers if app code continues relying
    on database-side timestamp updates.
-7. For the stabilization window, install audit triggers with `06_stabilization_audit.sql`
-   on mutable catalog tables unless the application already has complete append-only
-   audit logging. The audit log must capture inserts, updates, and deletes with timestamp,
-   table name, operation, primary key, and row payload.
+7. Optional hardening: for the stabilization window, install audit triggers with
+   `06_stabilization_audit.sql` on mutable catalog tables if real writes may be
+   accepted before rollback confidence is high. The audit log should capture inserts,
+   updates, and deletes with timestamp, table name, operation, primary key, and row
+   payload.
 8. Do not migrate `sync_metadata` blindly unless a replacement purpose is defined. If
    retained, mark it as legacy migration metadata rather than Turso sync state. If
    excluded, ensure no app code references it.
@@ -299,7 +338,7 @@ Exit criteria:
 - `01_schema.sql` is reviewed against live inventory.
 - Every source column has an explicit target mapping.
 - Deprecated Turso-only metadata is either excluded deliberately or retained deliberately.
-- Stabilization audit coverage is present or explicitly waived with rationale.
+- Optional stabilization audit decision is documented.
 
 ## Phase 4: Application Compatibility Work
 
@@ -326,7 +365,7 @@ This is a blocking phase before production cutover.
    - admin DSN must successfully run a harmless valid write inside a transaction
      that is rolled back
    - app DSN must reject a fully valid catalog write with a permission error
-   - both checks must log current database, branch/endpoint host, and current role
+   - both checks must log enough target identity to confirm the expected branch/endpoint
 
 Validation command:
 
@@ -349,7 +388,8 @@ Exit criteria:
 
 1. Reset or recreate Neon `staging`.
 2. Apply `01_schema.sql`.
-3. Apply `06_stabilization_audit.sql` if audit triggers are part of the planned cutover.
+3. Optional: apply `06_stabilization_audit.sql` if audit triggers are part of the
+   planned cutover.
 4. Load data from the verified SQLite backup with `02_load_data.py`.
 5. Confirm load idempotency:
    - if a row already exists with the same primary key, the script must
@@ -362,7 +402,8 @@ Exit criteria:
    - analyze/stat refresh
 7. Run `04_verify.sql`.
 8. Run app/admin smoke tests against staging DSNs.
-9. Run DSN identity checks and record:
+9. Run DSN identity checks and record at least the branch/endpoint target used by
+   the smoke tests:
    - branch ID
    - endpoint hostname
    - database name
@@ -379,7 +420,7 @@ Exit criteria:
 - Local songsets do not have unexpected orphan references.
 - Re-running `02_load_data.py` against already-loaded staging produces a no-op
   rather than duplicate or conflicting data.
-- DSN identity report proves tests ran against the intended branch.
+- DSN identity check proves tests ran against the intended branch.
 
 ## Phase 6: Verification Gates
 
@@ -489,10 +530,9 @@ Required Neon-specific checks:
 
 - Verify admin DSN can write with the same fully valid mutation probe inside a
   transaction and then roll it back.
-- Run at least one cold-start latency check: close all connections, wait longer than
-  the configured auto-suspend timeout, then run the first catalog query and record
-  response time.
-- Record branch/endpoint identity for every DSN used in verification.
+- Record branch/endpoint identity for the DSNs used in final verification.
+- Optional UX check: close all connections, wait longer than the configured
+  auto-suspend timeout, then run the first catalog query and record response time.
 
 Exit criteria:
 
@@ -503,8 +543,8 @@ Exit criteria:
 - R2 spot checks pass or missing objects are documented as pre-existing.
 - App DSN write rejection is confirmed as a permission failure.
 - Admin DSN valid write probe succeeds and rolls back.
-- Cold-start latency is acceptable for TUI interaction.
 - Verification report includes target branch ID and endpoint hostnames.
+- Optional cold-start result is documented if tested.
 
 ## Phase 7: Final Offline Production Cutover
 
@@ -532,27 +572,24 @@ Keep the system frozen until the final validation decision.
    - database name
    - admin role
    - app read-only role
-7. Apply schema and audit triggers.
+7. Apply schema. Apply audit triggers only if optional stabilization audit is enabled.
 8. Load data.
 9. Run all Phase 6 verification gates against the `cutover-<timestamp>` DSNs.
 10. Run admin smoke tests against the cutover admin DSN.
 11. Run app smoke tests against the cutover read-only DSN.
 12. Validate local `songsets.db` references against the cutover target.
-13. Promote the validated target by the pre-decided mechanism:
-    - if using DSN switch: update app/admin config/env to the DSNs whose endpoint
-      hostname matches the validated `cutover-<timestamp>` branch
-    - if using branch promotion/rename/reset: record before/after branch IDs,
-      endpoint hostnames, and schema checks after the operation
+13. Switch app/admin config/env to the DSNs whose endpoint hostname matches the
+    validated `cutover-<timestamp>` branch.
 14. Immediately after config/env switch, run target identity checks from inside
     `sow-app` and `sow-admin`. Abort if either process connects to any branch other
-    than the validated cutover branch/promoted target.
+    than the validated cutover branch.
 15. Start `sow-app` and verify:
     - browse catalog
     - search songs
     - list albums/keys
     - open existing songsets
     - preview/download an R2 asset
-    - acceptable cold-start UX after idle
+    - optional: acceptable cold-start UX after idle
 16. Start `sow-admin` and verify read/write workflow on a harmless valid test row
     inside a rollback transaction.
 17. Accept cutover only after post-switch smoke tests and target identity checks pass.
@@ -565,6 +602,7 @@ Mandatory gates:
 - Never destroy or recreate the `production` branch as part of loading.
 - Do not accept cutover unless production config/env points to the same branch/endpoint
   that passed final verification.
+- Do not use branch promotion/rename/reset during the one-person path.
 
 Exit criteria:
 
@@ -572,7 +610,7 @@ Exit criteria:
 - Post-switch app/admin identity checks prove they are connected to the validated target.
 - Legacy SQLite/Turso files remain archived and untouched.
 - Migration report records final source snapshot, target branch, endpoint hostnames,
-  checks, promotion action, and acceptance time.
+  checks, DSN switch action, and acceptance time.
 - Legacy config backups exist in `specs/migration/snapshots/`.
 
 ## Phase 8: Rollback Plan
@@ -603,7 +641,7 @@ Rollback steps before accepting Neon writes:
 If real writes were accidentally accepted on Neon before rollback:
 
 1. Stop all writers immediately.
-2. Export changed Neon rows since cutover time:
+2. Best-effort export changed Neon rows since cutover time:
 
    ```bash
    uv run --extra admin specs/migration/scripts/05_export_post_cutover.py \
@@ -612,11 +650,11 @@ If real writes were accidentally accepted on Neon before rollback:
      --output specs/migration/reports/<timestamp>_post_cutover_diff.json
    ```
 
-3. Export audit rows from the stabilization audit table if installed. Treat this as
-   the primary source for inserts, updates, and deletes during the stabilization window.
-4. If audit triggers were not installed, verify that all mutable tables have reliable
-   `updated_at` coverage and that hard deletes were impossible before trusting the
-   timestamp-based export.
+3. If optional audit triggers were installed, export audit rows from the stabilization
+   audit table and treat that as the primary source for inserts, updates, and deletes.
+4. If audit triggers were not installed, treat the timestamp-based export as a
+   recovery aid with known limitations. Verify that mutable tables have reliable
+   `updated_at` coverage and that hard deletes were impossible before trusting it.
 5. Review the exported diff and decide whether to replay those changes into legacy
    SQLite/Turso or abandon them.
 6. Do not resume legacy writes until that decision is explicit.
@@ -624,15 +662,15 @@ If real writes were accidentally accepted on Neon before rollback:
 Exit criteria:
 
 - Legacy app/admin path is confirmed working, or Neon is accepted as final.
-- Any post-cutover writes are accounted for through audit export or a documented
-  timestamp-based diff with known limitations.
+- Any post-cutover writes are either accounted for or explicitly abandoned before
+  legacy writes resume.
 
 ## Phase 9: Post-Cutover Hardening
 
 1. Keep all source snapshots read-only for the stabilization window.
 2. Keep Turso config and tokens available but unused until stabilization ends.
 3. Keep the pre-cutover `production` branch and final cutover branch until the
-   stabilization window closes.
+   stabilization window closes if storage cost is acceptable.
 4. Configure Neon backup/restore expectations:
    - restore window
    - optional `pg_dump` backup cadence
@@ -642,30 +680,30 @@ Exit criteria:
 8. Archive migration reports in `specs/migration/reports/`.
 9. If cold starts remain a UX issue, consider disabling auto-suspend on the app
    read-only compute or increasing the idle timeout where the Neon plan allows it.
-10. After stabilization, decide whether to remove the temporary audit triggers.
+10. If optional audit triggers were installed, decide whether to remove them after
+    stabilization.
 
 Exit criteria:
 
 - Neon restore plan is documented.
 - Legacy path is intentionally retained or intentionally retired.
 - Follow-up tasks for code cleanup are filed.
-- Decision on Neon auto-suspend is documented.
-- Decision on stabilization audit retention/removal is documented.
+- Optional auto-suspend and audit-trigger decisions are documented if tested/enabled.
 
 ## Delta Summary (v4 vs v3)
 
 | # | Change | Risk Addressed |
 |---|--------|----------------|
 | 1 | Added mandatory source freshness proof or explicit local-authority exception | Stale source capture |
-| 2 | Added branch/endpoint/DSN promotion semantics before final load | Cutover branch ambiguity |
-| 3 | Added branch ID and endpoint hostname recording for every DSN | DSN mix-ups |
+| 2 | Added simple branch/endpoint/DSN switch semantics before final load | Cutover branch ambiguity |
+| 3 | Added branch ID and endpoint hostname recording for staging and cutover DSNs | DSN mix-ups |
 | 4 | Changed read-only write probe to require a fully valid row and permission failure | False-pass DSN test |
 | 5 | Added privilege-layer checks with `has_table_privilege` | DSN permission validation |
 | 6 | Added post-switch target identity checks inside app/admin | Wrong target after cutover |
-| 7 | Added optional stabilization audit triggers for inserts/updates/deletes | Accidental-write recovery gaps |
-| 8 | Made timestamp-based post-cutover export conditional on reliable `updated_at` coverage | Incomplete rollback diff |
-| 9 | Required preserving both pre-cutover production and cutover branch through stabilization | Forensic rollback safety |
-| 10 | Added branch/DSN verification report artifact | Auditability |
+| 7 | Downgraded stabilization audit triggers to optional hardening | One-person scope control |
+| 8 | Downgraded timestamp-based post-cutover export to best-effort recovery aid unless audit is enabled | One-person scope control |
+| 9 | Preserving both pre-cutover production and cutover branch is recommended through stabilization | Forensic rollback safety |
+| 10 | Added one-person offline execution profile with required vs optional gates | Scope clarity |
 
 ---
 
@@ -680,11 +718,10 @@ Exit criteria:
 - [ ] JSON validity scan passes on all JSON-like text columns
 - [ ] Live schema inventory includes migration-added columns
 - [ ] Postgres DDL reviewed against live inventory
-- [ ] Stabilization audit triggers installed or explicitly waived
 - [ ] Admin RW and app RO Neon roles verified with valid mutation probes
 - [ ] App DSN write rejection fails for permission reasons
 - [ ] `sync_metadata` fate explicitly decided and documented
-- [ ] Promotion mechanism documented before final load
+- [ ] DSN switch target documented before final load
 - [ ] Branch IDs and endpoint hostnames recorded for staging and cutover DSNs
 - [ ] Staging dry run completed from scratch
 - [ ] Staging re-run of loader is idempotent
@@ -698,8 +735,14 @@ Exit criteria:
 - [ ] Admin tests/smoke checks pass on Neon
 - [ ] Post-switch target identity checks confirm the validated branch/endpoint
 - [ ] Rollback tested before accepting Neon writes
-- [ ] Cold-start latency tested and acceptable
 - [ ] Legacy config backed up before DSN switch
 - [ ] Final cutover accepted
 - [ ] Post-cutover monitoring and backup plan documented
+
+Optional hardening checklist:
+
+- [ ] Stabilization audit triggers installed
+- [ ] Post-cutover accidental-write export script tested
+- [ ] Cold-start latency tested and acceptable
+- [ ] Pre-cutover production branch retained through stabilization
 - [ ] Stabilization audit retention/removal decision documented
