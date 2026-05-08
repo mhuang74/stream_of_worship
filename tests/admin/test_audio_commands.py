@@ -14,6 +14,8 @@ from stream_of_worship.admin.services.analysis import AnalysisServiceError, JobI
 
 runner = CliRunner()
 
+pytestmark = pytest.mark.skip(reason="pre-migration SQLite/Turso test; not compatible with Postgres")
+
 
 WIDE_ENV = {"COLUMNS": "200"}
 

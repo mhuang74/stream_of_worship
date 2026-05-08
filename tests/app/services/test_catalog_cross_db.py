@@ -205,7 +205,9 @@ class TestSongsetItemWithDetails:
     def test_not_orphan_when_both_present(self):
         """Test not orphan when both present."""
         song = MagicMock(spec=Song)
+        song.deleted_at = None
         recording = MagicMock(spec=Recording)
+        recording.deleted_at = None
         item = SongsetItem(
             id="item_1",
             songset_id="set_1",

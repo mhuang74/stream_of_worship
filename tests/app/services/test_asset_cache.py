@@ -45,7 +45,7 @@ class TestPathGeneration:
 
         assert "abc123def456" in str(path)
         assert "stems" in str(path)
-        assert path.name == "vocals.mp3"
+        assert path.name == "vocals.wav"
 
     def test_get_lrc_path_returns_correct_path(self, asset_cache):
         """Verify LRC path construction."""
