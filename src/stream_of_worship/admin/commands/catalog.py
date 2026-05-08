@@ -17,6 +17,7 @@ from rich.text import Text
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.services.scraper import CatalogScraper
+from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
 app = typer.Typer(help="Catalog operations")
@@ -45,7 +46,8 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
     Returns:
         DatabaseClient instance
     """
-    return DatabaseClient(config.db_path)
+    provider = ConnectionProvider(config.get_connection_url())
+    return DatabaseClient(provider)
 
 
 @app.command("scrape")
@@ -84,13 +86,6 @@ def scrape_catalog(
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
-
-    db_path = config.db_path
-
-    if not db_path.exists():
-        console.print(f"[red]Database not found at {db_path}[/red]")
-        console.print("Run 'sow-admin db init' to create the database.")
         raise typer.Exit(1)
 
     # Initialize scraper

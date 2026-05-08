@@ -77,16 +77,6 @@ CREATE TABLE IF NOT EXISTS recordings (
 );
 """
 
-# Deprecated: sync_metadata table is Turso-specific and not migrated to Postgres.
-# Kept as a constant for transition compatibility; not included in ALL_SCHEMA_STATEMENTS.
-CREATE_SYNC_METADATA_TABLE = """
-CREATE TABLE IF NOT EXISTS sync_metadata (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at timestamptz DEFAULT NOW()
-);
-"""
-
 # Indexes for efficient lookups
 CREATE_INDEXES = [
     """
@@ -177,12 +167,6 @@ UNION ALL
 SELECT 'recordings' as table_name, COUNT(*) as row_count FROM recordings;
 """
 
-# Deprecated: SQLite PRAGMA queries were used for integrity and FK checks.
-# In Postgres these are handled by server configuration and pg_is_in_recovery().
-# Kept as empty strings for backward compatibility during the transition.
-INTEGRITY_CHECK_QUERY = ""
-FOREIGN_KEYS_QUERY = ""
-
 # Column lists for JOIN queries (used by catalog service and other query builders)
 SONG_COLUMNS_FOR_JOIN = """
     s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
@@ -203,13 +187,6 @@ RECORDING_COLUMNS_FOR_JOIN = """
 
 SONG_COLUMN_COUNT = 17
 RECORDING_COLUMN_COUNT = 29
-
-# Deprecated: Default sync metadata values. Not used in Postgres.
-DEFAULT_SYNC_METADATA = {
-    "last_sync_at": "",
-    "sync_version": "3",
-    "local_device_id": "",
-}
 
 # SQL for listing active (non-deleted) songs
 ACTIVE_SONGS_QUERY = """

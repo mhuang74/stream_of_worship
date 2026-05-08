@@ -74,9 +74,8 @@ The Admin CLI is the backend management tool for administrators and DevOps. It m
 ### Features
 
 **Database Management**
-- Initialize SQLite database with Turso sync support
+- Initialize PostgreSQL database with schema creation
 - Database status and health checks
-- Reset and migration tools
 
 **Catalog Management**
 - Scrape song catalog from sop.org (Stream of Praise)
@@ -135,17 +134,13 @@ Create `~/.config/sow-admin/config.toml`:
 [service]
 analysis_url = "http://localhost:8000"
 
+[database]
+url = "postgresql://sow_admin_rw@ep-xxx-pooler.neon.tech/sow"
+
 [r2]
 bucket = "your-r2-bucket"
 endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
 region = "auto"
-
-[turso]
-database_url = "libsql://<database-name>.turso.io"
-sync_on_startup = true
-
-[database]
-path = "/Users/you/.config/sow-admin/db/sow.db"
 
 [paths]
 cache_dir = "/Users/you/.cache/sow-admin"
@@ -153,8 +148,8 @@ cache_dir = "/Users/you/.cache/sow-admin"
 
 **Required Environment Variables** (for sensitive credentials):
 ```bash
-# Turso full-access token (Admin CLI only - never store in config)
-export SOW_TURSO_TOKEN="your-turso-token"
+# PostgreSQL password (Admin CLI - never store in config)
+export SOW_DATABASE_PASSWORD="your-database-password"
 
 # R2 credentials
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
@@ -164,7 +159,7 @@ export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 export SOW_ANALYSIS_API_KEY="your-api-key"
 ```
 
-**Note:** Non-sensitive settings like `turso.database_url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
+**Note:** Non-sensitive settings like `database.url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
 
 ### Workflow Example
 
@@ -197,7 +192,7 @@ The User App is the primary tool for worship leaders and media teams to create m
 ### Features
 
 **Song Selection**
-- Browse master song catalog (synced from Turso cloud database)
+- Browse master song catalog (from PostgreSQL database)
 - Search by title, artist, album, key, tempo
 - View song metadata and analysis results
 - Preview audio stems (vocals, drums, bass, other)
@@ -223,12 +218,7 @@ Create `~/.config/sow/config.toml`:
 
 ```toml
 [database]
-db_path = "/Users/you/.config/sow/db/sow.db"
-songsets_db_path = "/Users/you/.config/sow/db/songsets.db"
-
-[turso]
-database_url = "libsql://<database-name>.turso.io"
-sync_on_startup = true
+url = "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow"
 
 [r2]
 bucket = "your-r2-bucket"
@@ -246,15 +236,15 @@ default_video_resolution = "1080p"
 
 **Required Environment Variables** (for sensitive credentials):
 ```bash
-# Turso read-only token (required - env var only for security)
-export SOW_TURSO_READONLY_TOKEN="your-readonly-token"
+# PostgreSQL password (required - env var only for security)
+export SOW_DATABASE_PASSWORD="your-database-password"
 
 # R2 credentials (required for downloading audio assets)
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
 export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 ```
 
-**Note:** The Turso read-only token is read from the `SOW_TURSO_READONLY_TOKEN` environment variable only and is never stored in the config file for security.
+**Note:** The PostgreSQL password is read from the `SOW_DATABASE_PASSWORD` environment variable only and is never stored in the config file for security.
 
 ### Commands
 
@@ -266,8 +256,7 @@ sow-app run
 sow-app run --config /path/to/config.toml
 
 # Database operations
-sow-app db sync                    # Sync with Turso cloud database
-sow-app db status                  # Check database sync status
+sow-app db check                   # Check database connectivity
 
 # Songset operations
 sow-app songset list              # List all songsets
@@ -293,10 +282,7 @@ uv run --extra app sow-app run
 #    - Preview transitions
 #    - Export audio or video
 
-# 3. Sync database (if needed)
-uv run --extra app sow-app db sync
-
-# 4. Export songset for sharing
+# 3. Export songset for sharing
 uv run --extra app sow-app songset export <songset-id>
 ```
 
@@ -304,7 +290,7 @@ uv run --extra app sow-app songset export <songset-id>
 
 ## POC Transition Builder (Standalone)
 
-The Transition Builder is a **mature, standalone tool** for creating transition audio files between two songs. Unlike `sow-app`, it works directly with analysis JSON files and does not require a SQLite/Turso catalog.
+The Transition Builder is a **mature, standalone tool** for creating transition audio files between two songs. Unlike `sow-app`, it works directly with analysis JSON files and does not require a database.
 
 **Best for:** Quick experimentation, 2-song transitions without database setup.
 

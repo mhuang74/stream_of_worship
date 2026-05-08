@@ -11,7 +11,7 @@ import tempfile
 import termios
 import time
 import tty
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -2477,7 +2477,6 @@ def view_lrc(
 
         sow-admin audio list --visibility published --format ids | sow-admin audio view-lrc -
     """
-    import sys
 
     # Load config
     try:
@@ -3345,7 +3344,7 @@ def _process_batch(
 
             recording = db_client.get_recording_by_song_id(song_id)
             if not recording:
-                console.print(f"  [red]✗ No recording found[/red]")
+                console.print("  [red]✗ No recording found[/red]")
                 results[song_id] = {
                     "download": "failed",
                     "error": "No recording found",

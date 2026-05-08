@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from stream_of_worship.admin.db.models import Song, Recording
-from stream_of_worship.app.db.read_client import ReadOnlyClient, SyncError
+from stream_of_worship.app.db.read_client import ReadOnlyClient
 
 
 class TestReadOnlyClientLibsql:

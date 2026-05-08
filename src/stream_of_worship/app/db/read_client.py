@@ -15,14 +15,6 @@ from stream_of_worship.db.connection import ConnectionProvider
 logger = logging.getLogger("sow_app.db")
 
 
-class SyncError(Exception):
-    """Error during database sync operation."""
-
-    def __init__(self, message: str, cause: Optional[Exception] = None):
-        super().__init__(message)
-        self.cause = cause
-
-
 class ReadOnlyClient:
     """Read-only client for songs and recordings tables.
 

@@ -18,22 +18,12 @@ from stream_of_worship.admin.db.schema import (
     CREATE_RECORDINGS_UPDATE_TRIGGER,
     CREATE_SONGS_TABLE,
     CREATE_SONGS_UPDATE_TRIGGER,
-    CREATE_SYNC_METADATA_TABLE,
     CREATE_UPDATE_TIMESTAMP_FUNCTION,
-    DEFAULT_SYNC_METADATA,
     ROW_COUNT_QUERY,
 )
 from stream_of_worship.db.connection import ConnectionProvider
 
 logger = logging.getLogger("sow_admin.db")
-
-
-class SyncError(Exception):
-    """Error during database sync operation."""
-
-    def __init__(self, message: str, cause: Optional[Exception] = None):
-        super().__init__(message)
-        self.cause = cause
 
 
 class DatabaseClient:
@@ -95,7 +85,6 @@ class DatabaseClient:
             # Create tables
             cursor.execute(CREATE_SONGS_TABLE)
             cursor.execute(CREATE_RECORDINGS_TABLE)
-            cursor.execute(CREATE_SYNC_METADATA_TABLE)
 
             # Create indexes
             for statement in CREATE_INDEXES:
@@ -105,17 +94,6 @@ class DatabaseClient:
             cursor.execute(CREATE_UPDATE_TIMESTAMP_FUNCTION)
             cursor.execute(CREATE_SONGS_UPDATE_TRIGGER)
             cursor.execute(CREATE_RECORDINGS_UPDATE_TRIGGER)
-
-            # Initialize sync metadata if empty
-            for key, value in DEFAULT_SYNC_METADATA.items():
-                cursor.execute(
-                    """
-                    INSERT INTO sync_metadata (key, value)
-                    VALUES (%s, %s)
-                    ON CONFLICT (key) DO NOTHING
-                    """,
-                    (key, value),
-                )
 
     def get_stats(self) -> DatabaseStats:
         """Get database statistics.
