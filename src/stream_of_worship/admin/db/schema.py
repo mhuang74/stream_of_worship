@@ -1,7 +1,7 @@
-"""SQL schema definitions for sow-admin database.
+"""SQL schema definitions for sow-admin database (PostgreSQL).
 
 Defines the database schema for storing song catalog and recording metadata.
-Uses SQLite with libsql compatibility for Turso sync support.
+Uses PostgreSQL with native timestamptz columns.
 """
 
 # SQL to create the songs table (scraped catalog)
@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS songs (
     source_url TEXT NOT NULL,
     table_row_number INTEGER,
     scraped_at TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    deleted_at TIMESTAMP
+    created_at timestamptz DEFAULT NOW(),
+    updated_at timestamptz DEFAULT NOW(),
+    deleted_at timestamptz
 );
 """
 
@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS recordings (
     lrc_status TEXT DEFAULT 'pending',
     lrc_job_id TEXT,
 
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
+    created_at timestamptz DEFAULT NOW(),
+    updated_at timestamptz DEFAULT NOW(),
 
     -- YouTube URL (for transcript-based LRC generation)
     youtube_url TEXT,
@@ -69,17 +69,21 @@ CREATE TABLE IF NOT EXISTS recordings (
     -- Visibility status for User App (published, review, hold)
     visibility_status TEXT DEFAULT NULL,
 
+    -- Download status (pending|processing|completed|failed)
+    download_status TEXT DEFAULT 'pending',
+
     -- Soft delete timestamp (NULL = active)
-    deleted_at TIMESTAMP
+    deleted_at timestamptz
 );
 """
 
-# SQL to create sync_metadata table (for Turso sync tracking)
+# Deprecated: sync_metadata table is Turso-specific and not migrated to Postgres.
+# Kept as a constant for transition compatibility; not included in ALL_SCHEMA_STATEMENTS.
 CREATE_SYNC_METADATA_TABLE = """
 CREATE TABLE IF NOT EXISTS sync_metadata (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at timestamptz DEFAULT NOW()
 );
 """
 
@@ -119,68 +123,67 @@ CREATE_INDEXES = [
     """,
 ]
 
+# Postgres function to auto-update updated_at columns
+CREATE_UPDATE_TIMESTAMP_FUNCTION = """
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+"""
+
 # Trigger to update updated_at on songs
 CREATE_SONGS_UPDATE_TRIGGER = """
-CREATE TRIGGER IF NOT EXISTS trg_songs_updated_at
-AFTER UPDATE ON songs
-BEGIN
-    UPDATE songs SET updated_at = datetime('now') WHERE id = NEW.id;
-END;
+DROP TRIGGER IF EXISTS trg_songs_updated_at ON songs;
+CREATE TRIGGER trg_songs_updated_at
+    BEFORE UPDATE ON songs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 """
 
 # Trigger to update updated_at on recordings
 CREATE_RECORDINGS_UPDATE_TRIGGER = """
-CREATE TRIGGER IF NOT EXISTS trg_recordings_updated_at
-AFTER UPDATE ON recordings
-BEGIN
-    UPDATE recordings SET updated_at = datetime('now') WHERE content_hash = NEW.content_hash;
-END;
+DROP TRIGGER IF EXISTS trg_recordings_updated_at ON recordings;
+CREATE TRIGGER trg_recordings_updated_at
+    BEFORE UPDATE ON recordings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 """
 
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
     CREATE_SONGS_TABLE,
     CREATE_RECORDINGS_TABLE,
-    CREATE_SYNC_METADATA_TABLE,
     *CREATE_INDEXES,
+    CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_RECORDINGS_UPDATE_TRIGGER,
 ]
 
-# SQL to get table statistics
+# SQL to get table statistics (Postgres-compatible)
 TABLE_STATS_QUERY = """
-SELECT
-    name,
-    (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=name) as exists_flag
-FROM sqlite_master
-WHERE type='table'
-AND name IN ('songs', 'recordings', 'sync_metadata');
+SELECT table_name, 1 as exists_flag
+FROM information_schema.tables
+WHERE table_schema = 'public'
+AND table_name IN ('songs', 'recordings', 'sync_metadata');
 """
 
-# SQL to count rows in each table
+# SQL to count rows in each table (Postgres-compatible)
 ROW_COUNT_QUERY = """
-SELECT
-    'songs' as table_name,
-    COUNT(*) as row_count
-FROM songs
+SELECT 'songs' as table_name, COUNT(*) as row_count FROM songs
 UNION ALL
-SELECT
-    'recordings' as table_name,
-    COUNT(*) as row_count
-FROM recordings
-UNION ALL
-SELECT
-    'sync_metadata' as table_name,
-    COUNT(*) as row_count
-FROM sync_metadata;
+SELECT 'recordings' as table_name, COUNT(*) as row_count FROM recordings;
 """
 
-# SQL to check database integrity
-INTEGRITY_CHECK_QUERY = "PRAGMA integrity_check;"
+# Deprecated: SQLite PRAGMA queries were used for integrity and FK checks.
+# In Postgres these are handled by server configuration and pg_is_in_recovery().
+# Kept as empty strings for backward compatibility during the transition.
+INTEGRITY_CHECK_QUERY = ""
+FOREIGN_KEYS_QUERY = ""
 
-# SQL to get foreign key status
-FOREIGN_KEYS_QUERY = "PRAGMA foreign_keys;"
-
+# Column lists for JOIN queries (used by catalog service and other query builders)
 SONG_COLUMNS_FOR_JOIN = """
     s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
     s.album_name, s.album_series, s.musical_key, s.lyrics_raw,
@@ -201,10 +204,10 @@ RECORDING_COLUMNS_FOR_JOIN = """
 SONG_COLUMN_COUNT = 17
 RECORDING_COLUMN_COUNT = 29
 
-# Default sync metadata values
+# Deprecated: Default sync metadata values. Not used in Postgres.
 DEFAULT_SYNC_METADATA = {
     "last_sync_at": "",
-    "sync_version": "2",
+    "sync_version": "3",
     "local_device_id": "",
 }
 

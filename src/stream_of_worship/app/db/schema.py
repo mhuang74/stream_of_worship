@@ -1,7 +1,7 @@
-"""SQL schema definitions for sow-app database tables.
+"""SQL schema definitions for sow-app database tables (PostgreSQL).
 
 Defines the database schema for app-specific tables (songsets, songset_items).
-These tables are separate from the admin-managed songs/recordings tables.
+These tables live in the same Neon Postgres database as the admin catalog tables.
 """
 
 # SQL to create the songsets table (user-created playlists)
@@ -10,14 +10,15 @@ CREATE TABLE IF NOT EXISTS songsets (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    created_at timestamptz DEFAULT NOW(),
+    updated_at timestamptz DEFAULT NOW()
 );
 """
 
 # SQL to create the songset_items table (songs in a songset)
-# Note: Foreign keys to songs/recordings are intentionally removed for cross-DB compatibility.
-# Integrity is enforced in application code. recording_hash_prefix is the canonical anchor.
+# The FK on songset_id is enforced by Postgres. song_id references the
+# songs table in the same database but is intentionally left as plain TEXT
+# to keep data-insertion decoupled from catalog validation.
 CREATE_SONGSET_ITEMS_TABLE = """
 CREATE TABLE IF NOT EXISTS songset_items (
     id TEXT PRIMARY KEY,
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS songset_items (
     -- For future: key adjustment, tempo adjustment
     key_shift_semitones INTEGER DEFAULT 0,
     tempo_ratio REAL DEFAULT 1.0,
-    created_at TEXT DEFAULT (datetime('now'))
+    created_at timestamptz DEFAULT NOW()
 );
 """
 
@@ -54,13 +55,15 @@ CREATE_APP_INDEXES = [
 
 # Trigger to update updated_at on songsets
 CREATE_SONGSETS_UPDATE_TRIGGER = """
-CREATE TRIGGER IF NOT EXISTS trg_songsets_updated_at
-AFTER UPDATE ON songsets
-BEGIN
-    UPDATE songsets SET updated_at = datetime('now') WHERE id = NEW.id;
-END;
+DROP TRIGGER IF EXISTS trg_songsets_updated_at ON songsets;
+CREATE TRIGGER trg_songsets_updated_at
+    BEFORE UPDATE ON songsets
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 """
 
+# Deprecated: _sync_metadata was used for Turso-specific state tracking.
+# Kept as a constant for transition compatibility; not included in ALL_APP_SCHEMA_STATEMENTS.
 CREATE_SYNC_METADATA_TABLE = """
 CREATE TABLE IF NOT EXISTS _sync_metadata (
     key TEXT PRIMARY KEY,
@@ -72,7 +75,6 @@ CREATE TABLE IF NOT EXISTS _sync_metadata (
 ALL_APP_SCHEMA_STATEMENTS = [
     CREATE_SONGSETS_TABLE,
     CREATE_SONGSET_ITEMS_TABLE,
-    CREATE_SYNC_METADATA_TABLE,
     *CREATE_APP_INDEXES,
     CREATE_SONGSETS_UPDATE_TRIGGER,
 ]
@@ -82,8 +84,7 @@ SONGSET_COUNT_QUERY = """
 SELECT COUNT(*) FROM songsets;
 """
 
-# SQL to get songset items (simple query without cross-DB JOINs)
-# Cross-DB lookups are done in Python via CatalogService.get_songset_with_items()
+# SQL to get songset items (simple query without JOINs)
 SONGSET_ITEMS_QUERY = """
 SELECT
     id,
@@ -98,7 +99,7 @@ SELECT
     tempo_ratio,
     created_at
 FROM songset_items
-WHERE songset_id = ?
+WHERE songset_id = %s
 ORDER BY position;
 """
 
@@ -117,6 +118,6 @@ SELECT
     tempo_ratio,
     created_at
 FROM songset_items
-WHERE songset_id = ?
+WHERE songset_id = %s
 ORDER BY position;
 """
