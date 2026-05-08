@@ -25,9 +25,8 @@ class AdminConfig:
         r2_bucket: Cloudflare R2 bucket name
         r2_endpoint_url: R2 endpoint URL
         r2_region: R2 region (usually "auto")
-        turso_database_url: Turso database URL for sync
-        sync_on_startup: Whether to sync at startup
-        db_path: Local SQLite database path
+        database_url: Postgres DSN without password (e.g.
+            postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow?sslmode=require)
         cache_dir: Local cache directory for admin operations
     """
 
@@ -39,15 +38,36 @@ class AdminConfig:
     r2_endpoint_url: str = ""
     r2_region: str = "auto"
 
-    # Turso (for sync)
-    turso_database_url: str = ""
-    sync_on_startup: bool = True
-
-    # Local Database
-    db_path: Path = field(default_factory=lambda: get_default_db_path())
+    # Postgres database (password via SOW_DATABASE_PASSWORD env var)
+    database_url: str = ""
 
     # Cache
     cache_dir: Path = field(default_factory=lambda: get_cache_dir())
+
+    def get_connection_url(self) -> str:
+        """Return a Postgres DSN with password injected from env var.
+
+        The ``database_url`` stored in TOML should NOT contain a password.
+        The password is read from the ``SOW_DATABASE_PASSWORD`` environment
+        variable and injected into the URL at runtime.
+
+        Returns:
+            A fully-formed ``postgresql://`` connection string.
+
+        Raises:
+            ValueError: If the URL is empty.
+        """
+        url = os.environ.get("SOW_DATABASE_URL", self.database_url)
+        if not url:
+            raise ValueError("database_url is not configured")
+        password = os.environ.get("SOW_DATABASE_PASSWORD", "")
+        if password and "://" in url and "@" in url:
+            proto, rest = url.split("://", 1)
+            user_host = rest.split("@", 1)
+            if len(user_host) == 2 and ":" not in user_host[0]:
+                # No password currently in DSN → insert one
+                url = f"{proto}://{user_host[0]}:{password}@{user_host[1]}"
+        return url
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "AdminConfig":
@@ -84,17 +104,14 @@ class AdminConfig:
             config.r2_endpoint_url = r2.get("endpoint_url", config.r2_endpoint_url)
             config.r2_region = r2.get("region", config.r2_region)
 
-        # Load Turso config
-        if "turso" in data:
-            turso = data["turso"]
-            config.turso_database_url = turso.get("database_url", config.turso_database_url)
-            config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
-
-        # Load database path
+        # Load database config (new [database] section)
         if "database" in data:
-            db_path = data["database"].get("path")
-            if db_path:
-                config.db_path = Path(db_path)
+            db = data["database"]
+            if "url" in db:
+                config.database_url = db["url"]
+
+        # Backward compatibility: silently ignore old [turso] section
+        # (it may still exist in user configs from before migration)
 
         # Load cache dir from TOML
         if "paths" in data:
@@ -124,11 +141,7 @@ class AdminConfig:
                 "endpoint_url": self.r2_endpoint_url,
                 "region": self.r2_region,
             },
-            "turso": {
-                "database_url": self.turso_database_url,
-                "sync_on_startup": self.sync_on_startup,
-            },
-            "database": {"path": str(self.db_path)},
+            "database": {"url": self.database_url},
             "paths": {"cache_dir": str(self.cache_dir)},
         }
 
@@ -243,15 +256,6 @@ def get_config_path() -> Path:
         Path to config.toml
     """
     return get_config_dir() / "config.toml"
-
-
-def get_default_db_path() -> Path:
-    """Get the default database path.
-
-    Returns:
-        Path to default database location
-    """
-    return get_config_dir() / "db" / "sow.db"
 
 
 def ensure_config_exists() -> AdminConfig:

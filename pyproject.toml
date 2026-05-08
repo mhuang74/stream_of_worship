@@ -91,6 +91,11 @@ migration = [
     "pypinyin>=0.52.0",
 ]
 
+# Postgres dependencies
+postgres = [
+    "psycopg[binary]>=3.2.0",
+]
+
 # Turso sync dependencies (deprecated - now included in app extra)
 turso = [
     "libsql>=0.1.0",
@@ -100,6 +105,7 @@ turso = [
 
 # Admin CLI dependencies
 admin = [
+    "stream-of-worship[postgres]",
     "typer>=0.9.0",
     "rich>=13.0.0",
     "tomli>=2.0.0",
@@ -123,7 +129,6 @@ app = [
     "ffmpeg-python>=0.2.0",
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
-    "libsql>=0.1.0",
 ]
 
 # Test dependencies
@@ -136,6 +141,7 @@ test = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "aiosqlite>=0.19.0",
+    "testcontainers[postgres]>=4.0.0",
 ]
 
 # WhisperX transcription dependencies

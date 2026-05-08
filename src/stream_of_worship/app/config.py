@@ -1,7 +1,7 @@
 """Configuration management for sow-app TUI.
 
 Manages app-specific settings for asset cache, output directories,
-playback preferences, and Turso sync configuration.
+playback preferences, and Postgres database configuration.
 """
 
 import os
@@ -46,24 +46,6 @@ def get_app_config_path() -> Path:
     return get_app_config_dir() / "config.toml"
 
 
-def get_default_db_path() -> Path:
-    """Get the default database path.
-
-    Returns:
-        Path to default database location (Turso embedded replica)
-    """
-    return get_app_config_dir() / "db" / "sow.db"
-
-
-def get_default_songsets_db_path() -> Path:
-    """Get the default songsets database path.
-
-    Returns:
-        Path to default songsets database location
-    """
-    return get_app_config_dir() / "db" / "songsets.db"
-
-
 def get_default_export_dir() -> Path:
     """Get the default export directory for songsets.
 
@@ -78,17 +60,15 @@ class AppConfig:
     """Configuration for sow-app TUI.
 
     Attributes:
-        db_path: Path to the catalog database (Turso embedded replica)
-        songsets_db_path: Path to the local songsets database
+        database_url: Postgres DSN for app role (without password)
         songsets_backup_retention: Number of songset backups to keep
         songsets_export_dir: Directory for songset JSON exports
-        turso_database_url: Turso database URL for sync
-        sync_on_startup: Whether to sync at app startup
         r2_bucket: R2 bucket name for audio storage
         r2_endpoint_url: R2 endpoint URL
         r2_region: R2 region
         cache_dir: Local directory for cached R2 assets
         output_dir: Directory for exported audio/video files
+        log_dir: Directory for log files
         preview_buffer_ms: Audio buffer size for playback in milliseconds
         preview_volume: Default playback volume (0.0-1.0)
         default_gap_beats: Default gap duration between songs (in beats)
@@ -96,21 +76,16 @@ class AppConfig:
         default_video_resolution: Default video resolution (e.g., "1080p")
 
     Note:
-        Turso read-only token is read from SOW_TURSO_READONLY_TOKEN environment
+        The database password is read from ``SOW_DATABASE_PASSWORD`` environment
         variable only (not stored in config file for security).
     """
 
-    # Database paths
-    db_path: Path = field(default_factory=get_default_db_path)
-    songsets_db_path: Path = field(default_factory=get_default_songsets_db_path)
+    # Postgres database (password via SOW_DATABASE_PASSWORD env var)
+    database_url: str = ""
 
     # Songset settings
     songsets_backup_retention: int = 5
     songsets_export_dir: Path = field(default_factory=get_default_export_dir)
-
-    # Turso sync settings (token via SOW_TURSO_READONLY_TOKEN env var only)
-    turso_database_url: str = ""
-    sync_on_startup: bool = True
 
     # R2 storage settings
     r2_bucket: str = "sow-audio"
@@ -130,6 +105,31 @@ class AppConfig:
     default_gap_beats: float = 2.0
     default_video_template: str = "dark"
     default_video_resolution: str = "1080p"
+
+    def get_connection_url(self) -> str:
+        """Return a Postgres DSN with password injected from env var.
+
+        The ``database_url`` stored in TOML should NOT contain a password.
+        The password is read from the ``SOW_DATABASE_PASSWORD`` environment
+        variable and injected into the URL at runtime.
+
+        Returns:
+            A fully-formed ``postgresql://`` connection string.
+
+        Raises:
+            ValueError: If the URL is empty.
+        """
+        url = os.environ.get("SOW_DATABASE_URL", self.database_url)
+        if not url:
+            raise ValueError("database_url is not configured")
+        password = os.environ.get("SOW_DATABASE_PASSWORD", "")
+        if password and "://" in url and "@" in url:
+            proto, rest = url.split("://", 1)
+            user_host = rest.split("@", 1)
+            if len(user_host) == 2 and ":" not in user_host[0]:
+                # No password currently in DSN → insert one
+                url = f"{proto}://{user_host[0]}:{password}@{user_host[1]}"
+        return url
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "AppConfig":
@@ -155,13 +155,14 @@ class AppConfig:
 
         config = cls()
 
-        # Load database paths
+        # Load database config (new [database] section)
         if "database" in data:
             db = data["database"]
-            if "db_path" in db:
-                config.db_path = Path(db["db_path"]).expanduser()
-            if "songsets_db_path" in db:
-                config.songsets_db_path = Path(db["songsets_db_path"]).expanduser()
+            if "url" in db:
+                config.database_url = db["url"]
+
+        # Backward compatibility: silently ignore old [turso] section
+        # (it may still exist in user configs from before migration)
 
         # Load songset settings
         if "songsets" in data:
@@ -171,12 +172,6 @@ class AppConfig:
             )
             if "export_dir" in songsets:
                 config.songsets_export_dir = Path(songsets["export_dir"]).expanduser()
-
-        # Load Turso settings (database_url from config, token from env var only)
-        if "turso" in data:
-            turso = data["turso"]
-            config.turso_database_url = turso.get("database_url", config.turso_database_url)
-            config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
 
         # Load R2 settings
         if "r2" in data:
@@ -220,17 +215,10 @@ class AppConfig:
 
         # Build TOML structure
         data = {
-            "database": {
-                "db_path": str(self.db_path),
-                "songsets_db_path": str(self.songsets_db_path),
-            },
+            "database": {"url": self.database_url},
             "songsets": {
                 "backup_retention": self.songsets_backup_retention,
                 "export_dir": str(self.songsets_export_dir),
-            },
-            "turso": {
-                "database_url": self.turso_database_url,
-                "sync_on_startup": self.sync_on_startup,
             },
             "r2": {
                 "bucket": self.r2_bucket,
@@ -254,30 +242,10 @@ class AppConfig:
 
     def ensure_directories(self) -> None:
         """Ensure all configured directories exist."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.songsets_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.songsets_export_dir.mkdir(parents=True, exist_ok=True)
-
-    @property
-    def turso_readonly_token(self) -> str:
-        """Get Turso read-only token from environment variable.
-
-        Returns:
-            Turso read-only token from SOW_TURSO_READONLY_TOKEN env var
-        """
-        return os.environ.get("SOW_TURSO_READONLY_TOKEN", "")
-
-    @property
-    def is_turso_configured(self) -> bool:
-        """Check if Turso sync is configured.
-
-        Returns:
-            True if Turso URL and token are configured
-        """
-        return bool(self.turso_database_url and self.turso_readonly_token)
 
 
 def ensure_app_config_exists() -> AppConfig:
@@ -295,7 +263,7 @@ def ensure_app_config_exists() -> AppConfig:
             # If config is corrupted, create a new one
             pass
 
-    # Create default config with placeholder Turso values
+    # Create default config
     config = AppConfig()
     config.save(config_path)
     return config
