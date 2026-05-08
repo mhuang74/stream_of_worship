@@ -572,33 +572,3 @@ class SongsetClient:
         )
         result = cursor.fetchone()
         return result[0] if result else 0
-
-    def get_metadata(self, key: str, default: Optional[str] = None) -> Optional[str]:
-        """Get metadata value from _sync_metadata table.
-
-        Args:
-            key: Metadata key.
-            default: Default value if key not found.
-
-        Returns:
-            Metadata value or default.
-        """
-        cursor = self.connection.cursor()
-        cursor.execute("SELECT value FROM _sync_metadata WHERE key = %s", (key,))
-        row = cursor.fetchone()
-        return row[0] if row else default
-
-    def set_metadata(self, key: str, value: str) -> None:
-        """Set metadata value in _sync_metadata table.
-
-        Args:
-            key: Metadata key.
-            value: Metadata value.
-        """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO _sync_metadata (key, value) VALUES (%s, %s) "
-                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-                (key, value),
-            )

@@ -8,19 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
+from stream_of_worship.db.helpers import to_str
 
-def _to_str(val) -> Optional[str]:
-    """Coerce a value to an ISO-8601 string, handling datetime objects.
 
-    psycopg3 returns ``timestamptz`` columns as ``datetime`` objects with
-    ``tzinfo=timezone.utc``.  This helper converts those back to strings so
-    that dataclass fields can remain ``Optional[str]`` with minimal changes.
-    """
-    if val is None:
-        return None
-    if isinstance(val, datetime):
-        return val.isoformat()
-    return str(val)
+_to_str = to_str  # Alias for backward compatibility with existing code
 
 
 @dataclass

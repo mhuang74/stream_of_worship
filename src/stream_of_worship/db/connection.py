@@ -37,6 +37,7 @@ class ConnectionProvider:
         """Attempt to connect with exponential backoff for cold starts."""
         last_error: Optional[Exception] = None
         for attempt in range(self.MAX_RETRIES + 1):
+            conn = None
             try:
                 conn = psycopg.connect(
                     self.database_url,
@@ -45,6 +46,8 @@ class ConnectionProvider:
                 conn.execute("SELECT 1")
                 return conn
             except Exception as exc:
+                if conn:
+                    conn.close()
                 last_error = exc
                 if attempt == self.MAX_RETRIES:
                     break
@@ -62,3 +65,22 @@ class ConnectionProvider:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
+
+
+def check_database_connection(database_url: str, timeout: int = 10) -> bool:
+    """Verify that a PostgreSQL database is reachable.
+
+    Args:
+        database_url: Postgres DSN (with password if required).
+        timeout: Connection timeout in seconds.
+
+    Returns:
+        True if the connection succeeds and ``SELECT 1`` returns a row,
+        False otherwise.
+    """
+    try:
+        with psycopg.connect(database_url, connect_timeout=timeout) as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception:
+        return False

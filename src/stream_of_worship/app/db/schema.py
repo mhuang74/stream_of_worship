@@ -62,15 +62,6 @@ CREATE TRIGGER trg_songsets_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 """
 
-# Deprecated: _sync_metadata was used for Turso-specific state tracking.
-# Kept as a constant for transition compatibility; not included in ALL_APP_SCHEMA_STATEMENTS.
-CREATE_SYNC_METADATA_TABLE = """
-CREATE TABLE IF NOT EXISTS _sync_metadata (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"""
-
 # All app schema creation statements in order
 ALL_APP_SCHEMA_STATEMENTS = [
     CREATE_SONGSETS_TABLE,

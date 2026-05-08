@@ -68,7 +68,7 @@ The project consists of **four architecturally separate components**:
 **Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies.
 
 - **Admin CLI**: Lightweight catalog/audio management
-- **User App**: TUI for transitions, read-only from Turso/R2
+- **User App**: TUI for transitions, read-only from PostgreSQL/R2
 - **Analysis Service**: Heavy ML (PyTorch, Demucs, allin1) in Docker
 
 ## Development Guidelines
