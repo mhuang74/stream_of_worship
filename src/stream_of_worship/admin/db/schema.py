@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS recordings (
     updated_at timestamptz DEFAULT NOW(),
     youtube_url TEXT,
     visibility_status TEXT DEFAULT NULL,
-    deleted_at timestamptz
+    deleted_at timestamptz,
+    download_status TEXT DEFAULT 'pending'
 );
 """
 

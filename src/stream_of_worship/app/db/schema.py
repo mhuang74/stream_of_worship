@@ -100,7 +100,7 @@ SELECT
     tempo_ratio,
     created_at
 FROM songset_items
-WHERE songset_id = ?
+WHERE songset_id = %s
 ORDER BY position;
 """
 
@@ -118,6 +118,6 @@ SELECT
     tempo_ratio,
     created_at
 FROM songset_items
-WHERE songset_id = ?
+WHERE songset_id = %s
 ORDER BY position;
 """

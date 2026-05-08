@@ -1,114 +1,246 @@
-"""Tests for ReadOnlyClient.
+"""Tests for ReadOnlyClient (PostgreSQL).
 
-Tests read-only database access to songs and recordings tables.
+Uses testcontainers for integration tests with a real Postgres instance.
 """
 
-import sqlite3
+from datetime import datetime
 
+import psycopg
 import pytest
+from testcontainers.postgres import PostgresContainer
 
-from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.admin.db.models import Song, Recording
+from stream_of_worship.app.db.read_client import ReadOnlyClient
+from stream_of_worship.db.connection import ConnectionProvider
+
+
+def _pg_url(pg: PostgresContainer) -> str:
+    return pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+
+
+@pytest.fixture(scope="module")
+def postgres_url():
+    """Start a Postgres container for the module."""
+    with PostgresContainer("postgres:16-alpine") as pg:
+        yield _pg_url(pg)
 
 
 @pytest.fixture
-def populated_db(tmp_path):
-    """Create a populated SQLite database with sample data."""
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(db_path)
+def provider(postgres_url):
+    """Yield a ConnectionProvider and close it after the test."""
+    provider = ConnectionProvider(postgres_url)
+    yield provider
+    provider.close()
 
-    # Create songs table
-    conn.execute("""
-        CREATE TABLE songs (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            title_pinyin TEXT,
-            composer TEXT,
-            lyricist TEXT,
-            album_name TEXT,
-            album_series TEXT,
-            musical_key TEXT,
-            lyrics_raw TEXT,
-            lyrics_lines TEXT,
-            sections TEXT,
-            source_url TEXT NOT NULL,
-            table_row_number INTEGER,
-            scraped_at TEXT NOT NULL,
-            created_at TEXT,
-            updated_at TEXT
-        )
-    """)
 
-    # Create recordings table
-    conn.execute("""
-        CREATE TABLE recordings (
-            content_hash TEXT PRIMARY KEY,
-            hash_prefix TEXT UNIQUE NOT NULL,
-            song_id TEXT REFERENCES songs(id),
-            original_filename TEXT NOT NULL,
-            file_size_bytes INTEGER NOT NULL,
-            imported_at TEXT NOT NULL,
-            r2_audio_url TEXT,
-            r2_stems_url TEXT,
-            r2_lrc_url TEXT,
-            duration_seconds REAL,
-            tempo_bpm REAL,
-            musical_key TEXT,
-            musical_mode TEXT,
-            key_confidence REAL,
-            loudness_db REAL,
-            beats TEXT,
-            downbeats TEXT,
-            sections TEXT,
-            embeddings_shape TEXT,
-            analysis_status TEXT DEFAULT 'pending',
-            analysis_job_id TEXT,
-            lrc_status TEXT DEFAULT 'pending',
-            lrc_job_id TEXT,
-            created_at TEXT,
-            updated_at TEXT
-        )
-    """)
+@pytest.fixture
+def populated_provider(postgres_url):
+    """Create a provider populated with sample data.
+
+    Tables are truncated first to ensure clean state.
+    """
+    provider = ConnectionProvider(postgres_url)
+    conn = provider.get_connection()
+
+    from stream_of_worship.admin.db.schema import ALL_SCHEMA_STATEMENTS
+
+    cursor = conn.cursor()
+    for statement in ALL_SCHEMA_STATEMENTS:
+        cursor.execute(statement)
+    conn.commit()
+
+    # Clean slate for this test
+    cursor = conn.cursor()
+    cursor.execute("TRUNCATE TABLE songs, recordings CASCADE")
+    conn.commit()
 
     # Insert sample songs
     songs_data = [
-        ("song_0001", "Amazing Grace", None, "John Newton", None, "Hymns", None, "G", "Lyrics...", None, None, "http://example.com/1", 1, "2024-01-01T00:00:00", None, None),
-        ("song_0002", "How Great Thou Art", None, "Stuart Hine", None, "Hymns", None, "D", "Lyrics...", None, None, "http://example.com/2", 2, "2024-01-01T00:00:00", None, None),
-        ("song_0003", "Test Song", None, "Test Composer", None, "Modern", None, "C", "Lyrics...", None, None, "http://example.com/3", 3, "2024-01-01T00:00:00", None, None),
+        (
+            "song_0001",
+            "Amazing Grace",
+            None,
+            "John Newton",
+            None,
+            "Hymns",
+            None,
+            "G",
+            "Lyrics...",
+            None,
+            None,
+            "http://example.com/1",
+            1,
+            "2024-01-01T00:00:00",
+            datetime.now(),
+            datetime.now(),
+            None,
+        ),
+        (
+            "song_0002",
+            "How Great Thou Art",
+            None,
+            "Stuart Hine",
+            None,
+            "Hymns",
+            None,
+            "D",
+            "Lyrics...",
+            None,
+            None,
+            "http://example.com/2",
+            2,
+            "2024-01-01T00:00:00",
+            datetime.now(),
+            datetime.now(),
+            None,
+        ),
+        (
+            "song_0003",
+            "Test Song",
+            None,
+            "Test Composer",
+            None,
+            "Modern",
+            None,
+            "C",
+            "Lyrics...",
+            None,
+            None,
+            "http://example.com/3",
+            3,
+            "2024-01-01T00:00:00",
+            datetime.now(),
+            datetime.now(),
+            None,
+        ),
     ]
-    conn.executemany(
+    cursor.executemany(
         """INSERT INTO songs (id, title, title_pinyin, composer, lyricist, album_name, album_series,
             musical_key, lyrics_raw, lyrics_lines, sections, source_url, table_row_number,
-            scraped_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        songs_data
+            scraped_at, created_at, updated_at, deleted_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING""",
+        songs_data,
     )
 
     # Insert sample recordings
     recordings_data = [
-        ("abc123" * 8, "abc123def456", "song_0001", "amazing_grace.mp3", 5000000, "2024-01-01T00:00:00", None, None, None, 180.5, 120.0, "G", "major", 0.95, -14.0, None, None, None, None, "completed", None, "completed", None, None, None),
-        ("def456" * 8, "def456ghi789", "song_0002", "how_great.mp3", 6000000, "2024-01-01T00:00:00", None, None, None, 240.0, 100.0, "D", "major", 0.90, -16.0, None, None, None, None, "completed", None, "completed", None, None, None),
-        ("xyz789" * 8, "xyz789abc012", None, "orphan.mp3", 3000000, "2024-01-01T00:00:00", None, None, None, 120.0, 90.0, "C", "minor", 0.80, -12.0, None, None, None, None, "pending", None, "pending", None, None, None),
+        (
+            "abc123" * 8,
+            "abc123def456",
+            "song_0001",
+            "amazing_grace.mp3",
+            5000000,
+            "2024-01-01T00:00:00",
+            None,
+            None,
+            None,
+            180.5,
+            120.0,
+            "G",
+            "major",
+            0.95,
+            -14.0,
+            None,
+            None,
+            None,
+            None,
+            "completed",
+            None,
+            "completed",
+            None,
+            None,
+            None,
+            datetime.now(),
+            datetime.now(),
+            None,
+            "pending",
+        ),
+        (
+            "def456" * 8,
+            "def456ghi789",
+            "song_0002",
+            "how_great.mp3",
+            6000000,
+            "2024-01-01T00:00:00",
+            None,
+            None,
+            None,
+            240.0,
+            100.0,
+            "D",
+            "major",
+            0.90,
+            -16.0,
+            None,
+            None,
+            None,
+            None,
+            "completed",
+            None,
+            "completed",
+            None,
+            None,
+            None,
+            datetime.now(),
+            datetime.now(),
+            None,
+            "pending",
+        ),
+        (
+            "xyz789" * 8,
+            "xyz789abc012",
+            None,
+            "orphan.mp3",
+            3000000,
+            "2024-01-01T00:00:00",
+            None,
+            None,
+            None,
+            120.0,
+            90.0,
+            "C",
+            "minor",
+            0.80,
+            -12.0,
+            None,
+            None,
+            None,
+            None,
+            "pending",
+            None,
+            "pending",
+            None,
+            None,
+            None,
+            datetime.now(),
+            datetime.now(),
+            None,
+            "pending",
+        ),
     ]
-    conn.executemany(
+    cursor.executemany(
         """INSERT INTO recordings (content_hash, hash_prefix, song_id, original_filename,
             file_size_bytes, imported_at, r2_audio_url, r2_stems_url, r2_lrc_url,
             duration_seconds, tempo_bpm, musical_key, musical_mode, key_confidence,
             loudness_db, beats, downbeats, sections, embeddings_shape, analysis_status,
-            analysis_job_id, lrc_status, lrc_job_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        recordings_data
+            analysis_job_id, lrc_status, lrc_job_id, youtube_url, visibility_status,
+            created_at, updated_at, deleted_at, download_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING""",
+        recordings_data,
     )
 
     conn.commit()
-    conn.close()
 
-    return db_path
+    yield provider
+    provider.close()
 
 
 @pytest.fixture
-def read_client(populated_db):
+def read_client(populated_provider):
     """ReadOnlyClient instance using populated database."""
-    return ReadOnlyClient(populated_db)
+    return ReadOnlyClient(populated_provider)
 
 
 class TestReadClientSongOperations:
@@ -126,7 +258,6 @@ class TestReadClientSongOperations:
     def test_get_song_returns_none_for_missing(self, read_client):
         """Verify None returned when song not found."""
         song = read_client.get_song("song_nonexistent")
-
         assert song is None
 
     def test_list_songs_returns_list(self, read_client):
@@ -200,19 +331,16 @@ class TestReadClientRecordingOperations:
     def test_get_recording_count(self, read_client):
         """Verify total recording count."""
         count = read_client.get_recording_count()
-
         assert count == 3
 
     def test_get_analyzed_recording_count(self, read_client):
         """Verify analyzed recording count."""
         count = read_client.get_analyzed_recording_count()
-
         assert count == 2
 
     def test_get_song_count(self, read_client):
         """Verify total song count."""
         count = read_client.get_song_count()
-
         assert count == 3
 
 
@@ -240,33 +368,24 @@ class TestReadClientListOperations:
 class TestReadClientConnectionManagement:
     """Tests for connection lifecycle."""
 
-    def test_connection_lazy_initialization(self, populated_db):
-        """Verify connection created on first access."""
-        client = ReadOnlyClient(populated_db)
+    def test_check_connection(self, populated_provider):
+        """Verify check_connection returns True for a live connection."""
+        client = ReadOnlyClient(populated_provider)
+        assert client.check_connection() is True
 
-        # Connection should be None initially
-        assert client._connection is None
-
-        # Accessing connection property creates it
-        conn = client.connection
-        assert conn is not None
-        assert isinstance(conn, sqlite3.Connection)
-
-    def test_context_manager_closes_connection(self, populated_db):
+    def test_context_manager_closes_connection(self, populated_provider):
         """Verify __exit__ closes connection."""
-        client = ReadOnlyClient(populated_db)
+        client = ReadOnlyClient(populated_provider)
 
-        # Use as context manager
         with client:
-            _ = client.connection  # Force connection creation
-            assert client._connection is not None
+            _ = client.connection
 
         # Connection should be closed after exiting context
-        assert client._connection is None
+        assert client.connection_provider._connection is None
 
-    def test_close_idempotent(self, populated_db):
+    def test_close_idempotent(self, populated_provider):
         """Verify close() can be called multiple times safely."""
-        client = ReadOnlyClient(populated_db)
+        client = ReadOnlyClient(populated_provider)
 
-        client.close()  # Should not raise
-        client.close()  # Should not raise
+        client.close()
+        client.close()

@@ -1,12 +1,28 @@
 """Data models for sow-admin database entities.
 
 Provides dataclasses for Song and Recording entities with serialization
-to/from database rows.
+ to/from database rows.
 """
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Optional
+
+
+def _to_str(val: Any) -> Optional[str]:
+    """Coerce a postgres/psycopg value to an ISO-8601 string.
+
+    timestamptz columns are returned as ``datetime`` objects by psycopg3.
+    TEXT columns are returned as ``str``.  This helper normalises both to
+    string so that ``from_row()`` can stay unchanged regardless of whether
+    the backend is SQLite or PostgreSQL.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    return str(val)
 
 
 @dataclass
@@ -81,9 +97,9 @@ class Song:
             source_url=row[11],
             table_row_number=row[12],
             scraped_at=row[13],
-            created_at=row[14],
-            updated_at=row[15],
-            deleted_at=row[16] if row_len > 16 else None,
+            created_at=_to_str(row[14]),
+            updated_at=_to_str(row[15]),
+            deleted_at=_to_str(row[16]) if row_len > 16 else None,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -274,9 +290,9 @@ class Recording:
             lrc_job_id=row[22],
             visibility_status=visibility_status,
             download_status=download_status or "pending",
-            created_at=created_at,
-            updated_at=updated_at,
-            deleted_at=deleted_at,
+            created_at=_to_str(created_at),
+            updated_at=_to_str(updated_at),
+            deleted_at=_to_str(deleted_at),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -378,21 +394,15 @@ class DatabaseStats:
 
     Attributes:
         table_counts: Dictionary of table names to row counts
-        integrity_ok: Whether integrity check passed
-        foreign_keys_enabled: Whether foreign keys are enabled
-        last_sync_at: Last sync timestamp (if any)
+        is_healthy: Whether the database is healthy (runtime pg_is_in_recovery check)
+        last_sync_at: Last sync timestamp (if any); kept for API compat
         sync_version: Schema version for sync compatibility
-        local_device_id: Unique identifier for this device
-        turso_configured: Whether Turso sync is configured
     """
 
     table_counts: dict[str, int] = field(default_factory=dict)
-    integrity_ok: bool = True
-    foreign_keys_enabled: bool = False
+    is_healthy: bool = True
     last_sync_at: Optional[str] = None
-    sync_version: str = "1"
-    local_device_id: str = ""
-    turso_configured: bool = False
+    sync_version: str = "3"
 
     @property
     def total_songs(self) -> int:

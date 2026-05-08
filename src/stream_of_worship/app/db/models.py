@@ -1,12 +1,27 @@
 """Data models for sow-app database entities.
 
 Provides dataclasses for Songset and SongsetItem entities with serialization
-to/from database rows.
+ to/from database rows.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
+
+
+def _to_str(val: Any) -> Optional[str]:
+    """Coerce a postgres/psycopg value to an ISO-8601 string.
+
+    timestamptz columns are returned as ``datetime`` objects by psycopg3.
+    TEXT columns are returned as ``str``.  This helper normalises both to
+    string so that ``from_row()`` can stay unchanged regardless of whether
+    the backend is SQLite or PostgreSQL.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    return str(val)
 
 
 @dataclass
@@ -41,8 +56,8 @@ class Songset:
             id=row[0],
             name=row[1],
             description=row[2],
-            created_at=row[3],
-            updated_at=row[4],
+            created_at=_to_str(row[3]),
+            updated_at=_to_str(row[4]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -144,7 +159,7 @@ class SongsetItem:
                 crossfade_duration_seconds=row[7],
                 key_shift_semitones=row[8] if row[8] is not None else 0,
                 tempo_ratio=row[9] if row[9] is not None else 1.0,
-                created_at=row[10],
+                created_at=_to_str(row[10]),
                 song_title=row[11],
                 song_key=row[12],
                 duration_seconds=row[13],
@@ -168,7 +183,7 @@ class SongsetItem:
                 crossfade_duration_seconds=row[7],
                 key_shift_semitones=row[8] if row[8] is not None else 0,
                 tempo_ratio=row[9] if row[9] is not None else 1.0,
-                created_at=row[10],
+                created_at=_to_str(row[10]),
             )
 
     def to_dict(self, include_joined: bool = False) -> dict[str, Any]:

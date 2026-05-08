@@ -1,26 +1,20 @@
 """Read-only database client for admin tables.
 
-Provides read-only access to songs and recordings tables managed by the admin CLI.
-Supports libsql/Turso embedded replicas for sync with the cloud database.
+Provides read-only access to songs and recordings tables managed by the admin
+CLI via a shared ``ConnectionProvider``.
 """
 
+from __future__ import annotations
+
 import logging
-import sqlite3
-from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
+
+import psycopg
 
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.db.connection import ConnectionProvider
 
 logger = logging.getLogger("sow_app.db")
-
-# Optional libsql import for Turso support
-try:
-    import libsql
-
-    LIBSQL_AVAILABLE = True
-except ImportError:
-    LIBSQL_AVAILABLE = False
-    libsql = None  # type: ignore
 
 
 class SyncError(Exception):
@@ -34,109 +28,47 @@ class SyncError(Exception):
 class ReadOnlyClient:
     """Read-only client for admin songs and recordings tables.
 
-    This client provides read-only access to the admin-managed tables.
-    It supports both standard SQLite and libsql/Turso embedded replicas.
+    This client provides read access to the admin-managed tables via a shared
+    ``ConnectionProvider``.  Write access is prevented by Postgres
+    role-level privileges, not by code.
 
     Attributes:
-        db_path: Path to the SQLite database file
-        turso_url: Turso database URL for sync (optional)
-        turso_token: Turso auth token (optional)
-        connection: Active database connection
+        connection_provider: Provider that manages the psycopg connection
     """
 
-    def __init__(
-        self,
-        db_path: Path,
-        turso_url: Optional[str] = None,
-        turso_token: Optional[str] = None,
-    ):
+    def __init__(self, connection_provider: ConnectionProvider):
         """Initialize the read-only client.
 
         Args:
-            db_path: Path to the SQLite database file
-            turso_url: Turso database URL for sync (optional)
-            turso_token: Turso auth token (optional)
+            connection_provider: A ``ConnectionProvider`` instance
         """
-        self.db_path = db_path
-        self.turso_url = turso_url
-        self.turso_token = turso_token
-        self._connection: Optional[Union[sqlite3.Connection, "libsql.Connection"]] = None
+        self.connection_provider = connection_provider
 
     @property
-    def is_turso_enabled(self) -> bool:
-        """Check if Turso sync is enabled.
-
-        Returns:
-            True if Turso URL is configured and libsql is available
-        """
-        return bool(self.turso_url and LIBSQL_AVAILABLE)
-
-    @property
-    def connection(self) -> Union[sqlite3.Connection, "libsql.Connection"]:
-        """Get or create database connection.
-
-        Returns:
-            Active database connection (sqlite3 or libsql)
-        """
-        if self._connection is None:
-            # Ensure directory exists
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-
-            if self.is_turso_enabled:
-                # Use libsql for Turso embedded replica
-                self._connection = libsql.connect(
-                    str(self.db_path),
-                    sync_url=self.turso_url,
-                    auth_token=self.turso_token or "",
-                )
-            else:
-                # Use standard sqlite3
-                self._connection = sqlite3.connect(
-                    self.db_path,
-                    detect_types=sqlite3.PARSE_DECLTYPES,
-                )
-                self._connection.row_factory = sqlite3.Row
-
-            self._migrate_schema()
-
-        return self._connection
+    def connection(self) -> psycopg.Connection:
+        """Get the underlying psycopg connection."""
+        return self.connection_provider.get_connection()
 
     def close(self) -> None:
         """Close the database connection."""
-        if self._connection:
-            self._connection.close()
-            self._connection = None
+        self.connection_provider.close()
 
-    def _migrate_schema(self) -> None:
-        """Run schema migrations for the read-only catalog replica."""
-        cursor = self._connection.cursor()
-        for table in ("songs", "recordings"):
-            try:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TIMESTAMP")
-            except Exception:
-                pass
+    def check_connection(self) -> bool:
+        """Verify the database connection is alive.
 
-    def sync(self) -> None:
-        """Sync with Turso cloud database.
-
-        Raises:
-            SyncError: If sync fails or Turso is not configured
+        Returns:
+            True if the connection responds, False otherwise
         """
-        if not self.is_turso_enabled:
-            raise SyncError("Turso sync is not configured")
-
         try:
-            conn = self.connection
-            conn.sync()  # type: ignore
-        except Exception as e:
-            raise SyncError(f"Sync failed: {e}", cause=e)
+            self.connection.execute("SELECT 1")
+            return True
+        except Exception:
+            return False
 
-    def __enter__(self) -> "ReadOnlyClient":
-        """Context manager entry."""
+    def __enter__(self) -> ReadOnlyClient:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
         self.close()
 
     # Song operations (read-only, deleted-aware)
@@ -153,9 +85,9 @@ class ReadOnlyClient:
         """
         cursor = self.connection.cursor()
         if include_deleted:
-            cursor.execute("SELECT * FROM songs WHERE id = ?", (song_id,))
+            cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
         else:
-            cursor.execute("SELECT * FROM songs WHERE id = ? AND deleted_at IS NULL", (song_id,))
+            cursor.execute("SELECT * FROM songs WHERE id = %s AND deleted_at IS NULL", (song_id,))
         row = cursor.fetchone()
 
         if row:
@@ -204,11 +136,11 @@ class ReadOnlyClient:
             query += " AND deleted_at IS NULL"
 
         if album:
-            query += " AND album_name = ?"
+            query += " AND album_name = %s"
             params.append(album)
 
         if key:
-            query += " AND musical_key = ?"
+            query += " AND musical_key = %s"
             params.append(key)
 
         query += " ORDER BY title"
@@ -247,19 +179,23 @@ class ReadOnlyClient:
         deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
 
         if field == "title":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE ? OR title_pinyin LIKE ?)"
+            sql = (
+                f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE %s OR title_pinyin LIKE %s)"
+            )
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE ?"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE %s"
             params = [search_pattern]
         elif field == "composer":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE ? OR lyricist LIKE ?)"
+            sql = (
+                f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE %s OR lyricist LIKE %s)"
+            )
             params = [search_pattern, search_pattern]
         else:  # all
             sql = f"""
                 SELECT * FROM songs WHERE {deleted_clause}(
-                title LIKE ? OR title_pinyin LIKE ? OR
-                lyrics_raw LIKE ? OR composer LIKE ? OR lyricist LIKE ?)
+                title LIKE %s OR title_pinyin LIKE %s OR
+                lyrics_raw LIKE %s OR composer LIKE %s OR lyricist LIKE %s)
             """
             params = [search_pattern] * 5
 
@@ -279,11 +215,9 @@ class ReadOnlyClient:
             List of album names (excluding deleted songs)
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT DISTINCT album_name FROM songs
+        cursor.execute("""SELECT DISTINCT album_name FROM songs
             WHERE album_name IS NOT NULL AND deleted_at IS NULL
-            ORDER BY album_name"""
-        )
+            ORDER BY album_name""")
         return [row[0] for row in cursor.fetchall() if row[0]]
 
     def list_keys(self) -> list[str]:
@@ -293,11 +227,9 @@ class ReadOnlyClient:
             List of key names (excluding deleted songs)
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT DISTINCT musical_key FROM songs
+        cursor.execute("""SELECT DISTINCT musical_key FROM songs
             WHERE musical_key IS NOT NULL AND deleted_at IS NULL
-            ORDER BY musical_key"""
-        )
+            ORDER BY musical_key""")
         return [row[0] for row in cursor.fetchall() if row[0]]
 
     # Recording operations (read-only, deleted-aware)
@@ -317,12 +249,12 @@ class ReadOnlyClient:
         cursor = self.connection.cursor()
         if include_deleted:
             cursor.execute(
-                "SELECT * FROM recordings WHERE hash_prefix = ?",
+                "SELECT * FROM recordings WHERE hash_prefix = %s",
                 (hash_prefix,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE hash_prefix = ? AND deleted_at IS NULL",
+                "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
                 (hash_prefix,),
             )
         row = cursor.fetchone()
@@ -346,12 +278,12 @@ class ReadOnlyClient:
         cursor = self.connection.cursor()
         if include_deleted:
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = ?",
+                "SELECT * FROM recordings WHERE song_id = %s",
                 (song_id,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = ? AND deleted_at IS NULL",
+                "SELECT * FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
                 (song_id,),
             )
         row = cursor.fetchone()
@@ -387,7 +319,7 @@ class ReadOnlyClient:
             query += " AND deleted_at IS NULL"
 
         if status:
-            query += " AND analysis_status = ?"
+            query += " AND analysis_status = %s"
             params.append(status)
 
         if has_analysis:
@@ -423,10 +355,8 @@ class ReadOnlyClient:
             Count of analyzed recordings (excluding soft-deleted)
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT COUNT(*) FROM recordings
-            WHERE analysis_status = 'completed' AND deleted_at IS NULL"""
-        )
+        cursor.execute("""SELECT COUNT(*) FROM recordings
+            WHERE analysis_status = 'completed' AND deleted_at IS NULL""")
         result = cursor.fetchone()
         return result[0] if result else 0
 
@@ -450,12 +380,10 @@ class ReadOnlyClient:
             Count of LRC-ready songs
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT COUNT(*) FROM songs s
+        cursor.execute("""SELECT COUNT(*) FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
-            AND r.deleted_at IS NULL AND s.deleted_at IS NULL"""
-        )
+            AND r.deleted_at IS NULL AND s.deleted_at IS NULL""")
         result = cursor.fetchone()
         count = result[0] if result else 0
         logger.debug(f"Songs with LRC ready: {count}")
