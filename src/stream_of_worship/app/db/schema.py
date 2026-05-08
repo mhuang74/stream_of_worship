@@ -4,6 +4,8 @@ Defines the database schema for app-specific tables (songsets, songset_items).
 These tables live in the same Neon Postgres database as the admin catalog tables.
 """
 
+from stream_of_worship.admin.db.schema import CREATE_UPDATE_TIMESTAMP_FUNCTION
+
 # SQL to create the songsets table (user-created playlists)
 CREATE_SONGSETS_TABLE = """
 CREATE TABLE IF NOT EXISTS songsets (
@@ -63,10 +65,12 @@ CREATE TRIGGER trg_songsets_updated_at
 """
 
 # All app schema creation statements in order
+# Note: CREATE_UPDATE_TIMESTAMP_FUNCTION must come before the trigger that uses it
 ALL_APP_SCHEMA_STATEMENTS = [
     CREATE_SONGSETS_TABLE,
     CREATE_SONGSET_ITEMS_TABLE,
     *CREATE_APP_INDEXES,
+    CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGSETS_UPDATE_TRIGGER,
 ]
 

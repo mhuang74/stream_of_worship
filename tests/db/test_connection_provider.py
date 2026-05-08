@@ -1,5 +1,6 @@
 """Unit tests for ConnectionProvider retry logic."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -102,3 +103,59 @@ class TestConnectionProvider:
                 _ = provider.get_connection()
 
             mock_conn.close.assert_called_once()
+
+    def test_thread_safety_get_connection(self):
+        """Concurrent get_connection calls should only create one connection."""
+        mock_conn = MagicMock()
+        mock_conn.closed = False
+        connect_count = 0
+        lock = threading.Lock()
+
+        def mock_connect(*args, **kwargs):
+            nonlocal connect_count
+            with lock:
+                connect_count += 1
+            return mock_conn
+
+        with patch("stream_of_worship.db.connection.psycopg.connect", side_effect=mock_connect):
+            provider = ConnectionProvider("postgresql://user:pass@localhost/db")
+            results = []
+            errors = []
+
+            def get_conn():
+                try:
+                    results.append(provider.get_connection())
+                except Exception as e:
+                    errors.append(e)
+
+            threads = [threading.Thread(target=get_conn) for _ in range(10)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            assert len(errors) == 0
+            assert len(results) == 10
+            assert all(r is mock_conn for r in results)
+            assert connect_count == 1
+
+    def test_thread_safety_close(self):
+        """Concurrent close calls should be safe."""
+        mock_conn = MagicMock()
+        mock_conn.closed = False
+
+        with patch("stream_of_worship.db.connection.psycopg.connect", return_value=mock_conn):
+            provider = ConnectionProvider("postgresql://user:pass@localhost/db")
+            provider.get_connection()
+
+            def close_conn():
+                provider.close()
+
+            threads = [threading.Thread(target=close_conn) for _ in range(10)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            mock_conn.close.assert_called_once()
+            assert provider._connection is None
