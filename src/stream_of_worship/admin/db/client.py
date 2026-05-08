@@ -1,16 +1,15 @@
 """Database client for sow-admin.
 
-Provides SQLite database operations for local storage of song catalog
-and recording metadata. Supports libsql/Turso for embedded replica sync.
+Provides PostgreSQL database operations for song catalog and recording
+metadata via ``psycopg``.
 """
 
-import os
-import sqlite3
-import uuid
+import logging
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
-from typing import Generator, Optional, Union
+from typing import Generator, Optional
+
+import psycopg
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
@@ -20,20 +19,13 @@ from stream_of_worship.admin.db.schema import (
     CREATE_SONGS_TABLE,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_SYNC_METADATA_TABLE,
+    CREATE_UPDATE_TIMESTAMP_FUNCTION,
     DEFAULT_SYNC_METADATA,
-    FOREIGN_KEYS_QUERY,
-    INTEGRITY_CHECK_QUERY,
     ROW_COUNT_QUERY,
 )
+from stream_of_worship.db.connection import ConnectionProvider
 
-# Optional libsql import for Turso support
-try:
-    import libsql
-
-    LIBSQL_AVAILABLE = True
-except ImportError:
-    LIBSQL_AVAILABLE = False
-    libsql = None  # type: ignore
+logger = logging.getLogger("sow_admin.db")
 
 
 class SyncError(Exception):
@@ -45,199 +37,72 @@ class SyncError(Exception):
 
 
 class DatabaseClient:
-    """Client for local SQLite database operations with optional Turso sync.
+    """Client for PostgreSQL database operations.
 
-    This client manages the connection to the local SQLite database and
+    This client manages the connection via a ``ConnectionProvider`` and
     provides methods for CRUD operations on songs and recordings.
-    When Turso is configured, it uses libsql for embedded replica sync.
 
     Attributes:
-        db_path: Path to the SQLite database file
-        turso_url: Turso database URL for sync (optional)
-        turso_token: Turso auth token (optional)
-        connection: Active database connection
+        connection_provider: ``ConnectionProvider`` instance that manages
+            the underlying ``psycopg.Connection``.
     """
 
-    def __init__(
-        self,
-        db_path: Path,
-        turso_url: Optional[str] = None,
-        turso_token: Optional[str] = None,
-    ):
+    def __init__(self, connection_provider: ConnectionProvider):
         """Initialize the database client.
 
         Args:
-            db_path: Path to the SQLite database file
-            turso_url: Turso database URL for sync (optional)
-            turso_token: Turso auth token (optional, falls back to SOW_TURSO_TOKEN env var)
+            connection_provider: ``ConnectionProvider`` wrapping the DSN.
         """
-        self.db_path = db_path
-        self.turso_url = turso_url
-        self.turso_token = turso_token or os.environ.get("SOW_TURSO_TOKEN")
-        self._connection: Optional[Union[sqlite3.Connection, "libsql.Connection"]] = None
+        self.connection_provider = connection_provider
 
     @property
-    def is_turso_enabled(self) -> bool:
-        """Check if Turso sync is enabled.
-
-        Returns:
-            True if Turso URL is configured and libsql is available
-        """
-        return bool(self.turso_url and LIBSQL_AVAILABLE)
-
-    @property
-    def connection(self) -> Union[sqlite3.Connection, "libsql.Connection"]:
-        """Get or create database connection.
-
-        Returns:
-            Active database connection (sqlite3 or libsql)
-        """
-        if self._connection is None:
-            # Ensure directory exists
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-
-            if self.is_turso_enabled:
-                # Use libsql for Turso embedded replica
-                self._connection = libsql.connect(
-                    str(self.db_path),
-                    sync_url=self.turso_url,
-                    auth_token=self.turso_token or "",
-                )
-            else:
-                # Use standard sqlite3
-                self._connection = sqlite3.connect(
-                    self.db_path,
-                    detect_types=sqlite3.PARSE_DECLTYPES,
-                )
-                self._connection.row_factory = sqlite3.Row
-
-                # Enable foreign keys
-                self._connection.execute("PRAGMA foreign_keys = ON")
-
-        return self._connection
+    def connection(self) -> psycopg.Connection:
+        """Get the current psycopg connection from the provider."""
+        return self.connection_provider.get_connection()
 
     def close(self) -> None:
-        """Close the database connection."""
-        if self._connection:
-            self._connection.close()
-            self._connection = None
-
-    def sync(self) -> None:
-        """Sync with Turso cloud database.
-
-        Raises:
-            SyncError: If sync fails or Turso is not configured
-        """
-        if not self.is_turso_enabled:
-            raise SyncError("Turso sync is not configured")
-
-        try:
-            # Cast to libsql.Connection for type checking
-            conn = self.connection
-            conn.sync()  # type: ignore
-
-            # Update last sync timestamp
-            self.update_sync_metadata("last_sync_at", datetime.now().isoformat())
-        except Exception as e:
-            raise SyncError(f"Sync failed: {e}", cause=e)
-
-    def update_sync_metadata(self, key: str, value: str) -> None:
-        """Update sync metadata value.
-
-        Args:
-            key: Metadata key to update
-            value: New value
-        """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO sync_metadata (key, value, updated_at)
-                VALUES (?, ?, datetime('now'))
-                """,
-                (key, value),
-            )
+        """Close the underlying connection via the provider."""
+        self.connection_provider.close()
 
     def __enter__(self) -> "DatabaseClient":
-        """Context manager entry."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
         self.close()
 
     @contextmanager
-    def transaction(self) -> Generator[sqlite3.Connection, None, None]:
+    def transaction(self) -> Generator[psycopg.Connection, None, None]:
         """Context manager for database transactions.
 
         Yields:
-            SQLite connection with active transaction
+            psycopg connection with an active transaction.
         """
         conn = self.connection
         try:
-            yield conn
-            conn.commit()
+            with conn.transaction():
+                yield conn
         except Exception:
-            conn.rollback()
             raise
 
     def initialize_schema(self) -> None:
         """Initialize the database schema.
 
         Creates all tables, indexes, and triggers if they don't exist.
-        Runs migrations before creating indexes to handle column additions.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
 
-            # First, create tables if they don't exist
+            # Create tables
             cursor.execute(CREATE_SONGS_TABLE)
             cursor.execute(CREATE_RECORDINGS_TABLE)
             cursor.execute(CREATE_SYNC_METADATA_TABLE)
 
-            # Run column migrations BEFORE creating indexes (indexes may reference new columns)
-            # Migration: add youtube_url column if it doesn't exist (idempotent)
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN youtube_url TEXT")
-            except sqlite3.OperationalError:
-                # Column already exists - ignore
-                pass
-
-            # Migration: add visibility_status column if it doesn't exist (idempotent)
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN visibility_status TEXT")
-                # Migrate existing completed LRC recordings to 'published'
-                cursor.execute("""
-                    UPDATE recordings SET visibility_status = 'published'
-                    WHERE lrc_status = 'completed' AND visibility_status IS NULL
-                """)
-            except sqlite3.OperationalError:
-                # Column already exists - ignore
-                pass
-
-            # Migration: add deleted_at column to songs if it doesn't exist
-            try:
-                cursor.execute("ALTER TABLE songs ADD COLUMN deleted_at TIMESTAMP")
-            except sqlite3.OperationalError:
-                pass
-
-            # Migration: add deleted_at column to recordings if it doesn't exist
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN deleted_at TIMESTAMP")
-            except sqlite3.OperationalError:
-                pass
-
-            # Migration: add download_status column if it doesn't exist (idempotent)
-            try:
-                cursor.execute("ALTER TABLE recordings ADD COLUMN download_status TEXT DEFAULT 'pending'")
-            except sqlite3.OperationalError:
-                pass
-
-            # Now create indexes (they can reference migrated columns)
+            # Create indexes
             for statement in CREATE_INDEXES:
                 cursor.execute(statement)
 
-            # Create triggers
+            # Create trigger function and triggers
+            cursor.execute(CREATE_UPDATE_TIMESTAMP_FUNCTION)
             cursor.execute(CREATE_SONGS_UPDATE_TRIGGER)
             cursor.execute(CREATE_RECORDINGS_UPDATE_TRIGGER)
 
@@ -245,94 +110,76 @@ class DatabaseClient:
             for key, value in DEFAULT_SYNC_METADATA.items():
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO sync_metadata (key, value)
-                    VALUES (?, ?)
+                    INSERT INTO sync_metadata (key, value)
+                    VALUES (%s, %s)
+                    ON CONFLICT (key) DO NOTHING
                     """,
                     (key, value),
                 )
-
-    def reset_database(self) -> None:
-        """Reset the database by dropping all tables.
-
-        WARNING: This is a destructive operation that will delete all data.
-        """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA foreign_keys = OFF")
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = cursor.fetchall()
-
-            for (table_name,) in tables:
-                if not table_name.startswith("sqlite_"):
-                    cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-
-            cursor.execute("PRAGMA foreign_keys = ON")
-
-        # Re-initialize schema
-        self.initialize_schema()
 
     def get_stats(self) -> DatabaseStats:
         """Get database statistics.
 
         Returns:
-            DatabaseStats with current database state
+            ``DatabaseStats`` with current database state.
         """
         cursor = self.connection.cursor()
 
-        # Get row counts
+        # Row counts
         cursor.execute(ROW_COUNT_QUERY)
         table_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
-        # Run integrity check
-        cursor.execute(INTEGRITY_CHECK_QUERY)
-        integrity_result = cursor.fetchone()
-        integrity_ok = integrity_result[0] == "ok" if integrity_result else False
-
-        # Check foreign keys status
-        cursor.execute(FOREIGN_KEYS_QUERY)
-        fk_result = cursor.fetchone()
-        foreign_keys_enabled = bool(fk_result[0]) if fk_result else False
-
-        # Get sync metadata
-        cursor.execute("SELECT key, value FROM sync_metadata")
-        sync_meta = {row[0]: row[1] for row in cursor.fetchall()}
-
-        # Ensure local_device_id is set
-        local_device_id = sync_meta.get("local_device_id", "")
-        if not local_device_id and self.is_turso_enabled:
-            local_device_id = str(uuid.uuid4())[:8]
-            self.update_sync_metadata("local_device_id", local_device_id)
+        # Health check: Postgres is in recovery mode?
+        cursor.execute("SELECT pg_is_in_recovery()")
+        is_healthy = not cursor.fetchone()[0]
 
         return DatabaseStats(
             table_counts=table_counts,
-            integrity_ok=integrity_ok,
-            foreign_keys_enabled=foreign_keys_enabled,
-            last_sync_at=sync_meta.get("last_sync_at") or None,
-            sync_version=sync_meta.get("sync_version", "1"),
-            local_device_id=local_device_id,
-            turso_configured=self.is_turso_enabled,
+            is_healthy=is_healthy,
+            last_sync_at=None,
+            sync_version="3",
         )
 
+    # ------------------------------------------------------------------
     # Song operations
+    # ------------------------------------------------------------------
 
     def insert_song(self, song: Song) -> None:
-        """Insert a song into the database.
+        """Insert or upsert a song into the database.
 
-        Clears deleted_at on INSERT OR REPLACE to resurrect a previously-deleted song.
+        Clears ``deleted_at`` on conflict to resurrect a previously-deleted
+        song.
 
         Args:
-            song: Song to insert
+            song: Song to insert.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO songs (
+                INSERT INTO songs (
                     id, title, title_pinyin, composer, lyricist,
                     album_name, album_series, musical_key, lyrics_raw,
                     lyrics_lines, sections, source_url, table_row_number,
                     scraped_at, created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+                ON CONFLICT (id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    title_pinyin = EXCLUDED.title_pinyin,
+                    composer = EXCLUDED.composer,
+                    lyricist = EXCLUDED.lyricist,
+                    album_name = EXCLUDED.album_name,
+                    album_series = EXCLUDED.album_series,
+                    musical_key = EXCLUDED.musical_key,
+                    lyrics_raw = EXCLUDED.lyrics_raw,
+                    lyrics_lines = EXCLUDED.lyrics_lines,
+                    sections = EXCLUDED.sections,
+                    source_url = EXCLUDED.source_url,
+                    table_row_number = EXCLUDED.table_row_number,
+                    scraped_at = EXCLUDED.scraped_at,
+                    created_at = EXCLUDED.created_at,
+                    updated_at = EXCLUDED.updated_at,
+                    deleted_at = NULL
                 """,
                 (
                     song.id,
@@ -358,13 +205,13 @@ class DatabaseClient:
         """Get a song by ID.
 
         Args:
-            song_id: The song ID
+            song_id: The song ID.
 
         Returns:
-            Song or None if not found
+            ``Song`` or ``None`` if not found.
         """
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM songs WHERE id = ?", (song_id,))
+        cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
         row = cursor.fetchone()
 
         if row:
@@ -382,14 +229,14 @@ class DatabaseClient:
         """List songs with optional filters.
 
         Args:
-            album: Filter by album name
-            key: Filter by musical key
-            limit: Maximum number of results
-            include_deleted: Whether to include soft-deleted songs
-            sort_by: Sort order - "album" (album_name, title), "title", or "id"
+            album: Filter by album name.
+            key: Filter by musical key.
+            limit: Maximum number of results.
+            include_deleted: Whether to include soft-deleted songs.
+            sort_by: Sort order (``album``, ``series``, ``title``, ``id``).
 
         Returns:
-            List of songs matching the filters
+            List of songs matching the filters.
         """
         cursor = self.connection.cursor()
 
@@ -400,11 +247,11 @@ class DatabaseClient:
             query += " AND deleted_at IS NULL"
 
         if album:
-            query += " AND album_name = ?"
+            query += " AND album_name = %s"
             params.append(album)
 
         if key:
-            query += " AND musical_key = ?"
+            query += " AND musical_key = %s"
             params.append(key)
 
         order_map = {
@@ -429,10 +276,10 @@ class DatabaseClient:
         """List distinct album names with song counts.
 
         Args:
-            include_deleted: Whether to include soft-deleted songs
+            include_deleted: Whether to include soft-deleted songs.
 
         Returns:
-            List of (album_name, album_series, song_count) tuples sorted by album_name
+            List of ``(album_name, album_series, song_count)`` tuples.
         """
         cursor = self.connection.cursor()
 
@@ -461,13 +308,13 @@ class DatabaseClient:
         """Search songs by query.
 
         Args:
-            query: Search query string
-            field: Field to search (title, lyrics, composer, album, all)
-            limit: Maximum number of results
-            include_deleted: Whether to include soft-deleted songs
+            query: Search query string.
+            field: Field to search (``title``, ``lyrics``, ``composer``, ``album``, ``all``).
+            limit: Maximum number of results.
+            include_deleted: Whether to include soft-deleted songs.
 
         Returns:
-            List of matching songs
+            List of matching songs.
         """
         cursor = self.connection.cursor()
 
@@ -476,23 +323,23 @@ class DatabaseClient:
         deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
 
         if field == "title":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE ? OR title_pinyin LIKE ?)"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE %s OR title_pinyin LIKE %s)"
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE ?"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE %s"
             params = [search_pattern]
         elif field == "composer":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE ? OR lyricist LIKE ?)"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE %s OR lyricist LIKE %s)"
             params = [search_pattern, search_pattern]
         elif field == "album":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name LIKE ? OR album_series LIKE ?)"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name LIKE %s OR album_series LIKE %s)"
             params = [search_pattern, search_pattern]
         else:  # all
             sql = f"""
                 SELECT * FROM songs WHERE {deleted_clause}(
-                title LIKE ? OR title_pinyin LIKE ? OR
-                lyrics_raw LIKE ? OR composer LIKE ? OR lyricist LIKE ? OR
-                album_name LIKE ? OR album_series LIKE ?)
+                title LIKE %s OR title_pinyin LIKE %s OR
+                lyrics_raw LIKE %s OR composer LIKE %s OR lyricist LIKE %s OR
+                album_name LIKE %s OR album_series LIKE %s)
             """
             params = [search_pattern] * 7
 
@@ -505,19 +352,21 @@ class DatabaseClient:
             results.append(Song.from_row(tuple(row)))
         return results
 
+    # ------------------------------------------------------------------
     # Recording operations
+    # ------------------------------------------------------------------
 
     def insert_recording(self, recording: Recording) -> None:
-        """Insert a recording into the database.
+        """Insert or upsert a recording into the database.
 
         Args:
-            recording: Recording to insert
+            recording: Recording to insert.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO recordings (
+                INSERT INTO recordings (
                     content_hash, hash_prefix, song_id, original_filename,
                     file_size_bytes, imported_at, r2_audio_url, r2_stems_url,
                     r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
@@ -525,7 +374,35 @@ class DatabaseClient:
                     downbeats, sections, embeddings_shape, analysis_status,
                     analysis_job_id, lrc_status, lrc_job_id, visibility_status,
                     download_status, created_at, updated_at, youtube_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (content_hash) DO UPDATE SET
+                    hash_prefix = EXCLUDED.hash_prefix,
+                    song_id = EXCLUDED.song_id,
+                    original_filename = EXCLUDED.original_filename,
+                    file_size_bytes = EXCLUDED.file_size_bytes,
+                    imported_at = EXCLUDED.imported_at,
+                    r2_audio_url = EXCLUDED.r2_audio_url,
+                    r2_stems_url = EXCLUDED.r2_stems_url,
+                    r2_lrc_url = EXCLUDED.r2_lrc_url,
+                    duration_seconds = EXCLUDED.duration_seconds,
+                    tempo_bpm = EXCLUDED.tempo_bpm,
+                    musical_key = EXCLUDED.musical_key,
+                    musical_mode = EXCLUDED.musical_mode,
+                    key_confidence = EXCLUDED.key_confidence,
+                    loudness_db = EXCLUDED.loudness_db,
+                    beats = EXCLUDED.beats,
+                    downbeats = EXCLUDED.downbeats,
+                    sections = EXCLUDED.sections,
+                    embeddings_shape = EXCLUDED.embeddings_shape,
+                    analysis_status = EXCLUDED.analysis_status,
+                    analysis_job_id = EXCLUDED.analysis_job_id,
+                    lrc_status = EXCLUDED.lrc_status,
+                    lrc_job_id = EXCLUDED.lrc_job_id,
+                    visibility_status = EXCLUDED.visibility_status,
+                    download_status = EXCLUDED.download_status,
+                    created_at = EXCLUDED.created_at,
+                    updated_at = EXCLUDED.updated_at,
+                    youtube_url = EXCLUDED.youtube_url
                 """,
                 (
                     recording.content_hash,
@@ -563,14 +440,14 @@ class DatabaseClient:
         """Get a recording by its hash prefix.
 
         Args:
-            hash_prefix: The hash prefix (first 12 chars)
+            hash_prefix: The hash prefix (first 12 chars).
 
         Returns:
-            Recording or None if not found
+            ``Recording`` or ``None`` if not found.
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE hash_prefix = ?",
+            "SELECT * FROM recordings WHERE hash_prefix = %s",
             (hash_prefix,),
         )
         row = cursor.fetchone()
@@ -583,14 +460,14 @@ class DatabaseClient:
         """Get a recording by its associated song ID.
 
         Args:
-            song_id: The song ID
+            song_id: The song ID.
 
         Returns:
-            Recording or None if not found
+            ``Recording`` or ``None`` if not found.
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE song_id = ?",
+            "SELECT * FROM recordings WHERE song_id = %s",
             (song_id,),
         )
         row = cursor.fetchone()
@@ -610,14 +487,14 @@ class DatabaseClient:
         """List recordings with optional filters.
 
         Args:
-            status: Filter by analysis status
-            visibility: Filter by visibility status (published|review|hold)
-            lrc_status: Filter by LRC status (pending|processing|completed|failed|incomplete)
-            limit: Maximum number of results
-            include_deleted: Whether to include soft-deleted recordings
+            status: Filter by analysis status.
+            visibility: Filter by visibility status.
+            lrc_status: Filter by LRC status.
+            limit: Maximum number of results.
+            include_deleted: Whether to include soft-deleted recordings.
 
         Returns:
-            List of recordings matching the filters
+            List of recordings matching the filters.
         """
         cursor = self.connection.cursor()
 
@@ -631,18 +508,18 @@ class DatabaseClient:
             if status == "incomplete":
                 query += " AND analysis_status IN ('pending', 'processing', 'failed')"
             else:
-                query += " AND analysis_status = ?"
+                query += " AND analysis_status = %s"
                 params.append(status)
 
         if visibility:
-            query += " AND visibility_status = ?"
+            query += " AND visibility_status = %s"
             params.append(visibility)
 
         if lrc_status:
             if lrc_status == "incomplete":
                 query += " AND lrc_status IN ('pending', 'processing', 'failed')"
             else:
-                query += " AND lrc_status = ?"
+                query += " AND lrc_status = %s"
                 params.append(lrc_status)
 
         query += " ORDER BY imported_at DESC"
@@ -669,27 +546,22 @@ class DatabaseClient:
     ) -> list[tuple[Recording, Optional[str], Optional[str], Optional[str]]]:
         """List recordings with joined song data for efficient querying.
 
-        Uses LEFT JOIN to fetch recording and song data in a single query,
-        avoiding the N+1 query problem. Supports filtering by album name
-        and sorting by various fields.
+        Uses LEFT JOIN to fetch recording and song data in a single query.
 
         Args:
-            status: Filter by analysis status
-            visibility: Filter by visibility status (published|review|hold)
-            lrc_status: Filter by LRC status (pending|processing|completed|failed|incomplete)
-            album: Filter by album name (case-insensitive substring match)
-            sort_by: Sort order - "album", "series", "title", or "imported" (default)
-            limit: Maximum number of results
-            include_deleted: Whether to include soft-deleted recordings
+            status: Filter by analysis status.
+            visibility: Filter by visibility status.
+            lrc_status: Filter by LRC status.
+            album: Filter by album name (case-insensitive substring).
+            sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
+            limit: Maximum number of results.
+            include_deleted: Whether to include soft-deleted recordings.
 
         Returns:
-            List of tuples (Recording, song_title, album_name, album_series)
+            List of tuples ``(Recording, song_title, album_name, album_series)``.
         """
         cursor = self.connection.cursor()
 
-        # Build query with LEFT JOIN to songs table
-        # Build query with LEFT JOIN to songs table
-        # Note: r.* returns all recording columns including download_status (29 cols total)
         query = """
             SELECT r.*, s.title as song_title, s.album_name, s.album_series
             FROM recordings r
@@ -702,25 +574,24 @@ class DatabaseClient:
             query += " AND r.deleted_at IS NULL"
 
         if status:
-            query += " AND r.analysis_status = ?"
+            query += " AND r.analysis_status = %s"
             params.append(status)
 
         if visibility:
-            query += " AND r.visibility_status = ?"
+            query += " AND r.visibility_status = %s"
             params.append(visibility)
 
         if lrc_status:
             if lrc_status == "incomplete":
                 query += " AND r.lrc_status IN ('pending', 'processing', 'failed')"
             else:
-                query += " AND r.lrc_status = ?"
+                query += " AND r.lrc_status = %s"
                 params.append(lrc_status)
 
         if album:
-            query += " AND s.album_name LIKE ?"
+            query += " AND s.album_name LIKE %s"
             params.append(f"%{album}%")
 
-        # ORDER BY clause based on sort_by
         order_map = {
             "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
             "series": "s.album_series ASC NULLS LAST, s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
@@ -736,10 +607,8 @@ class DatabaseClient:
 
         results = []
         for row in cursor.fetchall():
-            # Extract song data from row (last 3 columns)
-            # Row structure: [29 recording columns] + [song_title, album_name, album_series] = 32 columns total
             row_tuple = tuple(row)
-            recording_cols = row_tuple[:-3]  # First 29 columns are recording columns
+            recording_cols = row_tuple[:-3]
             song_title = row_tuple[-3]
             album_name = row_tuple[-2]
             album_series_val = row_tuple[-1]
@@ -758,11 +627,11 @@ class DatabaseClient:
         """Update recording processing status.
 
         Args:
-            hash_prefix: The hash prefix of the recording
-            analysis_status: New analysis status
-            analysis_job_id: New analysis job ID
-            lrc_status: New LRC status
-            lrc_job_id: New LRC job ID
+            hash_prefix: The hash prefix of the recording.
+            analysis_status: New analysis status.
+            analysis_job_id: New analysis job ID.
+            lrc_status: New LRC status.
+            lrc_job_id: New LRC job ID.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
@@ -771,19 +640,19 @@ class DatabaseClient:
             params: list = []
 
             if analysis_status:
-                updates.append("analysis_status = ?")
+                updates.append("analysis_status = %s")
                 params.append(analysis_status)
 
             if analysis_job_id:
-                updates.append("analysis_job_id = ?")
+                updates.append("analysis_job_id = %s")
                 params.append(analysis_job_id)
 
             if lrc_status:
-                updates.append("lrc_status = ?")
+                updates.append("lrc_status = %s")
                 params.append(lrc_status)
 
             if lrc_job_id:
-                updates.append("lrc_job_id = ?")
+                updates.append("lrc_job_id = %s")
                 params.append(lrc_job_id)
 
             if not updates:
@@ -793,10 +662,9 @@ class DatabaseClient:
 
             sql = f"""
                 UPDATE recordings
-                SET {", ".join(updates)}, updated_at = datetime('now')
-                WHERE hash_prefix = ?
+                SET {', '.join(updates)}, updated_at = NOW()
+                WHERE hash_prefix = %s
             """
-
             cursor.execute(sql, params)
 
     def get_recording_by_job_id(
@@ -805,21 +673,21 @@ class DatabaseClient:
         """Get a recording by its analysis or LRC job ID.
 
         Args:
-            job_id: The job ID
-            job_type: Type of job ("analysis" or "lrc")
+            job_id: The job ID.
+            job_type: Type of job (``analysis`` or ``lrc``).
 
         Returns:
-            Recording or None if not found
+            ``Recording`` or ``None`` if not found.
         """
         cursor = self.connection.cursor()
         if job_type == "analysis":
             cursor.execute(
-                "SELECT * FROM recordings WHERE analysis_job_id = ?",
+                "SELECT * FROM recordings WHERE analysis_job_id = %s",
                 (job_id,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE lrc_job_id = ?",
+                "SELECT * FROM recordings WHERE lrc_job_id = %s",
                 (job_id,),
             )
         row = cursor.fetchone()
@@ -846,38 +714,38 @@ class DatabaseClient:
         """Update recording with analysis results.
 
         Args:
-            hash_prefix: The hash prefix of the recording
-            duration_seconds: Audio duration
-            tempo_bpm: Detected tempo
-            musical_key: Detected key
-            musical_mode: Detected mode
-            key_confidence: Key detection confidence
-            loudness_db: Loudness in dB
-            beats: JSON array of beat timestamps
-            downbeats: JSON array of downbeat timestamps
-            sections: JSON array of sections
-            embeddings_shape: JSON array of dimensions
-            r2_stems_url: R2 URL for stems directory
+            hash_prefix: The hash prefix of the recording.
+            duration_seconds: Audio duration.
+            tempo_bpm: Detected tempo.
+            musical_key: Detected key.
+            musical_mode: Detected mode.
+            key_confidence: Key detection confidence.
+            loudness_db: Loudness in dB.
+            beats: JSON array of beat timestamps.
+            downbeats: JSON array of downbeat timestamps.
+            sections: JSON array of sections.
+            embeddings_shape: JSON array of dimensions.
+            r2_stems_url: R2 URL for stems directory.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
 
             sql = """
                 UPDATE recordings SET
-                    duration_seconds = ?,
-                    tempo_bpm = ?,
-                    musical_key = ?,
-                    musical_mode = ?,
-                    key_confidence = ?,
-                    loudness_db = ?,
-                    beats = ?,
-                    downbeats = ?,
-                    sections = ?,
-                    embeddings_shape = ?,
-                    r2_stems_url = COALESCE(?, r2_stems_url),
+                    duration_seconds = %s,
+                    tempo_bpm = %s,
+                    musical_key = %s,
+                    musical_mode = %s,
+                    key_confidence = %s,
+                    loudness_db = %s,
+                    beats = %s,
+                    downbeats = %s,
+                    sections = %s,
+                    embeddings_shape = %s,
+                    r2_stems_url = COALESCE(%s, r2_stems_url),
                     analysis_status = 'completed',
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
             """
 
             cursor.execute(
@@ -905,26 +773,22 @@ class DatabaseClient:
     ) -> None:
         """Update recording with LRC results.
 
-        Auto-publishes the recording when visibility_status is NULL (first-time LRC).
-        When visibility is already set (review/hold), keeps current status so user
-        can explicitly publish after reviewing/fixing.
+        Auto-publishes the recording when ``visibility_status`` is ``NULL``.
 
         Args:
-            hash_prefix: The hash prefix of the recording
-            r2_lrc_url: R2 URL for the generated LRC file
+            hash_prefix: The hash prefix of the recording.
+            r2_lrc_url: R2 URL for the generated LRC file.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
 
-            # Auto-publish only when visibility_status is NULL (first-time LRC)
-            # COALESCE keeps existing status if already set (review/hold)
             sql = """
                 UPDATE recordings SET
-                    r2_lrc_url = ?,
+                    r2_lrc_url = %s,
                     lrc_status = 'completed',
                     visibility_status = COALESCE(visibility_status, 'published'),
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
             """
 
             cursor.execute(sql, (r2_lrc_url, hash_prefix))
@@ -937,11 +801,11 @@ class DatabaseClient:
         """Update download status for a recording.
 
         Args:
-            hash_prefix: The hash prefix of the recording
-            download_status: New download status (pending|processing|completed|failed)
+            hash_prefix: The hash prefix of the recording.
+            download_status: New download status.
 
         Raises:
-            ValueError: If download_status is not valid
+            ValueError: If ``download_status`` is not valid.
         """
         valid_statuses = {"pending", "processing", "completed", "failed"}
         if download_status not in valid_statuses:
@@ -955,9 +819,9 @@ class DatabaseClient:
 
             sql = """
                 UPDATE recordings SET
-                    download_status = ?,
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
+                    download_status = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
             """
 
             cursor.execute(sql, (download_status, hash_prefix))
@@ -970,14 +834,14 @@ class DatabaseClient:
         """Update recording visibility status.
 
         Args:
-            hash_prefix: The hash prefix of the recording
-            visibility_status: New visibility status (published, review, hold)
+            hash_prefix: The hash prefix of the recording.
+            visibility_status: New visibility status.
 
         Returns:
-            True if recording was updated, False if not found
+            True if recording was updated, False if not found.
 
         Raises:
-            ValueError: If visibility_status is not valid
+            ValueError: If ``visibility_status`` is not valid.
         """
         valid_statuses = {"published", "review", "hold"}
         if visibility_status not in valid_statuses:
@@ -991,9 +855,9 @@ class DatabaseClient:
 
             sql = """
                 UPDATE recordings SET
-                    visibility_status = ?,
-                    updated_at = datetime('now')
-                WHERE hash_prefix = ?
+                    visibility_status = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
             """
 
             cursor.execute(sql, (visibility_status, hash_prefix))
@@ -1003,12 +867,12 @@ class DatabaseClient:
         """Soft-delete a recording by hash_prefix.
 
         Args:
-            hash_prefix: The hash prefix of the recording to delete
+            hash_prefix: The hash prefix of the recording to delete.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE recordings SET deleted_at = datetime('now') WHERE hash_prefix = ?",
+                "UPDATE recordings SET deleted_at = NOW() WHERE hash_prefix = %s",
                 (hash_prefix,),
             )
 
@@ -1016,21 +880,21 @@ class DatabaseClient:
         """Soft-delete a song by ID.
 
         Args:
-            song_id: The song ID to soft-delete
+            song_id: The song ID to soft-delete.
 
         Returns:
-            True if song was marked as deleted, False if not found
+            True if song was marked as deleted, False if not found.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?", (song_id,))
+            cursor.execute("UPDATE songs SET deleted_at = NOW() WHERE id = %s", (song_id,))
             return cursor.rowcount > 0
 
     def list_deleted_songs(self) -> list[Song]:
         """List all soft-deleted songs.
 
         Returns:
-            List of soft-deleted songs
+            List of soft-deleted songs.
         """
         cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM songs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC")
@@ -1043,7 +907,7 @@ class DatabaseClient:
         """List all soft-deleted recordings.
 
         Returns:
-            List of soft-deleted recordings
+            List of soft-deleted recordings.
         """
         cursor = self.connection.cursor()
         cursor.execute(
@@ -1058,28 +922,28 @@ class DatabaseClient:
         """Restore a soft-deleted song.
 
         Args:
-            song_id: The song ID to restore
+            song_id: The song ID to restore.
 
         Returns:
-            True if song was restored, False if not found
+            True if song was restored, False if not found.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE songs SET deleted_at = NULL WHERE id = ?", (song_id,))
+            cursor.execute("UPDATE songs SET deleted_at = NULL WHERE id = %s", (song_id,))
             return cursor.rowcount > 0
 
     def restore_recording(self, hash_prefix: str) -> bool:
         """Restore a soft-deleted recording.
 
         Args:
-            hash_prefix: The hash prefix of the recording to restore
+            hash_prefix: The hash prefix of the recording to restore.
 
         Returns:
-            True if recording was restored, False if not found
+            True if recording was restored, False if not found.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE recordings SET deleted_at = NULL WHERE hash_prefix = ?", (hash_prefix,)
+                "UPDATE recordings SET deleted_at = NULL WHERE hash_prefix = %s", (hash_prefix,)
             )
             return cursor.rowcount > 0

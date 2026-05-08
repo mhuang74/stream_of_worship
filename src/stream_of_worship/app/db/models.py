@@ -9,6 +9,20 @@ from datetime import datetime
 from typing import Any, Optional
 
 
+def _to_str(val) -> Optional[str]:
+    """Coerce a value to an ISO-8601 string, handling datetime objects.
+
+    psycopg3 returns ``timestamptz`` columns as ``datetime`` objects with
+    ``tzinfo=timezone.utc``.  This helper converts those back to strings so
+    that dataclass fields can remain ``Optional[str]`` with minimal changes.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    return str(val)
+
+
 @dataclass
 class Songset:
     """User-created songset (playlist) for worship sets.
@@ -32,24 +46,24 @@ class Songset:
         """Create a Songset from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order
+            row: Database row tuple with columns in schema order.
 
         Returns:
-            Songset instance
+            Songset instance.
         """
         return cls(
             id=row[0],
             name=row[1],
             description=row[2],
-            created_at=row[3],
-            updated_at=row[4],
+            created_at=_to_str(row[3]),
+            updated_at=_to_str(row[4]),
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert Songset to dictionary.
 
         Returns:
-            Dictionary representation of the songset
+            Dictionary representation of the songset.
         """
         return {
             "id": self.id,
@@ -64,7 +78,7 @@ class Songset:
         """Generate a new unique songset ID.
 
         Returns:
-            Unique ID string
+            Unique ID string.
         """
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         return f"songset_{timestamp}"
@@ -125,14 +139,13 @@ class SongsetItem:
         """Create a SongsetItem from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order
-            detailed: Whether this is a detailed query with joined fields
+            row: Database row tuple with columns in schema order.
+            detailed: Whether this is a detailed query with joined fields.
 
         Returns:
-            SongsetItem instance
+            SongsetItem instance.
         """
         if detailed and len(row) >= 16:
-            # Detailed query with joined fields
             return cls(
                 id=row[0],
                 songset_id=row[1],
@@ -144,7 +157,7 @@ class SongsetItem:
                 crossfade_duration_seconds=row[7],
                 key_shift_semitones=row[8] if row[8] is not None else 0,
                 tempo_ratio=row[9] if row[9] is not None else 1.0,
-                created_at=row[10],
+                created_at=_to_str(row[10]),
                 song_title=row[11],
                 song_key=row[12],
                 duration_seconds=row[13],
@@ -156,7 +169,6 @@ class SongsetItem:
                 song_album_name=row[19] if len(row) > 19 else None,
             )
         else:
-            # Basic query
             return cls(
                 id=row[0],
                 songset_id=row[1],
@@ -168,17 +180,17 @@ class SongsetItem:
                 crossfade_duration_seconds=row[7],
                 key_shift_semitones=row[8] if row[8] is not None else 0,
                 tempo_ratio=row[9] if row[9] is not None else 1.0,
-                created_at=row[10],
+                created_at=_to_str(row[10]),
             )
 
     def to_dict(self, include_joined: bool = False) -> dict[str, Any]:
         """Convert SongsetItem to dictionary.
 
         Args:
-            include_joined: Whether to include joined fields (song_title, etc.)
+            include_joined: Whether to include joined fields.
 
         Returns:
-            Dictionary representation of the item
+            Dictionary representation of the item.
         """
         base = {
             "id": self.id,
@@ -216,7 +228,7 @@ class SongsetItem:
         """Generate a new unique item ID.
 
         Returns:
-            Unique ID string
+            Unique ID string.
         """
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         return f"item_{timestamp}"
@@ -226,7 +238,7 @@ class SongsetItem:
         """Get duration formatted as MM:SS.
 
         Returns:
-            Formatted duration string
+            Formatted duration string.
         """
         if self.duration_seconds is None:
             return "--:--"
@@ -239,6 +251,6 @@ class SongsetItem:
         """Get the key to display (song key or recording key).
 
         Returns:
-            Key string
+            Key string.
         """
         return self.recording_key or self.song_key or "?"
