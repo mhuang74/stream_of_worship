@@ -52,7 +52,7 @@ class ConnectionProvider:
                 if attempt == self.MAX_RETRIES:
                     break
                 time.sleep(self.RETRY_DELAY_SECONDS * (attempt + 1))
-        raise last_error  # type: ignore[misc]
+        raise last_error if last_error else RuntimeError("Connection failed without error")
 
     def close(self) -> None:
         """Close the managed connection if it is open."""
