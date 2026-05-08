@@ -197,8 +197,8 @@ RECORDING_COLUMNS_FOR_JOIN = """
     r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
     r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
     r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-    r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.youtube_url,
-    r.visibility_status, r.download_status, r.created_at, r.updated_at, r.deleted_at
+    r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
+    r.updated_at, r.youtube_url, r.visibility_status, r.download_status, r.deleted_at
 """
 
 SONG_COLUMN_COUNT = 17
