@@ -116,4 +116,8 @@ echo "  API will be available at: http://localhost:8000"
 echo ""
 
 cd "$SCRIPT_DIR"
-docker compose --env-file /opt/sow/.env up analysis-dev "$@"
+if [[ -f "/opt/sow/.env" ]]; then
+    docker compose --env-file /opt/sow/.env up analysis-dev "$@"
+else
+    docker compose up analysis-dev "$@"
+fi
