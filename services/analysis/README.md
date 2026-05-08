@@ -30,7 +30,13 @@ This service is designed to run as a long-lived container with async job process
 
 ## Environment Variables
 
-Create a `.env` file in this directory with the following variables:
+The active `.env` file is loaded from the centralized location `/opt/sow/.env` (not from this directory). A `.env.example` file is provided in this directory as a template — copy and configure it:
+
+```bash
+cp services/analysis/.env.example /opt/sow/.env
+```
+
+The following variables are required:
 
 ### Required
 
@@ -261,7 +267,7 @@ print(f'Models downloaded to: {model_dir}')
 After downloading, set the environment variable:
 
 ```bash
-# Add to your .env file
+# Add to /opt/sow/.env
 export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator"
 ```
 
@@ -299,7 +305,7 @@ ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
 
 ### Configure Environment
 
-Add to your `.env` file:
+Add to `/opt/sow/.env`:
 
 ```bash
 SOW_QWEN3_MODEL_ROOT="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
