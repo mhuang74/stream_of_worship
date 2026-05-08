@@ -19,11 +19,7 @@ from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.logging_config import setup_logging
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.songset_io import ImportResult, SongsetIOService
-from stream_of_worship.app.services.sync import (
-    AppSyncService,
-    SyncNetworkError,
-    TursoNotConfiguredError,
-)
+from stream_of_worship.db.connection import ConnectionProvider
 
 app = typer.Typer(
     name="sow-app",
@@ -80,7 +76,7 @@ def _show_welcome() -> None:
 
 
 def _check_database(config: AppConfig) -> bool:
-    """Check if database exists and has data.
+    """Check if database connection is alive.
 
     Args:
         config: App configuration
@@ -88,13 +84,12 @@ def _check_database(config: AppConfig) -> bool:
     Returns:
         True if database is ready
     """
-    if not config.db_path.exists():
+    database_url = config.get_connection_url()
+    if not database_url:
         console.print(
             Panel.fit(
-                "[bold red]Database not found![/bold red]\n\n"
-                f"Expected at: [cyan]{config.db_path}[/cyan]\n\n"
-                "Please run [bold]sow-app sync[/bold] to download the catalog, or\n"
-                "copy a database file from another machine.",
+                "[bold red]Database not configured![/bold red]\n\n"
+                "Set database.url in your config file or SOW_DATABASE_URL env var.",
                 title="Error",
                 border_style="red",
             )
@@ -109,11 +104,10 @@ def _check_catalog_health(config: AppConfig) -> None:
     Args:
         config: App configuration
     """
-    read_client = ReadOnlyClient(
-        config.db_path,
-        turso_url=config.turso_database_url,
-        turso_token=config.turso_readonly_token,
-    )
+    from stream_of_worship.db.connection import ConnectionProvider
+
+    provider = ConnectionProvider(config.get_connection_url())
+    read_client = ReadOnlyClient(provider)
     try:
         catalog = CatalogService(read_client)
         health = catalog.get_catalog_health()
@@ -189,8 +183,8 @@ def run(
 
     # Check catalog health
     _check_catalog_health(config)
-    logger.info(f"Database: {config.db_path}")
-    logger.info(f"Songsets DB: {config.songsets_db_path}")
+    database_url = config.get_connection_url()
+    logger.info(f"Database URL: {database_url.split('@')[-1] if '@' in database_url else '(masked)'}")
     logger.info(f"Cache dir: {config.cache_dir}")
     console.print(f"[dim]Session log: {log_dir}/sow_app.log[/dim]")
 
@@ -210,8 +204,13 @@ def run(
         raise typer.Exit(1)
 
 
-@app.command()
-def sync(
+# Database subcommand group
+db_app = typer.Typer(help="Database connectivity and health")
+app.add_typer(db_app, name="db")
+
+
+@db_app.command("check")
+def check_db(
     config_path: Path = typer.Option(
         None,
         "--config",
@@ -219,7 +218,7 @@ def sync(
         help="Path to config file",
     ),
 ) -> None:
-    """Sync catalog database with Turso cloud."""
+    """Verify PostgreSQL database connectivity."""
     try:
         if config_path:
             config = AppConfig.load(config_path)
@@ -229,56 +228,20 @@ def sync(
         console.print("[red]Config file not found. Run 'sow-app run' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.is_turso_configured:
-        console.print("[red]Turso not configured.[/red]")
-        console.print("Set turso.database_url and turso.readonly_token in your config.")
+    database_url = config.get_connection_url()
+    if not database_url:
+        console.print("[red]Database URL not configured.[/red]")
+        console.print("Set database.url in your config file or SOW_DATABASE_URL env var.")
         raise typer.Exit(1)
 
-    console.print("[bold]Syncing catalog...[/bold]")
-    console.print(f"Local DB: {config.db_path}")
-    console.print(f"Turso URL: {config.turso_database_url}")
+    console.print("Checking database connectivity...")
+    from stream_of_worship.app.services.sync import check_database_connection
 
-    # Initialize clients
-    read_client = ReadOnlyClient(
-        config.db_path,
-        turso_url=config.turso_database_url,
-        turso_token=config.turso_readonly_token,
-    )
-    songset_client = SongsetClient(config.songsets_db_path)
-    songset_client.initialize_schema()  # Ensure _sync_metadata table exists
-
-    sync_service = AppSyncService(
-        read_client=read_client,
-        songset_client=songset_client,
-        config_dir=config.db_path.parent.parent,
-        turso_url=config.turso_database_url,
-        turso_token=config.turso_readonly_token,
-        backup_retention=config.songsets_backup_retention,
-    )
-
-    try:
-        result = sync_service.execute_sync()
-        console.print(f"[green]{result.message}[/green]")
-        if result.backup_path:
-            console.print(f"[dim]Pre-sync backup: {result.backup_path}[/dim]")
-
-        # Show updated status
-        status = sync_service.get_sync_status()
-        if status.last_sync_at:
-            console.print(f"[dim]Last sync: {status.last_sync_at}[/dim]")
-
-    except TursoNotConfiguredError as e:
-        console.print(f"[red]Configuration error: {e}[/red]")
+    if check_database_connection(database_url):
+        console.print("[green]Database connection OK[/green]")
+    else:
+        console.print("[red]Database connection FAILED[/red]")
         raise typer.Exit(1)
-    except SyncNetworkError as e:
-        console.print(f"[red]Network error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Sync failed: {e}[/red]")
-        raise typer.Exit(1)
-    finally:
-        read_client.close()
-        songset_client.close()
 
 
 # Songsets subcommand group
@@ -312,8 +275,8 @@ def export_songset(
         console.print("[red]Config file not found. Run 'sow-app run' first.[/red]")
         raise typer.Exit(1)
 
-    songset_client = SongsetClient(config.songsets_db_path)
-    songset_client.initialize_schema()
+    provider = ConnectionProvider(config.get_connection_url())
+    songset_client = SongsetClient(provider)
 
     try:
         io_service = SongsetIOService(songset_client)
@@ -366,8 +329,8 @@ def export_all_songsets(
     if output_dir is None:
         output_dir = config.songsets_export_dir
 
-    songset_client = SongsetClient(config.songsets_db_path)
-    songset_client.initialize_schema()
+    provider = ConnectionProvider(config.get_connection_url())
+    songset_client = SongsetClient(provider)
 
     try:
         io_service = SongsetIOService(songset_client)
@@ -409,14 +372,10 @@ def import_songset(
         console.print("[red]Config file not found. Run 'sow-app run' first.[/red]")
         raise typer.Exit(1)
 
-    # Initialize clients
-    read_client = ReadOnlyClient(
-        config.db_path,
-        turso_url=config.turso_database_url,
-        turso_token=config.turso_readonly_token,
-    )
-    songset_client = SongsetClient(config.songsets_db_path)
-    songset_client.initialize_schema()
+    # Initialize clients (shared single connection via ConnectionProvider)
+    provider = ConnectionProvider(config.get_connection_url())
+    read_client = ReadOnlyClient(provider)
+    songset_client = SongsetClient(provider)
 
     try:
         # Provide get_recording for validation
@@ -468,12 +427,9 @@ def config(
         if config_path.exists():
             cfg = AppConfig.load(config_path)
             console.print(f"[bold]Config file:[/bold] {config_path}")
-            console.print(f"[bold]Catalog DB:[/bold] {cfg.db_path}")
-            console.print(f"[bold]Songsets DB:[/bold] {cfg.songsets_db_path}")
+            console.print(f"[bold]Database URL:[/bold] {cfg.database_url or '(not configured)'}")
             console.print(f"[bold]Cache dir:[/bold] {cfg.cache_dir}")
             console.print(f"[bold]Export dir:[/bold] {cfg.songsets_export_dir}")
-            console.print(f"[bold]Turso URL:[/bold] {cfg.turso_database_url or '(not configured)'}")
-            console.print(f"[bold]Sync on startup:[/bold] {cfg.sync_on_startup}")
         else:
             console.print(f"[yellow]No config file at {config_path}[/yellow]")
             console.print("Run [bold]sow-app run[/bold] to create default config.")

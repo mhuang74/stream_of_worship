@@ -1,12 +1,9 @@
 """Database commands for sow-admin.
 
 Provides CLI commands for database initialization, status checking,
-reset operations, and Turso sync.
+and PostgreSQL connectivity.
 """
 
-import os
-import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -15,21 +12,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from stream_of_worship.admin.config import get_config_path, AdminConfig
-from stream_of_worship.admin.db.client import DatabaseClient, SyncError
-from stream_of_worship.admin.services.sync import (
-    SyncConfigError,
-    SyncNetworkError,
-    get_sync_service_from_config,
-)
-
-# Optional libsql import for Turso bootstrap
-try:
-    import libsql
-
-    LIBSQL_AVAILABLE = True
-except ImportError:
-    LIBSQL_AVAILABLE = False
-    libsql = None  # type: ignore
+from stream_of_worship.admin.db.client import DatabaseClient
+from stream_of_worship.admin.services.sync import check_database_connection
+from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
 app = typer.Typer(help="Database operations")
@@ -44,11 +29,8 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
     Returns:
         DatabaseClient instance
     """
-    return DatabaseClient(
-        db_path=config.db_path,
-        turso_url=config.turso_database_url,
-        turso_token=os.environ.get("SOW_TURSO_TOKEN"),
-    )
+    provider = ConnectionProvider(config.get_connection_url())
+    return DatabaseClient(provider)
 
 
 @app.command("init")

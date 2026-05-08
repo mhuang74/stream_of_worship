@@ -7,16 +7,16 @@ manage songsets, and export audio/video.
 from textual.app import App
 
 from stream_of_worship.admin.services.r2 import R2Client
-from stream_of_worship.app.config import AppConfig, get_app_config_dir
+from stream_of_worship.app.config import AppConfig
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
+from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.export import ExportService
 from stream_of_worship.app.services.playback import PlaybackService
-from stream_of_worship.app.services.sync import AppSyncService
 from stream_of_worship.app.services.video_engine import VideoEngine
 from stream_of_worship.app.state import AppScreen, AppState
 
@@ -37,7 +37,6 @@ class SowApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("s", "navigate_settings", "Settings"),
-        ("S", "sync_catalog", "Sync catalog now"),
     ]
 
     def __init__(self, config: AppConfig, *args, **kwargs):
@@ -54,26 +53,10 @@ class SowApp(App):
         # Initialize state
         self.state = AppState()
 
-        # Initialize database clients
-        # ReadOnlyClient connects to sow.db (Turso embedded replica)
-        self.read_client = ReadOnlyClient(
-            config.db_path,
-            turso_url=config.turso_database_url,
-            turso_token=config.turso_readonly_token,
-        )
-        # SongsetClient connects to separate songsets.db (local-only)
-        self.songset_client = SongsetClient(config.songsets_db_path)
-        self.songset_client.initialize_schema()
-
-        # Initialize sync service
-        self.sync_service = AppSyncService(
-            read_client=self.read_client,
-            songset_client=self.songset_client,
-            config_dir=get_app_config_dir(),  # ~/.config/sow
-            turso_url=config.turso_database_url,
-            turso_token=config.turso_readonly_token,
-            backup_retention=config.songsets_backup_retention,
-        )
+        # Initialize database clients (shared single connection via ConnectionProvider)
+        provider = ConnectionProvider(config.get_connection_url())
+        self.read_client = ReadOnlyClient(provider)
+        self.songset_client = SongsetClient(provider)
 
         # Initialize services
         self.catalog = CatalogService(self.read_client)
@@ -108,36 +91,7 @@ class SowApp(App):
     def on_mount(self) -> None:
         """Handle app mount event."""
         logger.info("App mounted, navigating to initial screen: SONGSET_LIST")
-
-        if self.config.sync_on_startup and self.config.is_turso_configured:
-            self.run_worker(self._sync_in_background, exclusive=True)
-
         self.navigate_to(AppScreen.SONGSET_LIST)
-
-    async def _sync_in_background(self) -> None:
-        """Run sync in background thread with error handling."""
-        try:
-            result = self.sync_service.execute_sync()
-            logger.info(f"Background sync completed: {result.message}")
-            self.notify(f"Sync completed: {result.message}")
-        except Exception as e:
-            logger.warning(f"Background sync failed: {e}")
-            self.notify(f"Sync failed: {e}", severity="error")
-
-    def action_sync_catalog(self) -> None:
-        """Sync catalog on demand (capital S key)."""
-        if not self.config.is_turso_configured:
-            self.notify("Turso sync not configured", severity="warning")
-            return
-
-        async def do_sync():
-            try:
-                result = self.sync_service.execute_sync()
-                self.notify(f"Sync completed: {result.message}")
-            except Exception as e:
-                self.notify(f"Sync failed: {e}", severity="error")
-
-        self.run_worker(do_sync, exclusive=True)
 
     def _create_screen(self, screen: AppScreen):
         """Create a fresh screen instance.
