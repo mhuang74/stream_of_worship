@@ -6,7 +6,22 @@ to/from database rows.
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Optional
+
+
+def _to_str(val) -> Optional[str]:
+    """Coerce a value to an ISO-8601 string, handling datetime objects.
+
+    psycopg3 returns ``timestamptz`` columns as ``datetime`` objects with
+    ``tzinfo=timezone.utc``.  This helper converts those back to strings so
+    that dataclass fields can remain ``Optional[str]`` with minimal changes.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    return str(val)
 
 
 @dataclass
@@ -55,10 +70,10 @@ class Song:
         """Create a Song from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order
+            row: Database row tuple with columns in schema order.
 
         Returns:
-            Song instance
+            Song instance.
 
         Note:
             Handles schema versions:
@@ -80,17 +95,17 @@ class Song:
             sections=row[10],
             source_url=row[11],
             table_row_number=row[12],
-            scraped_at=row[13],
-            created_at=row[14],
-            updated_at=row[15],
-            deleted_at=row[16] if row_len > 16 else None,
+            scraped_at=_to_str(row[13]),
+            created_at=_to_str(row[14]),
+            updated_at=_to_str(row[15]),
+            deleted_at=_to_str(row[16]) if row_len > 16 else None,
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert Song to dictionary.
 
         Returns:
-            Dictionary representation of the song
+            Dictionary representation of the song.
         """
         return {
             "id": self.id,
@@ -117,7 +132,7 @@ class Song:
         """Get lyrics as a list of lines.
 
         Returns:
-            List of lyric lines
+            List of lyric lines.
         """
         if self.lyrics_lines:
             try:
@@ -196,10 +211,10 @@ class Recording:
         """Create a Recording from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order
+            row: Database row tuple with columns in schema order.
 
         Returns:
-            Recording instance
+            Recording instance.
 
         Note:
             Handles schema versions:
@@ -253,7 +268,7 @@ class Recording:
             song_id=row[2],
             original_filename=row[3],
             file_size_bytes=row[4],
-            imported_at=row[5],
+            imported_at=_to_str(row[5]),
             r2_audio_url=row[6],
             r2_stems_url=row[7],
             r2_lrc_url=row[8],
@@ -274,16 +289,16 @@ class Recording:
             lrc_job_id=row[22],
             visibility_status=visibility_status,
             download_status=download_status or "pending",
-            created_at=created_at,
-            updated_at=updated_at,
-            deleted_at=deleted_at,
+            created_at=_to_str(created_at),
+            updated_at=_to_str(updated_at),
+            deleted_at=_to_str(deleted_at),
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert Recording to dictionary.
 
         Returns:
-            Dictionary representation of the recording
+            Dictionary representation of the recording.
         """
         return {
             "content_hash": self.content_hash,
@@ -322,7 +337,7 @@ class Recording:
         """Check if analysis is complete.
 
         Returns:
-            True if analysis_status is 'completed'
+            True if analysis_status is 'completed'.
         """
         return self.analysis_status == "completed"
 
@@ -331,7 +346,7 @@ class Recording:
         """Check if LRC generation is complete.
 
         Returns:
-            True if lrc_status is 'completed'
+            True if lrc_status is 'completed'.
         """
         return self.lrc_status == "completed"
 
@@ -340,7 +355,7 @@ class Recording:
         """Check if the recording is published for user visibility.
 
         Returns:
-            True if visibility_status is 'published'
+            True if visibility_status is 'published'.
         """
         return self.visibility_status == "published"
 
@@ -349,7 +364,7 @@ class Recording:
         """Get beats as a list of floats.
 
         Returns:
-            List of beat timestamps
+            List of beat timestamps.
         """
         if self.beats:
             try:
@@ -363,7 +378,7 @@ class Recording:
         """Get duration formatted as MM:SS.
 
         Returns:
-            Formatted duration string
+            Formatted duration string.
         """
         if self.duration_seconds is None:
             return "--:--"
@@ -377,29 +392,23 @@ class DatabaseStats:
     """Statistics about the database state.
 
     Attributes:
-        table_counts: Dictionary of table names to row counts
-        integrity_ok: Whether integrity check passed
-        foreign_keys_enabled: Whether foreign keys are enabled
-        last_sync_at: Last sync timestamp (if any)
-        sync_version: Schema version for sync compatibility
-        local_device_id: Unique identifier for this device
-        turso_configured: Whether Turso sync is configured
+        table_counts: Dictionary of table names to row counts.
+        is_healthy: Runtime health from ``pg_is_in_recovery()``.
+        last_sync_at: Unused, kept for API compatibility.
+        sync_version: Schema version ("3" indicates Postgres).
     """
 
     table_counts: dict[str, int] = field(default_factory=dict)
-    integrity_ok: bool = True
-    foreign_keys_enabled: bool = False
+    is_healthy: bool = True
     last_sync_at: Optional[str] = None
-    sync_version: str = "1"
-    local_device_id: str = ""
-    turso_configured: bool = False
+    sync_version: str = "3"
 
     @property
     def total_songs(self) -> int:
         """Get total number of songs.
 
         Returns:
-            Number of songs in the database
+            Number of songs in the database.
         """
         return self.table_counts.get("songs", 0)
 
@@ -408,6 +417,6 @@ class DatabaseStats:
         """Get total number of recordings.
 
         Returns:
-            Number of recordings in the database
+            Number of recordings in the database.
         """
         return self.table_counts.get("recordings", 0)
