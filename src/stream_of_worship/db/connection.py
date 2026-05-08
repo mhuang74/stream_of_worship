@@ -7,6 +7,7 @@ This decouples client classes from connection lifecycle and allows both
 ``psycopg.Connection``.
 """
 
+import threading
 import time
 from typing import Optional
 
@@ -15,6 +16,10 @@ import psycopg
 
 class ConnectionProvider:
     """Manages a single psycopg connection with auto-reconnect and cold-start retry.
+
+    Thread-safe: uses a lock to serialize connection creation, preventing
+    race conditions when multiple threads call get_connection() simultaneously
+    on a closed or None connection.
 
     Attributes:
         database_url: Fully-formed ``postgresql://`` connection string.
@@ -26,12 +31,14 @@ class ConnectionProvider:
     def __init__(self, database_url: str):
         self.database_url = database_url
         self._connection: Optional[psycopg.Connection] = None
+        self._lock = threading.Lock()
 
     def get_connection(self) -> psycopg.Connection:
         """Return an open psycopg connection, reconnecting if necessary."""
-        if self._connection is None or self._connection.closed:
-            self._connection = self._connect_with_retry()
-        return self._connection
+        with self._lock:
+            if self._connection is None or self._connection.closed:
+                self._connection = self._connect_with_retry()
+            return self._connection
 
     def _connect_with_retry(self) -> psycopg.Connection:
         """Attempt to connect with exponential backoff for cold starts."""
@@ -57,9 +64,10 @@ class ConnectionProvider:
 
     def close(self) -> None:
         """Close the managed connection if it is open."""
-        if self._connection and not self._connection.closed:
-            self._connection.close()
-            self._connection = None
+        with self._lock:
+            if self._connection and not self._connection.closed:
+                self._connection.close()
+                self._connection = None
 
     def __enter__(self) -> "ConnectionProvider":
         return self

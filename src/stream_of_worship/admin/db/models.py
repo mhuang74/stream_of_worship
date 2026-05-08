@@ -211,8 +211,8 @@ class Recording:
             - 25 columns: before youtube_url was added
             - 26 columns: with youtube_url at the end, no visibility_status
             - 27 columns: with visibility_status at the end (after youtube_url)
-            - 28 columns: with deleted_at at the end
-            - 29 columns: with download_status at the end (after deleted_at)
+            - 28 columns: with deleted_at at the end (after visibility_status)
+            - 29 columns: with download_status at index 27 and deleted_at at index 28
         """
         row_len = len(row)
 
