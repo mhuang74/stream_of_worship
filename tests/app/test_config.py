@@ -37,19 +37,18 @@ class TestAppConfigDir:
 class TestAppConfigDefaults:
     """Tests for default configuration values."""
 
-    def test_default_db_path(self):
-        """Verify default db_path is set."""
+    def test_default_database_url(self):
+        """Verify default database_url is empty string."""
         config = AppConfig()
 
-        assert isinstance(config.db_path, Path)
-        assert "sow.db" in str(config.db_path)
+        assert config.database_url == ""
 
-    def test_default_songsets_db_path(self):
-        """Verify default songsets_db_path is set."""
+    def test_default_songsets_export_dir(self):
+        """Verify default songsets_export_dir is set."""
         config = AppConfig()
 
-        assert isinstance(config.songsets_db_path, Path)
-        assert "songsets.db" in str(config.songsets_db_path)
+        assert isinstance(config.songsets_export_dir, Path)
+        assert "Documents" in str(config.songsets_export_dir)
 
     def test_default_cache_dir(self):
         """Verify default cache_dir is set."""
@@ -89,11 +88,11 @@ class TestAppConfigDefaults:
 class TestAppConfigProperties:
     """Tests for config properties."""
 
-    def test_db_path_property(self):
-        """Verify db_path access."""
+    def test_database_url_property(self):
+        """Verify database_url access."""
         config = AppConfig()
 
-        assert isinstance(config.db_path, Path)
+        assert isinstance(config.database_url, str)
 
     def test_r2_bucket_property(self):
         """Verify r2_bucket property reads from environment."""
@@ -124,22 +123,14 @@ class TestAppConfigSaveLoad:
         """Verify load() reads TOML."""
         config_path = tmp_path / "config.toml"
 
-        # Set token via env var (no longer stored in config file)
-        monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "test-token")
-
         # Create a config file
         config_path.write_text("""
-[database]
-db_path = "/test/db.sqlite"
-songsets_db_path = "/test/songsets.db"
-
 [songsets]
 backup_retention = 10
 export_dir = "/test/exports"
 
-[turso]
-database_url = "libsql://test.turso.io"
-sync_on_startup = false
+[database]
+url = "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow?sslmode=require"
 
 [app]
 cache_dir = "/test/cache"
@@ -153,13 +144,9 @@ default_video_resolution = "720p"
 
         config = AppConfig.load(config_path)
 
-        assert config.db_path == Path("/test/db.sqlite")
-        assert config.songsets_db_path == Path("/test/songsets.db")
         assert config.songsets_backup_retention == 10
         assert config.songsets_export_dir == Path("/test/exports")
-        assert config.turso_database_url == "libsql://test.turso.io"
-        assert config.turso_readonly_token == "test-token"
-        assert config.sync_on_startup is False
+        assert config.database_url == "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow?sslmode=require"
         assert config.cache_dir == Path("/test/cache")
         assert config.output_dir == Path("/test/output")
         assert config.preview_buffer_ms == 1000
@@ -184,10 +171,8 @@ default_video_resolution = "720p"
 
         assert config_path.exists()
         content = config_path.read_text()
-        assert "[database]" in content
         assert "[songsets]" in content
-        assert "[turso]" in content
-        assert "[app]" in content
+        assert "[database]" in content
 
     def test_save_creates_parent_directories(self, tmp_path):
         """Verify save() creates parent directories."""
@@ -226,8 +211,6 @@ class TestEnsureDirectories:
         config.cache_dir = cache_dir
         config.output_dir = output_dir
         config.log_dir = log_dir
-        config.db_path = tmp_path / "db" / "sow.db"
-        config.songsets_db_path = tmp_path / "db" / "songsets.db"
         config.songsets_export_dir = tmp_path / "exports"
 
         config.ensure_directories()
@@ -260,18 +243,12 @@ class TestEnsureAppConfigExists:
         config_path = get_app_config_path()
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text("""
-[database]
-db_path = "/existing/db.sqlite"
-songsets_db_path = "/existing/songsets.db"
-
 [songsets]
 backup_retention = 3
 export_dir = "/existing/exports"
 
-[turso]
-database_url = ""
-readonly_token = ""
-sync_on_startup = false
+[database]
+url = "postgresql://sow@host/db"
 
 [app]
 cache_dir = "/existing/cache"
@@ -285,60 +262,39 @@ default_video_resolution = "1080p"
 
         config = ensure_app_config_exists()
 
-        assert config.db_path == Path("/existing/db.sqlite")
+        assert config.songsets_backup_retention == 3
+        assert config.database_url == "postgresql://sow@host/db"
         assert config.default_gap_beats == 1.0
 
 
-class TestTursoConfig:
-    """Tests for Turso configuration."""
+class TestGetConnectionUrl:
+    """Tests for get_connection_url DSN assembly."""
 
-    def test_is_turso_configured_requires_url_and_token(self, monkeypatch):
-        """Verify Turso config requires both URL and token."""
+    def test_returns_toml_url_by_default(self):
         config = AppConfig()
+        config.database_url = "postgresql://user@host/db"
+        assert config.get_connection_url() == "postgresql://user@host/db"
 
-        # Neither set
-        monkeypatch.delenv("SOW_TURSO_READONLY_TOKEN", raising=False)
-        config.turso_database_url = ""
-        assert config.is_turso_configured is False
+    def test_sow_database_url_overrides_toml(self, monkeypatch):
+        config = AppConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.setenv("SOW_DATABASE_URL", "postgresql://other@otherhost/otherdb")
+        assert config.get_connection_url() == "postgresql://other@otherhost/otherdb"
 
-        # Only URL set
-        config.turso_database_url = "libsql://test.turso.io"
-        assert config.is_turso_configured is False
+    def test_inserts_password_from_env_var(self, monkeypatch):
+        config = AppConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.setenv("SOW_DATABASE_PASSWORD", "secret123")
+        assert config.get_connection_url() == "postgresql://user:secret123@host/db"
 
-        # Both set (token via env var)
-        config.turso_database_url = "libsql://test.turso.io"
-        monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "test-token")
-        assert config.is_turso_configured is True
+    def test_no_password_no_insert(self, monkeypatch):
+        config = AppConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.delenv("SOW_DATABASE_PASSWORD", raising=False)
+        assert config.get_connection_url() == "postgresql://user@host/db"
 
-    def test_turso_token_from_environment(self, tmp_path, monkeypatch):
-        """Verify Turso token is read from environment variable only."""
-        monkeypatch.setenv("SOW_TURSO_READONLY_TOKEN", "env-token")
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text("""
-[database]
-db_path = "/test/db.sqlite"
-songsets_db_path = "/test/songsets.db"
-
-[songsets]
-backup_retention = 5
-export_dir = "/test/exports"
-
-[turso]
-database_url = ""
-sync_on_startup = true
-
-[app]
-cache_dir = "/test/cache"
-output_dir = "/test/output"
-preview_buffer_ms = 500
-preview_volume = 0.8
-default_gap_beats = 2.0
-default_video_template = "dark"
-default_video_resolution = "1080p"
-""")
-
-        config = AppConfig.load(config_path)
-
-        # Token should come from environment variable only
-        assert config.turso_readonly_token == "env-token"
+    def test_preserves_query_params(self, monkeypatch):
+        config = AppConfig()
+        config.database_url = "postgresql://user@host/db?sslmode=require&connect_timeout=10"
+        monkeypatch.setenv("SOW_DATABASE_PASSWORD", "pw")
+        assert config.get_connection_url() == "postgresql://user:pw@host/db?sslmode=require&connect_timeout=10"

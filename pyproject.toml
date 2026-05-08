@@ -91,12 +91,23 @@ migration = [
     "pypinyin>=0.52.0",
 ]
 
-# Turso sync dependencies (deprecated - now included in app extra)
-turso = [
-    "libsql>=0.1.0",
+# PostgreSQL dependencies
+postgres = [
+    "psycopg[binary]>=3.2.0",
 ]
 
-# libsql is now included in app extra by default
+# Test dependencies
+test = [
+    "pytest>=7.4.0",
+    "pytest-mock>=3.12.0",
+    "pytest-asyncio>=0.23.0",
+    "fastapi>=0.109.0",
+    "httpx>=0.26.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "aiosqlite>=0.19.0",
+    "testcontainers[postgres]>=4.0.0",
+]
 
 # Admin CLI dependencies
 admin = [
@@ -112,6 +123,7 @@ admin = [
     "boto3>=1.34.0",
     "audio-separator>=0.30.0",
     "onnxruntime>=1.17.0",
+    "stream-of-worship[postgres]",
 ]
 
 # User App (TUI) dependencies
@@ -123,19 +135,6 @@ app = [
     "ffmpeg-python>=0.2.0",
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
-    "libsql>=0.1.0",
-]
-
-# Test dependencies
-test = [
-    "pytest>=7.4.0",
-    "pytest-mock>=3.12.0",
-    "pytest-asyncio>=0.23.0",
-    "fastapi>=0.109.0",
-    "httpx>=0.26.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "aiosqlite>=0.19.0",
 ]
 
 # WhisperX transcription dependencies
@@ -240,7 +239,7 @@ score_lrc = [
 
 # All dependencies together
 all = [
-    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,turso,app,poc_qwen3_asr]",
+    "stream-of-worship[scraper,lrc_generation,video,tui,song_analysis,stem_separation,migration,test,poc_qwen3_align,transcription_whisperx,transcription_youtube,lrc_eval,poc_qwen3_mlx,score_lrc_base,fix_lrc,admin,app,postgres,poc_qwen3_asr]",
 ]
 
 [project.scripts]

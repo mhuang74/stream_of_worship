@@ -25,9 +25,8 @@ class AdminConfig:
         r2_bucket: Cloudflare R2 bucket name
         r2_endpoint_url: R2 endpoint URL
         r2_region: R2 region (usually "auto")
-        turso_database_url: Turso database URL for sync
-        sync_on_startup: Whether to sync at startup
-        db_path: Local SQLite database path
+        database_url: Postgres DSN without password
+        neon_admin_role: Informational Postgres role name
         cache_dir: Local cache directory for admin operations
     """
 
@@ -39,12 +38,9 @@ class AdminConfig:
     r2_endpoint_url: str = ""
     r2_region: str = "auto"
 
-    # Turso (for sync)
-    turso_database_url: str = ""
-    sync_on_startup: bool = True
-
-    # Local Database
-    db_path: Path = field(default_factory=lambda: get_default_db_path())
+    # Postgres (Neon)
+    database_url: str = ""
+    neon_admin_role: str = "sow_admin_rw"
 
     # Cache
     cache_dir: Path = field(default_factory=lambda: get_cache_dir())
@@ -84,19 +80,16 @@ class AdminConfig:
             config.r2_endpoint_url = r2.get("endpoint_url", config.r2_endpoint_url)
             config.r2_region = r2.get("region", config.r2_region)
 
-        # Load Turso config
-        if "turso" in data:
-            turso = data["turso"]
-            config.turso_database_url = turso.get("database_url", config.turso_database_url)
-            config.sync_on_startup = turso.get("sync_on_startup", config.sync_on_startup)
-
-        # Load database path
+        # Load database (Postgres) config — new [database] section
         if "database" in data:
-            db_path = data["database"].get("path")
-            if db_path:
-                config.db_path = Path(db_path)
+            db = data["database"]
+            config.database_url = db.get("url", config.database_url)
+            config.neon_admin_role = db.get("neon_admin_role", config.neon_admin_role)
 
-        # Load cache dir from TOML
+        # Backward compatibility: silently ignore old [turso] section
+        # (it is simply not read)
+
+        # Load cache dir from TOML (legacy [paths] section)
         if "paths" in data:
             toml_cache_dir = data["paths"].get("cache_dir")
             if toml_cache_dir:
@@ -124,16 +117,32 @@ class AdminConfig:
                 "endpoint_url": self.r2_endpoint_url,
                 "region": self.r2_region,
             },
-            "turso": {
-                "database_url": self.turso_database_url,
-                "sync_on_startup": self.sync_on_startup,
+            "database": {
+                "url": self.database_url,
+                "neon_admin_role": self.neon_admin_role,
             },
-            "database": {"path": str(self.db_path)},
             "paths": {"cache_dir": str(self.cache_dir)},
         }
 
         with open(path, "wb") as f:
             tomli_w.dump(data, f)
+
+    def get_connection_url(self) -> str:
+        """Assemble DSN with password from env var.
+
+        Uses SOW_DATABASE_URL env var (if set) overriding TOML database_url.
+        Uses SOW_DATABASE_PASSWORD env var for the password.
+
+        Returns:
+            Postgres DSN with password inserted
+        """
+        url = os.environ.get("SOW_DATABASE_URL", self.database_url)
+        password = os.environ.get("SOW_DATABASE_PASSWORD", "")
+        if password and "@" in url:
+            user_host = url.split("://", 1)[1]
+            username = user_host.split("@", 1)[0]
+            url = url.replace(f"://{username}@", f"://{username}:{password}@")
+        return url
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get a configuration value by key.
@@ -243,15 +252,6 @@ def get_config_path() -> Path:
         Path to config.toml
     """
     return get_config_dir() / "config.toml"
-
-
-def get_default_db_path() -> Path:
-    """Get the default database path.
-
-    Returns:
-        Path to default database location
-    """
-    return get_config_dir() / "db" / "sow.db"
 
 
 def ensure_config_exists() -> AdminConfig:

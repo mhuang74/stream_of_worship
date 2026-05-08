@@ -12,7 +12,6 @@ from stream_of_worship.admin.config import (
     get_cache_dir,
     get_config_dir,
     get_config_path,
-    get_default_db_path,
     get_env_var_name,
     get_secret,
 )
@@ -29,7 +28,8 @@ class TestAdminConfig:
         assert config.r2_bucket == "sow-audio"
         assert config.r2_endpoint_url == ""
         assert config.r2_region == "auto"
-        assert config.turso_database_url == ""
+        assert config.database_url == ""
+        assert config.neon_admin_role == "sow_admin_rw"
 
     def test_load_from_file(self, tmp_path, monkeypatch):
         """Test loading config from TOML file."""
@@ -37,6 +37,7 @@ class TestAdminConfig:
         monkeypatch.delenv("SOW_R2_BUCKET", raising=False)
         monkeypatch.delenv("SOW_R2_ENDPOINT_URL", raising=False)
         monkeypatch.delenv("SOW_R2_REGION", raising=False)
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
 
         config_file = tmp_path / "config.toml"
         config_file.write_text(
@@ -49,11 +50,12 @@ bucket = "my-bucket"
 endpoint_url = "https://xxx.r2.cloudflarestorage.com"
 region = "us-east-1"
 
-[turso]
-database_url = "libsql://my-db.turso.io"
-
 [database]
-path = "/custom/path/sow.db"
+url = "postgresql://sow_admin_rw@ep-xxx-pooler.neon.tech/sow?sslmode=require"
+neon_admin_role = "custom_role"
+
+[paths]
+cache_dir = "/custom/admin-cache"
 """
         )
 
@@ -63,8 +65,27 @@ path = "/custom/path/sow.db"
         assert config.r2_bucket == "my-bucket"
         assert config.r2_endpoint_url == "https://xxx.r2.cloudflarestorage.com"
         assert config.r2_region == "us-east-1"
-        assert config.turso_database_url == "libsql://my-db.turso.io"
-        assert str(config.db_path) == "/custom/path/sow.db"
+        assert config.database_url == "postgresql://sow_admin_rw@ep-xxx-pooler.neon.tech/sow?sslmode=require"
+        assert config.neon_admin_role == "custom_role"
+        assert config.cache_dir == Path("/custom/admin-cache")
+
+    def test_load_ignores_old_turso_section(self, tmp_path):
+        """Test that old [turso] section is silently ignored."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[turso]
+database_url = "libsql://my-db.turso.io"
+sync_on_startup = true
+
+[database]
+url = "postgresql://sow@neon.tech/db"
+"""
+        )
+
+        config = AdminConfig.load(config_file)
+        assert config.database_url == "postgresql://sow@neon.tech/db"
+        assert not hasattr(config, "sync_on_startup")
 
     def test_load_missing_file(self, tmp_path):
         """Test that loading missing file raises FileNotFoundError."""
@@ -75,10 +96,12 @@ path = "/custom/path/sow.db"
         """Test saving and loading config preserves values."""
         # Clear environment variables that might override file config
         monkeypatch.delenv("SOW_R2_BUCKET", raising=False)
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
 
         config = AdminConfig()
         config.analysis_url = "https://test.example.com"
         config.r2_bucket = "test-bucket"
+        config.database_url = "postgresql://test@neon.tech/db"
 
         config_file = tmp_path / "config.toml"
         config.save(config_file)
@@ -87,6 +110,7 @@ path = "/custom/path/sow.db"
 
         assert loaded.analysis_url == "https://test.example.com"
         assert loaded.r2_bucket == "test-bucket"
+        assert loaded.database_url == "postgresql://test@neon.tech/db"
 
     def test_get_config_value(self):
         """Test getting config values with dot notation."""
@@ -122,6 +146,39 @@ path = "/custom/path/sow.db"
         pass
 
 
+class TestGetConnectionUrl:
+    """Tests for get_connection_url DSN assembly."""
+
+    def test_returns_toml_url_by_default(self):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        assert config.get_connection_url() == "postgresql://user@host/db"
+
+    def test_sow_database_url_overrides_toml(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.setenv("SOW_DATABASE_URL", "postgresql://other@otherhost/otherdb")
+        assert config.get_connection_url() == "postgresql://other@otherhost/otherdb"
+
+    def test_inserts_password_from_env_var(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.setenv("SOW_DATABASE_PASSWORD", "secret123")
+        assert config.get_connection_url() == "postgresql://user:secret123@host/db"
+
+    def test_no_password_no_insert(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db"
+        monkeypatch.delenv("SOW_DATABASE_PASSWORD", raising=False)
+        assert config.get_connection_url() == "postgresql://user@host/db"
+
+    def test_preserves_query_params(self, monkeypatch):
+        config = AdminConfig()
+        config.database_url = "postgresql://user@host/db?sslmode=require&connect_timeout=10"
+        monkeypatch.setenv("SOW_DATABASE_PASSWORD", "pw")
+        assert config.get_connection_url() == "postgresql://user:pw@host/db?sslmode=require&connect_timeout=10"
+
+
 class TestConfigPaths:
     """Tests for config path functions."""
 
@@ -136,12 +193,6 @@ class TestConfigPaths:
         config_path = get_config_path()
         assert isinstance(config_path, Path)
         assert config_path.name == "config.toml"
-
-    def test_get_default_db_path(self):
-        """Test that get_default_db_path returns correct path."""
-        db_path = get_default_db_path()
-        assert isinstance(db_path, Path)
-        assert db_path.name == "sow.db"
 
 
 class TestEnsureConfigExists:
@@ -178,7 +229,7 @@ class TestEnvironmentVariables:
         """Test that env var names are formatted correctly."""
         assert get_env_var_name("r2.access_key_id") == "SOW_R2_ACCESS_KEY_ID"
         assert get_env_var_name("analysis_url") == "SOW_ANALYSIS_URL"
-        assert get_env_var_name("turso.auth_token") == "SOW_TURSO_AUTH_TOKEN"
+        assert get_env_var_name("database.password") == "SOW_DATABASE_PASSWORD"
 
     def test_get_secret_from_env(self, monkeypatch):
         """Test getting secrets from environment."""
