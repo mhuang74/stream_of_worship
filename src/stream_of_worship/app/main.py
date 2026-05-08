@@ -1,7 +1,7 @@
 """CLI entry point for sow-app TUI.
 
 Provides the `sow-app` command for launching the Textual interface,
-syncing with Turso, and managing songset exports/imports.
+database health checks, and managing songset exports/imports.
 """
 
 import logging

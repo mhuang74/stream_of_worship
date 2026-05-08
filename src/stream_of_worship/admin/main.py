@@ -109,8 +109,7 @@ def config(
             f"[cyan]R2 Bucket:[/cyan] {cfg.r2_bucket}\n"
             f"[cyan]R2 Endpoint:[/cyan] {cfg.r2_endpoint_url or '[not set]'}\n"
             f"[cyan]R2 Region:[/cyan] {cfg.r2_region}\n"
-            f"[cyan]Turso URL:[/cyan] {cfg.turso_database_url or '[not set]'}\n"
-            f"[cyan]Database Path:[/cyan] {cfg.db_path}",
+            f"[cyan]Database URL:[/cyan] {cfg.database_url or '[not set]'}",
             title="Configuration",
             border_style="green",
         )
