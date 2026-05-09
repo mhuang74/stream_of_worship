@@ -112,7 +112,7 @@ def show_status(
 
     if database_url and "@" in database_url:
         # Mask password for display
-        masked = re.sub(r"(:)([^@]+)(@)", r"\1****\3", database_url)
+        masked = re.sub(r"(://[^:]+:)([^@]+)(@)", r"\1****\3", database_url)
         info_table.add_row("Database URL", masked)
     else:
         info_table.add_row("Database URL", "[red]Not configured[/red]")
@@ -188,7 +188,7 @@ def show_url(
 
     if url and "@" in url:
         # Mask password if present in URL
-        masked = re.sub(r"(:)([^@]+)(@)", r"\1****\3", url)
+        masked = re.sub(r"(://[^:]+:)([^@]+)(@)", r"\1****\3", url)
     else:
         masked = "[not configured]"
 

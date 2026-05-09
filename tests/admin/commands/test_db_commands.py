@@ -206,3 +206,47 @@ class TestUrlCommand:
         assert result.exit_code == 0
         assert "Database URL (masked):" in result.output
         assert "Password:" in result.output
+
+
+@pytest.mark.integration
+class TestDbCommandsIntegration:
+    """Integration tests for db commands with real Postgres (requires Docker)."""
+
+    def test_init_with_postgres_instance(self, postgres_url, tmp_path, monkeypatch):
+        """Test that init command works with a real Postgres instance."""
+        config_path = tmp_path / "config.toml"
+        config_content = f'[database]\nurl = "{postgres_url}"\n'
+        config_path.write_text(config_content)
+
+        result = runner.invoke(app, ["init", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        assert "Postgres schema initialized successfully" in result.output
+
+    def test_status_with_postgres_instance(self, postgres_url, tmp_path, monkeypatch):
+        """Test that status command shows correct information with real Postgres."""
+        config_path = tmp_path / "config.toml"
+        config_content = f'[database]\nurl = "{postgres_url}"\n'
+        config_path.write_text(config_content)
+
+        result = runner.invoke(app, ["status", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        assert "Database Connection" in result.output
+        assert "OK" in result.output
+        assert "Database Statistics" in result.output
+        assert "Songs" in result.output
+        assert "Recordings" in result.output
+
+    def test_url_masks_password_correctly(self, tmp_path, monkeypatch):
+        """Test that url command masks password in connection string."""
+        config_path = tmp_path / "config.toml"
+        config_content = '[database]\nurl = "postgresql://admin:supersecret@db.example.com/sow?sslmode=require"\n'
+        config_path.write_text(config_content)
+
+        result = runner.invoke(app, ["url", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        assert "****" in result.output
+        assert "supersecret" not in result.output
+        assert "postgresql://admin:****@db.example.com" in result.output
