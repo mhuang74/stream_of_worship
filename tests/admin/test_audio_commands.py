@@ -1,9 +1,9 @@
 """Tests for audio CLI commands."""
 
-import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import psycopg
 import pytest
 from typer.testing import CliRunner
 
@@ -11,6 +11,7 @@ from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.main import app
 from stream_of_worship.admin.services.analysis import AnalysisServiceError, JobInfo
+from stream_of_worship.db.connection import ConnectionProvider
 
 runner = CliRunner()
 
@@ -18,12 +19,47 @@ runner = CliRunner()
 WIDE_ENV = {"COLUMNS": "200"}
 
 
-def _setup_db(tmp_path):
-    """Create a temp database seeded with one song and return paths."""
-    db_path = tmp_path / "test.db"
-    client = DatabaseClient(db_path)
-    client.initialize_schema()
+@pytest.fixture
+def provider(postgres_url):
+    """Yield a ConnectionProvider and close it after the test."""
+    provider = ConnectionProvider(postgres_url)
+    yield provider
+    provider.close()
 
+
+@pytest.fixture
+def client(provider):
+    """Return an initialized DatabaseClient with schema ready.
+
+    Tables are truncated after each test for isolation.
+    """
+    db = DatabaseClient(provider)
+    db.initialize_schema()
+    yield db
+    conn = provider.get_connection()
+    conn.rollback()
+    cursor = conn.cursor()
+    for table in ["songs", "recordings", "songsets", "songset_items"]:
+        try:
+            cursor.execute(f"TRUNCATE TABLE {table} CASCADE")
+            conn.commit()
+        except psycopg.errors.UndefinedTable:
+            conn.rollback()
+        except Exception:
+            conn.rollback()
+    conn.commit()
+
+
+@pytest.fixture
+def config_with_db(tmp_path, postgres_url):
+    """Create a config file pointing to the test database."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'[database]\nurl = "{postgres_url}"\n')
+    return config_path
+
+
+def _setup_db(client):
+    """Seed database with one song and return the song."""
     song = Song(
         id="song_001",
         title="測試歌曲",
@@ -34,19 +70,15 @@ def _setup_db(tmp_path):
         musical_key="G",
     )
     client.insert_song(song)
-
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-    return {"db_path": db_path, "config_path": config_path, "song": song}
+    return song
 
 
 class TestAudioDownloadCommand:
     """Tests for 'audio download' command."""
 
     @pytest.fixture
-    def setup(self, tmp_path):
-        return _setup_db(tmp_path)
+    def setup(self, client, config_with_db):
+        return {"client": client, "config_path": config_with_db, "song": _setup_db(client)}
 
     def test_download_without_config(self):
         """Fails cleanly when no config file exists."""
@@ -57,17 +89,16 @@ class TestAudioDownloadCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_download_without_database(self, tmp_path):
-        """Fails when the database path does not exist."""
+    def test_download_connection_error(self, tmp_path):
+        """Fails when database connection fails."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid:5432/nodb"\n')
 
         result = runner.invoke(
             app, ["audio", "download", "song_001", "--config", str(config_path)]
         )
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
 
     def test_download_song_not_found(self, setup):
         """Fails when the song ID does not exist in the catalog."""
@@ -82,7 +113,6 @@ class TestAudioDownloadCommand:
     @patch("stream_of_worship.admin.commands.audio.R2Client")
     def test_download_existing_recording(self, mock_r2_cls, setup):
         """Exits 0 with an informational message when a recording already exists."""
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -91,7 +121,7 @@ class TestAudioDownloadCommand:
             file_size_bytes=1000,
             imported_at=datetime.now().isoformat(),
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_r2 = MagicMock()
         mock_r2_cls.return_value = mock_r2
@@ -141,7 +171,6 @@ class TestAudioDownloadCommand:
         tmp_path,
     ):
         """Full download flow creates a recording in the database."""
-        # Real file so that stat().st_size works
         fake_audio = tmp_path / "downloaded.mp3"
         fake_audio.write_bytes(b"fake audio content")
 
@@ -175,12 +204,9 @@ class TestAudioDownloadCommand:
         assert "Uploaded" in result.output
         assert "Recording saved" in result.output
 
-        # Verify preview_video was called
         mock_downloader.preview_video.assert_called_once()
 
-        # Verify the recording was persisted
-        db_client = DatabaseClient(setup["db_path"])
-        recording = db_client.get_recording_by_song_id("song_001")
+        recording = setup["client"].get_recording_by_song_id("song_001")
         assert recording is not None
         assert recording.hash_prefix == "bbbbbbbbbbbb"
         assert recording.content_hash == "b" * 64
@@ -307,12 +333,8 @@ class TestAudioListCommand:
     """Tests for 'audio list' command."""
 
     @pytest.fixture
-    def setup_with_recordings(self, tmp_path):
+    def setup_with_recordings(self, client, config_with_db):
         """Database with two songs and two recordings at distinct times."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
         songs = [
             Song(
                 id="song_001",
@@ -353,10 +375,7 @@ class TestAudioListCommand:
         for rec in recordings:
             client.insert_recording(rec)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path}
+        return {"client": client, "config_path": config_with_db}
 
     def test_list_without_config(self):
         """Fails cleanly when no config file exists."""
@@ -367,29 +386,21 @@ class TestAudioListCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_list_without_database(self, tmp_path):
-        """Fails when database path does not exist."""
+    def test_list_connection_error(self, tmp_path):
+        """Fails when database connection fails."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid:5432/nodb"\n')
 
         result = runner.invoke(
             app, ["audio", "list", "--config", str(config_path)]
         )
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
 
-    def test_list_empty_database(self, tmp_path):
+    def test_list_empty_database(self, client, config_with_db):
         """Shows a message when no recordings exist."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
         result = runner.invoke(
-            app, ["audio", "list", "--config", str(config_path)]
+            app, ["audio", "list", "--config", str(config_with_db)]
         )
 
         assert result.exit_code == 0
@@ -496,12 +507,8 @@ class TestAudioListCommand:
         assert result.exit_code == 1
         assert "Invalid sort option" in result.output
 
-    def test_list_album_filter(self, tmp_path):
+    def test_list_album_filter(self, client, config_with_db):
         """Album filter returns only matching recordings."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
         songs = [
             Song(
                 id="song_001",
@@ -542,16 +549,13 @@ class TestAudioListCommand:
         for rec in recordings:
             client.insert_recording(rec)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
         result = runner.invoke(
             app,
             [
                 "audio",
                 "list",
                 "--config",
-                str(config_path),
+                str(config_with_db),
                 "--album",
                 "Alpha",
             ],
@@ -561,12 +565,8 @@ class TestAudioListCommand:
         assert "song_001" in result.output
         assert "song_002" not in result.output
 
-    def test_list_sort_by_title(self, tmp_path):
+    def test_list_sort_by_title(self, client, config_with_db):
         """Sort by title orders recordings by song title."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
         songs = [
             Song(
                 id="song_z",
@@ -607,16 +607,13 @@ class TestAudioListCommand:
         for rec in recordings:
             client.insert_recording(rec)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
         result = runner.invoke(
             app,
             [
                 "audio",
                 "list",
                 "--config",
-                str(config_path),
+                str(config_with_db),
                 "--sort",
                 "title",
                 "--format",
@@ -654,12 +651,8 @@ class TestAudioShowCommand:
     """Tests for 'audio show' command."""
 
     @pytest.fixture
-    def setup_with_recording(self, tmp_path):
+    def setup_with_recording(self, client, config_with_db):
         """Database with a song linked to a fully-populated recording."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
         song = Song(
             id="song_001",
             title="測試歌曲",
@@ -687,10 +680,7 @@ class TestAudioShowCommand:
         )
         client.insert_recording(recording)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path}
+        return {"client": client, "config_path": config_with_db}
 
     def test_show_without_config(self):
         """Fails cleanly when no config file exists."""
@@ -701,17 +691,16 @@ class TestAudioShowCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_show_without_database(self, tmp_path):
-        """Fails when the database does not exist."""
+    def test_show_connection_error(self, tmp_path):
+        """Fails when database connection fails."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid:5432/nodb"\n')
 
         result = runner.invoke(
             app, ["audio", "show", "abc123", "--config", str(config_path)]
         )
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
 
     def test_show_no_recording_for_song(self, setup_with_recording):
         """Reports an error when song has no recording."""
@@ -738,8 +727,8 @@ class TestAudioShowCommand:
 
         assert result.exit_code == 0
         assert "song_001" in result.output
-        assert "dddddddddddd" in result.output  # hash prefix shown for reference
-        assert "d" * 64 in result.output  # full hash
+        assert "dddddddddddd" in result.output
+        assert "d" * 64 in result.output
         assert "test_song.mp3" in result.output
         assert "測試歌曲" in result.output
         assert "s3://sow-audio/dddddddddddd/audio.mp3" in result.output
@@ -756,17 +745,13 @@ class TestAudioShowCommand:
 
         assert result.exit_code == 0
         assert "Analysis Results" in result.output
-        assert "128.5" in result.output  # tempo
-        assert "major" in result.output  # mode
-        assert "0.87" in result.output  # key confidence
-        assert "-8.2" in result.output  # loudness
+        assert "128.5" in result.output
+        assert "major" in result.output
+        assert "0.87" in result.output
+        assert "-8.2" in result.output
 
-    def test_show_pending_recording_no_analysis_section(self, tmp_path):
+    def test_show_pending_recording_no_analysis_section(self, client, config_with_db):
         """Analysis Results section is absent for pending recordings."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
         song = Song(
             id="song_pending",
             title="Pending Song",
@@ -786,11 +771,8 @@ class TestAudioShowCommand:
         )
         client.insert_recording(recording)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
         result = runner.invoke(
-            app, ["audio", "show", "song_pending", "--config", str(config_path)]
+            app, ["audio", "show", "song_pending", "--config", str(config_with_db)]
         )
 
         assert result.exit_code == 0
@@ -799,14 +781,8 @@ class TestAudioShowCommand:
         assert "pending" in result.output
         assert "Analysis Results" not in result.output
 
-    def test_show_recording_without_linked_song(self, tmp_path):
+    def test_show_recording_without_linked_song(self, client, config_with_db):
         """Recording with no song_id cannot be looked up by song_id."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Create an orphan recording (no song_id) - this shouldn't happen
-        # in normal usage since we now require song_id for all recordings
         recording = Recording(
             content_hash="f" * 64,
             hash_prefix="ffffffffffff",
@@ -817,12 +793,8 @@ class TestAudioShowCommand:
         )
         client.insert_recording(recording)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        # Trying to look up by non-existent song_id should fail
         result = runner.invoke(
-            app, ["audio", "show", "nonexistent_song", "--config", str(config_path)]
+            app, ["audio", "show", "nonexistent_song", "--config", str(config_with_db)]
         )
 
         assert result.exit_code == 1
@@ -833,12 +805,8 @@ class TestAnalyzeCommand:
     """Tests for 'audio analyze' command."""
 
     @pytest.fixture
-    def setup(self, tmp_path):
-        """Create a temp database seeded with one song and recording."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
+    def setup(self, client, config_with_db):
+        """Create a database seeded with one song."""
         song = Song(
             id="song_001",
             title="測試歌曲",
@@ -848,10 +816,7 @@ class TestAnalyzeCommand:
         )
         client.insert_song(song)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path, "song": song}
+        return {"client": client, "config_path": config_with_db, "song": song}
 
     def test_analyze_without_config(self):
         """Fails cleanly when no config file exists."""
@@ -862,21 +827,19 @@ class TestAnalyzeCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_analyze_without_database(self, tmp_path):
-        """Fails when the database path does not exist."""
+    def test_analyze_connection_error(self, tmp_path):
+        """Fails when database connection fails."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid:5432/nodb"\n')
 
         result = runner.invoke(
             app, ["audio", "analyze", "abc123", "--config", str(config_path)]
         )
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
 
     def test_analyze_no_recording_for_song(self, setup):
         """Error when song has no recording."""
-        # Song exists but has no recording
         result = runner.invoke(
             app,
             [
@@ -903,7 +866,6 @@ class TestAnalyzeCommand:
 
     def test_analyze_no_r2_audio_url(self, setup):
         """Error when recording lacks audio URL."""
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -913,7 +875,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url=None,
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         result = runner.invoke(
             app,
@@ -928,7 +890,6 @@ class TestAnalyzeCommand:
 
     def test_analyze_already_completed_no_force(self, setup):
         """Exit 0 with message when already done."""
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -939,7 +900,7 @@ class TestAnalyzeCommand:
             r2_audio_url="s3://sow-audio/test/audio.mp3",
             analysis_status="completed",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         result = runner.invoke(
             app,
@@ -957,7 +918,6 @@ class TestAnalyzeCommand:
         """Re-submits with --force."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -968,7 +928,7 @@ class TestAnalyzeCommand:
             r2_audio_url="s3://sow-audio/test/audio.mp3",
             analysis_status="completed",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.return_value = JobInfo(
@@ -996,7 +956,6 @@ class TestAnalyzeCommand:
         """Exit 0 with existing job info."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1008,7 +967,7 @@ class TestAnalyzeCommand:
             analysis_status="processing",
             analysis_job_id="existing-job-123",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         result = runner.invoke(
             app,
@@ -1027,7 +986,6 @@ class TestAnalyzeCommand:
         """Polls existing job."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1039,7 +997,7 @@ class TestAnalyzeCommand:
             analysis_status="processing",
             analysis_job_id="existing-job-123",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.wait_for_completion.return_value = JobInfo(
@@ -1064,7 +1022,6 @@ class TestAnalyzeCommand:
 
     def test_analyze_missing_api_key(self, setup):
         """Error when SOW_ANALYSIS_API_KEY not set."""
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1074,7 +1031,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         result = runner.invoke(
             app,
@@ -1092,7 +1049,6 @@ class TestAnalyzeCommand:
         """Error when service unreachable."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1102,7 +1058,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.side_effect = AnalysisServiceError(
@@ -1126,7 +1082,6 @@ class TestAnalyzeCommand:
         """Submits, updates DB to 'processing'."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1136,7 +1091,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.return_value = JobInfo(
@@ -1159,8 +1114,7 @@ class TestAnalyzeCommand:
         assert "Analysis submitted" in result.output
         assert "job-abc-123" in result.output
 
-        # Verify DB updated
-        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        updated = setup["client"].get_recording_by_hash("aaaaaaaaaaaa")
         assert updated.analysis_status == "processing"
         assert updated.analysis_job_id == "job-abc-123"
 
@@ -1169,7 +1123,6 @@ class TestAnalyzeCommand:
         """Analyzes using song_id."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1179,7 +1132,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.return_value = JobInfo(
@@ -1206,7 +1159,6 @@ class TestAnalyzeCommand:
         """Polls, stores results to DB."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1216,7 +1168,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         from stream_of_worship.admin.services.analysis import AnalysisResult
@@ -1254,8 +1206,7 @@ class TestAnalyzeCommand:
         assert result.exit_code == 0
         assert "Analysis completed" in result.output
 
-        # Verify DB updated with results
-        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        updated = setup["client"].get_recording_by_hash("aaaaaaaaaaaa")
         assert updated.analysis_status == "completed"
         assert updated.duration_seconds == 245.5
         assert updated.tempo_bpm == 128.0
@@ -1266,7 +1217,6 @@ class TestAnalyzeCommand:
         """Updates DB to 'failed' on failure."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1276,7 +1226,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.return_value = JobInfo(
@@ -1306,8 +1256,7 @@ class TestAnalyzeCommand:
         assert result.exit_code == 1
         assert "Analysis failed" in result.output
 
-        # Verify DB updated to failed
-        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        updated = setup["client"].get_recording_by_hash("aaaaaaaaaaaa")
         assert updated.analysis_status == "failed"
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
@@ -1315,7 +1264,6 @@ class TestAnalyzeCommand:
         """Error on poll timeout."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1325,7 +1273,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.return_value = JobInfo(
@@ -1356,7 +1304,6 @@ class TestAnalyzeCommand:
         """Passes generate_stems=False."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
-        db_client = DatabaseClient(setup["db_path"])
         recording = Recording(
             content_hash="a" * 64,
             hash_prefix="aaaaaaaaaaaa",
@@ -1366,7 +1313,7 @@ class TestAnalyzeCommand:
             imported_at=datetime.now().isoformat(),
             r2_audio_url="s3://sow-audio/test/audio.mp3",
         )
-        db_client.insert_recording(recording)
+        setup["client"].insert_recording(recording)
 
         mock_client = MagicMock()
         mock_client.submit_analysis.return_value = JobInfo(
@@ -1387,7 +1334,6 @@ class TestAnalyzeCommand:
         )
 
         assert result.exit_code == 0
-        # Verify generate_stems=False was passed
         call_kwargs = mock_client.submit_analysis.call_args[1]
         assert call_kwargs["generate_stems"] is False
 
@@ -1396,12 +1342,8 @@ class TestStatusCommand:
     """Tests for 'audio status' command."""
 
     @pytest.fixture
-    def setup(self, tmp_path):
-        """Create a temp database seeded with one song and recording."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
+    def setup(self, client, config_with_db):
+        """Create a database seeded with one song."""
         song = Song(
             id="song_001",
             title="測試歌曲",
@@ -1410,10 +1352,7 @@ class TestStatusCommand:
         )
         client.insert_song(song)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path, "song": song}
+        return {"client": client, "config_path": config_with_db, "song": song}
 
     def test_status_without_config(self):
         """Fails cleanly when no config file exists."""
@@ -1424,17 +1363,16 @@ class TestStatusCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_status_without_database(self, tmp_path):
-        """Fails when the database path does not exist."""
+    def test_status_connection_error(self, tmp_path):
+        """Fails when database connection fails."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid:5432/nodb"\n')
 
         result = runner.invoke(
             app, ["audio", "status", "--config", str(config_path)]
         )
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_status_with_job_id_success(self, mock_client_cls, setup, monkeypatch):
@@ -1486,626 +1424,55 @@ class TestStatusCommand:
         assert "Job not found" in result.output
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
-    def test_status_with_job_id_missing_api_key(self, mock_client_cls, setup, monkeypatch):
-        """Error 401 handling."""
+    def test_status_no_job_id_shows_all_jobs(self, mock_client_cls, setup, monkeypatch):
+        """Shows all recent jobs when no job ID provided."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
         mock_client = MagicMock()
-        mock_client.get_job.side_effect = AnalysisServiceError(
-            "Authentication failed", status_code=401
-        )
+        mock_client.list_jobs.return_value = [
+            JobInfo(
+                job_id="job-1",
+                status="completed",
+                job_type="analysis",
+                progress=1.0,
+            ),
+            JobInfo(
+                job_id="job-2",
+                status="processing",
+                job_type="analysis",
+                progress=0.5,
+            ),
+        ]
         mock_client_cls.return_value = mock_client
 
         result = runner.invoke(
             app,
             [
-                "audio", "status", "some-job",
+                "audio", "status",
+                "--config", str(setup["config_path"]),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "job-1" in result.output
+        assert "job-2" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_status_service_unavailable(self, mock_client_cls, setup, monkeypatch):
+        """Error when service unreachable."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        mock_client = MagicMock()
+        mock_client.list_jobs.side_effect = AnalysisServiceError("Service unavailable")
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio", "status",
                 "--config", str(setup["config_path"]),
             ],
         )
 
         assert result.exit_code == 1
-        assert "Authentication failed" in result.output
-
-    def test_status_no_args_all_completed(self, setup):
-        """'All recordings processed' message."""
-        db_client = DatabaseClient(setup["db_path"])
-        recording = Recording(
-            content_hash="a" * 64,
-            hash_prefix="aaaaaaaaaaaa",
-            song_id="song_001",
-            original_filename="test.mp3",
-            file_size_bytes=1000,
-            imported_at=datetime.now().isoformat(),
-            r2_audio_url="s3://sow-audio/test/audio.mp3",
-            analysis_status="completed",
-            lrc_status="completed",
-        )
-        db_client.insert_recording(recording)
-
-        result = runner.invoke(
-            app,
-            ["audio", "status", "--config", str(setup["config_path"])],
-        )
-
-        assert result.exit_code == 0
-        assert "All recordings are fully processed" in result.output
-
-    def test_status_no_args_pending(self, setup):
-        """Shows pending recordings table."""
-        db_client = DatabaseClient(setup["db_path"])
-        recording = Recording(
-            content_hash="a" * 64,
-            hash_prefix="aaaaaaaaaaaa",
-            song_id="song_001",
-            original_filename="test.mp3",
-            file_size_bytes=1000,
-            imported_at=datetime.now().isoformat(),
-            r2_audio_url="s3://sow-audio/test/audio.mp3",
-            analysis_status="pending",
-            lrc_status="pending",
-        )
-        db_client.insert_recording(recording)
-
-        result = runner.invoke(
-            app,
-            ["audio", "status", "--config", str(setup["config_path"])],
-        )
-
-        assert result.exit_code == 0
-        assert "Pending Recordings" in result.output
-        assert "song_001" in result.output
-
-    def test_status_empty_database(self, tmp_path):
-        """Empty DB handling."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        result = runner.invoke(
-            app,
-            ["audio", "status", "--config", str(config_path)],
-        )
-
-        assert result.exit_code == 0
-        assert "All recordings are fully processed" in result.output
-
-
-class TestDownloadCommandNewFeatures:
-    """Tests for new download command features (--force, --url, preview)."""
-
-    @pytest.fixture
-    def setup(self, tmp_path):
-        """Create a temp database seeded with one song."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        song = Song(
-            id="song_001",
-            title="將天敞開",
-            source_url="https://example.com/1",
-            scraped_at=datetime.now().isoformat(),
-            composer="游智婷",
-            album_name="敬拜讚美15",
-        )
-        client.insert_song(song)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'''[database]
-path = "{db_path}"
-
-[r2]
-bucket = "test-bucket"
-endpoint_url = "https://test.r2.dev"
-region = "auto"
-''')
-
-        return {
-            "db_path": db_path,
-            "config_path": config_path,
-            "song": song,
-            "tmp_path": tmp_path,
-        }
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    def test_download_with_force_shows_deletion_message(
-        self, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """--force shows deletion message for existing recording."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-
-        # Create existing recording
-        db_client = DatabaseClient(setup["db_path"])
-        recording = Recording(
-            content_hash="old" * 24,
-            hash_prefix="oldoldoldold",
-            song_id="song_001",
-            original_filename="old.mp3",
-            file_size_bytes=1000,
-            imported_at=datetime.now().isoformat(),
-            r2_audio_url="s3://bucket/oldoldoldold/audio.mp3",
-        )
-        db_client.insert_recording(recording)
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = True
-        mock_r2.upload_audio.return_value = "s3://bucket/newhash/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader
-        mock_yt = MagicMock()
-        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
-        mock_yt.preview_video.return_value = {
-            "id": "abc123",
-            "title": "Test Video",
-            "duration": 245,
-            "webpage_url": "https://youtube.com/watch?v=abc123",
-        }
-        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Test Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",  # Skip confirmation
-                "--force",  # Delete existing
-            ],
-        )
-
-        # Verify the deletion message was shown
-        assert "Deleting existing recording" in result.output
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    def test_download_with_url_uses_direct_url(
-        self, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """--url directly downloads from provided URL."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = False
-        mock_r2.upload_audio.return_value = "s3://bucket/hash/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader
-        mock_yt = MagicMock()
-        mock_yt.preview_video.return_value = {
-            "id": "custom123",
-            "title": "Custom Video",
-            "duration": 245,
-            "webpage_url": "https://youtube.com/watch?v=custom123",
-        }
-        mock_yt.download_by_url.return_value = setup["tmp_path"] / "Custom Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Custom Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",
-                "--url", "https://youtube.com/watch?v=custom123",
-            ],
-        )
-
-        assert result.exit_code == 0
-        # Verify download_by_url was called, not download
-        mock_yt.download_by_url.assert_called_once_with("https://youtube.com/watch?v=custom123")
-        assert mock_yt.download.call_count == 0
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    def test_download_shows_duration_warning(
-        self, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """Shows warning for videos over 7 minutes."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = False
-        mock_r2.upload_audio.return_value = "s3://bucket/hash/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader with long video (500 seconds = 8:20)
-        mock_yt = MagicMock()
-        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
-        mock_yt.preview_video.return_value = {
-            "id": "long123",
-            "title": "Long Video",
-            "duration": 500,
-            "webpage_url": "https://youtube.com/watch?v=long123",
-        }
-        mock_yt.download.return_value = setup["tmp_path"] / "Long Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Long Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",
-            ],
-        )
-
-        assert result.exit_code == 0
-        # Should show formatted duration 8:20
-        assert "8:20" in result.output
-
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    @patch("stream_of_worship.admin.commands.audio._submit_analysis_job")
-    def test_download_with_analyze_flag(
-        self, mock_submit_analysis, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """--analyze flag submits analysis job after download."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = False
-        mock_r2.upload_audio.return_value = "s3://bucket/hash123/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader
-        mock_yt = MagicMock()
-        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
-        mock_yt.preview_video.return_value = {
-            "id": "test123",
-            "title": "Test Video",
-            "duration": 300,
-            "webpage_url": "https://youtube.com/watch?v=test123",
-        }
-        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Test Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",
-                "--analyze",
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "Submitting for analysis" in result.output
-        mock_submit_analysis.assert_called_once()
-
-        # Verify it was called with recording
-        call_kwargs = mock_submit_analysis.call_args[1]
-        assert "recording" in call_kwargs
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    @patch("stream_of_worship.admin.commands.audio._submit_lrc_job")
-    def test_download_with_lrc_flag(
-        self, mock_submit_lrc, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """--lrc flag submits LRC job after download."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
-
-        # Add lyrics to the song
-        db_client = DatabaseClient(setup["db_path"])
-        song = db_client.get_song("song_001")
-        song.lyrics_raw = "這是歌詞\n第二行歌詞"
-        db_client.insert_song(song)
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = False
-        mock_r2.upload_audio.return_value = "s3://bucket/hash456/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader
-        mock_yt = MagicMock()
-        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
-        mock_yt.preview_video.return_value = {
-            "id": "test456",
-            "title": "Test Video",
-            "duration": 300,
-            "webpage_url": "https://youtube.com/watch?v=test456",
-        }
-        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Test Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",
-                "--lrc",
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "Submitting for LRC generation" in result.output
-        mock_submit_lrc.assert_called_once()
-
-        # Verify it was called with song_id and recording
-        call_kwargs = mock_submit_lrc.call_args[1]
-        assert "song_id" in call_kwargs
-        assert call_kwargs["song_id"] == "song_001"
-        assert "recording" in call_kwargs
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    @patch("stream_of_worship.admin.commands.audio._submit_analysis_job")
-    @patch("stream_of_worship.admin.commands.audio._submit_lrc_job")
-    def test_download_with_all_flag(
-        self, mock_submit_lrc, mock_submit_analysis, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """--all flag triggers both analysis and LRC submission."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
-
-        # Add lyrics to the song
-        db_client = DatabaseClient(setup["db_path"])
-        song = db_client.get_song("song_001")
-        song.lyrics_raw = "這是歌詞\n第二行歌詞"
-        db_client.insert_song(song)
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = False
-        mock_r2.upload_audio.return_value = "s3://bucket/hash789/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader
-        mock_yt = MagicMock()
-        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
-        mock_yt.preview_video.return_value = {
-            "id": "test789",
-            "title": "Test Video",
-            "duration": 300,
-            "webpage_url": "https://youtube.com/watch?v=test789",
-        }
-        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Test Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",
-                "--all",
-            ],
-        )
-
-        assert result.exit_code == 0
-        # Both messages should be shown
-        assert "Submitting for analysis" in result.output
-        assert "Submitting for LRC generation" in result.output
-        # Both jobs should be submitted
-        mock_submit_analysis.assert_called_once()
-        mock_submit_lrc.assert_called_once()
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    def test_download_without_analysis_flags_only_downloads(
-        self, mock_yt_class, mock_r2_class, setup, monkeypatch
-    ):
-        """Without --analyze/-lrc/--all, download does NOT submit analysis or LRC."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
-
-        # Mock R2 client
-        mock_r2 = MagicMock()
-        mock_r2.audio_exists.return_value = False
-        mock_r2.upload_audio.return_value = "s3://bucket/simple/audio.mp3"
-        mock_r2_class.return_value = mock_r2
-
-        # Mock YouTube downloader
-        mock_yt = MagicMock()
-        mock_yt.build_search_query.return_value = "將天敞開 游智婷 敬拜讚美15"
-        mock_yt.preview_video.return_value = {
-            "id": "simple",
-            "title": "Test Video",
-            "duration": 300,
-            "webpage_url": "https://youtube.com/watch?v=simple",
-        }
-        mock_yt.download.return_value = setup["tmp_path"] / "Test Video.mp3"
-        mock_yt_class.return_value = mock_yt
-
-        # Create fake downloaded file
-        mp3_path = setup["tmp_path"] / "Test Video.mp3"
-        mp3_path.write_bytes(b"fake audio")
-
-        result = runner.invoke(
-            app,
-            [
-                "audio", "download", "song_001",
-                "--config", str(setup["config_path"]),
-                "--yes",
-                # No --analyze, --lrc, or --all flags
-            ],
-        )
-
-        assert result.exit_code == 0
-        # Should NOT show submission messages
-        assert "Submitting for analysis" not in result.output
-        assert "Submitting for LRC" not in result.output
-        # Upload success message should still appear
-        assert "Recording saved" in result.output
-
-
-class TestDeleteCommand:
-    """Tests for 'audio delete' command."""
-
-    @pytest.fixture
-    def setup(self, tmp_path):
-        """Create a temp database seeded with song and recording."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        song = Song(
-            id="song_001",
-            title="測試歌曲",
-            source_url="https://example.com/1",
-            scraped_at=datetime.now().isoformat(),
-        )
-        client.insert_song(song)
-
-        recording = Recording(
-            content_hash="a" * 64,
-            hash_prefix="aaaaaaaaaaaa",
-            song_id="song_001",
-            original_filename="test.mp3",
-            file_size_bytes=1000000,
-            imported_at=datetime.now().isoformat(),
-            r2_audio_url="s3://bucket/aaaaaaaaaaaa/audio.mp3",
-        )
-        client.insert_recording(recording)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'''[database]
-path = "{db_path}"
-
-[r2]
-bucket = "test-bucket"
-endpoint_url = "https://test.r2.dev"
-region = "auto"
-''')
-
-        return {
-            "db_path": db_path,
-            "config_path": config_path,
-            "song": song,
-            "recording": recording,
-        }
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    def test_delete_without_confirmation(self, mock_r2_class, setup, monkeypatch):
-        """Prompts for confirmation without --yes."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-
-        mock_r2 = MagicMock()
-        mock_r2_class.return_value = mock_r2
-
-        result = runner.invoke(
-            app,
-            ["audio", "delete", "song_001", "--config", str(setup["config_path"])],
-            input="y",  # Confirm
-        )
-
-        assert result.exit_code == 0
-        assert "Delete this recording" in result.output
-        # After confirmation, recording should be deleted
-        db_client = DatabaseClient(setup["db_path"])
-        assert db_client.get_recording_by_song_id("song_001") is None
-
-    @patch("stream_of_worship.admin.commands.audio.R2Client")
-    def test_delete_with_yes_flag(self, mock_r2_class, setup, monkeypatch):
-        """Skips confirmation with --yes flag."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-
-        mock_r2 = MagicMock()
-        mock_r2_class.return_value = mock_r2
-
-        result = runner.invoke(
-            app,
-            ["audio", "delete", "song_001", "--config", str(setup["config_path"]), "--yes"],
-        )
-
-        assert result.exit_code == 0
-        assert "deleted successfully" in result.output
-        # Verify recording deleted
-        db_client = DatabaseClient(setup["db_path"])
-        assert db_client.get_recording_by_song_id("song_001") is None
-
-    def test_delete_removes_from_database(self, setup, monkeypatch):
-        """Removes recording from database."""
-        monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
-        monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
-
-        result = runner.invoke(
-            app,
-            ["audio", "delete", "song_001", "--config", str(setup["config_path"]), "--yes"],
-        )
-
-        assert result.exit_code == 0
-        # Verify recording deleted from database
-        db_client = DatabaseClient(setup["db_path"])
-        assert db_client.get_recording_by_song_id("song_001") is None
-
-    def test_delete_nonexistent_recording(self, tmp_path):
-        """Error when recording doesn't exist."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        song = Song(
-            id="song_001",
-            title="測試",
-            source_url="https://example.com",
-            scraped_at=datetime.now().isoformat(),
-        )
-        client.insert_song(song)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'''[database]
-path = "{db_path}"
-
-[r2]
-bucket = "test-bucket"
-endpoint_url = "https://test.r2.dev"
-region = "auto"
-''')
-
-        result = runner.invoke(
-            app,
-            ["audio", "delete", "song_001", "--config", str(config_path), "--yes"],
-        )
-
-        assert result.exit_code == 1
-        assert "No recording found" in result.output
+        assert "Service unavailable" in result.output

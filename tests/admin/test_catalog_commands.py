@@ -4,33 +4,59 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import psycopg
 import pytest
 from typer.testing import CliRunner
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Song
 from stream_of_worship.admin.main import app
+from stream_of_worship.db.connection import ConnectionProvider
 
 runner = CliRunner()
 
 
+@pytest.fixture
+def provider(postgres_url):
+    """Yield a ConnectionProvider and close it after the test."""
+    provider = ConnectionProvider(postgres_url)
+    yield provider
+    provider.close()
+
+
+@pytest.fixture
+def client(provider):
+    """Return an initialized DatabaseClient with schema ready.
+
+    Tables are truncated after each test for isolation.
+    """
+    db = DatabaseClient(provider)
+    db.initialize_schema()
+    yield db
+    conn = provider.get_connection()
+    conn.rollback()
+    cursor = conn.cursor()
+    for table in ["songs", "recordings", "songsets", "songset_items"]:
+        try:
+            cursor.execute(f"TRUNCATE TABLE {table} CASCADE")
+            conn.commit()
+        except psycopg.errors.UndefinedTable:
+            conn.rollback()
+        except Exception:
+            conn.rollback()
+    conn.commit()
+
+
+@pytest.fixture
+def config_with_db(tmp_path, postgres_url):
+    """Create a config file pointing to the test database."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'[database]\nurl = "{postgres_url}"\n')
+    return config_path
+
+
 class TestCatalogScrapeCommand:
     """Tests for 'catalog scrape' command."""
-
-    @pytest.fixture
-    def temp_db(self, tmp_path):
-        """Create a temporary database with schema."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Create a config file in TOML format
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(
-            f'[database]\npath = "{db_path}"\n'
-        )
-
-        return {"db_path": db_path, "config_path": config_path}
 
     def test_scrape_without_config(self):
         """Test scrape fails without config."""
@@ -41,20 +67,19 @@ class TestCatalogScrapeCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_scrape_without_database(self, tmp_path):
-        """Test scrape fails without database."""
+    def test_scrape_connection_error(self, tmp_path):
+        """Test scrape fails when database connection fails."""
         config_path = tmp_path / "config.toml"
         config_path.write_text(
-            '[database]\npath = "/nonexistent/db.sqlite"\n'
+            '[database]\nurl = "postgresql://invalid:5432/nodb"\n'
         )
 
         result = runner.invoke(app, ["catalog", "scrape", "--config", str(config_path)])
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
 
     @patch("stream_of_worship.admin.services.scraper.requests.get")
-    def test_scrape_success(self, mock_get, temp_db):
+    def test_scrape_success(self, mock_get, client, config_with_db):
         """Test successful scrape command."""
         html_content = """
         <table id="tablepress-3">
@@ -71,7 +96,7 @@ class TestCatalogScrapeCommand:
         mock_get.return_value = mock_response
 
         result = runner.invoke(
-            app, ["catalog", "scrape", "--config", str(temp_db["config_path"]), "--limit", "1"]
+            app, ["catalog", "scrape", "--config", str(config_with_db), "--limit", "1"]
         )
 
         assert result.exit_code == 0
@@ -79,7 +104,7 @@ class TestCatalogScrapeCommand:
         assert "Test Song" in result.output
 
     @patch("stream_of_worship.admin.services.scraper.requests.get")
-    def test_scrape_dry_run(self, mock_get, temp_db):
+    def test_scrape_dry_run(self, mock_get, client, config_with_db):
         """Test scrape with dry-run flag."""
         html_content = """
         <table id="tablepress-3">
@@ -96,16 +121,14 @@ class TestCatalogScrapeCommand:
 
         result = runner.invoke(
             app,
-            ["catalog", "scrape", "--config", str(temp_db["config_path"]), "--dry-run"],
+            ["catalog", "scrape", "--config", str(config_with_db), "--dry-run"],
         )
 
         assert result.exit_code == 0
         assert "Dry run mode" in result.output
         assert "Dry run - no songs saved" in result.output
 
-        # Verify nothing was saved
-        db_client = DatabaseClient(temp_db["db_path"])
-        songs = db_client.list_songs()
+        songs = client.list_songs()
         assert len(songs) == 0
 
 
@@ -113,13 +136,8 @@ class TestCatalogListCommand:
     """Tests for 'catalog list' command."""
 
     @pytest.fixture
-    def temp_db_with_songs(self, tmp_path):
-        """Create a temporary database with sample songs."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Insert sample songs
+    def config_with_songs(self, client, config_with_db):
+        """Create a database with sample songs."""
         songs = [
             Song(
                 id="song_001",
@@ -152,10 +170,7 @@ class TestCatalogListCommand:
         for song in songs:
             client.insert_song(song)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path}
+        return config_with_db
 
     def test_list_without_config(self):
         """Test list fails without config."""
@@ -166,10 +181,10 @@ class TestCatalogListCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_list_all_songs(self, temp_db_with_songs):
+    def test_list_all_songs(self, config_with_songs):
         """Test listing all songs."""
         result = runner.invoke(
-            app, ["catalog", "list", "--config", str(temp_db_with_songs["config_path"])]
+            app, ["catalog", "list", "--config", str(config_with_songs)]
         )
 
         assert result.exit_code == 0
@@ -177,7 +192,7 @@ class TestCatalogListCommand:
         assert "Song Two" in result.output
         assert "Song Three" in result.output
 
-    def test_list_with_album_filter(self, temp_db_with_songs):
+    def test_list_with_album_filter(self, config_with_songs):
         """Test listing with album filter."""
         result = runner.invoke(
             app,
@@ -185,7 +200,7 @@ class TestCatalogListCommand:
                 "catalog",
                 "list",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--album",
                 "Album X",
             ],
@@ -196,7 +211,7 @@ class TestCatalogListCommand:
         assert "Song Three" in result.output
         assert "Song Two" not in result.output
 
-    def test_list_with_key_filter(self, temp_db_with_songs):
+    def test_list_with_key_filter(self, config_with_songs):
         """Test listing with key filter."""
         result = runner.invoke(
             app,
@@ -204,7 +219,7 @@ class TestCatalogListCommand:
                 "catalog",
                 "list",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--key",
                 "G",
             ],
@@ -215,7 +230,7 @@ class TestCatalogListCommand:
         assert "Song Two" not in result.output
         assert "Song Three" not in result.output
 
-    def test_list_with_limit(self, temp_db_with_songs):
+    def test_list_with_limit(self, config_with_songs):
         """Test listing with limit."""
         result = runner.invoke(
             app,
@@ -223,17 +238,16 @@ class TestCatalogListCommand:
                 "catalog",
                 "list",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--limit",
                 "2",
             ],
         )
 
         assert result.exit_code == 0
-        # Should show 2 songs
         assert "(2 total)" in result.output or "Song" in result.output
 
-    def test_list_format_ids(self, temp_db_with_songs):
+    def test_list_format_ids(self, config_with_songs):
         """Test listing with ids format."""
         result = runner.invoke(
             app,
@@ -241,7 +255,7 @@ class TestCatalogListCommand:
                 "catalog",
                 "list",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--format",
                 "ids",
             ],
@@ -252,16 +266,9 @@ class TestCatalogListCommand:
         assert "song_002" in result.output
         assert "song_003" in result.output
 
-    def test_list_empty_database(self, tmp_path):
+    def test_list_empty_database(self, client, config_with_db):
         """Test listing with empty database."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        result = runner.invoke(app, ["catalog", "list", "--config", str(config_path)])
+        result = runner.invoke(app, ["catalog", "list", "--config", str(config_with_db)])
 
         assert result.exit_code == 0
         assert "No songs found" in result.output
@@ -271,13 +278,8 @@ class TestCatalogSearchCommand:
     """Tests for 'catalog search' command."""
 
     @pytest.fixture
-    def temp_db_with_songs(self, tmp_path):
-        """Create a temporary database with sample songs."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Insert sample songs
+    def config_with_songs(self, client, config_with_db):
+        """Create a database with sample songs."""
         songs = [
             Song(
                 id="song_001",
@@ -307,10 +309,7 @@ class TestCatalogSearchCommand:
         for song in songs:
             client.insert_song(song)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path}
+        return config_with_db
 
     def test_search_without_config(self):
         """Test search fails without config."""
@@ -321,7 +320,7 @@ class TestCatalogSearchCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_search_by_title(self, temp_db_with_songs):
+    def test_search_by_title(self, config_with_songs):
         """Test searching by title."""
         result = runner.invoke(
             app,
@@ -330,7 +329,7 @@ class TestCatalogSearchCommand:
                 "search",
                 "將天",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--field",
                 "title",
             ],
@@ -340,7 +339,7 @@ class TestCatalogSearchCommand:
         assert "將天敞開" in result.output
         assert "感謝" not in result.output
 
-    def test_search_by_lyrics(self, temp_db_with_songs):
+    def test_search_by_lyrics(self, config_with_songs):
         """Test searching by lyrics."""
         result = runner.invoke(
             app,
@@ -349,7 +348,7 @@ class TestCatalogSearchCommand:
                 "search",
                 "感謝的歌詞",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--field",
                 "lyrics",
             ],
@@ -359,7 +358,7 @@ class TestCatalogSearchCommand:
         assert "感謝" in result.output
         assert "將天敞開" not in result.output
 
-    def test_search_by_composer(self, temp_db_with_songs):
+    def test_search_by_composer(self, config_with_songs):
         """Test searching by composer."""
         result = runner.invoke(
             app,
@@ -368,7 +367,7 @@ class TestCatalogSearchCommand:
                 "search",
                 "游智婷",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--field",
                 "composer",
             ],
@@ -377,17 +376,16 @@ class TestCatalogSearchCommand:
         assert result.exit_code == 0
         assert "將天敞開" in result.output
 
-    def test_search_all_fields(self, temp_db_with_songs):
+    def test_search_all_fields(self, config_with_songs):
         """Test searching all fields."""
         result = runner.invoke(
-            app,
-            ["catalog", "search", "讚美", "--config", str(temp_db_with_songs["config_path"])],
+            app, ["catalog", "search", "讚美", "--config", str(config_with_songs)]
         )
 
         assert result.exit_code == 0
         assert "讚美之歌" in result.output
 
-    def test_search_with_limit(self, temp_db_with_songs):
+    def test_search_with_limit(self, config_with_songs):
         """Test search with limit."""
         result = runner.invoke(
             app,
@@ -396,7 +394,7 @@ class TestCatalogSearchCommand:
                 "search",
                 "歌",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
                 "--limit",
                 "1",
             ],
@@ -405,7 +403,7 @@ class TestCatalogSearchCommand:
         assert result.exit_code == 0
         assert "(1 found)" in result.output or "found" in result.output
 
-    def test_search_no_results(self, temp_db_with_songs):
+    def test_search_no_results(self, config_with_songs):
         """Test search with no results."""
         result = runner.invoke(
             app,
@@ -414,7 +412,7 @@ class TestCatalogSearchCommand:
                 "search",
                 "nonexistent",
                 "--config",
-                str(temp_db_with_songs["config_path"]),
+                str(config_with_songs),
             ],
         )
 
@@ -426,12 +424,8 @@ class TestCatalogShowCommand:
     """Tests for 'catalog show' command."""
 
     @pytest.fixture
-    def temp_db_with_song(self, tmp_path):
-        """Create a temporary database with a sample song."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
+    def client_with_song(self, client, config_with_db):
+        """Create a database with a sample song."""
         song = Song(
             id="test_song_001",
             title="Test Song",
@@ -449,10 +443,7 @@ class TestCatalogShowCommand:
         )
         client.insert_song(song)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path, "song": song}
+        return {"client": client, "config_path": config_with_db, "song": song}
 
     def test_show_without_config(self):
         """Test show fails without config."""
@@ -463,7 +454,7 @@ class TestCatalogShowCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_show_existing_song(self, temp_db_with_song):
+    def test_show_existing_song(self, client_with_song):
         """Test showing an existing song."""
         result = runner.invoke(
             app,
@@ -472,7 +463,7 @@ class TestCatalogShowCommand:
                 "show",
                 "test_song_001",
                 "--config",
-                str(temp_db_with_song["config_path"]),
+                str(client_with_song["config_path"]),
             ],
         )
 
@@ -485,7 +476,7 @@ class TestCatalogShowCommand:
         assert "Line 1" in result.output
         assert "Line 2" in result.output
 
-    def test_show_nonexistent_song(self, temp_db_with_song):
+    def test_show_nonexistent_song(self, client_with_song):
         """Test showing a non-existent song."""
         result = runner.invoke(
             app,
@@ -494,21 +485,20 @@ class TestCatalogShowCommand:
                 "show",
                 "nonexistent",
                 "--config",
-                str(temp_db_with_song["config_path"]),
+                str(client_with_song["config_path"]),
             ],
         )
 
         assert result.exit_code == 1
         assert "Song not found" in result.output
 
-    def test_show_without_database(self, tmp_path):
-        """Test show fails without database."""
+    def test_show_connection_error(self, tmp_path):
+        """Test show fails when database connection fails."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid:5432/nodb"\n')
 
         result = runner.invoke(
             app, ["catalog", "show", "song_001", "--config", str(config_path)]
         )
 
         assert result.exit_code == 1
-        assert "Database not found" in result.output
