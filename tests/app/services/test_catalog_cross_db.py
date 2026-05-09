@@ -1,4 +1,3 @@
-import psycopg
 import pytest
 from stream_of_worship.app.db.schema import ALL_APP_SCHEMA_STATEMENTS
 from stream_of_worship.admin.db.schema import ALL_SCHEMA_STATEMENTS as ADMIN_SCHEMA
@@ -248,8 +247,6 @@ class TestJoinColumnOffset:
 
     def test_join_query_splits_at_correct_offset(self, schema_provider):
         """Verify _list_analyzed_songs splits rows correctly at SONG_COLUMN_COUNT."""
-        from stream_of_worship.admin.db.schema import SONG_COLUMN_COUNT
-
         conn = schema_provider.get_connection()
         cursor = conn.cursor()
 
@@ -354,4 +351,48 @@ class TestJoinColumnOffset:
         # Only active song should be returned
         assert len(songs) == 1
         assert songs[0].song.title == "Active Song"
+
+
+class TestConnectionProviderSharing:
+    """Test that ConnectionProvider is shared between ReadOnlyClient and SongsetClient."""
+
+    def test_shared_connection_provider(self, schema_provider):
+        """Verify ReadOnlyClient and SongsetClient share the same ConnectionProvider."""
+        read_client = ReadOnlyClient(schema_provider)
+        songset_client = SongsetClient(schema_provider)
+
+        # Both clients should have the same connection provider
+        assert read_client.connection_provider is songset_client.connection_provider
+        assert read_client.connection_provider is schema_provider
+
+        # Both should return the same connection object
+        assert read_client.connection is songset_client.connection
+
+        # Closing one should close the shared connection
+        read_client.close()
+        assert schema_provider._connection is None
+
+    def test_catalog_service_with_shared_provider(self, schema_provider):
+        """Verify CatalogService works with shared ConnectionProvider."""
+        conn = schema_provider.get_connection()
+        cursor = conn.cursor()
+
+        _insert_song(cursor, "song_1", "Test Song")
+        _insert_recording(cursor, "full_hash_64_chars_long__________", "abc123", "song_1")
+        conn.commit()
+
+        read_client = ReadOnlyClient(schema_provider)
+        songset_client = SongsetClient(schema_provider)
+
+        catalog = CatalogService(read_client)
+
+        # Catalog should be able to query via the shared connection
+        songs = catalog._list_analyzed_songs()
+        assert len(songs) == 1
+        assert songs[0].song.title == "Test Song"
+
+        # SongsetClient should also work with the same connection
+        songset = songset_client.create_songset("Test Set")
+        assert songset is not None
+        assert songset.name == "Test Set"
 

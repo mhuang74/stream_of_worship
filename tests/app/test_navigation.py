@@ -28,52 +28,39 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 from stream_of_worship.app.app import SowApp
 from stream_of_worship.app.config import AppConfig
-from stream_of_worship.app.state import AppScreen
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-async def app(tmp_path: Path):
-    """Create app instance for testing with temporary database."""
-    from stream_of_worship.admin.config import AdminConfig
-    import sqlite3
+async def app(tmp_path: Path, postgres_url):
+    """Create app instance for testing with Postgres database."""
+    from stream_of_worship.db.connection import ConnectionProvider
+    from stream_of_worship.admin.db.schema import ALL_SCHEMA_STATEMENTS as ADMIN_SCHEMA
+    from stream_of_worship.app.db.schema import ALL_APP_SCHEMA_STATEMENTS
 
-    db_path = tmp_path / "test.db"
     cache_dir = tmp_path / "cache"
     output_dir = tmp_path / "output"
 
-    # Create admin config with test paths
-    admin_config = AdminConfig(
-        db_path=db_path,
+    config = AppConfig(
+        database_url=postgres_url,
         r2_bucket="test-bucket",
         r2_endpoint_url="http://localhost:9000",
         r2_region="auto",
-    )
-
-    # Create app config wrapping admin config
-    config = AppConfig(
-        admin_config=admin_config,
         cache_dir=cache_dir,
         output_dir=output_dir,
     )
 
-    # Initialize test database with BOTH admin and app schemas
-    # The app tables reference admin tables (songs, recordings) via foreign keys
-    from stream_of_worship.app.db.songset_client import SongsetClient
-    from stream_of_worship.admin.db.schema import ALL_SCHEMA_STATEMENTS
-
-    # First create admin tables (songs, recordings)
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
+    provider = ConnectionProvider(postgres_url)
+    conn = provider.get_connection()
     cursor = conn.cursor()
-    for statement in ALL_SCHEMA_STATEMENTS:
-        cursor.execute(statement)
-    conn.commit()
-    conn.close()
 
-    # Then create app tables (songsets, songset_items)
-    songset_client = SongsetClient(db_path)
-    songset_client.initialize_schema()
-    songset_client.close()
+    for stmt in ADMIN_SCHEMA:
+        cursor.execute(stmt)
+    for stmt in ALL_APP_SCHEMA_STATEMENTS:
+        cursor.execute(stmt)
+    conn.commit()
+    provider.close()
 
     return SowApp(config)
 
