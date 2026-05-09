@@ -42,9 +42,23 @@ from stream_of_worship.admin.services.youtube import (
     OFFICIAL_LYRICS_SUFFIX,
     YouTubeDownloader,
 )
+from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
 app = typer.Typer(help="Audio recording operations")
+
+
+def get_db_client(config: AdminConfig) -> DatabaseClient:
+    """Get a database client from config.
+
+    Args:
+        config: Admin configuration
+
+    Returns:
+        DatabaseClient instance backed by a ConnectionProvider
+    """
+    provider = ConnectionProvider(config.get_connection_url())
+    return DatabaseClient(provider)
 
 
 # Helper functions for download flow
@@ -677,11 +691,7 @@ def download_audio(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up the song
     song = db_client.get_song(song_id)
@@ -889,11 +899,7 @@ def delete_recording(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1018,10 +1024,6 @@ def list_recordings(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
     # Validate visibility filter
     if visibility:
         valid_visibilities = {"published", "review", "hold"}
@@ -1048,7 +1050,7 @@ def list_recordings(
         )
         raise typer.Exit(1)
 
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
     # Use the efficient method with JOIN to avoid N+1 queries
     # Album filtering and sorting are now handled at the database layer
     enriched = db_client.list_recordings_with_songs(
@@ -1147,11 +1149,7 @@ def show_recording(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1253,11 +1251,7 @@ def set_visibility(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1307,11 +1301,7 @@ def analyze_recording(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1503,11 +1493,7 @@ def lrc_recording(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Create analysis client (shared for batch mode)
     try:
@@ -1595,11 +1581,7 @@ def vocal_clean(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Resolve song_id to recording (support both song_id and hash_prefix)
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1824,11 +1806,7 @@ def check_status(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Validate force_status if provided
     if force_status and force_status not in ("completed", "failed", "pending"):
@@ -2491,14 +2469,8 @@ def view_lrc(
         console.print(f"[red]Error loading config: {e}[/red]")
         raise typer.Exit(1)
 
-    # Validate database exists
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        console.print("[yellow]Run 'sow-admin catalog init' first[/yellow]")
-        raise typer.Exit(1)
-
     # Get database client
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Handle stdin input if '-' is provided
     song_ids = song_id
@@ -2579,11 +2551,7 @@ def cache_assets(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -2714,11 +2682,7 @@ def upload_lrc(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -2875,11 +2839,7 @@ def playback_audio(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -3092,11 +3052,7 @@ def batch(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    if not config.db_path.exists():
-        console.print(f"[red]Database not found at {config.db_path}[/red]")
-        raise typer.Exit(1)
-
-    db_client = DatabaseClient(config.db_path)
+    db_client = get_db_client(config)
 
     # Resolve song IDs to process
     song_ids = _resolve_song_ids(

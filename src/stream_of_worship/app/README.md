@@ -55,9 +55,15 @@ An interactive Textual TUI application for worship leaders to browse the song ca
    export SOW_R2_SECRET_ACCESS_KEY="your-secret"
    ```
 
-3. Ensure you have a config file with database path:
+3. Set up database credentials:
+   ```bash
+   export SOW_DATABASE_PASSWORD="your-database-password"
+   ```
+
+4. Ensure you have a config file with database URL:
    ```toml
-   database_url = "/path/to/sow.db"
+   [database]
+   url = "postgresql://user@host/dbname?sslmode=require"
 
    [app]
    cache_dir = "/path/to/cache"   # default: ~/.cache/sow/
@@ -72,9 +78,6 @@ An interactive Textual TUI application for worship leaders to browse the song ca
 ```bash
 # With config file
 sow-app --config /path/to/config.toml
-
-# With database URL directly
-sow-app --database-url "sqlite:////path/to/sow.db"
 
 # Show help
 sow-app --help

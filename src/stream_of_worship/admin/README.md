@@ -95,11 +95,8 @@ bucket = "sow-audio"
 endpoint_url = "https://xxx.r2.cloudflarestorage.com"
 region = "auto"
 
-[turso]
-database_url = "libsql://your-db.turso.io"
-
 [database]
-path = "/custom/path/sow.db"
+url = "postgresql://user:password@host/dbname?sslmode=require"
 ```
 
 ### Environment Variables
@@ -107,8 +104,8 @@ path = "/custom/path/sow.db"
 Sensitive credentials should be set via environment variables:
 
 ```bash
-# Turso full-access token (Admin CLI only - env var only for security)
-export SOW_TURSO_TOKEN="your-turso-token"
+# Database password (required for PostgreSQL connection)
+export SOW_DATABASE_PASSWORD="your-database-password"
 
 # R2 Credentials (sensitive - never commit these)
 export SOW_R2_ACCESS_KEY_ID="your-access-key"
@@ -118,25 +115,21 @@ export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
 export SOW_ANALYSIS_API_KEY="your-api-key"
 ```
 
-**Note:** Non-sensitive settings like `turso.database_url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
+**Note:** The database URL (without password) should be configured in the config file. The password is provided via the `SOW_DATABASE_PASSWORD` environment variable for security.
 
 ## Database Commands
 
-The local database uses SQLite for storing song catalog and recording metadata.
+The database uses PostgreSQL (Neon) for storing song catalog and recording metadata.
 
 ### Initialize Database
 
-Create a new database with the schema:
+Create the database schema:
 
 ```bash
 sow-admin db init
 ```
 
-Force re-initialization (destructive - deletes all data):
-
-```bash
-sow-admin db init --force
-```
+This command connects to the configured PostgreSQL database and creates the schema (tables, indexes, triggers). It is idempotent and safe to run on an existing database.
 
 ### Check Database Status
 
@@ -150,9 +143,9 @@ Output example:
 ┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Property      ┃ Value                          ┃
 ┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ Database Path │ ~/.config/sow-admin/db/sow.db │
-│ Exists        │ Yes                            │
-│ File Size     │ 53,248 bytes (0.05 MB)         │
+│ Database URL   │ postgresql://user@host/db     │
+│ Connection     │ Healthy                        │
+│ Recovery State │ Not in recovery                │
 └───────────────┴────────────────────────────────┘
 
      Database Statistics
@@ -161,9 +154,6 @@ Output example:
 ┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
 │ Songs           │ 150     │
 │ Recordings      │ 45      │
-│ Integrity Check │ OK      │
-│ Foreign Keys    │ Enabled │
-│ Last Sync       │ Never   │
 └─────────────────┴─────────┘
 ```
 
