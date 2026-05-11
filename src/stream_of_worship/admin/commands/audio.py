@@ -3271,6 +3271,9 @@ def _download_if_needed(
     """
     hash_prefix = recording.hash_prefix
 
+    if recording.download_status == "completed" and recording.r2_audio_url:
+        return {"download": "skipped_r2"}
+
     if r2_client.audio_exists(hash_prefix):
         db_client.update_recording_download(hash_prefix, "completed")
         return {"download": "skipped_r2"}
@@ -3707,7 +3710,7 @@ def _poll_all_jobs(
 
             # Print progress
             if active_jobs:
-                _print_progress(active_jobs, results, start_time=batch_start_time)
+                _print_progress(active_jobs, results, start_time=batch_start_time, console=console)
 
             if active_jobs:
                 time.sleep(poll_interval)
