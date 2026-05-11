@@ -5,11 +5,13 @@ metadata via ``psycopg``.
 """
 
 import logging
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Generator, Optional
 
 import psycopg
+import psycopg.errors
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
@@ -103,9 +105,14 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
 
-        # Row counts
-        cursor.execute(ROW_COUNT_QUERY)
-        table_counts = {row[0]: row[1] for row in cursor.fetchall()}
+        # Row counts — tolerate missing tables (e.g. status check before init)
+        try:
+            cursor.execute(ROW_COUNT_QUERY)
+            table_counts = {row[0]: row[1] for row in cursor.fetchall()}
+        except psycopg.errors.UndefinedTable:
+            self.connection.rollback()
+            cursor = self.connection.cursor()
+            table_counts = {"songs": 0, "recordings": 0}
 
         # Health check: Postgres is in recovery mode?
         cursor.execute("SELECT pg_is_in_recovery()")
@@ -178,6 +185,80 @@ class DatabaseClient:
                     song.updated_at or datetime.now().isoformat(),
                 ),
             )
+
+    def insert_songs_bulk(self, songs: list[Song]) -> int:
+        """Bulk insert or upsert songs into the database.
+
+        Uses executemany() for efficient batch processing with a single
+        network round-trip.
+
+        Args:
+            songs: List of Song objects to insert.
+
+        Returns:
+            Number of songs inserted/updated.
+        """
+        if not songs:
+            return 0
+
+        start_time = time.time()
+        logger.info(f"Starting bulk insert of {len(songs)} songs")
+
+        sql = """
+            INSERT INTO songs (
+                id, title, title_pinyin, composer, lyricist,
+                album_name, album_series, musical_key, lyrics_raw,
+                lyrics_lines, sections, source_url, table_row_number,
+                scraped_at, created_at, updated_at, deleted_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+            ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                title_pinyin = EXCLUDED.title_pinyin,
+                composer = EXCLUDED.composer,
+                lyricist = EXCLUDED.lyricist,
+                album_name = EXCLUDED.album_name,
+                album_series = EXCLUDED.album_series,
+                musical_key = EXCLUDED.musical_key,
+                lyrics_raw = EXCLUDED.lyrics_raw,
+                lyrics_lines = EXCLUDED.lyrics_lines,
+                sections = EXCLUDED.sections,
+                source_url = EXCLUDED.source_url,
+                table_row_number = EXCLUDED.table_row_number,
+                scraped_at = EXCLUDED.scraped_at,
+                created_at = EXCLUDED.created_at,
+                updated_at = EXCLUDED.updated_at,
+                deleted_at = NULL
+        """
+
+        now_iso = datetime.now().isoformat()
+        params_list = [
+            (
+                song.id,
+                song.title,
+                song.title_pinyin,
+                song.composer,
+                song.lyricist,
+                song.album_name,
+                song.album_series,
+                song.musical_key,
+                song.lyrics_raw,
+                song.lyrics_lines,
+                song.sections,
+                song.source_url,
+                song.table_row_number,
+                song.scraped_at,
+                song.created_at or now_iso,
+                song.updated_at or now_iso,
+            )
+            for song in songs
+        ]
+
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.executemany(sql, params_list)
+            elapsed = time.time() - start_time
+            logger.info(f"Bulk insert completed: {len(songs)} songs in {elapsed:.2f}s ({len(songs)/elapsed:.1f} songs/sec)")
+            return len(songs)
 
     def get_song(self, song_id: str) -> Optional[Song]:
         """Get a song by ID.

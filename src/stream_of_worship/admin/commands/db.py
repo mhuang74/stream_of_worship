@@ -21,6 +21,26 @@ console = Console()
 app = typer.Typer(help="Database operations")
 
 
+def _display_stats(client: DatabaseClient) -> None:
+    """Display database statistics using an already-open client."""
+    stats = client.get_stats()
+
+    stats_table = Table(title="Database Statistics")
+    stats_table.add_column("Metric", style="cyan")
+    stats_table.add_column("Value", style="green")
+
+    stats_table.add_row("Songs", f"{stats.total_songs:,}")
+    stats_table.add_row("Recordings", f"{stats.total_recordings:,}")
+    stats_table.add_row(
+        "Health Check",
+        "[green]OK[/green]" if stats.is_healthy else "[red]FAILED[/red]",
+    )
+    stats_table.add_row("Schema Version", stats.sync_version)
+
+    console.print()
+    console.print(stats_table)
+
+
 def _get_db_client(config: AdminConfig) -> DatabaseClient:
     """Get a database client from config.
 
@@ -78,14 +98,45 @@ def init_db(
         client = _get_db_client(config)
         with client:
             client.initialize_schema()
+            console.print("[green]Postgres schema initialized successfully![/green]")
+            # Display connection info without re-connecting
+            _show_connection_info(config)
+            # Reuse same connection so Neon's pooler doesn't route us to a stale backend
+            _display_stats(client)
     except Exception as e:
         console.print(f"[red]Failed to initialize schema: {e}[/red]")
         raise typer.Exit(1)
 
-    console.print("[green]Postgres schema initialized successfully![/green]")
 
-    # Show status after init
-    show_status(config_path)
+def _show_connection_info(config: AdminConfig) -> bool:
+    """Print the connection info table; return True if the database is reachable."""
+    masked = _mask_url(config.database_url)
+
+    info_table = Table(title="Database Connection")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value", style="green")
+
+    info_table.add_row("Database URL", masked)
+    has_password = bool(os.environ.get("SOW_DATABASE_PASSWORD"))
+    info_table.add_row(
+        "Password",
+        "[green]Set via env var[/green]" if has_password else "[red]NOT SET[/red]",
+    )
+
+    try:
+        conn_url = config.get_connection_url()
+        is_healthy = check_database_connection(conn_url)
+        info_table.add_row(
+            "Health",
+            "[green]Connected[/green]" if is_healthy else "[red]Unreachable[/red]",
+        )
+    except ValueError as e:
+        info_table.add_row("Health", f"[red]{e}[/red]")
+        console.print(info_table)
+        return False
+
+    console.print(info_table)
+    return is_healthy
 
 
 @app.command("status")
@@ -110,35 +161,7 @@ def show_status(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    # Connection info
-    url = config.database_url
-    masked = _mask_url(url)
-
-    info_table = Table(title="Database Connection")
-    info_table.add_column("Property", style="cyan")
-    info_table.add_column("Value", style="green")
-
-    info_table.add_row("Database URL", masked)
-    has_password = bool(os.environ.get("SOW_DATABASE_PASSWORD"))
-    info_table.add_row(
-        "Password",
-        "[green]Set via env var[/green]" if has_password else "[red]NOT SET[/red]",
-    )
-
-    # Health check
-    try:
-        conn_url = config.get_connection_url()
-        is_healthy = check_database_connection(conn_url)
-        info_table.add_row(
-            "Health",
-            "[green]Connected[/green]" if is_healthy else "[red]Unreachable[/red]",
-        )
-    except ValueError as e:
-        info_table.add_row("Health", f"[red]{e}[/red]")
-        console.print(info_table)
-        return
-
-    console.print(info_table)
+    is_healthy = _show_connection_info(config)
 
     if not is_healthy:
         console.print(
@@ -146,27 +169,10 @@ def show_status(
         )
         return
 
-    # Get database stats
     try:
         client = _get_db_client(config)
         with client:
-            stats = client.get_stats()
-
-        stats_table = Table(title="Database Statistics")
-        stats_table.add_column("Metric", style="cyan")
-        stats_table.add_column("Value", style="green")
-
-        stats_table.add_row("Songs", f"{stats.total_songs:,}")
-        stats_table.add_row("Recordings", f"{stats.total_recordings:,}")
-        stats_table.add_row(
-            "Health Check",
-            "[green]OK[/green]" if stats.is_healthy else "[red]FAILED[/red]",
-        )
-        stats_table.add_row("Schema Version", stats.sync_version)
-
-        console.print()
-        console.print(stats_table)
-
+            _display_stats(client)
     except Exception as e:
         console.print(f"\n[red]Error reading database: {e}[/red]")
         raise typer.Exit(1)
