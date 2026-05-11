@@ -3211,7 +3211,7 @@ def _download_and_create_recording(
         query = downloader.build_search_query(
             title=song.title,
             composer=song.composer,
-            album_name=song.album_name,
+            album=song.album_name,
             suffix=OFFICIAL_LYRICS_SUFFIX,
         )
 
@@ -3287,7 +3287,7 @@ def _download_if_needed(
         query = downloader.build_search_query(
             title=song.title,
             composer=song.composer,
-            album_name=song.album_name,
+            album=song.album_name,
             suffix=OFFICIAL_LYRICS_SUFFIX,
         )
 

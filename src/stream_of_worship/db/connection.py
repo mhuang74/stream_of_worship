@@ -49,9 +49,10 @@ class ConnectionProvider:
                 conn = psycopg.connect(
                     self.database_url,
                     connect_timeout=10,
-                    sslmode="prefer",
+                    autocommit=True,
                 )
                 conn.execute("SELECT 1")
+                conn.autocommit = False
                 return conn
             except Exception as exc:
                 if conn:
@@ -88,7 +89,7 @@ def check_database_connection(database_url: str, timeout: int = 10) -> bool:
         False otherwise.
     """
     try:
-        with psycopg.connect(database_url, connect_timeout=timeout, sslmode="prefer") as conn:
+        with psycopg.connect(database_url, connect_timeout=timeout) as conn:
             conn.execute("SELECT 1")
         return True
     except Exception:

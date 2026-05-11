@@ -150,8 +150,8 @@ def scrape_catalog(
     # Save to database unless dry run
     if not dry_run:
         console.print(f"[cyan]Saving {len(songs)} songs to database...[/cyan]")
-        saved_count = scraper.save_songs(songs)
-        console.print(f"[green]Successfully saved {saved_count}/{len(songs)} songs[/green]")
+        saved_count, elapsed = scraper.save_songs(songs)
+        console.print(f"[green]Successfully saved {saved_count}/{len(songs)} songs in {elapsed:.2f}s[/green]")
     else:
         console.print("[yellow]Dry run - no songs saved[/yellow]")
 

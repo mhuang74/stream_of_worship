@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 import unicodedata
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -188,36 +189,47 @@ class CatalogScraper:
             logger.warning(f"Failed to get existing song IDs: {e}")
             return set()
 
-    def save_songs(self, songs: List[Song]) -> int:
+    def save_songs(self, songs: List[Song]) -> tuple[int, float]:
         """Save songs to the database.
 
         Args:
             songs: List of Song objects to save
 
         Returns:
-            Number of songs saved
+            Tuple of (number of songs saved, elapsed seconds)
         """
         if not self.db_client:
             logger.warning("No database client configured, songs not saved")
-            return 0
+            return 0, 0.0
 
         if not songs:
             logger.info("No songs to save")
-            return 0
+            return 0, 0.0
 
-        logger.info(f"Saving {len(songs)} songs to database")
-        saved_count = 0
+        start_time = time.time()
+        logger.info(f"Saving {len(songs)} songs to database (bulk insert)")
 
-        with self.db_client.transaction():
-            for song in songs:
-                try:
-                    self.db_client.insert_song(song)
-                    saved_count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to save song {song.id}: {e}")
-
-        logger.info(f"Successfully saved {saved_count}/{len(songs)} songs")
-        return saved_count
+        try:
+            saved_count = self.db_client.insert_songs_bulk(songs)
+            elapsed = time.time() - start_time
+            logger.info(f"Successfully saved {saved_count}/{len(songs)} songs in {elapsed:.2f}s ({len(songs)/elapsed:.1f} songs/sec)")
+            return saved_count, elapsed
+        except Exception as e:
+            logger.error(f"Bulk insert failed, falling back to individual inserts: {e}")
+            saved_count = 0
+            with self.db_client.transaction():
+                for i, song in enumerate(songs):
+                    try:
+                        self.db_client.insert_song(song)
+                        saved_count += 1
+                        if (i + 1) % 100 == 0:
+                            elapsed = time.time() - start_time
+                            logger.info(f"Progress: {i + 1}/{len(songs)} songs in {elapsed:.2f}s")
+                    except Exception as inner_e:
+                        logger.warning(f"Failed to save song {song.id}: {inner_e}")
+            elapsed = time.time() - start_time
+            logger.info(f"Saved {saved_count}/{len(songs)} songs in {elapsed:.2f}s ({saved_count/elapsed:.1f} songs/sec)")
+            return saved_count, elapsed
 
     def _find_header_index(self, headers: List[str], keywords: List[str]) -> Optional[int]:
         """Find column index by matching keywords."""

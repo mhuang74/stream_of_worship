@@ -218,9 +218,10 @@ class TestCatalogScraperWithDatabase:
     def test_save_songs(self, scraper, temp_db, sample_song):
         """Test saving songs to database."""
         songs = [sample_song]
-        count = scraper.save_songs(songs)
+        count, elapsed = scraper.save_songs(songs)
 
         assert count == 1
+        assert elapsed > 0
 
         # Verify song was saved
         retrieved = temp_db.get_song("test_song_001")
@@ -229,14 +230,16 @@ class TestCatalogScraperWithDatabase:
 
     def test_save_songs_empty_list(self, scraper):
         """Test saving empty list."""
-        count = scraper.save_songs([])
+        count, elapsed = scraper.save_songs([])
         assert count == 0
+        assert elapsed == 0.0
 
     def test_save_songs_without_db(self, sample_song):
         """Test saving without database client."""
         scraper_no_db = CatalogScraper(db_client=None)
-        count = scraper_no_db.save_songs([sample_song])
+        count, elapsed = scraper_no_db.save_songs([sample_song])
         assert count == 0
+        assert elapsed == 0.0
 
     @patch("stream_of_worship.admin.services.scraper.requests.get")
     def test_scrape_with_incremental(self, mock_get, temp_db):
