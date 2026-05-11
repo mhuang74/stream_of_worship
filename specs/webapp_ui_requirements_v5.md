@@ -90,7 +90,7 @@ Unchanged from v4 §1.
 | Vector search | `pgvector` extension on Neon; `song_embedding` table |
 | Embedding model | **`bge-m3`** (multilingual Chinese+English, ≤1024 dims, open-weights) |
 | Embedding batch | Analysis Service Docker (offline, bge-m3 via Python fastembed) |
-| Embedding query | **`fastembed-js`** + ONNX in Next.js Route Handler (same model → comparable vectors) |
+| Embedding query | **`fastembed-js`** + ONNX in a separate Vercel Edge Function (`/api/embed`) — keeps main app bundle small; isolates ONNX cold-start to the embed path |
 | Public share | `/share/[token]` route — unauthenticated; signed R2 URL behind `songset_share` table |
 | Second screen | Presentation API (Android Chrome + Cast targets); mirror fallback for iOS/wired HDMI |
 
@@ -117,9 +117,9 @@ Unchanged from v4 §2.5.
 
 ### 2.6 Semantic search layer
 
-**Embedding model:** `bge-m3`. Multilingual (Chinese + English), 1024 dimensions, open-weights (Apache 2.0). Runs in the Analysis Service Docker container via Python `fastembed`. The same model is used for query embedding in the Next.js Route Handler via `fastembed-js` (ONNX runtime, CPU-only), ensuring that song vectors and query vectors occupy the same embedding space.
+**Embedding model:** `bge-m3`. Multilingual (Chinese + English), 1024 dimensions, open-weights (Apache 2.0). Runs in the Analysis Service Docker container via Python `fastembed`. The same model is used for query embedding via `fastembed-js` (ONNX runtime, CPU-only) in a dedicated Vercel Edge Function (`/api/embed`), ensuring that song vectors and query vectors occupy the same embedding space.
 
-**Implementation note:** If `fastembed-js` bundle size exceeds Vercel's 250 MB compressed function limit during implementation, fall back to (a) a quantized bge-m3 variant or (b) a separate Vercel Edge Function for embedding. Decision deferred to implementation; the interface (`POST /api/songs/search/semantic → { query }`) does not change.
+**Implementation note:** The query embedding runs in a dedicated Vercel Edge Function at `/api/embed`. The bge-m3 ONNX model file is bundled into that function only, keeping the main Next.js function bundle well under Vercel's compressed limit. The route handler at `POST /api/songs/search/semantic` calls `/api/embed` internally; the external interface does not change.
 
 All other semantic search behavior is unchanged from v4 §2.6.
 
@@ -564,6 +564,8 @@ The projection surface is designed to fill a TV/external display with nothing bu
 
 **Data source:** The projection page receives the signed R2 URL for the MP4 and the `chapters.json` URL as query params set by the controller when opening the Presentation session. No server round-trip after initial load.
 
+**Caching headers:** `Cache-Control: no-store, no-cache` is required on this route. The page embeds signed R2 URLs that expire; CDN or browser caching would serve stale signatures to new Presentation sessions.
+
 **Offline:** If the artifact is SW-cached, the `<video>` src resolves from cache; no network access during playback.
 
 #### 5.5.4 Controller ↔ projection sync
@@ -593,6 +595,8 @@ The projection page listens on `session.addEventListener('message')` and applies
 - iOS info toast shown once per session.
 
 **No QR / WebSocket sync in v1.** Clock drift between two independent `<video>` instances makes this unreliable without a tight synchronization protocol. Deferred to v2.
+
+**Cast receiver registration:** The `/play/projection` page is registered as a **Custom HTML5 receiver** via the Google Cast SDK Developer Console. A receiver app ID is provisioned per environment (dev / staging / prod) and set as an environment variable. Production Cast targets (Chromecast devices owned by end users) require Google approval of the receiver before they will load it; until approval is granted, only developer-allowlisted Cast devices can use the receiver. The registration and approval process is an implementation-time task.
 
 #### 5.5.5 Lyric jump list
 
@@ -624,7 +628,11 @@ Unchanged from v4 §5.5.
 
 Unchanged from v4 §7.5.
 
-**Projection route:** `/share/[token]/play/projection` mirrors `/songsets/[id]/play/projection` for hosted-player recipients. The projection page for the share route receives the MP4 signed URL and chapters URL from the `/share/[token]` page (which validates the token and mints the URLs server-side). The recipient can open the `/share/[token]` page on their phone as a controller and project the `/share/[token]/play/projection` page via Presentation API to a TV — same capability as the authenticated flow.
+**Projection route:** `/share/[token]/play/projection` mirrors `/songsets/[id]/play/projection` for hosted-player recipients. The recipient can open `/share/[token]` on their phone as a controller and project `/share/[token]/play/projection` via Presentation API to a TV — same capability as the authenticated flow.
+
+**URL handoff and token security:** When the controller opens a Presentation session for the share route, it passes only `?token=<token>&session=<id>` in the projection URL — no signed R2 URLs in query params. The projection page re-validates the share token server-side (via the existing share-token middleware) and mints its own short-lived signed R2 URLs server-side. This adds one extra round-trip on projection start (acceptable) and ensures signed URLs never appear in query strings, referrer headers, or Cast receiver logs.
+
+**Caching headers:** `Cache-Control: no-store, no-cache` on this route — same rationale as the authenticated projection route.
 
 ---
 
@@ -934,7 +942,7 @@ interface PresentationSession {
 | Public share page LCP | < 2s on 4G |
 | Share token max per user | 20 active tokens |
 | Presentation API | Android Chrome + Cast; iOS falls back to mirror mode (no Presentation API support on iOS Safari) |
-| fastembed-js bundle | Must fit within Vercel 250 MB compressed function limit; quantized fallback if needed |
+| fastembed-js bundle | Lives in a dedicated `/api/embed` Edge Function; bge-m3 ONNX model bundled there only, keeping main function bundle small |
 
 ---
 
@@ -954,7 +962,7 @@ interface PresentationSession {
 | Second screen | Not designed | Presentation API (Android Chrome + Cast); mirror fallback (iOS) | User wants TV to show only lyrics |
 | Controller player | Single `<video>` with overlay | **Separate controller** (always shows controls); muted when projection session active | Controls stay on phone; TV shows only lyrics |
 | Embedding model | TBD (`bge-m3` or `nomic-embed-text-v1.5` or OpenAI) | **bge-m3** locked | Multilingual Chinese+English, open-weights, runs in Docker |
-| Query embedding host | TBD | **fastembed-js + ONNX** in Next.js Route Handler | Same model as batch → comparable vectors; no external API dependency |
+| Query embedding host | TBD | **fastembed-js + ONNX** in a dedicated Vercel Edge Function (`/api/embed`) | Keeps main app bundle small; same model as batch → comparable vectors |
 | iOS offline minimum | Not specified | **iOS 17.4+** — older iOS offline checkbox disabled | 17.4 relaxed the 1 GB SW cache cap |
 | Large-file share | Warning shown | **Per-app buttons disabled above threshold** with tooltip | More opinionated; fewer failed share attempts |
 | Revocation notice | Not present | Share dialog note: "Revoking stops streams; downloaded files are unaffected" | Sets expectations about revocation scope |
@@ -964,11 +972,4 @@ interface PresentationSession {
 
 ## 14. Open Questions
 
-Most v4 §14 questions are resolved. Remaining open items:
-
-| Question | Area | Notes |
-|---|---|---|
-| fastembed-js bundle size | Semantic search | `fastembed-js` with bge-m3 ONNX may approach Vercel's 250 MB compressed function limit. Measure during implementation. Fallback options: (a) quantized bge-m3 variant, (b) separate Edge Function for embedding. Interface does not change. |
-| Projection page CDN edge caching | Projection | The `/play/projection` page receives signed R2 URLs as query params. Signed URLs are time-limited; the page should not be CDN-cached. Confirm `Cache-Control: no-store` header is set on this route and the `/share/[token]/play/projection` route. |
-| Android Cast receiver compatibility | Presentation API | The Cast receiver page must be registered and approved via the Google Cast SDK Developer Console for production Cast targets. Assess whether to use a custom receiver (HTML5 receiver) or the Default Media Receiver (no lyrics overlay sync). The `/play/projection` page is the intended custom receiver. |
-| Projection sync for hosted-player recipients | Sharing | The `/share/[token]/play/projection` route requires the controller (`/share/[token]`) to pass the signed MP4 URL and chapters URL to the projection page. Confirm that Presentation API can pass these as params without re-validating the token on the projection page load (or determine if a second server round-trip is acceptable). |
+All v4 and v5 §14 questions are resolved. Implementation-time validations — real-world Cast receiver approval latency, Edge Function cold-start measurements for `/api/embed`, Presentation API availability across Android Chrome versions in the field — are tracked in the implementation plan, not in this spec.
