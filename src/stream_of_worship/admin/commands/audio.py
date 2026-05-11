@@ -3111,17 +3111,14 @@ def _resolve_song_ids(
     Returns:
         List of song IDs to process
     """
-    # If stdin, read from pipe
     if stdin:
         song_ids = _read_song_ids_from_stdin()
         if limit:
             song_ids = song_ids[:limit]
         return song_ids
 
-    # Otherwise, query database with filters
     song_ids = set()
 
-    # Use JOIN query to avoid N+1 lookups for song data
     rows = db_client.list_recordings_with_songs(
         status=analysis_status,
         lrc_status=lrc_status,
@@ -3142,6 +3139,18 @@ def _resolve_song_ids(
             continue
 
         song_ids.add(recording.song_id)
+
+    has_status_filters = download_status or lrc_status or analysis_status
+    if not has_status_filters:
+        songs = db_client.list_songs(album=album, limit=None)
+        for s in songs:
+            if s.id in song_ids:
+                continue
+            if song and (not s.title or song.lower() not in s.title.lower()):
+                continue
+            existing_recording = db_client.get_recording_by_song_id(s.id)
+            if not existing_recording:
+                song_ids.add(s.id)
 
     result = list(song_ids)
     if limit:
@@ -3168,10 +3177,77 @@ def _print_dry_run(db_client: DatabaseClient, song_ids: list[str]) -> None:
             console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
             console.print(f"    [dim]Download:[/dim] {recording.download_status}")
             console.print(f"    [dim]LRC:[/dim] {recording.lrc_status}")
+        elif song:
+            console.print(f"  [yellow]•[/yellow] {song.title} (no recording - will download)")
+            console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
         else:
-            console.print(f"  [yellow]•[/yellow] {song_id} (no recording found)")
+            console.print(f"  [red]•[/red] {song_id} (song not found)")
 
     console.print(f"\n[dim]Total: {len(song_ids)} song(s)[/dim]")
+
+
+def _download_and_create_recording(
+    song_id: str,
+    song: Song,
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    console: Console,
+) -> tuple[Optional[Recording], Optional[str]]:
+    """Download audio from YouTube, upload to R2, and create a Recording entry.
+
+    Args:
+        song_id: Song ID
+        song: Song object with metadata
+        db_client: Database client
+        r2_client: R2 client
+        console: Rich console
+
+    Returns:
+        Tuple of (Recording or None, error message or None)
+    """
+    try:
+        downloader = YouTubeDownloader()
+
+        query = downloader.build_search_query(
+            title=song.title,
+            composer=song.composer,
+            album_name=song.album_name,
+            suffix=OFFICIAL_LYRICS_SUFFIX,
+        )
+
+        console.print(f"  Downloading from YouTube...")
+        audio_path = downloader.download(query)
+
+        file_size = audio_path.stat().st_size
+        console.print(f"  [dim]Downloaded: {audio_path.name} ({_format_size_mb(file_size)})[/dim]")
+
+        content_hash = compute_file_hash(audio_path)
+        prefix = get_hash_prefix(content_hash)
+
+        console.print(f"  Uploading to R2...")
+        r2_url = r2_client.upload_audio(audio_path, prefix)
+        console.print(f"  [green]→ Uploaded: {r2_url}[/green]")
+
+        recording = Recording(
+            content_hash=content_hash,
+            hash_prefix=prefix,
+            song_id=song_id,
+            original_filename=audio_path.name,
+            file_size_bytes=file_size,
+            imported_at=datetime.now().isoformat(),
+            r2_audio_url=r2_url,
+            download_status="completed",
+        )
+        db_client.insert_recording(recording)
+        console.print(f"  [green]✓ Recording created (hash_prefix: {prefix})[/green]")
+
+        audio_path.unlink(missing_ok=True)
+
+        return recording, None
+
+    except Exception as e:
+        console.print(f"  [red]✗ Download failed: {e}[/red]")
+        return None, str(e)
 
 
 def _download_if_needed(
@@ -3195,24 +3271,19 @@ def _download_if_needed(
     """
     hash_prefix = recording.hash_prefix
 
-    # Check R2 first
     if r2_client.audio_exists(hash_prefix):
         db_client.update_recording_download(hash_prefix, "completed")
         return {"download": "skipped_r2"}
 
-    # Download audio
     db_client.update_recording_download(hash_prefix, "processing")
 
     try:
-        # Look up song for metadata
         song = db_client.get_song(song_id)
         if not song:
             raise ValueError(f"Song not found: {song_id}")
 
-        # Initialize downloader
         downloader = YouTubeDownloader()
 
-        # Build search query
         query = downloader.build_search_query(
             title=song.title,
             composer=song.composer,
@@ -3220,25 +3291,21 @@ def _download_if_needed(
             suffix=OFFICIAL_LYRICS_SUFFIX,
         )
 
-        # Download
         console.print(f"[{song_id}] Downloading audio from YouTube...")
         audio_path = downloader.download(query)
 
-        # Compute hash and upload to R2
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
 
         r2_url = r2_client.upload_audio(audio_path, prefix)
         console.print(f"[{song_id}] [green]→[/green] Uploaded to R2")
 
-        # Update recording with R2 URL
         db_client.update_recording_status(
             hash_prefix=hash_prefix,
             r2_audio_url=r2_url,
         )
         db_client.update_recording_download(hash_prefix, "completed")
 
-        # Clean up temp file
         audio_path.unlink(missing_ok=True)
 
         return {"download": "completed"}
@@ -3288,12 +3355,29 @@ def _process_batch(
 
             recording = db_client.get_recording_by_song_id(song_id)
             if not recording:
-                console.print("  [red]✗ No recording found[/red]")
-                results[song_id] = {
-                    "download": "failed",
-                    "error": "No recording found",
-                }
-                failed_count += 1
+                song = db_client.get_song(song_id)
+                if not song:
+                    console.print("  [red]✗ Song not found in database[/red]")
+                    results[song_id] = {
+                        "download": "failed",
+                        "error": "Song not found",
+                    }
+                    failed_count += 1
+                    continue
+
+                recording, error = _download_and_create_recording(
+                    song_id, song, db_client, r2_client, console
+                )
+                if not recording:
+                    results[song_id] = {
+                        "download": "failed",
+                        "error": error,
+                    }
+                    failed_count += 1
+                    continue
+
+                results[song_id] = {"download": "completed"}
+                downloaded_count += 1
                 continue
 
             result = _download_if_needed(song_id, recording, db_client, r2_client, console)
