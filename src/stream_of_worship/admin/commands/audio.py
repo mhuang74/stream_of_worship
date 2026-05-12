@@ -1175,12 +1175,18 @@ def show_recording(
 
     if recording.r2_audio_url:
         info_lines.append(f"[cyan]Audio URL:[/cyan] {recording.r2_audio_url}")
+    if recording.r2_stems_url:
+        info_lines.append(f"[cyan]Stems URL:[/cyan] {recording.r2_stems_url}")
+    if recording.r2_lrc_url:
+        info_lines.append(f"[cyan]LRC URL:[/cyan] {recording.r2_lrc_url}")
 
-    if recording.youtube_url:
-        info_lines.append(f"[cyan]YouTube URL:[/cyan] {recording.youtube_url}")
+    info_lines.append(
+        f"[cyan]YouTube URL:[/cyan] {recording.youtube_url or '- none -'}"
+    )
 
     # Status
     info_lines.append("")
+    info_lines.append(f"[cyan]Download Status:[/cyan] {recording.download_status}")
     info_lines.append(f"[cyan]Analysis Status:[/cyan] {recording.analysis_status}")
     if recording.analysis_job_id:
         info_lines.append(f"[cyan]Analysis Job:[/cyan] {recording.analysis_job_id}")
@@ -1207,6 +1213,12 @@ def show_recording(
             info_lines.append(f"[cyan]Key Confidence:[/cyan] {recording.key_confidence:.2f}")
         if recording.loudness_db is not None:
             info_lines.append(f"[cyan]Loudness:[/cyan] {recording.loudness_db:.1f} dB")
+        if recording.embeddings_shape:
+            info_lines.append(f"[cyan]Embeddings:[/cyan] {recording.embeddings_shape}")
+
+    if recording.updated_at:
+        info_lines.append("")
+        info_lines.append(f"[cyan]Last Updated:[/cyan] {recording.updated_at}")
 
     console.print(
         Panel.fit(
