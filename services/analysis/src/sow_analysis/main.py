@@ -88,6 +88,41 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("AudioSeparatorWrapper not available (audio-separator not installed)")
 
+    # Log startup configuration (non-sensitive values only)
+    config_rows = [
+        ("Processing", "max_concurrent_local_model", str(settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS)),
+        ("Processing", "cache_dir", str(settings.CACHE_DIR)),
+        ("Processing", "queue_start_delay", f"{settings.SOW_QUEUE_START_DELAY_SECONDS}s"),
+        ("LLM", "model", settings.SOW_LLM_MODEL or "(not set)"),
+        ("LLM", "provider", settings.SOW_LLM_BASE_URL or "(not set)"),
+        ("Qwen3", "base_url", settings.SOW_QWEN3_BASE_URL),
+        ("Whisper", "device", settings.SOW_WHISPER_DEVICE),
+        ("Whisper", "cache_dir", str(settings.SOW_WHISPER_CACHE_DIR)),
+        ("Demucs", "model", settings.SOW_DEMUCS_MODEL),
+        ("Demucs", "device", settings.SOW_DEMUCS_DEVICE),
+        ("Audio Separator", "model_dir", str(settings.SOW_AUDIO_SEPARATOR_MODEL_DIR)),
+        ("Audio Separator", "vocal_model", settings.SOW_VOCAL_SEPARATION_MODEL),
+        ("Audio Separator", "dereverb_model", settings.SOW_DEREVERB_MODEL),
+        ("MVSEP", "enabled", str(settings.SOW_MVSEP_ENABLED)),
+        ("MVSEP", "stage1_sep_type", str(settings.SOW_MVSEP_STAGE1_SEP_TYPE)),
+        ("MVSEP", "stage2_sep_type", str(settings.SOW_MVSEP_STAGE2_SEP_TYPE)),
+        ("MVSEP", "daily_limit", str(settings.SOW_MVSEP_DAILY_JOB_LIMIT)),
+        ("R2", "bucket", settings.SOW_R2_BUCKET),
+        ("R2", "endpoint", settings.SOW_R2_ENDPOINT_URL or "(not set)"),
+    ]
+    col_widths = (
+        max(len(r[0]) for r in config_rows),
+        max(len(r[1]) for r in config_rows),
+        max(len(r[2]) for r in config_rows),
+    )
+    separator = f"+-{'-' * col_widths[0]}-+-{'-' * col_widths[1]}-+-{'-' * col_widths[2]}-+"
+    logger.info("Startup configuration:\n%s", separator)
+    logger.info("| %-*s | %-*s | %-*s |", col_widths[0], "Category", col_widths[1], "Setting", col_widths[2], "Value")
+    logger.info("%s", separator)
+    for category, setting, value in config_rows:
+        logger.info("| %-*s | %-*s | %-*s |", col_widths[0], category, col_widths[1], setting, col_widths[2], value)
+    logger.info("%s", separator)
+
     # Set job queue in routes
     set_job_queue(job_queue)
 
