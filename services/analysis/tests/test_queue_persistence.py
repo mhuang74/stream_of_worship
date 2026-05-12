@@ -26,8 +26,7 @@ def temp_dir(tmp_path: Path) -> Path:
 async def job_queue(temp_dir: Path) -> JobQueue:
     """Create a JobQueue instance for testing."""
     queue = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=temp_dir / "jobs.db",
     )
@@ -43,8 +42,7 @@ async def test_job_survives_queue_restart(temp_dir: Path) -> None:
 
     # Create first queue and submit a job
     queue1 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -63,8 +61,7 @@ async def test_job_survives_queue_restart(temp_dir: Path) -> None:
 
     # Create second queue (simulating service restart)
     queue2 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -84,8 +81,7 @@ async def test_job_survives_queue_restart(temp_dir: Path) -> None:
 async def test_completed_job_queryable_after_memory_eviction(temp_dir: Path) -> None:
     """Test that completed jobs are queryable from DB after being evicted from memory."""
     queue = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=temp_dir / "jobs.db",
     )
@@ -135,8 +131,7 @@ async def test_multiple_interrupted_jobs_recovered(temp_dir: Path) -> None:
 
     # Create queue and submit multiple jobs
     queue1 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -160,8 +155,7 @@ async def test_multiple_interrupted_jobs_recovered(temp_dir: Path) -> None:
 
     # Create second queue
     queue2 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -184,8 +178,7 @@ async def test_processing_job_recovered_as_queued(temp_dir: Path) -> None:
 
     # Create queue and submit job
     queue1 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -206,8 +199,7 @@ async def test_processing_job_recovered_as_queued(temp_dir: Path) -> None:
 
     # Create second queue
     queue2 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -230,8 +222,7 @@ async def test_completed_failed_jobs_not_requeued(temp_dir: Path) -> None:
 
     # Create queue and submit jobs
     queue1 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -258,8 +249,7 @@ async def test_completed_failed_jobs_not_requeued(temp_dir: Path) -> None:
 
     # Create second queue
     queue2 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -290,8 +280,7 @@ async def test_old_jobs_purged_on_startup(temp_dir: Path) -> None:
 
     # Create queue
     queue1 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -325,8 +314,7 @@ async def test_old_jobs_purged_on_startup(temp_dir: Path) -> None:
 
     # Create second queue with purge on startup
     queue2 = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=db_path,
     )
@@ -347,8 +335,7 @@ async def test_old_jobs_purged_on_startup(temp_dir: Path) -> None:
 async def test_clear_queue_cancels_processing_jobs(temp_dir: Path) -> None:
     """Test that clear_queue cancels both QUEUED and PROCESSING jobs."""
     queue = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=temp_dir / "jobs.db",
     )
@@ -394,8 +381,7 @@ async def test_clear_queue_cancels_processing_jobs(temp_dir: Path) -> None:
 async def test_clear_queue_skips_completed_failed_cancelled(temp_dir: Path) -> None:
     """Test that clear_queue does not affect terminal-state jobs."""
     queue = JobQueue(
-        max_concurrent_analysis=1,
-        max_concurrent_lrc=1,
+        max_concurrent_local_model=1,
         cache_dir=temp_dir,
         db_path=temp_dir / "jobs.db",
     )

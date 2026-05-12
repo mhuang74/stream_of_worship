@@ -238,9 +238,7 @@ SOW_AUDIO_SEPARATOR_MODEL_ROOT="$AUDIO_SEPARATOR_ROOT"
 # =============================================================================
 # OPTIONAL: PROCESSING CONFIGURATION
 # =============================================================================
-SOW_MAX_CONCURRENT_ANALYSIS_JOBS=1
-SOW_MAX_CONCURRENT_LRC_JOBS=2
-SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS=1
+SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 SOW_DEMUCS_DEVICE=cpu
 SOW_WHISPER_DEVICE=cpu
 SOW_WHISPER_MODEL=large-v3

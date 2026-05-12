@@ -24,8 +24,7 @@ class Settings(BaseSettings):
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
-    SOW_MAX_CONCURRENT_ANALYSIS_JOBS: int = 1  # Serialized (high memory/CPU usage)
-    SOW_MAX_CONCURRENT_LRC_JOBS: int = 2  # Configurable (lower memory with faster-whisper)
+    SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = 1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
 
     # Demucs Configuration
     SOW_DEMUCS_MODEL: str = "htdemucs"
@@ -42,7 +41,6 @@ class Settings(BaseSettings):
     SOW_WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
 
     # Stem Separation Configuration
-    SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS: int = 1  # Serialized (high memory/CPU usage)
     SOW_AUDIO_SEPARATOR_MODEL_DIR: Path = Path("/models/audio-separator")
     SOW_VOCAL_SEPARATION_MODEL: str = "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
     SOW_DEREVERB_MODEL: str = "UVR-De-Echo-Normal.pth"

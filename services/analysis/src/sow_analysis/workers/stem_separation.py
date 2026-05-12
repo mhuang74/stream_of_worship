@@ -4,10 +4,12 @@ Ports the algorithm from poc/gen_clean_vocal_stem.py to run as an analysis servi
 Uses AudioSeparatorWrapper for vocal separation + UVR-De-Echo processing.
 """
 
+import asyncio
 import logging
 import shutil
 import tempfile
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -112,6 +114,7 @@ async def _separate_with_mvsep_fallback(
     job: Job,
     mvsep_client: Optional["MvsepClient"],
     separator_wrapper: AudioSeparatorWrapper,
+    local_model_semaphore: Optional[asyncio.Semaphore] = None,
 ) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """Try MVSEP per-stage with cross-backend handoff; fall back to local on failure.
 
@@ -121,6 +124,9 @@ async def _separate_with_mvsep_fallback(
         job: Job being processed (for stage updates)
         mvsep_client: Optional MVSEP client (None = use local only)
         separator_wrapper: Local separator wrapper for fallback
+        local_model_semaphore: Optional semaphore to limit concurrent local model execution.
+            Acquired around local separator calls (audio-separator uses BS-Roformer model).
+            MVSEP (cloud API) does not acquire this semaphore.
 
     Returns:
         Tuple of (vocals_dry_path, vocals_path, instrumental_path).
@@ -131,7 +137,9 @@ async def _separate_with_mvsep_fallback(
     # Check if MVSEP is available
     if not mvsep_client or not mvsep_client.is_available:
         logger.info("MVSEP not available, using local audio-separator")
-        return await separator_wrapper.separate_stems(input_path, output_dir)
+        sem = local_model_semaphore or nullcontext()
+        async with sem:
+            return await separator_wrapper.separate_stems(input_path, output_dir)
 
     def _time_remaining() -> float:
         return settings.SOW_MVSEP_TOTAL_TIMEOUT - (time.monotonic() - total_start)
@@ -169,14 +177,18 @@ async def _separate_with_mvsep_fallback(
         # Stage 1 MVSEP failed — fall back to full local pipeline
         logger.info("MVSEP Stage 1 failed, falling back to full local pipeline")
         _set_job_stage(job, "fallback_local")
-        return await separator_wrapper.separate_stems(input_path, output_dir)
+        sem = local_model_semaphore or nullcontext()
+        async with sem:
+            return await separator_wrapper.separate_stems(input_path, output_dir)
 
     vocals, instrumental = stage1_result
 
     if not vocals:
         logger.error("MVSEP Stage 1 succeeded but no vocals file produced")
         _set_job_stage(job, "fallback_local")
-        return await separator_wrapper.separate_stems(input_path, output_dir)
+        sem = local_model_semaphore or nullcontext()
+        async with sem:
+            return await separator_wrapper.separate_stems(input_path, output_dir)
 
     # --- Stage 2: De-reverb (optional) ---
     stage2_enabled = mvsep_client.stage2_sep_type is not None
@@ -212,7 +224,9 @@ async def _separate_with_mvsep_fallback(
         # Stage 2 MVSEP failed — local Stage 2 only (cross-backend handoff)
         logger.info("MVSEP Stage 2 failed, using local Stage 2 fallback")
         _set_job_stage(job, "fallback_local_stage2")
-        dry_vocals, _ = await separator_wrapper.remove_reverb(vocals, stage2_dir)
+        sem = local_model_semaphore or nullcontext()
+        async with sem:
+            dry_vocals, _ = await separator_wrapper.remove_reverb(vocals, stage2_dir)
         stage2_result = (dry_vocals, None)
 
     dry_vocals, _ = stage2_result
@@ -225,6 +239,7 @@ async def process_stem_separation(
     r2_client: R2Client,
     cache_manager: CacheManager,
     mvsep_client: Optional["MvsepClient"] = None,
+    local_model_semaphore: Optional[asyncio.Semaphore] = None,
 ) -> None:
     """Process a stem separation job.
 
@@ -237,6 +252,8 @@ async def process_stem_separation(
         r2_client: R2 client for upload/download
         cache_manager: Cache manager for local caching
         mvsep_client: Optional MVSEP client for cloud processing
+        local_model_semaphore: Optional semaphore to limit concurrent local model execution.
+            Passed to _separate_with_mvsep_fallback() for local fallback paths.
 
     Raises:
         StemSeparationWorkerError: If processing fails
@@ -357,7 +374,8 @@ async def process_stem_separation(
                 vocals_path,
                 instrumental_path,
             ) = await _separate_with_mvsep_fallback(
-                audio_path, stage_output_dir, job, mvsep_client, separator_wrapper
+                audio_path, stage_output_dir, job, mvsep_client, separator_wrapper,
+                local_model_semaphore=local_model_semaphore,
             )
         except Exception as e:
             raise StemSeparationWorkerError(f"Stem separation failed: {e}") from e

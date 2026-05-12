@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -670,6 +671,7 @@ async def generate_lrc(
     youtube_url: Optional[str] = None,
     content_hash: Optional[str] = None,
     vocals_stem_url: Optional[str] = None,
+    local_model_semaphore: Optional[asyncio.Semaphore] = None,
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
 
@@ -686,6 +688,9 @@ async def generate_lrc(
         content_hash: Optional content hash for Qwen3 audio URL construction (s3://{bucket}/audio/{hash}.mp3)
         vocals_stem_url: Optional R2 URL for clean vocals stem; passed to Qwen3 alignment so it
             uses de-reverbed vocals instead of the full mix for better timestamp precision
+        local_model_semaphore: Optional semaphore to limit concurrent local model execution.
+            Acquired around Whisper transcription and Qwen3 refinement (both use local models).
+            LLM alignment (cloud API) does not acquire this semaphore.
 
     Returns:
         Tuple of (path to LRC file, number of lines, transcription phrases)
@@ -726,13 +731,16 @@ async def generate_lrc(
         whisper_phrases = cached_phrases
     else:
         logger.info("No cached transcription found, running Whisper...")
-        whisper_phrases = await _run_whisper_transcription(
-            audio_path,
-            model_name=options.whisper_model,
-            language=options.language,
-            device=settings.SOW_WHISPER_DEVICE,
-            lyrics_text=lyrics_text,
-        )
+        # Acquire semaphore for local model execution (Whisper)
+        sem = local_model_semaphore or nullcontext()
+        async with sem:
+            whisper_phrases = await _run_whisper_transcription(
+                audio_path,
+                model_name=options.whisper_model,
+                language=options.language,
+                device=settings.SOW_WHISPER_DEVICE,
+                lyrics_text=lyrics_text,
+            )
 
     # Step 2: LLM alignment
     lrc_lines = await _llm_align(
@@ -762,11 +770,14 @@ async def generate_lrc(
             else:
                 # Proceed with Qwen3 refinement
                 try:
-                    refined_lrc_text = await _qwen3_refine(
-                        content_hash=content_hash,
-                        lyrics_text=lyrics_text,
-                        vocals_stem_url=vocals_stem_url,
-                    )
+                    # Acquire semaphore for local model execution (Qwen3)
+                    sem = local_model_semaphore or nullcontext()
+                    async with sem:
+                        refined_lrc_text = await _qwen3_refine(
+                            content_hash=content_hash,
+                            lyrics_text=lyrics_text,
+                            vocals_stem_url=vocals_stem_url,
+                        )
                     # Parse refined LRC to update lrc_lines
                     refined_lines = _parse_qwen3_lrc(refined_lrc_text)
                     if refined_lines:

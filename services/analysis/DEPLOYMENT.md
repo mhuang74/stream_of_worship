@@ -257,10 +257,8 @@ SOW_AUDIO_SEPARATOR_MODEL_ROOT=""
 # OPTIONAL: PROCESSING CONFIGURATION
 # =============================================================================
 
-# Maximum concurrent jobs (defaults shown)
-SOW_MAX_CONCURRENT_ANALYSIS_JOBS=1
-SOW_MAX_CONCURRENT_LRC_JOBS=2
-SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS=1
+# Maximum concurrent local model executions (default: 1)
+SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 
 # Device selection (cpu or cuda - requires GPU setup)
 SOW_DEMUCS_DEVICE=cpu
@@ -391,9 +389,7 @@ services:
       SOW_WHISPER_MODEL: ${SOW_WHISPER_MODEL:-large-v3}
       
       # Processing Configuration
-      SOW_MAX_CONCURRENT_ANALYSIS_JOBS: ${SOW_MAX_CONCURRENT_ANALYSIS_JOBS:-1}
-      SOW_MAX_CONCURRENT_LRC_JOBS: ${SOW_MAX_CONCURRENT_LRC_JOBS:-2}
-      SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS: ${SOW_MAX_CONCURRENT_STEM_SEPARATION_JOBS:-1}
+      SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}
       SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
       
       # Stem Separation Model Configuration
@@ -782,9 +778,8 @@ ls -la ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots
 # Check memory usage
 docker stats
 
-# Reduce concurrent jobs in .env
-SOW_MAX_CONCURRENT_ANALYSIS_JOBS=1
-SOW_MAX_CONCURRENT_LRC_JOBS=1
+# Reduce concurrent local model jobs in .env
+SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 
 # Restart
 docker compose up -d
