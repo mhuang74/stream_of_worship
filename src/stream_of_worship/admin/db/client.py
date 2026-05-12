@@ -163,7 +163,6 @@ class DatabaseClient:
                     source_url = EXCLUDED.source_url,
                     table_row_number = EXCLUDED.table_row_number,
                     scraped_at = EXCLUDED.scraped_at,
-                    created_at = EXCLUDED.created_at,
                     updated_at = EXCLUDED.updated_at,
                     deleted_at = NULL
                 """,
@@ -460,9 +459,9 @@ class DatabaseClient:
                     lrc_job_id = EXCLUDED.lrc_job_id,
                     visibility_status = EXCLUDED.visibility_status,
                     download_status = EXCLUDED.download_status,
-                    created_at = EXCLUDED.created_at,
                     updated_at = EXCLUDED.updated_at,
-                    youtube_url = EXCLUDED.youtube_url
+                    youtube_url = EXCLUDED.youtube_url,
+                    deleted_at = NULL
                 """,
                 (
                     recording.content_hash,
