@@ -23,18 +23,26 @@ console = Console()
 app = typer.Typer(help="Catalog operations")
 
 
-def _extract_series_number(series: Optional[str]) -> int:
-    """Extract numeric portion from album_series for sorting.
+def _extract_series_sort_key(series: Optional[str]) -> tuple:
+    """Extract sort key from album_series for sorting.
+
+    Returns tuple of (prefix, number) where prefix is the text before the number
+    and number is the numeric portion. This groups series by type first, then by number.
 
     Examples:
-        '敬拜讚美15' -> 15
-        '兒童敬拜讚美 (14EP)' -> 14
-        None or no digits -> 0
+        '敬拜讚美15' -> ('敬拜讚美', 15)
+        '兒童敬拜讚美 (14EP)' -> ('兒童敬拜讚美 ', 14)
+        '台語敬拜讚美 (1)' -> ('台語敬拜讚美 ', 1)
+        None or no digits -> ('', 0)
     """
     if not series:
-        return 0
+        return ("", 0)
     match = re.search(r"\d+", series)
-    return int(match.group()) if match else 0
+    if not match:
+        return (series, 0)
+    prefix = series[: match.start()]
+    number = int(match.group())
+    return (prefix, number)
 
 
 def get_db_client(config: AdminConfig) -> DatabaseClient:
@@ -177,7 +185,7 @@ def list_songs(
         help="Filter by composer",
     ),
     sort: str = typer.Option(
-        "album",
+        "series",
         "--sort",
         "-s",
         help="Sort order (album|series|title|id)",
@@ -238,7 +246,7 @@ def list_songs(
             return
 
         if sort == "series":
-            album_list.sort(key=lambda a: _extract_series_number(a[1]))
+            album_list.sort(key=lambda a: _extract_series_sort_key(a[1]))
 
         table = Table(title=f"Albums ({len(album_list)} total)")
         table.add_column("Album", style="yellow")
@@ -271,7 +279,7 @@ def list_songs(
 
     # Re-sort by series number in memory (SQL sort is lexicographic on album_series text)
     if sort == "series":
-        songs.sort(key=lambda s: (_extract_series_number(s.album_series), s.album_name or ""))
+        songs.sort(key=lambda s: (_extract_series_sort_key(s.album_series), s.album_name or "", s.title, s.id))
 
     if not songs:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
@@ -284,19 +292,21 @@ def list_songs(
     else:
         # Table format
         table = Table(title=f"Songs ({len(songs)} total)")
-        table.add_column("ID", style="dim", no_wrap=True)
         table.add_column("Title", style="cyan")
-        table.add_column("Composer", style="green")
-        table.add_column("Album", style="yellow")
         table.add_column("Key", style="magenta", justify="center")
+        table.add_column("Album", style="yellow")
+        table.add_column("Album Series", style="white")
+        table.add_column("Composer", style="green")
+        table.add_column("ID", style="dim", no_wrap=True)
 
         for song in songs:
             table.add_row(
-                song.id,
                 song.title,
-                song.composer or "-",
-                song.album_name or "-",
                 song.musical_key or "-",
+                song.album_name or "-",
+                song.album_series or "-",
+                song.composer or "-",
+                song.id,
             )
 
         console.print(table)

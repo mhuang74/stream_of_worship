@@ -26,7 +26,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 
-from stream_of_worship.admin.commands.catalog import _extract_series_number, get_db_client
+from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
@@ -1154,7 +1154,7 @@ def list_recordings(
     # For "series" sort, we need to re-sort because SQLite can't extract the series number
     # For "album" and "title", DB sort is sufficient but we do Python sort as fallback
     if sort == "series":
-        enriched.sort(key=lambda t: (_extract_series_number(t[3] or ""), t[2] or "", t[1] or ""))
+        enriched.sort(key=lambda t: (_extract_series_sort_key(t[3]), t[2] or "", t[1] or ""))
     elif sort == "album":
         # DB already sorted by album, title - but re-sort for consistency with null handling
         enriched.sort(key=lambda t: (t[2] or "", t[1] or ""))
