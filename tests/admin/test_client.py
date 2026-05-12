@@ -324,6 +324,59 @@ class TestDatabaseClientIntegration:
         assert result.lrc_status == "completed"
         assert result.r2_lrc_url == "https://r2.example.com/lrc"
 
+    def test_update_recording_youtube_url(self, admin_client):
+        """Test updating recording YouTube URL."""
+        song = Song(
+            id="song_1",
+            title="Test Song",
+            source_url="http://test",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="abc123",
+            song_id="song_1",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_recording(recording)
+
+        admin_client.update_recording_youtube_url(
+            "abc123", "https://youtube.com/watch?v=test123"
+        )
+
+        result = admin_client.get_recording_by_hash("abc123")
+        assert result.youtube_url == "https://youtube.com/watch?v=test123"
+
+    def test_update_recording_youtube_url_clear(self, admin_client):
+        """Test clearing recording YouTube URL."""
+        song = Song(
+            id="song_1",
+            title="Test Song",
+            source_url="http://test",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+
+        recording = Recording(
+            content_hash="a" * 64,
+            hash_prefix="abc123",
+            song_id="song_1",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at="2024-01-01T00:00:00",
+            youtube_url="https://youtube.com/watch?v=old",
+        )
+        admin_client.insert_recording(recording)
+
+        admin_client.update_recording_youtube_url("abc123", None)
+
+        result = admin_client.get_recording_by_hash("abc123")
+        assert result.youtube_url is None
+
     def test_get_stats(self, admin_client):
         """Test database statistics."""
         stats = admin_client.get_stats()

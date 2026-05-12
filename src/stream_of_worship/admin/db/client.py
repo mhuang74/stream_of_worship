@@ -507,7 +507,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE hash_prefix = %s",
+            "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
             (hash_prefix,),
         )
         row = cursor.fetchone()
@@ -527,7 +527,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE song_id = %s",
+            "SELECT * FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
             (song_id,),
         )
         row = cursor.fetchone()
@@ -742,12 +742,12 @@ class DatabaseClient:
         cursor = self.connection.cursor()
         if job_type == "analysis":
             cursor.execute(
-                "SELECT * FROM recordings WHERE analysis_job_id = %s",
+                "SELECT * FROM recordings WHERE analysis_job_id = %s AND deleted_at IS NULL",
                 (job_id,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE lrc_job_id = %s",
+                "SELECT * FROM recordings WHERE lrc_job_id = %s AND deleted_at IS NULL",
                 (job_id,),
             )
         row = cursor.fetchone()
@@ -885,6 +885,29 @@ class DatabaseClient:
             """
 
             cursor.execute(sql, (download_status, hash_prefix))
+
+    def update_recording_youtube_url(
+        self,
+        hash_prefix: str,
+        youtube_url: Optional[str],
+    ) -> None:
+        """Update YouTube URL for a recording.
+
+        Args:
+            hash_prefix: The hash prefix of the recording.
+            youtube_url: The YouTube URL (or None to clear it).
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+
+            sql = """
+                UPDATE recordings SET
+                    youtube_url = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
+            """
+
+            cursor.execute(sql, (youtube_url, hash_prefix))
 
     def update_recording_visibility(
         self,

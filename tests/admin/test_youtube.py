@@ -298,3 +298,100 @@ class TestDownloadByUrl:
 
         with pytest.raises(RuntimeError, match="Download failed"):
             downloader.download_by_url("https://youtube.com/watch?v=bad")
+
+
+class TestDownloadWithInfo:
+    """Tests for the download_with_info method."""
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_with_info_returns_path_and_url(self, mock_ydl_class, tmp_path):
+        """Returns tuple of (Path, webpage_url) when download succeeds."""
+        mp3_file = tmp_path / "Test Song.mp3"
+        mp3_file.write_bytes(b"fake mp3 data")
+
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {
+            "entries": [{
+                "id": "abc123",
+                "title": "Test Song",
+                "webpage_url": "https://youtube.com/watch?v=abc123",
+            }]
+        }
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        path, url = downloader.download_with_info("Test Song query")
+
+        assert path == mp3_file
+        assert url == "https://youtube.com/watch?v=abc123"
+        mock_ydl.extract_info.assert_called_once_with(
+            "ytsearch1:Test Song query", download=True
+        )
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_with_info_handles_direct_video_info(self, mock_ydl_class, tmp_path):
+        """Handles direct video info (not in entries list)."""
+        mp3_file = tmp_path / "Direct Video.mp3"
+        mp3_file.write_bytes(b"fake mp3 data")
+
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {
+            "id": "xyz789",
+            "title": "Direct Video",
+            "webpage_url": "https://youtube.com/watch?v=xyz789",
+        }
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        path, url = downloader.download_with_info("query")
+
+        assert path == mp3_file
+        assert url == "https://youtube.com/watch?v=xyz789"
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_with_info_no_results(self, mock_ydl_class, tmp_path):
+        """Raises RuntimeError when extract_info returns None."""
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = None
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        with pytest.raises(RuntimeError, match="No results found"):
+            downloader.download_with_info("nonexistent query")
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_with_info_missing_webpage_url(self, mock_ydl_class, tmp_path):
+        """Returns None for webpage_url when not in video info."""
+        mp3_file = tmp_path / "Song.mp3"
+        mp3_file.write_bytes(b"fake mp3 data")
+
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {
+            "entries": [{
+                "id": "abc123",
+                "title": "Song",
+            }]
+        }
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        path, url = downloader.download_with_info("query")
+
+        assert path == mp3_file
+        assert url is None
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_with_info_error(self, mock_ydl_class, tmp_path):
+        """yt_dlp DownloadError is wrapped as RuntimeError."""
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.side_effect = yt_dlp.utils.DownloadError("network error")
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        with pytest.raises(RuntimeError, match="Download failed"):
+            downloader.download_with_info("bad query")

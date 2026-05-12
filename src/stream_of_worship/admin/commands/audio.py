@@ -871,8 +871,9 @@ def download_audio(
 
 @app.command("delete")
 def delete_recording(
-    song_id: str = typer.Argument(..., help="Song ID to delete recording for"),
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to delete recording for"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Delete a recording and all associated R2 files.
@@ -880,7 +881,19 @@ def delete_recording(
     Removes the recording from the database and deletes associated files
     from R2 (audio, stems, LRC). Use this when the wrong audio was
     downloaded and you want to re-download the correct version.
+
+    For batch deletion, pipe song IDs via stdin:
+
+        sow-admin audio list --album album1 --format ids | sow-admin audio delete --stdin
     """
+    if not song_id and not stdin:
+        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if song_id and stdin:
+        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
     except FileNotFoundError:
@@ -888,16 +901,6 @@ def delete_recording(
         raise typer.Exit(1)
 
     db_client = get_db_client(config)
-
-    # Look up recording by song_id
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(f"[red]No recording found for song: {song_id}[/red]")
-        raise typer.Exit(1)
-
-    # Get song info for display
-    song = db_client.get_song(song_id)
-    song_title = song.title if song else "Unknown"
 
     # Initialize R2 client
     try:
@@ -910,7 +913,28 @@ def delete_recording(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Display what will be deleted
+    if stdin:
+        _delete_recordings_batch(db_client, r2_client, yes, console)
+    else:
+        _delete_recording_single(song_id, db_client, r2_client, yes, console)
+
+
+def _delete_recording_single(
+    song_id: str,
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    yes: bool,
+    console: Console,
+) -> None:
+    """Delete a single recording by song_id."""
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for song: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+
     info_lines = [
         f"[cyan]Song ID:[/cyan] {song_id}",
         f"[cyan]Song Title:[/cyan] {song_title}",
@@ -923,7 +947,6 @@ def delete_recording(
         ),
     ]
 
-    # List R2 resources
     info_lines.append("")
     info_lines.append("[bold]R2 Resources to delete:[/bold]")
 
@@ -950,7 +973,6 @@ def delete_recording(
         )
     )
 
-    # Confirmation prompt
     if not yes:
         console.print("[red bold]Warning: This action cannot be undone![/red bold]")
         confirmed = _prompt_confirmation("Delete this recording and all associated files?")
@@ -958,11 +980,86 @@ def delete_recording(
             console.print("[yellow]Deletion cancelled.[/yellow]")
             raise typer.Exit(0)
 
-    # Perform deletion
     console.print("[cyan]Deleting recording...[/cyan]")
     _delete_recording_and_files(db_client, r2_client, recording, console)
-
     console.print(f"[green]Recording {recording.hash_prefix} deleted successfully.[/green]")
+
+
+def _delete_recordings_batch(
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    yes: bool,
+    console: Console,
+) -> None:
+    """Delete multiple recordings from stdin."""
+    song_ids = _read_song_ids_from_stdin()
+
+    if not song_ids:
+        console.print("[yellow]No song IDs provided via stdin[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[cyan]Looking up {len(song_ids)} recording(s)...[/cyan]")
+
+    recordings_to_delete: list[tuple[str, Recording, str]] = []
+    not_found: list[str] = []
+
+    for sid in song_ids:
+        recording = db_client.get_recording_by_song_id(sid)
+        if recording:
+            song = db_client.get_song(sid)
+            title = song.title if song else "Unknown"
+            recordings_to_delete.append((sid, recording, title))
+        else:
+            not_found.append(sid)
+
+    if not_found:
+        console.print(f"[yellow]No recording found for {len(not_found)} song(s): {', '.join(not_found[:5])}{'...' if len(not_found) > 5 else ''}[/yellow]")
+
+    if not recordings_to_delete:
+        console.print("[yellow]No valid recordings to delete.[/yellow]")
+        raise typer.Exit(0)
+
+    total_size = sum(r.file_size_bytes or 0 for _, r, _ in recordings_to_delete)
+    info_lines = [
+        f"[cyan]Count:[/cyan] {len(recordings_to_delete)} recording(s)",
+        f"[cyan]Total Size:[/cyan] {_format_size_mb(total_size)}",
+        "",
+        "[bold]Recordings to delete:[/bold]",
+    ]
+    for sid, recording, title in recordings_to_delete[:10]:
+        info_lines.append(f"  • {sid}: {title}")
+    if len(recordings_to_delete) > 10:
+        info_lines.append(f"  ... and {len(recordings_to_delete) - 10} more")
+
+    console.print(
+        Panel.fit(
+            "\n".join(info_lines),
+            title="Batch Delete Recordings",
+            border_style="yellow",
+        )
+    )
+
+    if not yes:
+        console.print("[red bold]Warning: This action cannot be undone![/red bold]")
+        confirmed = _prompt_confirmation(f"Delete {len(recordings_to_delete)} recording(s) and all associated files?")
+        if not confirmed:
+            console.print("[yellow]Deletion cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    deleted_count = 0
+    failed_count = 0
+
+    for sid, recording, title in recordings_to_delete:
+        try:
+            _delete_recording_and_files(db_client, r2_client, recording, console)
+            deleted_count += 1
+            console.print(f"[green]✓ Deleted: {sid} ({title})[/green]")
+        except Exception as e:
+            failed_count += 1
+            console.print(f"[red]✗ Failed to delete {sid}: {e}[/red]")
+
+    console.print()
+    console.print(f"[bold]Summary:[/bold] {deleted_count} deleted, {failed_count} failed")
 
 
 @app.command("list")
@@ -2187,6 +2284,188 @@ def check_status(
     console.print(table)
 
 
+@app.command("cancel")
+def cancel_jobs(
+    job_id: Optional[str] = typer.Argument(None, help="Job ID to cancel"),
+    all: bool = typer.Option(False, "--all", "-a", help="Cancel all queued and processing jobs"),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be cancelled without cancelling"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Cancel jobs on the Analysis Service.
+
+    Cancel a specific job by ID, or cancel all queued/processing jobs with --all.
+
+    Examples:
+        sow-admin audio cancel job_abc123           # Cancel a specific job
+        sow-admin audio cancel --all                # Cancel all jobs (with confirmation)
+        sow-admin audio cancel --all --yes          # Cancel all jobs (skip confirmation)
+        sow-admin audio cancel --all --dry-run      # Preview what would be cancelled
+
+    Requires SOW_ADMIN_API_KEY environment variable to be set.
+    """
+    if not job_id and not all:
+        console.print("[red]Error: Provide a JOB_ID argument or use --all to cancel all jobs.[/red]")
+        raise typer.Exit(1)
+
+    if job_id and all:
+        console.print("[red]Error: Cannot use both JOB_ID and --all together.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        client = AnalysisClient(config.analysis_url)
+    except ValueError as e:
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
+        raise typer.Exit(1)
+
+    if all:
+        _cancel_all_jobs(client, dry_run, yes, console)
+    else:
+        _cancel_single_job(client, job_id, dry_run, yes, console)
+
+
+def _cancel_single_job(
+    client: AnalysisClient,
+    job_id: str,
+    dry_run: bool,
+    yes: bool,
+    console: Console,
+) -> None:
+    """Cancel a single job by ID."""
+    if dry_run:
+        try:
+            job = client.get_job(job_id)
+        except AnalysisServiceError as e:
+            if e.status_code == 404:
+                console.print(f"[red]Job not found: {job_id}[/red]")
+                raise typer.Exit(1)
+            console.print(f"[red]Failed to get job status: {e}[/red]")
+            raise typer.Exit(1)
+
+        if job.status in ("completed", "failed", "cancelled"):
+            console.print(f"[yellow]Job {job_id} is already {job.status} (nothing to cancel)[/yellow]")
+            return
+
+        console.print(Panel.fit(
+            f"[cyan]Job ID:[/cyan] {job_id}\n"
+            f"[cyan]Type:[/cyan] {job.job_type}\n"
+            f"[cyan]Status:[/cyan] {_colorize_status(job.status)}\n"
+            f"[cyan]Progress:[/cyan] {int(job.progress * 100)}%\n"
+            f"[cyan]Stage:[/cyan] {job.stage or '-'}",
+            title="Dry Run - Would Cancel Job",
+            border_style="yellow",
+        ))
+        return
+
+    try:
+        job = client.cancel_job(job_id)
+    except AnalysisServiceError as e:
+        if e.status_code == 404:
+            console.print(f"[red]Job not found: {job_id}[/red]")
+        elif e.status_code == 401:
+            console.print(f"[red]Authentication failed: Invalid admin API key[/red]")
+        elif e.status_code == 503:
+            console.print(f"[red]Admin API key not configured on server[/red]")
+        else:
+            console.print(f"[red]Failed to cancel job: {e}[/red]")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(Panel.fit(
+        f"[green]Job cancelled successfully![/green]\n\n"
+        f"[cyan]Job ID:[/cyan] {job.job_id}\n"
+        f"[cyan]Type:[/cyan] {job.job_type}\n"
+        f"[cyan]Status:[/cyan] {_colorize_status(job.status)}",
+        title="Job Cancelled",
+        border_style="green",
+    ))
+
+
+def _cancel_all_jobs(
+    client: AnalysisClient,
+    dry_run: bool,
+    yes: bool,
+    console: Console,
+) -> None:
+    """Cancel all queued and processing jobs."""
+    try:
+        jobs = client.list_jobs()
+    except AnalysisServiceError as e:
+        console.print(f"[red]Failed to list jobs: {e}[/red]")
+        raise typer.Exit(1)
+
+    cancellable_jobs = [j for j in jobs if j.status in ("queued", "processing")]
+
+    if not cancellable_jobs:
+        console.print("[green]No queued or processing jobs to cancel.[/green]")
+        return
+
+    if dry_run:
+        table = Table(title=f"Dry Run - Would Cancel {len(cancellable_jobs)} Job(s)")
+        table.add_column("Job ID", style="dim", no_wrap=True)
+        table.add_column("Type", style="cyan")
+        table.add_column("Status", style="yellow")
+        table.add_column("Progress", justify="right")
+        table.add_column("Stage")
+
+        for job in cancellable_jobs:
+            table.add_row(
+                job.job_id,
+                job.job_type,
+                _colorize_status(job.status),
+                f"{int(job.progress * 100)}%",
+                job.stage or "-",
+            )
+
+        console.print(table)
+        return
+
+    console.print(f"[cyan]Found {len(cancellable_jobs)} job(s) to cancel:[/cyan]")
+    for job in cancellable_jobs[:10]:
+        console.print(f"  • {job.job_id} ({job.job_type}, {job.status})")
+    if len(cancellable_jobs) > 10:
+        console.print(f"  ... and {len(cancellable_jobs) - 10} more")
+
+    if not yes:
+        if not _prompt_confirmation(f"Cancel {len(cancellable_jobs)} job(s)?"):
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    try:
+        result = client.cancel_all_jobs()
+    except AnalysisServiceError as e:
+        if e.status_code == 401:
+            console.print(f"[red]Authentication failed: Invalid admin API key[/red]")
+        elif e.status_code == 503:
+            console.print(f"[red]Admin API key not configured on server[/red]")
+        else:
+            console.print(f"[red]Failed to cancel jobs: {e}[/red]")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    cancelled_count = result.get("cancelled_count", 0)
+    cancelled_ids = result.get("cancelled_job_ids", [])
+
+    console.print(Panel.fit(
+        f"[green]Successfully cancelled {cancelled_count} job(s)![/green]\n\n"
+        f"[dim]Cancelled job IDs:[/dim]\n"
+        + "\n".join(f"  • {jid}" for jid in cancelled_ids[:20])
+        + (f"\n  ... and {len(cancelled_ids) - 20} more" if len(cancelled_ids) > 20 else ""),
+        title="Jobs Cancelled",
+        border_style="green",
+    ))
+
+
 def _update_recording_status_force(
     db_client: DatabaseClient,
     rec: Any,
@@ -3228,7 +3507,7 @@ def _download_and_create_recording(
         )
 
         console.print(f"  Downloading from YouTube...")
-        audio_path = downloader.download(query)
+        audio_path, youtube_url = downloader.download_with_info(query)
 
         file_size = audio_path.stat().st_size
         console.print(f"  [dim]Downloaded: {audio_path.name} ({_format_size_mb(file_size)})[/dim]")
@@ -3249,6 +3528,7 @@ def _download_and_create_recording(
             imported_at=datetime.now().isoformat(),
             r2_audio_url=r2_url,
             download_status="completed",
+            youtube_url=youtube_url,
         )
         db_client.insert_recording(recording)
         console.print(f"  [green]✓ Recording created (hash_prefix: {prefix})[/green]")
@@ -3307,7 +3587,7 @@ def _download_if_needed(
         )
 
         console.print(f"[{song_id}] Downloading audio from YouTube...")
-        audio_path = downloader.download(query)
+        audio_path, youtube_url = downloader.download_with_info(query)
 
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
@@ -3319,6 +3599,8 @@ def _download_if_needed(
             hash_prefix=hash_prefix,
             r2_audio_url=r2_url,
         )
+        if youtube_url:
+            db_client.update_recording_youtube_url(hash_prefix, youtube_url)
         db_client.update_recording_download(hash_prefix, "completed")
 
         audio_path.unlink(missing_ok=True)

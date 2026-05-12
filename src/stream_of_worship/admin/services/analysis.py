@@ -85,6 +85,7 @@ class AnalysisClient:
 
     Communicates with the FastAPI analysis service for audio analysis jobs.
     Uses Bearer token authentication via SOW_ANALYSIS_API_KEY environment variable.
+    Admin operations (cancel) require SOW_ADMIN_API_KEY.
 
     Attributes:
         base_url: Base URL of the analysis service
@@ -111,6 +112,8 @@ class AnalysisClient:
                 "Set it to your analysis service API key."
             )
 
+        self._admin_api_key = os.environ.get("SOW_ADMIN_API_KEY")
+
     def _auth_headers(self) -> Dict[str, str]:
         """Get authentication headers.
 
@@ -118,6 +121,22 @@ class AnalysisClient:
             Dictionary with Authorization header
         """
         return {"Authorization": f"Bearer {self._api_key}"}
+
+    def _admin_auth_headers(self) -> Dict[str, str]:
+        """Get admin authentication headers.
+
+        Returns:
+            Dictionary with Authorization header using admin API key
+
+        Raises:
+            ValueError: If SOW_ADMIN_API_KEY is not set
+        """
+        if not self._admin_api_key:
+            raise ValueError(
+                "SOW_ADMIN_API_KEY environment variable is not set. "
+                "Set it to your admin API key for cancel operations."
+            )
+        return {"Authorization": f"Bearer {self._admin_api_key}"}
 
     def health_check(self) -> Dict[str, Any]:
         """Check if the analysis service is healthy.
@@ -365,6 +384,154 @@ class AnalysisClient:
                 )
 
             time.sleep(poll_interval)
+
+    def list_jobs(
+        self,
+        status: Optional[str] = None,
+        job_type: Optional[str] = None,
+    ) -> List[JobInfo]:
+        """List jobs with optional filtering.
+
+        Args:
+            status: Filter by status (queued, processing, completed, failed, cancelled)
+            job_type: Filter by job type (analyze, lrc, stem_separation)
+
+        Returns:
+            List of JobInfo objects
+
+        Raises:
+            AnalysisServiceError: If request fails
+        """
+        params = {}
+        if status:
+            params["status"] = status
+        if job_type:
+            params["job_type"] = job_type
+
+        try:
+            response = requests.get(
+                f"{self.base_url}/api/v1/jobs",
+                params=params,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid API key", status_code=401
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return [self._parse_job_response(job) for job in data]
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, "response") and e.response is not None:
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Failed to list jobs (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Failed to list jobs: {e}")
+
+    def cancel_job(self, job_id: str) -> JobInfo:
+        """Cancel a specific job by ID.
+
+        Args:
+            job_id: Unique job identifier
+
+        Returns:
+            JobInfo for the cancelled job
+
+        Raises:
+            AnalysisServiceError: If job not found or request fails
+            ValueError: If SOW_ADMIN_API_KEY is not set
+        """
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/{job_id}/cancel",
+                headers=self._admin_auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 404:
+                raise AnalysisServiceError(
+                    f"Job not found: {job_id}", status_code=404
+                )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid admin API key", status_code=401
+                )
+
+            if response.status_code == 503:
+                raise AnalysisServiceError(
+                    "Admin API key not configured on server", status_code=503
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_job_response(data)
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, "response") and e.response is not None:
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Failed to cancel job (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Failed to cancel job: {e}")
+
+    def cancel_all_jobs(self) -> Dict[str, Any]:
+        """Cancel all queued and processing jobs.
+
+        Returns:
+            Dict with 'cancelled_count' and 'cancelled_job_ids' keys
+
+        Raises:
+            AnalysisServiceError: If request fails
+            ValueError: If SOW_ADMIN_API_KEY is not set
+        """
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/clear-queue",
+                headers=self._admin_auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid admin API key", status_code=401
+                )
+
+            if response.status_code == 503:
+                raise AnalysisServiceError(
+                    "Admin API key not configured on server", status_code=503
+                )
+
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, "response") and e.response is not None:
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Failed to cancel all jobs (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Failed to cancel all jobs: {e}")
 
     @staticmethod
     def _parse_job_response(data: Dict[str, Any]) -> JobInfo:
