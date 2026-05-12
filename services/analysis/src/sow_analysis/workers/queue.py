@@ -77,36 +77,29 @@ class JobQueue:
 
     def __init__(
         self,
-        max_concurrent_analysis: int = 1,
-        max_concurrent_lrc: int = 2,
-        max_concurrent_stem_separation: int = 1,
+        max_concurrent_local_model: int = 1,
         cache_dir: Path = Path("/cache"),
         db_path: Optional[Path] = None,
     ):
         """Initialize job queue.
 
         Args:
-            max_concurrent_analysis: Maximum concurrent analysis jobs (1 = serialized)
-            max_concurrent_lrc: Maximum concurrent LRC jobs
-            max_concurrent_stem_separation: Maximum concurrent stem separation jobs (1 = serialized)
+            max_concurrent_local_model: Maximum concurrent local model executions
+                (Whisper, Qwen3, audio-separator, allin1, demucs). Default 1 due to
+                memory constraints - only one local model can run at a time.
             cache_dir: Directory for caching results
             db_path: Path to job database (default: cache_dir / "jobs.db")
         """
-        self.max_concurrent_analysis = max_concurrent_analysis
-        self.max_concurrent_lrc = max_concurrent_lrc
-        self.max_concurrent_stem_separation = max_concurrent_stem_separation
+        self.max_concurrent_local_model = max_concurrent_local_model
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
         self._separator_wrapper: Optional[Any] = None
         self._mvsep_client: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        # Analysis jobs use lock for serialization (high memory/CPU with allin1)
-        self._analysis_lock = asyncio.Lock()
-        # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
-        self._lrc_semaphore = asyncio.Semaphore(max_concurrent_lrc)
-        # Stem separation uses lock for serialization (high memory/CPU with vocal model)
-        self._stem_separation_lock = asyncio.Lock()
+        # Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
+        # Cloud operations (YouTube transcript, MVSEP, LLM alignment) don't acquire this.
+        self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
@@ -308,17 +301,17 @@ class JobQueue:
             return
 
         if job.type == JobType.ANALYZE:
-            # Analysis jobs use lock for serialization (allin1 is memory/CPU intensive)
-            async with self._analysis_lock:
+            # Analysis always uses local models (allin1, demucs) - acquire semaphore for entire job
+            async with self._local_model_semaphore:
                 await self._process_analysis_job(job)
         elif job.type == JobType.LRC:
-            # LRC jobs use semaphore for concurrency (faster-whisper is more efficient)
-            async with self._lrc_semaphore:
-                await self._process_lrc_job(job)
+            # LRC tries YouTube (cloud) first; semaphore acquired inside generate_lrc()
+            # only for Whisper/Qwen3 (local models)
+            await self._process_lrc_job(job)
         elif job.type == JobType.STEM_SEPARATION:
-            # Stem separation jobs use lock for serialization (BS-Roformer is memory/CPU intensive)
-            async with self._stem_separation_lock:
-                await self._process_stem_separation_job(job)
+            # Stem separation tries MVSEP (cloud) first; semaphore acquired inside
+            # process_stem_separation() only for local fallback
+            await self._process_stem_separation_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -713,62 +706,40 @@ class JobQueue:
                             except Exception as e:
                                 logger.error(f"Failed to update job {job.id} in database: {e}")
 
-                            logger.info(
-                                f"Releasing LRC semaphore to wait for child job {child_id}"
-                            )
-                            self._lrc_semaphore.release()
+                            logger.info(f"Waiting for child stem separation job {child_id}")
 
                             poll_interval = 3.0
                             max_wait = 7200.0  # 2 hour timeout
                             wait_start = time.time()
 
-                            try:
-                                while True:
-                                    await asyncio.sleep(poll_interval)
+                            while True:
+                                await asyncio.sleep(poll_interval)
 
-                                    child_job = await self.get_job(child_id)
-                                    if not child_job:
-                                        logger.error(f"Child job {child_id} not found")
-                                        raise LRCWorkerError(
-                                            f"Child stem separation job {child_id} not found"
-                                        )
+                                child_job = await self.get_job(child_id)
+                                if not child_job:
+                                    logger.error(f"Child job {child_id} not found")
+                                    raise LRCWorkerError(
+                                        f"Child stem separation job {child_id} not found"
+                                    )
 
-                                    if child_job.status == JobStatus.COMPLETED:
-                                        logger.info(
-                                            f"Child stem separation job {child_id} completed"
-                                        )
-                                        break
-                                    elif child_job.status == JobStatus.FAILED:
-                                        logger.error(
-                                            f"Child stem separation job {child_id} failed: {child_job.error_message}"
-                                        )
-                                        break
+                                if child_job.status == JobStatus.COMPLETED:
+                                    logger.info(
+                                        f"Child stem separation job {child_id} completed"
+                                    )
+                                    break
+                                elif child_job.status == JobStatus.FAILED:
+                                    logger.error(
+                                        f"Child stem separation job {child_id} failed: {child_job.error_message}"
+                                    )
+                                    break
 
-                                    # Timeout — fall back to full audio rather than failing the LRC job
-                                    if time.time() - wait_start > max_wait:
-                                        logger.warning(
-                                            f"Timeout waiting for child stem separation job {child_id} "
-                                            f"after {max_wait:.0f}s — falling back to full audio for transcription"
-                                        )
-                                        break
-                            except asyncio.CancelledError:
-                                logger.warning(
-                                    f"[{job.id}] Cancelled while polling for child job {child_id}"
-                                )
-                                raise
-                            finally:
-                                # Re-acquire the LRC semaphore slot before continuing.
-                                # asyncio.shield prevents CancelledError from interrupting
-                                # the acquire, ensuring the semaphore stays balanced with
-                                # the outer async with on line 316.
-                                logger.info(f"Re-acquiring LRC semaphore slot")
-                                try:
-                                    await asyncio.shield(self._lrc_semaphore.acquire())
-                                except asyncio.CancelledError:
-                                    # shield's inner future completed but we were
-                                    # cancelled externally — acquire still succeeded
-                                    pass
-                                logger.info(f"Re-acquired LRC semaphore slot")
+                                # Timeout — fall back to full audio rather than failing the LRC job
+                                if time.time() - wait_start > max_wait:
+                                    logger.warning(
+                                        f"Timeout waiting for child stem separation job {child_id} "
+                                        f"after {max_wait:.0f}s — falling back to full audio for transcription"
+                                    )
+                                    break
 
                             child_job = await self.get_job(child_id)
                             if (
@@ -829,6 +800,7 @@ class JobQueue:
                         youtube_url=None,
                         content_hash=request.content_hash,
                         vocals_stem_url=vocals_stem_url,
+                        local_model_semaphore=self._local_model_semaphore,
                     )
 
                     # Cache the Whisper transcription for future use (if not using cache)
@@ -992,6 +964,7 @@ class JobQueue:
                 r2_client=self.r2_client,
                 cache_manager=self.cache_manager,
                 mvsep_client=self._mvsep_client,
+                local_model_semaphore=self._local_model_semaphore,
             )
 
             # Persist completion to database
