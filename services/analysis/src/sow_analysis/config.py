@@ -93,11 +93,17 @@ class Settings(BaseSettings):
         return v
 
     # Queue Configuration
-    SOW_QUEUE_START_DELAY_SECONDS: int = 30  # Delay before processing starts (window to cancel/clear jobs)
+    SOW_QUEUE_START_DELAY_SECONDS: int = (
+        30  # Delay before processing starts (window to cancel/clear jobs)
+    )
 
     # Qwen3 Alignment Service Configuration
     SOW_QWEN3_BASE_URL: str = "http://qwen3:8000"  # Base URL for Qwen3 Alignment Service
     SOW_QWEN3_API_KEY: str = ""  # Optional API key for Qwen3 service authentication
+
+    # YouTube Proxy Configuration
+    SOW_YOUTUBE_PROXY: str = ""  # HTTP/HTTPS/SOCKS proxy URL for YouTube transcript requests (e.g., "http://proxy:8080", "socks5://proxy:1080")
+    SOW_YOUTUBE_PROXY_RETRIES: int = 3  # Number of retries on HTTP 429 when using rotating proxies
 
 
 settings = Settings()
