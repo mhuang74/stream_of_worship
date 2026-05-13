@@ -17,7 +17,6 @@ from typing import List, Optional
 
 from ..config import settings
 from ..models import LrcOptions
-from .queue import optional_semaphore
 from ..services import Qwen3Client
 from ..services.qwen3_client import OutputFormat
 
@@ -700,6 +699,8 @@ async def generate_lrc(
         WhisperTranscriptionError: If Whisper transcription fails
         LLMAlignmentError: If LLM alignment fails after retries
     """
+    from .queue import optional_semaphore
+
     if output_path is None:
         output_path = audio_path.with_suffix(".lrc")
 
