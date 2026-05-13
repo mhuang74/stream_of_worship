@@ -5,11 +5,13 @@ import pytest
 from sow_analysis.workers.youtube_transcript import (
     DEFAULT_LANGUAGES,
     ZH_LANG_CODES,
+    _build_proxy_config,
     _find_best_transcript,
     build_correction_prompt,
     extract_video_id,
     fetch_youtube_transcript,
     parse_lrc_response,
+    RotatingProxyConfig,
 )
 
 
@@ -393,3 +395,149 @@ class TestFetchYoutubeTranscript:
             result = await fetch_youtube_transcript("testVideoId")
 
         assert len(result) == 1
+
+
+class TestRotatingProxyConfig:
+    """Tests for RotatingProxyConfig."""
+
+    def test_prevent_keeping_connections_alive_is_true(self):
+        """RotatingProxyConfig always returns True for prevent_keeping_connections_alive."""
+        config = RotatingProxyConfig(
+            http_url="http://proxy:8080",
+            https_url="http://proxy:8080",
+            retries_when_blocked=3,
+        )
+        assert config.prevent_keeping_connections_alive is True
+
+    def test_retries_when_blocked_returns_configured_value(self):
+        """RotatingProxyConfig returns the configured retries_when_blocked value."""
+        config = RotatingProxyConfig(
+            http_url="http://proxy:8080",
+            https_url="http://proxy:8080",
+            retries_when_blocked=5,
+        )
+        assert config.retries_when_blocked == 5
+
+    def test_to_requests_dict_returns_proxy_urls(self):
+        """RotatingProxyConfig.to_requests_dict() returns the proxy URLs."""
+        config = RotatingProxyConfig(
+            http_url="http://proxy:8080",
+            https_url="https://proxy:8443",
+            retries_when_blocked=3,
+        )
+        result = config.to_requests_dict()
+        assert result["http"] == "http://proxy:8080"
+        assert result["https"] == "https://proxy:8443"
+
+    def test_uses_https_url_for_http_when_only_https_provided(self):
+        """When only https_url is provided, it's used for both http and https."""
+        config = RotatingProxyConfig(
+            http_url=None,
+            https_url="https://proxy:8443",
+            retries_when_blocked=3,
+        )
+        result = config.to_requests_dict()
+        assert result["http"] == "https://proxy:8443"
+        assert result["https"] == "https://proxy:8443"
+
+
+class TestBuildProxyConfig:
+    """Tests for _build_proxy_config()."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_proxy_not_configured(self):
+        """When SOW_YOUTUBE_PROXY is empty, returns None."""
+        from unittest.mock import patch
+
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
+            mock_settings.SOW_YOUTUBE_PROXY = ""
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+
+            result = _build_proxy_config()
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_rotating_proxy_config_when_proxy_configured(self):
+        """When SOW_YOUTUBE_PROXY is set, returns RotatingProxyConfig."""
+        from unittest.mock import patch
+
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
+            mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 5
+
+            result = _build_proxy_config()
+
+            assert result is not None
+            assert isinstance(result, RotatingProxyConfig)
+            assert result.retries_when_blocked == 5
+
+    @pytest.mark.asyncio
+    async def test_uses_default_retries_when_not_configured(self):
+        """Uses default retries when SOW_YOUTUBE_PROXY_RETRIES is not set."""
+        from unittest.mock import patch
+
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
+            mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+
+            result = _build_proxy_config()
+
+            assert result.retries_when_blocked == 3
+
+
+class TestFetchYoutubeTranscriptWithProxy:
+    """Tests for fetch_youtube_transcript() with proxy configuration."""
+
+    @pytest.mark.asyncio
+    async def test_passes_proxy_config_to_api_when_set(self):
+        """When proxy is configured, passes proxy_config to YouTubeTranscriptApi."""
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
+        mock_transcript = [mock_snippet]
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
+        ):
+            mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+
+            mock_api = MockApi.return_value
+            mock_api.fetch.return_value = mock_transcript
+
+            result = await fetch_youtube_transcript("testVideoId")
+
+            assert result == mock_transcript
+            MockApi.assert_called_once()
+            call_kwargs = MockApi.call_args[1]
+            assert "proxy_config" in call_kwargs
+            assert call_kwargs["proxy_config"] is not None
+            assert isinstance(call_kwargs["proxy_config"], RotatingProxyConfig)
+
+    @pytest.mark.asyncio
+    async def test_passes_none_to_api_when_proxy_not_set(self):
+        """When proxy is not configured, passes None as proxy_config to YouTubeTranscriptApi."""
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
+        mock_transcript = [mock_snippet]
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
+        ):
+            mock_settings.SOW_YOUTUBE_PROXY = ""
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+
+            mock_api = MockApi.return_value
+            mock_api.fetch.return_value = mock_transcript
+
+            result = await fetch_youtube_transcript("testVideoId")
+
+            assert result == mock_transcript
+            MockApi.assert_called_once()
+            call_kwargs = MockApi.call_args[1]
+            assert "proxy_config" in call_kwargs
+            assert call_kwargs["proxy_config"] is None

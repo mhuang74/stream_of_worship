@@ -20,6 +20,35 @@ from .lrc import LLMConfigError, LRCLine, LRCWorkerError
 logger = logging.getLogger(__name__)
 
 
+class RotatingProxyConfig:
+    """Proxy config with rotating-proxy features for IP ban avoidance.
+
+    Wraps youtube-transcript-api's GenericProxyConfig to add:
+    - prevent_keeping_connections_alive=True (triggers IP rotation per request)
+    - retries_when_blocked=N (retries on HTTP 429, also triggers rotation)
+
+    This is essential for rotating residential proxy services where each retry
+    gets a new IP from the pool.
+    """
+
+    def __init__(self, http_url: str, https_url: str, retries_when_blocked: int = 3):
+        from youtube_transcript_api.proxies import GenericProxyConfig
+
+        self._generic_config = GenericProxyConfig(http_url=http_url, https_url=https_url)
+        self._retries_when_blocked = retries_when_blocked
+
+    def to_requests_dict(self) -> dict:
+        return self._generic_config.to_requests_dict()
+
+    @property
+    def prevent_keeping_connections_alive(self) -> bool:
+        return True
+
+    @property
+    def retries_when_blocked(self) -> int:
+        return self._retries_when_blocked
+
+
 class YouTubeTranscriptError(LRCWorkerError):
     """Raised when YouTube transcript fetch or processing fails."""
 
@@ -153,6 +182,21 @@ EN_LANG_CODES = ["en-US", "en"]
 DEFAULT_LANGUAGES = ZH_LANG_CODES + EN_LANG_CODES
 
 
+def _build_proxy_config() -> Optional[RotatingProxyConfig]:
+    """Build proxy config from settings if proxy is configured.
+
+    Returns:
+        RotatingProxyConfig if SOW_YOUTUBE_PROXY is set, None otherwise
+    """
+    if not settings.SOW_YOUTUBE_PROXY:
+        return None
+    return RotatingProxyConfig(
+        http_url=settings.SOW_YOUTUBE_PROXY,
+        https_url=settings.SOW_YOUTUBE_PROXY,
+        retries_when_blocked=settings.SOW_YOUTUBE_PROXY_RETRIES,
+    )
+
+
 def _find_best_transcript(transcript_list: Any) -> Optional[Any]:
     """Find the best available transcript from a TranscriptList.
 
@@ -217,18 +261,20 @@ async def fetch_youtube_transcript(
     if languages is None:
         languages = DEFAULT_LANGUAGES
 
+    proxy_config = _build_proxy_config()
+
     loop = asyncio.get_event_loop()
 
     def _fetch_direct():
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        ytt_api = YouTubeTranscriptApi()
+        ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
         return ytt_api.fetch(video_id, languages=languages)
 
     def _fetch_via_list():
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        ytt_api = YouTubeTranscriptApi()
+        ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
         transcript_list = ytt_api.list(video_id)
         best = _find_best_transcript(transcript_list)
         if best is None:
