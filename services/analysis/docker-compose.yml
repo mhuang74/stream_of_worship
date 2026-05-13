@@ -31,6 +31,9 @@ x-common-env: &common-env
   SOW_MVSEP_STAGE_TIMEOUT: ${SOW_MVSEP_STAGE_TIMEOUT:-300}
   SOW_MVSEP_TOTAL_TIMEOUT: ${SOW_MVSEP_TOTAL_TIMEOUT:-900}
   SOW_MVSEP_DAILY_JOB_LIMIT: ${SOW_MVSEP_DAILY_JOB_LIMIT:-50}
+  # YouTube Proxy Configuration
+  SOW_YOUTUBE_PROXY: ${SOW_YOUTUBE_PROXY}
+  SOW_YOUTUBE_PROXY_RETRIES: ${SOW_YOUTUBE_PROXY_RETRIES:-3}
 
 # Define common GPU configuration using YAML anchor
 x-gpu-deploy: &gpu-deploy
