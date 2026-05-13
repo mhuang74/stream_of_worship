@@ -5,14 +5,28 @@ import hashlib
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, Optional, Union
 
 from ..config import settings
 from ..logging_config import set_job_id
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def optional_semaphore(sem: Optional[asyncio.Semaphore]) -> AsyncIterator[None]:
+    """Context manager that acquires semaphore if provided, otherwise no-op.
+
+    This is a Python 3.8+ compatible alternative to `async with (sem or nullcontext())`.
+    """
+    if sem is not None:
+        async with sem:
+            yield
+    else:
+        yield
 
 
 def _compute_lrc_cache_key(content_hash: str, lyrics_text: str) -> str:

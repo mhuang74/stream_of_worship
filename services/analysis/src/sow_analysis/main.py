@@ -89,6 +89,7 @@ async def lifespan(app: FastAPI):
         logger.warning("AudioSeparatorWrapper not available (audio-separator not installed)")
 
     # Log startup configuration (non-sensitive values only)
+    headers = ("Category", "Setting", "Value")
     config_rows = [
         ("Processing", "max_concurrent_local_model", str(settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS)),
         ("Processing", "cache_dir", str(settings.CACHE_DIR)),
@@ -110,18 +111,13 @@ async def lifespan(app: FastAPI):
         ("R2", "bucket", settings.SOW_R2_BUCKET),
         ("R2", "endpoint", settings.SOW_R2_ENDPOINT_URL or "(not set)"),
     ]
-    col_widths = (
-        max(len(r[0]) for r in config_rows),
-        max(len(r[1]) for r in config_rows),
-        max(len(r[2]) for r in config_rows),
-    )
+    col_widths = [max(len(r[i]) for r in config_rows + [headers]) for i in range(3)]
     separator = f"+-{'-' * col_widths[0]}-+-{'-' * col_widths[1]}-+-{'-' * col_widths[2]}-+"
-    logger.info("Startup configuration:\n%s", separator)
-    logger.info("| %-*s | %-*s | %-*s |", col_widths[0], "Category", col_widths[1], "Setting", col_widths[2], "Value")
-    logger.info("%s", separator)
-    for category, setting, value in config_rows:
-        logger.info("| %-*s | %-*s | %-*s |", col_widths[0], category, col_widths[1], setting, col_widths[2], value)
-    logger.info("%s", separator)
+    table_lines = [separator, f"| {headers[0]:<{col_widths[0]}} | {headers[1]:<{col_widths[1]}} | {headers[2]:<{col_widths[2]}} |", separator]
+    for row in config_rows:
+        table_lines.append(f"| {row[0]:<{col_widths[0]}} | {row[1]:<{col_widths[1]}} | {row[2]:<{col_widths[2]}} |")
+    table_lines.append(separator)
+    logger.info("Startup configuration:\n%s", "\n".join(table_lines))
 
     # Set job queue in routes
     set_job_queue(job_queue)

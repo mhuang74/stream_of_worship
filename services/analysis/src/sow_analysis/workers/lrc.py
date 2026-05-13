@@ -11,13 +11,13 @@ import json
 import logging
 import re
 import time
-from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 from ..config import settings
 from ..models import LrcOptions
+from .queue import optional_semaphore
 from ..services import Qwen3Client
 from ..services.qwen3_client import OutputFormat
 
@@ -731,9 +731,7 @@ async def generate_lrc(
         whisper_phrases = cached_phrases
     else:
         logger.info("No cached transcription found, running Whisper...")
-        # Acquire semaphore for local model execution (Whisper)
-        sem = local_model_semaphore or nullcontext()
-        async with sem:
+        async with optional_semaphore(local_model_semaphore):
             whisper_phrases = await _run_whisper_transcription(
                 audio_path,
                 model_name=options.whisper_model,
@@ -768,11 +766,8 @@ async def generate_lrc(
                     f"Using LLM-aligned timestamps."
                 )
             else:
-                # Proceed with Qwen3 refinement
                 try:
-                    # Acquire semaphore for local model execution (Qwen3)
-                    sem = local_model_semaphore or nullcontext()
-                    async with sem:
+                    async with optional_semaphore(local_model_semaphore):
                         refined_lrc_text = await _qwen3_refine(
                             content_hash=content_hash,
                             lyrics_text=lyrics_text,
