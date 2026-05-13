@@ -9,7 +9,6 @@ import logging
 import shutil
 import tempfile
 import time
-from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -17,6 +16,7 @@ from ..config import settings
 from ..models import Job, JobResult, JobStatus, StemSeparationJobRequest
 from ..storage.cache import CacheManager
 from ..storage.r2 import R2Client
+from .queue import optional_semaphore
 from .separator_wrapper import AudioSeparatorWrapper
 
 if TYPE_CHECKING:
@@ -137,8 +137,7 @@ async def _separate_with_mvsep_fallback(
     # Check if MVSEP is available
     if not mvsep_client or not mvsep_client.is_available:
         logger.info("MVSEP not available, using local audio-separator")
-        sem = local_model_semaphore or nullcontext()
-        async with sem:
+        async with optional_semaphore(local_model_semaphore):
             return await separator_wrapper.separate_stems(input_path, output_dir)
 
     def _time_remaining() -> float:
@@ -177,8 +176,7 @@ async def _separate_with_mvsep_fallback(
         # Stage 1 MVSEP failed — fall back to full local pipeline
         logger.info("MVSEP Stage 1 failed, falling back to full local pipeline")
         _set_job_stage(job, "fallback_local")
-        sem = local_model_semaphore or nullcontext()
-        async with sem:
+        async with optional_semaphore(local_model_semaphore):
             return await separator_wrapper.separate_stems(input_path, output_dir)
 
     vocals, instrumental = stage1_result
@@ -186,8 +184,7 @@ async def _separate_with_mvsep_fallback(
     if not vocals:
         logger.error("MVSEP Stage 1 succeeded but no vocals file produced")
         _set_job_stage(job, "fallback_local")
-        sem = local_model_semaphore or nullcontext()
-        async with sem:
+        async with optional_semaphore(local_model_semaphore):
             return await separator_wrapper.separate_stems(input_path, output_dir)
 
     # --- Stage 2: De-reverb (optional) ---
@@ -224,8 +221,7 @@ async def _separate_with_mvsep_fallback(
         # Stage 2 MVSEP failed — local Stage 2 only (cross-backend handoff)
         logger.info("MVSEP Stage 2 failed, using local Stage 2 fallback")
         _set_job_stage(job, "fallback_local_stage2")
-        sem = local_model_semaphore or nullcontext()
-        async with sem:
+        async with optional_semaphore(local_model_semaphore):
             dry_vocals, _ = await separator_wrapper.remove_reverb(vocals, stage2_dir)
         stage2_result = (dry_vocals, None)
 

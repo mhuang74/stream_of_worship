@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     CACHE_DIR: Path = Path("/cache")
     SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = 1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
 
+    @field_validator("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS")
+    @classmethod
+    def _validate_concurrent_jobs(cls, v: int) -> int:
+        """Ensure concurrent jobs is at least 1 to prevent deadlock."""
+        if v < 1:
+            raise ValueError("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS must be at least 1")
+        return v
+
     # Demucs Configuration
     SOW_DEMUCS_MODEL: str = "htdemucs"
     SOW_DEMUCS_DEVICE: str = "cpu"  # "cuda" or "cpu"
