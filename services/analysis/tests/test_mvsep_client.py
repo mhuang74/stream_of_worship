@@ -53,6 +53,7 @@ from sow_analysis.services.mvsep_client import (
     MvsepClientError,
     MvsepNonRetriableError,
     MvsepTimeoutError,
+    MvsepQueueFullError,
 )
 
 
@@ -165,6 +166,54 @@ async def test_submit_403_raises_non_retriable(client):
             )
 
         assert client._disabled is True
+
+
+@pytest.mark.asyncio
+async def test_submit_400_queue_full_raises_queue_full_error(client):
+    """Test 400 with queue-full message raises MvsepQueueFullError (retriable with longer backoff)."""
+    error_response = MagicMock()
+    error_response.status_code = 400
+    error_response.text = '{"success":false,"errors":["You already have unprocessed file in queue. Please wait before adding new file!"]}'
+
+    with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(),
+            response=error_response,
+        )
+
+        with pytest.raises(MvsepQueueFullError, match="queue full"):
+            await client._submit_job(
+                client._test_audio,
+                sep_type=48,
+                add_opt1=11,
+            )
+
+        assert client._disabled is False
+
+
+@pytest.mark.asyncio
+async def test_submit_400_other_raises_client_error(client):
+    """Test 400 without queue-full message raises MvsepClientError (retriable with normal backoff)."""
+    error_response = MagicMock()
+    error_response.status_code = 400
+    error_response.text = '{"success":false,"errors":["Invalid parameter"]}'
+
+    with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(),
+            response=error_response,
+        )
+
+        with pytest.raises(MvsepClientError, match="HTTP error 400"):
+            await client._submit_job(
+                client._test_audio,
+                sep_type=48,
+                add_opt1=11,
+            )
+
+        assert client._disabled is False
 
 
 def test_is_available_disabled_after_non_retriable(client):
