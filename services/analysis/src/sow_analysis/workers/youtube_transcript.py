@@ -296,7 +296,7 @@ async def fetch_youtube_transcript(
             logger.info(f"Fetched {len(transcript)} transcript segments from YouTube")
             return transcript
     except Exception as e:
-        logger.info(f"Direct fetch failed for {video_id}, trying list fallback: {e}")
+        logger.error(f"Direct fetch failed for {video_id}, trying list fallback: {e}")
 
     # Phase 2: List available transcripts and pick the best one
     try:
@@ -312,6 +312,7 @@ async def fetch_youtube_transcript(
     except YouTubeTranscriptError:
         raise
     except Exception as e:
+        logger.error(f"List fallback also failed for {video_id}: {e}")
         raise YouTubeTranscriptError(
             f"Failed to fetch YouTube transcript for video {video_id}: {e}"
         ) from e
