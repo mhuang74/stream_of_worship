@@ -441,7 +441,7 @@ class DatabaseClient:
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (content_hash) DO UPDATE SET
                     hash_prefix = EXCLUDED.hash_prefix,
-                    song_id = EXCLUDED.song_id,
+                    song_id = CASE WHEN recordings.song_id IS NOT NULL THEN recordings.song_id ELSE EXCLUDED.song_id END,
                     original_filename = EXCLUDED.original_filename,
                     file_size_bytes = EXCLUDED.file_size_bytes,
                     imported_at = EXCLUDED.imported_at,
@@ -545,6 +545,7 @@ class DatabaseClient:
         status: Optional[str] = None,
         visibility: Optional[str] = None,
         lrc_status: Optional[str] = None,
+        download_status: Optional[str] = None,
         limit: Optional[int] = None,
         include_deleted: bool = False,
     ) -> list[Recording]:
@@ -554,6 +555,7 @@ class DatabaseClient:
             status: Filter by analysis status.
             visibility: Filter by visibility status.
             lrc_status: Filter by LRC status.
+            download_status: Filter by download status.
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
 
@@ -585,6 +587,13 @@ class DatabaseClient:
             else:
                 query += " AND lrc_status = %s"
                 params.append(lrc_status)
+
+        if download_status:
+            if download_status == "incomplete":
+                query += " AND download_status IN ('pending', 'processing', 'failed')"
+            else:
+                query += " AND download_status = %s"
+                params.append(download_status)
 
         query += " ORDER BY imported_at DESC"
 
