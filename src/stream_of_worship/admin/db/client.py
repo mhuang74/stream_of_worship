@@ -15,6 +15,7 @@ import psycopg.errors
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
+    ACTIVE_ROW_COUNT_QUERY,
     CREATE_INDEXES,
     CREATE_RECORDINGS_TABLE,
     CREATE_RECORDINGS_UPDATE_TRIGGER,
@@ -106,9 +107,9 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
 
-        # Row counts — tolerate missing tables (e.g. status check before init)
+        # Row counts (active/non-deleted only) — tolerate missing tables
         try:
-            cursor.execute(ROW_COUNT_QUERY)
+            cursor.execute(ACTIVE_ROW_COUNT_QUERY)
             table_counts = {row[0]: row[1] for row in cursor.fetchall()}
         except psycopg.errors.UndefinedTable:
             self.connection.rollback()
@@ -260,17 +261,21 @@ class DatabaseClient:
             logger.info(f"Bulk insert completed: {len(songs)} songs in {elapsed:.2f}s ({len(songs)/elapsed:.1f} songs/sec)")
             return len(songs)
 
-    def get_song(self, song_id: str) -> Optional[Song]:
+    def get_song(self, song_id: str, include_deleted: bool = False) -> Optional[Song]:
         """Get a song by ID.
 
         Args:
             song_id: The song ID.
+            include_deleted: Whether to include soft-deleted songs.
 
         Returns:
             ``Song`` or ``None`` if not found.
         """
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
+        if include_deleted:
+            cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
+        else:
+            cursor.execute("SELECT * FROM songs WHERE id = %s AND deleted_at IS NULL", (song_id,))
         row = cursor.fetchone()
 
         if row:
@@ -631,6 +636,7 @@ class DatabaseClient:
 
         if not include_deleted:
             query += " AND r.deleted_at IS NULL"
+            query += " AND (s.deleted_at IS NULL OR s.id IS NULL)"
 
         if status:
             query += " AND r.analysis_status = %s"

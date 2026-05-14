@@ -167,6 +167,13 @@ UNION ALL
 SELECT 'recordings' as table_name, COUNT(*) as row_count FROM recordings;
 """
 
+# SQL to count active (non-deleted) rows in each table
+ACTIVE_ROW_COUNT_QUERY = """
+SELECT 'songs' as table_name, COUNT(*) as row_count FROM songs WHERE deleted_at IS NULL
+UNION ALL
+SELECT 'recordings' as table_name, COUNT(*) as row_count FROM recordings WHERE deleted_at IS NULL;
+"""
+
 # Column lists for JOIN queries (used by catalog service and other query builders)
 SONG_COLUMNS_FOR_JOIN = """
     s.id, s.title, s.title_pinyin, s.composer, s.lyricist,

@@ -2139,10 +2139,10 @@ def check_status(
         pending_recordings = db_client.list_recordings(status="processing")
         pending_recordings.extend(db_client.list_recordings(status="pending"))
 
-        # Also check for pending LRC jobs
+        # Also check for pending LRC jobs (exclude soft-deleted)
         cursor = db_client.connection.cursor()
         cursor.execute(
-            "SELECT hash_prefix FROM recordings WHERE lrc_status IN ('pending', 'processing')"
+            "SELECT hash_prefix FROM recordings WHERE lrc_status IN ('pending', 'processing') AND deleted_at IS NULL"
         )
         lrc_pending_hashes = [row[0] for row in cursor.fetchall()]
 
@@ -2238,13 +2238,15 @@ def check_status(
                 console.print(f"[yellow]Failed to sync {failed_count} job(s)[/yellow]")
             console.print("")
 
-    # List pending recordings
+    # List pending recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
     cursor.execute("""
         SELECT r.*, s.title as song_title
         FROM recordings r
         LEFT JOIN songs s ON r.song_id = s.id
-        WHERE r.analysis_status != 'completed' OR r.lrc_status != 'completed'
+        WHERE (r.analysis_status != 'completed' OR r.lrc_status != 'completed')
+          AND r.deleted_at IS NULL
+          AND (s.deleted_at IS NULL OR s.id IS NULL)
         ORDER BY r.imported_at DESC
         """)
 
@@ -2532,12 +2534,13 @@ def _force_sync_all_pending(
     console: Console,
 ) -> None:
     """Force update all pending recordings."""
-    # Get all non-completed recordings
+    # Get all non-completed recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
     cursor.execute("""
         SELECT * FROM recordings
-        WHERE analysis_status IN ('pending', 'processing', 'failed')
-           OR lrc_status IN ('pending', 'processing', 'failed')
+        WHERE (analysis_status IN ('pending', 'processing', 'failed')
+           OR lrc_status IN ('pending', 'processing', 'failed'))
+          AND deleted_at IS NULL
         """)
     rows = cursor.fetchall()
 
