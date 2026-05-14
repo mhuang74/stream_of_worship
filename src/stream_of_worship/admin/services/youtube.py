@@ -229,16 +229,16 @@ class YouTubeDownloader:
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
 
-    def download_with_info(self, query: str) -> tuple[Path, Optional[str]]:
-        """Download audio from YouTube by search query and return path + webpage_url.
+    def download_with_info(self, query: str) -> tuple[Path, Optional[str], Optional[str]]:
+        """Download audio from YouTube by search query and return path + webpage_url + video_title.
 
-        Same as download() but also returns the YouTube URL for the downloaded video.
+        Same as download() but also returns the YouTube URL and video title for the downloaded video.
 
         Args:
             query: YouTube search query string
 
         Returns:
-            Tuple of (Path to downloaded audio file, YouTube webpage_url or None)
+            Tuple of (Path to downloaded audio file, YouTube webpage_url or None, video title or None)
 
         Raises:
             RuntimeError: If no results are found or the download fails
@@ -270,21 +270,24 @@ class YouTubeDownloader:
                     raise RuntimeError(f"No results found for query: {query}")
 
                 webpage_url: Optional[str] = None
+                video_title: Optional[str] = None
                 if "entries" in info and info["entries"]:
                     video_info = info["entries"][0]
                     webpage_url = video_info.get("webpage_url")
+                    video_title = video_info.get("title")
                 else:
                     webpage_url = info.get("webpage_url")
+                    video_title = info.get("title")
 
                 mp3_files = list(self.output_dir.glob("*.mp3"))
                 if mp3_files:
-                    return mp3_files[0], webpage_url
+                    return mp3_files[0], webpage_url, video_title
 
                 audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
                 for ext in audio_exts:
                     files = list(self.output_dir.glob(f"*{ext}"))
                     if files:
-                        return files[0], webpage_url
+                        return files[0], webpage_url, video_title
 
                 existing_files = list(self.output_dir.iterdir())
                 raise RuntimeError(

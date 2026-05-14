@@ -305,7 +305,7 @@ class TestDownloadWithInfo:
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
     def test_download_with_info_returns_path_and_url(self, mock_ydl_class, tmp_path):
-        """Returns tuple of (Path, webpage_url) when download succeeds."""
+        """Returns tuple of (Path, webpage_url, video_title) when download succeeds."""
         mp3_file = tmp_path / "Test Song.mp3"
         mp3_file.write_bytes(b"fake mp3 data")
 
@@ -321,10 +321,11 @@ class TestDownloadWithInfo:
         mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
 
         downloader = YouTubeDownloader(output_dir=tmp_path)
-        path, url = downloader.download_with_info("Test Song query")
+        path, url, video_title = downloader.download_with_info("Test Song query")
 
         assert path == mp3_file
         assert url == "https://youtube.com/watch?v=abc123"
+        assert video_title == "Test Song"
         mock_ydl.extract_info.assert_called_once_with(
             "ytsearch1:Test Song query", download=True
         )
@@ -345,10 +346,11 @@ class TestDownloadWithInfo:
         mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
 
         downloader = YouTubeDownloader(output_dir=tmp_path)
-        path, url = downloader.download_with_info("query")
+        path, url, video_title = downloader.download_with_info("query")
 
         assert path == mp3_file
         assert url == "https://youtube.com/watch?v=xyz789"
+        assert video_title == "Direct Video"
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
     def test_download_with_info_no_results(self, mock_ydl_class, tmp_path):
@@ -364,7 +366,7 @@ class TestDownloadWithInfo:
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
     def test_download_with_info_missing_webpage_url(self, mock_ydl_class, tmp_path):
-        """Returns None for webpage_url when not in video info."""
+        """Returns None for webpage_url and video_title when not in video info."""
         mp3_file = tmp_path / "Song.mp3"
         mp3_file.write_bytes(b"fake mp3 data")
 
@@ -379,10 +381,11 @@ class TestDownloadWithInfo:
         mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
 
         downloader = YouTubeDownloader(output_dir=tmp_path)
-        path, url = downloader.download_with_info("query")
+        path, url, video_title = downloader.download_with_info("query")
 
         assert path == mp3_file
         assert url is None
+        assert video_title == "Song"
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
     def test_download_with_info_error(self, mock_ydl_class, tmp_path):

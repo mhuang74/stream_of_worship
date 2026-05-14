@@ -733,10 +733,14 @@ def download_audio(
         console.print(f"[dim]Using provided URL: {url}[/dim]")
     else:
         # Build search query with official lyrics suffix
+        # Omit album when title equals album name to avoid album MV winning search
+        album_for_query = song.album_name
+        if song.title == song.album_name:
+            album_for_query = None
         query = downloader.build_search_query(
             title=song.title,
             composer=song.composer,
-            album=song.album_name,
+            album=album_for_query,
             suffix=OFFICIAL_LYRICS_SUFFIX,
         )
         console.print(f"[dim]Search query: {query}[/dim]")
@@ -757,6 +761,13 @@ def download_audio(
 
     # Step 3: Display video preview
     _display_video_preview(video_info, console)
+
+    # Step 3.5: Validate video title matches song title
+    video_title = video_info.get("title") if video_info else None
+    chinese_title = _extract_chinese_title_from_youtube(video_title)
+    if chinese_title and chinese_title != song.title:
+        console.print(f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
+        console.print(f"[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]")
 
     # Step 4: Confirmation prompt
     download_confirmed = skip_confirm
@@ -785,6 +796,13 @@ def download_audio(
             raise typer.Exit(1)
 
         _display_video_preview(video_info, console)
+
+        # Validate video title matches song title
+        video_title = video_info.get("title") if video_info else None
+        chinese_title = _extract_chinese_title_from_youtube(video_title)
+        if chinese_title and chinese_title != song.title:
+            console.print(f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
+            console.print(f"[yellow]  This may be the wrong video.[/yellow]")
 
         # Confirm the manual URL
         if not _prompt_confirmation("Download this video?"):
@@ -832,6 +850,7 @@ def download_audio(
         file_size_bytes=file_size,
         imported_at=datetime.now().isoformat(),
         r2_audio_url=r2_url,
+        download_status="completed",
         youtube_url=video_info.get("webpage_url"),
     )
     db_client.insert_recording(recording)
@@ -1942,8 +1961,9 @@ def check_status(
 
         incomplete_lrc = db_client.list_recordings(lrc_status="incomplete")
         incomplete_analysis = db_client.list_recordings(status="incomplete")
+        incomplete_download = db_client.list_recordings(download_status="incomplete")
 
-        # Deduplicate: a recording may be incomplete on both
+        # Deduplicate: a recording may be incomplete on multiple statuses
         all_hashes = set()
         reconcile_queue = []
         for rec in incomplete_lrc:
@@ -1954,13 +1974,18 @@ def check_status(
             if rec.hash_prefix not in all_hashes:
                 all_hashes.add(rec.hash_prefix)
                 reconcile_queue.append(rec)
+        for rec in incomplete_download:
+            if rec.hash_prefix not in all_hashes:
+                all_hashes.add(rec.hash_prefix)
+                reconcile_queue.append(rec)
 
         if not reconcile_queue:
-            console.print("[green]No recordings with incomplete LRC or analysis status.[/green]")
+            console.print("[green]No recordings with incomplete LRC, analysis, or download status.[/green]")
         else:
             console.print(f"[cyan]Scanning R2 across {len(reconcile_queue)} recording(s)...[/cyan]")
             reconciled_lrc = 0
             reconciled_analysis = 0
+            reconciled_download = 0
             error_count = 0
 
             for rec in reconcile_queue:
@@ -2036,11 +2061,38 @@ def check_status(
                             f"  [red]✗[/red] {rec.hash_prefix}: error parsing analysis.json: {e}"
                         )
 
+                # Download status reconciliation
+                if rec.download_status in ("pending", "processing", "failed"):
+                    try:
+                        audio_url = r2_client.audio_exists(rec.hash_prefix)
+                        if audio_url:
+                            db_client.update_recording_download(
+                                hash_prefix=rec.hash_prefix,
+                                download_status="completed",
+                            )
+                            if not rec.r2_audio_url:
+                                db_client.update_recording_status(
+                                    hash_prefix=rec.hash_prefix,
+                                    r2_audio_url=audio_url,
+                                )
+                            reconciled_download += 1
+                            console.print(
+                                f"  [green]✓[/green] {rec.song_id or rec.hash_prefix}: "
+                                f"download {rec.download_status} → completed"
+                            )
+                    except ClientError as e:
+                        error_count += 1
+                        console.print(
+                            f"  [red]✗[/red] {rec.hash_prefix}: R2 error checking audio: {e}"
+                        )
+
             parts = []
             if reconciled_lrc > 0:
                 parts.append(f"{reconciled_lrc} LRC")
             if reconciled_analysis > 0:
                 parts.append(f"{reconciled_analysis} analysis")
+            if reconciled_download > 0:
+                parts.append(f"{reconciled_download} download")
             if parts:
                 console.print(
                     f"[green]Reconciled {' and '.join(parts)} status(es) from R2.[/green]"
@@ -3488,6 +3540,33 @@ def _print_dry_run(db_client: DatabaseClient, song_ids: list[str]) -> None:
     console.print(f"\n[dim]Total: {len(song_ids)} song(s)[/dim]")
 
 
+import re
+
+
+def _extract_chinese_title_from_youtube(video_title: Optional[str]) -> Optional[str]:
+    """Extract the Chinese title from YouTube video title format.
+
+    YouTube MV titles are typically formatted as:
+    "【一生敬拜祢 All the Days of My Life】官方歌詞版MV ..."
+
+    This function extracts the Chinese portion from the first bracketed segment.
+
+    Args:
+        video_title: YouTube video title
+
+    Returns:
+        Chinese title or None if not found
+    """
+    if not video_title:
+        return None
+
+    match = re.match(r"【([^】\s]+)", video_title)
+    if match:
+        return match.group(1)
+
+    return None
+
+
 def _download_and_create_recording(
     song_id: str,
     song: Song,
@@ -3510,21 +3589,41 @@ def _download_and_create_recording(
     try:
         downloader = YouTubeDownloader()
 
+        album_for_query = song.album_name
+        if song.title == song.album_name:
+            album_for_query = None
+
         query = downloader.build_search_query(
             title=song.title,
             composer=song.composer,
-            album=song.album_name,
+            album=album_for_query,
             suffix=OFFICIAL_LYRICS_SUFFIX,
         )
 
         console.print(f"  Downloading from YouTube...")
-        audio_path, youtube_url = downloader.download_with_info(query)
+        audio_path, youtube_url, video_title = downloader.download_with_info(query)
+
+        chinese_title = _extract_chinese_title_from_youtube(video_title)
+        if chinese_title and chinese_title != song.title:
+            console.print(f"  [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
+            console.print(f"  [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]")
+            audio_path.unlink(missing_ok=True)
+            return None, f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'"
 
         file_size = audio_path.stat().st_size
         console.print(f"  [dim]Downloaded: {audio_path.name} ({_format_size_mb(file_size)})[/dim]")
 
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
+
+        existing_recording = db_client.get_recording_by_hash(prefix)
+        if existing_recording:
+            existing_song = db_client.get_song(existing_recording.song_id) if existing_recording.song_id else None
+            existing_song_title = existing_song.title if existing_song else existing_recording.song_id
+            console.print(f"  [yellow]⚠ Duplicate hash: audio matches existing recording for song '{existing_song_title}'[/yellow]")
+            console.print(f"  [yellow]  This song likely downloaded the wrong video. Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]")
+            audio_path.unlink(missing_ok=True)
+            return None, f"duplicate hash: shares audio with song '{existing_song_title}'"
 
         console.print(f"  Uploading to R2...")
         r2_url = r2_client.upload_audio(audio_path, prefix)
@@ -3590,15 +3689,27 @@ def _download_if_needed(
 
         downloader = YouTubeDownloader()
 
+        album_for_query = song.album_name
+        if song.title == song.album_name:
+            album_for_query = None
+
         query = downloader.build_search_query(
             title=song.title,
             composer=song.composer,
-            album=song.album_name,
+            album=album_for_query,
             suffix=OFFICIAL_LYRICS_SUFFIX,
         )
 
         console.print(f"[{song_id}] Downloading audio from YouTube...")
-        audio_path, youtube_url = downloader.download_with_info(query)
+        audio_path, youtube_url, video_title = downloader.download_with_info(query)
+
+        chinese_title = _extract_chinese_title_from_youtube(video_title)
+        if chinese_title and chinese_title != song.title:
+            console.print(f"[{song_id}] [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
+            console.print(f"[{song_id}] [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]")
+            audio_path.unlink(missing_ok=True)
+            db_client.update_recording_download(hash_prefix, "failed")
+            return {"download": "failed", "error": f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'"}
 
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
@@ -3697,7 +3808,7 @@ def _process_batch(
                 downloaded_count += 1
             elif result["download"] == "skipped_r2":
                 skip_reason = result.get("skip_reason", "audio on R2")
-                console.print(f"  [dim][skipped: {skip_reason}][/dim]")
+                console.print(f"  [yellow]→ skipped: {skip_reason}[/yellow]")
                 skipped_count += 1
             else:
                 failed_count += 1
@@ -3715,23 +3826,23 @@ def _process_batch(
         for song_id in song_ids:
             # Skip if download failed
             if results.get(song_id, {}).get("download") == "failed":
-                console.print(f"  [dim]→ {song_id} (skipped: download failed)[/dim]")
+                console.print(f"  [yellow]→ {song_id} (skipped: download failed)[/yellow]")
                 continue
 
             # Skip if LRC already completed (from previous run or R2 check)
             if results.get(song_id, {}).get("lrc") == "completed":
-                console.print(f"  [dim]→ {song_id} (skipped: LRC completed)[/dim]")
+                console.print(f"  [yellow]→ {song_id} (skipped: LRC completed)[/yellow]")
                 continue
 
             recording = db_client.get_recording_by_song_id(song_id)
             if not recording:
-                console.print(f"  [dim]→ {song_id} (skipped: no recording)[/dim]")
+                console.print(f"  [yellow]→ {song_id} (skipped: no recording)[/yellow]")
                 continue
 
             # Get song for lyrics
             song = db_client.get_song(song_id)
             if not song or not song.lyrics_raw:
-                console.print(f"  [dim]→ {song_id} (skipped: no lyrics)[/dim]")
+                console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
                 continue
 
             # Check if R2 already has LRC (skip when force_lrc)
@@ -3742,7 +3853,7 @@ def _process_batch(
                     results[song_id] = results.get(song_id, {})
                     results[song_id]["lrc"] = "completed"
                     results[song_id]["lrc_source"] = "r2_preexisting"
-                    console.print(f"  [dim]→ {song_id} (skipped: LRC on R2)[/dim]")
+                    console.print(f"  [yellow]→ {song_id} (skipped: LRC on R2)[/yellow]")
                     continue
 
             # Check for existing processing job (not stale) - skip when force_lrc
