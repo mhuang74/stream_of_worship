@@ -10,6 +10,7 @@ from textual.app import ComposeResult
 
 logger = logging.getLogger("sow_app.screens.browse")
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
 
@@ -24,7 +25,7 @@ class BrowseScreen(Screen):
     """Screen for browsing and searching songs."""
 
     BINDINGS = [
-        ("s", "add_to_songset", "Add to Songset"),
+        ("a", "add_to_songset", "Add to Songset"),
         ("space", "toggle_playback", "Play/Stop"),
         ("left", "skip_backward", "Skip -10s"),
         ("right", "skip_forward", "Skip +10s"),
@@ -136,6 +137,14 @@ class BrowseScreen(Screen):
             on_state_changed=self._on_state_changed,
             on_finished=self._on_finished,
         )
+        self.call_after_refresh(self._focus_song_table)
+
+    def _focus_song_table(self) -> None:
+        """Focus the song table and set cursor to first row."""
+        table = self.query_one("#song_table", DataTable)
+        table.focus()
+        if len(table.rows) > 0:
+            table.move_cursor(row=0)
 
     def on_unmount(self) -> None:
         """Unregister callbacks to prevent memory leaks."""
@@ -145,7 +154,10 @@ class BrowseScreen(Screen):
         """Handle position updates from playback service."""
 
         def _update():
-            self.query_one(PlaybackBar).update_display(position)
+            try:
+                self.query_one(PlaybackBar).update_display(position)
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -153,11 +165,14 @@ class BrowseScreen(Screen):
         """Handle state changes from playback service."""
 
         def _update():
-            self.query_one(PlaybackBar).update_visibility()
-            if state != PlaybackState.STOPPED:
-                self.query_one(PlaybackBar).update_display(
-                    self.app.playback.get_position()
-                )
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+                if state != PlaybackState.STOPPED:
+                    self.query_one(PlaybackBar).update_display(
+                        self.app.playback.get_position()
+                    )
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -165,7 +180,10 @@ class BrowseScreen(Screen):
         """Handle playback finished."""
 
         def _update():
-            self.query_one(PlaybackBar).update_visibility()
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
