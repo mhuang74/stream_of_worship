@@ -287,8 +287,8 @@ class AppConfig:
             value: Configuration value
         """
         attr_name = self._key_to_attr(key)
-        if not hasattr(self, attr_name):
-            raise ValueError(f"Invalid config key: {key}")
+        if attr_name not in self.__dataclass_fields__:
+            raise ValueError(f"Invalid or read-only config key: {key}")
 
         current = getattr(self, attr_name)
         if isinstance(current, bool):
