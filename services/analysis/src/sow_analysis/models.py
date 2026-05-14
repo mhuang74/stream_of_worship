@@ -109,6 +109,7 @@ class JobResult(BaseModel):
     # LRC results
     lrc_url: Optional[str] = None
     line_count: Optional[int] = None
+    lrc_source: Optional[str] = None  # "youtube_transcript" or "whisper_asr"
 
     # Stem separation results
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)

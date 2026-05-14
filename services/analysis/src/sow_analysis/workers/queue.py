@@ -618,6 +618,7 @@ class JobQueue:
                 lrc_path = temp_path / "lyrics.lrc"
                 whisper_phrases = []
                 line_count = 0
+                lrc_source: Optional[str] = None
 
                 # Stage 1: Try YouTube transcript first — no audio download or stem needed
                 youtube_lrc_result = None
@@ -635,6 +636,7 @@ class JobQueue:
                     )
                     if youtube_lrc_result:
                         lrc_path, line_count, whisper_phrases = youtube_lrc_result
+                        lrc_source = "youtube_transcript"
                         job.stage = "youtube_transcript_done"
                         logger.info(
                             "YouTube transcript succeeded — skipping audio download and stem separation"
@@ -830,6 +832,7 @@ class JobQueue:
                         content_hash=request.content_hash,
                         vocals_stem_url=vocals_stem_url,
                     )
+                    lrc_source = "whisper_asr"
 
                     # Cache the Whisper transcription for future use (if not using cache)
                     if cached_phrases is None and whisper_phrases:
@@ -857,7 +860,7 @@ class JobQueue:
                 logger.info(f"LRC result cached with key: {lrc_cache_key}")
 
                 # Set job result
-                job.result = JobResult(lrc_url=lrc_url, line_count=line_count)
+                job.result = JobResult(lrc_url=lrc_url, line_count=line_count, lrc_source=lrc_source)
                 job.status = JobStatus.COMPLETED
                 job.progress = 1.0
                 job.stage = "complete"
