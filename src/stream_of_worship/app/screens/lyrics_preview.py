@@ -19,6 +19,7 @@ from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.playback import PlaybackPosition, PlaybackService, PlaybackState
+from stream_of_worship.app.widgets import PlaybackBar
 
 logger = get_logger(__name__)
 
@@ -80,7 +81,7 @@ class LyricsPreviewScreen(Screen):
             with Vertical(id="lyrics_panel"):
                 yield Static("", id="current_lyric", classes="lyric-current")
                 yield Static("", id="next_lyric", classes="lyric-next")
-                yield Static("", id="progress_bar")
+                yield PlaybackBar(self.playback, id="playback_bar")
 
             # Right panel (narrower) - Debug info
             with Vertical(id="debug_panel"):
@@ -279,7 +280,7 @@ class LyricsPreviewScreen(Screen):
                 self._highlight_lrc_row()
 
             # Update progress bar
-            self._update_progress_bar(position)
+            self.query_one(PlaybackBar).update_display(position)
 
         self.call_after_refresh(_update)
 
@@ -303,27 +304,6 @@ class LyricsPreviewScreen(Screen):
         else:
             next_widget.update("")
 
-    def _update_progress_bar(self, position: PlaybackPosition) -> None:
-        """Update the progress bar display.
-
-        Args:
-            position: Current playback position
-        """
-        progress_widget = self.query_one("#progress_bar", Static)
-
-        current_str = self._format_timestamp(position.current_seconds)
-        total_str = self._format_timestamp(position.total_seconds)
-
-        # Build visual progress bar
-        bar_width = 30
-        filled = int((position.progress_percent / 100) * bar_width)
-        empty = bar_width - filled
-
-        bar = "█" * filled + "░" * empty
-        icon = "⏸" if self.playback.is_paused else "▶"
-
-        progress_widget.update(f"{icon} {current_str} / {total_str}  [{bar}]")
-
     def _highlight_lrc_row(self) -> None:
         """Highlight the current row in the LRC table and auto-scroll to it."""
         table = self.query_one("#lrc_table", DataTable)
@@ -342,9 +322,9 @@ class LyricsPreviewScreen(Screen):
         """
         # Schedule UI update on main thread (callbacks run in background thread)
         def _update():
-            # Update progress bar to reflect new state icon
-            position = self.playback.get_position()
-            self._update_progress_bar(position)
+            self.query_one(PlaybackBar).update_visibility()
+            if state != PlaybackState.STOPPED:
+                self.query_one(PlaybackBar).update_display(self.playback.get_position())
 
         self.call_after_refresh(_update)
 
@@ -356,6 +336,7 @@ class LyricsPreviewScreen(Screen):
         def _update():
             self.current_line_index = -1
             self._update_lyrics_display()
+            self.query_one(PlaybackBar).update_visibility()
 
         self.call_after_refresh(_update)
 
