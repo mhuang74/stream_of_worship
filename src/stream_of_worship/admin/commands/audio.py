@@ -2139,10 +2139,14 @@ def check_status(
         pending_recordings = db_client.list_recordings(status="processing")
         pending_recordings.extend(db_client.list_recordings(status="pending"))
 
-        # Also check for pending LRC jobs (exclude soft-deleted)
+        # Also check for pending LRC jobs (exclude soft-deleted recordings and songs)
         cursor = db_client.connection.cursor()
         cursor.execute(
-            "SELECT hash_prefix FROM recordings WHERE lrc_status IN ('pending', 'processing') AND deleted_at IS NULL"
+            "SELECT r.hash_prefix FROM recordings r "
+            "LEFT JOIN songs s ON r.song_id = s.id "
+            "WHERE r.lrc_status IN ('pending', 'processing') "
+            "AND r.deleted_at IS NULL "
+            "AND (s.deleted_at IS NULL OR s.id IS NULL)"
         )
         lrc_pending_hashes = [row[0] for row in cursor.fetchall()]
 
