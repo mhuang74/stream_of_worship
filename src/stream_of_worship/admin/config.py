@@ -152,7 +152,10 @@ class AdminConfig:
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get a configuration value by key.
 
-        Supports dot notation for nested values (e.g., "r2.bucket").
+        Supports dot notation mapping to flat attributes:
+        - "r2.bucket" -> r2_bucket
+        - "database.url" -> database_url
+        - "service.analysis_url" -> analysis_url
 
         Args:
             key: Configuration key
@@ -161,53 +164,59 @@ class AdminConfig:
         Returns:
             Configuration value or default
         """
-        parts = key.split(".")
-        value = self
-
-        for part in parts:
-            if hasattr(value, part):
-                value = getattr(value, part)
-            else:
-                return default
-
-        if isinstance(value, Path):
-            return str(value)
-        return value
+        attr_name = self._key_to_attr(key)
+        if hasattr(self, attr_name):
+            value = getattr(self, attr_name)
+            if isinstance(value, Path):
+                return str(value)
+            return value
+        return default
 
     def set(self, key: str, value: str) -> None:
         """Set a configuration value by key.
 
-        Supports dot notation for nested values (e.g., "r2.bucket").
+        Supports dot notation mapping to flat attributes:
+        - "r2.bucket" -> r2_bucket
+        - "database.url" -> database_url
+        - "service.analysis_url" -> analysis_url
 
         Args:
             key: Configuration key
             value: Configuration value
         """
-        parts = key.split(".")
-        target = self
-
-        for part in parts[:-1]:
-            if hasattr(target, part):
-                target = getattr(target, part)
-            else:
-                raise ValueError(f"Invalid config key: {key}")
-
-        final_key = parts[-1]
-        if not hasattr(target, final_key):
+        attr_name = self._key_to_attr(key)
+        if not hasattr(self, attr_name):
             raise ValueError(f"Invalid config key: {key}")
 
-        # Try to preserve type
-        current = getattr(target, final_key)
+        current = getattr(self, attr_name)
         if isinstance(current, bool):
             new_value = value.lower() in ("true", "1", "yes")
         elif isinstance(current, int):
             new_value = int(value)
+        elif isinstance(current, float):
+            new_value = float(value)
         elif isinstance(current, Path):
             new_value = Path(value)
         else:
             new_value = value
 
-        setattr(target, final_key, new_value)
+        setattr(self, attr_name, new_value)
+
+    @staticmethod
+    def _key_to_attr(key: str) -> str:
+        """Convert dot-notation key to attribute name.
+
+        Maps TOML section paths to flat attribute names:
+        - "r2.bucket" -> "r2_bucket"
+        - "database.url" -> "database_url"
+        - "service.analysis_url" -> "analysis_url" (service prefix is dropped)
+        """
+        if "." not in key:
+            return key
+        section, attr = key.split(".", 1)
+        if section == "service":
+            return attr
+        return f"{section}_{attr}"
 
 
 def get_cache_dir() -> Path:

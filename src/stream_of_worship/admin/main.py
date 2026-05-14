@@ -4,8 +4,6 @@ Provides a Typer-based CLI for managing Stream of Worship catalog,
 audio recordings, and metadata.
 """
 
-import os
-
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -75,7 +73,7 @@ def main(
 @app.command()
 def config(
     action: str = typer.Argument(
-        ...,
+        "show",
         help="Action to perform (show, set, path)",
     ),
     key: str = typer.Argument(
@@ -106,12 +104,14 @@ def config(
             raise typer.Exit(1)
 
         table = Panel.fit(
-            f"[cyan]Analysis URL:[/cyan] {cfg.analysis_url}\n"
+            f"[cyan]Database URL:[/cyan] {cfg.database_url or '[not set]'}\n"
             f"[cyan]R2 Bucket:[/cyan] {cfg.r2_bucket}\n"
             f"[cyan]R2 Endpoint:[/cyan] {cfg.r2_endpoint_url or '[not set]'}\n"
             f"[cyan]R2 Region:[/cyan] {cfg.r2_region}\n"
-            f"[cyan]Database URL:[/cyan] {cfg.database_url or '[not set]'}\n"
-            f"[cyan]Password:[/cyan] {'from SOW_DATABASE_PASSWORD' if os.environ.get('SOW_DATABASE_PASSWORD') else '[not set]'}",
+            f"[dim]──────────────────────[/dim]\n"
+            f"[cyan]Analysis URL:[/cyan] {cfg.analysis_url}\n"
+            f"[dim]──────────────────────[/dim]\n"
+            f"[cyan]Cache dir:[/cyan] {cfg.cache_dir}",
             title="Configuration",
             border_style="green",
         )

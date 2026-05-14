@@ -248,6 +248,75 @@ class AppConfig:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.songsets_export_dir.mkdir(parents=True, exist_ok=True)
 
+    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Get a configuration value by key.
+
+        Supports dot notation mapping to flat attributes:
+        - "r2.bucket" -> r2_bucket
+        - "database.url" -> database_url
+        - "app.cache_dir" -> cache_dir
+
+        Args:
+            key: Configuration key
+            default: Default value if key not found
+
+        Returns:
+            Configuration value or default
+        """
+        attr_name = self._key_to_attr(key)
+        if hasattr(self, attr_name):
+            value = getattr(self, attr_name)
+            if isinstance(value, Path):
+                return str(value)
+            return value
+        return default
+
+    def set(self, key: str, value: str) -> None:
+        """Set a configuration value by key.
+
+        Supports dot notation mapping to flat attributes:
+        - "r2.bucket" -> r2_bucket
+        - "database.url" -> database_url
+        - "app.cache_dir" -> cache_dir
+
+        Args:
+            key: Configuration key
+            value: Configuration value
+        """
+        attr_name = self._key_to_attr(key)
+        if not hasattr(self, attr_name):
+            raise ValueError(f"Invalid config key: {key}")
+
+        current = getattr(self, attr_name)
+        if isinstance(current, bool):
+            new_value = value.lower() in ("true", "1", "yes")
+        elif isinstance(current, int):
+            new_value = int(value)
+        elif isinstance(current, float):
+            new_value = float(value)
+        elif isinstance(current, Path):
+            new_value = Path(value)
+        else:
+            new_value = value
+
+        setattr(self, attr_name, new_value)
+
+    @staticmethod
+    def _key_to_attr(key: str) -> str:
+        """Convert dot-notation key to attribute name.
+
+        Maps TOML section paths to flat attribute names:
+        - "r2.bucket" -> "r2_bucket"
+        - "database.url" -> "database_url"
+        - "app.cache_dir" -> "cache_dir" (app prefix is dropped)
+        """
+        if "." not in key:
+            return key
+        section, attr = key.split(".", 1)
+        if section == "app":
+            return attr
+        return f"{section}_{attr}"
+
 
 def ensure_app_config_exists() -> AppConfig:
     """Ensure config file exists, creating default if needed.

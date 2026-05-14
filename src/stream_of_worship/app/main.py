@@ -420,36 +420,78 @@ def import_songset(
 
 @app.command()
 def config(
-    show: bool = typer.Option(
-        False,
-        "--show",
-        help="Show current configuration",
+    action: str = typer.Argument(
+        "show",
+        help="Action to perform (show, set, path)",
     ),
-    edit: bool = typer.Option(
-        False,
-        "--edit",
-        help="Open config in editor",
+    key: str = typer.Argument(
+        None,
+        help="Configuration key (for set action)",
+    ),
+    value: str = typer.Argument(
+        None,
+        help="Configuration value (for set action)",
     ),
 ) -> None:
-    """Manage application configuration."""
+    """Manage configuration.
+
+    Show, set, or display the path to the configuration file.
+
+    Examples:
+        sow-app config show          # Show all configuration
+        sow-app config set app.cache_dir ~/cache
+        sow-app config path          # Show config file path
+    """
     config_path = get_app_config_path()
 
-    if show or (not edit):
+    if action == "show":
         if config_path.exists():
             cfg = AppConfig.load(config_path)
-            console.print(f"[bold]Config file:[/bold] {config_path}")
-            console.print(f"[bold]Database URL:[/bold] {cfg.database_url or '(not configured)'}")
-            console.print(f"[bold]Cache dir:[/bold] {cfg.cache_dir}")
-            console.print(f"[bold]Export dir:[/bold] {cfg.songsets_export_dir}")
+            panel = Panel.fit(
+                f"[cyan]Database URL:[/cyan] {cfg.database_url or '[not set]'}\n"
+                f"[cyan]R2 Bucket:[/cyan] {cfg.r2_bucket}\n"
+                f"[cyan]R2 Endpoint:[/cyan] {cfg.r2_endpoint_url or '[not set]'}\n"
+                f"[cyan]R2 Region:[/cyan] {cfg.r2_region}\n"
+                f"[dim]──────────────────────[/dim]\n"
+                f"[cyan]Default gap beats:[/cyan] {cfg.default_gap_beats}\n"
+                f"[cyan]Default video resolution:[/cyan] {cfg.default_video_resolution}\n"
+                f"[cyan]Default video template:[/cyan] {cfg.default_video_template}\n"
+                f"[cyan]Preview buffer ms:[/cyan] {cfg.preview_buffer_ms}\n"
+                f"[cyan]Preview volume:[/cyan] {cfg.preview_volume}\n"
+                f"[dim]──────────────────────[/dim]\n"
+                f"[cyan]Cache dir:[/cyan] {cfg.cache_dir}\n"
+                f"[cyan]Export dir:[/cyan] {cfg.songsets_export_dir}\n"
+                f"[cyan]Log dir:[/cyan] {cfg.log_dir}\n"
+                f"[cyan]Output dir:[/cyan] {cfg.output_dir}",
+                title="Configuration",
+                border_style="green",
+            )
+            console.print(panel)
         else:
             console.print(f"[yellow]No config file at {config_path}[/yellow]")
             console.print("Run [bold]sow-app run[/bold] to create default config.")
 
-    if edit:
-        import subprocess
+    elif action == "set":
+        if not key or value is None:
+            console.print("[red]Usage: sow-app config set <key> <value>[/red]")
+            raise typer.Exit(1)
 
-        editor = __import__("os").environ.get("EDITOR", "nano")
-        subprocess.call([editor, str(config_path)])
+        try:
+            cfg = ensure_app_config_exists()
+            cfg.set(key, value)
+            cfg.save()
+            console.print(f"[green]Set {key} = {value}[/green]")
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+
+    elif action == "path":
+        console.print(config_path)
+
+    else:
+        console.print(f"[red]Unknown action: {action}[/red]")
+        console.print("Valid actions: show, set, path")
+        raise typer.Exit(1)
 
 
 def cli_entry() -> None:
