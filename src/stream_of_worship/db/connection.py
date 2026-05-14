@@ -34,10 +34,19 @@ class ConnectionProvider:
         self._lock = threading.Lock()
 
     def get_connection(self) -> psycopg.Connection:
-        """Return an open psycopg connection, reconnecting if necessary."""
+        """Return an open psycopg connection, reconnecting if necessary.
+        
+        Performs a health check on cached connections to detect broken connections
+        (e.g., from idle-in-transaction timeouts on serverless PostgreSQL).
+        """
         with self._lock:
             if self._connection is None or self._connection.closed:
                 self._connection = self._connect_with_retry()
+            else:
+                try:
+                    self._connection.execute("SELECT 1")
+                except Exception:
+                    self._connection = self._connect_with_retry()
             return self._connection
 
     def _connect_with_retry(self) -> psycopg.Connection:
@@ -53,7 +62,6 @@ class ConnectionProvider:
                     sslmode="require",
                 )
                 conn.execute("SELECT 1")
-                conn.autocommit = False
                 return conn
             except Exception as exc:
                 if conn:
