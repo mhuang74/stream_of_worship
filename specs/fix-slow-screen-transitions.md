@@ -1,21 +1,14 @@
-# Fix Slow Screen Transitions in User App
+# Fix Slow Screen Transitions & Operational Risks in User App
 
 ## Overview
 
-This plan addresses the slow transition between Songset Manager and Songset Editor screens, which takes 3-20+ seconds. The root cause is a combination of aggressive database health checks and zombie screen listeners.
+This plan addresses slow screen transitions (3-20+ seconds) and multiple operational risks affecting User App usability. The root causes span aggressive database health checks, zombie screen listeners, navigation stack desync, main-thread blocking operations, and N+1 query patterns.
 
 ## Problem Analysis
 
-### Symptom 1: 3-second delay on every screen transition
+### Problem 1: 3-second delay on every screen transition
 
-From logs:
-```
-2026-05-15 06:10:17.f | INFO  | Screen pushed, stack depth: 3
-2026-05-15 06:10:17.f | INFO  | SongsetEditorScreen mounted
-2026-05-15 06:10:20.f | INFO  | SongsetEditorScreen resumed, refreshing items
-```
-
-**Root Cause:** The `SELECT 1` health check added to `ConnectionProvider.get_connection()` runs on every single `self.connection` property access. Since `connection` is a property that calls `get_connection()` every time, every DB method triggers a health check.
+**Root Cause:** `SELECT 1` health check in `ConnectionProvider.get_connection()` runs on every `self.connection` property access. Since `connection` is a property calling `get_connection()` every time, every DB method triggers a health check.
 
 **Call chain for a songset with N items:**
 1. `action_edit_songset` → `get_songset()` → `self.connection` → **SELECT 1** + query
@@ -23,26 +16,109 @@ From logs:
 3. For each item: `get_recording_by_hash()` → **SELECT 1** + query
 4. For each item: `get_song_including_deleted()` → **SELECT 1** + query
 
-**Total health checks:** 2 + 2N. Each is a ~200ms round-trip to remote Neon (us-east-1).
-
+**Total health checks:** 2 + 2N. Each is ~200ms round-trip to remote Neon (us-east-1).
 For 5 items: 12 × 200ms = **~2.4 seconds just in health checks**.
 
-### Symptom 2: 20+ second delay with repeated errors
+**Why it was added carelessly:** Commit `6cdc998` added the per-call `SELECT 1` as a defensive fix for Neon's `idle_in_transaction_session_timeout`. The same commit also switched to `autocommit=True`, which eliminates the root cause (no idle transactions for Neon to kill). The health check was redundant overhead — the "fix" (autocommit) already solved the problem.
 
-From logs:
-```
-2026-05-15 06:05:22.f | ERROR | Failed to update input fields: No nodes match '#input_name'
-2026-05-15 06:05:25.f | ERROR | Failed to update input fields: No nodes match '#input_name'
-... (repeated every ~3 seconds for 14 seconds)
-```
+### Problem 2: 20+ second delay with repeated errors
 
 **Root Cause:** Three compounding bugs:
+1. `_refresh()` called before widgets mounted — `on_mount` calls `_refresh()` before DOM is ready
+2. State listener never removed — anonymous lambda registered but never cleaned up in `on_unmount`
+3. Duplicate screen stacking — `navigate_to()` always pushes a fresh screen
 
-1. **`_refresh()` called before widgets mounted** — `on_mount` calls `_refresh()` before DOM is ready, so `query_one("#input_name")` fails.
+### Problem 3: ExportProgressScreen callback leak (CRITICAL)
 
-2. **State listener never removed** — `self.state.add_listener("selected_songset", lambda _: self._refresh())` is registered but never removed in `on_unmount`. Every SongsetEditorScreen instance ever created keeps listening and calling `_refresh()` → `_load_items()` (DB query) even when covered by other screens.
+**File:** `src/stream_of_worship/app/screens/export_progress.py:61-62`
 
-3. **Duplicate screen stacking** — `navigate_to()` always pushes a fresh screen. When returning from Browse and re-entering the editor, a second SongsetEditorScreen gets stacked on top. Both register their own listener, compounding the problem.
+`register_progress_callback` and `register_completion_callback` are called in `on_mount` with no `on_unmount` cleanup. Navigating back during an export causes zombie callbacks that crash on dead widgets. `ExportService._progress_callbacks` and `_completion_callbacks` lists only grow, never shrink.
+
+### Problem 4: navigate_back() desyncs AppState from Textual stack (CRITICAL)
+
+**File:** `src/stream_of_worship/app/app.py:173-189`, `src/stream_of_worship/app/state.py:112-123`
+
+`AppState.previous_screen` is a single slot, not a stack. After 2+ back navigations, `state.current_screen` diverges from the actual displayed screen. Reproduction: SongsetList → SongsetEditor → Browse → Back → Back. After the second back, `AppState.current_screen` is stale.
+
+### Problem 5: LyricsPreviewScreen bypasses navigate_to() (CRITICAL)
+
+**File:** `src/stream_of_worship/app/screens/songset_editor.py:441-447`
+
+Calls `self.app.push_screen()` directly instead of `self.app.navigate_to()`. AppState is never updated, playback isn't stopped, and the Textual stack has a screen that AppState doesn't know about.
+
+### Problem 6: LyricsPreviewScreen playback callbacks never unregistered (HIGH)
+
+**File:** `src/stream_of_worship/app/screens/lyrics_preview.py:120-124`
+
+No `on_unmount` to clear playback callbacks. After the screen is popped, callbacks still reference the dead screen.
+
+### Problem 7: All DB queries block the main thread (HIGH)
+
+**File:** All screen files
+
+Every database call is synchronous, called from Textual event handlers. The TUI freezes during queries. With N+1 patterns and health checks, a single screen load can block for seconds.
+
+### Problem 8: R2 network downloads block the main thread (HIGH)
+
+**File:** `src/stream_of_worship/app/services/asset_cache.py:134-161, 194-220`
+
+`download_audio()` and `download_lrc()` make synchronous HTTP requests from UI actions. TUI freezes during downloads (5-30+ seconds on slow connections).
+
+### Problem 9: AudioEngine.preview_transition() blocks main thread (HIGH)
+
+**File:** `src/stream_of_worship/app/services/audio_engine.py:248-306`
+
+pydub decode + process + write is synchronous. UI freezes for several seconds during preview generation.
+
+### Problem 10: N+1 query patterns (HIGH)
+
+| Location | Pattern | Round trips (with health checks) |
+|----------|---------|----------------------------------|
+| `songset_list.py:85` | `get_item_count()` per songset | 1 + 2N |
+| `catalog.py:186-197` | `get_recording_by_song_id()` per song | 1 + 2N |
+| `catalog.py:472-503` | `get_recording_by_hash()` + `get_song_including_deleted()` per item | 3 + 4N |
+
+### Problem 11: Unbounded screen stack growth (HIGH)
+
+**File:** `src/stream_of_worship/app/app.py:156-171`
+
+`navigate_to()` always pushes, never replaces duplicates. With zombie listeners, popped screens may not be GC'd.
+
+### Problem 12: No timeout on R2 downloads (MEDIUM)
+
+**File:** `src/stream_of_worship/app/services/asset_cache.py`
+
+Stalled download hangs the app forever.
+
+### Problem 13: No timeout on FFmpeg subprocess (MEDIUM)
+
+**File:** `src/stream_of_worship/app/services/video_engine.py:875-906`
+
+Hung export thread becomes zombie, `is_exporting` stays True forever.
+
+### Problem 14: Temp files from preview_transition never cleaned up (MEDIUM)
+
+**File:** `src/stream_of_worship/app/services/audio_engine.py:296-298`
+
+`NamedTemporaryFile(delete=False)` leaks MP3s to system temp directory.
+
+### Problem 15: ExportService callback lists grow without bound (MEDIUM)
+
+**File:** `src/stream_of_worship/app/services/export.py:124-125`
+
+No unregister method. Callback lists grow with each export.
+
+### Problem 16: _notify silently swallows all exceptions (MEDIUM)
+
+**File:** `src/stream_of_worship/app/state.py:93-100`
+
+`except Exception: pass` hides bugs. Zombie listener crashes are invisible.
+
+### Problem 17: No DB error handling (MEDIUM)
+
+**File:** `src/stream_of_worship/app/db/read_client.py`, `src/stream_of_worship/app/db/songset_client.py`
+
+Transient connection drops propagate as uncaught exceptions. No retry, no user-friendly error messages.
 
 ---
 
@@ -52,7 +128,7 @@ From logs:
 
 **File:** `src/stream_of_worship/db/connection.py`
 
-**Rationale:** With `autocommit=True` (previous fix), there are no idle transactions for Neon to kill. The per-call `SELECT 1` is unnecessary and expensive. Replace with a time-based check that only probes the connection if it hasn't been used in the last 60 seconds.
+**Rationale:** With `autocommit=True`, there are no idle transactions for Neon to kill. The per-call `SELECT 1` is unnecessary and expensive. Replace with a time-based check that only probes the connection if it hasn't been used in the last 60 seconds.
 
 **Changes:**
 
@@ -64,24 +140,17 @@ import psycopg
 
 
 class ConnectionProvider:
-    """Manages a single psycopg connection with auto-reconnect and cold-start retry."""
-
     MAX_RETRIES = 2
     RETRY_DELAY_SECONDS = 1.0
-    STALE_THRESHOLD_SECONDS = 60.0  # Only health-check if idle for 60+ seconds
+    STALE_THRESHOLD_SECONDS = 60.0
 
     def __init__(self, database_url: str):
         self.database_url = database_url
         self._connection: Optional[psycopg.Connection] = None
         self._lock = threading.Lock()
-        self._last_used: float = 0.0  # monotonic time of last successful use
+        self._last_used: float = 0.0
 
     def get_connection(self) -> psycopg.Connection:
-        """Return an open psycopg connection, reconnecting if necessary.
-        
-        Uses time-based staleness check: only probes the connection if it
-        hasn't been used in the last STALE_THRESHOLD_SECONDS.
-        """
         with self._lock:
             if self._connection is None or self._connection.closed:
                 self._connection = self._connect_with_retry()
@@ -96,11 +165,9 @@ class ConnectionProvider:
             return self._connection
 
     def _is_stale(self) -> bool:
-        """Check if the connection hasn't been used recently."""
         return (time.monotonic() - self._last_used) > self.STALE_THRESHOLD_SECONDS
 
     def _connect_with_retry(self) -> psycopg.Connection:
-        """Attempt to connect with exponential backoff for cold starts."""
         last_error: Optional[Exception] = None
         for attempt in range(self.MAX_RETRIES + 1):
             conn = None
@@ -123,7 +190,7 @@ class ConnectionProvider:
         raise last_error if last_error else RuntimeError("Connection failed without error")
 ```
 
-**Expected impact:** Reduces transition time from ~3 seconds to <500ms (only actual query latency remains).
+**Expected impact:** Reduces transition time from ~3 seconds to <500ms.
 
 ---
 
@@ -131,27 +198,19 @@ class ConnectionProvider:
 
 **File:** `src/stream_of_worship/app/screens/songset_editor.py`
 
-**Location:** `on_mount()` method (around line 112-130)
-
-**Rationale:** `on_mount` fires before child widgets are in the DOM. Use `call_after_refresh` to wait for DOM to be ready.
-
-**Change:**
+**Change in `on_mount()`:**
 
 ```python
 def on_mount(self) -> None:
-    """Handle mount event."""
     logger.info(
         f"SongsetEditorScreen mounted (songset: {self.state.selected_songset.id if self.state.selected_songset else 'None'})"
     )
-    # Defer refresh until DOM is ready
     self.call_after_refresh(self._refresh)
     self.call_after_refresh(self._focus_song_list)
 
-    # Listen for state changes (store reference for removal in on_unmount)
     self._songset_listener = lambda _: self._refresh()
     self.state.add_listener("selected_songset", self._songset_listener)
 
-    # Register playback callbacks
     self.playback.set_callbacks(
         on_position_changed=self._on_position_changed,
         on_state_changed=self._on_state_changed,
@@ -165,26 +224,19 @@ def on_mount(self) -> None:
 
 **File:** `src/stream_of_worship/app/screens/songset_editor.py`
 
-**Location:** `on_unmount()` method (around line 132-134)
+**Add to `__init__`:**
 
-**Rationale:** Prevent zombie screen instances from continuing to respond to state changes and making DB queries.
+```python
+self._songset_listener = None
+```
 
-**Change:**
+**Change `on_unmount()`:**
 
 ```python
 def on_unmount(self) -> None:
-    """Unregister callbacks to prevent memory leaks and zombie refreshes."""
     self.playback.set_callbacks()
-    if hasattr(self, '_songset_listener'):
+    if hasattr(self, '_songset_listener') and self._songset_listener:
         self.state.remove_listener("selected_songset", self._songset_listener)
-```
-
-**Also add to `__init__`:**
-
-```python
-def __init__(self, ...):
-    ...
-    self._songset_listener = None  # Initialize to None
 ```
 
 ---
@@ -193,28 +245,18 @@ def __init__(self, ...):
 
 **File:** `src/stream_of_worship/app/screens/songset_editor.py`
 
-**Location:** `_refresh()` method (around line 182)
-
-**Rationale:** Even with listener removal, a race condition could cause `_refresh()` to run on a screen that's no longer the top of the stack. Guard against this.
-
-**Change:**
-
 ```python
 def _refresh(self) -> None:
-    """Refresh the display."""
-    # Don't refresh if this screen is not the active screen
     if not self.is_current:
         return
-    
+
     songset = self.state.selected_songset
     if not songset:
         return
 
-    # Update input fields with current values
     try:
         name_input = self.query_one("#input_name", Input)
         name_input.value = songset.name
-
         desc_input = self.query_one("#input_description", Input)
         desc_input.value = songset.description or ""
     except Exception as e:
@@ -225,27 +267,18 @@ def _refresh(self) -> None:
 
 ---
 
-### Fix 5: Prevent duplicate screen stacking (optional enhancement)
+### Fix 5: Prevent duplicate screen stacking
 
 **File:** `src/stream_of_worship/app/app.py`
 
-**Location:** `navigate_to()` method (around line 156-171)
-
-**Rationale:** When navigating to a screen type that's already on top of the stack, pop the existing one first to avoid stacking duplicates.
-
-**Change:**
-
 ```python
 def navigate_to(self, screen: AppScreen) -> None:
-    """Navigate to a screen."""
     logger.info(f"Navigate to: {screen.name} (from {self.state.current_screen.name})")
 
-    # Stop playback when switching screens
     if self.playback.is_playing or self.playback.is_paused:
         logger.debug("Stopping playback before navigation")
         self.playback.stop()
 
-    # Prevent pushing duplicate screen types onto the stack
     if len(self.screen_stack) > 0:
         current_screen = self.screen_stack[-1]
         if self._is_same_screen_type(current_screen, screen):
@@ -258,7 +291,6 @@ def navigate_to(self, screen: AppScreen) -> None:
     logger.debug(f"Screen pushed, stack depth: {len(self.screen_stack)}")
 
 def _is_same_screen_type(self, screen_instance, screen_enum: AppScreen) -> bool:
-    """Check if a screen instance matches an AppScreen enum value."""
     screen_type_map = {
         AppScreen.SONGSET_LIST: SongsetListScreen,
         AppScreen.SONGSET_EDITOR: SongsetEditorScreen,
@@ -271,13 +303,342 @@ def _is_same_screen_type(self, screen_instance, screen_enum: AppScreen) -> bool:
 
 ---
 
+### Fix 6: Fix navigate_back() desync — use a stack in AppState
+
+**File:** `src/stream_of_worship/app/state.py`
+
+**Rationale:** `previous_screen` is a single slot. Replace with a navigation stack that mirrors Textual's screen stack.
+
+**Changes:**
+
+```python
+class AppState:
+    def __init__(self):
+        self._nav_stack: list[AppScreen] = []
+
+    def navigate_to(self, screen: AppScreen) -> None:
+        self._nav_stack.append(screen)
+        self.current_screen = screen
+        self._notify("current_screen", screen)
+
+    def navigate_back(self) -> bool:
+        if len(self._nav_stack) <= 1:
+            return False
+        self._nav_stack.pop()
+        self.current_screen = self._nav_stack[-1]
+        self._notify("current_screen", self.current_screen)
+        return True
+
+    @property
+    def previous_screen(self) -> Optional[AppScreen]:
+        return self._nav_stack[-2] if len(self._nav_stack) >= 2 else None
+```
+
+---
+
+### Fix 7: Fix LyricsPreviewScreen to use navigate_to()
+
+**File:** `src/stream_of_worship/app/screens/songset_editor.py`
+
+**Rationale:** `push_screen()` bypasses AppState tracking and playback management.
+
+**Option A (recommended):** Add `LYRICS_PREVIEW` to `AppScreen` enum and route through `navigate_to()`.
+
+**Option B (minimal):** Keep `push_screen()` but manually update state and stop playback:
+
+```python
+def action_lyrics_preview(self) -> None:
+    item = self._get_selected_item()
+    if not item:
+        self.notify("No song selected", severity="warning")
+        return
+    if not item.recording_hash_prefix:
+        self.notify("Song has no recording", severity="warning")
+        return
+
+    lrc_path = self.asset_cache.download_lrc(item.recording_hash_prefix)
+    if not lrc_path:
+        self.notify("No lyrics available for this song", severity="warning")
+        return
+
+    if self.playback.is_playing or self.playback.is_paused:
+        self.playback.stop()
+
+    self.app.push_screen(
+        LyricsPreviewScreen(
+            item=item,
+            playback=self.playback,
+            asset_cache=self.asset_cache,
+        )
+    )
+```
+
+---
+
+### Fix 8: Add on_unmount to ExportProgressScreen and LyricsPreviewScreen
+
+**File:** `src/stream_of_worship/app/screens/export_progress.py`
+
+```python
+def on_unmount(self) -> None:
+    self.export_service.unregister_progress_callback(self._on_progress)
+    self.export_service.unregister_completion_callback(self._on_complete)
+```
+
+**File:** `src/stream_of_worship/app/services/export.py` — add unregister methods:
+
+```python
+def unregister_progress_callback(self, callback):
+    if callback in self._progress_callbacks:
+        self._progress_callbacks.remove(callback)
+
+def unregister_completion_callback(self, callback):
+    if callback in self._completion_callbacks:
+        self._completion_callbacks.remove(callback)
+```
+
+**File:** `src/stream_of_worship/app/screens/lyrics_preview.py`
+
+```python
+def on_unmount(self) -> None:
+    self.playback.set_callbacks()
+```
+
+---
+
+### Fix 9: Run DB queries and network downloads on worker thread
+
+**File:** All screen files
+
+**Rationale:** Synchronous DB and network calls freeze the TUI. Use Textual's `run_worker()` to offload blocking operations.
+
+**Pattern for DB queries:**
+
+```python
+from textual.worker import Worker
+
+def _load_items(self) -> None:
+    self.run_worker(self._load_items_worker, exclusive=True, group="load_items")
+
+def _load_items_worker(self) -> None:
+    """Worker that loads items off the main thread."""
+    if not self.state.selected_songset:
+        return
+
+    details, orphan_count = self.catalog.get_songset_with_items(
+        self.state.selected_songset.id, self.songset_client
+    )
+    # Update UI on main thread
+    self.call_from_thread(self._update_items_table, details)
+
+def _update_items_table(self, details) -> None:
+    """Update the DataTable on the main thread."""
+    self.items = [d.item for d in details]
+    # ... existing table update logic ...
+```
+
+**Pattern for R2 downloads:**
+
+```python
+def action_toggle_playback(self) -> None:
+    if self.playback.is_playing:
+        self.playback.stop()
+        self.notify("Playback stopped")
+        return
+
+    item = self._get_selected_item()
+    if not item:
+        self.notify("No song selected", severity="error")
+        return
+
+    self.run_worker(self._play_item_worker, item, group="playback")
+
+def _play_item_worker(self, item) -> None:
+    try:
+        audio_path = self.asset_cache.download_audio(item.recording_hash_prefix)
+        if audio_path:
+            self.call_from_thread(self.playback.play, audio_path)
+            self.call_from_thread(self.notify, f"Playing: {item.song_title}")
+        else:
+            self.call_from_thread(self.notify, "Failed to download audio", severity="error")
+    except Exception as e:
+        self.call_from_thread(self.notify, f"Error: {e}", severity="error")
+```
+
+**Scope:** Apply to:
+- `SongsetEditorScreen._load_items()`, `action_preview()`, `action_toggle_playback()`
+- `SongsetListScreen._load_songsets()`
+- `BrowseScreen._load_songs()`, `action_preview()`
+- `LyricsPreviewScreen.on_mount()` (LRC download)
+
+---
+
+### Fix 10: Fix N+1 query patterns with batch queries
+
+**File:** `src/stream_of_worship/app/db/songset_client.py`
+
+Add `get_item_counts_batch()`:
+
+```python
+def get_item_counts_batch(self, songset_ids: list[str]) -> dict[str, int]:
+    """Get item counts for multiple songsets in a single query."""
+    conn = self.connection
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT songset_id, COUNT(*) as count
+            FROM songset_items
+            WHERE songset_id = ANY(%s)
+            GROUP BY songset_id
+            """,
+            (songset_ids,),
+        )
+        rows = cur.fetchall()
+    return {row[0]: row[1] for row in rows}
+```
+
+**File:** `src/stream_of_worship/app/db/read_client.py`
+
+Add `get_recordings_by_song_ids()` and `get_recordings_by_hashes()`:
+
+```python
+def get_recordings_by_song_ids(self, song_ids: list[str]) -> dict[str, Recording]:
+    """Fetch recordings for multiple songs in a single query."""
+    conn = self.connection
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT r.* FROM recordings r
+            WHERE r.song_id = ANY(%s)
+            """,
+            (song_ids,),
+        )
+        rows = cur.fetchall()
+    return {row[0]: Recording(**row) for row in rows}
+
+def get_recordings_by_hashes(self, hash_prefixes: list[str]) -> dict[str, Recording]:
+    """Fetch recordings by hash prefixes in a single query."""
+    conn = self.connection
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM recordings
+            WHERE hash_prefix = ANY(%s)
+            """,
+            (hash_prefixes,),
+        )
+        rows = cur.fetchall()
+    return {row[0]: Recording(**row) for row in rows}
+```
+
+**File:** `src/stream_of_worship/app/services/catalog.py`
+
+Update `get_songset_with_items()` and `list_songs_with_recordings()` to use batch queries.
+
+---
+
+### Fix 11: Add timeouts to R2 downloads and FFmpeg
+
+**File:** `src/stream_of_worship/app/services/asset_cache.py`
+
+Add a `timeout` parameter to download methods (default 30s):
+
+```python
+def download_audio(self, hash_prefix: str, timeout: int = 30) -> Optional[Path]:
+    try:
+        return self.r2_client.download_file(
+            bucket=self.r2_bucket,
+            key=f"audio/{hash_prefix}.mp3",
+            local_path=audio_path,
+            timeout=timeout,
+        )
+    except TimeoutError:
+        logger.error(f"Timeout downloading audio for {hash_prefix}")
+        return None
+```
+
+**File:** `src/stream_of_worship/app/services/video_engine.py`
+
+Add timeout to `process.wait()`:
+
+```python
+try:
+    process.wait(timeout=300)  # 5 minute max per FFmpeg call
+except subprocess.TimeoutExpired:
+    process.kill()
+    raise RuntimeError("FFmpeg timed out")
+```
+
+---
+
+### Fix 12: Clean up temp files from preview_transition
+
+**File:** `src/stream_of_worship/app/services/audio_engine.py`
+
+Track temp files and clean up on next preview or on service shutdown:
+
+```python
+def __init__(self, ...):
+    self._temp_files: list[Path] = []
+
+def preview_transition(self, from_item, to_item) -> Optional[Path]:
+    # Clean up previous temp files
+    for f in self._temp_files:
+        try:
+            f.unlink(missing_ok=True)
+        except Exception:
+            pass
+    self._temp_files.clear()
+
+    # ... existing logic ...
+    self._temp_files.append(Path(temp_path))
+    return Path(temp_path)
+```
+
+---
+
+### Fix 13: Log exceptions in _notify instead of silently swallowing
+
+**File:** `src/stream_of_worship/app/state.py`
+
+```python
+def _notify(self, key: str, value: Any) -> None:
+    for cb in self._listeners.get(key, []):
+        try:
+            cb(value)
+        except Exception as e:
+            logger.error(f"Listener error for '{key}': {e}")
+```
+
+---
+
+### Fix 14: Add DB error handling with user-friendly messages
+
+**File:** `src/stream_of_worship/app/db/read_client.py`, `src/stream_of_worship/app/db/songset_client.py`
+
+Wrap critical query methods with try/except that catches `psycopg.OperationalError` and raises a custom `DatabaseError` with user-friendly message. Screens can catch `DatabaseError` and show a notification.
+
+---
+
 ## Summary of Files Changed
 
-| File | Changes |
-|------|---------|
-| `src/stream_of_worship/db/connection.py` | Time-based staleness check instead of per-call health check |
-| `src/stream_of_worship/app/screens/songset_editor.py` | 1. Defer `_refresh()` with `call_after_refresh`<br>2. Store listener reference and remove in `on_unmount`<br>3. Guard `_refresh()` against non-active screens |
-| `src/stream_of_worship/app/app.py` | (Optional) Prevent duplicate screen stacking |
+| File | Fixes |
+|------|-------|
+| `src/stream_of_worship/db/connection.py` | Fix 1: Time-based staleness check |
+| `src/stream_of_worship/app/screens/songset_editor.py` | Fix 2, 3, 4, 7, 9: Defer refresh, remove listener, guard, LyricsPreview nav, worker threads |
+| `src/stream_of_worship/app/app.py` | Fix 5, 6: Duplicate screen prevention, nav stack |
+| `src/stream_of_worship/app/state.py` | Fix 6, 13: Navigation stack, log listener errors |
+| `src/stream_of_worship/app/screens/export_progress.py` | Fix 8: Unregister callbacks |
+| `src/stream_of_worship/app/screens/lyrics_preview.py` | Fix 8: Unregister callbacks |
+| `src/stream_of_worship/app/services/export.py` | Fix 8: Unregister methods |
+| `src/stream_of_worship/app/screens/songset_list.py` | Fix 9, 10: Worker thread, batch queries |
+| `src/stream_of_worship/app/screens/browse.py` | Fix 9: Worker thread |
+| `src/stream_of_worship/app/db/songset_client.py` | Fix 10, 14: Batch queries, error handling |
+| `src/stream_of_worship/app/db/read_client.py` | Fix 10, 14: Batch queries, error handling |
+| `src/stream_of_worship/app/services/catalog.py` | Fix 10: Use batch queries |
+| `src/stream_of_worship/app/services/asset_cache.py` | Fix 11: Download timeouts |
+| `src/stream_of_worship/app/services/video_engine.py` | Fix 11: FFmpeg timeout |
+| `src/stream_of_worship/app/services/audio_engine.py` | Fix 12: Temp file cleanup |
 
 ---
 
@@ -288,7 +649,27 @@ def _is_same_screen_type(self, screen_instance, screen_enum: AppScreen) -> bool:
 | Screen transition time | 3-20+ seconds | <500ms |
 | "No nodes match" errors | Frequent | None |
 | Zombie DB queries | Yes | No |
-| Duplicate screen stacking | Yes | No (with Fix 5) |
+| Duplicate screen stacking | Yes | No |
+| AppState/Textual stack desync | Yes | No |
+| UI freezes during DB/network | Yes | No (worker threads) |
+| N+1 query round trips (5 items) | ~35 | ~5 |
+| Temp file leaks | Yes | No |
+| Silent listener errors | Yes | Logged |
+
+---
+
+## Implementation Order
+
+1. **Fix 1** (connection.py) — biggest bang for buck, standalone
+2. **Fix 2, 3, 4** (songset_editor.py) — fixes the 20s delay
+3. **Fix 5, 6** (app.py, state.py) — fixes navigation desync
+4. **Fix 8** (export_progress, lyrics_preview, export.py) — prevents crashes
+5. **Fix 7** (lyrics_preview nav) — consistency fix
+6. **Fix 13** (state.py) — observability
+7. **Fix 9** (worker threads) — UI responsiveness (largest change)
+8. **Fix 10** (batch queries) — performance
+9. **Fix 11, 12** (timeouts, temp cleanup) — robustness
+10. **Fix 14** (error handling) — polish
 
 ---
 
@@ -297,6 +678,10 @@ def _is_same_screen_type(self, screen_instance, screen_enum: AppScreen) -> bool:
 - [ ] Navigate from Songset Manager to Songset Editor — should be <1 second
 - [ ] No "No nodes match '#input_name'" errors in logs
 - [ ] Create new songset, add songs, return to editor — no duplicate screens
-- [ ] Navigate back and forth multiple times — no performance degradation
-- [ ] Leave app idle for 2+ minutes, then navigate — stale connection is detected and reconnected
+- [ ] Navigate back and forth 3+ times — no performance degradation, no stack desync
+- [ ] Leave app idle for 2+ minutes, then navigate — stale connection detected and reconnected
+- [ ] Navigate back during active export — no crash, export continues
+- [ ] Open and close lyrics preview — no zombie callbacks
+- [ ] Browse songs with 50+ entries — UI remains responsive during load
+- [ ] Preview transition — UI remains responsive during generation
 - [ ] Run full test suite — all tests pass
