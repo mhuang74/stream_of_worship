@@ -37,6 +37,7 @@ class AnalysisResult:
         embeddings_shape: Embedding dimensions
         stems_url: R2 URL for stems directory
         lrc_url: R2 URL for LRC file
+        lrc_source: Source of LRC generation ("youtube_transcript" or "whisper_asr")
     """
 
     duration_seconds: Optional[float] = None
@@ -51,6 +52,7 @@ class AnalysisResult:
     embeddings_shape: Optional[List[int]] = None
     stems_url: Optional[str] = None
     lrc_url: Optional[str] = None
+    lrc_source: Optional[str] = None
 
 
 @dataclass
@@ -559,6 +561,7 @@ class AnalysisClient:
                 embeddings_shape=result_data.get("embeddings_shape"),
                 stems_url=result_data.get("stems_url"),
                 lrc_url=result_data.get("lrc_url"),
+                lrc_source=result_data.get("lrc_source"),
             )
 
         return JobInfo(
