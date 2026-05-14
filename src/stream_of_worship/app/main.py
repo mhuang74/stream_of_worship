@@ -424,7 +424,7 @@ def config(
 
     Examples:
         sow-app config show          # Show all configuration
-        sow-app config set app.cache_dir ~/cache
+        sow-app config set app.working_dir ~/stream-of-worship
         sow-app config path          # Show config file path
     """
     config_path = get_app_config_path()
@@ -444,8 +444,7 @@ def config(
                 f"[cyan]Preview buffer ms:[/cyan] {cfg.preview_buffer_ms}\n"
                 f"[cyan]Preview volume:[/cyan] {cfg.preview_volume}\n"
                 f"[dim]──────────────────────[/dim]\n"
-                f"[cyan]Working dir:[/cyan] {cfg.working_dir}\n"
-                f"[cyan]Backup dir:[/cyan] {cfg.songsets_backup_dir}",
+                f"[cyan]Working dir:[/cyan] {cfg.working_dir}",
                 title="Configuration",
                 border_style="green",
             )
