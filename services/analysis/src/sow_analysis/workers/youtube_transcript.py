@@ -262,6 +262,10 @@ async def fetch_youtube_transcript(
         languages = DEFAULT_LANGUAGES
 
     proxy_config = _build_proxy_config()
+    if proxy_config:
+        logger.info(f"Fetching YouTube transcript via proxy: {settings.SOW_YOUTUBE_PROXY}")
+    else:
+        logger.info("Fetching YouTube transcript (direct, no proxy)")
 
     loop = asyncio.get_event_loop()
 
