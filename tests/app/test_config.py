@@ -24,7 +24,7 @@ class TestAppConfigDir:
         config_dir = get_app_config_dir()
 
         assert isinstance(config_dir, Path)
-        assert config_dir.name == "sow"
+        assert config_dir.name == "stream-of-worship"
 
     def test_get_app_config_path_returns_toml(self):
         """Verify get_app_config_path returns path to config.toml."""
@@ -48,22 +48,37 @@ class TestAppConfigDefaults:
         config = AppConfig()
 
         assert isinstance(config.cache_dir, Path)
-        assert "cache" in str(config.cache_dir)
+        assert "stream-of-worship" in str(config.cache_dir)
 
     def test_default_output_dir(self):
-        """Verify default output_dir is set."""
+        """Verify default output_dir is derived from working_dir."""
         config = AppConfig()
 
         assert isinstance(config.output_dir, Path)
         assert "output" in str(config.output_dir)
+        assert config.output_dir == config.working_dir / "output"
 
     def test_default_log_dir(self):
-        """Verify log_dir defaults to data_dir/logs (not under cache_dir)."""
+        """Verify log_dir is derived from working_dir."""
         config = AppConfig()
 
         assert isinstance(config.log_dir, Path)
         assert str(config.log_dir).endswith("logs")
-        assert "cache" not in str(config.log_dir)
+        assert config.log_dir == config.working_dir / "logs"
+
+    def test_default_working_dir(self):
+        """Verify default working_dir is set."""
+        config = AppConfig()
+
+        assert isinstance(config.working_dir, Path)
+        assert config.working_dir.name == "stream-of-worship"
+
+    def test_default_songsets_backup_dir(self):
+        """Verify songsets_backup_dir is derived from working_dir."""
+        config = AppConfig()
+
+        assert isinstance(config.songsets_backup_dir, Path)
+        assert config.songsets_backup_dir == config.working_dir / "backup"
 
     def test_default_gap_beats(self):
         """Verify default value."""
@@ -140,11 +155,9 @@ url = "postgresql://user@host/db"
 
 [songsets]
 backup_retention = 10
-export_dir = "/test/exports"
 
 [app]
-cache_dir = "/test/cache"
-output_dir = "/test/output"
+working_dir = "/test/working"
 preview_buffer_ms = 1000
 preview_volume = 0.5
 default_gap_beats = 4.0
@@ -156,9 +169,7 @@ default_video_resolution = "720p"
 
         assert config.database_url == "postgresql://user@host/db"
         assert config.songsets_backup_retention == 10
-        assert config.songsets_export_dir == Path("/test/exports")
-        assert config.cache_dir == Path("/test/cache")
-        assert config.output_dir == Path("/test/output")
+        assert config.working_dir == Path("/test/working")
         assert config.preview_buffer_ms == 1000
         assert config.preview_volume == 0.5
         assert config.default_gap_beats == 4.0
@@ -214,24 +225,21 @@ class TestEnsureDirectories:
 
     def test_ensure_directories_creates_paths(self, tmp_path):
         """Verify directory creation."""
-        cache_dir = tmp_path / "test_cache"
-        output_dir = tmp_path / "test_output"
-        log_dir = tmp_path / "test_logs"
+        working_dir = tmp_path / "test_working"
 
         config = AppConfig()
-        config.cache_dir = cache_dir
-        config.output_dir = output_dir
-        config.log_dir = log_dir
-        config.songsets_export_dir = tmp_path / "exports"
+        config.working_dir = working_dir
 
         config.ensure_directories()
 
-        assert cache_dir.exists()
-        assert cache_dir.is_dir()
-        assert output_dir.exists()
-        assert output_dir.is_dir()
-        assert log_dir.exists()
-        assert log_dir.is_dir()
+        assert config.cache_dir.exists()
+        assert config.cache_dir.is_dir()
+        assert config.output_dir.exists()
+        assert config.output_dir.is_dir()
+        assert config.log_dir.exists()
+        assert config.log_dir.is_dir()
+        assert config.songsets_backup_dir.exists()
+        assert config.songsets_backup_dir.is_dir()
 
 
 class TestEnsureAppConfigExists:
@@ -259,11 +267,9 @@ url = "postgresql://user@host/db"
 
 [songsets]
 backup_retention = 3
-export_dir = "/existing/exports"
 
 [app]
-cache_dir = "/existing/cache"
-output_dir = "/existing/output"
+working_dir = "/existing/working"
 preview_buffer_ms = 250
 preview_volume = 0.9
 default_gap_beats = 1.0

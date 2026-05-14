@@ -25,7 +25,7 @@ class TestAdminConfig:
         config = AdminConfig()
 
         assert config.analysis_url == "http://localhost:8000"
-        assert config.r2_bucket == "sow-audio"
+        assert config.r2_bucket == "stream-of-worship"
         assert config.r2_endpoint_url == ""
         assert config.r2_region == "auto"
         assert config.database_url == ""
@@ -49,9 +49,6 @@ region = "us-east-1"
 
 [database]
 url = "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow?sslmode=require"
-
-[paths]
-cache_dir = "/custom/cache"
 """)
 
         config = AdminConfig.load(config_file)
@@ -64,7 +61,6 @@ cache_dir = "/custom/cache"
             config.database_url
             == "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow?sslmode=require"
         )
-        assert config.cache_dir == Path("/custom/cache")
 
     def test_load_missing_file(self, tmp_path):
         """Test that loading missing file raises FileNotFoundError."""
@@ -94,7 +90,7 @@ cache_dir = "/custom/cache"
         config.r2_bucket = "my-bucket"
 
         assert config.get("r2_bucket") == "my-bucket"
-        assert config.get("r2.bucket") is None  # Nested access not supported this way
+        assert config.get("r2.bucket") == "my-bucket"  # Dot notation works
         assert config.get("nonexistent") is None
         assert config.get("nonexistent", "default") == "default"
 
@@ -177,13 +173,19 @@ class TestConfigPaths:
         """Test that get_config_dir returns a Path."""
         config_dir = get_config_dir()
         assert isinstance(config_dir, Path)
-        assert "sow-admin" in str(config_dir).lower()
+        assert "stream-of-worship-admin" in str(config_dir)
 
     def test_get_config_path_returns_toml(self):
         """Test that get_config_path returns path to config.toml."""
         config_path = get_config_path()
         assert isinstance(config_path, Path)
         assert config_path.name == "config.toml"
+
+    def test_get_cache_dir_returns_path(self):
+        """Test that get_cache_dir returns a Path."""
+        cache_dir = get_cache_dir()
+        assert isinstance(cache_dir, Path)
+        assert "stream-of-worship-admin" in str(cache_dir)
 
 
 class TestEnsureConfigExists:
@@ -203,7 +205,7 @@ class TestEnsureConfigExists:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         # Create custom config
-        config_dir = tmp_path / "sow-admin"
+        config_dir = tmp_path / "stream-of-worship-admin"
         config_dir.mkdir()
         config_file = config_dir / "config.toml"
         config_file.write_text('[service]\nanalysis_url = "https://custom.example.com"\n')
@@ -236,14 +238,14 @@ class TestEnvironmentVariables:
 class TestAdminCacheDir:
     """Tests for admin cache_dir resolution."""
 
-    def test_default_cache_dir_is_set(self):
-        """AdminConfig has a cache_dir field with a default."""
-        config = AdminConfig()
-        assert isinstance(config.cache_dir, Path)
-        assert "sow-admin" in str(config.cache_dir)
+    def test_get_cache_dir_returns_path(self):
+        """get_cache_dir returns a Path with stream-of-worship-admin."""
+        cache_dir = get_cache_dir()
+        assert isinstance(cache_dir, Path)
+        assert "stream-of-worship-admin" in str(cache_dir)
 
-    def test_toml_cache_dir_loaded(self, tmp_path, monkeypatch):
-        """cache_dir from TOML [paths] section is loaded."""
+    def test_toml_paths_section_ignored(self, tmp_path, monkeypatch):
+        """Old [paths] section is silently ignored."""
         config_file = tmp_path / "config.toml"
         config_file.write_text("""
 [service]
@@ -253,4 +255,5 @@ analysis_url = "http://localhost:8000"
 cache_dir = "/toml/admin-cache"
 """)
         config = AdminConfig.load(config_file)
-        assert config.cache_dir == Path("/toml/admin-cache")
+        # cache_dir is no longer on config object, use get_cache_dir()
+        assert isinstance(get_cache_dir(), Path)

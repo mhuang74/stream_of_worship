@@ -59,30 +59,24 @@ def get_cache_dir() -> Path:
 
     Examples:
         >>> get_cache_dir()  # doctest: +SKIP
-        Path('/home/user/.cache/sow')  # Linux
-        Path('/Users/user/Library/Caches/sow')  # macOS
-        Path('C:\\Users\\user\\AppData\\Local\\sow\\cache')  # Windows
+        Path('/home/user/.cache/stream-of-worship')  # Linux
+        Path('/Users/user/.cache/stream-of-worship')  # macOS
+        Path('C:\\Users\\user\\AppData\\Local\\stream-of-worship\\cache')  # Windows
     """
     if "SOW_CACHE_DIR" in os.environ:
         return Path(os.environ["SOW_CACHE_DIR"])
 
-    if sys.platform == "darwin":
-        path = Path.home() / "Library" / "Caches" / "sow"
-    elif sys.platform == "win32":
+    if sys.platform == "win32":
         localappdata = os.environ.get("LOCALAPPDATA", "")
         if not localappdata:
-            path = Path.home() / "AppData" / "Local" / "sow" / "cache"
-        else:
-            path = Path(localappdata) / "sow" / "cache"
+            return Path.home() / "AppData" / "Local" / "stream-of-worship" / "cache"
+        return Path(localappdata) / "stream-of-worship" / "cache"
     else:
-        # Linux and others: XDG_CACHE_HOME or ~/.cache
+        # macOS and Linux: XDG_CACHE_HOME or ~/.cache
         xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
         if xdg_cache_home:
-            path = Path(xdg_cache_home) / "sow"
-        else:
-            path = Path.home() / ".cache" / "sow"
-
-    return path
+            return Path(xdg_cache_home) / "stream-of-worship"
+        return Path.home() / ".cache" / "stream-of-worship"
 
 
 def ensure_directories() -> None:

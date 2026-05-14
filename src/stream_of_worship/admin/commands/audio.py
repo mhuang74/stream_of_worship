@@ -27,7 +27,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
-from stream_of_worship.admin.config import AdminConfig
+from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.services.analysis import (
@@ -1721,7 +1721,7 @@ def vocal_clean(
         raise typer.Exit(0)
 
     # Initialize asset cache and get audio.mp3
-    cache_dir = config.cache_dir
+    cache_dir = get_cache_dir()
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
     audio_path = cache.download_audio(hash_prefix)
@@ -2860,7 +2860,7 @@ def cache_assets(
     from stream_of_worship.app.services.asset_cache import AssetCache
 
     # Use the admin cache directory
-    cache_dir = config.cache_dir
+    cache_dir = get_cache_dir()
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
     console.print(f"[cyan]Caching assets for: {song_title}[/cyan]")
@@ -3148,7 +3148,7 @@ def playback_audio(
     # Initialize asset cache
     from stream_of_worship.app.services.asset_cache import AssetCache
 
-    cache_dir = config.cache_dir
+    cache_dir = get_cache_dir()
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
     hash_prefix = recording.hash_prefix

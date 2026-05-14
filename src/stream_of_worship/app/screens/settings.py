@@ -43,13 +43,9 @@ class SettingsScreen(Screen):
         with Vertical():
             yield Label("[bold]Settings[/bold]", id="title")
 
-            with Horizontal(id="cache_row"):
-                yield Label("Cache Directory:")
-                yield Input(id="cache_input", value=str(self.config.cache_dir))
-
-            with Horizontal(id="output_row"):
-                yield Label("Output Directory:")
-                yield Input(id="output_input", value=str(self.config.output_dir))
+            with Horizontal(id="working_dir_row"):
+                yield Label("Working Directory:")
+                yield Input(id="working_dir_input", value=str(self.config.working_dir))
 
             with Horizontal(id="gap_row"):
                 yield Label("Default Gap (beats):")
@@ -82,11 +78,8 @@ class SettingsScreen(Screen):
     def action_save(self) -> None:
         """Save settings."""
         try:
-            self.config.cache_dir = __import__("pathlib").Path(
-                self.query_one("#cache_input", Input).value
-            )
-            self.config.output_dir = __import__("pathlib").Path(
-                self.query_one("#output_input", Input).value
+            self.config.working_dir = __import__("pathlib").Path(
+                self.query_one("#working_dir_input", Input).value
             )
             self.config.default_gap_beats = float(
                 self.query_one("#gap_input", Input).value
