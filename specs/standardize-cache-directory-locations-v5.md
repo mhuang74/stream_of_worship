@@ -23,6 +23,7 @@ This plan supersedes `specs/standardize-cache-directory-locations-v4.md` with a 
 - **Cache**: Always at `~/.cache/<name>` — not configurable
 - **Working Dir**: Only configurable path for User App (via `working_dir` in TOML)
 - **Derived paths**: `log_dir`, `output_dir`, `songsets_backup_dir` are computed from `working_dir`, not stored separately
+- **macOS note**: Cache uses `~/.cache/` instead of `~/Library/Caches/` for consistency with Linux; this departs from Apple platform conventions but simplifies cross-platform support
 
 ## Config File Structure
 
@@ -42,6 +43,8 @@ url = ""
 ```
 
 No `[paths]` section. Cache is always at `~/.cache/stream-of-worship-admin`.
+
+**Note:** R2 bucket default changes from `sow-audio` to `stream-of-worship`. Existing configs with explicit bucket setting are preserved.
 
 ### User App (`~/.config/stream-of-worship/config.toml`)
 
@@ -67,6 +70,8 @@ default_video_resolution = "1080p"
 ```
 
 Only `working_dir` is configurable for paths. Cache is always at `~/.cache/stream-of-worship`.
+
+**Note:** R2 bucket default changes from `sow-audio` to `stream-of-worship`. Existing configs with explicit bucket setting are preserved.
 
 ## Implementation
 
@@ -439,6 +444,7 @@ def action_save(self) -> None:
 | `src/stream_of_worship/core/paths.py` | macOS cache: `~/Library/Caches/sow` → `~/.cache/stream-of-worship`; Linux cache: `~/.cache/sow` → `~/.cache/stream-of-worship` |
 | `src/stream_of_worship/admin/config.py` | Config dir: `sow-admin` → `stream-of-worship-admin`; cache dir: `sow-admin` → `stream-of-worship-admin`; remove `cache_dir` field; remove `[paths]` from TOML |
 | `src/stream_of_worship/admin/main.py` | Update `config show` panel to use `get_cache_dir()` function |
+| `src/stream_of_worship/admin/commands/audio.py` | Replace `config.cache_dir` with `get_cache_dir()` (3 call sites: lines 1724, 2863, 3151) |
 | `src/stream_of_worship/app/config.py` | Config dir: `sow` → `stream-of-worship`; add `working_dir` field; remove `cache_dir`/`log_dir`/`output_dir`/`songsets_export_dir` fields; add property methods; remove `get_default_export_dir()` |
 | `src/stream_of_worship/app/main.py` | Rename `export` → `backup`, `export-all` → `backup-all`, `import` → `restore`; update config display |
 | `src/stream_of_worship/app/services/songset_io.py` | Rename `export_songset` → `backup_songset`, `export_all` → `backup_all`, `import_songset` → `restore_songset` |
@@ -446,6 +452,123 @@ def action_save(self) -> None:
 | `tests/app/test_config.py` | Update path assertions, field names, add `working_dir` tests |
 | `tests/admin/test_config.py` | Update path assertions, remove `cache_dir` field tests |
 | `tests/unit/test_paths.py` | Update macOS/Linux cache path expectations |
+| `README.md` | Update config paths, examples, add configurable paths table |
+| `DEVELOPER.md` | Update config paths in Advanced Configuration section |
+| `src/stream_of_worship/admin/README.md` | Update config path, example, troubleshooting paths |
+| `src/stream_of_worship/app/README.md` | Update config path, example, explain `working_dir` |
+| `examples/sow-admin-config.toml` | Update bucket default, remove `[paths]` section |
+| `examples/sow-app-config.toml` | Update bucket default, replace path fields with `working_dir` |
+
+## Documentation Updates
+
+Update the following files to reflect new paths and configurable options:
+
+### 1. `README.md`
+
+**Changes:**
+- Update Admin CLI config path: `~/.config/sow-admin/config.toml` → `~/.config/stream-of-worship-admin/config.toml`
+- Update User App config path: `~/.config/sow/config.toml` → `~/.config/stream-of-worship/config.toml`
+- Update Admin CLI config example: remove `[paths]` section, update `bucket` default to `"stream-of-worship"`
+- Update User App config example: replace `cache_dir`/`output_dir` with `working_dir`, update `bucket` default
+- Add note that cache directory is not configurable (always at platform standard location)
+- Update CLI command examples: `songsets export` → `songsets backup`, `songsets import` → `songsets restore`
+
+**New Admin CLI config example:**
+```toml
+[service]
+analysis_url = "http://localhost:8000"
+
+[database]
+url = "postgresql://sow_admin_rw@ep-xxx-pooler.neon.tech/sow"
+
+[r2]
+bucket = "stream-of-worship"
+endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
+region = "auto"
+```
+
+**New User App config example:**
+```toml
+[database]
+url = "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow"
+
+[r2]
+bucket = "stream-of-worship"
+endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
+region = "auto"
+
+[app]
+working_dir = "~/stream-of-worship"
+preview_volume = 0.8
+default_gap_beats = 2.0
+default_video_template = "dark"
+default_video_resolution = "1080p"
+```
+
+**Add configuration notes:**
+```markdown
+### Configurable Paths
+
+| Component | Configurable Path | Default | Config Key |
+|-----------|------------------|---------|------------|
+| **Admin CLI** | None (cache at `~/.cache/stream-of-worship-admin`) | — | — |
+| **User App** | Working directory | `~/stream-of-worship` | `working_dir` in `[app]` |
+
+**Derived paths (User App only):**
+- Logs: `<working_dir>/logs/`
+- Output: `<working_dir>/output/`
+- Backup: `<working_dir>/backup/`
+
+**Cache locations (not configurable):**
+- Admin CLI: `~/.cache/stream-of-worship-admin/`
+- User App: `~/.cache/stream-of-worship/`
+```
+
+### 2. `DEVELOPER.md`
+
+**Changes:**
+- Update Admin CLI config path in "Advanced Configuration" section
+- Remove `[paths]` section from config example
+- Add note about cache directory being non-configurable
+- Update R2 bucket default in examples
+
+### 3. `src/stream_of_worship/admin/README.md`
+
+**Changes:**
+- Update config file location: `~/.config/sow-admin/config.toml` → `~/.config/stream-of-worship-admin/config.toml`
+- Update example config: remove `[paths]` section, change `bucket = "sow-audio"` to `bucket = "stream-of-worship"`
+- Add note: "Cache directory is always at `~/.cache/stream-of-worship-admin/` and is not configurable."
+- Update troubleshooting `lsof` path: `~/.config/sow-admin/db/sow.db` → `~/.config/stream-of-worship-admin/db/sow.db`
+
+### 4. `src/stream_of_worship/app/README.md`
+
+**Changes:**
+- Update config file location references
+- Update config example: replace `cache_dir`/`output_dir`/`log_dir` with `working_dir`
+- Add note: "Cache directory is always at `~/.cache/stream-of-worship/` and is not configurable."
+- Update "Configuration" section to explain `working_dir` and derived paths
+
+### 5. `examples/sow-admin-config.toml`
+
+**Changes:**
+- Update `bucket` default: `"sow-audio"` → `"stream-of-worship"`
+- Remove `[paths]` section if present
+- Add comment explaining cache is at standard location
+
+### 6. `examples/sow-app-config.toml`
+
+**Changes:**
+- Update `bucket` default: `"sow-audio"` → `"stream-of-worship"`
+- Replace `cache_dir`/`output_dir`/`log_dir` with `working_dir`
+- Add comments explaining derived paths
+
+### 7. Other specs/runbooks referencing old paths
+
+Files to review and update path references:
+- `specs/sqlite_turso_to_neon_migration_runbook_v4.md`
+- `specs/sqlite_turso_to_neon_migration_runbook_v2.md`
+- `specs/sqlite_turso_to_neon_migration_runbook.md`
+- Any other specs under `specs/` or `reports/` that reference `~/.config/sow-admin`, `~/.config/sow`, `~/.cache/sow`, etc.
 
 ## Backward Compatibility
 
@@ -493,6 +616,80 @@ def action_save(self) -> None:
    ├── output/
    └── backup/
    ```
+
+## Manual Migration Instructions
+
+Users upgrading from previous versions must manually migrate their data. Run these commands before using the new version:
+
+### 1. Admin CLI Migration
+
+```bash
+# Move config file
+mv ~/.config/sow-admin ~/.config/stream-of-worship-admin
+
+# Move cache directory (macOS)
+mv ~/Library/Caches/sow-admin ~/.cache/stream-of-worship-admin
+
+# Move cache directory (Linux)
+mv ~/.cache/sow-admin ~/.cache/stream-of-worship-admin
+```
+
+### 2. User App Migration
+
+```bash
+# Move config file
+mv ~/.config/sow ~/.config/stream-of-worship
+
+# Move cache directory (macOS)
+mkdir -p ~/.cache
+mv ~/Library/Caches/sow ~/.cache/stream-of-worship
+
+# Move cache directory (Linux)
+mv ~/.cache/sow ~/.cache/stream-of-worship
+
+# Create new working directory structure
+mkdir -p ~/stream-of-worship/{logs,output,backup}
+
+# Move existing output files (if any)
+mv ~/sow/output/* ~/stream-of-worship/output/ 2>/dev/null || true
+
+# Move existing songset exports (if any)
+mv ~/Documents/sow-songsets/* ~/stream-of-worship/backup/ 2>/dev/null || true
+```
+
+### 3. Update Config TOML
+
+Edit `~/.config/stream-of-worship/config.toml` and add:
+
+```toml
+[app]
+working_dir = "~/stream-of-worship"
+```
+
+Remove old path keys if present:
+- `cache_dir` (under `[app]`)
+- `output_dir` (under `[app]`)
+- `log_dir` (under `[app]`)
+- `export_dir` (under `[songsets]`)
+
+### 4. CLI Command Changes
+
+Update any scripts using old command names:
+- `sow-app songsets export` → `sow-app songsets backup`
+- `sow-app songsets export-all` → `sow-app songsets backup-all`
+- `sow-app songsets import` → `sow-app songsets restore`
+
+### 5. Verify Migration
+
+```bash
+# Check config is found
+uv run --extra admin sow-admin config show
+uv run --extra app sow-app config show
+
+# Verify cache contents moved
+ls ~/.cache/stream-of-worship-admin/
+ls ~/.cache/stream-of-worship/
+```
 
 ## Out of Scope
 

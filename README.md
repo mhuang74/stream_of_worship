@@ -128,7 +128,7 @@ sow-admin songset export --songset-id <id>         # Export to JSON
 
 ### Configuration
 
-Create `~/.config/sow-admin/config.toml`:
+Create `~/.config/stream-of-worship-admin/config.toml`:
 
 ```toml
 [service]
@@ -138,13 +138,12 @@ analysis_url = "http://localhost:8000"
 url = "postgresql://sow_admin_rw@ep-xxx-pooler.neon.tech/sow"
 
 [r2]
-bucket = "your-r2-bucket"
+bucket = "stream-of-worship"
 endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
 region = "auto"
-
-[paths]
-cache_dir = "/Users/you/.cache/sow-admin"
 ```
+
+**Note:** Cache directory is always at `~/.cache/stream-of-worship-admin/` and is not configurable.
 
 **Required Environment Variables** (for sensitive credentials):
 ```bash
@@ -214,25 +213,33 @@ The User App is the primary tool for worship leaders and media teams to create m
 
 ### Configuration
 
-Create `~/.config/sow/config.toml`:
+Create `~/.config/stream-of-worship/config.toml`:
 
 ```toml
 [database]
 url = "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow"
 
 [r2]
-bucket = "your-r2-bucket"
+bucket = "stream-of-worship"
 endpoint_url = "https://<account-id>.r2.cloudflarestorage.com"
 region = "auto"
 
 [app]
-cache_dir = "/Users/you/.cache/sow"
-output_dir = "/Users/you/sow/output"
+working_dir = "~/stream-of-worship"
 preview_volume = 0.8
 default_gap_beats = 2.0
 default_video_template = "dark"
 default_video_resolution = "1080p"
 ```
+
+**Derived paths (User App only):**
+- Logs: `<working_dir>/logs/`
+- Output: `<working_dir>/output/`
+- Backup: `<working_dir>/backup/`
+
+**Cache locations (not configurable):**
+- Admin CLI: `~/.cache/stream-of-worship-admin/`
+- User App: `~/.cache/stream-of-worship/`
 
 **Required Environment Variables** (for sensitive credentials):
 ```bash
@@ -261,8 +268,8 @@ sow-app db check                   # Check database connectivity
 # Songset operations
 sow-app songset list              # List all songsets
 sow-app songset create "Worship Set"  # Create new songset
-sow-app songset export <id>       # Export songset to JSON
-sow-app songset import <file>     # Import songset from JSON
+sow-app songsets backup <id>      # Backup songset to JSON
+sow-app songsets restore <file>   # Restore songset from JSON
 
 # Configuration
 sow-app config show               # Display current configuration
@@ -282,8 +289,8 @@ uv run --extra app sow-app run
 #    - Preview transitions
 #    - Export audio or video
 
-# 3. Export songset for sharing
-uv run --extra app sow-app songset export <songset-id>
+# 3. Backup songset for sharing
+uv run --extra app sow-app songsets backup <songset-id>
 ```
 
 ---

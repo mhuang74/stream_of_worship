@@ -15,27 +15,26 @@ import tomllib
 import tomli_w
 
 from stream_of_worship.core.paths import get_cache_dir as _get_core_cache_dir
-from stream_of_worship.core.paths import get_user_data_dir as _get_core_data_dir
 
 
 def get_app_config_dir() -> Path:
     """Get the platform-specific config directory for sow-app.
 
     Returns:
-        Path to the config directory for sow-app (~/.config/sow/ on Linux/macOS).
+        Path to the config directory for sow-app (~/.config/stream-of-worship/ on Linux/macOS).
     """
     if sys.platform == "darwin" or sys.platform == "linux":
         xdg_config = os.environ.get("XDG_CONFIG_HOME")
         if xdg_config:
-            return Path(xdg_config) / "sow"
-        return Path.home() / ".config" / "sow"
+            return Path(xdg_config) / "stream-of-worship"
+        return Path.home() / ".config" / "stream-of-worship"
     elif sys.platform == "win32":
         appdata = os.environ.get("APPDATA")
         if appdata:
-            return Path(appdata) / "sow"
-        return Path.home() / "AppData" / "Roaming" / "sow"
+            return Path(appdata) / "stream-of-worship"
+        return Path.home() / "AppData" / "Roaming" / "stream-of-worship"
     else:
-        return Path.home() / ".config" / "sow"
+        return Path.home() / ".config" / "stream-of-worship"
 
 
 def get_app_config_path() -> Path:
@@ -47,15 +46,6 @@ def get_app_config_path() -> Path:
     return get_app_config_dir() / "config.toml"
 
 
-def get_default_export_dir() -> Path:
-    """Get the default export directory for songsets.
-
-    Returns:
-        Path to default export directory
-    """
-    return Path.home() / "Documents" / "sow-songsets"
-
-
 @dataclass
 class AppConfig:
     """Configuration for sow-app TUI.
@@ -63,13 +53,10 @@ class AppConfig:
     Attributes:
         database_url: Postgres DSN for app role (without password)
         songsets_backup_retention: Number of songset backups to keep
-        songsets_export_dir: Directory for songset JSON exports
         r2_bucket: R2 bucket name for audio storage
         r2_endpoint_url: R2 endpoint URL
         r2_region: R2 region
-        cache_dir: Local directory for cached R2 assets
-        output_dir: Directory for exported audio/video files
-        log_dir: Directory for log files
+        working_dir: Working directory for logs, output, and backups
         preview_buffer_ms: Audio buffer size for playback in milliseconds
         preview_volume: Default playback volume (0.0-1.0)
         default_gap_beats: Default gap duration between songs (in beats)
@@ -86,17 +73,14 @@ class AppConfig:
 
     # Songset settings
     songsets_backup_retention: int = 5
-    songsets_export_dir: Path = field(default_factory=get_default_export_dir)
 
     # R2 storage settings
-    r2_bucket: str = "sow-audio"
+    r2_bucket: str = "stream-of-worship"
     r2_endpoint_url: str = ""
     r2_region: str = "auto"
 
-    # App-specific paths
-    cache_dir: Path = field(default_factory=_get_core_cache_dir)
-    output_dir: Path = field(default_factory=lambda: Path.home() / "sow" / "output")
-    log_dir: Path = field(default_factory=lambda: _get_core_data_dir() / "logs")
+    # Working directory (only configurable path)
+    working_dir: Path = field(default_factory=lambda: Path.home() / "stream-of-worship")
 
     # Playback settings
     preview_buffer_ms: int = 500
@@ -106,6 +90,38 @@ class AppConfig:
     default_gap_beats: float = 2.0
     default_video_template: str = "dark"
     default_video_resolution: str = "1080p"
+
+    @property
+    def cache_dir(self) -> Path:
+        """Cache directory - always at standard platform location."""
+        return _get_core_cache_dir()
+
+    @property
+    def log_dir(self) -> Path:
+        """Log directory - derived from working_dir."""
+        return self.working_dir / "logs"
+
+    @property
+    def output_dir(self) -> Path:
+        """Output directory - derived from working_dir."""
+        return self.working_dir / "output"
+
+    @property
+    def songsets_backup_dir(self) -> Path:
+        """Songset backup directory - derived from working_dir."""
+        return self.working_dir / "backup"
+
+    @property
+    def songsets_export_dir(self) -> Path:
+        """Deprecated: Use songsets_backup_dir instead."""
+        return self.songsets_backup_dir
+
+    def ensure_directories(self) -> None:
+        """Ensure all configured directories exist."""
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.songsets_backup_dir.mkdir(parents=True, exist_ok=True)
 
     def get_connection_url(self) -> str:
         """Return a Postgres DSN with password injected from env var.
@@ -171,8 +187,7 @@ class AppConfig:
             config.songsets_backup_retention = songsets.get(
                 "backup_retention", config.songsets_backup_retention
             )
-            if "export_dir" in songsets:
-                config.songsets_export_dir = Path(songsets["export_dir"]).expanduser()
+            # Backward compatibility: silently ignore old export_dir key
 
         # Load R2 settings
         if "r2" in data:
@@ -184,12 +199,10 @@ class AppConfig:
         # Load app-specific settings
         if "app" in data:
             app_data = data["app"]
-            if "cache_dir" in app_data:
-                config.cache_dir = Path(app_data["cache_dir"]).expanduser()
-            if "output_dir" in app_data:
-                config.output_dir = Path(app_data["output_dir"]).expanduser()
-            if "log_dir" in app_data:
-                config.log_dir = Path(app_data["log_dir"]).expanduser()
+            if "working_dir" in app_data:
+                config.working_dir = Path(app_data["working_dir"]).expanduser()
+            # Backward compatibility: silently ignore old path keys
+            # (cache_dir, output_dir, log_dir are now derived from working_dir)
             config.preview_buffer_ms = app_data.get("preview_buffer_ms", config.preview_buffer_ms)
             config.preview_volume = app_data.get("preview_volume", config.preview_volume)
             config.default_gap_beats = app_data.get("default_gap_beats", config.default_gap_beats)
@@ -219,7 +232,6 @@ class AppConfig:
             "database": {"url": self.database_url},
             "songsets": {
                 "backup_retention": self.songsets_backup_retention,
-                "export_dir": str(self.songsets_export_dir),
             },
             "r2": {
                 "bucket": self.r2_bucket,
@@ -227,9 +239,7 @@ class AppConfig:
                 "region": self.r2_region,
             },
             "app": {
-                "cache_dir": str(self.cache_dir),
-                "output_dir": str(self.output_dir),
-                "log_dir": str(self.log_dir),
+                "working_dir": str(self.working_dir),
                 "preview_buffer_ms": self.preview_buffer_ms,
                 "preview_volume": self.preview_volume,
                 "default_gap_beats": self.default_gap_beats,
@@ -241,20 +251,13 @@ class AppConfig:
         with open(path, "wb") as f:
             tomli_w.dump(data, f)
 
-    def ensure_directories(self) -> None:
-        """Ensure all configured directories exist."""
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.songsets_export_dir.mkdir(parents=True, exist_ok=True)
-
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get a configuration value by key.
 
         Supports dot notation mapping to flat attributes:
         - "r2.bucket" -> r2_bucket
         - "database.url" -> database_url
-        - "app.cache_dir" -> cache_dir
+        - "app.working_dir" -> working_dir
 
         Args:
             key: Configuration key
@@ -277,7 +280,7 @@ class AppConfig:
         Supports dot notation mapping to flat attributes:
         - "r2.bucket" -> r2_bucket
         - "database.url" -> database_url
-        - "app.cache_dir" -> cache_dir
+        - "app.working_dir" -> working_dir
 
         Args:
             key: Configuration key
@@ -308,7 +311,7 @@ class AppConfig:
         Maps TOML section paths to flat attribute names:
         - "r2.bucket" -> "r2_bucket"
         - "database.url" -> "database_url"
-        - "app.cache_dir" -> "cache_dir" (app prefix is dropped)
+        - "app.working_dir" -> "working_dir" (app prefix is dropped)
         """
         if "." not in key:
             return key

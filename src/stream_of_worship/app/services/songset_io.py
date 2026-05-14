@@ -1,7 +1,7 @@
-"""Songset export/import service for sow-app.
+"""Songset backup/restore service for sow-app.
 
-Provides JSON serialization for songsets, including export to files
-and import with validation against the catalog.
+Provides JSON serialization for songsets, including backup to files
+and restore with validation against the catalog.
 """
 
 import json
@@ -38,9 +38,9 @@ class ImportResult:
 
 
 class SongsetIOService:
-    """Service for exporting and importing songsets.
+    """Service for backing up and restoring songsets.
 
-    Provides JSON serialization with catalog validation on import.
+    Provides JSON serialization with catalog validation on restore.
     """
 
     def __init__(
@@ -57,15 +57,15 @@ class SongsetIOService:
         self.songset_client = songset_client
         self.get_recording = get_recording
 
-    def export_songset(self, songset_id: str, output_path: Path) -> Path:
-        """Export a songset to JSON file.
+    def backup_songset(self, songset_id: str, output_path: Path) -> Path:
+        """Backup a songset to JSON file.
 
         Args:
-            songset_id: ID of the songset to export
+            songset_id: ID of the songset to backup
             output_path: Path to write the JSON file
 
         Returns:
-            Path to the exported file
+            Path to the backed up file
 
         Raises:
             ValueError: If songset not found
@@ -89,36 +89,36 @@ class SongsetIOService:
 
         return output_path
 
-    def export_all(self, output_dir: Path) -> list[Path]:
-        """Export all songsets to JSON files.
+    def backup_all(self, output_dir: Path) -> list[Path]:
+        """Backup all songsets to JSON files.
 
         Args:
             output_dir: Directory to write the JSON files
 
         Returns:
-            List of paths to exported files
+            List of paths to backed up files
         """
         output_dir.mkdir(parents=True, exist_ok=True)
 
         songsets = self.songset_client.list_songsets()
-        exported = []
+        backed_up = []
 
         for songset in songsets:
             safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in songset.name)
             filename = f"{safe_name}_{songset.id}.json"
             output_path = output_dir / filename
 
-            self.export_songset(songset.id, output_path)
-            exported.append(output_path)
+            self.backup_songset(songset.id, output_path)
+            backed_up.append(output_path)
 
-        return exported
+        return backed_up
 
-    def import_songset(
+    def restore_songset(
         self,
         input_path: Path,
         on_conflict: str = "rename",
     ) -> ImportResult:
-        """Import a songset from JSON file.
+        """Restore a songset from JSON file.
 
         Args:
             input_path: Path to the JSON file

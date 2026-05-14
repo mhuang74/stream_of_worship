@@ -35,8 +35,9 @@ An interactive Textual TUI application for worship leaders to browse the song ca
 - **Background processing** - Export runs in background thread
 
 ### ⚙️ Configuration
-- **Cache directory** - Local cache for downloaded audio assets
-- **Output directory** - Where exported files are saved
+- **Working directory** - Single configurable path for all output artifacts
+- **Derived paths** - Logs, output, and backup directories under working dir
+- **Cache directory** - Always at standard platform location (not configurable)
 - **Default video template** - Choose your preferred visual style
 - **Default gap beats** - Set your preferred default transition gap
 - **TOML-based config** - Easy configuration file editing
@@ -55,17 +56,28 @@ An interactive Textual TUI application for worship leaders to browse the song ca
    export SOW_R2_SECRET_ACCESS_KEY="your-secret"
    ```
 
-3. Ensure you have a config file with database path:
-   ```toml
-   database_url = "/path/to/sow.db"
+3. Ensure you have a config file with database URL:
+    ```toml
+    [database]
+    url = "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow"
 
-   [app]
-   cache_dir = "/path/to/cache"   # default: ~/.cache/sow/
-   output_dir = "/path/to/output" # default: ~/sow/output/
-   log_dir = "/path/to/logs"      # default: ~/.local/share/sow/logs/
-   default_gap_beats = 2.0
-   default_video_template = "dark"
-   ```
+    [r2]
+    bucket = "stream-of-worship"
+    endpoint_url = "https://xxx.r2.cloudflarestorage.com"
+    region = "auto"
+
+    [app]
+    working_dir = "~/stream-of-worship"
+    default_gap_beats = 2.0
+    default_video_template = "dark"
+    ```
+
+    **Derived paths:**
+    - Logs: `~/stream-of-worship/logs/`
+    - Output: `~/stream-of-worship/output/`
+    - Backup: `~/stream-of-worship/backup/`
+
+    **Cache:** Always at `~/.cache/stream-of-worship/` (not configurable)
 
 ### Launch
 

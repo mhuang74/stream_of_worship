@@ -1,9 +1,9 @@
 """Configuration management for sow-admin CLI.
 
 Handles loading, saving, and validating TOML configuration stored in:
-- macOS: ~/.config/sow-admin/config.toml
-- Linux: ~/.config/sow-admin/config.toml (XDG_CONFIG_HOME)
-- Windows: %APPDATA%\\sow-admin\\config.toml
+- macOS: ~/.config/stream-of-worship-admin/config.toml
+- Linux: ~/.config/stream-of-worship-admin/config.toml (XDG_CONFIG_HOME)
+- Windows: %APPDATA%\\stream-of-worship-admin\\config.toml
 """
 
 import os
@@ -28,22 +28,18 @@ class AdminConfig:
         r2_region: R2 region (usually "auto")
         database_url: Postgres DSN without password (e.g.
             postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow?sslmode=require)
-        cache_dir: Local cache directory for admin operations
     """
 
     # Analysis Service
     analysis_url: str = "http://localhost:8000"
 
     # Cloudflare R2
-    r2_bucket: str = "sow-audio"
+    r2_bucket: str = "stream-of-worship"
     r2_endpoint_url: str = ""
     r2_region: str = "auto"
 
     # Postgres database (password via SOW_DATABASE_PASSWORD env var)
     database_url: str = ""
-
-    # Cache
-    cache_dir: Path = field(default_factory=lambda: get_cache_dir())
 
     def get_connection_url(self) -> str:
         """Return a Postgres DSN with password injected from env var.
@@ -114,11 +110,8 @@ class AdminConfig:
         # Backward compatibility: silently ignore old [turso] section
         # (it may still exist in user configs from before migration)
 
-        # Load cache dir from TOML
-        if "paths" in data:
-            toml_cache_dir = data["paths"].get("cache_dir")
-            if toml_cache_dir:
-                config.cache_dir = Path(toml_cache_dir)
+        # Backward compatibility: silently ignore old [paths] section
+        # (cache_dir is now always at standard platform location)
 
         return config
 
@@ -143,7 +136,6 @@ class AdminConfig:
                 "region": self.r2_region,
             },
             "database": {"url": self.database_url},
-            "paths": {"cache_dir": str(self.cache_dir)},
         }
 
         with open(path, "wb") as f:
@@ -228,15 +220,15 @@ def get_cache_dir() -> Path:
     if sys.platform == "darwin" or sys.platform == "linux":
         xdg_cache = os.environ.get("XDG_CACHE_HOME")
         if xdg_cache:
-            return Path(xdg_cache) / "sow-admin"
-        return Path.home() / ".cache" / "sow-admin"
+            return Path(xdg_cache) / "stream-of-worship-admin"
+        return Path.home() / ".cache" / "stream-of-worship-admin"
     elif sys.platform == "win32":
         localappdata = os.environ.get("LOCALAPPDATA")
         if localappdata:
-            return Path(localappdata) / "sow-admin" / "cache"
-        return Path.home() / "AppData" / "Local" / "sow-admin" / "cache"
+            return Path(localappdata) / "stream-of-worship-admin" / "cache"
+        return Path.home() / "AppData" / "Local" / "stream-of-worship-admin" / "cache"
     else:
-        return Path.home() / ".cache" / "sow-admin"
+        return Path.home() / ".cache" / "stream-of-worship-admin"
 
 
 def get_config_dir() -> Path:
@@ -248,15 +240,15 @@ def get_config_dir() -> Path:
     if sys.platform == "darwin" or sys.platform == "linux":
         xdg_config = os.environ.get("XDG_CONFIG_HOME")
         if xdg_config:
-            return Path(xdg_config) / "sow-admin"
-        return Path.home() / ".config" / "sow-admin"
+            return Path(xdg_config) / "stream-of-worship-admin"
+        return Path.home() / ".config" / "stream-of-worship-admin"
     elif sys.platform == "win32":
         appdata = os.environ.get("APPDATA")
         if appdata:
-            return Path(appdata) / "sow-admin"
-        return Path.home() / "AppData" / "Roaming" / "sow-admin"
+            return Path(appdata) / "stream-of-worship-admin"
+        return Path.home() / "AppData" / "Roaming" / "stream-of-worship-admin"
     else:
-        return Path.home() / ".config" / "sow-admin"
+        return Path.home() / ".config" / "stream-of-worship-admin"
 
 
 def get_config_path() -> Path:

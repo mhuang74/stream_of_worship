@@ -55,8 +55,10 @@ python -m main --help
 
 Configuration is stored in a TOML file at:
 
-- **macOS/Linux**: `~/.config/sow-admin/config.toml`
-- **Windows**: `%APPDATA%\sow-admin\config.toml`
+- **macOS/Linux**: `~/.config/stream-of-worship-admin/config.toml`
+- **Windows**: `%APPDATA%\stream-of-worship-admin\config.toml`
+
+Cache directory is always at `~/.cache/stream-of-worship-admin/` (not configurable).
 
 ### View Configuration
 
@@ -90,13 +92,15 @@ sow-admin config path
 analysis_url = "http://localhost:8000"
 
 [r2]
-bucket = "sow-audio"
+bucket = "stream-of-worship"
 endpoint_url = "https://xxx.r2.cloudflarestorage.com"
 region = "auto"
 
 [database]
 url = "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow"
 ```
+
+Note: Cache directory is always at `~/.cache/stream-of-worship-admin/` and is not configurable.
 
 Note: The database URL for Neon should include `sslmode=require` in the query string for production use. The application uses `sslmode=prefer` by default, which attempts SSL first but allows fallback for testing environments.
 
@@ -267,8 +271,8 @@ uv run --extra admin sow-admin --help
 If the database is locked, ensure no other process is using it:
 
 ```bash
-# Check for running processes
-lsof ~/.config/sow-admin/db/sow.db
+# Check for running processes (if using local SQLite)
+lsof ~/.config/stream-of-worship-admin/db/sow.db
 
 # Close any open database connections
 ```

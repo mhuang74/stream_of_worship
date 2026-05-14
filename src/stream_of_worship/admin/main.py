@@ -94,7 +94,7 @@ def config(
         sow-admin config set r2.bucket my-bucket
         sow-admin config path          # Show config file path
     """
-    from stream_of_worship.admin.config import get_config_path, ensure_config_exists
+    from stream_of_worship.admin.config import get_config_path, ensure_config_exists, get_cache_dir
 
     if action == "show":
         try:
@@ -111,7 +111,7 @@ def config(
             f"[dim]──────────────────────[/dim]\n"
             f"[cyan]Analysis URL:[/cyan] {cfg.analysis_url}\n"
             f"[dim]──────────────────────[/dim]\n"
-            f"[cyan]Cache dir:[/cyan] {cfg.cache_dir}",
+            f"[cyan]Cache dir:[/cyan] {get_cache_dir()}",
             title="Configuration",
             border_style="green",
         )

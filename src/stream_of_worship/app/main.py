@@ -253,27 +253,22 @@ def db_check(
 
 
 # Songsets subcommand group
-songsets_app = typer.Typer(help="Songset export/import operations")
+songsets_app = typer.Typer(help="Songset backup/restore operations")
 app.add_typer(songsets_app, name="songsets")
 
 
-@songsets_app.command("export")
-def export_songset(
-    songset_id: str = typer.Argument(..., help="Songset ID to export"),
+@songsets_app.command("backup")
+def backup_songset(
+    songset_id: str = typer.Argument(..., help="Songset ID to backup"),
     output: Optional[Path] = typer.Option(
         None,
         "--output",
         "-o",
-        help="Output file path (default: <name>_<id>.json in export dir)",
+        help="Output file path (default: <name>_<id>.json in backup dir)",
     ),
-    config_path: Path = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help="Path to config file",
-    ),
+    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Export a songset to JSON file."""
+    """Backup a songset to JSON file."""
     try:
         if config_path:
             config = AppConfig.load(config_path)
@@ -298,34 +293,29 @@ def export_songset(
 
         if output is None:
             safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in songset.name)
-            output = config.songsets_export_dir / f"{safe_name}_{songset_id}.json"
+            output = config.songsets_backup_dir / f"{safe_name}_{songset_id}.json"
 
-        io_service.export_songset(songset_id, output)
-        console.print(f"[green]Exported songset to:[/green] {output}")
+        io_service.backup_songset(songset_id, output)
+        console.print(f"[green]Backed up songset to:[/green] {output}")
 
     except Exception as e:
-        console.print(f"[red]Export failed: {e}[/red]")
+        console.print(f"[red]Backup failed: {e}[/red]")
         raise typer.Exit(1)
     finally:
         songset_client.close()
 
 
-@songsets_app.command("export-all")
-def export_all_songsets(
+@songsets_app.command("backup-all")
+def backup_all_songsets(
     output_dir: Optional[Path] = typer.Option(
         None,
         "--output",
         "-o",
-        help="Output directory (default: songsets_export_dir from config)",
+        help="Output directory (default: backup dir from config)",
     ),
-    config_path: Path = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help="Path to config file",
-    ),
+    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Export all songsets to JSON files."""
+    """Backup all songsets to JSON files."""
     try:
         if config_path:
             config = AppConfig.load(config_path)
@@ -336,7 +326,7 @@ def export_all_songsets(
         raise typer.Exit(1)
 
     if output_dir is None:
-        output_dir = config.songsets_export_dir
+        output_dir = config.songsets_backup_dir
 
     provider = ConnectionProvider(config.get_connection_url())
     songset_client = SongsetClient(provider)
@@ -344,35 +334,30 @@ def export_all_songsets(
 
     try:
         io_service = SongsetIOService(songset_client)
-        exported = io_service.export_all(output_dir)
+        backed_up = io_service.backup_all(output_dir)
 
-        console.print(f"[green]Exported {len(exported)} songset(s) to:[/green] {output_dir}")
-        for path in exported:
+        console.print(f"[green]Backed up {len(backed_up)} songset(s) to:[/green] {output_dir}")
+        for path in backed_up:
             console.print(f"  - {path.name}")
 
     except Exception as e:
-        console.print(f"[red]Export failed: {e}[/red]")
+        console.print(f"[red]Backup failed: {e}[/red]")
         raise typer.Exit(1)
     finally:
         songset_client.close()
 
 
-@songsets_app.command("import")
-def import_songset(
-    input_file: Path = typer.Argument(..., help="JSON file to import", exists=True),
+@songsets_app.command("restore")
+def restore_songset(
+    input_file: Path = typer.Argument(..., help="JSON file to restore", exists=True),
     on_conflict: str = typer.Option(
         "rename",
         "--on-conflict",
         help="How to handle conflicts: rename, replace, or skip",
     ),
-    config_path: Path = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help="Path to config file",
-    ),
+    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Import a songset from JSON file."""
+    """Restore a songset from JSON file."""
     try:
         if config_path:
             config = AppConfig.load(config_path)
@@ -394,10 +379,10 @@ def import_songset(
             return read_client.get_recording_by_hash(hash_prefix)
 
         io_service = SongsetIOService(songset_client, get_recording=get_recording)
-        result: ImportResult = io_service.import_songset(input_file, on_conflict=on_conflict)
+        result: ImportResult = io_service.restore_songset(input_file, on_conflict=on_conflict)
 
         if result.success:
-            console.print(f"[green]Imported songset:[/green] {result.songset_id}")
+            console.print(f"[green]Restored songset:[/green] {result.songset_id}")
             console.print(f"  Items: {result.imported_items}")
             if result.orphaned_items > 0:
                 console.print(f"  [yellow]Orphaned: {result.orphaned_items}[/yellow]")
@@ -407,11 +392,11 @@ def import_songset(
                 if len(result.warnings) > 5:
                     console.print(f"  ... and {len(result.warnings) - 5} more warnings")
         else:
-            console.print(f"[red]Import failed:[/red] {result.error}")
+            console.print(f"[red]Restore failed:[/red] {result.error}")
             raise typer.Exit(1)
 
     except Exception as e:
-        console.print(f"[red]Import failed: {e}[/red]")
+        console.print(f"[red]Restore failed: {e}[/red]")
         raise typer.Exit(1)
     finally:
         read_client.close()
@@ -459,10 +444,8 @@ def config(
                 f"[cyan]Preview buffer ms:[/cyan] {cfg.preview_buffer_ms}\n"
                 f"[cyan]Preview volume:[/cyan] {cfg.preview_volume}\n"
                 f"[dim]──────────────────────[/dim]\n"
-                f"[cyan]Cache dir:[/cyan] {cfg.cache_dir}\n"
-                f"[cyan]Export dir:[/cyan] {cfg.songsets_export_dir}\n"
-                f"[cyan]Log dir:[/cyan] {cfg.log_dir}\n"
-                f"[cyan]Output dir:[/cyan] {cfg.output_dir}",
+                f"[cyan]Working dir:[/cyan] {cfg.working_dir}\n"
+                f"[cyan]Backup dir:[/cyan] {cfg.songsets_backup_dir}",
                 title="Configuration",
                 border_style="green",
             )
