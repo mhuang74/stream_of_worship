@@ -71,6 +71,7 @@ class SongsetClient:
         try:
             with conn.transaction():
                 yield conn
+            conn.commit()
         except Exception:
             raise
 
