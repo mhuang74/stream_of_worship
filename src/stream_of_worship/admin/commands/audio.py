@@ -3290,6 +3290,9 @@ def batch(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be processed without executing"
     ),
+    force_lrc: bool = typer.Option(
+        False, "--force-lrc", help="Force re-generate LRC from scratch (skip R2 check and existing job reuse)"
+    ),
     format: str = typer.Option("rich", "--format", help="Output format (rich, json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -3376,6 +3379,7 @@ def batch(
         song_ids=song_ids,
         skip_download=skip_download,
         skip_lrc=skip_lrc,
+        force_lrc=force_lrc,
         stale_after_minutes=stale_after,
         console=console,
     )
@@ -3627,6 +3631,7 @@ def _process_batch(
     song_ids: list[str],
     skip_download: bool,
     skip_lrc: bool,
+    force_lrc: bool,
     stale_after_minutes: int,
     console: Console,
 ) -> dict:
@@ -3639,6 +3644,7 @@ def _process_batch(
         song_ids: List of song IDs to process
         skip_download: Skip download step
         skip_lrc: Skip LRC step
+        force_lrc: Force re-generate LRC (skip R2 check and existing job reuse)
         stale_after_minutes: Staleness threshold for processing jobs
         console: Rich console
 
@@ -3722,18 +3728,19 @@ def _process_batch(
                 console.print(f"  [yellow]→ {song_id} (no lyrics, skipping)[/yellow]")
                 continue
 
-            # Check if R2 already has LRC
-            lrc_url = r2_client.lrc_exists(recording.hash_prefix)
-            if lrc_url:
-                db_client.update_recording_lrc(recording.hash_prefix, lrc_url)
-                results[song_id] = results.get(song_id, {})
-                results[song_id]["lrc"] = "completed"
-                results[song_id]["lrc_source"] = "r2_preexisting"
-                console.print(f"  [green]→ {song_id} (LRC already on R2, skipping)[/green]")
-                continue
+            # Check if R2 already has LRC (skip when force_lrc)
+            if not force_lrc:
+                lrc_url = r2_client.lrc_exists(recording.hash_prefix)
+                if lrc_url:
+                    db_client.update_recording_lrc(recording.hash_prefix, lrc_url)
+                    results[song_id] = results.get(song_id, {})
+                    results[song_id]["lrc"] = "completed"
+                    results[song_id]["lrc_source"] = "r2_preexisting"
+                    console.print(f"  [green]→ {song_id} (LRC already on R2, skipping)[/green]")
+                    continue
 
-            # Check for existing processing job (not stale)
-            if recording.lrc_status == "processing" and recording.lrc_job_id:
+            # Check for existing processing job (not stale) - skip when force_lrc
+            if not force_lrc and recording.lrc_status == "processing" and recording.lrc_job_id:
                 from datetime import datetime, timezone, timedelta
 
                 updated_at = (
@@ -3761,7 +3768,7 @@ def _process_batch(
                     whisper_model="large-v3",
                     language="zh",
                     use_vocals_stem=True,
-                    force=False,
+                    force=force_lrc,
                     force_whisper=False,
                     youtube_url=youtube_url,
                     use_qwen3=True,
@@ -3794,6 +3801,7 @@ def _process_batch(
             db_client=db_client,
             analysis_client=analysis_client,
             r2_client=r2_client,
+            force_lrc=force_lrc,
             stale_after_minutes=stale_after_minutes,
             console=console,
         )
@@ -3808,6 +3816,7 @@ def _poll_all_jobs(
     db_client: DatabaseClient,
     analysis_client: AnalysisClient,
     r2_client: R2Client,
+    force_lrc: bool,
     stale_after_minutes: int,
     console: Console,
 ) -> None:
@@ -3819,6 +3828,7 @@ def _poll_all_jobs(
         db_client: Database client
         analysis_client: Analysis service client
         r2_client: R2 client
+        force_lrc: Force re-generate LRC on resubmit
         stale_after_minutes: Staleness threshold
         console: Rich console
     """
@@ -3959,7 +3969,7 @@ def _poll_all_jobs(
                                         whisper_model="large-v3",
                                         language="zh",
                                         use_vocals_stem=True,
-                                        force=False,
+                                        force=force_lrc,
                                         force_whisper=False,
                                         youtube_url=recording.youtube_url or "",
                                         use_qwen3=True,
