@@ -18,9 +18,10 @@ from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
-from stream_of_worship.app.services.playback import PlaybackService
+from stream_of_worship.app.services.playback import PlaybackPosition, PlaybackService, PlaybackState
 from stream_of_worship.app.screens.lyrics_preview import LyricsPreviewScreen
 from stream_of_worship.app.state import AppScreen, AppState
+from stream_of_worship.app.widgets import PlaybackBar
 
 logger = get_logger(__name__)
 
@@ -102,6 +103,8 @@ class SongsetEditorScreen(Screen):
                 yield Button("Export", id="btn_export", variant="success")
                 yield Button("Back", id="btn_back")
 
+            yield PlaybackBar(self.playback, id="playback_bar")
+
         yield Footer()
 
     def on_mount(self) -> None:
@@ -116,6 +119,43 @@ class SongsetEditorScreen(Screen):
 
         # Listen for state changes
         self.state.add_listener("selected_songset", lambda _: self._refresh())
+
+        # Register playback callbacks
+        self.playback.set_callbacks(
+            on_position_changed=self._on_position_changed,
+            on_state_changed=self._on_state_changed,
+            on_finished=self._on_finished,
+        )
+
+    def on_unmount(self) -> None:
+        """Unregister callbacks to prevent memory leaks."""
+        self.playback.set_callbacks()
+
+    def _on_position_changed(self, position: PlaybackPosition) -> None:
+        """Handle position updates from playback service."""
+
+        def _update():
+            self.query_one(PlaybackBar).update_display(position)
+
+        self.call_after_refresh(_update)
+
+    def _on_state_changed(self, state: PlaybackState) -> None:
+        """Handle state changes from playback service."""
+
+        def _update():
+            self.query_one(PlaybackBar).update_visibility()
+            if state != PlaybackState.STOPPED:
+                self.query_one(PlaybackBar).update_display(self.playback.get_position())
+
+        self.call_after_refresh(_update)
+
+    def _on_finished(self) -> None:
+        """Handle playback finished."""
+
+        def _update():
+            self.query_one(PlaybackBar).update_visibility()
+
+        self.call_after_refresh(_update)
 
     def _focus_song_list(self) -> None:
         """Focus the items table."""
@@ -403,27 +443,15 @@ class SongsetEditorScreen(Screen):
 
     def action_skip_forward(self) -> None:
         """Skip forward 10 seconds in current playback."""
-        if not self.playback.is_playing:
-            self.notify("No audio playing", severity="warning")
+        if not self.playback.is_playing and not self.playback.is_paused:
             return
-
-        if self.playback.skip_forward(10.0):
-            current = self.playback.position_seconds
-            duration = self.playback.duration_seconds
-            self.notify(f"⏩ {current:.0f}s / {duration:.0f}s")
-        else:
-            self.notify("Near end of track", severity="info")
+        self.playback.skip_forward(10.0)
 
     def action_skip_backward(self) -> None:
         """Skip backward 10 seconds in current playback."""
-        if not self.playback.is_playing:
-            self.notify("No audio playing", severity="warning")
+        if not self.playback.is_playing and not self.playback.is_paused:
             return
-
-        if self.playback.skip_backward(10.0):
-            current = self.playback.position_seconds
-            duration = self.playback.duration_seconds
-            self.notify(f"⏪ {current:.0f}s / {duration:.0f}s")
+        self.playback.skip_backward(10.0)
 
     def action_export(self) -> None:
         """Export the songset."""

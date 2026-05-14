@@ -15,7 +15,9 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.services.catalog import CatalogService, SongWithRecording
+from stream_of_worship.app.services.playback import PlaybackPosition, PlaybackState
 from stream_of_worship.app.state import AppState
+from stream_of_worship.app.widgets import PlaybackBar
 
 
 class BrowseScreen(Screen):
@@ -24,6 +26,8 @@ class BrowseScreen(Screen):
     BINDINGS = [
         ("s", "add_to_songset", "Add to Songset"),
         ("space", "toggle_playback", "Play/Stop"),
+        ("left", "skip_backward", "Skip -10s"),
+        ("right", "skip_forward", "Skip +10s"),
         ("f", "focus_search", "Search"),
         ("escape", "back", "Back"),
         ("q", "quit", "Quit"),
@@ -120,11 +124,50 @@ class BrowseScreen(Screen):
                 yield Button("Preview", id="btn_preview")
                 yield Button("Back", id="btn_back")
 
+            yield PlaybackBar(self.app.playback, id="playback_bar")
+
         yield Footer()
 
     def on_mount(self) -> None:
         """Handle mount event."""
         self._load_songs()
+        self.app.playback.set_callbacks(
+            on_position_changed=self._on_position_changed,
+            on_state_changed=self._on_state_changed,
+            on_finished=self._on_finished,
+        )
+
+    def on_unmount(self) -> None:
+        """Unregister callbacks to prevent memory leaks."""
+        self.app.playback.set_callbacks()
+
+    def _on_position_changed(self, position: PlaybackPosition) -> None:
+        """Handle position updates from playback service."""
+
+        def _update():
+            self.query_one(PlaybackBar).update_display(position)
+
+        self.call_after_refresh(_update)
+
+    def _on_state_changed(self, state: PlaybackState) -> None:
+        """Handle state changes from playback service."""
+
+        def _update():
+            self.query_one(PlaybackBar).update_visibility()
+            if state != PlaybackState.STOPPED:
+                self.query_one(PlaybackBar).update_display(
+                    self.app.playback.get_position()
+                )
+
+        self.call_after_refresh(_update)
+
+    def _on_finished(self) -> None:
+        """Handle playback finished."""
+
+        def _update():
+            self.query_one(PlaybackBar).update_visibility()
+
+        self.call_after_refresh(_update)
 
     def _show_empty_state(self, message: str) -> None:
         """Show empty state with custom message."""
@@ -331,6 +374,18 @@ class BrowseScreen(Screen):
         audio_path = self.app.asset_cache.download_audio(recording.hash_prefix)
         if audio_path:
             self.app.playback.play(audio_path)
+
+    def action_skip_forward(self) -> None:
+        """Skip forward 10 seconds in current playback."""
+        if not self.app.playback.is_playing and not self.app.playback.is_paused:
+            return
+        self.app.playback.skip_forward(10.0)
+
+    def action_skip_backward(self) -> None:
+        """Skip backward 10 seconds in current playback."""
+        if not self.app.playback.is_playing and not self.app.playback.is_paused:
+            return
+        self.app.playback.skip_backward(10.0)
 
     def action_focus_search(self) -> None:
         """Focus the search input."""

@@ -92,11 +92,6 @@ Input {
     width: 40;
 }
 
-/* Progress bar */
-#progress_bar {
-    margin: 2 4;
-}
-
 #status_label {
     text-align: center;
     padding: 1 2;
@@ -198,13 +193,6 @@ Horizontal {
     color: $text-muted;
     content-align: center middle;
     height: 2;
-}
-
-#progress_bar {
-    text-align: center;
-    content-align: center middle;
-    height: 1;
-    margin-top: 1;
 }
 
 #metadata_section {
