@@ -9,6 +9,7 @@ from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label
 
@@ -30,7 +31,7 @@ class SongsetEditorScreen(Screen):
     """Screen for editing a songset."""
 
     BINDINGS = [
-        ("a", "add_songs", "Add Songs"),
+        ("c", "add_songs", "Song Catalog"),
         ("r", "remove_song", "Remove"),
         ("comma", "move_up", "Move Up"),
         ("period", "move_down", "Move Down"),
@@ -75,6 +76,7 @@ class SongsetEditorScreen(Screen):
         self.audio_engine = audio_engine
         self.asset_cache = asset_cache
         self.items: list[SongsetItem] = []
+        self._initial_load = True
 
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
@@ -95,7 +97,7 @@ class SongsetEditorScreen(Screen):
             yield table
 
             with Horizontal(id="buttons"):
-                yield Button("Add Songs", id="btn_add", variant="primary")
+                yield Button("Song Catalog", id="btn_add", variant="primary")
                 yield Button("Remove", id="btn_remove")
                 yield Button("Edit Transition", id="btn_edit")
                 yield Button("Preview", id="btn_preview")
@@ -135,7 +137,10 @@ class SongsetEditorScreen(Screen):
         """Handle position updates from playback service."""
 
         def _update():
-            self.query_one(PlaybackBar).update_display(position)
+            try:
+                self.query_one(PlaybackBar).update_display(position)
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -143,9 +148,12 @@ class SongsetEditorScreen(Screen):
         """Handle state changes from playback service."""
 
         def _update():
-            self.query_one(PlaybackBar).update_visibility()
-            if state != PlaybackState.STOPPED:
-                self.query_one(PlaybackBar).update_display(self.playback.get_position())
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+                if state != PlaybackState.STOPPED:
+                    self.query_one(PlaybackBar).update_display(self.playback.get_position())
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -153,7 +161,10 @@ class SongsetEditorScreen(Screen):
         """Handle playback finished."""
 
         def _update():
-            self.query_one(PlaybackBar).update_visibility()
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -191,7 +202,20 @@ class SongsetEditorScreen(Screen):
         if not self.state.selected_songset:
             return
 
-        self.items = self.songset_client.get_items(self.state.selected_songset.id)
+        details, orphan_count = self.catalog.get_songset_with_items(
+            self.state.selected_songset.id, self.songset_client
+        )
+
+        self.items = [d.item for d in details]
+        for detail in details:
+            detail.item.song_title = detail.display_title
+            if detail.recording:
+                detail.item.tempo_bpm = detail.recording.tempo_bpm
+                detail.item.duration_seconds = detail.recording.duration_seconds
+                detail.item.recording_key = detail.recording.musical_key
+            if detail.song:
+                detail.item.song_key = detail.song.musical_key
+
         self.state.update_songset_items(self.items)
 
         table = self.query_one("#items_table", DataTable)
@@ -212,6 +236,14 @@ class SongsetEditorScreen(Screen):
                 transition_text,
                 key=item.id,
             )
+
+        if len(self.items) == 0 and self._initial_load:
+            self._initial_load = False
+            self.call_after_refresh(self._open_browse_for_new_songset)
+
+    def _open_browse_for_new_songset(self) -> None:
+        """Navigate to Browse screen for new empty songsets."""
+        self.app.navigate_to(AppScreen.BROWSE)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
