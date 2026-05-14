@@ -307,7 +307,16 @@ class CatalogScraper:
 
     def _parse_lyrics_cell(self, cell) -> Dict:
         """Extract lyrics from table cell, preserving line breaks."""
-        # Replace <br/> tags with newlines
+        # Handle malformed <br>...</br> pattern where html.parser treats
+        # non-self-closing <br> as an opening tag, nesting all content
+        # until the closing </br>. Insert newline before unwrapping to
+        # preserve line break, then unwrap to preserve nested content.
+        for br in cell.find_all("br"):
+            if list(br.children):
+                br.insert_before("\n")
+                br.unwrap()
+
+        # Replace remaining <br/> tags with newlines
         for br in cell.find_all("br"):
             br.replace_with("\n")
 

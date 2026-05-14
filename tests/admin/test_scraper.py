@@ -392,6 +392,25 @@ class TestCatalogScraperLyricsParsing:
         # Empty lines should be filtered out
         assert result["lyrics_lines"] == ["Line 1", "Line 2"]
 
+    def test_parse_lyrics_cell_malformed_br(self, scraper_no_db):
+        """Test parsing lyrics cell with malformed <br>...</br> pattern.
+
+        Some songs on sop.org have <br> (non-self-closing) followed by </br>
+        at the end, which html.parser treats as a nested element. This test
+        ensures the scraper correctly handles this case.
+        """
+        from bs4 import BeautifulSoup
+
+        # This is the actual HTML pattern from row 104 (大山可以挪開)
+        html = "<td>Line 1<br>Line 2<br/>Line 3<br/>Line 4</br></td>"
+        soup = BeautifulSoup(html, "html.parser")
+        cell = soup.find("td")
+
+        result = scraper_no_db._parse_lyrics_cell(cell)
+
+        # All lines should be preserved, not just Line 1
+        assert result["lyrics_lines"] == ["Line 1", "Line 2", "Line 3", "Line 4"]
+
 
 class TestCatalogScraperHelpers:
     """Tests for helper methods."""
