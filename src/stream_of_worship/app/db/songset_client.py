@@ -68,12 +68,8 @@ class SongsetClient:
             psycopg connection with an active transaction.
         """
         conn = self.connection
-        try:
-            with conn.transaction():
-                yield conn
-            conn.commit()
-        except Exception:
-            raise
+        with conn.transaction():
+            yield conn
 
     def initialize_schema(self) -> None:
         """Initialize the app-specific database schema.
