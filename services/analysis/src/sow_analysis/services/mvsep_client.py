@@ -40,6 +40,15 @@ class MvsepTimeoutError(MvsepClientError):
     pass
 
 
+class MvsepQueueFullError(MvsepClientError):
+    """Exception raised when MVSEP queue is full (HTTP 400 with queue-full message).
+
+    This is a retriable error that signals the worker should wait longer before retrying.
+    """
+
+    pass
+
+
 class MvsepClient:
     """Async HTTP client for MVSEP Cloud API stem separation.
 
@@ -211,6 +220,10 @@ class MvsepClient:
             if status_code in (401, 403):
                 self._disabled = True
                 raise MvsepNonRetriableError(f"Authentication failed: {status_code}") from e
+            if status_code == 400:
+                error_text = e.response.text.lower()
+                if "queue" in error_text or "wait before adding" in error_text:
+                    raise MvsepQueueFullError(f"MVSEP queue full: {e.response.text}") from e
             raise MvsepClientError(f"HTTP error {status_code}: {e.response.text}") from e
         except httpx.TimeoutException as e:
             raise MvsepClientError("Request timed out") from e

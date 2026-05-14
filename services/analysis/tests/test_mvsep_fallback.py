@@ -13,7 +13,7 @@ import pytest_asyncio
 
 from sow_analysis.config import settings
 from sow_analysis.models import Job, JobResult, JobStatus, StemSeparationJobRequest, StemSeparationOptions
-from sow_analysis.services.mvsep_client import MvsepClient, MvsepClientError, MvsepNonRetriableError
+from sow_analysis.services.mvsep_client import MvsepClient, MvsepClientError, MvsepNonRetriableError, MvsepQueueFullError
 from sow_analysis.workers.stem_separation import (
     _separate_with_mvsep_fallback,
     process_stem_separation,
@@ -445,3 +445,93 @@ async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_
 
 
 # Note: test_httpx_500_retriable is in test_mvsep_client.py where it belongs
+
+
+@pytest.mark.asyncio
+async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_separator_wrapper):
+    """Test that queue-full errors trigger correct backoff delays."""
+    from unittest.mock import patch
+    import time
+
+    sleep_times = []
+
+    async def fake_sleep(seconds):
+        sleep_times.append(seconds)
+
+    mock_mvsep_client.separate_vocals.side_effect = [
+        MvsepQueueFullError("Queue full"),
+        MvsepQueueFullError("Queue full again"),
+        (Path("/tmp/mvsep_vocals.flac"), Path("/tmp/mvsep_instrumental.flac")),
+    ]
+
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        result = await _separate_with_mvsep_fallback(
+            input_path=Path("/tmp/input.mp3"),
+            output_dir=Path("/tmp/output"),
+            job=mock_job,
+            mvsep_client=mock_mvsep_client,
+            separator_wrapper=mock_separator_wrapper,
+        )
+
+    assert len(sleep_times) == 2
+    assert sleep_times[0] == 60
+    assert sleep_times[1] == 120
+    assert mock_mvsep_client.separate_vocals.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_separator_wrapper):
+    """Test that non-queue-full errors use shorter backoff delays."""
+    from unittest.mock import patch
+
+    sleep_times = []
+
+    async def fake_sleep(seconds):
+        sleep_times.append(seconds)
+
+    mock_mvsep_client.separate_vocals.side_effect = [
+        MvsepClientError("Network error"),
+        MvsepClientError("Timeout"),
+        (Path("/tmp/mvsep_vocals.flac"), Path("/tmp/mvsep_instrumental.flac")),
+    ]
+
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        result = await _separate_with_mvsep_fallback(
+            input_path=Path("/tmp/input.mp3"),
+            output_dir=Path("/tmp/output"),
+            job=mock_job,
+            mvsep_client=mock_mvsep_client,
+            separator_wrapper=mock_separator_wrapper,
+        )
+
+    assert len(sleep_times) == 2
+    assert sleep_times[0] == 5
+    assert sleep_times[1] == 10
+    assert mock_mvsep_client.separate_vocals.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_queue_full_4_attempts_before_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
+    """Test that queue-full errors get 4 attempts (vs 3 for other errors)."""
+    from unittest.mock import patch
+
+    sleep_times = []
+
+    async def fake_sleep(seconds):
+        sleep_times.append(seconds)
+
+    mock_mvsep_client.separate_vocals.side_effect = MvsepQueueFullError("Queue full")
+
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        result = await _separate_with_mvsep_fallback(
+            input_path=Path("/tmp/input.mp3"),
+            output_dir=Path("/tmp/output"),
+            job=mock_job,
+            mvsep_client=mock_mvsep_client,
+            separator_wrapper=mock_separator_wrapper,
+        )
+
+    assert mock_mvsep_client.separate_vocals.call_count == 4
+    assert len(sleep_times) == 3
+    assert sleep_times == [60, 120, 300]
+    mock_separator_wrapper.separate_stems.assert_called_once()
