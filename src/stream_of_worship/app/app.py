@@ -6,6 +6,8 @@ manage songsets, and export audio/video.
 
 from textual.app import App
 
+from typing import Optional
+
 from stream_of_worship.admin.services.r2 import R2Client
 from stream_of_worship.app.config import AppConfig
 from stream_of_worship.app.db.read_client import ReadOnlyClient
@@ -18,7 +20,9 @@ from stream_of_worship.app.services.export import ExportService
 from stream_of_worship.app.services.playback import PlaybackService
 from stream_of_worship.app.services.video_engine import VideoEngine
 from stream_of_worship.app.state import AppScreen, AppState
+from stream_of_worship.db.auth_models import User
 from stream_of_worship.db.connection import ConnectionProvider
+from stream_of_worship.db.user_client import UserClient
 
 logger = get_logger(__name__)
 
@@ -54,15 +58,19 @@ class SowApp(App):
         # Initialize state
         self.state = AppState()
 
-        # Shared connection provider for both clients
-        provider = ConnectionProvider(config.get_connection_url())
+        # Shared connection provider for all clients
+        self.provider = ConnectionProvider(config.get_connection_url())
 
         # ReadOnlyClient connects to the catalog tables (SELECT only via role)
-        self.read_client = ReadOnlyClient(provider)
+        self.read_client = ReadOnlyClient(self.provider)
 
-        # SongsetClient connects to the same database (songset CRUD via role)
-        self.songset_client = SongsetClient(provider)
-        self.songset_client.initialize_schema()
+        # UserClient is built up front so the LoginScreen can list users.
+        self.user_client = UserClient(self.provider)
+
+        # SongsetClient is per-user — built once the operator picks a user
+        # on the LOGIN screen via on_user_selected().
+        # Schema is owned by `sow-admin db init`; the TUI never issues DDL.
+        self.songset_client: Optional[SongsetClient] = None
 
         # Initialize services
         self.catalog = CatalogService(self.read_client)
@@ -96,7 +104,17 @@ class SowApp(App):
 
     def on_mount(self) -> None:
         """Handle app mount event."""
-        logger.info("App mounted, navigating to initial screen: SONGSET_LIST")
+        logger.info("App mounted, navigating to initial screen: LOGIN")
+        self.navigate_to(AppScreen.LOGIN)
+
+    def on_user_selected(self, user: User) -> None:
+        """Wire up the per-user ``SongsetClient`` and continue to the list.
+
+        Called by ``LoginScreen`` after the operator picks a user. From this
+        point on, every songset query is scoped to ``user.id``.
+        """
+        logger.info(f"User selected: id={user.id} email={user.email}")
+        self.songset_client = SongsetClient(self.provider, user.id)
         self.navigate_to(AppScreen.SONGSET_LIST)
 
     def action_reconnect_catalog(self) -> None:
@@ -125,7 +143,11 @@ class SowApp(App):
             New screen instance
         """
         logger.debug(f"Creating fresh screen instance: {screen.name}")
-        if screen == AppScreen.SONGSET_LIST:
+        if screen == AppScreen.LOGIN:
+            from stream_of_worship.app.screens.login import LoginScreen
+
+            return LoginScreen(self.state, self.user_client)
+        elif screen == AppScreen.SONGSET_LIST:
             from stream_of_worship.app.screens.songset_list import SongsetListScreen
 
             return SongsetListScreen(self.state, self.songset_client)
@@ -247,7 +269,8 @@ class SowApp(App):
             pass  # Don't fail on logging
 
         self.read_client.close()
-        self.songset_client.close()
+        if self.songset_client is not None:
+            self.songset_client.close()
         self.exit()
 
     def action_navigate_songsets(self) -> None:

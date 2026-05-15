@@ -11,6 +11,7 @@ from typing import Callable, Optional
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.services.catalog import SongWithRecording
+from stream_of_worship.db.auth_models import User
 
 logger = logging.getLogger("sow_app.state")
 
@@ -18,6 +19,7 @@ logger = logging.getLogger("sow_app.state")
 class AppScreen(Enum):
     """Available screens in the app."""
 
+    LOGIN = auto()
     SONGSET_LIST = auto()
     BROWSE = auto()
     SONGSET_EDITOR = auto()
@@ -47,8 +49,11 @@ class AppState:
     """
 
     # Navigation (stack mirrors Textual's screen stack)
-    current_screen: AppScreen = AppScreen.SONGSET_LIST
+    current_screen: AppScreen = AppScreen.LOGIN
     _nav_stack: list = field(default_factory=list)
+
+    # Authenticated user (set on the LOGIN screen, cleared on quit)
+    current_user: Optional[User] = None
 
     # Songset management
     selected_songset: Optional[Songset] = None
@@ -134,6 +139,15 @@ class AppState:
         self.current_screen = self._nav_stack[-1]
         self._notify("current_screen", self.current_screen)
         return True
+
+    def set_current_user(self, user: Optional[User]) -> None:
+        """Set the authenticated user (or None to clear).
+
+        Args:
+            user: User who just logged in, or None on logout.
+        """
+        self.current_user = user
+        self._notify("current_user", user)
 
     def select_songset(self, songset: Optional[Songset]) -> None:
         """Select a songset.

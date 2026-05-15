@@ -15,8 +15,11 @@ from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
-def db_clients(postgres_url):
-    """Create schema and return connected clients.
+def db_clients(postgres_url, seed_user):
+    """Create schema, seed a default user, and return connected clients.
+
+    The ``SongsetClient`` returned is scoped to the seeded user so existing
+    test bodies don't have to thread ``user_id`` through every call.
 
     Returns:
         Tuple of (DatabaseClient, ReadOnlyClient, SongsetClient, connection).
@@ -29,9 +32,12 @@ def db_clients(postgres_url):
         for stmt in ALL_SCHEMA_STATEMENTS:
             cur.execute(stmt)
 
+    # Songsets now require a user_id FK; seed a default user for the test.
+    default_user_id = seed_user(provider, email="default@test", name="Default")
+
     admin_client = DatabaseClient(provider)
     read_client = ReadOnlyClient(provider)
-    songset_client = SongsetClient(provider)
+    songset_client = SongsetClient(provider, user_id=default_user_id)
 
     yield admin_client, read_client, songset_client, conn
 
@@ -40,11 +46,20 @@ def db_clients(postgres_url):
         cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
+                DROP TABLE IF EXISTS songset_share CASCADE;
+                DROP TABLE IF EXISTS lyric_mark CASCADE;
+                DROP TABLE IF EXISTS user_lrc_override CASCADE;
+                DROP TABLE IF EXISTS user_settings CASCADE;
                 DROP TABLE IF EXISTS songset_items CASCADE;
                 DROP TABLE IF EXISTS songsets CASCADE;
                 DROP TABLE IF EXISTS recordings CASCADE;
                 DROP TABLE IF EXISTS songs CASCADE;
+                DROP TABLE IF EXISTS "session" CASCADE;
+                DROP TABLE IF EXISTS "account" CASCADE;
+                DROP TABLE IF EXISTS "verification" CASCADE;
+                DROP TABLE IF EXISTS "user" CASCADE;
                 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+                DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
             """)
         cleanup_provider.close()
     except Exception:

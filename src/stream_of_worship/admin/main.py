@@ -12,6 +12,7 @@ from stream_of_worship.admin import __version__
 from stream_of_worship.admin.commands import audio as audio_commands
 from stream_of_worship.admin.commands import catalog as catalog_commands
 from stream_of_worship.admin.commands import db as db_commands
+from stream_of_worship.admin.commands import users as users_commands
 console = Console()
 
 # Create the main Typer app
@@ -23,6 +24,7 @@ app = typer.Typer(
 
 # Add subcommand groups
 app.add_typer(db_commands.app, name="db", help="Database operations")
+app.add_typer(users_commands.app, name="users", help="User management")
 app.add_typer(catalog_commands.app, name="catalog", help="Catalog operations")
 app.add_typer(audio_commands.app, name="audio", help="Audio recording operations")
 
@@ -53,6 +55,7 @@ def main(
     ## Commands
 
     * [bold cyan]db[/bold cyan] - Database operations (init, status, reset)
+    * [bold cyan]users[/bold cyan] - User management (add, list, delete)
     * [bold cyan]catalog[/bold cyan] - Catalog operations (scrape, list, search, show)
     * [bold cyan]audio[/bold cyan] - Audio operations (download, list, show)
 
@@ -61,10 +64,13 @@ def main(
     1. Initialize the database:
        [dim]$ sow-admin db init[/dim]
 
-    2. Check database status:
+    2. Add a user:
+       [dim]$ sow-admin users add alice@example.com[/dim]
+
+    3. Check database status:
        [dim]$ sow-admin db status[/dim]
 
-    3. Scrape song catalog:
+    4. Scrape song catalog:
        [dim]$ sow-admin catalog scrape --limit 10[/dim]
     """
     pass

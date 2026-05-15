@@ -39,8 +39,18 @@ def sample_mp3_file(tmp_path):
 
 @pytest.fixture
 def sample_songset_row():
-    """Sample database row for Songset.from_row()."""
-    return ("songset_20240101120000", "Test Songset", "A test description", "2024-01-01T12:00:00", "2024-01-01T12:00:00")
+    """Sample database row for Songset.from_row().
+
+    Column order: id, user_id, name, description, created_at, updated_at.
+    """
+    return (
+        "songset_20240101120000",
+        1,
+        "Test Songset",
+        "A test description",
+        "2024-01-01T12:00:00",
+        "2024-01-01T12:00:00",
+    )
 
 
 @pytest.fixture

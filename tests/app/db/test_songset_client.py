@@ -9,8 +9,11 @@ from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
-def songset_client(postgres_url):
-    """Create a SongsetClient connected to a fresh Postgres schema."""
+def songset_client(postgres_url, seed_user):
+    """Create a SongsetClient connected to a fresh Postgres schema.
+
+    Seeds a default user and scopes the client to it.
+    """
     provider = make_test_provider(postgres_url)
     conn = provider.get_connection()
 
@@ -19,7 +22,8 @@ def songset_client(postgres_url):
         for stmt in ALL_SCHEMA_STATEMENTS:
             cur.execute(stmt)
 
-    client = SongsetClient(provider)
+    user_id = seed_user(provider, email="songset-client-test@example.com")
+    client = SongsetClient(provider, user_id=user_id)
     yield client
 
     # Cleanup (use fresh connection in case provider was closed by a test)
@@ -27,11 +31,20 @@ def songset_client(postgres_url):
         cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
+                DROP TABLE IF EXISTS songset_share CASCADE;
+                DROP TABLE IF EXISTS lyric_mark CASCADE;
+                DROP TABLE IF EXISTS user_lrc_override CASCADE;
+                DROP TABLE IF EXISTS user_settings CASCADE;
                 DROP TABLE IF EXISTS songset_items CASCADE;
                 DROP TABLE IF EXISTS songsets CASCADE;
                 DROP TABLE IF EXISTS recordings CASCADE;
                 DROP TABLE IF EXISTS songs CASCADE;
+                DROP TABLE IF EXISTS "session" CASCADE;
+                DROP TABLE IF EXISTS "account" CASCADE;
+                DROP TABLE IF EXISTS "verification" CASCADE;
+                DROP TABLE IF EXISTS "user" CASCADE;
                 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+                DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
             """)
         cleanup_provider.close()
     except Exception:

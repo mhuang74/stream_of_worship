@@ -18,6 +18,7 @@ class TestSongset:
         songset = Songset.from_row(sample_songset_row)
 
         assert songset.id == "songset_20240101120000"
+        assert songset.user_id == 1
         assert songset.name == "Test Songset"
         assert songset.description == "A test description"
         assert songset.created_at == "2024-01-01T12:00:00"
@@ -25,10 +26,18 @@ class TestSongset:
 
     def test_songset_from_row_full(self):
         """Verify from_row() with all fields including None."""
-        row = ("songset_0001", "Name", None, "2024-01-01T00:00:00", "2024-01-01T00:00:00")
+        row = (
+            "songset_0001",
+            42,
+            "Name",
+            None,
+            "2024-01-01T00:00:00",
+            "2024-01-01T00:00:00",
+        )
         songset = Songset.from_row(row)
 
         assert songset.id == "songset_0001"
+        assert songset.user_id == 42
         assert songset.name == "Name"
         assert songset.description is None
 
@@ -38,6 +47,7 @@ class TestSongset:
         d = songset.to_dict()
 
         assert d["id"] == "songset_20240101120000"
+        assert d["user_id"] == 1
         assert d["name"] == "Test Songset"
         assert d["description"] == "A test description"
         assert d["created_at"] == "2024-01-01T12:00:00"
@@ -52,6 +62,7 @@ class TestSongset:
         songset2 = Songset.from_row(values)
 
         assert songset2.id == songset.id
+        assert songset2.user_id == songset.user_id
         assert songset2.name == songset.name
         assert songset2.description == songset.description
 

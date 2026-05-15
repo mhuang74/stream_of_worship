@@ -11,10 +11,7 @@ from typing import Any, Callable, Generator, Optional, TypeVar
 import psycopg
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
-from stream_of_worship.app.db.schema import (
-    ALL_APP_SCHEMA_STATEMENTS,
-    SONGSET_ITEMS_QUERY,
-)
+from stream_of_worship.app.db.schema import SONGSET_ITEMS_QUERY
 from stream_of_worship.db.connection import ConnectionProvider
 
 T = TypeVar("T")
@@ -29,23 +26,39 @@ class MissingReferenceError(Exception):
         self.reference_id = reference_id
 
 
-class SongsetClient:
-    """Client for songset CRUD operations.
+class NotOwnerError(Exception):
+    """Raised when a mutation targets a songset not owned by the current user."""
 
-    This client manages the app-specific ``songsets`` and ``songset_items``
-    tables via a ``ConnectionProvider``.
+    def __init__(self, songset_id: str, user_id: int):
+        super().__init__(
+            f"Songset {songset_id!r} is not owned by user {user_id}"
+        )
+        self.songset_id = songset_id
+        self.user_id = user_id
+
+
+class SongsetClient:
+    """Client for songset CRUD operations, scoped to a single user.
+
+    All reads and writes are filtered by ``user_id``: ``list_songsets`` /
+    ``get_songset`` return only this user's rows; ``create_songset`` writes
+    ``user_id`` automatically; mutations on items raise ``NotOwnerError`` if
+    the songset belongs to someone else.
 
     Attributes:
         connection_provider: ``ConnectionProvider`` instance.
+        user_id: Owning user ID; baked into every query.
     """
 
-    def __init__(self, connection_provider: ConnectionProvider):
-        """Initialize the songset client.
+    def __init__(self, connection_provider: ConnectionProvider, user_id: int):
+        """Initialize the songset client for a specific user.
 
         Args:
             connection_provider: ``ConnectionProvider`` wrapping the DSN.
+            user_id: ID of the user whose songsets this client operates on.
         """
         self.connection_provider = connection_provider
+        self.user_id = user_id
 
     @property
     def connection(self) -> psycopg.Connection:
@@ -86,19 +99,29 @@ class SongsetClient:
             conn.rollback()
             raise
 
-    def initialize_schema(self) -> None:
-        """Initialize the app-specific database schema.
+    # ------------------------------------------------------------------
+    # Ownership helpers
+    # ------------------------------------------------------------------
 
-        Creates songsets and songset_items tables if they don't exist.
-        """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
-            for statement in ALL_APP_SCHEMA_STATEMENTS:
-                cursor.execute(statement)
+    def _owns_songset(self, songset_id: str) -> bool:
+        """Return True iff this client's user owns the given songset."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM songsets WHERE id = %s AND user_id = %s",
+                (songset_id, self.user_id),
+            )
+            return cursor.fetchone() is not None
+
+    def _assert_owner(self, songset_id: str) -> None:
+        """Raise ``NotOwnerError`` if this client's user doesn't own the songset."""
+        if not self._owns_songset(songset_id):
+            raise NotOwnerError(songset_id, self.user_id)
 
     # ------------------------------------------------------------------
     # Songset operations
     # ------------------------------------------------------------------
+
+    _SONGSET_COLUMNS = "id, user_id, name, description, created_at, updated_at"
 
     def create_songset(
         self,
@@ -106,7 +129,7 @@ class SongsetClient:
         description: Optional[str] = None,
         id: Optional[str] = None,
     ) -> Songset:
-        """Create a new songset.
+        """Create a new songset owned by this client's user.
 
         Args:
             name: Display name for the songset.
@@ -118,6 +141,7 @@ class SongsetClient:
         """
         songset = Songset(
             id=id or Songset.generate_id(),
+            user_id=self.user_id,
             name=name,
             description=description,
             created_at=datetime.now().isoformat(),
@@ -128,11 +152,12 @@ class SongsetClient:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO songsets (id, name, description, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO songsets (id, user_id, name, description, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (
                     songset.id,
+                    songset.user_id,
                     songset.name,
                     songset.description,
                     songset.created_at,
@@ -143,16 +168,20 @@ class SongsetClient:
         return songset
 
     def get_songset(self, songset_id: str) -> Optional[Songset]:
-        """Get a songset by ID.
+        """Get a songset by ID, scoped to the current user.
 
         Args:
             songset_id: The songset ID.
 
         Returns:
-            ``Songset`` or ``None`` if not found.
+            ``Songset`` or ``None`` if not found or not owned by this user.
         """
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM songsets WHERE id = %s", (songset_id,))
+        cursor.execute(
+            f"SELECT {self._SONGSET_COLUMNS} FROM songsets "
+            "WHERE id = %s AND user_id = %s",
+            (songset_id, self.user_id),
+        )
         row = cursor.fetchone()
 
         if row:
@@ -160,7 +189,7 @@ class SongsetClient:
         return None
 
     def list_songsets(self, limit: Optional[int] = None) -> list[Songset]:
-        """List all songsets.
+        """List songsets owned by this client's user.
 
         Args:
             limit: Maximum number of results.
@@ -170,22 +199,24 @@ class SongsetClient:
         """
         cursor = self.connection.cursor()
 
-        query = "SELECT * FROM songsets ORDER BY updated_at DESC"
+        query = (
+            f"SELECT {self._SONGSET_COLUMNS} FROM songsets "
+            "WHERE user_id = %s ORDER BY updated_at DESC"
+        )
+        params: list = [self.user_id]
 
         if limit:
-            query += f" LIMIT {limit}"
+            query += " LIMIT %s"
+            params.append(int(limit))
 
-        cursor.execute(query)
+        cursor.execute(query, params)
 
-        results = []
-        for row in cursor.fetchall():
-            results.append(Songset.from_row(tuple(row)))
-        return results
+        return [Songset.from_row(tuple(row)) for row in cursor.fetchall()]
 
     def update_songset(
         self, songset_id: str, name: Optional[str] = None, description: Optional[str] = None
     ) -> bool:
-        """Update a songset's name and/or description.
+        """Update a songset's name and/or description, scoped to current user.
 
         Args:
             songset_id: The songset ID.
@@ -193,7 +224,7 @@ class SongsetClient:
             description: New description (optional).
 
         Returns:
-            True if updated, False if not found.
+            True if updated, False if not found or not owned by this user.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
@@ -212,29 +243,32 @@ class SongsetClient:
             if not updates:
                 return False
 
-            params.append(songset_id)
+            params.extend([songset_id, self.user_id])
 
             sql = f"""
                 UPDATE songsets
                 SET {', '.join(updates)}, updated_at = NOW()
-                WHERE id = %s
+                WHERE id = %s AND user_id = %s
             """
 
             cursor.execute(sql, params)
             return cursor.rowcount > 0
 
     def delete_songset(self, songset_id: str) -> bool:
-        """Delete a songset and all its items (CASCADE).
+        """Delete a songset and all its items (CASCADE), scoped to current user.
 
         Args:
             songset_id: The songset ID.
 
         Returns:
-            True if deleted, False if not found.
+            True if deleted, False if not found or not owned by this user.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM songsets WHERE id = %s", (songset_id,))
+            cursor.execute(
+                "DELETE FROM songsets WHERE id = %s AND user_id = %s",
+                (songset_id, self.user_id),
+            )
             return cursor.rowcount > 0
 
     def validate_recording_exists(
@@ -306,6 +340,8 @@ class SongsetClient:
         if recording_hash_prefix:
             self.validate_recording_exists(recording_hash_prefix, get_recording)
 
+        self._assert_owner(songset_id)
+
         with self.transaction() as conn:
             cursor = conn.cursor()
 
@@ -364,6 +400,9 @@ class SongsetClient:
     def get_items(self, songset_id: str, detailed: bool = False) -> list[SongsetItem]:
         """Get all items in a songset.
 
+        Returns an empty list if the songset isn't owned by this client's user
+        (rather than raising) so the TUI's read paths stay quiet.
+
         Args:
             songset_id: The songset ID.
             detailed: Deprecated - kept for compatibility, always returns basic items.
@@ -371,6 +410,8 @@ class SongsetClient:
         Returns:
             List of ``SongsetItem`` ordered by position.
         """
+        if not self._owns_songset(songset_id):
+            return []
         cursor = self.connection.cursor()
         cursor.execute(SONGSET_ITEMS_QUERY, (songset_id,))
         return [SongsetItem.from_row(tuple(row), detailed=False) for row in cursor.fetchall()]
@@ -412,9 +453,28 @@ class SongsetClient:
 
         Returns:
             True if updated, False if not found.
+
+        Raises:
+            NotOwnerError: If the item's songset is not owned by this user.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT i.songset_id, s.user_id
+                FROM songset_items i
+                JOIN songsets s ON i.songset_id = s.id
+                WHERE i.id = %s
+                """,
+                (item_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            songset_id, owner_id = row
+            if owner_id != self.user_id:
+                raise NotOwnerError(songset_id, self.user_id)
 
             updates = []
             params: list = []
@@ -477,12 +537,20 @@ class SongsetClient:
 
         Returns:
             True if removed, False if not found.
+
+        Raises:
+            NotOwnerError: If the item's songset is not owned by this user.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT songset_id, position FROM songset_items WHERE id = %s",
+                """
+                SELECT i.songset_id, i.position, s.user_id
+                FROM songset_items i
+                JOIN songsets s ON i.songset_id = s.id
+                WHERE i.id = %s
+                """,
                 (item_id,),
             )
             row = cursor.fetchone()
@@ -490,7 +558,9 @@ class SongsetClient:
             if not row:
                 return False
 
-            songset_id, position = row
+            songset_id, position, owner_id = row
+            if owner_id != self.user_id:
+                raise NotOwnerError(songset_id, self.user_id)
 
             cursor.execute("DELETE FROM songset_items WHERE id = %s", (item_id,))
 
@@ -519,12 +589,20 @@ class SongsetClient:
 
         Returns:
             True if moved, False if not found.
+
+        Raises:
+            NotOwnerError: If the item's songset is not owned by this user.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT songset_id, position FROM songset_items WHERE id = %s",
+                """
+                SELECT i.songset_id, i.position, s.user_id
+                FROM songset_items i
+                JOIN songsets s ON i.songset_id = s.id
+                WHERE i.id = %s
+                """,
                 (item_id,),
             )
             row = cursor.fetchone()
@@ -532,7 +610,9 @@ class SongsetClient:
             if not row:
                 return False
 
-            songset_id, old_position = row
+            songset_id, old_position, owner_id = row
+            if owner_id != self.user_id:
+                raise NotOwnerError(songset_id, self.user_id)
 
             if old_position == new_position:
                 return True
@@ -571,12 +651,16 @@ class SongsetClient:
     def get_item_count(self, songset_id: str) -> int:
         """Get the number of items in a songset.
 
+        Returns 0 if the songset isn't owned by this client's user.
+
         Args:
             songset_id: The songset ID.
 
         Returns:
             Item count.
         """
+        if not self._owns_songset(songset_id):
+            return 0
         cursor = self.connection.cursor()
         cursor.execute(
             "SELECT COUNT(*) FROM songset_items WHERE songset_id = %s",
