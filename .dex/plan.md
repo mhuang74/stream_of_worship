@@ -129,12 +129,12 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/r2/client.ts`
 - Create: `webapp/src/app/api/signed-url/route.ts`
 
-- [ ] Implement R2 client with S3 SDK for Cloudflare R2
-- [ ] Create signed URL generation for audio, video, LRC files
-- [ ] Add endpoint for generating signed URLs with expiration
-- [ ] Implement cache control headers
-- [ ] Write tests for R2 client and signed URL generation
-- [ ] Run test suite - must pass before task 3.1
+- [x] Implement R2 client with S3 SDK for Cloudflare R2
+- [x] Create signed URL generation for audio, video, LRC files
+- [x] Add endpoint for generating signed URLs with expiration
+- [x] Implement cache control headers
+- [x] Write tests for R2 client and signed URL generation
+- [x] Run test suite - must pass before task 3.1
 
 ### Phase 3: Core UI Screens
 
