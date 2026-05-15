@@ -464,3 +464,164 @@ export async function startRenderJob(
     completedAt: updated.completedAt,
   };
 }
+
+/**
+ * Update render job with R2 keys after upload.
+ *
+ * @param id - Render job ID
+ * @param userId - User ID
+ * @param r2Keys - R2 keys for uploaded artifacts
+ * @returns Updated render job or null if not found
+ */
+export async function updateRenderJobR2Keys(
+  id: string,
+  userId: number,
+  r2Keys: {
+    mp3R2Key?: string;
+    mp4R2Key?: string;
+    chaptersR2Key?: string;
+  }
+): Promise<RenderJob | null> {
+  const [updated] = await db
+    .update(renderJobs)
+    .set({
+      mp3R2Key: r2Keys.mp3R2Key ?? null,
+      mp4R2Key: r2Keys.mp4R2Key ?? null,
+      chaptersR2Key: r2Keys.chaptersR2Key ?? null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId)))
+    .returning();
+
+  if (!updated) return null;
+
+  return {
+    id: updated.id,
+    songsetId: updated.songsetId,
+    userId: updated.userId,
+    status: updated.status as RenderJob["status"],
+    phase: updated.phase as RenderPhase | null,
+    phaseIndex: updated.phaseIndex,
+    totalPhases: updated.totalPhases,
+    percentComplete: updated.percentComplete ?? 0,
+    estimatedSecondsLeft: updated.estimatedSecondsLeft,
+    elapsedSeconds: updated.elapsedSeconds,
+    errorMessage: updated.errorMessage,
+    template: updated.template,
+    resolution: updated.resolution,
+    audioEnabled: updated.audioEnabled ?? true,
+    videoEnabled: updated.videoEnabled ?? true,
+    fontSizePreset: updated.fontSizePreset,
+    includeTitleCard: updated.includeTitleCard ?? false,
+    titleCardDurationSeconds: updated.titleCardDurationSeconds,
+    mp3R2Key: updated.mp3R2Key,
+    mp4R2Key: updated.mp4R2Key,
+    chaptersR2Key: updated.chaptersR2Key,
+    createdAt: updated.createdAt,
+    updatedAt: updated.updatedAt,
+    completedAt: updated.completedAt,
+  };
+}
+
+/**
+ * Update songset with latest render job ID.
+ * Called when a new render job is created or completed.
+ *
+ * @param songsetId - Songset ID
+ * @param renderJobId - Render job ID
+ */
+export async function updateSongsetLatestRenderJob(
+  songsetId: string,
+  renderJobId: string
+): Promise<void> {
+  await db
+    .update(songsets)
+    .set({
+      latestRenderJobId: renderJobId,
+      updatedAt: new Date(),
+    })
+    .where(eq(songsets.id, songsetId));
+}
+
+/**
+ * Update songset with failed render job ID.
+ * Called when a render job fails.
+ *
+ * @param songsetId - Songset ID
+ * @param renderJobId - Failed render job ID
+ */
+export async function updateSongsetFailedRenderJob(
+  songsetId: string,
+  renderJobId: string
+): Promise<void> {
+  await db
+    .update(songsets)
+    .set({
+      lastFailedRenderJobId: renderJobId,
+      updatedAt: new Date(),
+    })
+    .where(eq(songsets.id, songsetId));
+}
+
+/**
+ * Clear failed render job ID from songset.
+ * Called when a new render job succeeds (to clear previous failure).
+ *
+ * @param songsetId - Songset ID
+ */
+export async function clearSongsetFailedRenderJob(songsetId: string): Promise<void> {
+  await db
+    .update(songsets)
+    .set({
+      lastFailedRenderJobId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(songsets.id, songsetId));
+}
+
+/**
+ * Get the latest render job for a songset.
+ *
+ * @param songsetId - Songset ID
+ * @param userId - User ID
+ * @returns Latest render job or null
+ */
+export async function getLatestRenderJobForSongset(
+  songsetId: string,
+  userId: number
+): Promise<RenderJob | null> {
+  const songset = await db.query.songsets.findFirst({
+    where: and(eq(songsets.id, songsetId), eq(songsets.userId, userId)),
+  });
+
+  if (!songset?.latestRenderJobId) {
+    return null;
+  }
+
+  return getRenderJob(songset.latestRenderJobId, userId);
+}
+
+/**
+ * Check if render artifacts exist in R2 for a job.
+ *
+ * @param renderJobId - Render job ID
+ * @returns Object with existence status for each artifact type
+ */
+export async function checkRenderArtifactsExist(
+  renderJobId: string
+): Promise<{
+  mp3Exists: boolean;
+  mp4Exists: boolean;
+  chaptersExists: boolean;
+}> {
+  const { R2Uploader } = await import("./uploader");
+  const uploader = new R2Uploader();
+
+  const [mp3Exists, mp4Exists, chaptersExists] = await Promise.all([
+    uploader.fileExists(R2Uploader.getMp3Key(renderJobId)),
+    uploader.fileExists(R2Uploader.getMp4Key(renderJobId)),
+    uploader.fileExists(R2Uploader.getChaptersKey(renderJobId)),
+  ]);
+
+  return { mp3Exists, mp4Exists, chaptersExists };
+}
