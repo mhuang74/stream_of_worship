@@ -181,13 +181,13 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/songset/SongSearch.tsx`
 - Create: `webapp/src/components/songset/SongCard.tsx`
 
-- [ ] Create bottom sheet component for song browsing
-- [ ] Implement search input with debounced API calls
-- [ ] Display song results with metadata (title, artist, key, tempo)
-- [ ] Add album filtering
-- [ ] Implement "Add to songset" action
-- [ ] Write tests for browse sheet
-- [ ] Run test suite - must pass before task 3.4
+- [x] Create bottom sheet component for song browsing
+- [x] Implement search input with debounced API calls
+- [x] Display song results with metadata (title, artist, key, tempo)
+- [x] Add album filtering
+- [x] Implement "Add to songset" action
+- [x] Write tests for browse sheet
+- [x] Run test suite - must pass before task 3.4
 
 #### Task 3.4: Global Audio Player
 
