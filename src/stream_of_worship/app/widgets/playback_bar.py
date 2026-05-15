@@ -33,7 +33,7 @@ class PlaybackBar(Static):
         id: str | None = None,
         classes: str | None = None,
     ):
-        super().__init__("", id=id, classes=classes)
+        super().__init__("", id=id, classes=classes or "hidden")
         self.playback = playback
         self.bar_width = bar_width
 

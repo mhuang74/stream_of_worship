@@ -191,7 +191,8 @@ class PlaybackService:
         Returns:
             True if loaded successfully
         """
-        self.stop(clear_source=True)
+        if self._state != PlaybackState.STOPPED:
+            self.stop(clear_source=True)
 
         if not file_path.exists():
             logger.error(f"Audio file not found: {file_path}")
@@ -468,15 +469,13 @@ class PlaybackService:
             self._position_thread.join(timeout=0.1)
 
         with self._lock:
-            self._state = PlaybackState.STOPPED
             self._position_seconds = 0.0
             self._start_time = None
             self._paused_at = None
             if clear_source:
                 self._source = None
 
-        if self._on_state_changed:
-            self._on_state_changed(PlaybackState.STOPPED)
+        self._set_state(PlaybackState.STOPPED)
 
     def seek(self, position_seconds: float) -> bool:
         """Seek to a position in the current file.
