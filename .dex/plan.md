@@ -283,12 +283,12 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/render/uploader.ts`
 - Create: `webapp/src/lib/render/chapters.ts`
 
-- [ ] Implement R2 upload for MP3, MP4, chapters.json
-- [ ] Generate chapters.json manifest with format: { chapters: [{ position, songTitle, startSeconds, endSeconds, lines: [{ text, startSeconds }] }] }
-- [ ] Update render_jobs table with R2 keys and chapters
-- [ ] Update songsets table with latest_render_job_id, last_failed_render_job_id
-- [ ] Write tests for upload pipeline
-- [ ] Run test suite - must pass before task 5.1
+- [x] Implement R2 upload for MP3, MP4, chapters.json
+- [x] Generate chapters.json manifest with format: { chapters: [{ position, songTitle, startSeconds, endSeconds, lines: [{ text, startSeconds }] }] }
+- [x] Update render_jobs table with R2 keys and chapters
+- [x] Update songsets table with latest_render_job_id, last_failed_render_job_id
+- [x] Write tests for upload pipeline
+- [x] Run test suite - must pass before task 5.1
 
 ### Phase 5: Playback System
 
