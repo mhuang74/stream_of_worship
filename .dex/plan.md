@@ -232,13 +232,13 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/render/audio-engine.ts`
 - Create: `webapp/src/lib/render/asset-fetcher.ts`
 
-- [ ] Port AudioEngine from Python to Node.js
-- [ ] Implement gap transition calculation (beat-based)
-- [ ] Implement audio concatenation with fluent-ffmpeg
-- [ ] Implement loudness normalization
-- [ ] Create asset fetcher for downloading from R2
-- [ ] Write tests for audio engine
-- [ ] Run test suite - must pass before task 4.3
+- [x] Port AudioEngine from Python to Node.js
+- [x] Implement gap transition calculation (beat-based)
+- [x] Implement audio concatenation with fluent-ffmpeg
+- [x] Implement loudness normalization
+- [x] Create asset fetcher for downloading from R2
+- [x] Write tests for audio engine
+- [x] Run test suite - must pass before task 4.3
 
 #### Task 4.3: Video Engine (Node.js)
 
