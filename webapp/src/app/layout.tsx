@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -32,9 +33,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <AuthProvider>
-          <Header />
-          <main className="flex-1 pb-16 lg:pb-0">{children}</main>
-          <BottomNav />
+          <GlobalAudioPlayer>
+            <Header />
+            <main className="flex-1 pb-16 lg:pb-0">{children}</main>
+            <BottomNav />
+          </GlobalAudioPlayer>
         </AuthProvider>
       </body>
     </html>
