@@ -6,13 +6,15 @@ and a shared ``ConnectionProvider``.
 
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Callable, Generator, Optional
+from typing import Any, Callable, Generator, Optional, TypeVar
 
 import psycopg
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.db.schema import SONGSET_ITEMS_QUERY
 from stream_of_worship.db.connection import ConnectionProvider
+
+T = TypeVar("T")
 
 
 class MissingReferenceError(Exception):
@@ -63,6 +65,14 @@ class SongsetClient:
         """Get the current psycopg connection from the provider."""
         return self.connection_provider.get_connection()
 
+    def _execute_with_retry(self, fn: Callable[[psycopg.Connection], T]) -> T:
+        """Run fn(conn); on OperationalError, invalidate and retry once."""
+        try:
+            return fn(self.connection)
+        except psycopg.OperationalError:
+            self.connection_provider.invalidate()
+            return fn(self.connection)
+
     def close(self) -> None:
         """Close the underlying connection via the provider."""
         self.connection_provider.close()
@@ -84,7 +94,9 @@ class SongsetClient:
         try:
             with conn.transaction():
                 yield conn
+            conn.commit()
         except Exception:
+            conn.rollback()
             raise
 
     # ------------------------------------------------------------------
@@ -656,3 +668,25 @@ class SongsetClient:
         )
         result = cursor.fetchone()
         return result[0] if result else 0
+
+    def get_item_counts_batch(self, songset_ids: list[str]) -> dict[str, int]:
+        """Batch-fetch item counts for multiple songsets.
+
+        Args:
+            songset_ids: List of songset IDs.
+
+        Returns:
+            Dict keyed by songset_id mapping to item count.
+        """
+        if not songset_ids:
+            return {}
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT songset_id, COUNT(*) FROM songset_items "
+            "WHERE songset_id = ANY(%s) GROUP BY songset_id",
+            (songset_ids,),
+        )
+        result = {row[0]: row[1] for row in cursor.fetchall()}
+        # Ensure all requested IDs have an entry (0 if not in result)
+        return {sid: result.get(sid, 0) for sid in songset_ids}

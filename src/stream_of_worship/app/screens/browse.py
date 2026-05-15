@@ -10,20 +10,25 @@ from textual.app import ComposeResult
 
 logger = logging.getLogger("sow_app.screens.browse")
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
 
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.services.catalog import CatalogService, SongWithRecording
+from stream_of_worship.app.services.playback import PlaybackPosition, PlaybackState
 from stream_of_worship.app.state import AppState
+from stream_of_worship.app.widgets import PlaybackBar
 
 
 class BrowseScreen(Screen):
     """Screen for browsing and searching songs."""
 
     BINDINGS = [
-        ("s", "add_to_songset", "Add to Songset"),
+        ("a", "add_to_songset", "Add to Songset"),
         ("space", "toggle_playback", "Play/Stop"),
+        ("left", "skip_backward", "Skip -10s"),
+        ("right", "skip_forward", "Skip +10s"),
         ("f", "focus_search", "Search"),
         ("escape", "back", "Back"),
         ("q", "quit", "Quit"),
@@ -120,11 +125,67 @@ class BrowseScreen(Screen):
                 yield Button("Preview", id="btn_preview")
                 yield Button("Back", id="btn_back")
 
+            yield PlaybackBar(self.app.playback, id="playback_bar")
+
         yield Footer()
 
     def on_mount(self) -> None:
         """Handle mount event."""
         self._load_songs()
+        self.app.playback.set_callbacks(
+            on_position_changed=self._on_position_changed,
+            on_state_changed=self._on_state_changed,
+            on_finished=self._on_finished,
+        )
+        self.call_after_refresh(self._focus_song_table)
+
+    def _focus_song_table(self) -> None:
+        """Focus the song table and set cursor to first row."""
+        table = self.query_one("#song_table", DataTable)
+        table.focus()
+        if len(table.rows) > 0:
+            table.move_cursor(row=0)
+
+    def on_unmount(self) -> None:
+        """Unregister callbacks to prevent memory leaks."""
+        self.app.playback.set_callbacks()
+
+    def _on_position_changed(self, position: PlaybackPosition) -> None:
+        """Handle position updates from playback service."""
+
+        def _update():
+            try:
+                self.query_one(PlaybackBar).update_display(position)
+            except NoMatches:
+                pass
+
+        self.call_after_refresh(_update)
+
+    def _on_state_changed(self, state: PlaybackState) -> None:
+        """Handle state changes from playback service."""
+
+        def _update():
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+                if state != PlaybackState.STOPPED:
+                    self.query_one(PlaybackBar).update_display(
+                        self.app.playback.get_position()
+                    )
+            except NoMatches:
+                pass
+
+        self.call_after_refresh(_update)
+
+    def _on_finished(self) -> None:
+        """Handle playback finished."""
+
+        def _update():
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+            except NoMatches:
+                pass
+
+        self.call_after_refresh(_update)
 
     def _show_empty_state(self, message: str) -> None:
         """Show empty state with custom message."""
@@ -146,48 +207,48 @@ class BrowseScreen(Screen):
         table.remove_class("hidden")
 
     def _load_songs(self, query: str = "") -> None:
-        """Load and display songs with empty state handling.
+        """Load songs on a worker thread (Fix 9).
 
         Args:
             query: Optional search query
         """
-        # Get catalog stats for logging
-        stats = self.catalog.get_stats()
-        logger.info(
-            f"Catalog stats: total_songs={stats['total_songs']}, "
-            f"total_recordings={stats['total_recordings']}, "
-            f"analyzed={stats['analyzed_recordings']}"
-        )
-        logger.info(
-            f"LRC ready count: {self.catalog.db_client.get_lrc_ready_count()}"
+        self.run_worker(
+            lambda: self._load_songs_worker(query),
+            exclusive=True,
+            group="load_songs",
+            thread=True,
         )
 
-        if query:
-            search_query, field = self._parse_search_query(query)
-            logger.info(f"Searching: query='{search_query}', field={field}")
-            self.songs = self.catalog.search_songs_with_recordings(
-                search_query, field=field, limit=50
-            )
-        else:
-            logger.info("Loading all LRC-ready songs (limit=50)")
-            self.songs = self.catalog.list_songs_with_recordings(
-                only_with_lrc=True, limit=50
-            )
+    def _load_songs_worker(self, query: str) -> None:
+        """Worker: fetch songs from DB then update UI."""
+        try:
+            if query:
+                search_query, field = self._parse_search_query(query)
+                logger.info(f"Searching: query='{search_query}', field={field}")
+                songs = self.catalog.search_songs_with_recordings(
+                    search_query, field=field, limit=50
+                )
+            else:
+                logger.info("Loading all LRC-ready songs (limit=50)")
+                songs = self.catalog.list_songs_with_recordings(only_with_lrc=True, limit=50)
 
-        logger.info(f"Loaded {len(self.songs)} songs for display")
-        for i, song in enumerate(self.songs[:20]):  # Log first 20 for debugging
-            logger.info(f"  Song {i+1}: {song.song.title} (analysis={song.recording.analysis_status if song.recording else 'none'})")
+            logger.info(f"Loaded {len(songs)} songs for display")
+            self.app.call_from_thread(self._update_songs_table, songs)
+        except Exception as e:
+            logger.error(f"Error loading songs: {e}")
+            self.app.call_from_thread(self.notify, "Failed to load catalog", severity="error")
 
+    def _update_songs_table(self, songs) -> None:
+        """Update the songs table on the main thread."""
+        self.songs = songs
         table = self.query_one("#song_table", DataTable)
         table.clear()
 
-        # Check if catalog is empty
         if not self.songs:
             health = self.catalog.get_catalog_health()
             self._show_empty_state(health["guidance"])
             return
 
-        # Hide empty state and show results
         self._hide_empty_state()
 
         for song in self.songs:
@@ -294,18 +355,32 @@ class BrowseScreen(Screen):
             self.notify("No song selected", severity="warning")
             return
 
-        # Update state to reflect selection
         self.state.select_song(song)
-
         recording = song.recording
         if not recording:
             self.notify("No recording available for preview", severity="error")
             return
 
-        # Download and play
-        audio_path = self.app.asset_cache.download_audio(recording.hash_prefix)
-        if audio_path:
-            self.app.playback.play(audio_path)
+        self.run_worker(
+            lambda: self._play_worker(recording.hash_prefix),
+            exclusive=True,
+            group="playback",
+            thread=True,
+        )
+
+    def _play_worker(self, hash_prefix: str) -> None:
+        """Worker: download audio then play on main thread (Fix 9)."""
+        try:
+            audio_path = self.app.asset_cache.download_audio(hash_prefix)
+            if audio_path:
+                self.app.call_from_thread(self.app.playback.play, audio_path)
+            else:
+                self.app.call_from_thread(
+                    self.notify, "Failed to download audio", severity="error"
+                )
+        except Exception as e:
+            logger.error(f"Error downloading audio: {e}")
+            self.app.call_from_thread(self.notify, f"Error: {e}", severity="error")
 
     def action_toggle_playback(self) -> None:
         """Toggle playback of the currently selected song with spacebar."""
@@ -319,18 +394,30 @@ class BrowseScreen(Screen):
             self.notify("No song selected", severity="warning")
             return
 
-        # Update state to reflect selection
         self.state.select_song(song)
-
         recording = song.recording
         if not recording:
             self.notify("No recording available for preview", severity="error")
             return
 
-        # Download and play
-        audio_path = self.app.asset_cache.download_audio(recording.hash_prefix)
-        if audio_path:
-            self.app.playback.play(audio_path)
+        self.run_worker(
+            lambda: self._play_worker(recording.hash_prefix),
+            exclusive=True,
+            group="playback",
+            thread=True,
+        )
+
+    def action_skip_forward(self) -> None:
+        """Skip forward 10 seconds in current playback."""
+        if not self.app.playback.is_playing and not self.app.playback.is_paused:
+            return
+        self.app.playback.skip_forward(10.0)
+
+    def action_skip_backward(self) -> None:
+        """Skip backward 10 seconds in current playback."""
+        if not self.app.playback.is_playing and not self.app.playback.is_paused:
+            return
+        self.app.playback.skip_backward(10.0)
 
     def action_focus_search(self) -> None:
         """Focus the search input."""

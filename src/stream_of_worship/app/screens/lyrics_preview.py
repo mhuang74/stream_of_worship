@@ -12,6 +12,7 @@ from typing import Optional
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Static
 
@@ -19,6 +20,7 @@ from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.playback import PlaybackPosition, PlaybackService, PlaybackState
+from stream_of_worship.app.widgets import PlaybackBar
 
 logger = get_logger(__name__)
 
@@ -80,7 +82,7 @@ class LyricsPreviewScreen(Screen):
             with Vertical(id="lyrics_panel"):
                 yield Static("", id="current_lyric", classes="lyric-current")
                 yield Static("", id="next_lyric", classes="lyric-next")
-                yield Static("", id="progress_bar")
+                yield PlaybackBar(self.playback, id="playback_bar")
 
             # Right panel (narrower) - Debug info
             with Vertical(id="debug_panel"):
@@ -99,21 +101,16 @@ class LyricsPreviewScreen(Screen):
 
         yield Footer()
 
+    def on_unmount(self) -> None:
+        """Unregister playback callbacks to prevent leaks (Fix 8)."""
+        self.playback.set_callbacks()
+
     def on_mount(self) -> None:
         """Handle mount event - initialize data and setup callbacks."""
         logger.info(f"LyricsPreviewScreen mounted for song: {self.item.song_title}")
 
-        # Download and parse LRC file
-        self._load_lrc()
-
-        # Download audio file
-        self._load_audio()
-
-        # Populate metadata
+        # Populate metadata synchronously (no I/O)
         self._populate_metadata()
-
-        # Populate LRC table
-        self._populate_lrc_table()
 
         # Register playback callbacks
         self.playback.set_callbacks(
@@ -122,7 +119,18 @@ class LyricsPreviewScreen(Screen):
             on_finished=self._on_finished,
         )
 
-        # Start playback if audio is available (deferred to ensure screen is ready)
+        # Download LRC + audio on worker thread (Fix 9)
+        self.run_worker(self._load_assets_worker, exclusive=True, group="load_assets", thread=True)
+
+    def _load_assets_worker(self) -> None:
+        """Worker: download LRC and audio, then update UI on main thread."""
+        self._load_lrc()
+        self._load_audio()
+        self.app.call_from_thread(self._after_assets_loaded)
+
+    def _after_assets_loaded(self) -> None:
+        """Called on main thread after assets are downloaded."""
+        self._populate_lrc_table()
         if self._audio_path:
             self.call_after_refresh(self._start_playback)
 
@@ -279,7 +287,10 @@ class LyricsPreviewScreen(Screen):
                 self._highlight_lrc_row()
 
             # Update progress bar
-            self._update_progress_bar(position)
+            try:
+                self.query_one(PlaybackBar).update_display(position)
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -303,27 +314,6 @@ class LyricsPreviewScreen(Screen):
         else:
             next_widget.update("")
 
-    def _update_progress_bar(self, position: PlaybackPosition) -> None:
-        """Update the progress bar display.
-
-        Args:
-            position: Current playback position
-        """
-        progress_widget = self.query_one("#progress_bar", Static)
-
-        current_str = self._format_timestamp(position.current_seconds)
-        total_str = self._format_timestamp(position.total_seconds)
-
-        # Build visual progress bar
-        bar_width = 30
-        filled = int((position.progress_percent / 100) * bar_width)
-        empty = bar_width - filled
-
-        bar = "█" * filled + "░" * empty
-        icon = "⏸" if self.playback.is_paused else "▶"
-
-        progress_widget.update(f"{icon} {current_str} / {total_str}  [{bar}]")
-
     def _highlight_lrc_row(self) -> None:
         """Highlight the current row in the LRC table and auto-scroll to it."""
         table = self.query_one("#lrc_table", DataTable)
@@ -342,9 +332,12 @@ class LyricsPreviewScreen(Screen):
         """
         # Schedule UI update on main thread (callbacks run in background thread)
         def _update():
-            # Update progress bar to reflect new state icon
-            position = self.playback.get_position()
-            self._update_progress_bar(position)
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+                if state != PlaybackState.STOPPED:
+                    self.query_one(PlaybackBar).update_display(self.playback.get_position())
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -356,6 +349,10 @@ class LyricsPreviewScreen(Screen):
         def _update():
             self.current_line_index = -1
             self._update_lyrics_display()
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -384,7 +381,7 @@ class LyricsPreviewScreen(Screen):
         """Go back to songset editor."""
         logger.info("Action: back from lyrics preview")
         self.playback.stop()
-        self.app.pop_screen()
+        self.app.navigate_back()
 
     def action_noop(self) -> None:
         """No-op action to disable inherited bindings."""

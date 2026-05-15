@@ -36,6 +36,20 @@ def postgres_url():
         yield url
 
 
+def make_test_provider(database_url: str):
+    """Create a ConnectionProvider configured for testcontainers (no SSL).
+
+    Args:
+        database_url: Postgres connection URL from testcontainers.
+
+    Returns:
+        ConnectionProvider with sslmode="disable" for local testing.
+    """
+    from stream_of_worship.db.connection import ConnectionProvider
+
+    return ConnectionProvider(database_url, sslmode="disable")
+
+
 @pytest.fixture
 def seed_user():
     """Return a callable that inserts a user into the ``"user"`` table.

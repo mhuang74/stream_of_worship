@@ -5,14 +5,21 @@ via a shared ``ConnectionProvider``.
 """
 
 import logging
-from typing import Optional
+from typing import Callable, Optional, TypeVar
 
 import psycopg
+import psycopg.rows
 
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.db.connection import ConnectionProvider
 
 logger = logging.getLogger("sow_app.db")
+
+T = TypeVar("T")
+
+
+class DatabaseError(Exception):
+    """User-facing database error with a friendly message."""
 
 
 class ReadOnlyClient:
@@ -37,6 +44,14 @@ class ReadOnlyClient:
     def connection(self) -> psycopg.Connection:
         """Get the current psycopg connection from the provider."""
         return self.connection_provider.get_connection()
+
+    def _execute_with_retry(self, fn: Callable[[psycopg.Connection], T]) -> T:
+        """Run fn(conn); on OperationalError, invalidate and retry once."""
+        try:
+            return fn(self.connection)
+        except psycopg.OperationalError:
+            self.connection_provider.invalidate()
+            return fn(self.connection)
 
     def close(self) -> None:
         """Close the underlying connection via the provider."""
@@ -385,3 +400,101 @@ class ReadOnlyClient:
         count = result[0] if result else 0
         logger.debug(f"Songs with LRC ready: {count}")
         return count
+
+    # ------------------------------------------------------------------
+    # Batch query methods (Fix 10 — eliminate N+1 patterns)
+    # ------------------------------------------------------------------
+
+    def get_recordings_by_song_ids(self, song_ids: list[str]) -> dict[str, Recording]:
+        """Batch-fetch recordings by song IDs.
+
+        Args:
+            song_ids: List of song IDs to look up.
+
+        Returns:
+            Dict keyed by song_id.
+        """
+        if not song_ids:
+            return {}
+
+        def _fetch(conn: psycopg.Connection) -> dict[str, Recording]:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM recordings WHERE song_id = ANY(%s) AND deleted_at IS NULL",
+                (song_ids,),
+            )
+            # song_id is at index 2 in the recordings table schema
+            return {row[2]: Recording.from_row(tuple(row)) for row in cursor.fetchall()}
+
+        try:
+            return self._execute_with_retry(_fetch)
+        except psycopg.OperationalError as e:
+            raise DatabaseError(f"Failed to fetch recordings: {e}") from e
+
+    def get_recordings_by_hashes(
+        self, hash_prefixes: list[str], include_deleted: bool = False
+    ) -> dict[str, Recording]:
+        """Batch-fetch recordings by hash prefixes.
+
+        Args:
+            hash_prefixes: List of hash prefixes to look up.
+            include_deleted: Whether to include soft-deleted recordings.
+
+        Returns:
+            Dict keyed by hash_prefix.
+        """
+        if not hash_prefixes:
+            return {}
+
+        def _fetch(conn: psycopg.Connection) -> dict[str, Recording]:
+            cursor = conn.cursor()
+            if include_deleted:
+                cursor.execute(
+                    "SELECT * FROM recordings WHERE hash_prefix = ANY(%s)",
+                    (hash_prefixes,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM recordings WHERE hash_prefix = ANY(%s) AND deleted_at IS NULL",
+                    (hash_prefixes,),
+                )
+            return {row[1]: Recording.from_row(tuple(row)) for row in cursor.fetchall()}
+
+        try:
+            return self._execute_with_retry(_fetch)
+        except psycopg.OperationalError as e:
+            raise DatabaseError(f"Failed to fetch recordings: {e}") from e
+
+    def get_songs_by_ids(
+        self, song_ids: list[str], include_deleted: bool = False
+    ) -> dict[str, Song]:
+        """Batch-fetch songs by IDs.
+
+        Args:
+            song_ids: List of song IDs to look up.
+            include_deleted: Whether to include soft-deleted songs.
+
+        Returns:
+            Dict keyed by song id.
+        """
+        if not song_ids:
+            return {}
+
+        def _fetch(conn: psycopg.Connection) -> dict[str, Song]:
+            cursor = conn.cursor()
+            if include_deleted:
+                cursor.execute(
+                    "SELECT * FROM songs WHERE id = ANY(%s)",
+                    (song_ids,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM songs WHERE id = ANY(%s) AND deleted_at IS NULL",
+                    (song_ids,),
+                )
+            return {row[0]: Song.from_row(tuple(row)) for row in cursor.fetchall()}
+
+        try:
+            return self._execute_with_retry(_fetch)
+        except psycopg.OperationalError as e:
+            raise DatabaseError(f"Failed to fetch songs: {e}") from e

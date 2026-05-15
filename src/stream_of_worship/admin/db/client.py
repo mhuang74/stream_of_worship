@@ -501,20 +501,29 @@ class DatabaseClient:
                 ),
             )
 
-    def get_recording_by_hash(self, hash_prefix: str) -> Optional[Recording]:
+    def get_recording_by_hash(
+        self, hash_prefix: str, include_deleted: bool = False
+    ) -> Optional[Recording]:
         """Get a recording by its hash prefix.
 
         Args:
             hash_prefix: The hash prefix (first 12 chars).
+            include_deleted: Whether to include soft-deleted recordings.
 
         Returns:
             ``Recording`` or ``None`` if not found.
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
-            (hash_prefix,),
-        )
+        if include_deleted:
+            cursor.execute(
+                "SELECT * FROM recordings WHERE hash_prefix = %s",
+                (hash_prefix,),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
+                (hash_prefix,),
+            )
         row = cursor.fetchone()
 
         if row:

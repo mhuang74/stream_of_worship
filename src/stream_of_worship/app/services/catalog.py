@@ -185,9 +185,16 @@ class CatalogService:
 
         songs = self.db_client.list_songs(album=album, key=key, limit=limit, offset=offset)
 
+        if not songs:
+            return []
+
+        # Batch-fetch all recordings in one query (Fix 10)
+        song_ids = [song.id for song in songs]
+        recordings_by_song_id = self.db_client.get_recordings_by_song_ids(song_ids)
+
         result = []
         for song in songs:
-            recording = self.db_client.get_recording_by_song_id(song.id)
+            recording = recordings_by_song_id.get(song.id)
 
             if only_with_recordings and not recording:
                 continue
@@ -455,12 +462,13 @@ class CatalogService:
     def get_songset_with_items(
         self, songset_id: str, songset_client: SongsetClient
     ) -> tuple[list[SongsetItemWithDetails], int]:
-        """Get a songset with resolved items (two-step cross-DB lookup).
+        """Get a songset with resolved items using batch queries (Fix 10).
 
-        This replaces the cross-DB JOIN with a Python-side lookup:
-        1. Get items from songset_client
-        2. For each item, fetch recording and song from catalog
-        3. Mark orphans for deleted/missing references
+        Steps:
+        1. Fetch all items in one query
+        2. Batch-fetch all recordings by hash prefix
+        3. Batch-fetch all songs by ID
+        4. Assemble in memory
 
         Args:
             songset_id: The songset ID
@@ -471,25 +479,39 @@ class CatalogService:
         """
         items = songset_client.get_items_raw(songset_id)
 
+        if not items:
+            return [], 0
+
+        # Collect all hash prefixes for batch recording fetch
+        hash_prefixes = [item.recording_hash_prefix for item in items if item.recording_hash_prefix]
+        recordings_by_hash = self.db_client.get_recordings_by_hashes(
+            hash_prefixes, include_deleted=True
+        )
+
+        # Collect all song IDs needed (from recordings + items)
+        song_ids: set[str] = set()
+        for item in items:
+            recording = recordings_by_hash.get(item.recording_hash_prefix or "")
+            if recording and recording.song_id:
+                song_ids.add(recording.song_id)
+            if item.song_id:
+                song_ids.add(item.song_id)
+
+        songs_by_id = self.db_client.get_songs_by_ids(list(song_ids), include_deleted=True)
+
         result = []
         orphan_count = 0
 
         for item in items:
-            # Fetch recording (include deleted to check for soft-deleted)
-            recording = None
-            if item.recording_hash_prefix:
-                recording = self.db_client.get_recording_by_hash(
-                    item.recording_hash_prefix, include_deleted=True
-                )
+            recording = recordings_by_hash.get(item.recording_hash_prefix or "")
 
-            # Fetch song (prefer recording's song_id, fall back to item's song_id)
+            # Prefer recording's song_id, fall back to item's song_id
             song = None
             if recording and recording.song_id:
-                song = self.db_client.get_song_including_deleted(recording.song_id)
+                song = songs_by_id.get(recording.song_id)
             if not song and item.song_id:
-                song = self.db_client.get_song_including_deleted(item.song_id)
+                song = songs_by_id.get(item.song_id)
 
-            # Check if orphan
             is_orphan = song is None or recording is None
             if is_orphan:
                 orphan_count += 1

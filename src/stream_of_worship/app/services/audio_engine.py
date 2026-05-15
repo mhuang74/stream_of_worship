@@ -77,6 +77,7 @@ class AudioEngine:
         """
         self.asset_cache = asset_cache
         self.target_lufs = target_lufs
+        self._preview_temp_files: list[Path] = []
 
     def _load_audio(self, file_path: Path) -> AudioSegment:
         """Load an audio file with pydub.
@@ -264,6 +265,14 @@ class AudioEngine:
         if not from_item.recording_hash_prefix or not to_item.recording_hash_prefix:
             return None
 
+        # Clean up previous preview temp files (Fix 12)
+        for f in self._preview_temp_files:
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass
+        self._preview_temp_files.clear()
+
         try:
             # Get audio files
             from_path = self.asset_cache.download_audio(from_item.recording_hash_prefix)
@@ -292,10 +301,11 @@ class AudioEngine:
             else:
                 combined = from_clip + to_clip
 
-            # Create temp file
+            # Create temp file and track for cleanup (Fix 12)
             temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
             temp_path = Path(temp_file.name)
             temp_file.close()
+            self._preview_temp_files.append(temp_path)
 
             # Export
             combined.export(str(temp_path), format="mp3", bitrate="192k")

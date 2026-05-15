@@ -14,8 +14,8 @@ from stream_of_worship.app.db.models import SongsetItem
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.services.catalog import CatalogService, SongsetItemWithDetails
-from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
+from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
@@ -25,7 +25,7 @@ def unified_db(postgres_url):
     Returns:
         Tuple of (DatabaseClient, ReadOnlyClient, SongsetClient).
     """
-    provider = ConnectionProvider(postgres_url)
+    provider = make_test_provider(postgres_url)
     conn = provider.get_connection()
 
     # Create schema
@@ -41,7 +41,7 @@ def unified_db(postgres_url):
 
     # Cleanup (use fresh connection in case provider was closed by a test)
     try:
-        cleanup_provider = ConnectionProvider(postgres_url)
+        cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_items CASCADE;

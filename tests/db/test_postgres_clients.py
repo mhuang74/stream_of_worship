@@ -10,8 +10,8 @@ from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.db.songset_client import SongsetClient
-from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
+from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
@@ -24,7 +24,7 @@ def db_clients(postgres_url, seed_user):
     Returns:
         Tuple of (DatabaseClient, ReadOnlyClient, SongsetClient, connection).
     """
-    provider = ConnectionProvider(postgres_url)
+    provider = make_test_provider(postgres_url)
     conn = provider.get_connection()
 
     # Create all tables
@@ -43,7 +43,7 @@ def db_clients(postgres_url, seed_user):
 
     # Cleanup (use a fresh connection in case provider was closed by test)
     try:
-        cleanup_provider = ConnectionProvider(postgres_url)
+        cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_share CASCADE;
@@ -168,7 +168,7 @@ class TestDatabaseClient:
         # Admin get_song() doesn't filter deleted, but read_client does
         assert read_client.get_song("song_1") is None
         # Verify it's actually soft-deleted via admin client
-        deleted = admin_client.get_song("song_1")
+        deleted = admin_client.get_song("song_1", include_deleted=True)
         assert deleted is not None
         assert deleted.deleted_at is not None
 

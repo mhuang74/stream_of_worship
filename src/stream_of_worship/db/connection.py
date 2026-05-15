@@ -23,22 +23,39 @@ class ConnectionProvider:
 
     Attributes:
         database_url: Fully-formed ``postgresql://`` connection string.
+        sslmode: SSL mode for the connection (default: "require" for production).
     """
 
     MAX_RETRIES = 2
     RETRY_DELAY_SECONDS = 1.0
 
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, sslmode: str = "require"):
         self.database_url = database_url
+        self.sslmode = sslmode
         self._connection: Optional[psycopg.Connection] = None
         self._lock = threading.Lock()
 
     def get_connection(self) -> psycopg.Connection:
-        """Return an open psycopg connection, reconnecting if necessary."""
+        """Return an open psycopg connection, reconnecting if necessary.
+
+        With autocommit=True, a dropped connection raises OperationalError on the
+        next real query — no proactive health check needed. Call invalidate() on
+        OperationalError to force a reconnect on the next call.
+        """
         with self._lock:
             if self._connection is None or self._connection.closed:
                 self._connection = self._connect_with_retry()
             return self._connection
+
+    def invalidate(self) -> None:
+        """Force next get_connection() to reconnect (call on OperationalError)."""
+        with self._lock:
+            if self._connection and not self._connection.closed:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+            self._connection = None
 
     def _connect_with_retry(self) -> psycopg.Connection:
         """Attempt to connect with exponential backoff for cold starts."""
@@ -50,10 +67,9 @@ class ConnectionProvider:
                     self.database_url,
                     connect_timeout=10,
                     autocommit=True,
-                    sslmode="require",
+                    sslmode=self.sslmode,
                 )
                 conn.execute("SELECT 1")
-                conn.autocommit = False
                 return conn
             except Exception as exc:
                 if conn:
@@ -78,12 +94,13 @@ class ConnectionProvider:
         self.close()
 
 
-def check_database_connection(database_url: str, timeout: int = 10) -> bool:
+def check_database_connection(database_url: str, timeout: int = 10, sslmode: str = "require") -> bool:
     """Verify that a PostgreSQL database is reachable.
 
     Args:
         database_url: Postgres DSN (with password if required).
         timeout: Connection timeout in seconds.
+        sslmode: SSL mode for the connection (default: "require" for production).
 
     Returns:
         True if the connection succeeds and ``SELECT 1`` returns a row,
@@ -91,7 +108,7 @@ def check_database_connection(database_url: str, timeout: int = 10) -> bool:
     """
     try:
         with psycopg.connect(
-            database_url, connect_timeout=timeout, sslmode="require"
+            database_url, connect_timeout=timeout, sslmode=sslmode
         ) as conn:
             conn.execute("SELECT 1")
         return True

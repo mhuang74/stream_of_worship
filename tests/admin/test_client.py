@@ -4,14 +4,14 @@ import pytest
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
-from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
+from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
 def admin_client(postgres_url):
     """Create a DatabaseClient connected to a fresh Postgres schema."""
-    provider = ConnectionProvider(postgres_url)
+    provider = make_test_provider(postgres_url)
     conn = provider.get_connection()
 
     # Create schema
@@ -24,7 +24,7 @@ def admin_client(postgres_url):
 
     # Cleanup (use fresh connection in case provider was closed by a test)
     try:
-        cleanup_provider = ConnectionProvider(postgres_url)
+        cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_items CASCADE;
@@ -195,7 +195,7 @@ class TestDatabaseClientIntegration:
         # ReadOnlyClient excludes deleted songs
         assert read_client.get_song("song_1") is None
         # Admin client gets it (for listing deleted)
-        deleted = admin_client.get_song("song_1")
+        deleted = admin_client.get_song("song_1", include_deleted=True)
         assert deleted is not None
         assert deleted.deleted_at is not None
 
@@ -234,7 +234,7 @@ class TestDatabaseClientIntegration:
         # ReadOnlyClient excludes deleted recordings
         assert read_client.get_recording_by_hash("abc123") is None
         # Admin client still finds it (includes deleted)
-        deleted = admin_client.get_recording_by_hash("abc123")
+        deleted = admin_client.get_recording_by_hash("abc123", include_deleted=True)
         assert deleted is not None
         assert deleted.deleted_at is not None
 

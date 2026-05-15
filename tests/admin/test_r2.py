@@ -1,9 +1,10 @@
 """Tests for R2 storage client."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from stream_of_worship.admin.services.r2 import R2Client
@@ -34,6 +35,7 @@ class TestR2ClientInit:
             aws_access_key_id="test-access-key",
             aws_secret_access_key="test-secret-key",
             region_name="auto",
+            config=ANY,
         )
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
