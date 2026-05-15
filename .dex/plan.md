@@ -247,16 +247,16 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/render/lrc-parser.ts`
 - Create: `webapp/src/lib/render/frame-renderer.ts`
 
-- [ ] Port VideoEngine from Python to Node.js
-- [ ] Implement LRC parser
-- [ ] Implement frame rendering with skia-canvas or node-canvas
-- [ ] Support video templates (dark, gradient_warm, gradient_blue)
-- [ ] Implement font size presets: S (32px), M (48px), L (64px), XL (80px)
-- [ ] Implement title card rendering (configurable duration 5-30s)
-- [ ] Implement FFmpeg video encoding (H.264 + AAC)
-- [ ] Implement MP4 chapter atom injection (best-effort, proceed on failure)
-- [ ] Write tests for video engine
-- [ ] Run test suite - must pass before task 4.4
+- [x] Port VideoEngine from Python to Node.js
+- [x] Implement LRC parser
+- [x] Implement frame rendering with node-canvas
+- [x] Support video templates (dark, gradient_warm, gradient_blue)
+- [x] Implement font size presets: S (32px), M (48px), L (64px), XL (80px)
+- [x] Implement title card rendering (configurable duration 5-30s)
+- [x] Implement FFmpeg video encoding (H.264 + AAC)
+- [x] Implement MP4 chapter atom injection (best-effort, proceed on failure)
+- [x] Write tests for video engine
+- [x] Run test suite - must pass before task 4.4
 
 #### Task 4.4: Render Screen UI
 
