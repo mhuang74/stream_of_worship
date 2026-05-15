@@ -165,14 +165,14 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/songset/SongList.tsx`
 - Create: `webapp/src/components/songset/TransitionPanel.tsx`
 
-- [ ] Create songset editor page with app bar
-- [ ] Implement song list with drag handles (dnd-kit)
-- [ ] Add render state button to app bar (same as list row)
-- [ ] Add stale banner when artifacts out of date (dismissible, with Re-render and Play anyway buttons)
-- [ ] Add marked lines badge with "Open on desktop for text edit" nudge (phone only, when markedLineCount > 0)
-- [ ] Implement overflow menu (Render, Play, Edit description, Duplicate, Delete)
-- [ ] Write tests for editor components
-- [ ] Run test suite - must pass before task 3.3
+- [x] Create songset editor page with app bar
+- [x] Implement song list with drag handles (dnd-kit)
+- [x] Add render state button to app bar (same as list row)
+- [x] Add stale banner when artifacts out of date (dismissible, with Re-render and Play anyway buttons)
+- [x] Add marked lines badge with "Open on desktop for text edit" nudge (phone only, when markedLineCount > 0)
+- [x] Implement overflow menu (Render, Play, Edit description, Duplicate, Delete)
+- [x] Write tests for editor components
+- [x] Run test suite - must pass before task 3.3
 
 #### Task 3.3: Browse Sheet (Song Selection)
 
