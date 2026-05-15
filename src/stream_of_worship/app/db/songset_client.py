@@ -93,12 +93,12 @@ class SongsetClient:
 
     def _owns_songset(self, songset_id: str) -> bool:
         """Return True iff this client's user owns the given songset."""
-        cursor = self.connection.cursor()
-        cursor.execute(
-            "SELECT 1 FROM songsets WHERE id = %s AND user_id = %s",
-            (songset_id, self.user_id),
-        )
-        return cursor.fetchone() is not None
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM songsets WHERE id = %s AND user_id = %s",
+                (songset_id, self.user_id),
+            )
+            return cursor.fetchone() is not None
 
     def _assert_owner(self, songset_id: str) -> None:
         """Raise ``NotOwnerError`` if this client's user doesn't own the songset."""
@@ -449,13 +449,20 @@ class SongsetClient:
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT songset_id FROM songset_items WHERE id = %s",
+                """
+                SELECT i.songset_id, s.user_id
+                FROM songset_items i
+                JOIN songsets s ON i.songset_id = s.id
+                WHERE i.id = %s
+                """,
                 (item_id,),
             )
             row = cursor.fetchone()
             if not row:
                 return False
-            self._assert_owner(row[0])
+            songset_id, owner_id = row
+            if owner_id != self.user_id:
+                raise NotOwnerError(songset_id, self.user_id)
 
             updates = []
             params: list = []
@@ -526,7 +533,12 @@ class SongsetClient:
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT songset_id, position FROM songset_items WHERE id = %s",
+                """
+                SELECT i.songset_id, i.position, s.user_id
+                FROM songset_items i
+                JOIN songsets s ON i.songset_id = s.id
+                WHERE i.id = %s
+                """,
                 (item_id,),
             )
             row = cursor.fetchone()
@@ -534,8 +546,9 @@ class SongsetClient:
             if not row:
                 return False
 
-            songset_id, position = row
-            self._assert_owner(songset_id)
+            songset_id, position, owner_id = row
+            if owner_id != self.user_id:
+                raise NotOwnerError(songset_id, self.user_id)
 
             cursor.execute("DELETE FROM songset_items WHERE id = %s", (item_id,))
 
@@ -572,7 +585,12 @@ class SongsetClient:
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT songset_id, position FROM songset_items WHERE id = %s",
+                """
+                SELECT i.songset_id, i.position, s.user_id
+                FROM songset_items i
+                JOIN songsets s ON i.songset_id = s.id
+                WHERE i.id = %s
+                """,
                 (item_id,),
             )
             row = cursor.fetchone()
@@ -580,8 +598,9 @@ class SongsetClient:
             if not row:
                 return False
 
-            songset_id, old_position = row
-            self._assert_owner(songset_id)
+            songset_id, old_position, owner_id = row
+            if owner_id != self.user_id:
+                raise NotOwnerError(songset_id, self.user_id)
 
             if old_position == new_position:
                 return True

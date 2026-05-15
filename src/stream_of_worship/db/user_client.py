@@ -107,9 +107,11 @@ class UserClient:
         """List all users, ordered by ID ascending (creation order)."""
         cursor = self.connection.cursor()
         query = f'SELECT {_USER_COLUMNS} FROM "user" ORDER BY "id" ASC'
+        params: list = []
         if limit:
-            query += f" LIMIT {int(limit)}"
-        cursor.execute(query)
+            query += " LIMIT %s"
+            params.append(int(limit))
+        cursor.execute(query, params)
         return [User.from_row(tuple(row)) for row in cursor.fetchall()]
 
     def delete_user(self, user_id: int) -> bool:
