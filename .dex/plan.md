@@ -316,17 +316,17 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/play/LyricJumpList.tsx`
 - Create: `webapp/src/hooks/useWakeLock.ts`
 
-- [ ] Create fullscreen controller player with video element
-- [ ] Implement playback controls: prev song, skip back 10s, play/pause, skip forward 10s, next song
-- [ ] Implement scrub bar with chapter ticks
-- [ ] Implement volume control
-- [ ] Implement lyric jump list (swipe-up gesture from bottom)
-- [ ] Implement wake lock (navigator.wakeLock.request('screen'))
-- [ ] When Presentation session active: controller video muted, controls always visible, show "Connected" indicator
-- [ ] When mirror mode (no Presentation): controls auto-hide after 2s of no interaction, tap to reveal
-- [ ] Show iOS info toast once per session in mirror mode
-- [ ] Write tests for controller player
-- [ ] Run test suite - must pass before task 5.3
+- [x] Create fullscreen controller player with video element
+- [x] Implement playback controls: prev song, skip back 10s, play/pause, skip forward 10s, next song
+- [x] Implement scrub bar with chapter ticks
+- [x] Implement volume control
+- [x] Implement lyric jump list (swipe-up gesture from bottom)
+- [x] Implement wake lock (navigator.wakeLock.request('screen'))
+- [x] When Presentation session active: controller video muted, controls always visible, show "Connected" indicator
+- [x] When mirror mode (no Presentation): controls auto-hide after 2s of no interaction, tap to reveal
+- [x] Show iOS info toast once per session in mirror mode
+- [x] Write tests for controller player
+- [x] Run test suite - must pass before task 5.3
 
 #### Task 5.3: Projection Screen
 
