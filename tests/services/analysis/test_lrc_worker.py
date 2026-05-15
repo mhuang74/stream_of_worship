@@ -31,7 +31,7 @@ from sow_analysis.workers.lrc import (
     _write_lrc,
     generate_lrc,
 )
-from sow_analysis.workers.queue import Job, JobQueue
+from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
 
 
 class TestLRCLine:
@@ -388,7 +388,7 @@ class TestLRCJobQueueProcessing:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
             yield q
             q.stop()
 
@@ -413,9 +413,10 @@ class TestLRCJobQueueProcessing:
             lyrics_text="測試歌詞",
         )
 
-        # Pre-populate cache
+        # Pre-populate cache with correct composite key
+        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
         queue.cache_manager.save_lrc_result(
-            request.content_hash,
+            cache_key,
             {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 5},
         )
 

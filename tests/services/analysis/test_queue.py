@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sow_analysis.models import AnalyzeJobRequest, JobStatus, JobType, LrcJobRequest
-from sow_analysis.workers.queue import Job, JobQueue
+from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
 
 
 class TestJobQueue:
@@ -17,7 +17,7 @@ class TestJobQueue:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
             yield q
             q.stop()
 
@@ -72,7 +72,7 @@ class TestLRCJobProcessing:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
             yield q
             q.stop()
 
@@ -85,9 +85,10 @@ class TestLRCJobProcessing:
             lyrics_text="Line 1\nLine 2",
         )
 
-        # Pre-populate cache
+        # Pre-populate cache with correct composite key
+        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
         queue.cache_manager.save_lrc_result(
-            request.content_hash,
+            cache_key,
             {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 2},
         )
 
@@ -125,10 +126,9 @@ class TestJobQueueConcurrency:
     async def test_max_concurrent_jobs(self):
         """Test max concurrent job limit."""
         with tempfile.TemporaryDirectory() as tmp:
-            queue = JobQueue(max_concurrent_analysis=2, max_concurrent_lrc=2, cache_dir=Path(tmp))
+            queue = JobQueue(max_concurrent_local_model=2, cache_dir=Path(tmp))
 
-            assert queue.max_concurrent_analysis == 2
-            assert queue.max_concurrent_lrc == 2
+            assert queue.max_concurrent_local_model == 2
 
             queue.stop()
 
@@ -140,7 +140,7 @@ class TestJobQueueR2:
     async def test_initialize_r2(self):
         """Test initializing R2 client."""
         with tempfile.TemporaryDirectory() as tmp:
-            queue = JobQueue(max_concurrent_analysis=1, max_concurrent_lrc=1, cache_dir=Path(tmp))
+            queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
 
             with patch("sow_analysis.workers.queue.R2Client") as mock_r2:
                 mock_instance = MagicMock()
