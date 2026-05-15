@@ -299,14 +299,14 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/play/PrePlayCard.tsx`
 - Create: `webapp/src/components/play/OfflineStatus.tsx`
 
-- [ ] Create pre-play card with songset info (name, description, song list with durations)
-- [ ] Show render status: stale warning with Re-render link, offline ready badge, download button
-- [ ] Implement "Download for offline" button (triggers artifact caching)
-- [ ] Implement "Send lyrics to TV" button (shown only when navigator.presentation available and Cast/receiver detected)
-- [ ] Implement "Start Worship" button (disabled if no render artifacts)
-- [ ] Implement Share button
-- [ ] Write tests for pre-play card
-- [ ] Run test suite - must pass before task 5.2
+- [x] Create pre-play card with songset info (name, description, song list with durations)
+- [x] Show render status: stale warning with Re-render link, offline ready badge, download button
+- [x] Implement "Download for offline" button (triggers artifact caching)
+- [x] Implement "Send lyrics to TV" button (shown only when navigator.presentation available and Cast/receiver detected)
+- [x] Implement "Start Worship" button (disabled if no render artifacts)
+- [x] Implement Share button
+- [x] Write tests for pre-play card
+- [x] Run test suite - must pass before task 5.2
 
 #### Task 5.2: Controller Player
 
