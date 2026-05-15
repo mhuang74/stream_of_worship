@@ -217,14 +217,14 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/app/api/render-jobs/[id]/events/route.ts` (SSE)
 - Create: `webapp/src/lib/render/job-manager.ts`
 
-- [ ] Implement POST /api/render-jobs (create job)
-- [ ] Implement GET /api/render-jobs/[id] (job status)
-- [ ] Implement DELETE /api/render-jobs/[id] (cancel)
-- [ ] Implement SSE endpoint for real-time progress
-- [ ] Define SSE event types with phases: preparing, mixing_audio, rendering_frames, encoding_video, uploading, completed
-- [ ] Each SSE event includes: phase, phaseIndex, totalPhases, percentComplete, estimatedSecondsLeft, elapsedSeconds
-- [ ] Write tests for render job API
-- [ ] Run test suite - must pass before task 4.2
+- [x] Implement POST /api/render-jobs (create job)
+- [x] Implement GET /api/render-jobs/[id] (job status)
+- [x] Implement DELETE /api/render-jobs/[id] (cancel)
+- [x] Implement SSE endpoint for real-time progress
+- [x] Define SSE event types with phases: preparing, mixing_audio, rendering_frames, encoding_video, uploading, completed
+- [x] Each SSE event includes: phase, phaseIndex, totalPhases, percentComplete, estimatedSecondsLeft, elapsedSeconds
+- [x] Write tests for render job API
+- [x] Run test suite - must pass before task 4.2
 
 #### Task 4.2: Audio Engine (Node.js)
 
