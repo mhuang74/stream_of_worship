@@ -33,7 +33,7 @@ class SongsetEditorScreen(Screen):
         ("c", "add_songs", "Song Catalog"),
         ("r", "remove_song", "Remove"),
         ("comma", "move_up", "Move Up"),
-        ("period", "move_down", "Move Down"),
+        ("full_stop", "move_down", "Move Down"),
         ("e", "edit_transition", "Edit Transition"),
         ("t", "preview", "Transition Preview"),
         ("l", "lyrics_preview", "Lyrics"),
