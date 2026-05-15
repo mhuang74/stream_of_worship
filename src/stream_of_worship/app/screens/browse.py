@@ -216,6 +216,7 @@ class BrowseScreen(Screen):
             lambda: self._load_songs_worker(query),
             exclusive=True,
             group="load_songs",
+            thread=True,
         )
 
     def _load_songs_worker(self, query: str) -> None:
@@ -232,10 +233,10 @@ class BrowseScreen(Screen):
                 songs = self.catalog.list_songs_with_recordings(only_with_lrc=True, limit=50)
 
             logger.info(f"Loaded {len(songs)} songs for display")
-            self.call_from_thread(self._update_songs_table, songs)
+            self.app.call_from_thread(self._update_songs_table, songs)
         except Exception as e:
             logger.error(f"Error loading songs: {e}")
-            self.call_from_thread(self.notify, "Failed to load catalog", severity="error")
+            self.app.call_from_thread(self.notify, "Failed to load catalog", severity="error")
 
     def _update_songs_table(self, songs) -> None:
         """Update the songs table on the main thread."""
@@ -364,6 +365,7 @@ class BrowseScreen(Screen):
             lambda: self._play_worker(recording.hash_prefix),
             exclusive=True,
             group="playback",
+            thread=True,
         )
 
     def _play_worker(self, hash_prefix: str) -> None:
@@ -371,14 +373,14 @@ class BrowseScreen(Screen):
         try:
             audio_path = self.app.asset_cache.download_audio(hash_prefix)
             if audio_path:
-                self.call_from_thread(self.app.playback.play, audio_path)
+                self.app.call_from_thread(self.app.playback.play, audio_path)
             else:
-                self.call_from_thread(
+                self.app.call_from_thread(
                     self.notify, "Failed to download audio", severity="error"
                 )
         except Exception as e:
             logger.error(f"Error downloading audio: {e}")
-            self.call_from_thread(self.notify, f"Error: {e}", severity="error")
+            self.app.call_from_thread(self.notify, f"Error: {e}", severity="error")
 
     def action_toggle_playback(self) -> None:
         """Toggle playback of the currently selected song with spacebar."""
@@ -402,6 +404,7 @@ class BrowseScreen(Screen):
             lambda: self._play_worker(recording.hash_prefix),
             exclusive=True,
             group="playback",
+            thread=True,
         )
 
     def action_skip_forward(self) -> None:
