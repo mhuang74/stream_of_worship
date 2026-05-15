@@ -7,9 +7,13 @@ These tables live in the same Neon Postgres database as the admin catalog tables
 from stream_of_worship.admin.db.schema import CREATE_UPDATE_TIMESTAMP_FUNCTION
 
 # SQL to create the songsets table (user-created playlists)
+# user_id is BIGINT (matching "user"."id" identity column) and NOT NULL so
+# every songset has an owner. ON DELETE CASCADE removes a user's songsets
+# (and their items, via the FK on songset_items) when the user is deleted.
 CREATE_SONGSETS_TABLE = """
 CREATE TABLE IF NOT EXISTS songsets (
     id TEXT PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
     created_at timestamptz DEFAULT NOW(),
@@ -41,6 +45,10 @@ CREATE TABLE IF NOT EXISTS songset_items (
 
 # Indexes for efficient lookups
 CREATE_APP_INDEXES = [
+    """
+    CREATE INDEX IF NOT EXISTS idx_songsets_user_id
+    ON songsets(user_id);
+    """,
     """
     CREATE INDEX IF NOT EXISTS idx_songset_items_songset_id
     ON songset_items(songset_id);

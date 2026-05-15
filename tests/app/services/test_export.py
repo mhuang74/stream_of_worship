@@ -62,6 +62,7 @@ def sample_songset():
     """Sample songset for testing."""
     return Songset(
         id="songset_0001",
+        user_id=1,
         name="Test Songset",
         description="A test songset",
         created_at="2024-01-01T00:00:00",
@@ -350,6 +351,7 @@ class TestFilenameSanitization:
         """Verify special chars replaced with underscore."""
         songset = Songset(
             id="songset_0001",
+            user_id=1,
             name="Test/Songset: With*Special?Chars",
             created_at="2024-01-01T00:00:00",
             updated_at="2024-01-01T00:00:00",

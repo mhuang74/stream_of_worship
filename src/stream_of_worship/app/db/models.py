@@ -20,6 +20,7 @@ class Songset:
 
     Attributes:
         id: Unique songset ID (e.g., "songset_0001")
+        user_id: Owning user's ID (FK to "user"."id")
         name: Display name for the songset
         description: Optional description
         created_at: ISO timestamp when created
@@ -27,6 +28,7 @@ class Songset:
     """
 
     id: str
+    user_id: int
     name: str
     description: Optional[str] = None
     created_at: Optional[str] = None
@@ -37,17 +39,19 @@ class Songset:
         """Create a Songset from a database row tuple.
 
         Args:
-            row: Database row tuple with columns in schema order.
+            row: Database row tuple with columns in schema order
+                (id, user_id, name, description, created_at, updated_at).
 
         Returns:
             Songset instance.
         """
         return cls(
             id=row[0],
-            name=row[1],
-            description=row[2],
-            created_at=_to_str(row[3]),
-            updated_at=_to_str(row[4]),
+            user_id=row[1],
+            name=row[2],
+            description=row[3],
+            created_at=_to_str(row[4]),
+            updated_at=_to_str(row[5]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -58,6 +62,7 @@ class Songset:
         """
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "name": self.name,
             "description": self.description,
             "created_at": self.created_at,

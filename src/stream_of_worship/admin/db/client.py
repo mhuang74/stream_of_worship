@@ -16,12 +16,6 @@ import psycopg.errors
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
     ACTIVE_ROW_COUNT_QUERY,
-    CREATE_INDEXES,
-    CREATE_RECORDINGS_TABLE,
-    CREATE_RECORDINGS_UPDATE_TRIGGER,
-    CREATE_SONGS_TABLE,
-    CREATE_SONGS_UPDATE_TRIGGER,
-    CREATE_UPDATE_TIMESTAMP_FUNCTION,
     ROW_COUNT_QUERY,
 )
 from stream_of_worship.db.connection import ConnectionProvider
@@ -78,26 +72,33 @@ class DatabaseClient:
         except Exception:
             raise
 
-    def initialize_schema(self) -> None:
-        """Initialize the database schema.
+    def initialize_schema(self, wipe_songsets: bool = False) -> None:
+        """Initialize the full database schema (catalog + auth + app + per-user).
 
-        Creates all tables, indexes, and triggers if they don't exist.
+        Runs the unified ``ALL_SCHEMA_STATEMENTS`` list from
+        ``stream_of_worship.db.postgres_schema``. All statements are
+        ``CREATE ... IF NOT EXISTS`` or ``CREATE OR REPLACE``, so re-running
+        is safe.
+
+        Args:
+            wipe_songsets: If True, drops ``songset_items`` and ``songsets``
+                (CASCADE) before creating the new schema. Used during the
+                multi-user cutover to swap the songsets table for the new
+                NOT NULL ``user_id`` column without preserving old rows.
         """
+        # Lazy import to break the admin.db.__init__ ↔ postgres_schema cycle.
+        from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
+
         with self.transaction() as conn:
             cursor = conn.cursor()
 
-            # Create tables
-            cursor.execute(CREATE_SONGS_TABLE)
-            cursor.execute(CREATE_RECORDINGS_TABLE)
+            if wipe_songsets:
+                cursor.execute(
+                    "DROP TABLE IF EXISTS songset_items, songsets CASCADE;"
+                )
 
-            # Create indexes
-            for statement in CREATE_INDEXES:
+            for statement in ALL_SCHEMA_STATEMENTS:
                 cursor.execute(statement)
-
-            # Create trigger function and triggers
-            cursor.execute(CREATE_UPDATE_TIMESTAMP_FUNCTION)
-            cursor.execute(CREATE_SONGS_UPDATE_TRIGGER)
-            cursor.execute(CREATE_RECORDINGS_UPDATE_TRIGGER)
 
     def get_stats(self) -> DatabaseStats:
         """Get database statistics.

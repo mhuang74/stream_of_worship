@@ -10,11 +10,13 @@ from typing import Callable, Optional
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.services.catalog import SongWithRecording
+from stream_of_worship.db.auth_models import User
 
 
 class AppScreen(Enum):
     """Available screens in the app."""
 
+    LOGIN = auto()
     SONGSET_LIST = auto()
     BROWSE = auto()
     SONGSET_EDITOR = auto()
@@ -43,8 +45,11 @@ class AppState:
     """
 
     # Navigation
-    current_screen: AppScreen = AppScreen.SONGSET_LIST
+    current_screen: AppScreen = AppScreen.LOGIN
     previous_screen: Optional[AppScreen] = None
+
+    # Authenticated user (set on the LOGIN screen, cleared on quit)
+    current_user: Optional[User] = None
 
     # Songset management
     selected_songset: Optional[Songset] = None
@@ -121,6 +126,15 @@ class AppState:
             self._notify("current_screen", self.current_screen)
             return True
         return False
+
+    def set_current_user(self, user: Optional[User]) -> None:
+        """Set the authenticated user (or None to clear).
+
+        Args:
+            user: User who just logged in, or None on logout.
+        """
+        self.current_user = user
+        self._notify("current_user", user)
 
     def select_songset(self, songset: Optional[Songset]) -> None:
         """Select a songset.

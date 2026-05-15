@@ -62,6 +62,15 @@ def init_db(
         "-f",
         help="Force re-initialization (runs schema statements again)",
     ),
+    wipe_songsets: bool = typer.Option(
+        False,
+        "--wipe-songsets",
+        help=(
+            "DROP songsets and songset_items (CASCADE) before applying the "
+            "schema. Required when upgrading a pre-multi-user DB to the new "
+            "schema with user_id NOT NULL."
+        ),
+    ),
     config_path: Path = typer.Option(
         None,
         "--config",
@@ -73,6 +82,9 @@ def init_db(
 
     Creates tables, indexes, and triggers if they don't exist.
     Use --force to re-run schema creation on an existing database.
+    Use --wipe-songsets to drop the existing songsets tables first (no
+    production data exists yet, and this is required to add the user_id
+    NOT NULL column on the songsets table).
     """
     try:
         config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
@@ -92,12 +104,18 @@ def init_db(
     if force:
         console.print("[yellow]Force flag set — re-initializing schema...[/yellow]")
 
+    if wipe_songsets:
+        console.print(
+            "[yellow]--wipe-songsets: dropping songsets and songset_items "
+            "(CASCADE) before schema init...[/yellow]"
+        )
+
     console.print("Connecting to PostgreSQL...")
 
     try:
         client = _get_db_client(config)
         with client:
-            client.initialize_schema()
+            client.initialize_schema(wipe_songsets=wipe_songsets)
             console.print("[green]Postgres schema initialized successfully![/green]")
             # Display connection info without re-connecting
             _show_connection_info(config)

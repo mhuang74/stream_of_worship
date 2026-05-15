@@ -42,9 +42,17 @@ def restricted_connection(postgres_url):
         # Read-only on catalog
         cur.execute("GRANT SELECT ON songs TO sow_app_test;")
         cur.execute("GRANT SELECT ON recordings TO sow_app_test;")
+        # Read-only on auth user table (for TUI pick-a-user); no writes on
+        # account/session/verification (webapp Better Auth role owns those).
+        cur.execute('GRANT SELECT ON "user" TO sow_app_test;')
         # Full CRUD on songsets
         cur.execute("GRANT ALL ON songsets TO sow_app_test;")
         cur.execute("GRANT ALL ON songset_items TO sow_app_test;")
+        # Full CRUD on per-user app tables
+        cur.execute("GRANT ALL ON user_settings TO sow_app_test;")
+        cur.execute("GRANT ALL ON user_lrc_override TO sow_app_test;")
+        cur.execute("GRANT ALL ON lyric_mark TO sow_app_test;")
+        cur.execute("GRANT ALL ON songset_share TO sow_app_test;")
         # Allow sequence usage for songset inserts
         cur.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sow_app_test;")
     conn.autocommit = False
@@ -109,18 +117,34 @@ class TestRolePermissions:
 
         restricted_conn.close()
 
+    def _seed_user(self, admin_conn) -> int:
+        """Insert a user via the admin connection and return its id (idempotent)."""
+        with admin_conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO "user" ("name", "email") VALUES (%s, %s)
+                ON CONFLICT ("email") DO UPDATE SET "name" = EXCLUDED."name"
+                RETURNING "id"
+                """,
+                ("Role Test User", "role-test@example.com"),
+            )
+            user_id = cur.fetchone()[0]
+            admin_conn.commit()
+        return user_id
+
     def test_app_role_can_crud_songsets(self, restricted_connection):
         """App role should be able to create, read, update, delete songsets."""
-        _, restricted_url = restricted_connection
+        admin_conn, restricted_url = restricted_connection
         import psycopg
 
+        user_id = self._seed_user(admin_conn)
         restricted_conn = psycopg.connect(restricted_url)
 
         # Create songset
         with restricted_conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO songsets (id, name) VALUES (%s, %s)",
-                ("set_1", "Test Set"),
+                "INSERT INTO songsets (id, user_id, name) VALUES (%s, %s, %s)",
+                ("set_1", user_id, "Test Set"),
             )
             restricted_conn.commit()
 
@@ -149,16 +173,17 @@ class TestRolePermissions:
 
     def test_app_role_can_crud_songset_items(self, restricted_connection):
         """App role should be able to manage songset_items."""
-        _, restricted_url = restricted_connection
+        admin_conn, restricted_url = restricted_connection
         import psycopg
 
+        user_id = self._seed_user(admin_conn)
         restricted_conn = psycopg.connect(restricted_url)
 
         # Create songset first
         with restricted_conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO songsets (id, name) VALUES (%s, %s)",
-                ("set_1", "Test Set"),
+                "INSERT INTO songsets (id, user_id, name) VALUES (%s, %s, %s)",
+                ("set_1", user_id, "Test Set"),
             )
             restricted_conn.commit()
 
@@ -188,6 +213,63 @@ class TestRolePermissions:
         # Delete
         with restricted_conn.cursor() as cur:
             cur.execute("DELETE FROM songset_items WHERE id = %s", ("item_1",))
+            restricted_conn.commit()
+
+        restricted_conn.close()
+
+    def test_app_role_can_select_user(self, restricted_connection):
+        """App role should be able to read from the user table (for TUI picker)."""
+        admin_conn, restricted_url = restricted_connection
+        import psycopg
+
+        self._seed_user(admin_conn)
+        restricted_conn = psycopg.connect(restricted_url)
+
+        with restricted_conn.cursor() as cur:
+            cur.execute('SELECT "name" FROM "user" WHERE "email" = %s',
+                        ("role-test@example.com",))
+            row = cur.fetchone()
+            assert row is not None
+            assert row[0] == "Role Test User"
+
+        restricted_conn.close()
+
+    def test_app_role_cannot_insert_into_user(self, restricted_connection):
+        """App role must NOT be able to create users; that's admin/webapp only."""
+        _, restricted_url = restricted_connection
+        import psycopg
+
+        restricted_conn = psycopg.connect(restricted_url)
+
+        with pytest.raises(Exception):
+            with restricted_conn.cursor() as cur:
+                cur.execute(
+                    'INSERT INTO "user" ("name", "email") VALUES (%s, %s)',
+                    ("Sneaky", "sneak@example.com"),
+                )
+                restricted_conn.commit()
+
+        restricted_conn.close()
+
+    def test_app_role_can_crud_user_settings(self, restricted_connection):
+        """App role should be able to CRUD per-user app tables."""
+        admin_conn, restricted_url = restricted_connection
+        import psycopg
+
+        user_id = self._seed_user(admin_conn)
+        restricted_conn = psycopg.connect(restricted_url)
+
+        with restricted_conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO user_settings (user_id, offline_auto_cache) VALUES (%s, %s)",
+                (user_id, False),
+            )
+            cur.execute(
+                "SELECT offline_auto_cache FROM user_settings WHERE user_id = %s",
+                (user_id,),
+            )
+            assert cur.fetchone()[0] is False
+            cur.execute("DELETE FROM user_settings WHERE user_id = %s", (user_id,))
             restricted_conn.commit()
 
         restricted_conn.close()

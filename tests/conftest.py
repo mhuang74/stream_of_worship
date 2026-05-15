@@ -34,3 +34,28 @@ def postgres_url():
         # psycopg doesn't understand the +psycopg2 dialect prefix
         url = url.replace("postgresql+psycopg2://", "postgresql://")
         yield url
+
+
+@pytest.fixture
+def seed_user():
+    """Return a callable that inserts a user into the ``"user"`` table.
+
+    Usage::
+
+        def test_something(postgres_url, seed_user):
+            from stream_of_worship.db.connection import ConnectionProvider
+            provider = ConnectionProvider(postgres_url)
+            user_id = seed_user(provider, email="alice@example.com", name="Alice")
+            # ... use user_id to scope SongsetClient, etc.
+
+    Assumes the schema has already been initialized for ``provider``.
+    """
+
+    def _seed(provider, email: str = "test@example.com", name: str = "Test User") -> int:
+        from stream_of_worship.db.user_client import UserClient
+
+        with UserClient(provider) as client:
+            user = client.create_user(email=email, name=name)
+            return user.id
+
+    return _seed

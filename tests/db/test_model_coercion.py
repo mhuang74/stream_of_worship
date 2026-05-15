@@ -150,8 +150,9 @@ class TestSongsetFromRowCoercion:
         """Test Songset.from_row with datetime objects."""
         created = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         updated = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        row = ("set_1", "My Set", "desc", created, updated)
+        row = ("set_1", 7, "My Set", "desc", created, updated)
         songset = Songset.from_row(row)
+        assert songset.user_id == 7
         assert songset.created_at == "2024-01-15T10:00:00+00:00"
         assert songset.updated_at == "2024-01-15T12:00:00+00:00"
 
