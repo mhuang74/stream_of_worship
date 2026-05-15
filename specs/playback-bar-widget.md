@@ -50,8 +50,9 @@ from stream_of_worship.app.services.playback import PlaybackService, PlaybackSta
 class PlaybackBar(Static):
     """A progress bar widget that displays playback position and duration.
     
-    Automatically registers callbacks with the PlaybackService and updates
-    in real-time during playback. Hidden when playback is stopped.
+    Does NOT register callbacks with PlaybackService. The parent screen is
+    responsible for calling update_display() and update_visibility() from
+    its own callbacks.
     
     Attributes:
         playback: The PlaybackService instance to monitor
@@ -74,53 +75,15 @@ class PlaybackBar(Static):
         id: str | None = None,
         classes: str | None = None,
     ):
-        super().__init__("", id=id, classes=classes)
+        super().__init__("", id=id, classes=classes or "hidden")
         self.playback = playback
         self.bar_width = bar_width
     
-    def on_mount(self) -> None:
-        """Register callbacks with the playback service."""
-        self.playback.set_callbacks(
-            on_position_changed=self._on_position_changed,
-            on_state_changed=self._on_state_changed,
-            on_finished=self._on_finished,
-        )
-        # Initial state
-        self._update_visibility()
-    
-    def on_unmount(self) -> None:
-        """Unregister callbacks to prevent memory leaks."""
-        self.playback.set_callbacks()
-    
-    def _on_position_changed(self, position: PlaybackPosition) -> None:
-        """Handle position updates from playback service (runs in background thread)."""
-        def _update():
-            self._update_display(position)
-        self.call_after_refresh(_update)
-    
-    def _on_state_changed(self, state: PlaybackState) -> None:
-        """Handle state changes from playback service (runs in background thread)."""
-        def _update():
-            self._update_visibility()
-            if state != PlaybackState.STOPPED:
-                self._update_display(self.playback.get_position())
-        self.call_after_refresh(_update)
-    
-    def _on_finished(self) -> None:
-        """Handle playback finished."""
-        def _update():
-            self._update_visibility()
-        self.call_after_refresh(_update)
-    
-    def _update_visibility(self) -> None:
-        """Show/hide based on playback state."""
-        if self.playback.is_stopped:
-            self.add_class("hidden")
-        else:
-            self.remove_class("hidden")
-    
-    def _update_display(self, position: PlaybackPosition) -> None:
-        """Update the progress bar display."""
+    def update_display(self, position: PlaybackPosition) -> None:
+        """Update the progress bar display.
+        
+        Called by the parent screen from its _on_position_changed callback.
+        """
         current_str = self._format_time(position.current_seconds)
         total_str = self._format_time(position.total_seconds)
         
@@ -134,20 +97,31 @@ class PlaybackBar(Static):
         
         self.update(f"{icon} {current_str} / {total_str}  [{bar}]")
     
+    def update_visibility(self) -> None:
+        """Show/hide based on playback state.
+        
+        Called by the parent screen from its _on_state_changed and
+        _on_finished callbacks.
+        """
+        if self.playback.is_stopped:
+            self.add_class("hidden")
+        else:
+            self.remove_class("hidden")
+    
     @staticmethod
     def _format_time(seconds: float) -> str:
-        """Format seconds as MM:SS."""
+        """Format seconds as M:SS."""
         minutes = int(seconds // 60)
         secs = int(seconds % 60)
         return f"{minutes}:{secs:02d}"
 ```
 
 **Key Design Decisions:**
-1. **Widget owns callback registration** — screens just pass the `PlaybackService` instance
+1. **Parent screen owns callback registration** — widget exposes `update_display()` and `update_visibility()` methods; screens call these from their own `PlaybackService` callbacks
 2. **`call_after_refresh()` for thread safety** — callbacks run in background thread, must schedule UI updates on main thread
-3. **Unregister on unmount** — prevents callbacks to destroyed widgets
+3. **Wrap `query_one()` in `try...except NoMatches`** — callbacks may fire after screen is popped and widgets are removed from DOM
 4. **Inline CSS** — widget is self-contained, no external CSS required (but can be overridden)
-5. **Hidden when stopped** — bar only appears during playback, avoiding wasted space
+5. **Hidden when stopped** — bar only appears during playback, avoiding wasted space (initialized with `hidden` class)
 
 ### Phase 3: Add Skip Bindings to BrowseScreen
 

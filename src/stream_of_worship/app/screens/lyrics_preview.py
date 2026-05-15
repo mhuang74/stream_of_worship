@@ -12,6 +12,7 @@ from typing import Optional
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Static
 
@@ -286,7 +287,10 @@ class LyricsPreviewScreen(Screen):
                 self._highlight_lrc_row()
 
             # Update progress bar
-            self.query_one(PlaybackBar).update_display(position)
+            try:
+                self.query_one(PlaybackBar).update_display(position)
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -328,9 +332,12 @@ class LyricsPreviewScreen(Screen):
         """
         # Schedule UI update on main thread (callbacks run in background thread)
         def _update():
-            self.query_one(PlaybackBar).update_visibility()
-            if state != PlaybackState.STOPPED:
-                self.query_one(PlaybackBar).update_display(self.playback.get_position())
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+                if state != PlaybackState.STOPPED:
+                    self.query_one(PlaybackBar).update_display(self.playback.get_position())
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
@@ -342,7 +349,10 @@ class LyricsPreviewScreen(Screen):
         def _update():
             self.current_line_index = -1
             self._update_lyrics_display()
-            self.query_one(PlaybackBar).update_visibility()
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+            except NoMatches:
+                pass
 
         self.call_after_refresh(_update)
 
