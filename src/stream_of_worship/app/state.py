@@ -4,12 +4,15 @@ Manages reactive state for the TUI with observable properties.
 Provides centralized state management for screens.
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Callable, Optional
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.services.catalog import SongWithRecording
+
+logger = logging.getLogger("sow_app.state")
 
 
 class AppScreen(Enum):
@@ -21,6 +24,7 @@ class AppScreen(Enum):
     TRANSITION_DETAIL = auto()
     EXPORT_PROGRESS = auto()
     SETTINGS = auto()
+    LYRICS_PREVIEW = auto()
 
 
 @dataclass
@@ -32,19 +36,19 @@ class AppState:
 
     Attributes:
         current_screen: Currently active screen
-        previous_screen: Screen to return to (for back navigation)
         selected_songset: Currently selected songset
         selected_item: Currently selected songset item
         current_songset_items: Items in the current songset
         selected_song: Currently selected song in browse
+        selected_preview_item: Item to display in LyricsPreviewScreen
         search_query: Current search query
         is_loading: Whether an async operation is in progress
         error_message: Current error message to display
     """
 
-    # Navigation
+    # Navigation (stack mirrors Textual's screen stack)
     current_screen: AppScreen = AppScreen.SONGSET_LIST
-    previous_screen: Optional[AppScreen] = None
+    _nav_stack: list = field(default_factory=list)
 
     # Songset management
     selected_songset: Optional[Songset] = None
@@ -55,6 +59,9 @@ class AppState:
     selected_song: Optional[SongWithRecording] = None
     search_query: str = ""
 
+    # Lyrics preview
+    selected_preview_item: Optional[SongsetItem] = None
+
     # UI state
     is_loading: bool = False
     error_message: Optional[str] = None
@@ -63,9 +70,16 @@ class AppState:
     _listeners: dict[str, list[Callable]] = field(default_factory=dict)
 
     def __post_init__(self):
-        """Initialize listener dictionary."""
+        """Initialize listener dictionary and nav stack."""
         if self._listeners is None:
             self._listeners = {}
+        if not self._nav_stack:
+            self._nav_stack = [self.current_screen]
+
+    @property
+    def previous_screen(self) -> Optional[AppScreen]:
+        """Get the screen before the current one."""
+        return self._nav_stack[-2] if len(self._nav_stack) >= 2 else None
 
     def add_listener(self, property_name: str, callback: Callable) -> None:
         """Add a listener for a property change.
@@ -92,20 +106,19 @@ class AppState:
 
     def _notify(self, property_name: str, value) -> None:
         """Notify listeners of a property change."""
-        if property_name in self._listeners:
-            for callback in self._listeners[property_name]:
-                try:
-                    callback(value)
-                except Exception:
-                    pass
+        for cb in self._listeners.get(property_name, []):
+            try:
+                cb(value)
+            except Exception as e:
+                logger.error(f"Listener error for '{property_name}': {e}")
 
     def navigate_to(self, screen: AppScreen) -> None:
-        """Navigate to a screen, saving current for back navigation.
+        """Navigate to a screen, pushing it onto the navigation stack.
 
         Args:
             screen: Screen to navigate to
         """
-        self.previous_screen = self.current_screen
+        self._nav_stack.append(screen)
         self.current_screen = screen
         self._notify("current_screen", screen)
 
@@ -115,12 +128,12 @@ class AppState:
         Returns:
             True if navigation occurred
         """
-        if self.previous_screen:
-            self.current_screen = self.previous_screen
-            self.previous_screen = None
-            self._notify("current_screen", self.current_screen)
-            return True
-        return False
+        if len(self._nav_stack) <= 1:
+            return False
+        self._nav_stack.pop()
+        self.current_screen = self._nav_stack[-1]
+        self._notify("current_screen", self.current_screen)
+        return True
 
     def select_songset(self, songset: Optional[Songset]) -> None:
         """Select a songset.

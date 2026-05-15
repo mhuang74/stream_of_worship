@@ -100,21 +100,16 @@ class LyricsPreviewScreen(Screen):
 
         yield Footer()
 
+    def on_unmount(self) -> None:
+        """Unregister playback callbacks to prevent leaks (Fix 8)."""
+        self.playback.set_callbacks()
+
     def on_mount(self) -> None:
         """Handle mount event - initialize data and setup callbacks."""
         logger.info(f"LyricsPreviewScreen mounted for song: {self.item.song_title}")
 
-        # Download and parse LRC file
-        self._load_lrc()
-
-        # Download audio file
-        self._load_audio()
-
-        # Populate metadata
+        # Populate metadata synchronously (no I/O)
         self._populate_metadata()
-
-        # Populate LRC table
-        self._populate_lrc_table()
 
         # Register playback callbacks
         self.playback.set_callbacks(
@@ -123,7 +118,18 @@ class LyricsPreviewScreen(Screen):
             on_finished=self._on_finished,
         )
 
-        # Start playback if audio is available (deferred to ensure screen is ready)
+        # Download LRC + audio on worker thread (Fix 9)
+        self.run_worker(self._load_assets_worker, exclusive=True, group="load_assets")
+
+    def _load_assets_worker(self) -> None:
+        """Worker: download LRC and audio, then update UI on main thread."""
+        self._load_lrc()
+        self._load_audio()
+        self.call_from_thread(self._after_assets_loaded)
+
+    def _after_assets_loaded(self) -> None:
+        """Called on main thread after assets are downloaded."""
+        self._populate_lrc_table()
         if self._audio_path:
             self.call_after_refresh(self._start_playback)
 
@@ -365,7 +371,7 @@ class LyricsPreviewScreen(Screen):
         """Go back to songset editor."""
         logger.info("Action: back from lyrics preview")
         self.playback.stop()
-        self.app.pop_screen()
+        self.app.navigate_back()
 
     def action_noop(self) -> None:
         """No-op action to disable inherited bindings."""

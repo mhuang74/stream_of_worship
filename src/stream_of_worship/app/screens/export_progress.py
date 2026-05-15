@@ -61,6 +61,11 @@ class ExportProgressScreen(Screen):
         self.export_service.register_progress_callback(self._on_progress)
         self.export_service.register_completion_callback(self._on_complete)
 
+    def on_unmount(self) -> None:
+        """Unregister callbacks to prevent memory leaks (Fix 8)."""
+        self.export_service.unregister_progress_callback(self._on_progress)
+        self.export_service.unregister_completion_callback(self._on_complete)
+
         # Check if already exporting - if so, just show existing progress
         if self.export_service.is_exporting:
             status_label = self.query_one("#status_label", Label)
