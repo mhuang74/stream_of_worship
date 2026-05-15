@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlaybackControls } from "./PlaybackControls";
 import { LyricJumpList, Chapter } from "./LyricJumpList";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useMediaSession } from "@/hooks/useMediaSession";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, X, Info } from "lucide-react";
@@ -247,6 +249,57 @@ export function ControllerPlayer({
     }
     router.push(`/songsets/${songsetId}/play`);
   }, [router, songsetId]);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onTogglePlayback: handlePlayPause,
+    onSeekBack: handleSkipBack,
+    onSeekForward: handleSkipForward,
+    onPrevSong: handlePrevSong,
+    onNextSong: handleNextSong,
+  });
+
+  // Media Session API
+  const currentChapter = chapters[currentSongIndex];
+  const mediaSessionMetadata = useMemo(
+    () =>
+      currentChapter
+        ? {
+            title: currentChapter.songTitle,
+            artist: "Stream of Worship",
+            album: "Worship Set",
+          }
+        : null,
+    [currentChapter]
+  );
+
+  const { updatePlaybackState, updatePositionState } = useMediaSession(
+    mediaSessionMetadata,
+    {
+      onPlay: handlePlayPause,
+      onPause: handlePlayPause,
+      onPrevSong: handlePrevSong,
+      onNextSong: handleNextSong,
+      onSeekBack: handleSkipBack,
+      onSeekForward: handleSkipForward,
+    }
+  );
+
+  // Update media session playback state
+  useEffect(() => {
+    updatePlaybackState(isPlaying ? "playing" : "paused");
+  }, [isPlaying, updatePlaybackState]);
+
+  // Update media session position state
+  useEffect(() => {
+    if (duration > 0) {
+      updatePositionState({
+        duration,
+        position: currentTime,
+        playbackRate: 1,
+      });
+    }
+  }, [duration, currentTime, updatePositionState]);
 
   // Request fullscreen on mount
   useEffect(() => {
