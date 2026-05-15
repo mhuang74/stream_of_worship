@@ -116,12 +116,12 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/app/api/songs/search/route.ts`
 - Create: `webapp/src/lib/db/songs.ts`
 
-- [ ] Implement GET /api/songs (list with pagination, filtering)
-- [ ] Implement GET /api/songs/[id] (with recording info)
-- [ ] Implement GET /api/songs/search (title, artist, album)
-- [ ] Add visibility_status filtering (published only for app users)
-- [ ] Write tests for catalog endpoints
-- [ ] Run test suite - must pass before task 2.3
+- [x] Implement GET /api/songs (list with pagination, filtering)
+- [x] Implement GET /api/songs/[id] (with recording info)
+- [x] Implement GET /api/songs/search (title, artist, album)
+- [x] Add visibility_status filtering (published only for app users)
+- [x] Write tests for catalog endpoints
+- [x] Run test suite - must pass before task 2.3
 
 #### Task 2.3: R2 Signed URL Generation
 
