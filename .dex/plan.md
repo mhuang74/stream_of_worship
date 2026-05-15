@@ -335,15 +335,15 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/play/ProjectionPlayer.tsx`
 - Create: `webapp/src/hooks/usePresentation.ts`
 
-- [ ] Create projection page (lyrics-only, no chrome)
-- [ ] MP4 fills 100% viewport (object-fit: cover for landscape)
-- [ ] Add song title overlay at top edge (font <=14px, opacity 0.5, fades after 2s unchanged, reappears on chapter change)
-- [ ] Implement Presentation API message handling: play, pause, seek (positionSeconds), volume (level 0.0-1.0), songTitle
-- [ ] Implement landscape orientation lock (screen.orientation.lock('landscape'), fail gracefully)
-- [ ] Implement wake lock
-- [ ] Set Cache-Control: no-store, no-cache header (signed URLs expire, no CDN caching)
-- [ ] Write tests for projection player
-- [ ] Run test suite - must pass before task 5.4
+- [x] Create projection page (lyrics-only, no chrome)
+- [x] MP4 fills 100% viewport (object-fit: cover for landscape)
+- [x] Add song title overlay at top edge (font <=14px, opacity 0.5, fades after 2s unchanged, reappears on chapter change)
+- [x] Implement Presentation API message handling: play, pause, seek (positionSeconds), volume (level 0.0-1.0), songTitle
+- [x] Implement landscape orientation lock (screen.orientation.lock('landscape'), fail gracefully)
+- [x] Implement wake lock
+- [x] Set Cache-Control: no-store, no-cache header (signed URLs expire, no CDN caching)
+- [x] Write tests for projection player
+- [x] Run test suite - must pass before task 5.4
 
 #### Task 5.4: Presentation API Integration
 
@@ -351,14 +351,14 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/presentation/controller.ts`
 - Create: `webapp/src/lib/presentation/receiver.ts`
 
-- [ ] Implement PresentationRequest session initiation
-- [ ] Implement PresentationConnection message protocol
-- [ ] Handle Cast receiver availability via PresentationRequest.getAvailability()
-- [ ] Implement fallback for iOS (mirror mode - no Presentation API support)
-- [ ] Controller sends commands: play, pause, seek, volume, songTitle
-- [ ] Projection receives and applies to video element
-- [ ] Write tests for presentation integration
-- [ ] Run test suite - must pass before task 5.5
+- [x] Implement PresentationRequest session initiation
+- [x] Implement PresentationConnection message protocol
+- [x] Handle Cast receiver availability via PresentationRequest.getAvailability()
+- [x] Implement fallback for iOS (mirror mode - no Presentation API support)
+- [x] Controller sends commands: play, pause, seek, volume, songTitle
+- [x] Projection receives and applies to video element
+- [x] Write tests for presentation integration
+- [x] Run test suite - must pass before task 5.5
 
 #### Task 5.5: Keyboard Shortcuts and Media Session
 
