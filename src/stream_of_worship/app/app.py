@@ -37,7 +37,7 @@ class SowApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("s", "navigate_settings", "Settings"),
-        ("S", "reconnect_catalog", "Reconnect"),
+        ("S", "reconnect_catalog", "Reconnect DB"),
     ]
 
     def __init__(self, config: AppConfig, *args, **kwargs):
@@ -100,13 +100,17 @@ class SowApp(App):
         self.navigate_to(AppScreen.SONGSET_LIST)
 
     def action_reconnect_catalog(self) -> None:
-        """Force reconnection to the database (capital S key)."""
+        """Force reconnection to the Postgres catalog database (Shift+S).
+
+        Useful as a manual recovery when Neon's idle-suspended compute drops
+        the connection between queries.
+        """
         try:
             self.read_client.connection_provider.close()
             self.read_client.check_connection()
-            self.notify("Reconnected to catalog")
+            self.notify("Reconnected to catalog database")
         except Exception as e:
-            self.notify(f"Reconnection failed: {e}", severity="error")
+            self.notify(f"Database reconnection failed: {e}", severity="error")
 
     def _create_screen(self, screen: AppScreen):
         """Create a fresh screen instance.
