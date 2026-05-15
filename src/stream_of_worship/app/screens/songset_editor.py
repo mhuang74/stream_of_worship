@@ -77,6 +77,7 @@ class SongsetEditorScreen(Screen):
         self.items: list[SongsetItem] = []
         self._initial_load = True
         self._songset_listener = None
+        self._pending_cursor_row: Optional[int] = None
 
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
@@ -258,6 +259,10 @@ class SongsetEditorScreen(Screen):
                 key=item.id,
             )
 
+        if self._pending_cursor_row is not None:
+            table.move_cursor(row=self._pending_cursor_row)
+            self._pending_cursor_row = None
+
         if len(self.items) == 0 and self._initial_load:
             self._initial_load = False
             self.call_after_refresh(self._open_browse_for_new_songset)
@@ -384,12 +389,11 @@ class SongsetEditorScreen(Screen):
         self.state.select_item(item)
         self.songset_client.remove_item(item.id)
         self.state.select_item(None)  # Clear selection after removal
-        self._load_items()
 
-        # Restore cursor position (stay at same index, or last item if removed last)
+        # Defer cursor positioning until after _load_items completes
         if cursor_row is not None and len(self.items) > 0:
-            new_cursor = min(cursor_row, len(self.items) - 1)
-            table.move_cursor(row=new_cursor)
+            self._pending_cursor_row = min(cursor_row, len(self.items) - 1)
+        self._load_items()
 
         self.notify("Song removed")
 
@@ -578,8 +582,8 @@ class SongsetEditorScreen(Screen):
         # Reorder in database (new_position is current_index - 1)
         success = self.songset_client.reorder_item(item.id, current_index - 1)
         if success:
+            self._pending_cursor_row = current_index - 1
             self._load_items()
-            table.move_cursor(row=current_index - 1)
             self.notify(f"Moved '{item.song_title}' up")
         else:
             self.notify("Failed to move song", severity="error")
@@ -605,8 +609,8 @@ class SongsetEditorScreen(Screen):
 
         success = self.songset_client.reorder_item(item.id, current_index + 1)
         if success:
+            self._pending_cursor_row = current_index + 1
             self._load_items()
-            table.move_cursor(row=current_index + 1)
             self.notify(f"Moved '{item.song_title}' down")
         else:
             self.notify("Failed to move song", severity="error")
