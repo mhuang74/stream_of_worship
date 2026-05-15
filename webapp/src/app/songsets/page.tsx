@@ -1,8 +1,240 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { SongsetList, Songset } from "@/components/songset/SongsetList";
+import { RenderState } from "@/components/songset/RenderStateButton";
+import { toast } from "sonner";
+
+interface ApiSongset {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  renderState: RenderState;
+  itemCount: number;
+  latestRenderJobId: string | null;
+  lastFailedRenderJobId: string | null;
+}
+
+interface ApiResponse {
+  songsets: ApiSongset[];
+  total: number;
+}
+
 export default function SongsetsPage() {
+  const [songsets, setSongsets] = useState<Songset[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSongsets() {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await fetch("/api/songsets");
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error("Please sign in to view your songsets");
+          }
+          throw new Error("Failed to load songsets");
+        }
+
+        const data: ApiResponse = await response.json();
+
+        if (cancelled) return;
+
+        // Transform API response to component format
+        const transformedSongsets: Songset[] = data.songsets.map((songset) => ({
+          id: songset.id,
+          name: songset.name,
+          description: songset.description,
+          itemCount: songset.itemCount,
+          updatedAt: new Date(songset.updatedAt),
+          renderState: songset.renderState,
+          // These would come from the API in a real implementation
+          isOfflineAvailable: false,
+          isArtifactsStale: songset.renderState === "stale",
+        }));
+
+        setSongsets(transformedSongsets);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load songsets");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadSongsets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  const refreshSongsets = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  const handleCreateSongset = useCallback(
+    async (name: string, description?: string) => {
+      const response = await fetch("/api/songsets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to create songset");
+      }
+
+      refreshSongsets();
+      toast.success("Songset created successfully");
+    },
+    [refreshSongsets]
+  );
+
+  const handleRender = useCallback((id: string) => {
+    // Navigate to render page
+    window.location.href = `/songsets/${id}/render`;
+  }, []);
+
+  const handlePlay = useCallback((id: string) => {
+    // Navigate to play page
+    window.location.href = `/songsets/${id}/play`;
+  }, []);
+
+  const handleRetry = useCallback((id: string) => {
+    // Navigate to render page for retry
+    window.location.href = `/songsets/${id}/render`;
+  }, []);
+
+  const handleRename = useCallback(
+    async (id: string, name: string) => {
+      const response = await fetch(`/api/songsets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to rename songset");
+      }
+
+      refreshSongsets();
+      toast.success("Songset renamed successfully");
+    },
+    [refreshSongsets]
+  );
+
+  const handleDuplicate = useCallback(
+    async (id: string) => {
+      // First get the songset details
+      const response = await fetch(`/api/songsets/${id}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch songset details");
+      }
+
+      const songset = await response.json();
+
+      // Create a new songset with "Copy of" prefix
+      const createResponse = await fetch("/api/songsets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Copy of ${songset.name}`,
+          description: songset.description,
+        }),
+      });
+
+      if (!createResponse.ok) {
+        const data = await createResponse.json();
+        throw new Error(data.error || "Failed to duplicate songset");
+      }
+
+      const newSongset = await createResponse.json();
+
+      // Copy items if any
+      if (songset.items && songset.items.length > 0) {
+        for (const item of songset.items) {
+          await fetch(`/api/songsets/${newSongset.id}/items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              songId: item.songId,
+              recordingHashPrefix: item.recordingHashPrefix,
+              position: item.position,
+              gapBeats: item.gapBeats,
+              crossfadeEnabled: item.crossfadeEnabled,
+              crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+              keyShiftSemitones: item.keyShiftSemitones,
+              tempoRatio: item.tempoRatio,
+            }),
+          });
+        }
+      }
+
+      refreshSongsets();
+      toast.success("Songset duplicated successfully");
+    },
+    [refreshSongsets]
+  );
+
+  const handleShare = useCallback((id: string) => {
+    // Navigate to share dialog/page
+    window.location.href = `/songsets/${id}?share=true`;
+  }, []);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const response = await fetch(`/api/songsets/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete songset");
+      }
+
+      refreshSongsets();
+      toast.success("Songset deleted successfully");
+    },
+    [refreshSongsets]
+  );
+
   return (
-    <div className="px-4 py-6">
-      <h1 className="text-2xl font-bold mb-4">Songsets</h1>
-      <p className="text-muted-foreground">No songsets yet. Create one to get started.</p>
+    <div className="px-4 py-6 pb-24 lg:pb-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Songsets</h1>
+        <p className="text-muted-foreground mt-1">
+          Manage your worship song collections
+        </p>
+      </div>
+
+      <SongsetList
+        songsets={songsets}
+        isLoading={isLoading}
+        error={error}
+        onCreateSongset={handleCreateSongset}
+        onRender={handleRender}
+        onPlay={handlePlay}
+        onRetry={handleRetry}
+        onRename={handleRename}
+        onDuplicate={handleDuplicate}
+        onShare={handleShare}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }

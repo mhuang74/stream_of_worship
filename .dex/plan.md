@@ -146,16 +146,16 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/songset/SongsetRow.tsx`
 - Create: `webapp/src/components/songset/RenderStateButton.tsx`
 
-- [ ] Create songset list page with responsive layout
-- [ ] Implement songset row with metadata (name, song count, duration, updated_at)
-- [ ] Implement render state machine button with 5 states: Render (unrendered), Rendering... X% (active), Play (fresh), Re-render (stale), Retry render (failed)
-- [ ] Add secondary button for stale state: "Play anyway"
-- [ ] Add offline badge indicator (shows when artifacts cached and up-to-date)
-- [ ] Add stale artifacts indicator ("Artifacts out of date")
-- [ ] Implement context menu (Rename, Duplicate, Render, Play, Share, Delete)
-- [ ] Implement FAB for creating new songset
-- [ ] Write tests for songset list components
-- [ ] Run test suite - must pass before task 3.2
+- [x] Create songset list page with responsive layout
+- [x] Implement songset row with metadata (name, song count, duration, updated_at)
+- [x] Implement render state machine button with 5 states: Render (unrendered), Rendering... X% (active), Play (fresh), Re-render (stale), Retry render (failed)
+- [x] Add secondary button for stale state: "Play anyway"
+- [x] Add offline badge indicator (shows when artifacts cached and up-to-date)
+- [x] Add stale artifacts indicator ("Artifacts out of date")
+- [x] Implement context menu (Rename, Duplicate, Render, Play, Share, Delete)
+- [x] Implement FAB for creating new songset
+- [x] Write tests for songset list components
+- [x] Run test suite - must pass before task 3.2
 
 #### Task 3.2: Songset Editor Screen
 
