@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Label
 
 from stream_of_worship.app.db.models import Songset
+from stream_of_worship.app.db.read_client import DatabaseError
 from stream_of_worship.app.db.songset_client import SongsetClient
 from stream_of_worship.app.logging_config import get_logger
 from stream_of_worship.app.state import AppScreen, AppState
@@ -66,7 +67,6 @@ class SongsetListScreen(Screen):
         logger.info("SongsetListScreen mounted")
         self._load_songsets()
 
-
     def on_screen_resume(self, event: events.ScreenResume) -> None:
         """Handle screen resume event (when another screen is popped)."""
         logger.info("SongsetListScreen resumed (screen popped from above)")
@@ -76,19 +76,40 @@ class SongsetListScreen(Screen):
         self.call_after_refresh(self._restore_focus)
 
     def _load_songsets(self) -> None:
-        """Load and display songsets."""
-        self.songsets = self.songset_client.list_songsets()
+        """Load songsets on a worker thread (Fix 9)."""
+        self.run_worker(self._load_songsets_worker, exclusive=True, group="load_songsets")
+
+    def _load_songsets_worker(self) -> None:
+        """Worker: fetch songsets + batch item counts, then update UI."""
+        try:
+            songsets = self.songset_client.list_songsets()
+            if not songsets:
+                self.call_from_thread(self._update_songsets_table, songsets, {})
+                return
+            # Batch-fetch item counts (Fix 10)
+            songset_ids = [s.id for s in songsets]
+            item_counts = self.songset_client.get_item_counts_batch(songset_ids)
+            self.call_from_thread(self._update_songsets_table, songsets, item_counts)
+        except DatabaseError as e:
+            self.call_from_thread(self.notify, str(e), severity="error")
+        except Exception as e:
+            logger.error(f"Error loading songsets: {e}")
+            self.call_from_thread(self.notify, "Failed to load songsets", severity="error")
+
+    def _update_songsets_table(self, songsets, item_counts: dict) -> None:
+        """Update the songsets table on the main thread."""
+        from datetime import datetime
+
+        self.songsets = songsets
         table = self.query_one("#songset_table", DataTable)
         table.clear()
 
         for songset in self.songsets:
-            item_count = self.songset_client.get_item_count(songset.id)
+            item_count = item_counts.get(songset.id, 0)
             updated = songset.updated_at or "Never"
             if updated != "Never":
-                # Format timestamp
                 try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(updated.replace('Z', '+00:00'))
+                    dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
                     updated = dt.strftime("%Y-%m-%d %H:%M")
                 except Exception:
                     pass

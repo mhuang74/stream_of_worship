@@ -148,10 +148,40 @@ class SowApp(App):
             from stream_of_worship.app.screens.export_progress import ExportProgressScreen
 
             return ExportProgressScreen(self.state, self.export_service)
+        elif screen == AppScreen.LYRICS_PREVIEW:
+            from stream_of_worship.app.screens.lyrics_preview import LyricsPreviewScreen
+
+            item = self.state.selected_preview_item
+            if item is None:
+                logger.error("navigate_to LYRICS_PREVIEW: no selected_preview_item in state")
+                return None
+            return LyricsPreviewScreen(
+                item=item,
+                playback=self.playback,
+                asset_cache=self.asset_cache,
+            )
         elif screen == AppScreen.SETTINGS:
             from stream_of_worship.app.screens.settings import SettingsScreen
 
             return SettingsScreen(self.state, self.config)
+
+    def _is_same_screen_type(self, screen_instance, screen_enum: AppScreen) -> bool:
+        """Check if a Textual screen instance matches a given AppScreen enum value."""
+        from stream_of_worship.app.screens.browse import BrowseScreen
+        from stream_of_worship.app.screens.export_progress import ExportProgressScreen
+        from stream_of_worship.app.screens.lyrics_preview import LyricsPreviewScreen
+        from stream_of_worship.app.screens.songset_editor import SongsetEditorScreen
+        from stream_of_worship.app.screens.songset_list import SongsetListScreen
+
+        screen_type_map = {
+            AppScreen.SONGSET_LIST: SongsetListScreen,
+            AppScreen.SONGSET_EDITOR: SongsetEditorScreen,
+            AppScreen.BROWSE: BrowseScreen,
+            AppScreen.EXPORT_PROGRESS: ExportProgressScreen,
+            AppScreen.LYRICS_PREVIEW: LyricsPreviewScreen,
+        }
+        expected_type = screen_type_map.get(screen_enum)
+        return expected_type is not None and isinstance(screen_instance, expected_type)
 
     def navigate_to(self, screen: AppScreen) -> None:
         """Navigate to a screen.
@@ -166,8 +196,21 @@ class SowApp(App):
             logger.debug("Stopping playback before navigation")
             self.playback.stop()
 
+        # Replace instead of stack if top of stack is same screen type (Fix 5)
+        if len(self.screen_stack) > 0 and self._is_same_screen_type(
+            self.screen_stack[-1], screen
+        ):
+            logger.info(f"Replacing duplicate {screen.name} screen")
+            self.pop_screen()
+            self.state.navigate_back()
+
+        new_screen = self._create_screen(screen)
+        if new_screen is None:
+            logger.error(f"Failed to create screen for {screen.name}")
+            return
+
         self.state.navigate_to(screen)
-        self.push_screen(self._create_screen(screen))
+        self.push_screen(new_screen)
         logger.debug(f"Screen pushed, stack depth: {len(self.screen_stack)}")
 
     def navigate_back(self) -> None:

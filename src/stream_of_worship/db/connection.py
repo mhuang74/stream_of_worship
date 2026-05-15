@@ -35,19 +35,25 @@ class ConnectionProvider:
 
     def get_connection(self) -> psycopg.Connection:
         """Return an open psycopg connection, reconnecting if necessary.
-        
-        Performs a health check on cached connections to detect broken connections
-        (e.g., from idle-in-transaction timeouts on serverless PostgreSQL).
+
+        With autocommit=True, a dropped connection raises OperationalError on the
+        next real query — no proactive health check needed. Call invalidate() on
+        OperationalError to force a reconnect on the next call.
         """
         with self._lock:
             if self._connection is None or self._connection.closed:
                 self._connection = self._connect_with_retry()
-            else:
-                try:
-                    self._connection.execute("SELECT 1")
-                except Exception:
-                    self._connection = self._connect_with_retry()
             return self._connection
+
+    def invalidate(self) -> None:
+        """Force next get_connection() to reconnect (call on OperationalError)."""
+        with self._lock:
+            if self._connection and not self._connection.closed:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+            self._connection = None
 
     def _connect_with_retry(self) -> psycopg.Connection:
         """Attempt to connect with exponential backoff for cold starts."""

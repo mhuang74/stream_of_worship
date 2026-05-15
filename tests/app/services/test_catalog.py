@@ -88,6 +88,14 @@ def mock_read_client():
         "song_0002": recording2,
     }.get(sid)
 
+    recordings_by_song_id = {
+        "song_0001": recording1,
+        "song_0002": recording2,
+    }
+    client.get_recordings_by_song_ids.side_effect = lambda ids: {
+        k: v for k, v in recordings_by_song_id.items() if k in ids
+    }
+
     client.list_albums.return_value = ["Hymns", "Modern"]
 
     client.list_keys.return_value = ["C", "D", "G"]

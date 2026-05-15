@@ -142,6 +142,28 @@ class ExportService:
         """
         self._completion_callbacks.append(callback)
 
+    def unregister_progress_callback(self, callback: Callable[[ExportProgress], None]) -> None:
+        """Remove a progress callback.
+
+        Args:
+            callback: Callback to remove
+        """
+        try:
+            self._progress_callbacks.remove(callback)
+        except ValueError:
+            pass
+
+    def unregister_completion_callback(self, callback: Callable[[ExportJob, bool], None]) -> None:
+        """Remove a completion callback.
+
+        Args:
+            callback: Callback to remove
+        """
+        try:
+            self._completion_callbacks.remove(callback)
+        except ValueError:
+            pass
+
     def _notify_progress(self, progress: ExportProgress) -> None:
         """Notify all progress callbacks."""
         for callback in self._progress_callbacks:

@@ -20,7 +20,6 @@ from stream_of_worship.app.services.asset_cache import AssetCache
 from stream_of_worship.app.services.audio_engine import AudioEngine
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.playback import PlaybackPosition, PlaybackService, PlaybackState
-from stream_of_worship.app.screens.lyrics_preview import LyricsPreviewScreen
 from stream_of_worship.app.state import AppScreen, AppState
 from stream_of_worship.app.widgets import PlaybackBar
 
@@ -77,6 +76,7 @@ class SongsetEditorScreen(Screen):
         self.asset_cache = asset_cache
         self.items: list[SongsetItem] = []
         self._initial_load = True
+        self._songset_listener = None
 
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
@@ -114,13 +114,15 @@ class SongsetEditorScreen(Screen):
         logger.info(
             f"SongsetEditorScreen mounted (songset: {self.state.selected_songset.id if self.state.selected_songset else 'None'})"
         )
-        self._refresh()
+        # Defer refresh until DOM is ready (Fix 2)
+        self.call_after_refresh(self._refresh)
 
         # Focus the song list, not the name input
         self.call_after_refresh(self._focus_song_list)
 
-        # Listen for state changes
-        self.state.add_listener("selected_songset", lambda _: self._refresh())
+        # Store named method before registration so remove_listener can match by identity (Fix 3)
+        self._songset_listener = self._on_selected_songset_changed
+        self.state.add_listener("selected_songset", self._songset_listener)
 
         # Register playback callbacks
         self.playback.set_callbacks(
@@ -129,9 +131,16 @@ class SongsetEditorScreen(Screen):
             on_finished=self._on_finished,
         )
 
+    def _on_selected_songset_changed(self, _) -> None:
+        """Handle selected_songset state change."""
+        self._refresh()
+
     def on_unmount(self) -> None:
         """Unregister callbacks to prevent memory leaks."""
         self.playback.set_callbacks()
+        if self._songset_listener:
+            self.state.remove_listener("selected_songset", self._songset_listener)
+            self._songset_listener = None
 
     def _on_position_changed(self, position: PlaybackPosition) -> None:
         """Handle position updates from playback service."""
@@ -181,6 +190,8 @@ class SongsetEditorScreen(Screen):
 
     def _refresh(self) -> None:
         """Refresh the display."""
+        if not self.is_current:
+            return
         songset = self.state.selected_songset
         if not songset:
             return
@@ -198,14 +209,24 @@ class SongsetEditorScreen(Screen):
         self._load_items()
 
     def _load_items(self) -> None:
-        """Load and display songset items."""
+        """Load songset items on a worker thread (Fix 9)."""
+        self.run_worker(self._load_items_worker, exclusive=True, group="load_items")
+
+    def _load_items_worker(self) -> None:
+        """Worker: fetch items from DB then update UI on main thread."""
         if not self.state.selected_songset:
             return
+        try:
+            details, orphan_count = self.catalog.get_songset_with_items(
+                self.state.selected_songset.id, self.songset_client
+            )
+            self.call_from_thread(self._update_items_table, details, orphan_count)
+        except Exception as e:
+            logger.error(f"Error loading songset items: {e}")
+            self.call_from_thread(self.notify, "Failed to load items", severity="error")
 
-        details, orphan_count = self.catalog.get_songset_with_items(
-            self.state.selected_songset.id, self.songset_client
-        )
-
+    def _update_items_table(self, details, orphan_count) -> None:
+        """Update the items table on the main thread."""
         self.items = [d.item for d in details]
         for detail in details:
             detail.item.song_title = detail.display_title
@@ -407,22 +428,35 @@ class SongsetEditorScreen(Screen):
             return
 
         from_item = self.items[to_index - 1]
-
         self.notify("Generating transition preview...")
+        self.run_worker(
+            lambda: self._preview_worker(from_item, to_item),
+            exclusive=True,
+            group="preview",
+        )
 
+    def _preview_worker(self, from_item: SongsetItem, to_item: SongsetItem) -> None:
+        """Worker: generate transition preview audio (Fix 9)."""
         try:
             preview_path = self.audio_engine.preview_transition(from_item, to_item)
             if preview_path:
-                self.playback.play(preview_path)
-                self.notify(f"Playing transition: {from_item.song_title} → {to_item.song_title}")
+                self.call_from_thread(self.playback.play, preview_path)
+                self.call_from_thread(
+                    self.notify,
+                    f"Playing transition: {from_item.song_title} → {to_item.song_title}",
+                )
             else:
-                self.notify("Failed to generate preview", severity="error")
+                self.call_from_thread(
+                    self.notify, "Failed to generate preview", severity="error"
+                )
         except Exception as e:
             logger.error(f"Error generating preview: {e}")
-            self.notify(f"Error generating preview: {e}", severity="error")
+            self.call_from_thread(
+                self.notify, f"Error generating preview: {e}", severity="error"
+            )
 
     def action_lyrics_preview(self) -> None:
-        """Open lyrics preview for the selected song."""
+        """Open lyrics preview for the selected song (Fix 7: route through navigate_to)."""
         item = self._get_selected_item()
         if not item:
             self.notify("No song selected", severity="warning")
@@ -432,19 +466,23 @@ class SongsetEditorScreen(Screen):
             self.notify("Song has no recording", severity="warning")
             return
 
-        # Check if LRC exists by attempting download
+        self.notify("Loading lyrics...")
+        self.run_worker(
+            lambda: self._lyrics_preview_worker(item),
+            exclusive=True,
+            group="lyrics_preview",
+        )
+
+    def _lyrics_preview_worker(self, item: SongsetItem) -> None:
+        """Worker: check LRC availability then navigate on main thread."""
         lrc_path = self.asset_cache.download_lrc(item.recording_hash_prefix)
         if not lrc_path:
-            self.notify("No lyrics available for this song", severity="warning")
-            return
-
-        self.app.push_screen(
-            LyricsPreviewScreen(
-                item=item,
-                playback=self.playback,
-                asset_cache=self.asset_cache,
+            self.call_from_thread(
+                self.notify, "No lyrics available for this song", severity="warning"
             )
-        )
+            return
+        self.state.selected_preview_item = item
+        self.call_from_thread(self.app.navigate_to, AppScreen.LYRICS_PREVIEW)
 
     def action_toggle_playback(self) -> None:
         """Toggle playback of the currently selected song with spacebar."""
@@ -462,16 +500,26 @@ class SongsetEditorScreen(Screen):
             self.notify("Selected song has no audio recording", severity="error")
             return
 
+        self.run_worker(
+            lambda: self._play_item_worker(item),
+            exclusive=True,
+            group="playback",
+        )
+
+    def _play_item_worker(self, item: SongsetItem) -> None:
+        """Worker: download audio then play on main thread (Fix 9)."""
         try:
             audio_path = self.asset_cache.download_audio(item.recording_hash_prefix)
             if audio_path:
-                self.playback.play(audio_path)
-                self.notify(f"Playing: {item.song_title}")
+                self.call_from_thread(self.playback.play, audio_path)
+                self.call_from_thread(self.notify, f"Playing: {item.song_title}")
             else:
-                self.notify("Failed to download audio file", severity="error")
+                self.call_from_thread(
+                    self.notify, "Failed to download audio file", severity="error"
+                )
         except Exception as e:
             logger.error(f"Error playing audio: {e}")
-            self.notify(f"Error playing audio: {e}", severity="error")
+            self.call_from_thread(self.notify, f"Error playing audio: {e}", severity="error")
 
     def action_skip_forward(self) -> None:
         """Skip forward 10 seconds in current playback."""

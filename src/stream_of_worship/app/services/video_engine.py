@@ -903,7 +903,11 @@ class VideoEngine:
         finally:
             if process.stdin:
                 process.stdin.close()
-            process.wait()
+            try:
+                process.wait(timeout=300)  # 5-minute max
+            except Exception:
+                process.kill()
+                raise RuntimeError("FFmpeg timed out after 5 minutes")
 
         if progress_callback:
             progress_callback(total_frames, total_frames)
