@@ -187,6 +187,12 @@ class SongsetEditorScreen(Screen):
         """Handle screen resume (when returning from browse/add songs)."""
         logger.info("SongsetEditorScreen resumed, refreshing items")
         self._refresh()
+        # Re-register playback callbacks (Fix: LyricsPreviewScreen overwrites them)
+        self.playback.set_callbacks(
+            on_position_changed=self._on_position_changed,
+            on_state_changed=self._on_state_changed,
+            on_finished=self._on_finished,
+        )
 
 
     def _refresh(self) -> None:
