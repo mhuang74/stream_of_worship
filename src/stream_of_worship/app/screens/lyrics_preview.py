@@ -119,13 +119,13 @@ class LyricsPreviewScreen(Screen):
         )
 
         # Download LRC + audio on worker thread (Fix 9)
-        self.run_worker(self._load_assets_worker, exclusive=True, group="load_assets")
+        self.run_worker(self._load_assets_worker, exclusive=True, group="load_assets", thread=True)
 
     def _load_assets_worker(self) -> None:
         """Worker: download LRC and audio, then update UI on main thread."""
         self._load_lrc()
         self._load_audio()
-        self.call_from_thread(self._after_assets_loaded)
+        self.app.call_from_thread(self._after_assets_loaded)
 
     def _after_assets_loaded(self) -> None:
         """Called on main thread after assets are downloaded."""

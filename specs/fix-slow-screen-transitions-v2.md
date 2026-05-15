@@ -405,9 +405,11 @@ def on_unmount(self) -> None:
 
 **Pattern for DB load:**
 
+> **IMPORTANT:** Worker functions must be synchronous `def`, not `async def`. Always pass `thread=True` so Textual runs them in a thread pool instead of trying to `await` them. Use `self.app.call_from_thread(...)` — NOT `self.call_from_thread(...)` — because `call_from_thread` is an `App` method, not available on `Screen`.
+
 ```python
 def _load_items(self) -> None:
-    self.run_worker(self._load_items_worker, exclusive=True, group="load_items")
+    self.run_worker(self._load_items_worker, exclusive=True, group="load_items", thread=True)
 
 def _load_items_worker(self) -> None:
     if not self.state.selected_songset:
@@ -415,7 +417,7 @@ def _load_items_worker(self) -> None:
     details, orphan_count = self.catalog.get_songset_with_items(
         self.state.selected_songset.id, self.songset_client
     )
-    self.call_from_thread(self._update_items_table, details, orphan_count)
+    self.app.call_from_thread(self._update_items_table, details, orphan_count)
 
 def _update_items_table(self, details, orphan_count) -> None:
     self.items = [d.item for d in details]
@@ -433,17 +435,17 @@ def action_toggle_playback(self) -> None:
     if not item:
         self.notify("No song selected", severity="error")
         return
-    self.run_worker(self._play_item_worker, item, group="playback")
+    self.run_worker(lambda: self._play_item_worker(item), group="playback", thread=True)
 
 def _play_item_worker(self, item) -> None:
     try:
         audio_path = self.asset_cache.download_audio(item.recording_hash_prefix)
         if audio_path:
-            self.call_from_thread(self.playback.play, audio_path)
+            self.app.call_from_thread(self.playback.play, audio_path)
         else:
-            self.call_from_thread(self.notify, "Failed to download audio", severity="error")
+            self.app.call_from_thread(self.notify, "Failed to download audio", severity="error")
     except Exception as e:
-        self.call_from_thread(self.notify, f"Error: {e}", severity="error")
+        self.app.call_from_thread(self.notify, f"Error: {e}", severity="error")
 ```
 
 **Thread safety note:** `ConnectionProvider._lock` already serializes all DB access, so worker threads calling `get_connection()` concurrently is safe. However, with a single shared connection, DB workers will serialize at the lock — this is acceptable for typical usage.

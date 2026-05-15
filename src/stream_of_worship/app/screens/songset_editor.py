@@ -210,7 +210,7 @@ class SongsetEditorScreen(Screen):
 
     def _load_items(self) -> None:
         """Load songset items on a worker thread (Fix 9)."""
-        self.run_worker(self._load_items_worker, exclusive=True, group="load_items")
+        self.run_worker(self._load_items_worker, exclusive=True, group="load_items", thread=True)
 
     def _load_items_worker(self) -> None:
         """Worker: fetch items from DB then update UI on main thread."""
@@ -220,10 +220,10 @@ class SongsetEditorScreen(Screen):
             details, orphan_count = self.catalog.get_songset_with_items(
                 self.state.selected_songset.id, self.songset_client
             )
-            self.call_from_thread(self._update_items_table, details, orphan_count)
+            self.app.call_from_thread(self._update_items_table, details, orphan_count)
         except Exception as e:
             logger.error(f"Error loading songset items: {e}")
-            self.call_from_thread(self.notify, "Failed to load items", severity="error")
+            self.app.call_from_thread(self.notify, "Failed to load items", severity="error")
 
     def _update_items_table(self, details, orphan_count) -> None:
         """Update the items table on the main thread."""
@@ -433,6 +433,7 @@ class SongsetEditorScreen(Screen):
             lambda: self._preview_worker(from_item, to_item),
             exclusive=True,
             group="preview",
+            thread=True,
         )
 
     def _preview_worker(self, from_item: SongsetItem, to_item: SongsetItem) -> None:
@@ -440,18 +441,18 @@ class SongsetEditorScreen(Screen):
         try:
             preview_path = self.audio_engine.preview_transition(from_item, to_item)
             if preview_path:
-                self.call_from_thread(self.playback.play, preview_path)
-                self.call_from_thread(
+                self.app.call_from_thread(self.playback.play, preview_path)
+                self.app.call_from_thread(
                     self.notify,
                     f"Playing transition: {from_item.song_title} → {to_item.song_title}",
                 )
             else:
-                self.call_from_thread(
+                self.app.call_from_thread(
                     self.notify, "Failed to generate preview", severity="error"
                 )
         except Exception as e:
             logger.error(f"Error generating preview: {e}")
-            self.call_from_thread(
+            self.app.call_from_thread(
                 self.notify, f"Error generating preview: {e}", severity="error"
             )
 
@@ -471,18 +472,19 @@ class SongsetEditorScreen(Screen):
             lambda: self._lyrics_preview_worker(item),
             exclusive=True,
             group="lyrics_preview",
+            thread=True,
         )
 
     def _lyrics_preview_worker(self, item: SongsetItem) -> None:
         """Worker: check LRC availability then navigate on main thread."""
         lrc_path = self.asset_cache.download_lrc(item.recording_hash_prefix)
         if not lrc_path:
-            self.call_from_thread(
+            self.app.call_from_thread(
                 self.notify, "No lyrics available for this song", severity="warning"
             )
             return
         self.state.selected_preview_item = item
-        self.call_from_thread(self.app.navigate_to, AppScreen.LYRICS_PREVIEW)
+        self.app.call_from_thread(self.app.navigate_to, AppScreen.LYRICS_PREVIEW)
 
     def action_toggle_playback(self) -> None:
         """Toggle playback of the currently selected song with spacebar."""
@@ -504,6 +506,7 @@ class SongsetEditorScreen(Screen):
             lambda: self._play_item_worker(item),
             exclusive=True,
             group="playback",
+            thread=True,
         )
 
     def _play_item_worker(self, item: SongsetItem) -> None:
@@ -511,15 +514,15 @@ class SongsetEditorScreen(Screen):
         try:
             audio_path = self.asset_cache.download_audio(item.recording_hash_prefix)
             if audio_path:
-                self.call_from_thread(self.playback.play, audio_path)
-                self.call_from_thread(self.notify, f"Playing: {item.song_title}")
+                self.app.call_from_thread(self.playback.play, audio_path)
+                self.app.call_from_thread(self.notify, f"Playing: {item.song_title}")
             else:
-                self.call_from_thread(
+                self.app.call_from_thread(
                     self.notify, "Failed to download audio file", severity="error"
                 )
         except Exception as e:
             logger.error(f"Error playing audio: {e}")
-            self.call_from_thread(self.notify, f"Error playing audio: {e}", severity="error")
+            self.app.call_from_thread(self.notify, f"Error playing audio: {e}", severity="error")
 
     def action_skip_forward(self) -> None:
         """Skip forward 10 seconds in current playback."""
