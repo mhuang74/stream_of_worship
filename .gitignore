@@ -284,6 +284,9 @@ graphify-out/manifest.json
 # local token tracking, not useful to share
 graphify-out/cost.json
 
+# Node.js
+node_modules/
+
 # Local tool state
 .beads/
 .opencode/
