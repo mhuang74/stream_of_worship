@@ -266,16 +266,16 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/render/RenderProgress.tsx`
 - Create: `webapp/src/components/render/RenderComplete.tsx`
 
-- [ ] Create render configuration page
-- [ ] Implement render options form: audio (MP3), video (MP4), template, resolution (720p default, 1080p), font size preset
-- [ ] Implement title card configuration (include checkbox, duration dropdown 5-30s, preview)
-- [ ] Implement "Make available offline" checkbox with iOS 17.4+ check (disabled on older iOS with tooltip)
-- [ ] Show marked lines warning with Review link
-- [ ] Implement progress display with SSE connection
-- [ ] Implement cancel button
-- [ ] Implement completion screen with Download Audio/Video, Share actions
-- [ ] Write tests for render screen
-- [ ] Run test suite - must pass before task 4.5
+- [x] Create render configuration page
+- [x] Implement render options form: audio (MP3), video (MP4), template, resolution (720p default, 1080p), font size preset
+- [x] Implement title card configuration (include checkbox, duration dropdown 5-30s, preview)
+- [x] Implement "Make available offline" checkbox with iOS 17.4+ check (disabled on older iOS with tooltip)
+- [x] Show marked lines warning with Review link
+- [x] Implement progress display with SSE connection
+- [x] Implement cancel button
+- [x] Implement completion screen with Download Audio/Video, Share actions
+- [x] Write tests for render screen
+- [x] Run test suite - must pass before task 4.5
 
 #### Task 4.5: Render Upload and Chapters
 
