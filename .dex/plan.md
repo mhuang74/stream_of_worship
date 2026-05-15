@@ -197,15 +197,15 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/hooks/useAudioPlayer.ts`
 - Create: `webapp/src/contexts/AudioPlayerContext.tsx`
 
-- [ ] Create global audio player context and provider
-- [ ] Implement persistent audio player bar (fixed at bottom of screen)
-- [ ] Support playback of: individual songs (from catalog), transition previews, lyrics loop preview
-- [ ] Implement play/pause, seek, volume controls
-- [ ] Show current track info (title, artist)
-- [ ] Implement loop window for lyrics timing review (configurable seconds from settings)
-- [ ] Player persists across navigation (not route-specific)
-- [ ] Write tests for global audio player
-- [ ] Run test suite - must pass before task 4.1
+- [x] Create global audio player context and provider
+- [x] Implement persistent audio player bar (fixed at bottom of screen)
+- [x] Support playback of: individual songs (from catalog), transition previews, lyrics loop preview
+- [x] Implement play/pause, seek, volume controls
+- [x] Show current track info (title, artist)
+- [x] Implement loop window for lyrics timing review (configurable seconds from settings)
+- [x] Player persists across navigation (not route-specific)
+- [x] Write tests for global audio player
+- [x] Run test suite - must pass before task 4.1
 
 ### Phase 4: Render Pipeline
 
