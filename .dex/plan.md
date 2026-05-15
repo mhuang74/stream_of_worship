@@ -366,10 +366,10 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/hooks/useKeyboardShortcuts.ts`
 - Create: `webapp/src/hooks/useMediaSession.ts`
 
-- [ ] Implement keyboard shortcuts for desktop controller: Space (toggle playback), Left/Right arrows (seek -10s/+10s), [ and ] (prev/next song)
-- [ ] Implement Media Session API (nice-to-have): update metadata, handle play/pause/prev/next actions from OS media controls
-- [ ] Write tests for shortcuts and media session
-- [ ] Run test suite - must pass before task 6.1
+- [x] Implement keyboard shortcuts for desktop controller: Space (toggle playback), Left/Right arrows (seek -10s/+10s), [ and ] (prev/next song)
+- [x] Implement Media Session API (nice-to-have): update metadata, handle play/pause/prev/next actions from OS media controls
+- [x] Write tests for shortcuts and media session
+- [x] Run test suite - must pass before task 6.1
 
 ### Phase 6: Offline and Caching
 
