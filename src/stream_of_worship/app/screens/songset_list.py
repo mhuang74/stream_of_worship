@@ -77,24 +77,24 @@ class SongsetListScreen(Screen):
 
     def _load_songsets(self) -> None:
         """Load songsets on a worker thread (Fix 9)."""
-        self.run_worker(self._load_songsets_worker, exclusive=True, group="load_songsets")
+        self.run_worker(self._load_songsets_worker, exclusive=True, group="load_songsets", thread=True)
 
     def _load_songsets_worker(self) -> None:
         """Worker: fetch songsets + batch item counts, then update UI."""
         try:
             songsets = self.songset_client.list_songsets()
             if not songsets:
-                self.call_from_thread(self._update_songsets_table, songsets, {})
+                self.app.call_from_thread(self._update_songsets_table, songsets, {})
                 return
             # Batch-fetch item counts (Fix 10)
             songset_ids = [s.id for s in songsets]
             item_counts = self.songset_client.get_item_counts_batch(songset_ids)
-            self.call_from_thread(self._update_songsets_table, songsets, item_counts)
+            self.app.call_from_thread(self._update_songsets_table, songsets, item_counts)
         except DatabaseError as e:
-            self.call_from_thread(self.notify, str(e), severity="error")
+            self.app.call_from_thread(self.notify, str(e), severity="error")
         except Exception as e:
             logger.error(f"Error loading songsets: {e}")
-            self.call_from_thread(self.notify, "Failed to load songsets", severity="error")
+            self.app.call_from_thread(self.notify, "Failed to load songsets", severity="error")
 
     def _update_songsets_table(self, songsets, item_counts: dict) -> None:
         """Update the songsets table on the main thread."""

@@ -188,17 +188,25 @@ class ExportService:
         description: str,
         error: Optional[str] = None,
     ) -> None:
-        """Update export state and notify listeners."""
-        percent = (step / total_steps * 100) if total_steps > 0 else 0
-        progress = ExportProgress(
-            state=state,
-            current_step=step,
-            total_steps=total_steps,
-            step_description=description,
-            percent_complete=percent,
-            error_message=error,
-        )
-        self._state = state
+        """Update export state and notify listeners.
+        
+        Will not update state if already CANCELLED (prevents race condition
+        where cancel() sets CANCELLED from main thread but export thread
+        tries to set COMPLETED).
+        """
+        with self._lock:
+            if self._state == ExportState.CANCELLED:
+                return
+            percent = (step / total_steps * 100) if total_steps > 0 else 0
+            progress = ExportProgress(
+                state=state,
+                current_step=step,
+                total_steps=total_steps,
+                step_description=description,
+                percent_complete=percent,
+                error_message=error,
+            )
+            self._state = state
         self._notify_progress(progress)
 
     @property
@@ -382,6 +390,9 @@ class ExportService:
                 )
 
             # Complete
+            if self._check_cancelled():
+                return job
+
             job.completed_at = datetime.now()  # Track completion time
             duration = (job.completed_at - job.started_at).total_seconds() if job.started_at else 0
             logger.info(f"EXPORT COMPLETED: job_id={job_id}, duration={duration:.2f}s")

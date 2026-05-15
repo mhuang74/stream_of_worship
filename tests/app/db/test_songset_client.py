@@ -4,14 +4,14 @@ import pytest
 
 from stream_of_worship.app.db.models import Songset, SongsetItem
 from stream_of_worship.app.db.songset_client import MissingReferenceError, SongsetClient
-from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
+from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
 def songset_client(postgres_url):
     """Create a SongsetClient connected to a fresh Postgres schema."""
-    provider = ConnectionProvider(postgres_url)
+    provider = make_test_provider(postgres_url)
     conn = provider.get_connection()
 
     # Create schema
@@ -24,7 +24,7 @@ def songset_client(postgres_url):
 
     # Cleanup (use fresh connection in case provider was closed by a test)
     try:
-        cleanup_provider = ConnectionProvider(postgres_url)
+        cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_items CASCADE;

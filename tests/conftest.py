@@ -34,3 +34,17 @@ def postgres_url():
         # psycopg doesn't understand the +psycopg2 dialect prefix
         url = url.replace("postgresql+psycopg2://", "postgresql://")
         yield url
+
+
+def make_test_provider(database_url: str):
+    """Create a ConnectionProvider configured for testcontainers (no SSL).
+
+    Args:
+        database_url: Postgres connection URL from testcontainers.
+
+    Returns:
+        ConnectionProvider with sslmode="disable" for local testing.
+    """
+    from stream_of_worship.db.connection import ConnectionProvider
+
+    return ConnectionProvider(database_url, sslmode="disable")
