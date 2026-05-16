@@ -156,6 +156,7 @@ def _call_qwen3_asr_filetrans(
         model=model,
         file_url=file_url,
         api_key=os.environ["DASHSCOPE_API_KEY"],
+        headers={"X-DashScope-OssResourceResolve": "enable"},
         **kwargs,
     )
 
@@ -202,7 +203,7 @@ def extract_segments(response: dict) -> list[tuple[float, float, str]]:
     """
     segments = []
 
-    if "results" in response:
+    if "result" in response and "transcription_url" in response.get("result", {}):
         return _extract_segments_filetrans(response)
 
     try:
@@ -231,7 +232,7 @@ def extract_segments(response: dict) -> list[tuple[float, float, str]]:
 def _extract_segments_filetrans(response: dict) -> list[tuple[float, float, str]]:
     """Extract segments from QwenTranscription (filetrans) response.
 
-    The filetrans response contains a 'results' list with a
+    The filetrans response contains a 'result' dict with a
     'transcription_url' pointing to a JSON file with the actual
     transcription data containing sentences with timestamps.
 
@@ -244,32 +245,30 @@ def _extract_segments_filetrans(response: dict) -> list[tuple[float, float, str]
     import requests
 
     segments = []
-    results = response.get("results", [])
+    result = response.get("result", {})
+    transcription_url = result.get("transcription_url")
+    if not transcription_url:
+        typer.echo("Warning: No transcription_url in result", err=True)
+        return segments
 
-    for result in results:
-        transcription_url = result.get("transcription_url")
-        if not transcription_url:
-            typer.echo("Warning: No transcription_url in result", err=True)
-            continue
+    typer.echo("Fetching transcription from URL...", err=True)
+    try:
+        tr_resp = requests.get(transcription_url, timeout=60)
+        tr_resp.raise_for_status()
+        tr_data = tr_resp.json()
+    except Exception as e:
+        typer.echo(f"Error fetching transcription: {e}", err=True)
+        return segments
 
-        typer.echo(f"Fetching transcription from URL...", err=True)
-        try:
-            tr_resp = requests.get(transcription_url, timeout=60)
-            tr_resp.raise_for_status()
-            tr_data = tr_resp.json()
-        except Exception as e:
-            typer.echo(f"Error fetching transcription: {e}", err=True)
-            continue
-
-        transcripts = tr_data.get("transcripts", [])
-        for transcript in transcripts:
-            sentences = transcript.get("sentences", [])
-            for sentence in sentences:
-                start = sentence.get("begin_time", 0) / 1000.0
-                end = sentence.get("end_time", 0) / 1000.0
-                text = sentence.get("text", "").strip()
-                if text:
-                    segments.append((start, end, text))
+    transcripts = tr_data.get("transcripts", [])
+    for transcript in transcripts:
+        sentences = transcript.get("sentences", [])
+        for sentence in sentences:
+            start = sentence.get("begin_time", 0) / 1000.0
+            end = sentence.get("end_time", 0) / 1000.0
+            text = sentence.get("text", "").strip()
+            if text:
+                segments.append((start, end, text))
 
     if not segments:
         typer.echo("Warning: No segments extracted from filetrans response", err=True)
@@ -443,6 +442,42 @@ def write_diagnostic(
     output_path.write_text("".join(lines))
 
 
+def _find_local_dry_vocals(song_cache_dir: Path) -> Optional[Path]:
+    """Find locally cached dry vocals from MVSEP output directories.
+
+    Searches for dry (dereverbed) vocal files produced by previous MVSEP
+    extraction runs, checking stage2_dereverb/ and stage1_vocal_separation/
+    subdirectories.
+
+    Args:
+        song_cache_dir: Cache directory for the song (e.g., cache_dir/hash_prefix)
+
+    Returns:
+        Path to dry vocals file if found, None otherwise
+    """
+    stage2_dir = song_cache_dir / "stage2_dereverb"
+    if stage2_dir.is_dir():
+        for f in sorted(stage2_dir.iterdir()):
+            if f.is_file() and f.suffix.lower() in (".flac", ".wav", ".mp3"):
+                name_lower = f.name.lower()
+                if "noreverb" in name_lower or "no_reverb" in name_lower:
+                    return f
+
+        flac_files = [f for f in stage2_dir.iterdir() if f.is_file() and f.suffix.lower() in (".flac", ".wav", ".mp3")]
+        if flac_files:
+            return sorted(flac_files)[0]
+
+    stage1_dir = song_cache_dir / "stage1_vocal_separation"
+    if stage1_dir.is_dir():
+        for f in sorted(stage1_dir.iterdir()):
+            if f.is_file() and f.suffix.lower() in (".flac", ".wav", ".mp3"):
+                name_lower = f.name.lower()
+                if "vocal" in name_lower:
+                    return f
+
+    return None
+
+
 def resolve_song_audio_path_mvsep(
     song_id: str,
     mvsep_api_token: str,
@@ -561,6 +596,12 @@ def resolve_song_audio_path_mvsep(
                         audio_path = downloaded
                         typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
                         break
+
+            if audio_path is None:
+                song_cache_dir = cache.cache_dir / hash_prefix
+                audio_path = _find_local_dry_vocals(song_cache_dir)
+                if audio_path:
+                    typer.echo(f"Using locally cached dry vocals: {audio_path}", err=True)
 
         if audio_path is None and mvsep_vocals:
             main_audio_path = cache.get_audio_path(hash_prefix)
@@ -770,6 +811,8 @@ def main(
         lrc_content = results_to_lrc(results)
 
         if output:
+            if output.is_dir():
+                output = output / f"{song_id}.lrc"
             output.write_text(lrc_content, encoding="utf-8")
             typer.echo(f"Wrote LRC to: {output}", err=True)
         else:

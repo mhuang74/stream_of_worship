@@ -17,7 +17,7 @@ from pathlib import Path
 import requests
 
 MVSEP_API_BASE = "https://mvsep.com/api/separation"
-POLL_INITIAL_INTERVAL = 5.0
+POLL_INITIAL_INTERVAL = 60.0
 POLL_MAX_INTERVAL = 30.0
 POLL_BACKOFF_FACTOR = 1.5
 DEFAULT_TIMEOUT = 900.0
