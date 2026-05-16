@@ -344,6 +344,10 @@ export const songsetsRelations = relations(songsets, ({ one, many }) => ({
 export const songsetItemsRelations = relations(songsetItems, ({ one }) => ({
   songset: one(songsets, { fields: [songsetItems.songsetId], references: [songsets.id] }),
   song: one(songs, { fields: [songsetItems.songId], references: [songs.id] }),
+  recording: one(recordings, {
+    fields: [songsetItems.recordingHashPrefix],
+    references: [recordings.hashPrefix],
+  }),
 }));
 
 export const renderJobsRelations = relations(renderJobs, ({ one }) => ({
