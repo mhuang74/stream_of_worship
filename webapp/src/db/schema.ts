@@ -212,7 +212,7 @@ export const renderJobs = pgTable("render_jobs", {
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
 // ---------------------------------------------------------------------------

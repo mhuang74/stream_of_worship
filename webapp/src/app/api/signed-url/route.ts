@@ -161,12 +161,15 @@ export async function GET(request: NextRequest) {
     const key = searchParams.get("key") || undefined;
     const hashPrefix = searchParams.get("hashPrefix") || undefined;
     const renderJobId = searchParams.get("renderJobId") || undefined;
-    const fileType = searchParams.get("fileType") as
-      | "audio"
-      | "video"
-      | "lrc"
-      | "json"
-      | undefined;
+    const fileTypeRaw = searchParams.get("fileType");
+    const allowedFileTypes = ["audio", "video", "lrc", "json"] as const;
+    if (fileTypeRaw !== null && !allowedFileTypes.includes(fileTypeRaw as typeof allowedFileTypes[number])) {
+      return NextResponse.json(
+        { error: "Invalid fileType. Must be one of: audio, video, lrc, json" },
+        { status: 400 }
+      );
+    }
+    const fileType = fileTypeRaw as "audio" | "video" | "lrc" | "json" | undefined;
     const expiresInSeconds = searchParams.get("expiresInSeconds")
       ? parseInt(searchParams.get("expiresInSeconds")!)
       : undefined;

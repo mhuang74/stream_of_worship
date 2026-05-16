@@ -293,10 +293,8 @@ export class AudioEngine {
       // Add all inputs
       for (const input of inputs) {
         if (input.startsWith("aevalsrc=")) {
-          // Silence generator
-          command.input(input);
+          command.input(input).inputOptions("-f lavfi");
         } else {
-          // Audio file
           command.input(input);
         }
       }

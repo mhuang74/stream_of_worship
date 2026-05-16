@@ -4,7 +4,7 @@ import { getRenderJob, cancelRenderJob } from "@/lib/render/job-manager";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -15,7 +15,8 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const job = await getRenderJob(params.id, session.user.id);
+    const { id } = await params;
+    const job = await getRenderJob(id, Number(session.user.id));
 
     if (!job) {
       return NextResponse.json(
@@ -36,7 +37,7 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -47,7 +48,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const job = await cancelRenderJob(params.id, session.user.id);
+    const { id } = await params;
+    const job = await cancelRenderJob(id, Number(session.user.id));
 
     if (!job) {
       return NextResponse.json(

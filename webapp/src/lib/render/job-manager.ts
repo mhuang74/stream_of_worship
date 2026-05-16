@@ -73,6 +73,35 @@ export function getPhaseIndex(phase: RenderPhase): number {
   return PHASE_ORDER.indexOf(phase);
 }
 
+function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
+  return {
+    id: row.id,
+    songsetId: row.songsetId,
+    userId: row.userId,
+    status: row.status as RenderJob["status"],
+    phase: row.phase as RenderPhase | null,
+    phaseIndex: row.phaseIndex,
+    totalPhases: row.totalPhases,
+    percentComplete: row.percentComplete ?? 0,
+    estimatedSecondsLeft: row.estimatedSecondsLeft,
+    elapsedSeconds: row.elapsedSeconds,
+    errorMessage: row.errorMessage,
+    template: row.template,
+    resolution: row.resolution,
+    audioEnabled: row.audioEnabled ?? true,
+    videoEnabled: row.videoEnabled ?? true,
+    fontSizePreset: row.fontSizePreset,
+    includeTitleCard: row.includeTitleCard ?? false,
+    titleCardDurationSeconds: row.titleCardDurationSeconds,
+    mp3R2Key: row.mp3R2Key,
+    mp4R2Key: row.mp4R2Key,
+    chaptersR2Key: row.chaptersR2Key,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    completedAt: row.completedAt,
+  };
+}
+
 export async function createRenderJob(
   userId: number,
   input: CreateRenderJobInput
@@ -123,32 +152,7 @@ export async function createRenderJob(
     })
     .where(eq(songsets.id, input.songsetId));
 
-  return {
-    id: job.id,
-    songsetId: job.songsetId,
-    userId: job.userId,
-    status: job.status as RenderJob["status"],
-    phase: job.phase as RenderPhase | null,
-    phaseIndex: job.phaseIndex,
-    totalPhases: job.totalPhases,
-    percentComplete: job.percentComplete ?? 0,
-    estimatedSecondsLeft: job.estimatedSecondsLeft,
-    elapsedSeconds: job.elapsedSeconds,
-    errorMessage: job.errorMessage,
-    template: job.template,
-    resolution: job.resolution,
-    audioEnabled: job.audioEnabled ?? true,
-    videoEnabled: job.videoEnabled ?? true,
-    fontSizePreset: job.fontSizePreset,
-    includeTitleCard: job.includeTitleCard ?? false,
-    titleCardDurationSeconds: job.titleCardDurationSeconds,
-    mp3R2Key: job.mp3R2Key,
-    mp4R2Key: job.mp4R2Key,
-    chaptersR2Key: job.chaptersR2Key,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
-    completedAt: job.completedAt,
-  };
+  return mapRowToRenderJob(job);
 }
 
 export async function getRenderJob(
@@ -163,32 +167,7 @@ export async function getRenderJob(
     return null;
   }
 
-  return {
-    id: job.id,
-    songsetId: job.songsetId,
-    userId: job.userId,
-    status: job.status as RenderJob["status"],
-    phase: job.phase as RenderPhase | null,
-    phaseIndex: job.phaseIndex,
-    totalPhases: job.totalPhases,
-    percentComplete: job.percentComplete ?? 0,
-    estimatedSecondsLeft: job.estimatedSecondsLeft,
-    elapsedSeconds: job.elapsedSeconds,
-    errorMessage: job.errorMessage,
-    template: job.template,
-    resolution: job.resolution,
-    audioEnabled: job.audioEnabled ?? true,
-    videoEnabled: job.videoEnabled ?? true,
-    fontSizePreset: job.fontSizePreset,
-    includeTitleCard: job.includeTitleCard ?? false,
-    titleCardDurationSeconds: job.titleCardDurationSeconds,
-    mp3R2Key: job.mp3R2Key,
-    mp4R2Key: job.mp4R2Key,
-    chaptersR2Key: job.chaptersR2Key,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
-    completedAt: job.completedAt,
-  };
+  return mapRowToRenderJob(job);
 }
 
 export async function updateRenderProgress(
@@ -228,32 +207,7 @@ export async function updateRenderProgress(
 
   if (!updated) return null;
 
-  return {
-    id: updated.id,
-    songsetId: updated.songsetId,
-    userId: updated.userId,
-    status: updated.status as RenderJob["status"],
-    phase: updated.phase as RenderPhase | null,
-    phaseIndex: updated.phaseIndex,
-    totalPhases: updated.totalPhases,
-    percentComplete: updated.percentComplete ?? 0,
-    estimatedSecondsLeft: updated.estimatedSecondsLeft,
-    elapsedSeconds: updated.elapsedSeconds,
-    errorMessage: updated.errorMessage,
-    template: updated.template,
-    resolution: updated.resolution,
-    audioEnabled: updated.audioEnabled ?? true,
-    videoEnabled: updated.videoEnabled ?? true,
-    fontSizePreset: updated.fontSizePreset,
-    includeTitleCard: updated.includeTitleCard ?? false,
-    titleCardDurationSeconds: updated.titleCardDurationSeconds,
-    mp3R2Key: updated.mp3R2Key,
-    mp4R2Key: updated.mp4R2Key,
-    chaptersR2Key: updated.chaptersR2Key,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-    completedAt: updated.completedAt,
-  };
+  return mapRowToRenderJob(updated);
 }
 
 export async function completeRenderJob(
@@ -285,32 +239,7 @@ export async function completeRenderJob(
 
   if (!updated) return null;
 
-  return {
-    id: updated.id,
-    songsetId: updated.songsetId,
-    userId: updated.userId,
-    status: updated.status as RenderJob["status"],
-    phase: updated.phase as RenderPhase | null,
-    phaseIndex: updated.phaseIndex,
-    totalPhases: updated.totalPhases,
-    percentComplete: updated.percentComplete ?? 0,
-    estimatedSecondsLeft: updated.estimatedSecondsLeft,
-    elapsedSeconds: updated.elapsedSeconds,
-    errorMessage: updated.errorMessage,
-    template: updated.template,
-    resolution: updated.resolution,
-    audioEnabled: updated.audioEnabled ?? true,
-    videoEnabled: updated.videoEnabled ?? true,
-    fontSizePreset: updated.fontSizePreset,
-    includeTitleCard: updated.includeTitleCard ?? false,
-    titleCardDurationSeconds: updated.titleCardDurationSeconds,
-    mp3R2Key: updated.mp3R2Key,
-    mp4R2Key: updated.mp4R2Key,
-    chaptersR2Key: updated.chaptersR2Key,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-    completedAt: updated.completedAt,
-  };
+  return mapRowToRenderJob(updated);
 }
 
 export async function failRenderJob(
@@ -341,32 +270,7 @@ export async function failRenderJob(
     })
     .where(eq(songsets.id, updated.songsetId));
 
-  return {
-    id: updated.id,
-    songsetId: updated.songsetId,
-    userId: updated.userId,
-    status: updated.status as RenderJob["status"],
-    phase: updated.phase as RenderPhase | null,
-    phaseIndex: updated.phaseIndex,
-    totalPhases: updated.totalPhases,
-    percentComplete: updated.percentComplete ?? 0,
-    estimatedSecondsLeft: updated.estimatedSecondsLeft,
-    elapsedSeconds: updated.elapsedSeconds,
-    errorMessage: updated.errorMessage,
-    template: updated.template,
-    resolution: updated.resolution,
-    audioEnabled: updated.audioEnabled ?? true,
-    videoEnabled: updated.videoEnabled ?? true,
-    fontSizePreset: updated.fontSizePreset,
-    includeTitleCard: updated.includeTitleCard ?? false,
-    titleCardDurationSeconds: updated.titleCardDurationSeconds,
-    mp3R2Key: updated.mp3R2Key,
-    mp4R2Key: updated.mp4R2Key,
-    chaptersR2Key: updated.chaptersR2Key,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-    completedAt: updated.completedAt,
-  };
+  return mapRowToRenderJob(updated);
 }
 
 export async function cancelRenderJob(
@@ -394,32 +298,7 @@ export async function cancelRenderJob(
 
   if (!updated) return null;
 
-  return {
-    id: updated.id,
-    songsetId: updated.songsetId,
-    userId: updated.userId,
-    status: updated.status as RenderJob["status"],
-    phase: updated.phase as RenderPhase | null,
-    phaseIndex: updated.phaseIndex,
-    totalPhases: updated.totalPhases,
-    percentComplete: updated.percentComplete ?? 0,
-    estimatedSecondsLeft: updated.estimatedSecondsLeft,
-    elapsedSeconds: updated.elapsedSeconds,
-    errorMessage: updated.errorMessage,
-    template: updated.template,
-    resolution: updated.resolution,
-    audioEnabled: updated.audioEnabled ?? true,
-    videoEnabled: updated.videoEnabled ?? true,
-    fontSizePreset: updated.fontSizePreset,
-    includeTitleCard: updated.includeTitleCard ?? false,
-    titleCardDurationSeconds: updated.titleCardDurationSeconds,
-    mp3R2Key: updated.mp3R2Key,
-    mp4R2Key: updated.mp4R2Key,
-    chaptersR2Key: updated.chaptersR2Key,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-    completedAt: updated.completedAt,
-  };
+  return mapRowToRenderJob(updated);
 }
 
 export async function startRenderJob(
@@ -458,11 +337,7 @@ export async function startRenderJob(
     titleCardDurationSeconds: updated.titleCardDurationSeconds,
     mp3R2Key: updated.mp3R2Key,
     mp4R2Key: updated.mp4R2Key,
-    chaptersR2Key: updated.chaptersR2Key,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-    completedAt: updated.completedAt,
-  };
+  return mapRowToRenderJob(updated);
 }
 
 /**
@@ -495,32 +370,7 @@ export async function updateRenderJobR2Keys(
 
   if (!updated) return null;
 
-  return {
-    id: updated.id,
-    songsetId: updated.songsetId,
-    userId: updated.userId,
-    status: updated.status as RenderJob["status"],
-    phase: updated.phase as RenderPhase | null,
-    phaseIndex: updated.phaseIndex,
-    totalPhases: updated.totalPhases,
-    percentComplete: updated.percentComplete ?? 0,
-    estimatedSecondsLeft: updated.estimatedSecondsLeft,
-    elapsedSeconds: updated.elapsedSeconds,
-    errorMessage: updated.errorMessage,
-    template: updated.template,
-    resolution: updated.resolution,
-    audioEnabled: updated.audioEnabled ?? true,
-    videoEnabled: updated.videoEnabled ?? true,
-    fontSizePreset: updated.fontSizePreset,
-    includeTitleCard: updated.includeTitleCard ?? false,
-    titleCardDurationSeconds: updated.titleCardDurationSeconds,
-    mp3R2Key: updated.mp3R2Key,
-    mp4R2Key: updated.mp4R2Key,
-    chaptersR2Key: updated.chaptersR2Key,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-    completedAt: updated.completedAt,
-  };
+  return mapRowToRenderJob(updated);
 }
 
 /**

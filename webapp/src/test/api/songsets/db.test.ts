@@ -133,6 +133,51 @@ describe("computeRenderState", () => {
       "Songset not found"
     );
   });
+
+  it("returns stale when a newer songset item was created after render", async () => {
+    const completedAt = new Date("2024-01-01");
+    vi.mocked(db.query.songsets.findFirst).mockResolvedValue({
+      id: "songset-1",
+      latestRenderJobId: "job-1",
+      lastFailedRenderJobId: null,
+      updatedAt: completedAt,
+    } as any);
+
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      id: "job-1",
+      status: "completed",
+      completedAt,
+    } as any);
+
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue({
+      id: "item-1",
+      createdAt: new Date("2024-01-02"),
+    } as any);
+
+    const state = await computeRenderState("songset-1");
+    expect(state).toBe("stale");
+  });
+
+  it("returns stale when songset was updated after render completed", async () => {
+    const completedAt = new Date("2024-01-01");
+    vi.mocked(db.query.songsets.findFirst).mockResolvedValue({
+      id: "songset-1",
+      latestRenderJobId: "job-1",
+      lastFailedRenderJobId: null,
+      updatedAt: new Date("2024-01-02"),
+    } as any);
+
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      id: "job-1",
+      status: "completed",
+      completedAt,
+    } as any);
+
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(null);
+
+    const state = await computeRenderState("songset-1");
+    expect(state).toBe("stale");
+  });
 });
 
 describe("listSongsets", () => {

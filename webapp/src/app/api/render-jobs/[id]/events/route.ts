@@ -13,7 +13,7 @@ export interface SSEEvent {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -30,7 +30,8 @@ export async function GET(
       );
     }
 
-    const job = await getRenderJob(params.id, session.user.id);
+    const { id } = await params;
+    const job = await getRenderJob(id, Number(session.user.id));
 
     if (!job) {
       return new Response(
@@ -74,7 +75,7 @@ export async function GET(
         // Set up polling interval to check for updates
         const intervalId = setInterval(async () => {
           try {
-            const updatedJob = await getRenderJob(params.id, session.user.id);
+            const updatedJob = await getRenderJob(id, Number(session.user.id));
 
             if (!updatedJob) {
               // Job was deleted
@@ -124,9 +125,8 @@ export async function GET(
             );
           } catch (error) {
             console.error("Error polling job status:", error);
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ error: "Polling error" })}\n\n`)
-            );
+            clearInterval(intervalId);
+            controller.close();
           }
         }, 1000); // Poll every second
 

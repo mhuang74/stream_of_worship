@@ -24,6 +24,9 @@ interface RenderJobData {
   mp3R2Key: string | null
   mp4R2Key: string | null
   chaptersR2Key: string | null
+  mp3Url?: string
+  mp4Url?: string
+  chaptersUrl?: string
 }
 
 export default function RenderPage() {
@@ -85,7 +88,15 @@ export default function RenderPage() {
               setScreenState("progress")
             } else if (job.status === "completed") {
               setJobId(job.id)
-              setJobData(job)
+              const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
+              const fetchSigned = async (key: string, type: string) => {
+                const res = await fetch(`/api/signed-url?key=${encodeURIComponent(key)}&fileType=${type}`)
+                return res.ok ? (await res.json()).url as string : undefined
+              }
+              if (job.mp3R2Key) signedUrls.mp3Url = await fetchSigned(job.mp3R2Key, "audio")
+              if (job.mp4R2Key) signedUrls.mp4Url = await fetchSigned(job.mp4R2Key, "video")
+              if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSigned(job.chaptersR2Key, "json")
+              setJobData({ ...job, ...signedUrls })
               setScreenState("complete")
             }
           }
@@ -155,13 +166,27 @@ export default function RenderPage() {
   }, [])
 
   const handleComplete = useCallback(async () => {
-    // Fetch final job data
     if (jobId) {
       try {
         const response = await fetch(`/api/render-jobs/${jobId}`)
         if (response.ok) {
           const job = await response.json()
-          setJobData(job)
+          const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
+
+          const fetchSignedUrl = async (r2Key: string, fileType: string) => {
+            const res = await fetch(`/api/signed-url?key=${encodeURIComponent(r2Key)}&fileType=${fileType}`)
+            if (res.ok) {
+              const data = await res.json()
+              return data.url as string
+            }
+            return undefined
+          }
+
+          if (job.mp3R2Key) signedUrls.mp3Url = await fetchSignedUrl(job.mp3R2Key, "audio")
+          if (job.mp4R2Key) signedUrls.mp4Url = await fetchSignedUrl(job.mp4R2Key, "video")
+          if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSignedUrl(job.chaptersR2Key, "json")
+
+          setJobData({ ...job, ...signedUrls })
         }
       } catch (err) {
         console.error("Failed to fetch job data:", err)
@@ -257,9 +282,9 @@ export default function RenderPage() {
             jobId={jobId!}
             songsetId={songsetId}
             songsetName={songset.name}
-            mp3Url={jobData.mp3R2Key || undefined}
-            mp4Url={jobData.mp4R2Key || undefined}
-            chaptersUrl={jobData.chaptersR2Key || undefined}
+            mp3Url={jobData.mp3Url}
+            mp4Url={jobData.mp4Url}
+            chaptersUrl={jobData.chaptersUrl}
             onDone={handleDone}
             onShare={handleShare}
           />
