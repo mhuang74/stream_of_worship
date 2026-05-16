@@ -18,6 +18,7 @@ poc/utils.py or a shared module. This is deferred per POC convention.
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,16 @@ from poc.utils import extract_audio_segment, format_timestamp
 app = typer.Typer(help="Qwen3-ASR + MVSEP + ForcedAligner V2 LRC generation")
 
 CHUNK_DURATION = 300.0
+
+MAX_LOOKAHEAD_WORDS = 30
+MIN_LINE_SCORE = 0.40
+GAP_THRESHOLD = 1.0
+SHORT_FRAG_CHARS = 3
+BACKTRACK_WINDOW = 3
+MAX_BACKTRACK_ALT = 3
+BACKTRACK_GAIN_THRESHOLD = 0.10
+WRAP_MIN_SCORE = 0.50
+RECONSTRUCTION_FALLBACK_THRESHOLD = 0.40
 
 REGION_URL = {
     "intl": "https://dashscope-intl.aliyuncs.com/api/v1",
@@ -171,7 +182,9 @@ def _call_qwen3_asr_filetrans(
     )
 
     if task_resp.status_code != 200:
-        typer.echo(f"FileTrans submit error: {task_resp.status_code} - {task_resp.message}", err=True)
+        typer.echo(
+            f"FileTrans submit error: {task_resp.status_code} - {task_resp.message}", err=True
+        )
         raise typer.Exit(1)
 
     task_id = task_resp.output.get("task_id")
@@ -345,10 +358,10 @@ def write_diagnostic(
     out.append(f"Kept original: {kept_count}\n")
 
     scores = []
-    for (_, _, asr_text), (start, _, replaced) in zip(segments, results):
-        asr_normalized = convert(asr_text, target_script)
+    for start, final_text, replaced in results:
+        final_normalized = convert(final_text, target_script)
         scored = [
-            fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0
+            fuzz.token_set_ratio(final_normalized, canonical_lines_normalized[i]) / 100.0
             for i in range(len(canonical_lines))
         ]
         best_score = max(scored)
@@ -375,22 +388,22 @@ def write_diagnostic(
             )
 
     out.append("\n## Segment Details\n\n")
-    out.append("| Start | End | ASR Text | Matched Canonical | Score | Replaced |\n")
-    out.append("|-------|-----|----------|-------------------|-------|----------|\n")
+    out.append("| Start | Final Text | Matched Canonical | Score | Replaced |\n")
+    out.append("|-------|------------|-------------------|-------|----------|\n")
 
-    for (_, end, asr_text), (start, final_text, replaced) in zip(segments, results):
-        asr_normalized = convert(asr_text, target_script)
+    for start, final_text, replaced in results:
+        final_normalized = convert(final_text, target_script)
         scored = [
             (
                 canonical_lines[i],
-                fuzz.token_set_ratio(asr_normalized, canonical_lines_normalized[i]) / 100.0,
+                fuzz.token_set_ratio(final_normalized, canonical_lines_normalized[i]) / 100.0,
             )
             for i in range(len(canonical_lines))
         ]
         best_line, best_score = max(scored, key=lambda x: x[1])
 
         out.append(
-            f"| {start:6.2f} | {end:4.2f} | {asr_text[:30]:30s} | "
+            f"| {start:6.2f} | {final_text[:30]:30s} | "
             f"{best_line[:30]:30s} | {best_score:5.2f} | "
             f"{'Yes' if replaced else 'No'} |\n"
         )
@@ -792,9 +805,7 @@ def align_lyrics(
             if text:
                 raw_segments.append((segment.start_time, segment.end_time, text))
 
-    typer.echo(
-        f"Mapping {len(raw_segments)} segments to {len(lyrics_lines)} lines...", err=True
-    )
+    typer.echo(f"Mapping {len(raw_segments)} segments to {len(lyrics_lines)} lines...", err=True)
 
     line_alignments = map_segments_to_lines(raw_segments, lyrics_lines)
 
@@ -849,9 +860,7 @@ def extract_word_timestamps(response: dict) -> list[tuple[float, float, str]]:
                         end = w.get("end_time")
                         text = w.get("text", "").strip() + w.get("punctuation", "")
                         if begin is None or end is None:
-                            raise ValueError(
-                                f"Word entry missing begin_time/end_time: {w}"
-                            )
+                            raise ValueError(f"Word entry missing begin_time/end_time: {w}")
                         if text:
                             words.append((begin / 1000.0, end / 1000.0, text))
     except ValueError:
@@ -983,6 +992,265 @@ def plan_chunks(audio_duration: float, overlap: float = 60.0) -> list[tuple[floa
     return chunks
 
 
+def _strip_cjk_spaces(text: str) -> str:
+    return re.sub(r"([\u4e00-\u9fff\u3400-\u4dbf])\s+(?=[\u4e00-\u9fff\u3400-\u4dbf])", r"\1", text)
+
+
+def _normalize_for_matching(text: str) -> str:
+    import re as _re
+
+    from zhconv import convert
+
+    text = convert(text, "zh-hans")
+    text = _re.sub(r"[^\u4e00-\u9fff\u3400-\u4dbf a-zA-Z]", "", text)
+    text = _re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _count_cjk_chars(text: str) -> int:
+    return sum(1 for c in text if "\u4e00" <= c <= "\u9fff" or "\u3400" <= c <= "\u4dbf")
+
+
+def _partition_words_to_chunks(
+    asr_words: list[tuple[float, float, str]],
+    chunks: list[tuple[float, float]],
+) -> dict[int, list[tuple[float, float, str]]]:
+    chunk_words: dict[int, list[tuple[float, float, str]]] = {i: [] for i in range(len(chunks))}
+
+    for word in asr_words:
+        word_start = word[0]
+        for i, (chunk_start, chunk_end) in enumerate(chunks):
+            is_last = i == len(chunks) - 1
+            in_chunk = (
+                (chunk_start <= word_start <= chunk_end)
+                if is_last
+                else (chunk_start <= word_start < chunk_end)
+            )
+            if in_chunk:
+                chunk_words[i].append(word)
+                break
+
+    return chunk_words
+
+
+def reconstruct_lines_from_words(
+    asr_words: list[tuple[float, float, str]],
+    canonical_lines: list[str],
+    start_canonical_idx: int = 0,
+) -> tuple[list[tuple[int, list[int]]], int]:
+    from rapidfuzz import fuzz
+
+    if not asr_words or not canonical_lines:
+        return [], start_canonical_idx
+
+    asr_word_norms = [_normalize_for_matching(w[2]) for w in asr_words]
+    canonical_norm_lines = [_normalize_for_matching(line) for line in canonical_lines]
+
+    line_assignments: list[tuple[int, list[int]]] = []
+    word_cursor = 0
+    canonical_cursor = start_canonical_idx
+
+    while word_cursor < len(asr_words) and canonical_cursor < len(canonical_norm_lines):
+        canonical_idx = canonical_cursor
+        canonical_norm = canonical_norm_lines[canonical_idx]
+        use_partial = _count_cjk_chars(canonical_norm) <= SHORT_FRAG_CHARS
+
+        best_j = -1
+        best_score = -1.0
+        candidates: list[tuple[float, int]] = []
+
+        max_j = min(word_cursor + MAX_LOOKAHEAD_WORDS, len(asr_words))
+        for j in range(word_cursor, max_j):
+            candidate_text = "".join(asr_word_norms[word_cursor : j + 1])
+            if not candidate_text:
+                continue
+
+            if use_partial:
+                score = fuzz.partial_ratio(candidate_text, canonical_norm) / 100.0
+            else:
+                score = fuzz.token_set_ratio(candidate_text, canonical_norm) / 100.0
+
+            if score >= MIN_LINE_SCORE:
+                candidates.append((score, j))
+            if score > best_score:
+                best_score = score
+                best_j = j
+
+        if best_score < MIN_LINE_SCORE:
+            canonical_cursor += 1
+            typer.echo(
+                f"Skipping canonical line {canonical_idx}: "
+                f"'{canonical_lines[canonical_idx][:30]}' (best score={best_score:.2f})",
+                err=True,
+            )
+            continue
+
+        chosen_j = best_j
+
+        if canonical_cursor + 1 < len(canonical_norm_lines):
+            next_scores: list[float] = []
+            for check_ci in range(
+                canonical_cursor + 1,
+                min(canonical_cursor + 1 + BACKTRACK_WINDOW, len(canonical_norm_lines)),
+            ):
+                remaining_text = "".join(asr_word_norms[chosen_j + 1 :])
+                if not remaining_text:
+                    next_scores.append(0.0)
+                    continue
+                next_norm = canonical_norm_lines[check_ci]
+                next_use_partial = _count_cjk_chars(next_norm) <= SHORT_FRAG_CHARS
+                if next_use_partial:
+                    ns = fuzz.partial_ratio(remaining_text, next_norm) / 100.0
+                else:
+                    ns = fuzz.token_set_ratio(remaining_text, next_norm) / 100.0
+                next_scores.append(ns)
+
+            original_next_score = max(next_scores) if next_scores else 0.0
+
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            for alt_score, alt_j in candidates[:MAX_BACKTRACK_ALT]:
+                if alt_j == chosen_j:
+                    continue
+                alt_remaining = "".join(asr_word_norms[alt_j + 1 :])
+                if not alt_remaining:
+                    continue
+                alt_next_scores: list[float] = []
+                for check_ci in range(
+                    canonical_cursor + 1,
+                    min(
+                        canonical_cursor + 1 + BACKTRACK_WINDOW,
+                        len(canonical_norm_lines),
+                    ),
+                ):
+                    next_norm = canonical_norm_lines[check_ci]
+                    next_use_partial = _count_cjk_chars(next_norm) <= SHORT_FRAG_CHARS
+                    if next_use_partial:
+                        ans = fuzz.partial_ratio(alt_remaining, next_norm) / 100.0
+                    else:
+                        ans = fuzz.token_set_ratio(alt_remaining, next_norm) / 100.0
+                    alt_next_scores.append(ans)
+
+                alt_best_next = max(alt_next_scores) if alt_next_scores else 0.0
+                if alt_best_next >= original_next_score + BACKTRACK_GAIN_THRESHOLD:
+                    typer.echo(
+                        f"Backtracking: line {canonical_idx} end moved from "
+                        f"word {chosen_j} to {alt_j} "
+                        f"(next score {alt_best_next:.2f} vs {original_next_score:.2f})",
+                        err=True,
+                    )
+                    chosen_j = alt_j
+                    break
+
+        line_assignments.append((canonical_idx, list(range(word_cursor, chosen_j + 1))))
+        word_cursor = chosen_j + 1
+        canonical_cursor += 1
+
+    if word_cursor < len(asr_words):
+        remaining_norm = "".join(asr_word_norms[word_cursor:])
+        if remaining_norm.strip():
+            best_wrap_idx = -1
+            best_wrap_score = 0.0
+
+            for ci in range(len(canonical_norm_lines)):
+                cn = canonical_norm_lines[ci]
+                if not cn:
+                    continue
+                ws = fuzz.partial_ratio(remaining_norm, cn) / 100.0
+                if ws > best_wrap_score:
+                    best_wrap_score = ws
+                    best_wrap_idx = ci
+
+            if best_wrap_score >= WRAP_MIN_SCORE and best_wrap_idx >= 0:
+                typer.echo(
+                    f"Smart wrap-around: restarting from canonical line {best_wrap_idx} "
+                    f"(score={best_wrap_score:.2f})",
+                    err=True,
+                )
+                canonical_cursor = best_wrap_idx
+
+                while word_cursor < len(asr_words) and canonical_cursor < len(canonical_norm_lines):
+                    canonical_idx = canonical_cursor
+                    canonical_norm = canonical_norm_lines[canonical_idx]
+                    use_partial = _count_cjk_chars(canonical_norm) <= SHORT_FRAG_CHARS
+
+                    best_j = -1
+                    best_score = -1.0
+
+                    max_j = min(word_cursor + MAX_LOOKAHEAD_WORDS, len(asr_words))
+                    for j in range(word_cursor, max_j):
+                        candidate_text = "".join(asr_word_norms[word_cursor : j + 1])
+                        if not candidate_text:
+                            continue
+                        if use_partial:
+                            score = fuzz.partial_ratio(candidate_text, canonical_norm) / 100.0
+                        else:
+                            score = fuzz.token_set_ratio(candidate_text, canonical_norm) / 100.0
+                        if score > best_score:
+                            best_score = score
+                            best_j = j
+
+                    if best_score < MIN_LINE_SCORE:
+                        canonical_cursor += 1
+                        continue
+
+                    line_assignments.append((canonical_idx, list(range(word_cursor, best_j + 1))))
+                    word_cursor = best_j + 1
+                    canonical_cursor += 1
+
+    if word_cursor < len(asr_words):
+        current_group = [word_cursor]
+        for wi in range(word_cursor + 1, len(asr_words)):
+            prev_end = asr_words[wi - 1][1]
+            curr_start = asr_words[wi][0]
+            if curr_start - prev_end > GAP_THRESHOLD:
+                line_assignments.append((-1, list(current_group)))
+                current_group = [wi]
+            else:
+                current_group.append(wi)
+        if current_group:
+            line_assignments.append((-1, list(current_group)))
+
+    return line_assignments, canonical_cursor
+
+
+def build_aligned_text(
+    asr_words: list[tuple[float, float, str]],
+    line_assignments: list[tuple[int, list[int]]],
+    canonical_lines: list[str],
+) -> list[str]:
+    lines = []
+    for canonical_idx, word_indices in line_assignments:
+        if canonical_idx >= 0:
+            lines.append(canonical_lines[canonical_idx])
+        else:
+            raw = " ".join(asr_words[i][2] for i in word_indices)
+            lines.append(_strip_cjk_spaces(raw))
+    return lines
+
+
+def _reconstruction_quality(
+    line_assignments: list[tuple[int, list[int]]],
+    total_words: int,
+    total_canonical_lines: int,
+) -> float:
+    matched_words = sum(len(indices) for idx, indices in line_assignments if idx >= 0)
+    matched_canonical = len({idx for idx, _ in line_assignments if idx >= 0})
+    word_fraction = matched_words / total_words if total_words > 0 else 0
+    canonical_fraction = (
+        matched_canonical / total_canonical_lines if total_canonical_lines > 0 else 0
+    )
+    return (word_fraction + canonical_fraction) / 2
+
+
+def _sentence_fallback_for_chunk(
+    segments: list[tuple[float, float, str]],
+    chunk_start: float,
+    chunk_end: float,
+) -> str:
+    chunk_sents = [text for start, end, text in segments if chunk_start <= start <= chunk_end]
+    return "\n".join(chunk_sents)
+
+
 def assign_text_to_chunks(
     asr_words: list[tuple[float, float, str]],
     chunks: list[tuple[float, float]],
@@ -1060,9 +1328,7 @@ def align_chunk(
 
     segment_path: Optional[Path] = None
     try:
-        typer.echo(
-            f"Extracting audio segment: {chunk_start:.1f}-{chunk_end:.1f}s", err=True
-        )
+        typer.echo(f"Extracting audio segment: {chunk_start:.1f}-{chunk_end:.1f}s", err=True)
         segment_path = extract_audio_segment(audio_path, chunk_start, chunk_end)
 
         try:
@@ -1076,8 +1342,7 @@ def align_chunk(
             )
 
             offset_aligned = [
-                (start + chunk_start, end + chunk_start, text)
-                for start, end, text in aligned
+                (start + chunk_start, end + chunk_start, text) for start, end, text in aligned
             ]
             return offset_aligned
 
@@ -1112,9 +1377,7 @@ def _word_fallback_for_chunk(
     Returns:
         List of (start, end, text) tuples
     """
-    chunk_words = [
-        (s, e, t) for s, e, t in asr_words if chunk_start <= s <= chunk_end
-    ]
+    chunk_words = [(s, e, t) for s, e, t in asr_words if chunk_start <= s <= chunk_end]
 
     if not chunk_words:
         return []
@@ -1127,14 +1390,14 @@ def _word_fallback_for_chunk(
         prev_end = chunk_words[i - 1][1]
         curr_start = chunk_words[i][0]
         if curr_start - prev_end > gap_threshold:
-            seg_text = " ".join(w[2] for w in current_words)
+            seg_text = _strip_cjk_spaces(" ".join(w[2] for w in current_words))
             segments.append((current_words[0][0], current_words[-1][1], seg_text))
             current_words = [chunk_words[i]]
         else:
             current_words.append(chunk_words[i])
 
     if current_words:
-        seg_text = " ".join(w[2] for w in current_words)
+        seg_text = _strip_cjk_spaces(" ".join(w[2] for w in current_words))
         segments.append((current_words[0][0], current_words[-1][1], seg_text))
 
     return segments
@@ -1292,9 +1555,7 @@ def sequential_canonical_snap(
             best_wrap_idx = -1
 
             for i in range(len(canonical_lines)):
-                score = (
-                    fuzz.token_set_ratio(asr_normalized, canonical_normalized[i]) / 100.0
-                )
+                score = fuzz.token_set_ratio(asr_normalized, canonical_normalized[i]) / 100.0
                 if score > best_wrap_score:
                     best_wrap_score = score
                     best_wrap_line = canonical_lines[i]
@@ -1405,9 +1666,7 @@ def main(
     device: str = typer.Option(
         "auto", "--device", help="Device for forced aligner (auto/mps/cuda/cpu)"
     ),
-    dtype: str = typer.Option(
-        "float32", "--dtype", help="Data type (bfloat16/float16/float32)"
-    ),
+    dtype: str = typer.Option("float32", "--dtype", help="Data type (bfloat16/float16/float32)"),
     model_cache_dir: Optional[Path] = typer.Option(
         None, "--model-cache-dir", help="Custom HuggingFace cache directory"
     ),
@@ -1562,11 +1821,35 @@ def main(
     chunk_results: list[list[tuple[float, float, str]]] = []
     chunk_stats: list[dict] = []
 
+    used_canonical_reconstruction = False
+
     if len(chunks) == 1:
-        chunk_text = asr_text
-        chunk_lines = [line for line in chunk_text.split("\n") if line.strip()]
-        if not chunk_lines:
-            chunk_lines = [chunk_text] if chunk_text.strip() else []
+        if lyrics and asr_words:
+            line_assignments, _ = reconstruct_lines_from_words(asr_words, lyrics)
+            quality = _reconstruction_quality(line_assignments, len(asr_words), len(lyrics))
+
+            if quality >= RECONSTRUCTION_FALLBACK_THRESHOLD:
+                chunk_lines = build_aligned_text(asr_words, line_assignments, lyrics)
+                used_canonical_reconstruction = True
+                typer.echo(
+                    f"Reconstructed {len(chunk_lines)} lines from {len(asr_words)} words "
+                    f"using {len(lyrics)} canonical lines (quality={quality:.2f})",
+                    err=True,
+                )
+            else:
+                typer.echo(
+                    f"Reconstruction quality {quality:.2f} below threshold; "
+                    f"falling back to ASR sentence text",
+                    err=True,
+                )
+                chunk_lines = [line for line in asr_text.split("\n") if line.strip()]
+                if not chunk_lines:
+                    chunk_lines = [asr_text] if asr_text.strip() else []
+        else:
+            chunk_text = asr_text
+            chunk_lines = [line for line in chunk_text.split("\n") if line.strip()]
+            if not chunk_lines:
+                chunk_lines = [chunk_text] if chunk_text.strip() else []
 
         if chunk_lines:
             try:
@@ -1579,13 +1862,15 @@ def main(
                     model_cache_dir=model_cache_dir,
                 )
                 chunk_results.append(aligned)
-                chunk_stats.append({
-                    "index": 0,
-                    "start": chunks[0][0],
-                    "end": chunks[0][1],
-                    "segments": len(aligned),
-                    "status": "aligned",
-                })
+                chunk_stats.append(
+                    {
+                        "index": 0,
+                        "start": chunks[0][0],
+                        "end": chunks[0][1],
+                        "segments": len(aligned),
+                        "status": "aligned",
+                    }
+                )
             except Exception as e:
                 typer.echo(
                     f"Warning: Forced alignment failed for single chunk: {e}. "
@@ -1593,22 +1878,26 @@ def main(
                     err=True,
                 )
                 chunk_results.append(segments)
-                chunk_stats.append({
+                chunk_stats.append(
+                    {
+                        "index": 0,
+                        "start": chunks[0][0],
+                        "end": chunks[0][1],
+                        "segments": len(segments),
+                        "status": "asr_fallback",
+                    }
+                )
+        else:
+            chunk_results.append(segments)
+            chunk_stats.append(
+                {
                     "index": 0,
                     "start": chunks[0][0],
                     "end": chunks[0][1],
                     "segments": len(segments),
-                    "status": "asr_fallback",
-                })
-        else:
-            chunk_results.append(segments)
-            chunk_stats.append({
-                "index": 0,
-                "start": chunks[0][0],
-                "end": chunks[0][1],
-                "segments": len(segments),
-                "status": "asr_fallback_no_text",
-            })
+                    "status": "asr_fallback_no_text",
+                }
+            )
     else:
         if asr_words is None:
             typer.echo(
@@ -1616,19 +1905,52 @@ def main(
                 "using sentence-level timestamps (less precise)",
                 err=True,
             )
-            asr_words_fallback = [
-                (s, e, t) for s, e, t in segments
-            ]
+            asr_words_fallback = [(s, e, t) for s, e, t in segments]
         else:
             asr_words_fallback = asr_words
 
-        chunk_texts = assign_text_to_chunks(asr_words_fallback, chunks)
+        chunk_word_map = _partition_words_to_chunks(asr_words_fallback, chunks)
+        next_canonical_idx = 0
 
         for i, (chunk_start, chunk_end) in enumerate(chunks):
-            chunk_text = chunk_texts.get(i, "")
+            chunk_words = chunk_word_map.get(i, [])
+
+            if chunk_words and lyrics:
+                line_assignments, next_canonical_idx = reconstruct_lines_from_words(
+                    chunk_words,
+                    lyrics,
+                    start_canonical_idx=next_canonical_idx,
+                )
+                quality = _reconstruction_quality(
+                    line_assignments,
+                    len(chunk_words),
+                    len(lyrics),
+                )
+
+                if quality >= RECONSTRUCTION_FALLBACK_THRESHOLD:
+                    chunk_lines = build_aligned_text(chunk_words, line_assignments, lyrics)
+                    chunk_text = "\n".join(chunk_lines)
+                    used_canonical_reconstruction = True
+                    n_lines = len(chunk_lines)
+                else:
+                    typer.echo(
+                        f"Chunk {i}: reconstruction quality {quality:.2f} below threshold; "
+                        f"falling back to sentence-based assignment",
+                        err=True,
+                    )
+                    chunk_text = _sentence_fallback_for_chunk(segments, chunk_start, chunk_end)
+                    n_lines = chunk_text.count("\n") + 1 if chunk_text else 0
+            elif chunk_words:
+                chunk_text = " ".join(w[2] for w in chunk_words)
+                n_lines = 0
+            else:
+                chunk_text = ""
+                n_lines = 0
+
             typer.echo(
                 f"Processing chunk {i}: {chunk_start:.1f}-{chunk_end:.1f}s "
-                f"({len(chunk_text)} chars)",
+                f"({len(chunk_words)} words -> {n_lines} lines, "
+                f"canonical_start={next_canonical_idx})",
                 err=True,
             )
 
@@ -1645,45 +1967,40 @@ def main(
                     model_cache_dir=model_cache_dir,
                 )
                 chunk_results.append(result)
-                chunk_stats.append({
-                    "index": i,
-                    "start": chunk_start,
-                    "end": chunk_end,
-                    "segments": len(result),
-                    "status": "aligned",
-                })
+                chunk_stats.append(
+                    {
+                        "index": i,
+                        "start": chunk_start,
+                        "end": chunk_end,
+                        "segments": len(result),
+                        "status": "aligned",
+                    }
+                )
             except Exception as e:
                 typer.echo(
-                    f"Warning: Chunk {i} alignment failed: {e}. "
-                    f"Using word-level ASR fallback.",
+                    f"Warning: Chunk {i} alignment failed: {e}. " f"Using word-level ASR fallback.",
                     err=True,
                 )
-                fallback = _word_fallback_for_chunk(
-                    asr_words_fallback, chunk_start, chunk_end
-                )
+                fallback = _word_fallback_for_chunk(asr_words_fallback, chunk_start, chunk_end)
                 if not fallback:
-                    fallback = [
-                        (s, e, t)
-                        for s, e, t in segments
-                        if chunk_start <= s <= chunk_end
-                    ]
+                    fallback = [(s, e, t) for s, e, t in segments if chunk_start <= s <= chunk_end]
                 chunk_results.append(fallback)
-                chunk_stats.append({
-                    "index": i,
-                    "start": chunk_start,
-                    "end": chunk_end,
-                    "segments": len(fallback),
-                    "status": "word_fallback",
-                })
+                chunk_stats.append(
+                    {
+                        "index": i,
+                        "start": chunk_start,
+                        "end": chunk_end,
+                        "segments": len(fallback),
+                        "status": "word_fallback",
+                    }
+                )
 
     # Step 6: Merge chunks
     merged = merge_chunks(chunk_results, chunks)
     typer.echo(f"Merged into {len(merged)} segments", err=True)
 
     # Check if all chunks fell back to ASR
-    all_fallback = all(
-        stat.get("status", "").endswith("fallback") for stat in chunk_stats
-    )
+    all_fallback = all(stat.get("status", "").endswith("fallback") for stat in chunk_stats)
     if all_fallback and len(chunks) > 1:
         typer.echo(
             "Warning: All chunks fell back to ASR timestamps. "
@@ -1694,12 +2011,19 @@ def main(
 
     # Step 7: Optional sequential canonical snap
     if snap and lyrics:
-        results = sequential_canonical_snap(merged, lyrics, threshold=snap_threshold)
-        replaced_count = sum(1 for _, _, replaced in results if replaced)
-        typer.echo(
-            f"Sequential canonical snap: {replaced_count}/{len(results)} segments replaced",
-            err=True,
-        )
+        if used_canonical_reconstruction:
+            typer.echo(
+                "Canonical text used for alignment; snap step skipped (already canonical)",
+                err=True,
+            )
+            results = [(start, text, True) for start, _end, text in merged]
+        else:
+            results = sequential_canonical_snap(merged, lyrics, threshold=snap_threshold)
+            replaced_count = sum(1 for _, _, replaced in results if replaced)
+            typer.echo(
+                f"Sequential canonical snap: {replaced_count}/{len(results)} segments replaced",
+                err=True,
+            )
     else:
         results = [(start, text, False) for start, _end, text in merged]
         if not snap:
