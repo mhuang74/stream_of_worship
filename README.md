@@ -20,10 +20,12 @@ This project consists of three components. Here's how to run each:
 |-----------|---------|-------------|
 | **Admin CLI** | Catalog management, audio download | `uv run --extra admin sow-admin --help` |
 | **User App** | Interactive TUI for transitions | `uv run --extra app sow-app run` |
+| **Web App** | Browser-based worship set editor | `pnpm --filter sow-webapp dev` |
 | **Analysis Service** | Audio analysis & stem separation | `cd services/analysis && docker compose up -d` |
 
 ### Prerequisites
 - **Admin CLI & User App**: Python 3.11+, `uv` package manager
+- **Web App**: Node.js 18+, `pnpm` package manager
 - **Analysis Service**: Docker Desktop, Cloudflare R2 credentials
 
 ### Component Details
@@ -63,6 +65,18 @@ docker compose up -d
 
 # Check health
 curl http://localhost:8000/api/v1/health
+```
+
+#### Web App (Browser-Based Editor)
+```bash
+# Install dependencies (from project root)
+pnpm install
+
+# Start dev server
+pnpm --filter sow-webapp dev
+
+# Or from the webapp directory
+cd webapp && pnpm dev
 ```
 
 ---
