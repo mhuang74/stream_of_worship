@@ -14,6 +14,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from stream_of_worship.app.config import AppConfig
+from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.services.catalog import CatalogService
 from stream_of_worship.app.services.asset_cache import AssetCache
@@ -118,94 +119,98 @@ def resolve_song_audio_path(
         )
         raise typer.Exit(1)
 
-    # Initialize database client
-    db_client = ReadOnlyClient(config.db_path)
+    # Initialize database client with ConnectionProvider
+    provider = ConnectionProvider(config.get_connection_url())
+    db_client = ReadOnlyClient(provider)
     catalog = CatalogService(db_client)
 
-    # Look up song and recording
-    song_with_recording = catalog.get_song_with_recording(song_id)
-    if not song_with_recording:
-        typer.echo(f"Error: Song not found: {song_id}", err=True)
-        raise typer.Exit(1)
-
-    if not song_with_recording.recording:
-        typer.echo(f"Error: No recording found for song: {song_id}", err=True)
-        raise typer.Exit(1)
-
-    song = song_with_recording.song
-    recording = song_with_recording.recording
-    hash_prefix = recording.hash_prefix
-    lyrics = song.lyrics_list
-
-    typer.echo(f"Song: {song.title}", err=True)
-    typer.echo(f"Recording: {hash_prefix}", err=True)
-
-    # Initialize R2 client and asset cache
     try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
-    except ValueError as e:
-        typer.echo(f"Error: R2 credentials not configured: {e}", err=True)
-        raise typer.Exit(1)
+        # Look up song and recording
+        song_with_recording = catalog.get_song_with_recording(song_id)
+        if not song_with_recording:
+            typer.echo(f"Error: Song not found: {song_id}", err=True)
+            raise typer.Exit(1)
 
-    cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
-    audio_path: Optional[Path] = None
+        if not song_with_recording.recording:
+            typer.echo(f"Error: No recording found for song: {song_id}", err=True)
+            raise typer.Exit(1)
 
-    # Try clean_vocals.flac first, then vocal stem, then main audio
-    # Preference: clean_vocals.flac > vocals stem (vocal.wav) > audio.mp3
-    if use_vocals:
-        # Check for clean_vocals.flac in the hash prefix directory
-        clean_vocals_path = cache.cache_dir / hash_prefix / "clean_vocals.flac"
-        if clean_vocals_path.exists():
-            audio_path = clean_vocals_path
-            typer.echo(f"Using cached clean vocal stem: {audio_path}", err=True)
+        song = song_with_recording.song
+        recording = song_with_recording.recording
+        hash_prefix = recording.hash_prefix
+        lyrics = song.lyrics_list
 
-        # Fall back to vocals stem (try new name first, then legacy)
-        if audio_path is None:
-            for stem_name in ["vocals_dry", "vocals_clean", "vocals"]:
-                stem_path = cache.get_stem_path(hash_prefix, stem_name)
-                if stem_path.exists():
-                    audio_path = stem_path
-                    typer.echo(f"Using cached {stem_name} stem: {audio_path}", err=True)
-                    break
-                downloaded = cache.download_stem(hash_prefix, stem_name)
-                if downloaded:
-                    audio_path = downloaded
-                    typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
-                    break
+        typer.echo(f"Song: {song.title}", err=True)
+        typer.echo(f"Recording: {hash_prefix}", err=True)
 
-    # If no vocals or audio available, generate clean vocal stem from main audio
-    if audio_path is None:
-        from poc.gen_clean_vocal_stem import extract_vocals_two_stage
-
-        main_audio_path = cache.get_audio_path(hash_prefix)
-        if not main_audio_path.exists():
-            typer.echo("Downloading main audio...", err=True)
-            main_audio_path = cache.download_audio(hash_prefix)
-            if main_audio_path:
-                typer.echo(f"Downloaded main audio: {main_audio_path}", err=True)
-
-        if main_audio_path and main_audio_path.exists():
-            output_dir = cache.cache_dir / hash_prefix
-            typer.echo("Generating clean vocal stem from main audio...", err=True)
-            results = extract_vocals_two_stage(
-                input_path=main_audio_path,
-                output_dir=output_dir,
+        # Initialize R2 client and asset cache
+        try:
+            r2_client = R2Client(
+                bucket=config.r2_bucket,
+                endpoint_url=config.r2_endpoint_url,
+                region=config.r2_region,
             )
-            dry_vocal_path = results["stages"]["stage2"].get("dry_vocals_file")
-            if dry_vocal_path:
-                audio_path = Path(dry_vocal_path)
-                typer.echo(f"Generated clean vocal stem: {audio_path}", err=True)
+        except ValueError as e:
+            typer.echo(f"Error: R2 credentials not configured: {e}", err=True)
+            raise typer.Exit(1)
 
-    if audio_path is None:
-        typer.echo("Error: Could not find or download audio", err=True)
-        raise typer.Exit(1)
+        cache = AssetCache(cache_dir=config.cache_dir, r2_client=r2_client)
+        audio_path: Optional[Path] = None
 
-    if not audio_path.exists():
-        typer.echo(f"Error: Audio file not found: {audio_path}", err=True)
-        raise typer.Exit(1)
+        # Try clean_vocals.flac first, then vocal stem, then main audio
+        # Preference: clean_vocals.flac > vocals stem (vocal.wav) > audio.mp3
+        if use_vocals:
+            # Check for clean_vocals.flac in the hash prefix directory
+            clean_vocals_path = cache.cache_dir / hash_prefix / "clean_vocals.flac"
+            if clean_vocals_path.exists():
+                audio_path = clean_vocals_path
+                typer.echo(f"Using cached clean vocal stem: {audio_path}", err=True)
 
-    return audio_path, lyrics
+            # Fall back to vocals stem (try new name first, then legacy)
+            if audio_path is None:
+                for stem_name in ["vocals_dry", "vocals_clean", "vocals"]:
+                    stem_path = cache.get_stem_path(hash_prefix, stem_name)
+                    if stem_path.exists():
+                        audio_path = stem_path
+                        typer.echo(f"Using cached {stem_name} stem: {audio_path}", err=True)
+                        break
+                    downloaded = cache.download_stem(hash_prefix, stem_name)
+                    if downloaded:
+                        audio_path = downloaded
+                        typer.echo(f"Downloaded {stem_name} stem: {audio_path}", err=True)
+                        break
+
+        # If no vocals or audio available, generate clean vocal stem from main audio
+        if audio_path is None:
+            from poc.gen_clean_vocal_stem import extract_vocals_two_stage
+
+            main_audio_path = cache.get_audio_path(hash_prefix)
+            if not main_audio_path.exists():
+                typer.echo("Downloading main audio...", err=True)
+                main_audio_path = cache.download_audio(hash_prefix)
+                if main_audio_path:
+                    typer.echo(f"Downloaded main audio: {main_audio_path}", err=True)
+
+            if main_audio_path and main_audio_path.exists():
+                output_dir = cache.cache_dir / hash_prefix
+                typer.echo("Generating clean vocal stem from main audio...", err=True)
+                results = extract_vocals_two_stage(
+                    input_path=main_audio_path,
+                    output_dir=output_dir,
+                )
+                dry_vocal_path = results["stages"]["stage2"].get("dry_vocals_file")
+                if dry_vocal_path:
+                    audio_path = Path(dry_vocal_path)
+                    typer.echo(f"Generated clean vocal stem: {audio_path}", err=True)
+
+        if audio_path is None:
+            typer.echo("Error: Could not find or download audio", err=True)
+            raise typer.Exit(1)
+
+        if not audio_path.exists():
+            typer.echo(f"Error: Audio file not found: {audio_path}", err=True)
+            raise typer.Exit(1)
+
+        return audio_path, lyrics
+    finally:
+        db_client.close()
