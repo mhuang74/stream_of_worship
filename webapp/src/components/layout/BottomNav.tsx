@@ -23,7 +23,8 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center text-xs font-medium transition-colors ${
+              aria-current={isActive ? "page" : undefined}
+              className={`flex-1 flex flex-col items-center justify-center text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"

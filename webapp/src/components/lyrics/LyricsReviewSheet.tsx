@@ -128,15 +128,17 @@ export function LyricsReviewSheet({
         </SheetHeader>
 
         {/* Desktop tabs - hidden on mobile */}
-        <div className="hidden lg:flex border-b px-4 gap-1" role="tablist">
+        <div className="hidden lg:flex border-b px-4 gap-1" role="tablist" aria-label="Lyrics review tabs">
           {TABS.map((tab) => (
             <button
               key={tab.id}
+              id={`lyrics-tab-${tab.id}`}
               role="tab"
               aria-selected={activeTab === tab.id}
+              aria-controls={`lyrics-panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+                "px-4 py-2 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-t",
                 activeTab === tab.id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -151,8 +153,9 @@ export function LyricsReviewSheet({
         <div className="flex-1 overflow-y-auto px-4 py-2">
           {/* Review tab - always visible on mobile, tab-controlled on desktop */}
           <div
+            id="lyrics-panel-review"
             role="tabpanel"
-            aria-label="Review"
+            aria-labelledby="lyrics-tab-review"
             className={cn(activeTab !== "review" && "lg:hidden")}
           >
             {isLoadingMarks ? (
@@ -199,8 +202,9 @@ export function LyricsReviewSheet({
 
           {/* Edit text tab - desktop only */}
           <div
+            id="lyrics-panel-edit-text"
             role="tabpanel"
-            aria-label="Edit Text"
+            aria-labelledby="lyrics-tab-edit-text"
             className={cn("hidden", activeTab === "edit-text" && "lg:block")}
           >
             <LyricsEditor
@@ -212,8 +216,9 @@ export function LyricsReviewSheet({
 
           {/* Edit timing tab - desktop only */}
           <div
+            id="lyrics-panel-edit-timing"
             role="tabpanel"
-            aria-label="Edit Timing"
+            aria-labelledby="lyrics-tab-edit-timing"
             className={cn("hidden", activeTab === "edit-timing" && "lg:block")}
           >
             <LyricsTimingEditor

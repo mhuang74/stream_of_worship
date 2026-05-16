@@ -186,8 +186,10 @@ export function BrowseSheet({
 
         <div className="flex flex-col h-full pb-8">
           {/* Mode tabs */}
-          <div className="flex gap-1 pb-4 border-b mb-4">
+          <div className="flex gap-1 pb-4 border-b mb-4" role="tablist" aria-label="Search mode">
             <Button
+              role="tab"
+              aria-selected={mode === "browse"}
               variant={mode === "browse" ? "default" : "ghost"}
               size="sm"
               onClick={() => setMode("browse")}
@@ -198,6 +200,8 @@ export function BrowseSheet({
               Browse
             </Button>
             <Button
+              role="tab"
+              aria-selected={mode === "describe"}
               variant={mode === "describe" ? "default" : "ghost"}
               size="sm"
               onClick={() => setMode("describe")}
@@ -210,7 +214,7 @@ export function BrowseSheet({
           </div>
 
           {mode === "browse" && (
-            <>
+            <div role="tabpanel" aria-label="Browse songs">
               {/* Search section */}
               <div className="px-1 pb-4">
                 <SongSearch
@@ -238,8 +242,8 @@ export function BrowseSheet({
                 )}
 
                 {!error && isLoading && results.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" />
+                  <div className="flex flex-col items-center justify-center py-12" role="status" aria-live="polite">
+                    <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" aria-hidden="true" />
                     <p className="text-muted-foreground text-sm">Searching songs...</p>
                   </div>
                 )}
@@ -280,11 +284,11 @@ export function BrowseSheet({
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {mode === "describe" && (
-            <div className="flex-1 overflow-y-auto px-1 -mx-1">
+            <div className="flex-1 overflow-y-auto px-1 -mx-1" role="tabpanel" aria-label="Describe songs">
               <SemanticSearch
                 onAddSong={handleAddSong}
                 existingSongIds={existingSongIds}
