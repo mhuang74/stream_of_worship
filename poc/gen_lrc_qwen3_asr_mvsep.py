@@ -144,7 +144,7 @@ def _call_qwen3_asr_filetrans(
 
     typer.echo(f"Calling Qwen3-ASR-FileTrans ({model}) in {region} region...", err=True)
 
-    kwargs = {}
+    kwargs = {"enable_words": True}
     if context:
         typer.echo(
             "Note: filetrans model does not support system-message context biasing; "
