@@ -187,6 +187,7 @@ poc_qwen3_mlx = [
 # Qwen3-ASR POC dependencies (Phase 0 evaluation)
 # Includes both ONNX and PyTorch backends for comparison
 poc_qwen3_asr = [
+    "stream-of-worship[admin]",
     "qwen-asr>=0.0.6",           # PyTorch Qwen3-ASR
     "huggingface-hub>=0.20.0",    # Model download
     "onnxruntime>=1.17.0",        # ONNX backend
