@@ -29,9 +29,9 @@ app = typer.Typer(help="Qwen3-ASR transcription POC with platform-aware backends
 
 # Region URLs for DashScope API
 REGION_URL = {
-    "intl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-    "cn": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "us": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+    "intl": "https://dashscope-intl.aliyuncs.com/api/v1",
+    "cn": "https://dashscope.aliyuncs.com/api/v1",
+    "us": "https://dashscope-us.aliyuncs.com/api/v1",
 }
 
 
@@ -100,6 +100,35 @@ def transcribe_mlx_qwen3_asr(
     return result
 
 
+def _upload_to_oss(audio_path: Path, model: str, region: str) -> str:
+    """Upload a local audio file to DashScope OSS and return the oss:// URL.
+
+    Args:
+        audio_path: Path to local audio file
+        model: Model name for upload certificate
+        region: Region (intl, cn, us)
+
+    Returns:
+        oss:// URL of the uploaded file
+    """
+    import dashscope
+    from dashscope.utils.oss_utils import OssUtils
+
+    dashscope.base_http_api_url = REGION_URL[region]
+
+    file_url, _ = OssUtils.upload(
+        model=model,
+        file_path=str(audio_path.resolve()),
+        api_key=os.environ["DASHSCOPE_API_KEY"],
+    )
+    if file_url is None:
+        typer.echo("Error: Failed to upload audio file to OSS", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Uploaded audio to: {file_url}", err=True)
+    return file_url
+
+
 def transcribe_dashscope(
     audio_path: Path,
     model: str = "qwen3-asr-flash",
@@ -108,11 +137,14 @@ def transcribe_dashscope(
 ) -> dict:
     """Run transcription using DashScope cloud API.
 
+    For qwen3-asr-flash: Uses MultiModalConversation API with file:// upload.
+    For qwen3-asr-flash-filetrans: Uses QwenTranscription async API with OSS upload.
+
     Args:
         audio_path: Path to audio file
         model: Model name (qwen3-asr-flash or qwen3-asr-flash-filetrans)
         region: Region (intl, cn, us)
-        context: Optional context string for biasing
+        context: Optional context string for biasing (only used with qwen3-asr-flash)
 
     Returns:
         Raw API response as dict
@@ -120,6 +152,9 @@ def transcribe_dashscope(
     import dashscope
 
     dashscope.base_http_api_url = REGION_URL[region]
+
+    if "filetrans" in model:
+        return _transcribe_dashscope_filetrans(audio_path, model, region, context)
 
     messages = [
         {"role": "user", "content": [{"audio": f"file://{audio_path.resolve()}"}]},
@@ -146,6 +181,85 @@ def transcribe_dashscope(
 
     if resp.status_code != 200:
         typer.echo(f"API error: {resp.status_code} - {resp.message}", err=True)
+        raise typer.Exit(1)
+
+    return resp.output
+
+
+def _transcribe_dashscope_filetrans(
+    audio_path: Path,
+    model: str,
+    region: str,
+    context: Optional[str] = None,
+) -> dict:
+    """Run transcription using DashScope QwenTranscription (filetrans) API.
+
+    This model uses the QwenTranscription API which requires an OSS URL
+    instead of a local file path. It submits an async task and polls
+    until completion.
+
+    Args:
+        audio_path: Path to audio file
+        model: Model name (qwen3-asr-flash-filetrans)
+        region: Region (intl, cn, us)
+        context: Optional context string (used as vocabulary hint via vocabulary_id if available)
+
+    Returns:
+        Raw API response as dict
+    """
+    import dashscope
+    from dashscope.audio.qwen_asr import QwenTranscription
+
+    dashscope.base_http_api_url = REGION_URL[region]
+
+    api_key = os.environ.get("DASHSCOPE_API_KEY")
+    if not api_key:
+        raise typer.Exit("DASHSCOPE_API_KEY environment variable not set")
+
+    typer.echo(f"Uploading audio for filetrans...", err=True)
+    file_url = _upload_to_oss(audio_path, model, region)
+
+    typer.echo(f"Calling DashScope Qwen3-ASR-FileTrans ({model}) in {region} region...", err=True)
+
+    kwargs = {}
+    if context:
+        typer.echo(
+            "Note: filetrans model does not support system-message context biasing; "
+            "context will be used for vocabulary hint only if vocabulary_id is set",
+            err=True,
+        )
+
+    task_resp = QwenTranscription.async_call(
+        model=model,
+        file_url=file_url,
+        api_key=api_key,
+        **kwargs,
+    )
+
+    if task_resp.status_code != 200:
+        typer.echo(
+            f"API error submitting task: {task_resp.status_code} - {task_resp.message}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    task_id = task_resp.output.get("task_id", "unknown")
+    typer.echo(f"Task submitted: {task_id}, waiting for completion...", err=True)
+
+    resp = QwenTranscription.wait(
+        task=task_resp,
+        api_key=api_key,
+    )
+
+    if resp.status_code != 200:
+        typer.echo(f"API error: {resp.status_code} - {resp.message}", err=True)
+        raise typer.Exit(1)
+
+    task_status = resp.output.get("task_status", "")
+    if task_status != "SUCCEEDED":
+        typer.echo(f"Task failed with status: {task_status}", err=True)
+        if resp.output.get("message"):
+            typer.echo(f"Message: {resp.output['message']}", err=True)
         raise typer.Exit(1)
 
     return resp.output
@@ -253,6 +367,55 @@ def _get_field(item, field: str, default):
     return getattr(item, field, default)
 
 
+def _extract_segments_filetrans_local(response: dict) -> list[dict]:
+    """Extract segments from QwenTranscription (filetrans) response.
+
+    The filetrans response contains a 'results' list with a
+    'transcription_url' pointing to a JSON file with the actual
+    transcription data containing sentences with timestamps.
+
+    Args:
+        response: Raw filetrans API response dict
+
+    Returns:
+        List of segment dicts with 'start', 'end', 'text' keys
+    """
+    import requests
+
+    segments = []
+    results = response.get("results", [])
+
+    for result in results:
+        transcription_url = result.get("transcription_url")
+        if not transcription_url:
+            typer.echo("Warning: No transcription_url in result", err=True)
+            continue
+
+        typer.echo(f"Fetching transcription from URL...", err=True)
+        try:
+            tr_resp = requests.get(transcription_url, timeout=60)
+            tr_resp.raise_for_status()
+            tr_data = tr_resp.json()
+        except Exception as e:
+            typer.echo(f"Error fetching transcription: {e}", err=True)
+            continue
+
+        transcripts = tr_data.get("transcripts", [])
+        for transcript in transcripts:
+            sentences = transcript.get("sentences", [])
+            for sentence in sentences:
+                start = sentence.get("begin_time", 0) / 1000.0
+                end = sentence.get("end_time", 0) / 1000.0
+                text = sentence.get("text", "").strip()
+                if text:
+                    segments.append({"start": start, "end": end, "text": text})
+
+    if not segments:
+        typer.echo("Warning: No segments extracted from filetrans response", err=True)
+
+    return segments
+
+
 def extract_segments(result, backend: str = "mlx-qwen3-asr") -> list[dict]:
     """Extract segments from ASR output.
 
@@ -269,6 +432,10 @@ def extract_segments(result, backend: str = "mlx-qwen3-asr") -> list[dict]:
     """
     # Handle DashScope format
     if backend == "dashscope":
+        # Handle filetrans response format (has 'results' key)
+        if isinstance(result, dict) and "results" in result:
+            return _extract_segments_filetrans_local(result)
+
         segments = []
         try:
             content = result.get("choices", [{}])[0].get("message", {}).get("content", [])
@@ -276,7 +443,7 @@ def extract_segments(result, backend: str = "mlx-qwen3-asr") -> list[dict]:
                 if item.get("type") == "audio_transcription":
                     sentences = item.get("audio_transcription_results", {}).get("sentences", [])
                     for sentence in sentences:
-                        start = sentence.get("begin_time", 0) / 1000.0  # Convert ms to seconds
+                        start = sentence.get("begin_time", 0) / 1000.0
                         end = sentence.get("end_time", 0) / 1000.0
                         text = sentence.get("text", "").strip()
                         if text:
