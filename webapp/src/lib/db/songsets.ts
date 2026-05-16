@@ -17,6 +17,14 @@ export interface SongsetListItem {
   lastFailedRenderJobId: string | null;
 }
 
+export interface SongsetItemRecording {
+  contentHash: string;
+  durationSeconds: number | null;
+  tempoBpm: number | null;
+  musicalKey: string | null;
+  r2AudioUrl: string | null;
+}
+
 export interface SongsetItemDetail {
   id: string;
   songId: string;
@@ -35,7 +43,7 @@ export interface SongsetItemDetail {
     albumName: string | null;
     musicalKey: string | null;
   } | null;
-  recording: null;
+  recording: SongsetItemRecording | null;
 }
 
 export interface SongsetDetail extends SongsetListItem {
@@ -121,7 +129,7 @@ export async function getSongset(
 ): Promise<SongsetDetail | null> {
   const row = await db.query.songsets.findFirst({
     where: and(eq(songsets.id, id), eq(songsets.userId, userId)),
-    with: { items: { with: { song: true } } },
+    with: { items: { with: { song: true, recording: true } } },
   });
 
   if (!row) return null;
@@ -148,7 +156,15 @@ export async function getSongset(
           musicalKey: item.song.musicalKey,
         }
       : null,
-    recording: null,
+    recording: item.recording
+      ? {
+          contentHash: item.recording.contentHash,
+          durationSeconds: item.recording.durationSeconds,
+          tempoBpm: item.recording.tempoBpm,
+          musicalKey: item.recording.musicalKey,
+          r2AudioUrl: item.recording.r2AudioUrl,
+        }
+      : null,
   }));
 
   const renderState = await computeRenderState(id);
@@ -265,7 +281,7 @@ export async function addSongsetItem(
 
   const item = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, id),
-    with: { song: true },
+    with: { song: true, recording: true },
   });
 
   if (!item) return null;
@@ -290,7 +306,15 @@ export async function addSongsetItem(
           musicalKey: item.song.musicalKey,
         }
       : null,
-    recording: null,
+    recording: item.recording
+      ? {
+          contentHash: item.recording.contentHash,
+          durationSeconds: item.recording.durationSeconds,
+          tempoBpm: item.recording.tempoBpm,
+          musicalKey: item.recording.musicalKey,
+          r2AudioUrl: item.recording.r2AudioUrl,
+        }
+      : null,
   };
 }
 
@@ -321,7 +345,7 @@ export async function updateSongsetItem(
 
   const updated = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, itemId),
-    with: { song: true },
+    with: { song: true, recording: true },
   });
 
   if (!updated) return null;
@@ -346,7 +370,15 @@ export async function updateSongsetItem(
           musicalKey: updated.song.musicalKey,
         }
       : null,
-    recording: null,
+    recording: updated.recording
+      ? {
+          contentHash: updated.recording.contentHash,
+          durationSeconds: updated.recording.durationSeconds,
+          tempoBpm: updated.recording.tempoBpm,
+          musicalKey: updated.recording.musicalKey,
+          r2AudioUrl: updated.recording.r2AudioUrl,
+        }
+      : null,
   };
 }
 
