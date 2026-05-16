@@ -23,6 +23,7 @@ vi.mock("@/db", () => ({
       },
       renderJobs: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
       },
       songsetItems: {
         findFirst: vi.fn(),
@@ -196,6 +197,7 @@ describe("listSongsets", () => {
         latestRenderJobId: null,
         lastFailedRenderJobId: null,
         items: [],
+        renderJobs: [],
       },
     ];
 
@@ -207,9 +209,6 @@ describe("listSongsets", () => {
         }),
       }),
     } as any);
-
-    // Mock db.query.songsets.findFirst to return the songset when computeRenderState is called
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongsets[0] as any);
 
     const result = await listSongsets(1, 50, 0);
 

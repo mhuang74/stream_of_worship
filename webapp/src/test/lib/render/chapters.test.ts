@@ -6,7 +6,6 @@ import {
   findChapterAtTime,
   getSongTitleAtTime,
   getLyricAtTime,
-  serializeChaptersManifest,
   parseChaptersManifest,
   getChapterDurations,
   getChapterProgress,
@@ -431,31 +430,6 @@ describe("chapters", () => {
     it("returns null for time outside chapters", () => {
       expect(getLyricAtTime(manifest, -1)).toBeNull();
       expect(getLyricAtTime(manifest, 31)).toBeNull();
-    });
-  });
-
-  describe("serializeChaptersManifest", () => {
-    it("serializes manifest to JSON", () => {
-      const manifest = {
-        chapters: [
-          {
-            position: 1,
-            songTitle: "Test Song",
-            startSeconds: 0,
-            endSeconds: 60,
-            lines: [{ text: "Line one", startSeconds: 0 }],
-          },
-        ],
-        totalDurationSeconds: 60,
-        generatedAt: "2024-01-01T00:00:00Z",
-      };
-
-      const json = serializeChaptersManifest(manifest);
-      const parsed = JSON.parse(json);
-
-      expect(parsed.chapters).toHaveLength(1);
-      expect(parsed.totalDurationSeconds).toBe(60);
-      expect(parsed.generatedAt).toBe("2024-01-01T00:00:00Z");
     });
   });
 

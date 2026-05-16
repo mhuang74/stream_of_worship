@@ -68,17 +68,15 @@ export async function connectReceiver(callbacks: ReceiverCallbacks): Promise<voi
   };
 
   const attachConnection = (connection: EventTarget) => {
-    connection.addEventListener("message", handleMessage);
+    connection.addEventListener("message", handleMessage as EventListener);
     connection.addEventListener("close", handleEnd);
     connection.addEventListener("terminate", handleEnd);
     callbacks.onConnected?.();
   };
 
   try {
-    // @ts-expect-error - connectionList may not be in lib types
     const connectionList = await receiver.connectionList;
 
-    // @ts-expect-error - connections array may not be typed
     (connectionList.connections as EventTarget[]).forEach(attachConnection);
 
     connectionList.addEventListener("connectionavailable", (event: Event) => {

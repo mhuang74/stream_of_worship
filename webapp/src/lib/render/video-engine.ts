@@ -156,7 +156,7 @@ export class VideoEngine {
       const globalLyrics = convertToGlobalTimeline(
         localLyrics,
         segment.startTimeSeconds,
-        segment.item.songId?.toString() ?? `song-${i}`
+        segment.item.songTitle ?? segment.item.songId?.toString() ?? `song-${i}`
       );
 
       allLyrics.push(...globalLyrics);
@@ -165,7 +165,7 @@ export class VideoEngine {
       const segmentEnd = segment.startTimeSeconds + segment.durationSeconds;
       chapters.push({
         position: i + 1,
-        songTitle: segment.item.songId?.toString() ?? `Song ${i + 1}`,
+        songTitle: segment.item.songTitle ?? segment.item.songId?.toString() ?? `Song ${i + 1}`,
         startSeconds: segment.startTimeSeconds,
         endSeconds: segmentEnd,
         lines: localLyrics.map((line) => ({
@@ -185,7 +185,7 @@ export class VideoEngine {
       id: seg.item.id,
       songId: seg.item.songId,
       position: seg.item.position,
-      songTitle: seg.item.songId?.toString() ?? `Song ${i + 1}`,
+      songTitle: seg.item.songTitle ?? seg.item.songId?.toString() ?? `Song ${i + 1}`,
       startTimeSeconds: seg.startTimeSeconds,
       durationSeconds: seg.durationSeconds,
       tempoBpm: seg.item.tempoBpm,

@@ -349,7 +349,7 @@ describe("PATCH /api/songsets/[id]/items", () => {
 
     expect(response.status).toBe(400);
     const data = await response.json();
-    expect(data.error).toBe("itemId is required");
+    expect(data.error).toBe("Invalid input");
   });
 
   it("returns 400 when position is negative", async () => {

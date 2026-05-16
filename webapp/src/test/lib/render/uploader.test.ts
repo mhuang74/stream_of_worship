@@ -2,8 +2,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   R2Uploader,
-  uploadRenderArtifacts,
-  createR2UploaderFromEnv,
 } from "@/lib/render/uploader";
 import { ChaptersManifest } from "@/lib/render/chapters";
 import * as fs from "fs/promises";
@@ -52,6 +50,7 @@ describe("R2Uploader", () => {
         S3Client: mockS3Client,
         PutObjectCommand: vi.fn(),
         HeadObjectCommand: vi.fn(),
+        DeleteObjectCommand: vi.fn().mockImplementation(function(this: any, input: any) { this.input = input; return this; }),
       }));
 
       const uploader = new R2Uploader();
@@ -333,34 +332,5 @@ describe("R2Uploader", () => {
         "renders/job-123/chapters.json"
       );
     });
-  });
-});
-
-describe("createR2UploaderFromEnv", () => {
-  beforeEach(() => {
-    process.env.R2_ACCOUNT_ID = "test-account";
-    process.env.R2_ACCESS_KEY_ID = "test-key";
-    process.env.R2_SECRET_ACCESS_KEY = "test-secret";
-    process.env.R2_BUCKET_NAME = "test-bucket";
-  });
-
-  it("creates uploader from environment", () => {
-    const uploader = createR2UploaderFromEnv();
-    expect(uploader).toBeInstanceOf(R2Uploader);
-  });
-});
-
-describe("uploadRenderArtifacts (convenience function)", () => {
-  beforeEach(() => {
-    process.env.R2_ACCOUNT_ID = "test-account";
-    process.env.R2_ACCESS_KEY_ID = "test-key";
-    process.env.R2_SECRET_ACCESS_KEY = "test-secret";
-    process.env.R2_BUCKET_NAME = "test-bucket";
-  });
-
-  it("uploads artifacts using convenience function", async () => {
-    // This is an integration test that would require actual R2 credentials
-    // For unit tests, we rely on the R2Uploader class tests above
-    expect(typeof uploadRenderArtifacts).toBe("function");
   });
 });

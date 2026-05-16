@@ -53,8 +53,8 @@ export interface RenderJob {
   mp3R2Key: string | null;
   mp4R2Key: string | null;
   chaptersR2Key: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | null;
+  updatedAt: Date | null;
   completedAt: Date | null;
 }
 
@@ -316,27 +316,6 @@ export async function startRenderJob(
 
   if (!updated) return null;
 
-  return {
-    id: updated.id,
-    songsetId: updated.songsetId,
-    userId: updated.userId,
-    status: updated.status as RenderJob["status"],
-    phase: updated.phase as RenderPhase | null,
-    phaseIndex: updated.phaseIndex,
-    totalPhases: updated.totalPhases,
-    percentComplete: updated.percentComplete ?? 0,
-    estimatedSecondsLeft: updated.estimatedSecondsLeft,
-    elapsedSeconds: updated.elapsedSeconds,
-    errorMessage: updated.errorMessage,
-    template: updated.template,
-    resolution: updated.resolution,
-    audioEnabled: updated.audioEnabled ?? true,
-    videoEnabled: updated.videoEnabled ?? true,
-    fontSizePreset: updated.fontSizePreset,
-    includeTitleCard: updated.includeTitleCard ?? false,
-    titleCardDurationSeconds: updated.titleCardDurationSeconds,
-    mp3R2Key: updated.mp3R2Key,
-    mp4R2Key: updated.mp4R2Key,
   return mapRowToRenderJob(updated);
 }
 

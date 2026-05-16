@@ -260,9 +260,9 @@ export function RenderForm({
               <div className="space-y-2 pl-6">
                 <Label htmlFor="titleCardDuration">Duration</Label>
                 <Select
-                  value={formData.titleCardDurationSeconds.toString()}
+                  value={(formData.titleCardDurationSeconds ?? 10).toString()}
                   onValueChange={(value) =>
-                    updateField("titleCardDurationSeconds", parseInt(value, 10))
+                    updateField("titleCardDurationSeconds", parseInt(value ?? "10", 10))
                   }
                 >
                   <SelectTrigger id="titleCardDuration">

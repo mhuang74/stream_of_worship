@@ -31,7 +31,6 @@ export function useWakeLock() {
     if (!state.isSupported || wakeLockRef.current) return;
 
     try {
-      // @ts-expect-error - WakeLock API may not be in types
       const wakeLock = await navigator.wakeLock.request("screen");
       wakeLockRef.current = wakeLock;
       

@@ -110,7 +110,7 @@ function PhoneLayout({
           </Button>
           <Slider
             value={[settings.gapBeats]}
-            onValueChange={([value]) => handleChange({ gapBeats: value })}
+            onValueChange={(value) => handleChange({ gapBeats: (Array.isArray(value) ? value[0] : value) as number })}
             min={0}
             max={8}
             step={0.5}
@@ -232,7 +232,7 @@ function DesktopLayout({
           </Button>
           <Slider
             value={[settings.gapBeats]}
-            onValueChange={([value]) => handleChange({ gapBeats: value })}
+            onValueChange={(value) => handleChange({ gapBeats: (Array.isArray(value) ? value[0] : value) as number })}
             min={0}
             max={8}
             step={0.5}
@@ -270,7 +270,7 @@ function DesktopLayout({
             <Label className="text-xs">Duration</Label>
             <Slider
               value={[settings.crossfadeDurationSeconds || 2]}
-              onValueChange={([value]) => handleChange({ crossfadeDurationSeconds: value })}
+              onValueChange={(value) => handleChange({ crossfadeDurationSeconds: (Array.isArray(value) ? value[0] : value) as number })}
               min={0.5}
               max={5}
               step={0.5}
@@ -290,7 +290,7 @@ function DesktopLayout({
         </Label>
         <Select
           value={settings.keyShiftSemitones.toString()}
-          onValueChange={(value) => handleChange({ keyShiftSemitones: parseInt(value, 10) })}
+          onValueChange={(value) => handleChange({ keyShiftSemitones: parseInt(value ?? "0", 10) })}
         >
           <SelectTrigger>
             <SelectValue />
@@ -316,7 +316,7 @@ function DesktopLayout({
         </Label>
         <Select
           value={settings.tempoRatio.toString()}
-          onValueChange={(value) => handleChange({ tempoRatio: parseFloat(value) })}
+          onValueChange={(value) => handleChange({ tempoRatio: parseFloat(value ?? "1.0") })}
         >
           <SelectTrigger>
             <SelectValue />

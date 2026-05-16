@@ -14,6 +14,7 @@ export interface SongsetItem {
   id: string;
   songsetId: string;
   songId: string;
+  songTitle?: string | null;
   recordingHashPrefix: string | null;
   position: number;
   gapBeats: number | null;
@@ -131,7 +132,7 @@ export class AudioEngine {
 
           const stream = metadata.streams[0];
           const durationSeconds = metadata.format.duration ?? 0;
-          const bitrate = parseInt(metadata.format.bit_rate ?? "0", 10);
+          const bitrate = parseInt(String(metadata.format.bit_rate ?? "0"), 10);
 
           resolve({
             durationSeconds,

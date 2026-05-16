@@ -13,6 +13,11 @@ import {
 } from "@/lib/render/frame-renderer";
 import { parseLRC, GlobalLRCLine, convertToGlobalTimeline, estimateLastLyricDuration, isValidLRC, getLyricsTimeRange, findCurrentLyricIndex, groupLyricsBySong } from "@/lib/render/lrc-parser";
 import { AssetFetcher } from "@/lib/render/asset-fetcher";
+import { spawn as childProcessSpawn } from "child_process";
+import ffmpeg from "fluent-ffmpeg";
+
+const mockFfprobe = vi.fn();
+(ffmpeg as unknown as { ffprobe: typeof mockFfprobe }).ffprobe = mockFfprobe;
 
 // Mock child_process spawn
 vi.mock("child_process", async (importOriginal) => {
@@ -23,12 +28,87 @@ vi.mock("child_process", async (importOriginal) => {
   };
 });
 
+// Mock canvas native module
+vi.mock("canvas", () => {
+  const imageData = { data: new Uint8ClampedArray(1920 * 1080 * 4) };
+  const mockCtx = {
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    measureText: vi.fn().mockReturnValue({ width: 100 }),
+    setFont: vi.fn(),
+    setColor: vi.fn(),
+    createLinearGradient: vi.fn().mockReturnValue({
+      addColorStop: vi.fn(),
+    }),
+    getImageData: vi.fn().mockReturnValue(imageData),
+    putImageData: vi.fn(),
+    drawImage: vi.fn(),
+    clearRect: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    arc: vi.fn(),
+    rect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    clip: vi.fn(),
+    fillStyle: "",
+    strokeStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    globalAlpha: 1,
+    lineWidth: 1,
+    shadowColor: "",
+    shadowBlur: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
+  };
+  const mockCanvas = {
+    width: 1920,
+    height: 1080,
+    getContext: vi.fn().mockReturnValue(mockCtx),
+    toBuffer: vi.fn().mockReturnValue(Buffer.alloc(1920 * 1080 * 4)),
+  };
+  return {
+    createCanvas: vi.fn().mockReturnValue(mockCanvas),
+    registerFont: vi.fn(),
+  };
+});
+
 // Mock fluent-ffmpeg
-vi.mock("fluent-ffmpeg", () => ({
-  default: {
-    ffprobe: vi.fn(),
-  },
-}));
+vi.mock("fluent-ffmpeg", () => {
+  const mockFfmpegInstance = {
+    input: vi.fn().mockReturnThis(),
+    inputOptions: vi.fn().mockReturnThis(),
+    complexFilter: vi.fn().mockReturnThis(),
+    audioCodec: vi.fn().mockReturnThis(),
+    audioBitrate: vi.fn().mockReturnThis(),
+    audioFrequency: vi.fn().mockReturnThis(),
+    audioChannels: vi.fn().mockReturnThis(),
+    audioFilters: vi.fn().mockReturnThis(),
+    output: vi.fn().mockReturnThis(),
+    outputOptions: vi.fn().mockReturnThis(),
+    noVideo: vi.fn().mockReturnThis(),
+    on: vi.fn().mockImplementation(function(this: unknown, event: string, callback: () => void) {
+      if (event === "end") {
+        setTimeout(callback, 0);
+      }
+      return this;
+    }),
+    run: vi.fn(),
+  };
+
+  const mockFfmpeg = vi.fn(() => mockFfmpegInstance);
+  const ffprobe = vi.fn();
+  (mockFfmpeg as any).ffprobe = ffprobe;
+
+  return {
+    default: mockFfmpeg,
+    ffprobe,
+  };
+});
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -61,35 +141,28 @@ describe("VideoEngine", () => {
     });
   });
 
-  describe("constructor", () => {
-    it("should create VideoEngine with default options", () => {
-      const engine = new VideoEngine(assetFetcher);
-      expect(engine).toBeDefined();
+  it("should create VideoEngine with custom options", () => {
+    const engine = new VideoEngine(assetFetcher, {
+      template: "gradient_warm",
+      fontSizePreset: "L",
+      resolution: "720p",
+      fps: 30,
+      includeTitleCard: false,
+      titleCardDurationSeconds: 10,
     });
+    expect(engine).toBeDefined();
+  });
 
-    it("should create VideoEngine with custom options", () => {
-      const engine = new VideoEngine(assetFetcher, {
-        template: "gradient_warm",
-        fontSizePreset: "L",
-        resolution: "720p",
-        fps: 30,
-        includeTitleCard: false,
-        titleCardDurationSeconds: 10,
-      });
-      expect(engine).toBeDefined();
+  it("should clamp title card duration between 5-30 seconds", () => {
+    const engine1 = new VideoEngine(assetFetcher, {
+      titleCardDurationSeconds: 3,
     });
+    expect(engine1).toBeDefined();
 
-    it("should clamp title card duration between 5-30 seconds", () => {
-      const engine1 = new VideoEngine(assetFetcher, {
-        titleCardDurationSeconds: 3,
-      });
-      expect(engine1).toBeDefined();
-
-      const engine2 = new VideoEngine(assetFetcher, {
-        titleCardDurationSeconds: 35,
-      });
-      expect(engine2).toBeDefined();
+    const engine2 = new VideoEngine(assetFetcher, {
+      titleCardDurationSeconds: 35,
     });
+    expect(engine2).toBeDefined();
   });
 
   describe("getAvailableTemplates", () => {
@@ -161,7 +234,6 @@ describe("VideoEngine", () => {
         },
       ];
 
-      // Access private method through type assertion
       const result = await (videoEngine as unknown as { formatChaptersForFFmpeg: (chapters: ChapterInfo[]) => string }).formatChaptersForFFmpeg(chapters);
 
       expect(result).toContain(";FFMETADATA1");
@@ -174,11 +246,169 @@ describe("VideoEngine", () => {
   });
 });
 
+describe("VideoEngine.generateVideo", () => {
+  let assetFetcher: AssetFetcher;
+  let videoEngine: VideoEngine;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    assetFetcher = {
+      downloadLrc: vi.fn(),
+      getTempDir: vi.fn().mockResolvedValue("/tmp/test"),
+    } as unknown as AssetFetcher;
+
+    videoEngine = new VideoEngine(assetFetcher, {
+      template: "dark",
+      fontSizePreset: "M",
+      resolution: "720p",
+      fps: 24,
+    });
+  });
+
+  it("generates video for single song with lyrics", async () => {
+    const lrcContent = "[00:05.00]First line\n[00:10.00]Second line";
+    (assetFetcher.downloadLrc as ReturnType<typeof vi.fn>).mockResolvedValue(lrcContent);
+
+    mockFfprobe.mockImplementation(
+      (_path: string, cb: (err: null, meta: object) => void) => {
+        cb(null, {
+          streams: [{ channels: 2, sample_rate: 44100 }],
+          format: { duration: 30 },
+        });
+      }
+    );
+
+    const encodeSpy = vi.spyOn(videoEngine as any, "encodeVideoWithFFmpeg").mockResolvedValue(undefined);
+
+    const segments = [
+      {
+        item: {
+          id: "item-1",
+          songsetId: "set-1",
+          songId: "song-1",
+          songTitle: "Amazing Grace",
+          recordingHashPrefix: "abc123",
+          position: 0,
+          gapBeats: 0,
+          crossfadeEnabled: 0,
+          crossfadeDurationSeconds: null,
+          keyShiftSemitones: 0,
+          tempoRatio: 1.0,
+          tempoBpm: 120,
+        },
+        audioPath: "/tmp/audio.mp3",
+        startTimeSeconds: 0,
+        durationSeconds: 30,
+        gapBeforeSeconds: 0,
+      },
+    ];
+
+    const result = await videoEngine.generateVideo(
+      "/tmp/audio.mp3",
+      segments,
+      "/tmp/output.mp4"
+    );
+
+    expect(result.outputPath).toBe("/tmp/output.mp4");
+    expect(result.durationSeconds).toBe(30);
+    expect(result.width).toBe(1280);
+    expect(result.height).toBe(720);
+    expect(encodeSpy).toHaveBeenCalled();
+  });
+
+  it("falls back to blank video when no LRC available", async () => {
+    (assetFetcher.downloadLrc as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    mockFfprobe.mockImplementation(
+      (_path: string, cb: (err: null, meta: object) => void) => {
+        cb(null, {
+          streams: [{ channels: 2, sample_rate: 44100 }],
+          format: { duration: 30 },
+        });
+      }
+    );
+
+    const blankSpy = vi.spyOn(videoEngine as any, "generateBlankVideo").mockResolvedValue({
+      outputPath: "/tmp/output.mp4",
+      totalFrames: 720,
+      durationSeconds: 30,
+      width: 1280,
+      height: 720,
+      fps: 24,
+    });
+
+    const segments = [
+      {
+        item: {
+          id: "item-1",
+          songsetId: "set-1",
+          songId: "song-1",
+          songTitle: "Test Song",
+          recordingHashPrefix: "abc123",
+          position: 0,
+          gapBeats: 0,
+          crossfadeEnabled: 0,
+          crossfadeDurationSeconds: null,
+          keyShiftSemitones: 0,
+          tempoRatio: 1.0,
+        },
+        audioPath: "/tmp/audio.mp3",
+        startTimeSeconds: 0,
+        durationSeconds: 30,
+        gapBeforeSeconds: 0,
+      },
+    ];
+
+    const result = await videoEngine.generateVideo(
+      "/tmp/audio.mp3",
+      segments,
+      "/tmp/output.mp4"
+    );
+
+    expect(result.outputPath).toBe("/tmp/output.mp4");
+    expect(blankSpy).toHaveBeenCalled();
+  });
+
+  it("throws error when audio info cannot be retrieved", async () => {
+    mockFfprobe.mockImplementation(
+      (_path: string, cb: (err: Error, meta: undefined) => void) => {
+        cb(new Error("ffprobe failed"), undefined);
+      }
+    );
+
+    const segments = [
+      {
+        item: {
+          id: "item-1",
+          songsetId: "set-1",
+          songId: "song-1",
+          recordingHashPrefix: "abc123",
+          position: 0,
+          gapBeats: 0,
+          crossfadeEnabled: 0,
+          crossfadeDurationSeconds: null,
+          keyShiftSemitones: 0,
+          tempoRatio: 1.0,
+        },
+        audioPath: "/tmp/audio.mp3",
+        startTimeSeconds: 0,
+        durationSeconds: 30,
+        gapBeforeSeconds: 0,
+      },
+    ];
+
+    await expect(
+      videoEngine.generateVideo("/tmp/audio.mp3", segments, "/tmp/output.mp4")
+    ).rejects.toThrow();
+  });
+});
+
 describe("findCurrentLyricIndex", () => {
   const lyrics: GlobalLRCLine[] = [
-    { text: "First line", timeSeconds: 5, globalTimeSeconds: 5, title: "Song 1" },
-    { text: "Second line", timeSeconds: 10, globalTimeSeconds: 10, title: "Song 1" },
-    { text: "Third line", timeSeconds: 15, globalTimeSeconds: 15, title: "Song 1" },
+    { text: "First line", localTimeSeconds: 5, globalTimeSeconds: 5, title: "Song 1" },
+    { text: "Second line", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song 1" },
+    { text: "Third line", localTimeSeconds: 15, globalTimeSeconds: 15, title: "Song 1" },
   ];
 
   it("returns -1 when time is before first lyric", () => {
@@ -205,9 +435,9 @@ describe("findCurrentLyricIndex", () => {
 describe("groupLyricsBySong", () => {
   it("groups lyrics by song title", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Line 1", timeSeconds: 0, globalTimeSeconds: 0, title: "Song A" },
-      { text: "Line 2", timeSeconds: 5, globalTimeSeconds: 5, title: "Song B" },
-      { text: "Line 3", timeSeconds: 10, globalTimeSeconds: 10, title: "Song A" },
+      { text: "Line 1", localTimeSeconds: 0, globalTimeSeconds: 0, title: "Song A" },
+      { text: "Line 2", localTimeSeconds: 5, globalTimeSeconds: 5, title: "Song B" },
+      { text: "Line 3", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song A" },
     ];
 
     const grouped = groupLyricsBySong(lyrics);
@@ -225,8 +455,8 @@ describe("groupLyricsBySong", () => {
 
   it("handles single song", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Line 1", timeSeconds: 0, globalTimeSeconds: 0, title: "Song X" },
-      { text: "Line 2", timeSeconds: 5, globalTimeSeconds: 5, title: "Song X" },
+      { text: "Line 1", localTimeSeconds: 0, globalTimeSeconds: 0, title: "Song X" },
+      { text: "Line 2", localTimeSeconds: 5, globalTimeSeconds: 5, title: "Song X" },
     ];
 
     const grouped = groupLyricsBySong(lyrics);
@@ -391,23 +621,20 @@ describe("LRC Parser", () => {
     it("should estimate based on previous occurrence", () => {
       const lyrics: GlobalLRCLine[] = [
         {
-          timeSeconds: 10,
-          globalTimeSeconds: 10,
           localTimeSeconds: 0,
+          globalTimeSeconds: 10,
           text: "Repeated line",
           title: "Song",
         },
         {
-          timeSeconds: 15,
-          globalTimeSeconds: 15,
           localTimeSeconds: 5,
+          globalTimeSeconds: 15,
           text: "Other line",
           title: "Song",
         },
         {
-          timeSeconds: 20,
-          globalTimeSeconds: 20,
           localTimeSeconds: 10,
+          globalTimeSeconds: 20,
           text: "Repeated line",
           title: "Song",
         },
@@ -420,9 +647,8 @@ describe("LRC Parser", () => {
     it("should estimate based on character count when no previous occurrence", () => {
       const lyrics: GlobalLRCLine[] = [
         {
-          timeSeconds: 10,
-          globalTimeSeconds: 10,
           localTimeSeconds: 0,
+          globalTimeSeconds: 10,
           text: "Hello",
           title: "Song",
         },

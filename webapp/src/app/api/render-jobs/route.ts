@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createRenderJob } from "@/lib/render/job-manager";
+import { executeRenderPipeline } from "@/lib/render/pipeline";
 import { z } from "zod";
 
 const createRenderJobSchema = z.object({
@@ -29,12 +30,14 @@ export async function POST(request: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.errors },
+        { error: "Invalid input", details: parsed.error.issues },
         { status: 400 }
       );
     }
 
     const job = await createRenderJob(Number(session.user.id), parsed.data);
+
+    executeRenderPipeline(job.id, Number(session.user.id)).catch(console.error);
 
     return NextResponse.json(job, { status: 201 });
   } catch (error) {

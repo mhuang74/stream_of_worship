@@ -25,9 +25,9 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
         if (
           typeof window !== "undefined" &&
           screen.orientation &&
-          typeof screen.orientation.lock === "function"
+          typeof (screen.orientation as any).lock === "function"
         ) {
-          await screen.orientation.lock("landscape");
+          await (screen.orientation as any).lock("landscape");
         }
       } catch {
         // Orientation lock not supported or permission denied

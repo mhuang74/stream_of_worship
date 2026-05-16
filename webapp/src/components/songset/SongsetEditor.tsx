@@ -299,7 +299,7 @@ export function SongsetEditor({
 
       {/* Stale banner */}
       {songset.isArtifactsStale && !isStaleBannerDismissed && (
-        <Alert variant="warning" className="rounded-none border-x-0">
+        <Alert variant="destructive" className="rounded-none border-x-0">
           <AlertTriangle className="size-4" />
           <AlertTitle>Artifacts out of date</AlertTitle>
           <AlertDescription className="flex items-center gap-2 flex-wrap">

@@ -30,7 +30,6 @@ export class PresentationController {
     try {
       // @ts-expect-error - PresentationRequest may not be in TypeScript lib types
       const request = new PresentationRequest([url]);
-      // @ts-expect-error - getAvailability may not be in lib types
       const availability = await request.getAvailability();
       return availability.value as boolean;
     } catch {
@@ -49,7 +48,6 @@ export class PresentationController {
 
     // @ts-expect-error - PresentationRequest may not be in TypeScript lib types
     const request = new PresentationRequest([url]);
-    // @ts-expect-error - start may not be in lib types
     const connection = await request.start();
     this.connection = connection;
 

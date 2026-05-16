@@ -1,0 +1,1 @@
+ALTER TABLE "render_jobs" ALTER COLUMN "completed_at" DROP NOT NULL;

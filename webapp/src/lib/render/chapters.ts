@@ -32,66 +32,56 @@ export interface ChapterGenerationOptions {
   includeEmptyChapters?: boolean;
 }
 
-/**
- * Generate chapters manifest from audio segments and LRC files.
- *
- * @param segments - Audio segment information with song metadata
- * @param assetFetcher - Asset fetcher for downloading LRC files
- * @param totalDurationSeconds - Total duration of the combined audio
- * @param options - Generation options
- * @returns Chapters manifest
- */
+function buildChaptersFromSegments(
+  segments: AudioSegmentInfo[],
+  getLyrics: (hashPrefix: string, startSeconds: number) => ChapterLine[] | Promise<ChapterLine[]>
+): Promise<Chapter[]> {
+  const chapters: Chapter[] = [];
+  const promises = segments.map(async (segment, i) => {
+    const startSeconds = segment.startTimeSeconds;
+    const endSeconds = startSeconds + segment.durationSeconds;
+    const songTitle = segment.item.songTitle ?? segment.item.songId ?? `Song ${i + 1}`;
+
+    const hashPrefix = segment.item.recordingHashPrefix;
+    const lines = hashPrefix
+      ? await getLyrics(hashPrefix, startSeconds)
+      : [];
+
+    return {
+      position: i + 1,
+      songTitle,
+      startSeconds,
+      endSeconds,
+      lines,
+    };
+  });
+  return Promise.all(promises);
+}
+
 export async function generateChaptersManifest(
   segments: AudioSegmentInfo[],
   assetFetcher: AssetFetcher,
   totalDurationSeconds: number,
   options: ChapterGenerationOptions = {}
 ): Promise<ChaptersManifest> {
-  const chapters: Chapter[] = [];
-
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    const hashPrefix = segment.item.recordingHashPrefix;
-
-    // Calculate chapter timing
-    const startSeconds = segment.startTimeSeconds;
-    const endSeconds = startSeconds + segment.durationSeconds;
-
-    // Default to song ID as title if no metadata available
-    const songTitle = segment.item.songId ?? `Song ${i + 1}`;
-
-    let lines: ChapterLine[] = [];
-
-    if (hashPrefix) {
+  const chapters = await buildChaptersFromSegments(
+    segments,
+    async (hashPrefix, startSeconds) => {
       try {
-        // Download and parse LRC file
         const lrcContent = await assetFetcher.downloadLrc(hashPrefix);
         if (lrcContent) {
           const localLyrics = parseLRC(lrcContent);
-          // Convert to chapter lines with global timing
-          lines = localLyrics.map((line) => ({
+          return localLyrics.map((line) => ({
             text: line.text,
             startSeconds: startSeconds + line.timeSeconds,
           }));
         }
       } catch (error) {
-        console.warn(`Failed to load LRC for chapter ${i + 1}:`, error);
+        console.warn(`Failed to load LRC for chapter:`, error);
       }
+      return [];
     }
-
-    // Skip empty chapters unless includeEmptyChapters is true
-    if (lines.length === 0 && !options.includeEmptyChapters) {
-      // Still include the chapter but with empty lines array
-    }
-
-    chapters.push({
-      position: i + 1,
-      songTitle,
-      startSeconds,
-      endSeconds,
-      lines,
-    });
-  }
+  );
 
   return {
     chapters,
@@ -100,30 +90,17 @@ export async function generateChaptersManifest(
   };
 }
 
-/**
- * Generate chapters manifest from segments without fetching LRC files.
- * Used when lyrics are already available or not needed.
- *
- * @param segments - Audio segment information
- * @param lyricsMap - Map of hashPrefix to parsed LRC lines
- * @param totalDurationSeconds - Total duration of the combined audio
- * @returns Chapters manifest
- */
 export function generateChaptersManifestFromLyrics(
   segments: AudioSegmentInfo[],
   lyricsMap: Map<string, LRCLine[]>,
   totalDurationSeconds: number
 ): ChaptersManifest {
-  const chapters: Chapter[] = [];
-
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    const hashPrefix = segment.item.recordingHashPrefix;
-
+  const chapters = segments.map((segment, i) => {
     const startSeconds = segment.startTimeSeconds;
     const endSeconds = startSeconds + segment.durationSeconds;
-    const songTitle = segment.item.songId ?? `Song ${i + 1}`;
+    const songTitle = segment.item.songTitle ?? segment.item.songId ?? `Song ${i + 1}`;
 
+    const hashPrefix = segment.item.recordingHashPrefix;
     let lines: ChapterLine[] = [];
 
     if (hashPrefix && lyricsMap.has(hashPrefix)) {
@@ -134,14 +111,14 @@ export function generateChaptersManifestFromLyrics(
       }));
     }
 
-    chapters.push({
+    return {
       position: i + 1,
       songTitle,
       startSeconds,
       endSeconds,
       lines,
-    });
-  }
+    };
+  });
 
   return {
     chapters,
@@ -250,22 +227,6 @@ export function getLyricAtTime(
   return null;
 }
 
-/**
- * Serialize chapters manifest to JSON string.
- *
- * @param manifest - Chapters manifest
- * @returns JSON string
- */
-export function serializeChaptersManifest(manifest: ChaptersManifest): string {
-  return JSON.stringify(manifest, null, 2);
-}
-
-/**
- * Parse chapters manifest from JSON string.
- *
- * @param json - JSON string
- * @returns Parsed chapters manifest
- */
 export function parseChaptersManifest(json: string): ChaptersManifest {
   const parsed = JSON.parse(json) as ChaptersManifest;
 

@@ -64,10 +64,10 @@ export function SongSearch({
 
   // Handle album filter change
   const handleAlbumChange = useCallback(
-    (value: string) => {
-      setSelectedAlbum(value);
+    (value: string | null) => {
+      setSelectedAlbum(value ?? "");
       setIsSearching(true);
-      debouncedSearch(query, value);
+      debouncedSearch(query, value ?? "");
     },
     [debouncedSearch, query]
   );
