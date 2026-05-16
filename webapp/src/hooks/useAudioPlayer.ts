@@ -28,6 +28,7 @@ interface PlayLyricsLoopOptions {
   title: string;
   artist: string;
   src: string;
+  duration: number;
   loopStartSeconds: number;
   loopDurationSeconds: number;
 }

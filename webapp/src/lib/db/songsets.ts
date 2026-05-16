@@ -72,6 +72,7 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
   }
 
   if (job.status === "completed") {
+    // completedAt can be null for non-completed jobs (nullable per schema)
     if (job.completedAt) {
       const newerItem = await db.query.songsetItems.findFirst({
         where: and(
@@ -98,7 +99,18 @@ export async function listSongsets(
     orderBy: [desc(songsets.updatedAt)],
     limit,
     offset,
-    with: { items: { columns: { id: true } } },
+    with: {
+      items: { columns: { id: true, createdAt: true } },
+      renderJobs: {
+        columns: {
+          id: true,
+          status: true,
+          completedAt: true,
+        },
+        orderBy: [desc(renderJobs.createdAt)],
+        limit: 1,
+      },
+    },
   });
 
   const countResult = await db
@@ -108,8 +120,35 @@ export async function listSongsets(
 
   const total = countResult[0]?.count ?? 0;
 
-  const mapped = await Promise.all(
-    rows.map(async (row) => ({
+  const mapped = rows.map((row) => {
+    const latestJob = row.renderJobs[0];
+    let renderState: RenderState = "unrendered";
+
+    if (row.latestRenderJobId && latestJob) {
+      if (latestJob.status === "queued" || latestJob.status === "running") {
+        renderState = "rendering";
+      } else if (
+        latestJob.status === "failed" ||
+        row.lastFailedRenderJobId === row.latestRenderJobId
+      ) {
+        renderState = "failed";
+      } else if (latestJob.status === "completed") {
+        if (latestJob.completedAt) {
+          const hasNewerItem = row.items.some(
+            (item) => (item as { createdAt: Date }).createdAt > latestJob.completedAt!
+          );
+          if (hasNewerItem || row.updatedAt > latestJob.completedAt) {
+            renderState = "stale";
+          } else {
+            renderState = "fresh";
+          }
+        } else {
+          renderState = "fresh";
+        }
+      }
+    }
+
+    return {
       id: row.id,
       name: row.name,
       description: row.description,
@@ -118,9 +157,9 @@ export async function listSongsets(
       latestRenderJobId: row.latestRenderJobId,
       lastFailedRenderJobId: row.lastFailedRenderJobId,
       itemCount: row.items.length,
-      renderState: await computeRenderState(row.id),
-    }))
-  );
+      renderState,
+    };
+  });
 
   return { songsets: mapped, total };
 }

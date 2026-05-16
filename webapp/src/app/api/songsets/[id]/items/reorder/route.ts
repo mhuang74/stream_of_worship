@@ -16,9 +16,10 @@ const reorderSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await auth.api.getSession({
       headers: request.headers,
     });
@@ -39,9 +40,8 @@ export async function POST(
 
     const { updates } = parsed.data;
 
-    // Verify all items belong to this songset and user
     const songset = await db.query.songsets.findFirst({
-      where: eq(songsetItems.songsetId, params.id),
+      where: eq(songsetItems.songsetId, id),
     });
 
     if (!songset) {
@@ -51,10 +51,8 @@ export async function POST(
       );
     }
 
-    // Update all positions in a transaction
     await db.transaction(async (tx) => {
       for (const update of updates) {
-        // Verify item belongs to this songset
         const item = await tx.query.songsetItems.findFirst({
           where: eq(songsetItems.id, update.itemId),
           with: {
@@ -62,7 +60,7 @@ export async function POST(
           },
         });
 
-        if (!item || item.songsetId !== params.id || item.songset.userId !== Number(session.user.id)) {
+        if (!item || item.songsetId !== id || item.songset.userId !== Number(session.user.id)) {
           throw new Error(`Item ${update.itemId} not found or access denied`);
         }
 

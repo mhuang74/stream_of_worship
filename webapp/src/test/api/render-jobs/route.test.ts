@@ -18,6 +18,10 @@ vi.mock("@/lib/render/job-manager", () => ({
   createRenderJob: vi.fn(),
 }));
 
+vi.mock("@/lib/render/pipeline", () => ({
+  executeRenderPipeline: vi.fn().mockResolvedValue(undefined),
+}));
+
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
   const urlObj = new URL(url);

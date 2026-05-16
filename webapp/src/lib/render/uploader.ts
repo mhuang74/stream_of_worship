@@ -13,7 +13,7 @@ import {
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { createR2ClientFromEnv, R2Config } from "@/lib/r2/client";
-import { ChaptersManifest, serializeChaptersManifest } from "./chapters";
+import { ChaptersManifest } from "./chapters";
 
 export interface UploadOptions {
   contentType?: string;
@@ -106,64 +106,35 @@ export class R2Uploader {
     filePath: string,
     options: UploadOptions = {}
   ): Promise<UploadResult> {
-    // Read file
     const fileBuffer = await fs.readFile(filePath);
     const stats = await fs.stat(filePath);
-
-    // Determine content type
-    const contentType =
-      options.contentType ?? this.inferContentType(key);
-
-    // Determine cache control
-    const cacheControl =
-      options.cacheControl ?? "public, max-age=3600";
-
-    // Upload to R2
-    const command = new PutObjectCommand({
-      Bucket: this.bucketName,
-      Key: key,
-      Body: fileBuffer,
-      ContentType: contentType,
-      CacheControl: cacheControl,
-      Metadata: options.metadata,
-    });
-
-    const result = await this.client.send(command);
-
-    return {
-      key,
-      sizeBytes: stats.size,
-      etag: result.ETag,
-      uploadedAt: new Date(),
-    };
+    const result = await this.putObject(key, fileBuffer, stats.size, options);
+    return { ...result, sizeBytes: stats.size };
   }
 
-  /**
-   * Upload a buffer to R2.
-   *
-   * @param key - R2 object key
-   * @param buffer - Buffer to upload
-   * @param options - Upload options
-   * @returns Upload result
-   */
   async uploadBuffer(
     key: string,
     buffer: Buffer,
     options: UploadOptions = {}
   ): Promise<UploadResult> {
-    // Determine content type
+    return this.putObject(key, buffer, buffer.length, options);
+  }
+
+  private async putObject(
+    key: string,
+    body: Buffer,
+    sizeBytes: number,
+    options: UploadOptions
+  ): Promise<UploadResult> {
     const contentType =
       options.contentType ?? this.inferContentType(key);
-
-    // Determine cache control
     const cacheControl =
       options.cacheControl ?? "public, max-age=3600";
 
-    // Upload to R2
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: key,
-      Body: buffer,
+      Body: body,
       ContentType: contentType,
       CacheControl: cacheControl,
       Metadata: options.metadata,
@@ -173,7 +144,7 @@ export class R2Uploader {
 
     return {
       key,
-      sizeBytes: buffer.length,
+      sizeBytes,
       etag: result.ETag,
       uploadedAt: new Date(),
     };
@@ -249,7 +220,7 @@ export class R2Uploader {
     // Upload chapters if present
     if (artifacts.chapters) {
       const key = `renders/${renderJobId}/chapters.json`;
-      const jsonContent = serializeChaptersManifest(artifacts.chapters);
+      const jsonContent = JSON.stringify(artifacts.chapters, null, 2);
       const buffer = Buffer.from(jsonContent, "utf-8");
 
       if (progressCallback) {
@@ -392,32 +363,4 @@ export class R2Uploader {
   static getChaptersKey(renderJobId: string): string {
     return `renders/${renderJobId}/chapters.json`;
   }
-}
-
-/**
- * Create an R2 uploader from environment variables.
- *
- * @returns R2Uploader instance
- */
-export function createR2UploaderFromEnv(): R2Uploader {
-  return new R2Uploader();
-}
-
-/**
- * Upload render artifacts and update job status.
- * Convenience function that handles the full upload flow.
- *
- * @param renderJobId - Render job ID
- * @param userId - User ID
- * @param artifacts - Render artifacts to upload
- * @param progressCallback - Called with upload progress
- * @returns Upload result with R2 keys
- */
-export async function uploadRenderArtifacts(
-  renderJobId: string,
-  artifacts: RenderArtifacts,
-  progressCallback?: UploadProgressCallback
-): Promise<UploadArtifactsResult> {
-  const uploader = createR2UploaderFromEnv();
-  return uploader.uploadRenderArtifacts(renderJobId, artifacts, progressCallback);
 }

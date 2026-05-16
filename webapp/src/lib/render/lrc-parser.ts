@@ -12,12 +12,10 @@ export interface LRCLine {
   text: string;
 }
 
-export interface GlobalLRCLine extends LRCLine {
-  /** Time in the final video (seconds) */
-  globalTimeSeconds: number;
-  /** Original time within the song (seconds) */
+export interface GlobalLRCLine {
+  text: string;
   localTimeSeconds: number;
-  /** Song title for this lyric */
+  globalTimeSeconds: number;
   title: string;
 }
 
@@ -66,10 +64,9 @@ export function convertToGlobalTimeline(
   title: string
 ): GlobalLRCLine[] {
   return localLines.map((line) => ({
-    timeSeconds: segmentStartSeconds + line.timeSeconds,
-    globalTimeSeconds: segmentStartSeconds + line.timeSeconds,
-    localTimeSeconds: line.timeSeconds,
     text: line.text,
+    localTimeSeconds: line.timeSeconds,
+    globalTimeSeconds: segmentStartSeconds + line.timeSeconds,
     title,
   }));
 }
@@ -112,7 +109,11 @@ export function estimateLastLyricDuration(
   let charCount = 0;
   for (const char of text) {
     const code = char.charCodeAt(0);
-    if (code > 0x7f) {
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) ||
+      (code >= 0x3400 && code <= 0x4dbf) ||
+      (code >= 0x3000 && code <= 0x303f)
+    ) {
       charCount += 1.0;
     } else {
       charCount += 0.5;

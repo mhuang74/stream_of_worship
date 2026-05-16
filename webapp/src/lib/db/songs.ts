@@ -11,8 +11,8 @@ export interface SongWithRecordings {
   albumName: string | null;
   albumSeries: string | null;
   musicalKey: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | null;
+  updatedAt: Date | null;
   recordings: RecordingInfo[];
 }
 

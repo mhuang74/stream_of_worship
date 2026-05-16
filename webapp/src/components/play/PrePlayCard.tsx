@@ -88,7 +88,6 @@ export function PrePlayCard({
         try {
           // @ts-expect-error - PresentationRequest may not be in types
           const request = new PresentationRequest(["/songsets/${songset.id}/play/projection"]);
-          // @ts-expect-error - getAvailability may not be in types
           const availability = await request.getAvailability();
           setIsCastAvailable(availability.value);
 
@@ -157,7 +156,6 @@ export function PrePlayCard({
     try {
       // @ts-expect-error - PresentationRequest may not be in types
       const request = new PresentationRequest([`/songsets/${songset.id}/play/projection`]);
-      // @ts-expect-error - start may not be in types
       await request.start();
       toast.success("Opening on second screen");
     } catch (error) {

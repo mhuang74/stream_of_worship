@@ -68,18 +68,15 @@ export function usePresentationReceiver(options: UsePresentationReceiverOptions)
     };
 
     const connectToConnection = (connection: EventTarget) => {
-      connection.addEventListener("message", handleMessage);
+      connection.addEventListener("message", handleMessage as EventListener);
       connection.addEventListener("close", handleTerminate);
       connection.addEventListener("terminate", handleTerminate);
       optionsRef.current.onConnected?.();
     };
 
-    // @ts-expect-error - PresentationConnectionList may not be in types
     receiver.connectionList
       // @ts-expect-error - connectionList is a promise-like
       .then((connectionList) => {
-        // Handle existing connections
-        // @ts-expect-error - connections may not be typed
         (connectionList.connections as EventTarget[]).forEach(connectToConnection);
 
         // Listen for new connections

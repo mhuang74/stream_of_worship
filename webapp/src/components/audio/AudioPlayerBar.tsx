@@ -41,13 +41,15 @@ export function AudioPlayerBar() {
     return null;
   }
 
-  const handleSeek = (value: number[]) => {
-    const newTime = (value[0] / 100) * duration;
+  const handleSeek = (value: number | readonly number[]) => {
+    const v = Array.isArray(value) ? value[0] : value;
+    const newTime = (v / 100) * duration;
     seek(newTime);
   };
 
-  const handleVolumeChange = (value: number[]) => {
-    setVolume(value[0] / 100);
+  const handleVolumeChange = (value: number | readonly number[]) => {
+    const v = Array.isArray(value) ? value[0] : value;
+    setVolume(v / 100);
   };
 
   return (

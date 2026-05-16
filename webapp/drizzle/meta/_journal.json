@@ -15,6 +15,13 @@
       "when": 1778900694922,
       "tag": "0001_chunky_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778901000000,
+      "tag": "0002_drop_completed_at_not_null",
+      "breakpoints": true
     }
   ]
 }
