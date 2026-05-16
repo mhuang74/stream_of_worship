@@ -47,12 +47,12 @@ export async function POST(
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.errors },
+        { error: "Invalid input", details: parsed.error.issues },
         { status: 400 }
       );
     }
 
-    const item = await addSongsetItem(params.id, session.user.id, parsed.data);
+    const item = await addSongsetItem(params.id, Number(session.user.id), parsed.data);
 
     if (!item) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
@@ -86,7 +86,7 @@ export async function PATCH(
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.errors },
+        { error: "Invalid input", details: parsed.error.issues },
         { status: 400 }
       );
     }
@@ -101,7 +101,7 @@ export async function PATCH(
     const item = await updateSongsetItem(
       body.itemId,
       params.id,
-      session.user.id,
+      Number(session.user.id),
       parsed.data
     );
 
@@ -145,7 +145,7 @@ export async function DELETE(
       );
     }
 
-    const deleted = await deleteSongsetItem(itemId, params.id, session.user.id);
+    const deleted = await deleteSongsetItem(itemId, params.id, Number(session.user.id));
 
     if (!deleted) {
       return NextResponse.json(

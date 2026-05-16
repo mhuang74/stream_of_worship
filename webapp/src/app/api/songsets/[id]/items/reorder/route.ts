@@ -32,7 +32,7 @@ export async function POST(
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.errors },
+        { error: "Invalid input", details: parsed.error.issues },
         { status: 400 }
       );
     }
@@ -42,9 +42,6 @@ export async function POST(
     // Verify all items belong to this songset and user
     const songset = await db.query.songsets.findFirst({
       where: eq(songsetItems.songsetId, params.id),
-      with: {
-        songset: true,
-      },
     });
 
     if (!songset) {
@@ -65,7 +62,7 @@ export async function POST(
           },
         });
 
-        if (!item || item.songsetId !== params.id || item.songset.userId !== session.user.id) {
+        if (!item || item.songsetId !== params.id || item.songset.userId !== Number(session.user.id)) {
           throw new Error(`Item ${update.itemId} not found or access denied`);
         }
 
