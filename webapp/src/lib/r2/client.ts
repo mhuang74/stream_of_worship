@@ -100,6 +100,23 @@ export class R2Client {
   }
 
   /**
+   * Get the size in bytes of an object in R2.
+   * Returns null if the object doesn't exist or size is unavailable.
+   */
+  async getObjectSize(key: string): Promise<number | null> {
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      const result = await this.client.send(command);
+      return result.ContentLength ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Check if a file exists in R2
    */
   async fileExists(key: string): Promise<boolean> {
