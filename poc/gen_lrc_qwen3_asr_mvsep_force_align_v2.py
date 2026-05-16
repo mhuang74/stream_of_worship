@@ -155,6 +155,7 @@ def _call_qwen3_asr_filetrans(
         "model": model,
         "file_url": file_url,
         "headers": filetrans_headers,
+        "enable_words": True,
     }
     typer.echo(
         f"FileTrans request payload:\n{json.dumps(debug_payload, ensure_ascii=False, indent=2)}",
@@ -166,6 +167,7 @@ def _call_qwen3_asr_filetrans(
         file_url=file_url,
         api_key=os.environ["DASHSCOPE_API_KEY"],
         headers=filetrans_headers,
+        enable_words=True,
     )
 
     if task_resp.status_code != 200:
