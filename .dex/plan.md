@@ -380,12 +380,12 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/offline/precaching.ts`
 - Create: `webapp/src/components/offline/OfflineIndicator.tsx`
 
-- [ ] Configure Workbox for service worker
-- [ ] Implement precaching for static assets
-- [ ] Implement runtime caching for API responses
-- [ ] Add offline indicator component
-- [ ] Write tests for service worker
-- [ ] Run test suite - must pass before task 6.2
+- [x] Configure Workbox for service worker
+- [x] Implement precaching for static assets
+- [x] Implement runtime caching for API responses
+- [x] Add offline indicator component
+- [x] Write tests for service worker
+- [x] Run test suite - must pass before task 6.2
 
 #### Task 6.2: Offline Artifact Caching
 
