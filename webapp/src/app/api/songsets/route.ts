@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     );
     const offset = parseInt(searchParams.get("offset") ?? "0");
 
-    const result = await listSongsets(session.user.id, limit, offset);
+    const result = await listSongsets(Number(session.user.id), limit, offset);
 
     return NextResponse.json(result);
   } catch (error) {
@@ -52,12 +52,12 @@ export async function POST(request: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.errors },
+        { error: "Invalid input", details: parsed.error.issues },
         { status: 400 }
       );
     }
 
-    const songset = await createSongset(session.user.id, parsed.data);
+    const songset = await createSongset(Number(session.user.id), parsed.data);
 
     return NextResponse.json(songset, { status: 201 });
   } catch (error) {

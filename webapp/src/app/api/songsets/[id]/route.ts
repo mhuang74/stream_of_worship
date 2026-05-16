@@ -21,7 +21,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const songset = await getSongset(params.id, session.user.id);
+    const songset = await getSongset(params.id, Number(session.user.id));
 
     if (!songset) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
@@ -55,12 +55,12 @@ export async function PATCH(
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.errors },
+        { error: "Invalid input", details: parsed.error.issues },
         { status: 400 }
       );
     }
 
-    const songset = await updateSongset(params.id, session.user.id, parsed.data);
+    const songset = await updateSongset(params.id, Number(session.user.id), parsed.data);
 
     if (!songset) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
@@ -89,7 +89,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const deleted = await deleteSongset(params.id, session.user.id);
+    const deleted = await deleteSongset(params.id, Number(session.user.id));
 
     if (!deleted) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });

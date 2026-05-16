@@ -338,7 +338,11 @@ describe("updateSongset", () => {
       lastFailedRenderJobId: null,
     };
 
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongset as any);
+    // First call: ownership check; second call: post-update re-fetch with items
+    vi.mocked(db.query.songsets.findFirst)
+      .mockResolvedValueOnce(mockSongset as any)
+      .mockResolvedValueOnce({ ...mockSongset, items: [] } as any);
+
     vi.mocked(db.update).mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({

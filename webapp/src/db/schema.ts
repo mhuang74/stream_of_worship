@@ -144,8 +144,8 @@ export const songsets = pgTable("songsets", {
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 
   // Render tracking
   latestRenderJobId: text("latest_render_job_id"),
@@ -168,7 +168,7 @@ export const songsetItems = pgTable("songset_items", {
   keyShiftSemitones: integer("key_shift_semitones").default(0),
   tempoRatio: real("tempo_ratio").default(1.0),
 
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ---------------------------------------------------------------------------
@@ -212,7 +212,7 @@ export const renderJobs = pgTable("render_jobs", {
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
 });
 
 // ---------------------------------------------------------------------------
@@ -343,6 +343,7 @@ export const songsetsRelations = relations(songsets, ({ one, many }) => ({
 
 export const songsetItemsRelations = relations(songsetItems, ({ one }) => ({
   songset: one(songsets, { fields: [songsetItems.songsetId], references: [songsets.id] }),
+  song: one(songs, { fields: [songsetItems.songId], references: [songs.id] }),
 }));
 
 export const renderJobsRelations = relations(renderJobs, ({ one }) => ({
