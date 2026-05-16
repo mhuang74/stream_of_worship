@@ -462,16 +462,16 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/app/share/[token]/play/projection/page.tsx`
 - Create: `webapp/src/components/share/ShareDialog.tsx`
 
-- [ ] Implement share token generation (max 20 active per user)
-- [ ] Create public hosted player page (/share/[token])
-- [ ] Implement share dialog with two tabs: Send file, Share link
-- [ ] Send file tab: per-app buttons with size limits - WhatsApp (2GB), Line (1GB), Email (25MB) - disable buttons above threshold with tooltip
-- [ ] Share link tab: copyable URL, revocation button, notice "Revoking stops streams; downloaded files unaffected"
-- [ ] Implement share revocation
-- [ ] Create public projection route (/share/[token]/play/projection) with same no-cache headers
-- [ ] Projection re-validates token server-side, mints own signed URLs (no URLs in query params)
-- [ ] Write tests for sharing system
-- [ ] Run test suite - must pass before task 7.5
+- [x] Implement share token generation (max 20 active per user)
+- [x] Create public hosted player page (/share/[token])
+- [x] Implement share dialog with two tabs: Send file, Share link
+- [x] Send file tab: per-app buttons with size limits - WhatsApp (2GB), Line (1GB), Email (25MB) - disable buttons above threshold with tooltip
+- [x] Share link tab: copyable URL, revocation button, notice "Revoking stops streams; downloaded files unaffected"
+- [x] Implement share revocation
+- [x] Create public projection route (/share/[token]/play/projection) with same no-cache headers
+- [x] Projection re-validates token server-side, mints own signed URLs (no URLs in query params)
+- [x] Write tests for sharing system
+- [x] Run test suite - must pass before task 7.5
 
 #### Task 7.5: Settings Screen
 
