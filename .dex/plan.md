@@ -414,15 +414,15 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/app/api/lyrics/marks/route.ts`
 - Create: `webapp/src/app/api/lyrics/overrides/route.ts`
 
-- [ ] Create lyrics review sheet with LRC lines and timestamps
-- [ ] Phone (sm/md): Review mode only - tap to mark/unmark problem lines
-- [ ] Desktop (lg): Three tabs - Review, Edit text, Edit timing
-- [ ] Implement mark/unmark line functionality (saves to lyric_marks table)
-- [ ] Implement text editing (saves to user_lrc_overrides table)
-- [ ] Implement timing editing with word-level alignment
-- [ ] Show footer on phone when marks exist: "Open on desktop to fix"
-- [ ] Write tests for lyrics review/editing
-- [ ] Run test suite - must pass before task 7.2
+- [x] Create lyrics review sheet with LRC lines and timestamps
+- [x] Phone (sm/md): Review mode only - tap to mark/unmark problem lines
+- [x] Desktop (lg): Three tabs - Review, Edit text, Edit timing
+- [x] Implement mark/unmark line functionality (saves to lyric_marks table)
+- [x] Implement text editing (saves to user_lrc_overrides table)
+- [x] Implement timing editing with word-level alignment
+- [x] Show footer on phone when marks exist: "Open on desktop to fix"
+- [x] Write tests for lyrics review/editing
+- [x] Run test suite - must pass before task 7.2
 
 #### Task 7.2: Transition Detail Sheet
 
@@ -431,12 +431,12 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/components/transition/TransitionControls.tsx`
 - Create: `webapp/src/app/api/transitions/preview/route.ts`
 
-- [ ] Create transition detail sheet (inline expand in editor)
-- [ ] Phone (sm/md): Gap control (numeric stepper +/- 0.5 beats, display in seconds), Crossfade toggle, Audio preview button
-- [ ] Desktop (lg): All phone controls plus Key shift selector (-6 to +6 semitones), Tempo nudge (+/- BPM with live preview), Waveform preview panel
-- [ ] Implement transition audio preview using global audio player
-- [ ] Write tests for transition controls
-- [ ] Run test suite - must pass before task 7.3
+- [x] Create transition detail sheet (inline expand in editor)
+- [x] Phone (sm/md): Gap control (numeric stepper +/- 0.5 beats, display in seconds), Crossfade toggle, Audio preview button
+- [x] Desktop (lg): All phone controls plus Key shift selector (-6 to +6 semitones), Tempo nudge (+/- BPM with live preview), Waveform preview panel
+- [x] Implement transition audio preview using global audio player
+- [x] Write tests for transition controls
+- [x] Run test suite - must pass before task 7.3
 
 #### Task 7.3: Semantic Search
 
@@ -445,13 +445,13 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/app/api/songs/search/semantic/route.ts`
 - Create: `webapp/src/components/search/SemanticSearch.tsx`
 
-- [ ] Set up fastembed-js with bge-m3 ONNX model in dedicated Edge Function
-- [ ] Implement POST /api/embed - accepts query text, returns 1024-dim vector
-- [ ] Implement POST /api/songs/search/semantic - calls /api/embed internally, queries pgvector
-- [ ] Create "Describe" mode in browse sheet (natural language search)
-- [ ] Display results with similarity scores
-- [ ] Write tests for semantic search
-- [ ] Run test suite - must pass before task 7.4
+- [x] Set up fastembed-js with bge-m3 ONNX model in dedicated Edge Function
+- [x] Implement POST /api/embed - accepts query text, returns 1024-dim vector
+- [x] Implement POST /api/songs/search/semantic - calls /api/embed internally, queries pgvector
+- [x] Create "Describe" mode in browse sheet (natural language search)
+- [x] Display results with similarity scores
+- [x] Write tests for semantic search
+- [x] Run test suite - must pass before task 7.4
 
 #### Task 7.4: Sharing System
 
