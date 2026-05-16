@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const job = await createRenderJob(session.user.id, parsed.data);
+    const job = await createRenderJob(Number(session.user.id), parsed.data);
 
     return NextResponse.json(job, { status: 201 });
   } catch (error) {

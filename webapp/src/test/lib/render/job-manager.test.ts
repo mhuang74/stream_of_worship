@@ -513,6 +513,17 @@ describe("cancelRenderJob", () => {
 
     expect(job).toBeNull();
   });
+
+  it("throws error when job is already cancelled", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      status: "cancelled",
+    });
+
+    await expect(cancelRenderJob(1, "mock-job-id")).rejects.toThrow(
+      "Cannot cancel job with status: cancelled"
+    );
+  });
 });
 
 describe("startRenderJob", () => {

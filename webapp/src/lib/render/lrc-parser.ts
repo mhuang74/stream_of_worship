@@ -113,10 +113,8 @@ export function estimateLastLyricDuration(
   for (const char of text) {
     const code = char.charCodeAt(0);
     if (code > 0x7f) {
-      // Chinese character
       charCount += 1.0;
-    } else if (!char.trim()) {
-      // Non-space ASCII ~ half-width
+    } else {
       charCount += 0.5;
     }
   }

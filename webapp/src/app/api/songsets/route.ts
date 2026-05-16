@@ -19,11 +19,10 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const limit = Math.min(
-      parseInt(searchParams.get("limit") ?? "50"),
-      100
-    );
-    const offset = parseInt(searchParams.get("offset") ?? "0");
+    const rawLimit = parseInt(searchParams.get("limit") ?? "50");
+    const limit = Math.min(isNaN(rawLimit) ? 50 : rawLimit, 100);
+    const rawOffset = parseInt(searchParams.get("offset") ?? "0");
+    const offset = isNaN(rawOffset) ? 0 : rawOffset;
 
     const result = await listSongsets(Number(session.user.id), limit, offset);
 

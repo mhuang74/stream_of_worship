@@ -10,7 +10,7 @@ const updateSongsetSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -21,7 +21,8 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const songset = await getSongset(params.id, Number(session.user.id));
+    const { id } = await params;
+    const songset = await getSongset(id, Number(session.user.id));
 
     if (!songset) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
@@ -39,7 +40,7 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -60,7 +61,8 @@ export async function PATCH(
       );
     }
 
-    const songset = await updateSongset(params.id, Number(session.user.id), parsed.data);
+    const { id } = await params;
+    const songset = await updateSongset(id, Number(session.user.id), parsed.data);
 
     if (!songset) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
@@ -78,7 +80,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -89,7 +91,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const deleted = await deleteSongset(params.id, Number(session.user.id));
+    const { id } = await params;
+    const deleted = await deleteSongset(id, Number(session.user.id));
 
     if (!deleted) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });

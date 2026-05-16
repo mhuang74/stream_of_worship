@@ -72,14 +72,16 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
   }
 
   if (job.status === "completed") {
-    const newerItem = await db.query.songsetItems.findFirst({
-      where: and(
-        eq(songsetItems.songsetId, songsetId),
-        gt(songsetItems.createdAt, job.completedAt)
-      ),
-    });
-    if (newerItem) return "stale";
-    if (songset.updatedAt > job.completedAt) return "stale";
+    if (job.completedAt) {
+      const newerItem = await db.query.songsetItems.findFirst({
+        where: and(
+          eq(songsetItems.songsetId, songsetId),
+          gt(songsetItems.createdAt, job.completedAt)
+        ),
+      });
+      if (newerItem) return "stale";
+      if (songset.updatedAt > job.completedAt) return "stale";
+    }
     return "fresh";
   }
 

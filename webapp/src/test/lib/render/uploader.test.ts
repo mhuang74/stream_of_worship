@@ -277,15 +277,19 @@ describe("R2Uploader", () => {
   });
 
   describe("deleteFile", () => {
-    it("deletes a file from R2", async () => {
+    it("calls S3 send when deleting a file", async () => {
       const uploader = new R2Uploader();
       (uploader as any).client = { send: mockSend };
-      // Mock the dynamic import of DeleteObjectCommand
       mockSend.mockResolvedValueOnce({});
 
-      // Skip this test since DeleteObjectCommand is dynamically imported
-      // and we can't easily mock it without complex setup
-      expect(true).toBe(true);
+      await uploader.deleteFile("renders/job-1/output.mp3");
+
+      expect(mockSend).toHaveBeenCalledTimes(1);
+      const callArg = mockSend.mock.calls[0][0];
+      expect(callArg.input).toMatchObject({
+        Bucket: "test-bucket",
+        Key: "renders/job-1/output.mp3",
+      });
     });
   });
 

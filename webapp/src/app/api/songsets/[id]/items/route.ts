@@ -19,6 +19,7 @@ const createSongsetItemSchema = z.object({
 });
 
 const updateSongsetItemSchema = z.object({
+  itemId: z.string().min(1),
   songId: z.string().min(1).optional(),
   recordingHashPrefix: z.string().optional(),
   position: z.number().int().min(0).optional(),
@@ -31,7 +32,7 @@ const updateSongsetItemSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -52,7 +53,8 @@ export async function POST(
       );
     }
 
-    const item = await addSongsetItem(params.id, Number(session.user.id), parsed.data);
+    const { id } = await params;
+    const item = await addSongsetItem(id, Number(session.user.id), parsed.data);
 
     if (!item) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
@@ -70,7 +72,7 @@ export async function POST(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -91,16 +93,10 @@ export async function PATCH(
       );
     }
 
-    if (!body.itemId) {
-      return NextResponse.json(
-        { error: "itemId is required" },
-        { status: 400 }
-      );
-    }
-
+    const { id } = await params;
     const item = await updateSongsetItem(
-      body.itemId,
-      params.id,
+      parsed.data.itemId,
+      id,
       Number(session.user.id),
       parsed.data
     );
@@ -124,7 +120,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -145,7 +141,8 @@ export async function DELETE(
       );
     }
 
-    const deleted = await deleteSongsetItem(itemId, params.id, Number(session.user.id));
+    const { id } = await params;
+    const deleted = await deleteSongsetItem(itemId, id, Number(session.user.id));
 
     if (!deleted) {
       return NextResponse.json(

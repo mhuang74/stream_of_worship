@@ -347,7 +347,7 @@ export class VideoEngine {
       "-f",
       "lavfi",
       "-i",
-      `color=c=${bgR},${bgG},${bgB}:s=${width}x${height}:d=${durationSeconds}`,
+      `color=c=#${bgR.toString(16).padStart(2, "0")}${bgG.toString(16).padStart(2, "0")}${bgB.toString(16).padStart(2, "0")}:s=${width}x${height}:d=${durationSeconds}`,
       "-i",
       audioPath,
       ...this.getVideoCodecArgs("5000k"),

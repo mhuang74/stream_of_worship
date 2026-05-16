@@ -11,7 +11,7 @@ import {
   FrameRenderer,
   VideoTemplateName,
 } from "@/lib/render/frame-renderer";
-import { parseLRC, GlobalLRCLine, convertToGlobalTimeline, estimateLastLyricDuration, isValidLRC, getLyricsTimeRange } from "@/lib/render/lrc-parser";
+import { parseLRC, GlobalLRCLine, convertToGlobalTimeline, estimateLastLyricDuration, isValidLRC, getLyricsTimeRange, findCurrentLyricIndex, groupLyricsBySong } from "@/lib/render/lrc-parser";
 import { AssetFetcher } from "@/lib/render/asset-fetcher";
 
 // Mock child_process spawn
@@ -163,7 +163,7 @@ describe("VideoEngine", () => {
 
       // Access private method through type assertion
       const result = await (videoEngine as unknown as { formatChaptersForFFmpeg: (chapters: ChapterInfo[]) => string }).formatChaptersForFFmpeg(chapters);
-      
+
       expect(result).toContain(";FFMETADATA1");
       expect(result).toContain("[CHAPTER]");
       expect(result).toContain("TIMEBASE=1/1000");
@@ -171,6 +171,67 @@ describe("VideoEngine", () => {
       expect(result).toContain("END=180000");
       expect(result).toContain("title=Song 1");
     });
+  });
+});
+
+describe("findCurrentLyricIndex", () => {
+  const lyrics: GlobalLRCLine[] = [
+    { text: "First line", timeSeconds: 5, globalTimeSeconds: 5, title: "Song 1" },
+    { text: "Second line", timeSeconds: 10, globalTimeSeconds: 10, title: "Song 1" },
+    { text: "Third line", timeSeconds: 15, globalTimeSeconds: 15, title: "Song 1" },
+  ];
+
+  it("returns -1 when time is before first lyric", () => {
+    expect(findCurrentLyricIndex(lyrics, 2)).toBe(-1);
+  });
+
+  it("returns 0 at exactly the first lyric time", () => {
+    expect(findCurrentLyricIndex(lyrics, 5)).toBe(0);
+  });
+
+  it("returns correct index between two lyrics", () => {
+    expect(findCurrentLyricIndex(lyrics, 12)).toBe(1);
+  });
+
+  it("returns last index when time is past all lyrics", () => {
+    expect(findCurrentLyricIndex(lyrics, 100)).toBe(2);
+  });
+
+  it("returns -1 for empty lyrics array", () => {
+    expect(findCurrentLyricIndex([], 10)).toBe(-1);
+  });
+});
+
+describe("groupLyricsBySong", () => {
+  it("groups lyrics by song title", () => {
+    const lyrics: GlobalLRCLine[] = [
+      { text: "Line 1", timeSeconds: 0, globalTimeSeconds: 0, title: "Song A" },
+      { text: "Line 2", timeSeconds: 5, globalTimeSeconds: 5, title: "Song B" },
+      { text: "Line 3", timeSeconds: 10, globalTimeSeconds: 10, title: "Song A" },
+    ];
+
+    const grouped = groupLyricsBySong(lyrics);
+
+    expect(grouped.size).toBe(2);
+    expect(grouped.get("Song A")).toHaveLength(2);
+    expect(grouped.get("Song B")).toHaveLength(1);
+    expect(grouped.get("Song A")![0].text).toBe("Line 1");
+    expect(grouped.get("Song A")![1].text).toBe("Line 3");
+  });
+
+  it("returns empty map for empty input", () => {
+    expect(groupLyricsBySong([])).toEqual(new Map());
+  });
+
+  it("handles single song", () => {
+    const lyrics: GlobalLRCLine[] = [
+      { text: "Line 1", timeSeconds: 0, globalTimeSeconds: 0, title: "Song X" },
+      { text: "Line 2", timeSeconds: 5, globalTimeSeconds: 5, title: "Song X" },
+    ];
+
+    const grouped = groupLyricsBySong(lyrics);
+    expect(grouped.size).toBe(1);
+    expect(grouped.get("Song X")).toHaveLength(2);
   });
 });
 
