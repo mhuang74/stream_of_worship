@@ -498,13 +498,13 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 **Files:**
 - Modify: All component files for responsive breakpoints
 
-- [ ] Verify phone-first layout on all screens (sm: 0px)
-- [ ] Verify tablet inherits phone layout (md: 768px)
-- [ ] Implement desktop power-mode unlocks (lg: 1024px): lyrics Edit text/timing tabs, transition key shift/tempo/waveform, dense keyboard shortcuts
-- [ ] Verify touch targets: 48x48px minimum, 64x64px for primary playback controls, 56px tall for phone CTAs
-- [ ] Verify minimum font size 16px on phone/tablet
-- [ ] Write tests for responsive behavior
-- [ ] Run test suite - must pass before task 8.2
+- [x] Verify phone-first layout on all screens (sm: 0px)
+- [x] Verify tablet inherits phone layout (md: 768px)
+- [x] Implement desktop power-mode unlocks (lg: 1024px): lyrics Edit text/timing tabs, transition key shift/tempo/waveform, dense keyboard shortcuts
+- [x] Verify touch targets: 48x48px minimum, 64x64px for primary playback controls, 56px tall for phone CTAs
+- [x] Verify minimum font size 16px on phone/tablet
+- [x] Write tests for responsive behavior
+- [x] Run test suite - must pass before task 8.2
 
 #### Task 8.2: Accessibility
 
