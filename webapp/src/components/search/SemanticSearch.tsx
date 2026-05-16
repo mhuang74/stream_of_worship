@@ -99,12 +99,13 @@ export function SemanticSearch({
           data-testid="semantic-search-input"
         />
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">Press Ctrl+Enter to search</p>
+          <p className="text-xs text-muted-foreground" aria-hidden="true">Press Ctrl+Enter to search</p>
           <Button
             onClick={handleSearch}
             disabled={isLoading || !query.trim()}
             size="sm"
             data-testid="semantic-search-button"
+            aria-label={isLoading ? "Searching..." : "Search songs by description"}
           >
             {isLoading ? (
               <Loader2 className="size-4 animate-spin mr-1" />
@@ -118,6 +119,7 @@ export function SemanticSearch({
 
       {error && (
         <div
+          role="alert"
           className="text-sm text-destructive p-3 rounded-md bg-destructive/10"
           data-testid="semantic-search-error"
         >
@@ -143,8 +145,8 @@ export function SemanticSearch({
       )}
 
       {!error && !isLoading && results.length > 0 && (
-        <div className="space-y-2" data-testid="semantic-search-results">
-          <p className="text-xs text-muted-foreground">{results.length} songs found</p>
+        <div className="space-y-2" data-testid="semantic-search-results" aria-live="polite" aria-atomic="true">
+          <p className="text-xs text-muted-foreground" role="status">{results.length} songs found</p>
           {results.map((song) => (
             <div key={song.id} className="relative">
               <SongCard

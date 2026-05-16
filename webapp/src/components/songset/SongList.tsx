@@ -133,8 +133,17 @@ function SortableSongItem({
 
             {/* Song info */}
             <div
-              className="flex-1 min-w-0 cursor-pointer"
+              className="flex-1 min-w-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              role={onSelectSong ? "button" : undefined}
+              tabIndex={onSelectSong ? 0 : undefined}
               onClick={() => onSelectSong?.(item.id)}
+              onKeyDown={(e) => {
+                if (onSelectSong && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  onSelectSong(item.id);
+                }
+              }}
+              aria-label={onSelectSong ? `Select ${item.song?.title || "song"}` : undefined}
             >
               <div className="flex items-center gap-2">
                 <h4 className="font-medium text-sm truncate">
@@ -170,6 +179,7 @@ function SortableSongItem({
                 size="sm"
                 className="shrink-0 text-xs text-muted-foreground hidden sm:flex"
                 onClick={() => onEditTransition?.(item.id)}
+                aria-label={`Edit transition before ${item.song?.title || "song"}: gap ${item.gapBeats} beats${item.crossfadeEnabled ? ", crossfade" : ""}`}
               >
                 Gap: {item.gapBeats} beats
                 {item.crossfadeEnabled ? " + crossfade" : ""}
@@ -269,7 +279,7 @@ export function SongList({
         items={localItems.map((item) => item.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className={cn("space-y-2", className)}>
+        <div className={cn("space-y-2", className)} role="list" aria-label="Songs">
           {localItems.map((item, index) => (
             <SortableSongItem
               key={item.id}

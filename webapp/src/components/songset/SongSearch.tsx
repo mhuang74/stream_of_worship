@@ -118,7 +118,13 @@ export function SongSearch({
           </Button>
         )}
         {showLoadingIndicator && !showClearButton && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+          <Loader2
+            className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground"
+            aria-hidden="true"
+          />
+        )}
+        {showLoadingIndicator && (
+          <span className="sr-only" role="status" aria-live="polite">Searching...</span>
         )}
       </div>
 
