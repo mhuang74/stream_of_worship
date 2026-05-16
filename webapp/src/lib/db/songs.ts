@@ -282,3 +282,81 @@ export async function getComposers(): Promise<string[]> {
 
   return result.map((r) => r.composer).filter((name): name is string => name !== null);
 }
+
+export interface SemanticSearchResult extends SongWithRecordings {
+  similarity: number;
+}
+
+export async function semanticSearchSongs(
+  embedding: number[],
+  limit: number = 20
+): Promise<SemanticSearchResult[]> {
+  const vectorStr = `[${embedding.join(",")}]`;
+
+  // For each song, pick the recording with the best similarity, then rank all songs by that score
+  const rows = await db.execute(sql`
+    SELECT * FROM (
+      SELECT DISTINCT ON (s.id)
+        s.id,
+        s.title,
+        s.title_pinyin,
+        s.composer,
+        s.lyricist,
+        s.album_name,
+        s.album_series,
+        s.musical_key,
+        s.created_at,
+        s.updated_at,
+        r.content_hash,
+        r.hash_prefix,
+        r.original_filename,
+        r.duration_seconds,
+        r.tempo_bpm,
+        r.musical_key  AS recording_musical_key,
+        r.musical_mode,
+        r.loudness_db,
+        r.r2_audio_url,
+        r.r2_lrc_url,
+        r.visibility_status,
+        r.analysis_status,
+        (1 - (se.embedding <=> ${vectorStr}::vector))::float AS similarity
+      FROM song_embedding se
+      JOIN recordings r ON se.recording_content_hash = r.content_hash
+      JOIN songs s ON r.song_id = s.id
+      WHERE r.visibility_status = 'published'
+      ORDER BY s.id, se.embedding <=> ${vectorStr}::vector ASC
+    ) ranked
+    ORDER BY similarity DESC
+    LIMIT ${limit}
+  `);
+
+  return (rows as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    title: row.title as string,
+    titlePinyin: (row.title_pinyin as string | null) ?? null,
+    composer: (row.composer as string | null) ?? null,
+    lyricist: (row.lyricist as string | null) ?? null,
+    albumName: (row.album_name as string | null) ?? null,
+    albumSeries: (row.album_series as string | null) ?? null,
+    musicalKey: (row.musical_key as string | null) ?? null,
+    createdAt: row.created_at ? new Date(row.created_at as string) : null,
+    updatedAt: row.updated_at ? new Date(row.updated_at as string) : null,
+    similarity: Number(row.similarity),
+    recordings: [
+      {
+        contentHash: row.content_hash as string,
+        hashPrefix: row.hash_prefix as string,
+        originalFilename: row.original_filename as string,
+        durationSeconds: (row.duration_seconds as number | null) ?? null,
+        tempoBpm: (row.tempo_bpm as number | null) ?? null,
+        musicalKey: (row.recording_musical_key as string | null) ?? null,
+        musicalMode: (row.musical_mode as string | null) ?? null,
+        loudnessDb: (row.loudness_db as number | null) ?? null,
+        r2AudioUrl: (row.r2_audio_url as string | null) ?? null,
+        r2LrcUrl: (row.r2_lrc_url as string | null) ?? null,
+        visibilityStatus: (row.visibility_status as string | null) ?? null,
+        analysisStatus: (row.analysis_status as string | null) ?? null,
+      },
+    ],
+  }));
+}

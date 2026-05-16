@@ -238,13 +238,62 @@ describe("BrowseSheet", () => {
   describe("sheet closing", () => {
     it("calls onOpenChange when done button is clicked", async () => {
       renderSheet();
-      
+
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /done/i })).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole("button", { name: /done/i }));
       expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe("describe mode", () => {
+    it("renders browse and describe mode tabs", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("browse-mode-tab")).toBeInTheDocument();
+        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
+      });
+    });
+
+    it("starts in browse mode by default", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("search-input")).toBeInTheDocument();
+        expect(screen.queryByTestId("semantic-search-input")).not.toBeInTheDocument();
+      });
+    });
+
+    it("switches to describe mode when describe tab is clicked", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+        expect(screen.queryByTestId("search-input")).not.toBeInTheDocument();
+      });
+    });
+
+    it("switches back to browse mode from describe mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("browse-mode-tab"));
+      await waitFor(() => {
+        expect(screen.getByTestId("search-input")).toBeInTheDocument();
+      });
     });
   });
 });
