@@ -19,13 +19,16 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  asChild,
+  children,
   className,
   ...props
-}: TooltipPrimitive.Trigger.Props) {
+}: TooltipPrimitive.Trigger.Props & { asChild?: boolean }) {
   return (
     <TooltipPrimitive.Trigger
       data-slot="tooltip-trigger"
       className={cn("", className)}
+      {...(asChild ? { render: children as React.ReactElement } : { children })}
       {...props}
     />
   )
