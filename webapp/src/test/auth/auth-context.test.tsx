@@ -10,6 +10,7 @@ vi.mock("@/lib/auth-client", () => ({
   signOut: mockSignOut,
   useSession: mockUseSession,
   signIn: { email: vi.fn() },
+  signUp: { email: vi.fn() },
 }));
 
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";

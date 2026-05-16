@@ -17,6 +17,7 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    maxPasswordLength: 128,
   },
   plugins: [nextCookies()],
   session: {
@@ -25,6 +26,9 @@ export const auth = betterAuth({
   },
   advanced: {
     useSecureCookies: process.env.NODE_ENV === "production",
+    database: {
+      generateId: "serial",
+    },
   },
 });
 
