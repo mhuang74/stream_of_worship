@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/share/:token/play/projection",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache",
+          },
+        ],
+      },
     ];
   },
 };
