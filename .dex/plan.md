@@ -393,15 +393,15 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/lib/offline/artifact-cache.ts`
 - Create: `webapp/src/app/api/offline/cache/route.ts`
 
-- [ ] Implement Cache Storage API for MP4/MP3/chapters.json
-- [ ] Cache key based on render_job_id for invalidation
-- [ ] Create "Make available offline" functionality
-- [ ] Implement cache invalidation when new render completes
-- [ ] Add storage budget management (warn at 500MB, hard limit 1GB)
-- [ ] Implement iOS 17.4+ check: navigator.storage.persist() on first cache action
-- [ ] Show "Update iOS for offline support" banner on iOS < 17.4
-- [ ] Write tests for artifact caching
-- [ ] Run test suite - must pass before task 7.1
+- [x] Implement Cache Storage API for MP4/MP3/chapters.json
+- [x] Cache key based on render_job_id for invalidation
+- [x] Create "Make available offline" functionality
+- [x] Implement cache invalidation when new render completes
+- [x] Add storage budget management (warn at 500MB, hard limit 1GB)
+- [x] Implement iOS 17.4+ check: navigator.storage.persist() on first cache action
+- [x] Show "Update iOS for offline support" banner on iOS < 17.4
+- [x] Write tests for artifact caching
+- [x] Run test suite - must pass before task 7.1
 
 ### Phase 7: Advanced Features
 
