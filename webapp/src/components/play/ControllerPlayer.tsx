@@ -426,6 +426,25 @@ export function ControllerPlayer({
             </div>
           </div>
         )}
+
+        {/* Desktop keyboard shortcuts hint - hidden on phone/tablet */}
+        <div
+          className={cn(
+            "hidden lg:block absolute bottom-4 right-4 transition-opacity duration-300",
+            controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
+          )}
+          aria-label="Keyboard shortcuts"
+          data-testid="keyboard-shortcuts-hint"
+        >
+          <div className="bg-black/60 text-white/75 rounded-lg px-3 py-2 text-xs">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+              <span><kbd className="font-mono text-white/90">Space</kbd> Play/Pause</span>
+              <span><kbd className="font-mono text-white/90">←</kbd>/<kbd className="font-mono text-white/90">→</kbd> Seek 10s</span>
+              <span><kbd className="font-mono text-white/90">[</kbd> Prev song</span>
+              <span><kbd className="font-mono text-white/90">]</kbd> Next song</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Controls */}
