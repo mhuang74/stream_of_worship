@@ -11,9 +11,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { SongSearch } from "./SongSearch";
 import { SongCard, SongCardData } from "./SongCard";
-import { Loader2, Music, AlertCircle } from "lucide-react";
+import { SemanticSearch } from "@/components/search/SemanticSearch";
+import { Loader2, Music, AlertCircle, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+type SearchMode = "browse" | "describe";
 
 interface BrowseSheetProps {
   isOpen: boolean;
@@ -35,6 +38,7 @@ export function BrowseSheet({
   existingSongIds = [],
   className,
 }: BrowseSheetProps) {
+  const [mode, setMode] = useState<SearchMode>("browse");
   const [query, setQuery] = useState("");
   const [albumFilter, setAlbumFilter] = useState<string | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
@@ -57,7 +61,6 @@ export function BrowseSheet({
       setAlbums(data.albums || []);
     } catch (err) {
       console.error("Error loading albums:", err);
-      // Don't show error toast for albums - it's not critical
     } finally {
       setIsLoadingAlbums(false);
     }
@@ -105,16 +108,13 @@ export function BrowseSheet({
   // Handle sheet open/close
   useEffect(() => {
     if (isOpen) {
-      // Sheet is opening - load data
       if (albums.length === 0) {
-        // Use setTimeout to defer state updates outside of the effect
         const albumTimeoutId = setTimeout(() => {
           loadAlbums();
         }, 0);
         return () => clearTimeout(albumTimeoutId);
       }
     } else {
-      // Sheet is closing - reset state after animation
       const timeoutId = setTimeout(() => {
         setQuery("");
         setAlbumFilter(undefined);
@@ -122,6 +122,7 @@ export function BrowseSheet({
         setError(null);
         setAddingSongIds(new Set());
         setAddedSongIds(new Set());
+        setMode("browse");
       }, 300);
       return () => clearTimeout(timeoutId);
     }
@@ -184,81 +185,120 @@ export function BrowseSheet({
         </SheetHeader>
 
         <div className="flex flex-col h-full pb-8">
-          {/* Search section */}
-          <div className="px-1 pb-4">
-            <SongSearch
-              onSearch={handleSearch}
-              albums={albums}
-              isLoading={isLoading || isLoadingAlbums}
-            />
+          {/* Mode tabs */}
+          <div className="flex gap-1 pb-4 border-b mb-4">
+            <Button
+              variant={mode === "browse" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setMode("browse")}
+              className="gap-1.5"
+              data-testid="browse-mode-tab"
+            >
+              <Search className="size-3.5" />
+              Browse
+            </Button>
+            <Button
+              variant={mode === "describe" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setMode("describe")}
+              className="gap-1.5"
+              data-testid="describe-mode-tab"
+            >
+              <Sparkles className="size-3.5" />
+              Describe
+            </Button>
           </div>
 
-          {/* Results section */}
-          <div className="flex-1 overflow-y-auto px-1 -mx-1">
-            {error && (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <AlertCircle className="size-8 text-destructive mb-2" />
-                <p className="text-destructive text-sm">{error}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => handleSearch(query, albumFilter)}
-                >
-                  Retry
-                </Button>
+          {mode === "browse" && (
+            <>
+              {/* Search section */}
+              <div className="px-1 pb-4">
+                <SongSearch
+                  onSearch={handleSearch}
+                  albums={albums}
+                  isLoading={isLoading || isLoadingAlbums}
+                />
               </div>
-            )}
 
-            {!error && isLoading && results.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" />
-                <p className="text-muted-foreground text-sm">Searching songs...</p>
-              </div>
-            )}
+              {/* Results section */}
+              <div className="flex-1 overflow-y-auto px-1 -mx-1">
+                {error && (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <AlertCircle className="size-8 text-destructive mb-2" />
+                    <p className="text-destructive text-sm">{error}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => handleSearch(query, albumFilter)}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
 
-            {!error && !isLoading && results.length === 0 && query && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Music className="size-8 text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">
-                  No songs found for &quot;{query}&quot;
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Try a different search term
-                </p>
-              </div>
-            )}
+                {!error && isLoading && results.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground text-sm">Searching songs...</p>
+                  </div>
+                )}
 
-            {!error && !isLoading && results.length === 0 && !query && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Music className="size-8 text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">No songs available</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Start typing to search for songs
-                </p>
-              </div>
-            )}
+                {!error && !isLoading && results.length === 0 && query && (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Music className="size-8 text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">
+                      No songs found for &quot;{query}&quot;
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Try a different search term
+                    </p>
+                  </div>
+                )}
 
-            {!error && results.length > 0 && (
-              <div className="space-y-2 pb-4">
-                {results.map((song) => (
-                  <SongCard
-                    key={song.id}
-                    song={song}
-                    onAdd={handleAddSong}
-                    isAdded={isSongAdded(song.id)}
-                    isAdding={isSongAdding(song.id)}
-                  />
-                ))}
+                {!error && !isLoading && results.length === 0 && !query && (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Music className="size-8 text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">No songs available</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Start typing to search for songs
+                    </p>
+                  </div>
+                )}
+
+                {!error && results.length > 0 && (
+                  <div className="space-y-2 pb-4">
+                    {results.map((song) => (
+                      <SongCard
+                        key={song.id}
+                        song={song}
+                        onAdd={handleAddSong}
+                        isAdded={isSongAdded(song.id)}
+                        isAdding={isSongAdding(song.id)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
+
+          {mode === "describe" && (
+            <div className="flex-1 overflow-y-auto px-1 -mx-1">
+              <SemanticSearch
+                onAddSong={handleAddSong}
+                existingSongIds={existingSongIds}
+                addingSongIds={addingSongIds}
+                addedSongIds={addedSongIds}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div className="pt-4 border-t mt-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {results.length > 0 && `${results.length} songs found`}
+                {mode === "browse" && results.length > 0 && `${results.length} songs found`}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Done
