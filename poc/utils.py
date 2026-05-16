@@ -13,13 +13,6 @@ from typing import Optional
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from stream_of_worship.app.config import AppConfig
-from stream_of_worship.db.connection import ConnectionProvider
-from stream_of_worship.app.db.read_client import ReadOnlyClient
-from stream_of_worship.app.services.catalog import CatalogService
-from stream_of_worship.app.services.asset_cache import AssetCache
-from stream_of_worship.admin.services.r2 import R2Client
-
 # Supported audio formats for export
 SUPPORTED_AUDIO_FORMATS = (".wav", ".mp3", ".flac", ".m4a")
 
@@ -102,6 +95,13 @@ def resolve_song_audio_path(
         typer.Exit: If song not found, config missing, or audio unavailable
     """
     import typer
+
+    from stream_of_worship.app.config import AppConfig
+    from stream_of_worship.db.connection import ConnectionProvider
+    from stream_of_worship.app.db.read_client import ReadOnlyClient
+    from stream_of_worship.app.services.catalog import CatalogService
+    from stream_of_worship.app.services.asset_cache import AssetCache
+    from stream_of_worship.admin.services.r2 import R2Client
 
     input_path = Path(song_id).expanduser()
     lyrics: Optional[list[str]] = None
