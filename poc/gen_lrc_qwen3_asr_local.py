@@ -221,7 +221,7 @@ def _transcribe_dashscope_filetrans(
 
     typer.echo(f"Calling DashScope Qwen3-ASR-FileTrans ({model}) in {region} region...", err=True)
 
-    kwargs = {}
+    kwargs = {"enable_words": True}
     if context:
         typer.echo(
             "Note: filetrans model does not support system-message context biasing; "
