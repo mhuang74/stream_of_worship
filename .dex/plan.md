@@ -479,17 +479,17 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/src/app/settings/page.tsx`
 - Create: `webapp/src/components/settings/SettingsForm.tsx`
 
-- [ ] Create settings page
-- [ ] Implement default gap beats setting
-- [ ] Implement default video template setting
-- [ ] Implement default resolution setting (720p/1080p)
-- [ ] Implement lyrics loop window seconds setting
-- [ ] Implement default font size preset (S/M/L/XL)
-- [ ] Implement offline auto-cache after render toggle
-- [ ] Desktop-only (lg): default key shift, timing review font
-- [ ] Add iOS offline note: "Offline caching requires iOS 17.4 or later"
-- [ ] Write tests for settings
-- [ ] Run test suite - must pass before task 8.1
+- [x] Create settings page
+- [x] Implement default gap beats setting
+- [x] Implement default video template setting
+- [x] Implement default resolution setting (720p/1080p)
+- [x] Implement lyrics loop window seconds setting
+- [x] Implement default font size preset (S/M/L/XL)
+- [x] Implement offline auto-cache after render toggle
+- [x] Desktop-only (lg): default key shift, timing review font
+- [x] Add iOS offline note: "Offline caching requires iOS 17.4 or later"
+- [x] Write tests for settings
+- [x] Run test suite - must pass before task 8.1
 
 ### Phase 8: Polish and Deployment
 

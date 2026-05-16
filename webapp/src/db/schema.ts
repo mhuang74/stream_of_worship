@@ -245,6 +245,13 @@ export const userSettings = pgTable("user_settings", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   offlineAutoCache: boolean("offline_auto_cache").notNull().default(true),
+  defaultGapBeats: real("default_gap_beats").notNull().default(2.0),
+  defaultVideoTemplate: text("default_video_template").notNull().default("dark"),
+  defaultResolution: text("default_resolution").notNull().default("720p"),
+  lyricsLoopWindowSeconds: real("lyrics_loop_window_seconds").notNull().default(3.0),
+  defaultFontSizePreset: text("default_font_size_preset").notNull().default("M"),
+  defaultKeyShiftSemitones: integer("default_key_shift_semitones").notNull().default(0),
+  timingReviewFont: text("timing_review_font").notNull().default("sans"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
