@@ -20,6 +20,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from stream_of_worship.app.config import AppConfig
+from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.app.db.read_client import ReadOnlyClient
 from stream_of_worship.app.services.catalog import CatalogService
 
@@ -198,32 +199,40 @@ def main(
 
     if not video_url:
         # Look up song from database
-        db_client = ReadOnlyClient(config.db_path)
-        catalog = CatalogService(db_client)
+        provider = ConnectionProvider(config.get_connection_url())
+        db_client = ReadOnlyClient(provider)
+        try:
+            catalog = CatalogService(db_client)
 
-        song_with_recording = catalog.get_song_with_recording(song_id)
-        if not song_with_recording:
-            typer.echo(f"Error: Song not found: {song_id}", err=True)
-            raise typer.Exit(1)
+            song_with_recording = catalog.get_song_with_recording(song_id)
+            if not song_with_recording:
+                typer.echo(f"Error: Song not found: {song_id}", err=True)
+                raise typer.Exit(1)
 
-        if not song_with_recording.recording:
-            typer.echo(f"Error: No recording found for song: {song_id}", err=True)
-            raise typer.Exit(1)
+            if not song_with_recording.recording:
+                typer.echo(f"Error: No recording found for song: {song_id}", err=True)
+                raise typer.Exit(1)
 
-        video_url = song_with_recording.recording.youtube_url
-        song = song_with_recording.song
+            video_url = song_with_recording.recording.youtube_url
+            song = song_with_recording.song
 
-        typer.echo(f"Song: {song.title}", err=True)
-        typer.echo(f"Recording: {song_with_recording.recording.hash_prefix}", err=True)
+            typer.echo(f"Song: {song.title}", err=True)
+            typer.echo(f"Recording: {song_with_recording.recording.hash_prefix}", err=True)
+        finally:
+            db_client.close()
     else:
         # Still need song for lyrics - look up by ID
-        db_client = ReadOnlyClient(config.db_path)
-        catalog = CatalogService(db_client)
-        song_with_recording = catalog.get_song_with_recording(song_id)
-        if not song_with_recording:
-            typer.echo(f"Error: Song not found: {song_id}", err=True)
-            raise typer.Exit(1)
-        song = song_with_recording.song
+        provider = ConnectionProvider(config.get_connection_url())
+        db_client = ReadOnlyClient(provider)
+        try:
+            catalog = CatalogService(db_client)
+            song_with_recording = catalog.get_song_with_recording(song_id)
+            if not song_with_recording:
+                typer.echo(f"Error: Song not found: {song_id}", err=True)
+                raise typer.Exit(1)
+            song = song_with_recording.song
+        finally:
+            db_client.close()
 
     if not video_url:
         typer.echo(
