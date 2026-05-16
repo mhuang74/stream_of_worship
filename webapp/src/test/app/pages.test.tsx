@@ -1,8 +1,14 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import HomePage from "@/app/page";
 import SongsetsPage from "@/app/songsets/page";
 import SettingsPage from "@/app/settings/page";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useParams: () => ({}),
+  usePathname: () => "/",
+}));
 
 describe("HomePage", () => {
   it("renders title", () => {
