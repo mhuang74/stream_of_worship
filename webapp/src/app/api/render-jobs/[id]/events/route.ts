@@ -73,8 +73,20 @@ export async function GET(
         );
 
         // Set up polling interval to check for updates
+        const MAX_DURATION_MS = 30 * 60 * 1000;
+        const startTime = Date.now();
+
         const intervalId = setInterval(async () => {
           try {
+            if (Date.now() - startTime > MAX_DURATION_MS) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ error: "Connection timed out" })}\n\n`)
+              );
+              controller.close();
+              clearInterval(intervalId);
+              return;
+            }
+
             const updatedJob = await getRenderJob(id, Number(session.user.id));
 
             if (!updatedJob) {

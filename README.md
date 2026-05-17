@@ -164,20 +164,26 @@ npx drizzle-kit migrate    # Run pending migrations
 | Path | Description |
 |------|-------------|
 | `/login` | User login |
+| `/register` | User registration |
 | `/songsets` | Songset list |
 | `/songsets/[id]` | Songset editor |
 | `/songsets/[id]/render` | Render configuration and progress |
 | `/songsets/[id]/play` | Playback controller |
+| `/songsets/[id]/play/controller` | Controller player (Presentation API) |
 | `/songsets/[id]/play/projection` | Second-screen lyrics projection |
 | `/share/[token]` | Public shared player |
+| `/share/[token]/play/audio` | Shared audio playback |
+| `/share/[token]/play/projection` | Shared projection playback |
 | `/settings` | User settings |
 
 ### API Summary
 
-- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `POST /api/songs/search/semantic`: authenticated catalog APIs. App users only see songs with at least one published recording.
+- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `GET /api/songs/albums`, `POST /api/songs/search/semantic`: authenticated catalog APIs. App users only see songs with at least one published recording.
 - `GET|POST|PATCH|DELETE /api/songsets...`: authenticated songset CRUD, item editing, and reorder operations scoped to the owner.
-- `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`: authenticated render creation, polling, and SSE progress.
+- `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `DELETE /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`, `GET /api/render-jobs/[id]/artifact-sizes`: authenticated render creation, polling, cancellation, SSE progress, and artifact size queries.
 - `GET|POST /api/signed-url`: authenticated signed URL minting for published recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`.
+- `POST /api/embed`: Edge function for generating text embeddings (semantic search).
+- `POST /api/transitions/preview`: authenticated transition audio preview signed URL generation.
 - `GET|DELETE /api/offline/cache`: authenticated offline artifact URL generation and invalidation.
 - `GET|PUT /api/settings`: authenticated per-user settings.
 - `GET|POST|DELETE /api/lyrics/marks`, `GET|PUT|DELETE /api/lyrics/overrides`: authenticated lyric review and override storage.
@@ -544,4 +550,4 @@ MIT License - See [LICENSE](LICENSE) file
 
 ---
 
-**Last Updated:** 2025-12-30
+**Last Updated:** 2026-05-17

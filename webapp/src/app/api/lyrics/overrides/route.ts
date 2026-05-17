@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { recordingContentHash, lrcContent } = body;
 
-    if (!recordingContentHash || typeof lrcContent !== "string") {
+    if (!recordingContentHash || typeof lrcContent !== "string" || lrcContent.length > 100000) {
       return NextResponse.json(
         { error: "recordingContentHash and lrcContent are required" },
         { status: 400 }

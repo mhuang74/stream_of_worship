@@ -73,6 +73,13 @@ export async function executeRenderPipeline(
   const assetFetcher = new AssetFetcher();
   const tempDir = await assetFetcher.getTempDir();
 
+  const checkCancelled = async () => {
+    const current = await getRenderJob(jobId, userId);
+    if (!current || current.status === "cancelled") {
+      throw new Error(`Render job ${jobId} was cancelled`);
+    }
+  };
+
   try {
     await startRenderJob(jobId, userId);
 
@@ -84,6 +91,8 @@ export async function executeRenderPipeline(
       estimatedSecondsLeft: 0,
       elapsedSeconds: 0,
     });
+
+    await checkCancelled();
 
     const items = await fetchSongsetItems(job.songsetId);
     if (items.length === 0) {
@@ -109,9 +118,13 @@ export async function executeRenderPipeline(
         const audioPercent = Math.round((currentStep / totalSteps) * 25) + 5;
         updateRenderProgress(jobId, userId, {
           percentComplete: audioPercent,
-        }).catch(() => {});
+        }).catch((err) => {
+          console.warn(`Progress update failed for job ${jobId}:`, err);
+        });
       }
     );
+
+    await checkCancelled();
 
     await updateRenderProgress(jobId, userId, {
       phase: PHASES[2].phase,
@@ -151,9 +164,13 @@ export async function executeRenderPipeline(
           const videoPercent = Math.round((currentFrame / totalFrames) * 20) + 60;
           updateRenderProgress(jobId, userId, {
             percentComplete: videoPercent,
-          }).catch(() => {});
+          }).catch((err) => {
+            console.warn(`Progress update failed for job ${jobId}:`, err);
+          });
         }
       );
+
+      await checkCancelled();
     }
 
     await updateRenderProgress(jobId, userId, {
@@ -182,7 +199,9 @@ export async function executeRenderPipeline(
         const uploadPercent = Math.round((bytesUploaded / totalBytes) * 5) + 95;
         updateRenderProgress(jobId, userId, {
           percentComplete: uploadPercent,
-        }).catch(() => {});
+        }).catch((err) => {
+          console.warn(`Progress update failed for job ${jobId}:`, err);
+        });
       }
     );
 
@@ -199,5 +218,9 @@ export async function executeRenderPipeline(
       console.error(`Failed to mark job ${jobId} as failed:`, failError);
     });
     throw error;
+  } finally {
+    await assetFetcher.cleanupTemp().catch((err) => {
+      console.warn(`Temp cleanup failed for job ${jobId}:`, err);
+    });
   }
 }

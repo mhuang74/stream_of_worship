@@ -51,22 +51,29 @@ npx drizzle-kit migrate    # Run pending migrations
 | `/songsets/[id]` | Songset detail |
 | `/songsets/[id]/render` | Render configuration |
 | `/songsets/[id]/play` | Playback view |
+| `/songsets/[id]/play/controller` | Controller player (Presentation API) |
 | `/songsets/[id]/play/projection` | Second-screen lyrics projection |
 | `/share/[token]` | Public shared player |
+| `/share/[token]/play/audio` | Shared audio playback |
+| `/share/[token]/play/projection` | Shared projection playback |
 | `/settings` | User settings |
 
 ## API Summary
 
-- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`
+- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `GET /api/songs/albums`
   Auth required. Returns only songs with at least one published recording for app callers.
 - `POST /api/songs/search/semantic`
   Auth required. Natural-language search backed by pgvector plus the local embedding model.
 - `GET|POST|PATCH|DELETE /api/songsets`, `/api/songsets/[id]`, `/api/songsets/[id]/items`, `/api/songsets/[id]/items/reorder`
   Auth required. Songset CRUD, item editing, and reorder, all ownership-scoped.
-- `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`
-  Auth required. Render creation, status lookup, and SSE progress streaming.
+- `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `DELETE /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`, `GET /api/render-jobs/[id]/artifact-sizes`
+  Auth required. Render creation, status lookup, cancellation, SSE progress streaming, and artifact size queries.
 - `GET|POST /api/signed-url`
   Auth required. Signs published source recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`.
+- `POST /api/embed`
+  Auth required. Edge function for generating text embeddings (semantic search).
+- `POST /api/transitions/preview`
+  Auth required. Generates signed URL for transition audio preview.
 - `GET|DELETE /api/offline/cache`
   Auth required. Returns artifact URLs for offline caching or invalidates cached metadata for a completed render job.
 - `GET|PUT /api/settings`

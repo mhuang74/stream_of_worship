@@ -8,6 +8,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
 import { spawn } from "child_process";
 import { AssetFetcher } from "./asset-fetcher";
 import {
@@ -22,6 +23,7 @@ import {
   GlobalLRCLine,
   convertToGlobalTimeline,
 } from "./lrc-parser";
+import { chaptersToFFmpegMetadata, ChaptersManifest } from "./chapters";
 import { AudioSegmentInfo } from "./audio-engine";
 
 export interface VideoEngineOptions {
@@ -89,7 +91,7 @@ export class VideoEngine {
       Math.max(options.titleCardDurationSeconds ?? 5, 5),
       30
     );
-    this.ffmpegPath = options.ffmpegPath ?? "ffmpeg";
+    this.ffmpegPath = options.ffmpegPath ?? ffmpegStatic ?? "ffmpeg";
     this.ffprobePath = options.ffprobePath ?? "ffprobe";
 
     this.frameRenderer = new FrameRenderer({
@@ -131,7 +133,10 @@ export class VideoEngine {
     }
 
     const totalDurationSeconds = audioInfo.durationSeconds;
-    const totalFrames = Math.ceil(totalDurationSeconds * this.fps);
+    const titleCardFrames = this.includeTitleCard
+      ? Math.ceil(this.titleCardDurationSeconds * this.fps)
+      : 0;
+    const totalFrames = Math.ceil(totalDurationSeconds * this.fps) + titleCardFrames;
 
     // Collect all lyrics with global timing
     const allLyrics: GlobalLRCLine[] = [];
@@ -191,6 +196,15 @@ export class VideoEngine {
       tempoBpm: seg.item.tempoBpm,
     }));
 
+    const titleCardConfig = this.includeTitleCard
+      ? {
+          frames: titleCardFrames,
+          songsetName: segments[0]?.item.songTitle ?? "Worship Set",
+          songCount: segments.length,
+          totalDurationSeconds,
+        }
+      : undefined;
+
     // Generate video with FFmpeg
     await this.encodeVideoWithFFmpeg(
       audioPath,
@@ -199,7 +213,8 @@ export class VideoEngine {
       totalDurationSeconds,
       allLyrics,
       segmentInfos,
-      progressCallback
+      progressCallback,
+      titleCardConfig
     );
 
     return {
@@ -222,7 +237,13 @@ export class VideoEngine {
     totalDurationSeconds: number,
     lyrics: GlobalLRCLine[],
     segments: SegmentInfo[],
-    progressCallback?: ProgressCallback
+    progressCallback?: ProgressCallback,
+    titleCardConfig?: {
+      frames: number;
+      songsetName: string;
+      songCount: number;
+      totalDurationSeconds: number;
+    }
   ): Promise<void> {
     const { width, height } = this.resolution;
 
@@ -264,22 +285,31 @@ export class VideoEngine {
         if (!isProcessing) return;
 
         try {
-          // Calculate current time
-          const currentTime = frameCount / this.fps;
+          let buffer: Buffer;
 
-          // Render frame
-          const canvas = this.frameRenderer.renderFrame(
-            lyrics,
-            segments,
-            currentTime
-          );
+          if (titleCardConfig && frameCount < titleCardConfig.frames) {
+            const canvas = this.frameRenderer.renderTitleCard({
+              enabled: true,
+              durationSeconds: titleCardConfig.totalDurationSeconds,
+              songsetName: titleCardConfig.songsetName,
+              songCount: titleCardConfig.songCount,
+              totalDurationSeconds: titleCardConfig.totalDurationSeconds,
+            });
+            buffer = this.frameRenderer.canvasToBuffer(canvas);
+          } else {
+            const lyricsFrameIndex = titleCardConfig ? frameCount - titleCardConfig.frames : frameCount;
+            const currentTime = lyricsFrameIndex / this.fps;
 
-          // Convert to buffer
-          const buffer = this.frameRenderer.canvasToBuffer(canvas);
+            const canvas = this.frameRenderer.renderFrame(
+              lyrics,
+              segments,
+              currentTime
+            );
+            buffer = this.frameRenderer.canvasToBuffer(canvas);
+          }
 
-          // Write to FFmpeg stdin
           if (process.stdin && process.stdin.writable) {
-            process.stdin.write(buffer, (err) => {
+            const canContinue = process.stdin.write(buffer, (err) => {
               if (err) {
                 isProcessing = false;
                 reject(err);
@@ -288,20 +318,28 @@ export class VideoEngine {
 
               frameCount++;
 
-              // Update progress
               if (progressCallback && frameCount % this.fps === 0) {
                 progressCallback(frameCount, totalFrames);
               }
 
-              // Continue or finish
-              if (frameCount < totalFrames && isProcessing) {
-                setImmediate(writeFrame);
-              } else if (frameCount >= totalFrames) {
+              if (frameCount >= totalFrames) {
                 if (process.stdin) {
                   process.stdin.end();
                 }
               }
             });
+
+            if (!canContinue && isProcessing && frameCount < totalFrames) {
+              await new Promise<void>((resolve) => {
+                process.stdin!.once("drain", resolve);
+              });
+            }
+
+            if (frameCount < totalFrames && isProcessing && canContinue) {
+              setImmediate(writeFrame);
+            } else if (frameCount < totalFrames && isProcessing) {
+              setImmediate(writeFrame);
+            }
           }
         } catch (error) {
           isProcessing = false;
@@ -417,6 +455,11 @@ export class VideoEngine {
           return;
         }
 
+        if (!metadata.streams || metadata.streams.length === 0) {
+          reject(new Error("No audio streams found"));
+          return;
+        }
+
         const stream = metadata.streams[0];
         const durationSeconds = metadata.format.duration ?? 0;
 
@@ -448,7 +491,12 @@ export class VideoEngine {
       const chaptersPath = path.join(tempDir, `chapters-${Date.now()}.txt`);
 
       // Write chapters in FFmpeg metadata format
-      const chaptersContent = this.formatChaptersForFFmpeg(chapters);
+      const manifest: ChaptersManifest = {
+        chapters,
+        totalDurationSeconds: 0,
+        generatedAt: new Date().toISOString(),
+      };
+      const chaptersContent = chaptersToFFmpegMetadata(manifest);
       await fs.writeFile(chaptersPath, chaptersContent, "utf-8");
 
       // Create output path
@@ -493,50 +541,4 @@ export class VideoEngine {
     }
   }
 
-  /**
-   * Format chapters for FFmpeg metadata.
-   */
-  private formatChaptersForFFmpeg(chapters: ChapterInfo[]): string {
-    const lines: string[] = [";FFMETADATA1"];
-
-    for (const chapter of chapters) {
-      lines.push("[CHAPTER]");
-      lines.push("TIMEBASE=1/1000");
-      lines.push(
-        `START=${Math.floor(chapter.startSeconds * 1000)}`
-      );
-      lines.push(`END=${Math.floor(chapter.endSeconds * 1000)}`);
-      lines.push(`title=${chapter.songTitle}`);
-    }
-
-    return lines.join("\n");
-  }
-
-  /**
-   * Get available template names.
-   */
-  static getAvailableTemplates(): VideoTemplateName[] {
-    return FrameRenderer.getAvailableTemplates();
-  }
-
-  /**
-   * Get a template by name.
-   */
-  static getTemplate(name: VideoTemplateName): VideoTemplate {
-    return FrameRenderer.getTemplate(name);
-  }
-
-  /**
-   * Get available font size presets.
-   */
-  static getAvailableFontSizes(): FontSizePreset[] {
-    return FrameRenderer.getAvailableFontSizes();
-  }
-
-  /**
-   * Get font size for preset.
-   */
-  static getFontSize(preset: FontSizePreset): number {
-    return FrameRenderer.getFontSize(preset);
-  }
 }

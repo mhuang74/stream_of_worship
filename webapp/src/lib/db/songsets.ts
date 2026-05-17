@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { lyricMarks, songsets, songsetItems, renderJobs } from "@/db/schema";
-import { eq, and, desc, gt, sql } from "drizzle-orm";
+import { lyricMarks, songsets, songsetItems, renderJobs, recordings } from "@/db/schema";
+import { eq, and, desc, gt, sql, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
@@ -73,7 +73,6 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
   }
 
   if (job.status === "completed") {
-    // completedAt can be null for non-completed jobs (nullable per schema)
     if (job.completedAt) {
       const newerItem = await db.query.songsetItems.findFirst({
         where: and(
@@ -82,7 +81,13 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
         ),
       });
       if (newerItem) return "stale";
-      if (songset.updatedAt > job.completedAt) return "stale";
+      const newerJob = await db.query.renderJobs.findFirst({
+        where: and(
+          eq(renderJobs.songsetId, songsetId),
+          gt(renderJobs.createdAt, job.completedAt)
+        ),
+      });
+      if (newerJob) return "stale";
     }
     return "fresh";
   }
@@ -134,19 +139,19 @@ export async function listSongsets(
       ) {
         renderState = "failed";
       } else if (latestJob.status === "completed") {
-        if (latestJob.completedAt) {
-          const hasNewerItem = row.items.some(
-            (item) => (item as { createdAt: Date }).createdAt > latestJob.completedAt!
-          );
-          if (hasNewerItem || row.updatedAt > latestJob.completedAt) {
-            renderState = "stale";
+          if (latestJob.completedAt) {
+            const hasNewerItem = row.items.some(
+              (item) => (item as { createdAt: Date }).createdAt > latestJob.completedAt!
+            );
+            if (hasNewerItem) {
+              renderState = "stale";
+            } else {
+              renderState = "fresh";
+            }
           } else {
             renderState = "fresh";
           }
-        } else {
-          renderState = "fresh";
         }
-      }
     }
 
     return {
@@ -176,6 +181,7 @@ export async function getSongset(
         with: {
           song: true,
           recording: {
+            where: isNull(recordings.deletedAt),
             with: {
               lyricMarks: {
                 columns: { id: true },

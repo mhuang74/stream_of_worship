@@ -6,9 +6,14 @@
  */
 
 import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { AssetFetcher } from "./asset-fetcher";
+
+if (ffmpegStatic) {
+  ffmpeg.setFfmpegPath(ffmpegStatic);
+}
 
 export interface SongsetItem {
   id: string;
@@ -138,6 +143,11 @@ export class AudioEngine {
         ffmpeg.ffprobe(filePath, (err, metadata) => {
           if (err) {
             reject(err);
+            return;
+          }
+
+          if (!metadata.streams || metadata.streams.length === 0) {
+            reject(new Error("No audio streams found"));
             return;
           }
 

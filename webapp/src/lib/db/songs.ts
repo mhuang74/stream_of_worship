@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { recordings, songs } from "@/db/schema";
-import { eq, desc, and, or, ilike, sql } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql, isNull } from "drizzle-orm";
 
 export interface SongWithRecordings {
   id: string;
@@ -65,6 +65,8 @@ function buildSongWhereClause(
 ) {
   const whereConditions = [];
 
+  whereConditions.push(isNull(songs.deletedAt));
+
   if (query) {
     const searchTerm = `%${query}%`;
     whereConditions.push(
@@ -106,10 +108,14 @@ export async function listSongs(
   filters?: ListSongsFilters
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const whereClause = buildSongWhereClause(filters);
-  const recordingWhereClause =
-    filters?.visibilityStatus && filters.visibilityStatus !== "all"
-      ? eq(recordings.visibilityStatus, filters.visibilityStatus)
-      : undefined;
+  const recordingWhereConditions = [];
+  if (filters?.visibilityStatus && filters.visibilityStatus !== "all") {
+    recordingWhereConditions.push(eq(recordings.visibilityStatus, filters.visibilityStatus));
+  }
+  recordingWhereConditions.push(isNull(recordings.deletedAt));
+  const recordingWhereClause = recordingWhereConditions.length > 0
+    ? and(...recordingWhereConditions)
+    : undefined;
 
   const result = await db.query.songs.findMany({
     where: whereClause,
@@ -165,10 +171,14 @@ export async function getSong(
   visibilityStatus: string = "published"
 ): Promise<SongDetail | null> {
   const visibilityWhereClause = buildSongWhereClause({ visibilityStatus });
-  const recordingWhereClause =
-    visibilityStatus !== "all"
-      ? eq(recordings.visibilityStatus, visibilityStatus)
-      : undefined;
+  const recordingWhereConditions = [];
+  if (visibilityStatus !== "all") {
+    recordingWhereConditions.push(eq(recordings.visibilityStatus, visibilityStatus));
+  }
+  recordingWhereConditions.push(isNull(recordings.deletedAt));
+  const recordingWhereClause = recordingWhereConditions.length > 0
+    ? and(...recordingWhereConditions)
+    : undefined;
   const song = await db.query.songs.findFirst({
     where: visibilityWhereClause
       ? and(eq(songs.id, id), visibilityWhereClause)
@@ -228,10 +238,14 @@ export async function searchSongs(
   visibilityStatus?: string
 ): Promise<SearchSongsResult> {
   const whereClause = buildSongWhereClause({ visibilityStatus }, query);
-  const recordingWhereClause =
-    visibilityStatus && visibilityStatus !== "all"
-      ? eq(recordings.visibilityStatus, visibilityStatus)
-      : undefined;
+  const recordingWhereConditions = [];
+  if (visibilityStatus && visibilityStatus !== "all") {
+    recordingWhereConditions.push(eq(recordings.visibilityStatus, visibilityStatus));
+  }
+  recordingWhereConditions.push(isNull(recordings.deletedAt));
+  const recordingWhereClause = recordingWhereConditions.length > 0
+    ? and(...recordingWhereConditions)
+    : undefined;
 
   const result = await db.query.songs.findMany({
     where: whereClause,
@@ -292,16 +306,6 @@ export async function getAlbums(): Promise<string[]> {
   return result.map((r) => r.albumName).filter((name): name is string => name !== null);
 }
 
-export async function getComposers(): Promise<string[]> {
-  const result = await db
-    .selectDistinct({ composer: songs.composer })
-    .from(songs)
-    .where(sql`${songs.composer} IS NOT NULL`)
-    .orderBy(songs.composer);
-
-  return result.map((r) => r.composer).filter((name): name is string => name !== null);
-}
-
 export interface SemanticSearchResult extends SongWithRecordings {
   similarity: number;
 }
@@ -310,9 +314,14 @@ export async function semanticSearchSongs(
   embedding: number[],
   limit: number = 20
 ): Promise<SemanticSearchResult[]> {
+  for (const v of embedding) {
+    if (typeof v !== "number" || !isFinite(v)) {
+      throw new Error("Invalid embedding value: all values must be finite numbers");
+    }
+  }
+
   const vectorStr = `[${embedding.join(",")}]`;
 
-  // For each song, pick the recording with the best similarity, then rank all songs by that score
   const rows = await db.execute(sql`
     SELECT * FROM (
       SELECT DISTINCT ON (s.id)
@@ -343,6 +352,8 @@ export async function semanticSearchSongs(
       JOIN recordings r ON se.recording_content_hash = r.content_hash
       JOIN songs s ON r.song_id = s.id
       WHERE r.visibility_status = 'published'
+        AND s.deleted_at IS NULL
+        AND r.deleted_at IS NULL
       ORDER BY s.id, se.embedding <=> ${vectorStr}::vector ASC
     ) ranked
     ORDER BY similarity DESC

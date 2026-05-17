@@ -15,14 +15,6 @@ export interface AssetFetcherOptions {
   r2Client?: R2Client;
 }
 
-export interface DownloadedAsset {
-  hashPrefix: string;
-  localPath: string;
-  contentType: string;
-  sizeBytes: number;
-  downloadedAt: Date;
-}
-
 /**
  * AssetFetcher downloads and caches audio files from R2 storage.
  * 
@@ -35,7 +27,6 @@ export class AssetFetcher {
   private cacheDir: string;
   private tempDir: string;
   private r2Client: R2Client;
-  private downloadedAssets: Map<string, DownloadedAsset> = new Map();
 
   constructor(options: AssetFetcherOptions = {}) {
     this.cacheDir = options.cacheDir ?? "/tmp/sow-assets/cache";
@@ -73,32 +64,10 @@ export class AssetFetcher {
    * @returns Local path to downloaded file or null if failed
    */
   async downloadAudio(hashPrefix: string): Promise<string | null> {
-    // Check if already cached
-    const cached = this.downloadedAssets.get(hashPrefix);
-    if (cached) {
-      // Verify file still exists
-      try {
-        await fs.access(cached.localPath);
-        return cached.localPath;
-      } catch {
-        // File was deleted, remove from cache
-        this.downloadedAssets.delete(hashPrefix);
-      }
-    }
-
     // Check local cache directory
     const cachePath = path.join(this.cacheDir, `${hashPrefix}.mp3`);
     try {
       await fs.access(cachePath);
-      // File exists in cache
-      const stats = await fs.stat(cachePath);
-      this.downloadedAssets.set(hashPrefix, {
-        hashPrefix,
-        localPath: cachePath,
-        contentType: "audio/mpeg",
-        sizeBytes: stats.size,
-        downloadedAt: stats.mtime,
-      });
       return cachePath;
     } catch {
       // File not in cache, need to download
@@ -125,16 +94,6 @@ export class AssetFetcher {
 
       // Write to cache
       await fs.writeFile(cachePath, buffer);
-
-      // Record in cache map
-      const stats = await fs.stat(cachePath);
-      this.downloadedAssets.set(hashPrefix, {
-        hashPrefix,
-        localPath: cachePath,
-        contentType: "audio/mpeg",
-        sizeBytes: stats.size,
-        downloadedAt: new Date(),
-      });
 
       return cachePath;
     } catch (error) {
@@ -170,28 +129,12 @@ export class AssetFetcher {
   }
 
   /**
-   * Get information about a cached asset.
-   * 
-   * @param hashPrefix - Recording hash prefix
-   * @returns Asset info or null if not cached
-   */
-  getCachedAsset(hashPrefix: string): DownloadedAsset | null {
-    return this.downloadedAssets.get(hashPrefix) ?? null;
-  }
-
-  /**
    * Check if an asset is cached locally.
    * 
    * @param hashPrefix - Recording hash prefix
    * @returns True if cached
    */
   async isCached(hashPrefix: string): Promise<boolean> {
-    // Check memory cache
-    if (this.downloadedAssets.has(hashPrefix)) {
-      return true;
-    }
-
-    // Check filesystem
     const cachePath = path.join(this.cacheDir, `${hashPrefix}.mp3`);
     try {
       await fs.access(cachePath);
@@ -199,13 +142,6 @@ export class AssetFetcher {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * Clear the memory cache (does not delete files).
-   */
-  clearMemoryCache(): void {
-    this.downloadedAssets.clear();
   }
 
   /**
@@ -220,7 +156,6 @@ export class AssetFetcher {
     } catch {
       // Ignore errors
     }
-    this.downloadedAssets.clear();
   }
 
   /**
