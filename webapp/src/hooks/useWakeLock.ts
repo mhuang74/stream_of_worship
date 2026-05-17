@@ -23,6 +23,7 @@ export function useWakeLock() {
 
     const isSupported = "wakeLock" in navigator &&
       (navigator as unknown as { wakeLock: unknown }).wakeLock != null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((prev) => ({ ...prev, isSupported }));
   }, []);
 
@@ -59,6 +60,7 @@ export function useWakeLock() {
   // Auto-request on mount if supported
   useEffect(() => {
     if (state.isSupported) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       request();
     }
 

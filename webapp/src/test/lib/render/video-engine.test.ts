@@ -102,7 +102,7 @@ vi.mock("fluent-ffmpeg", () => {
 
   const mockFfmpeg = vi.fn(() => mockFfmpegInstance);
   const ffprobe = vi.fn();
-  (mockFfmpeg as any).ffprobe = ffprobe;
+  (mockFfmpeg as ReturnType<typeof vi.fn> & { ffprobe: ReturnType<typeof vi.fn> }).ffprobe = ffprobe;
 
   return {
     default: mockFfmpeg,
@@ -279,7 +279,7 @@ describe("VideoEngine.generateVideo", () => {
       }
     );
 
-    const encodeSpy = vi.spyOn(videoEngine as any, "encodeVideoWithFFmpeg").mockResolvedValue(undefined);
+    const encodeSpy = vi.spyOn(videoEngine as unknown as Record<string, unknown>, "encodeVideoWithFFmpeg").mockResolvedValue(undefined);
 
     const segments = [
       {
@@ -329,7 +329,7 @@ describe("VideoEngine.generateVideo", () => {
       }
     );
 
-    const blankSpy = vi.spyOn(videoEngine as any, "generateBlankVideo").mockResolvedValue({
+    const blankSpy = vi.spyOn(videoEngine as unknown as Record<string, unknown>, "generateBlankVideo").mockResolvedValue({
       outputPath: "/tmp/output.mp4",
       totalFrames: 720,
       durationSeconds: 30,
