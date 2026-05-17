@@ -568,9 +568,9 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 
 ### Task 8.6: Update Documentation
 
-- [ ] Update README.md with web app section
-- [ ] Create webapp/README.md with setup instructions
-- [ ] Document environment variables
-- [ ] Document deployment process
-- [ ] Document Cast receiver setup
-- [ ] Update AGENTS.md with web app commands
+- [x] Update README.md with web app section
+- [x] Create webapp/README.md with setup instructions
+- [x] Document environment variables
+- [x] Document deployment process
+- [x] Document Cast receiver setup
+- [x] Update AGENTS.md with web app commands

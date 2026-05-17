@@ -81,6 +81,106 @@ cd webapp && pnpm dev
 
 ---
 
+## Web App (`sow-webapp`)
+
+The Web App is the primary end-user interface for worship leaders and media teams. It is a Next.js browser application offering phone-first worship set preparation and playback, with desktop power-mode for advanced editing.
+
+### Features
+
+**Songset Management**
+- Browse and search the master song catalog (title, artist, key, tempo)
+- Create multi-song worship sets with per-song transition configuration
+- Adjust gap duration and crossfade for each song pair
+- Desktop: key shift and tempo nudge per song
+
+**Render Pipeline**
+- Generate MP3 audio: blended multi-song mix with smooth transitions
+- Generate MP4 video: synchronized lyrics video with chapter markers
+- Real-time progress via SSE (Server-Sent Events)
+- Configurable video resolution (720p, 1080p, 1440p) and font size
+
+**Playback**
+- Built-in controller player (audio + synchronized lyrics)
+- Second-screen projection via W3C Presentation API or Google Cast
+- Offline caching of rendered files via Service Worker
+- Full keyboard shortcuts and Media Session API integration
+
+**Content Review**
+- LRC lyrics review and editing (fix timing, correct characters)
+- Transition detail sheet (waveform alignment preview)
+- Semantic song search powered by embedded ONNX model
+
+**Sharing & Settings**
+- Generate shareable public player links with configurable expiry
+- User settings (display name, default transition parameters)
+
+### Prerequisites
+
+- Node.js 18+
+- pnpm
+
+External services (required for full functionality):
+- Neon PostgreSQL database
+- Cloudflare R2 object storage (for rendered audio/video files)
+
+### Setup
+
+```bash
+# Install dependencies
+cd webapp && pnpm install
+
+# Configure environment
+cp .env.example .env.local
+# Edit .env.local with your credentials (see .env.production.example for full docs)
+
+# Push database schema
+npx drizzle-kit push
+
+# Start dev server
+pnpm dev   # → http://localhost:8080
+```
+
+See [webapp/.env.production.example](webapp/.env.production.example) for documentation of all environment variables.
+
+### Development Commands
+
+```bash
+pnpm dev          # Dev server on :8080
+pnpm test         # Run test suite (Vitest)
+pnpm lint         # ESLint check
+pnpm build        # Production build
+
+# Database migrations
+npx drizzle-kit push       # Push schema to DB (dev)
+npx drizzle-kit generate   # Generate migration files
+npx drizzle-kit migrate    # Run pending migrations
+```
+
+### Routes
+
+| Path | Description |
+|------|-------------|
+| `/login` | User login |
+| `/songsets` | Songset list |
+| `/songsets/[id]` | Songset editor |
+| `/songsets/[id]/render` | Render configuration and progress |
+| `/songsets/[id]/play` | Playback controller |
+| `/songsets/[id]/play/projection` | Second-screen lyrics projection |
+| `/share/[token]` | Public shared player |
+| `/settings` | User settings |
+
+### Deployment
+
+The web app deploys to **Vercel Pro** (required — FFmpeg renders can run up to ~13 minutes, which exceeds the Free/Hobby plan cap).
+
+See [webapp/README.md](webapp/README.md) for full deployment instructions including:
+- Vercel project setup
+- Environment variable configuration
+- Google Cast SDK receiver registration (dev / staging / production)
+- Cast production approval process
+
+---
+
 ## Admin CLI (`sow-admin`)
 
 The Admin CLI is the backend management tool for administrators and DevOps. It manages the song catalog, downloads audio, and coordinates with the Analysis Service.
