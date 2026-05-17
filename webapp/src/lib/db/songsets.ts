@@ -181,7 +181,6 @@ export async function getSongset(
         with: {
           song: true,
           recording: {
-            where: isNull(recordings.deletedAt),
             with: {
               lyricMarks: {
                 columns: { id: true },
@@ -198,7 +197,9 @@ export async function getSongset(
 
   const sortedItems = [...row.items].sort((a, b) => a.position - b.position);
 
-  const items: SongsetItemDetail[] = sortedItems.map((item) => ({
+  const items: SongsetItemDetail[] = sortedItems
+    .filter((item) => !item.recording?.deletedAt)
+    .map((item) => ({
     id: item.id,
     songId: item.songId,
     recordingHashPrefix: item.recordingHashPrefix,

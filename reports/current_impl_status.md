@@ -689,6 +689,25 @@ Potential future improvements (not required for core functionality):
 - **Turso Sync** - Bidirectional cloud synchronization for multi-device support
 - **Additional Video Templates** - More visual styles for lyrics videos
 
+### Phase 9: Web App (Completed)
+
+A full-featured Next.js 16 web application was implemented across 8 phases, replacing the Python TUI for end users. Located in `webapp/`, it is a separate Node.js/TypeScript stack.
+
+Key features:
+- Authentication (Better Auth with email/password)
+- Songset CRUD with drag-and-drop song ordering
+- Catalog browsing with album filtering and semantic search (pgvector + fastembed-js)
+- Render pipeline (AudioEngine + VideoEngine ported to Node.js, FFmpeg-based)
+- R2 upload of MP3/MP4/chapters.json artifacts
+- Worship playback with Presentation API for second-screen projection
+- Offline caching via Service Worker and Cache Storage API
+- Lyrics review (phone) and editing (desktop)
+- Transition detail controls with audio preview
+- Sharing system with public hosted player
+- Settings with per-user defaults
+- Responsive design (phone-first, desktop power-mode)
+- Vercel Pro deployment configuration
+
 ---
 
 ## Dependencies
