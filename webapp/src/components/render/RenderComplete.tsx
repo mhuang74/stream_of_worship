@@ -27,7 +27,6 @@ interface RenderCompleteProps {
 }
 
 export function RenderComplete({
-  jobId: _jobId,
   songsetId,
   songsetName,
   mp3Url,

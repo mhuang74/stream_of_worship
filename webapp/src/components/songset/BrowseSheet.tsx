@@ -21,7 +21,7 @@ type SearchMode = "browse" | "describe";
 interface BrowseSheetProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddSongs: (songIds: string[]) => Promise<void>;
+  onAddSong: (song: SongCardData) => Promise<void>;
   existingSongIds?: string[];
   className?: string;
 }
@@ -34,7 +34,7 @@ interface SearchResult {
 export function BrowseSheet({
   isOpen,
   onOpenChange,
-  onAddSongs,
+  onAddSong,
   existingSongIds = [],
   className,
 }: BrowseSheetProps) {
@@ -142,10 +142,16 @@ export function BrowseSheet({
     async (songId: string) => {
       if (addingSongIds.has(songId) || addedSongIds.has(songId)) return;
 
+      const song = results.find((result) => result.id === songId);
+      if (!song) {
+        toast.error("Song not found");
+        return;
+      }
+
       setAddingSongIds((prev) => new Set(prev).add(songId));
 
       try {
-        await onAddSongs([songId]);
+        await onAddSong(song);
         setAddedSongIds((prev) => new Set(prev).add(songId));
         toast.success("Song added to songset");
       } catch (err) {
@@ -159,7 +165,7 @@ export function BrowseSheet({
         });
       }
     },
-    [onAddSongs, addingSongIds, addedSongIds]
+    [onAddSong, addingSongIds, addedSongIds, results]
   );
 
   const isSongAdded = useCallback(

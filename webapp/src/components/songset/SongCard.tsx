@@ -16,6 +16,7 @@ export interface SongCardData {
   musicalKey: string | null;
   recordings: {
     contentHash: string;
+    hashPrefix: string;
     durationSeconds: number | null;
     tempoBpm: number | null;
     musicalKey: string | null;

@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { songsets, songsetItems, renderJobs } from "@/db/schema";
+import { lyricMarks, songsets, songsetItems, renderJobs } from "@/db/schema";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
@@ -35,6 +35,7 @@ export interface SongsetItemDetail {
   crossfadeDurationSeconds: number | null;
   keyShiftSemitones: number | null;
   tempoRatio: number | null;
+  markedLineCount: number;
   song: {
     id: string;
     title: string;
@@ -170,7 +171,21 @@ export async function getSongset(
 ): Promise<SongsetDetail | null> {
   const row = await db.query.songsets.findFirst({
     where: and(eq(songsets.id, id), eq(songsets.userId, userId)),
-    with: { items: { with: { song: true, recording: true } } },
+    with: {
+      items: {
+        with: {
+          song: true,
+          recording: {
+            with: {
+              lyricMarks: {
+                columns: { id: true },
+                where: eq(lyricMarks.userId, userId),
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!row) return null;
@@ -187,6 +202,7 @@ export async function getSongset(
     crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
     keyShiftSemitones: item.keyShiftSemitones ?? null,
     tempoRatio: item.tempoRatio ?? null,
+    markedLineCount: item.recording?.lyricMarks.length ?? 0,
     song: item.song
       ? {
           id: item.song.id,
@@ -337,6 +353,7 @@ export async function addSongsetItem(
     crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
     keyShiftSemitones: item.keyShiftSemitones ?? null,
     tempoRatio: item.tempoRatio ?? null,
+    markedLineCount: 0,
     song: item.song
       ? {
           id: item.song.id,
@@ -401,6 +418,7 @@ export async function updateSongsetItem(
     crossfadeDurationSeconds: updated.crossfadeDurationSeconds ?? null,
     keyShiftSemitones: updated.keyShiftSemitones ?? null,
     tempoRatio: updated.tempoRatio ?? null,
+    markedLineCount: 0,
     song: updated.song
       ? {
           id: updated.song.id,

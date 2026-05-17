@@ -12,7 +12,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import { createR2ClientFromEnv, R2Config } from "@/lib/r2/client";
+import { R2Config } from "@/lib/r2/client";
 import { ChaptersManifest } from "./chapters";
 
 export interface UploadOptions {

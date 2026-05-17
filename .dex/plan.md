@@ -574,3 +574,6 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - [x] Document deployment process
 - [x] Document Cast receiver setup
 - [x] Update AGENTS.md with web app commands
+- [x] Add working webapp `.env.example`
+- [x] Document pgvector requirement and migration step
+- [x] Document current API surface and share/auth expectations

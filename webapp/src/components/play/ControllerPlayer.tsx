@@ -29,8 +29,6 @@ export function ControllerPlayer({
   videoSrc,
   chapters,
   isPresentationActive = false,
-  onPresentationConnect,
-  onPresentationDisconnect,
   className,
 }: ControllerPlayerProps) {
   const router = useRouter();
@@ -46,7 +44,6 @@ export function ControllerPlayer({
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showIosInfo, setShowIosInfo] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Wake lock hook
   const { isSupported: wakeLockSupported } = useWakeLock();
@@ -144,7 +141,7 @@ export function ControllerPlayer({
         clearTimeout(hideTimeoutRef.current);
       }
     };
-  }, []);
+  }, [showControls]);
 
   // Start hide timer when playing
   useEffect(() => {
@@ -308,7 +305,6 @@ export function ControllerPlayer({
       try {
         if (document.documentElement.requestFullscreen) {
           await document.documentElement.requestFullscreen();
-          setIsFullscreen(true);
         }
       } catch {
         // Fullscreen not supported or blocked
@@ -318,7 +314,9 @@ export function ControllerPlayer({
     requestFullscreen();
 
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        showControls();
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -329,7 +327,7 @@ export function ControllerPlayer({
         document.exitFullscreen().catch(() => {});
       }
     };
-  }, []);
+  }, [showControls]);
 
   // Mute video when presentation is active (audio plays on receiver)
   useEffect(() => {

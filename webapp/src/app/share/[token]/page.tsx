@@ -68,7 +68,11 @@ export default function SharePage() {
   const handlePlay = () => {
     if (!shareData?.mp4Url && !shareData?.mp3Url) return;
     setIsStarting(true);
-    router.push(`/share/${token}/play/projection`);
+    router.push(
+      shareData.mp4Url
+        ? `/share/${token}/play/projection`
+        : `/share/${token}/play/audio`
+    );
   };
 
   if (isLoading) {

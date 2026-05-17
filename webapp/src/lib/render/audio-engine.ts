@@ -80,6 +80,17 @@ export class AudioEngine {
   }
 
   /**
+   * Calculate crossfade overlap in milliseconds.
+   */
+  private getCrossfadeMs(item: SongsetItem): number {
+    if (!item.crossfadeEnabled || !item.crossfadeDurationSeconds) {
+      return 0;
+    }
+
+    return Math.max(0, Math.round(item.crossfadeDurationSeconds * 1000));
+  }
+
+  /**
    * Calculate gap duration in milliseconds based on beats and tempo.
    * 
    * @param item - Songset item with gap configuration
@@ -175,7 +186,14 @@ export class AudioEngine {
     let currentStep = 0;
 
     // Download all audio files first
-    const audioFiles: { path: string; item: SongsetItem; gapMs: number }[] = [];
+    const audioFiles: {
+      path: string;
+      item: SongsetItem;
+      gapMs: number;
+      crossfadeMs: number;
+      durationMs: number;
+      startMs: number;
+    }[] = [];
     
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -199,28 +217,37 @@ export class AudioEngine {
       }
 
       // Calculate gap before this song
-      let gapMs = 0;
-      if (i > 0) {
-        // No gap before first song
-        gapMs = this.calculateGapMs(item, item.tempoBpm);
-      }
-
-      // Get audio info for segment tracking
       const info = await this.getAudioInfo(audioPath);
       const durationMs = info?.durationMs ?? 0;
+      let gapMs = 0;
+      let crossfadeMs = 0;
+
+      if (i > 0) {
+        gapMs = this.calculateGapMs(item, item.tempoBpm);
+        crossfadeMs = Math.min(this.getCrossfadeMs(item), durationMs);
+      }
+
+      const startTimeMs = i === 0 ? 0 : Math.max(0, currentTimeMs + gapMs - crossfadeMs);
 
       // Record segment info
       const segmentInfo: AudioSegmentInfo = {
         item,
         audioPath,
-        startTimeSeconds: currentTimeMs / 1000.0 + gapMs / 1000.0,
+        startTimeSeconds: startTimeMs / 1000.0,
         durationSeconds: durationMs / 1000.0,
         gapBeforeSeconds: gapMs / 1000.0,
       };
       segments.push(segmentInfo);
 
-      currentTimeMs += gapMs + durationMs;
-      audioFiles.push({ path: audioPath, item, gapMs });
+      currentTimeMs = startTimeMs + durationMs;
+      audioFiles.push({
+        path: audioPath,
+        item,
+        gapMs,
+        crossfadeMs,
+        durationMs,
+        startMs: startTimeMs,
+      });
 
       // Update progress
       if (progressCallback) {
@@ -257,51 +284,64 @@ export class AudioEngine {
    * @param normalize - Whether to apply loudness normalization
    */
   private async concatenateAudioFiles(
-    audioFiles: { path: string; item: SongsetItem; gapMs: number }[],
+    audioFiles: {
+      path: string;
+      item: SongsetItem;
+      gapMs: number;
+      crossfadeMs: number;
+      durationMs: number;
+      startMs: number;
+    }[],
     outputPath: string,
     normalize: boolean
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Build filter complex for concatenation with gaps
-      const inputs: string[] = [];
+      const command = ffmpeg();
       const filterParts: string[] = [];
-      let inputIndex = 0;
+      const outputLabels: string[] = [];
+
+      for (const audioFile of audioFiles) {
+        command.input(audioFile.path);
+      }
 
       for (let i = 0; i < audioFiles.length; i++) {
-        const { path: filePath, gapMs } = audioFiles[i];
-        
-        // Add gap silence if needed (not for first song)
-        if (gapMs > 0 && i > 0) {
-          const gapSeconds = gapMs / 1000;
-          // Generate silence using anullsrc
-          inputs.push(`aevalsrc=0:d=${gapSeconds}`);
-          filterParts.push(`[${inputIndex}:a]`);
-          inputIndex++;
+        const audioFile = audioFiles[i];
+        const nextCrossfadeMs = audioFiles[i + 1]?.crossfadeMs ?? 0;
+        const filters = [`[${i}:a]asetpts=PTS-STARTPTS`];
+
+        if (audioFile.crossfadeMs > 0) {
+          filters.push(
+            `afade=t=in:st=0:d=${(audioFile.crossfadeMs / 1000).toFixed(3)}`
+          );
         }
 
-        // Add the audio file
-        inputs.push(filePath);
-        filterParts.push(`[${inputIndex}:a]`);
-        inputIndex++;
-      }
-
-      // Build concatenation filter
-      const concatFilter = `${filterParts.join("")}concat=n=${inputIndex}:v=0:a=1[outa]`;
-
-      // Build the command
-      const command = ffmpeg();
-
-      // Add all inputs
-      for (const input of inputs) {
-        if (input.startsWith("aevalsrc=")) {
-          command.input(input).inputOptions("-f lavfi");
-        } else {
-          command.input(input);
+        if (nextCrossfadeMs > 0) {
+          const fadeOutStartSeconds = Math.max(
+            0,
+            (audioFile.durationMs - nextCrossfadeMs) / 1000
+          );
+          filters.push(
+            `afade=t=out:st=${fadeOutStartSeconds.toFixed(3)}:d=${(
+              nextCrossfadeMs / 1000
+            ).toFixed(3)}`
+          );
         }
+
+        if (audioFile.startMs > 0) {
+          const delay = Math.round(audioFile.startMs);
+          filters.push(`adelay=${delay}|${delay}`);
+        }
+
+        const outputLabel = `a${i}`;
+        filterParts.push(`${filters.join(",")}[${outputLabel}]`);
+        outputLabels.push(`[${outputLabel}]`);
       }
 
-      // Apply filter complex
-      command.complexFilter([concatFilter], "[outa]");
+      filterParts.push(
+        `${outputLabels.join("")}amix=inputs=${outputLabels.length}:normalize=0:dropout_transition=0[outa]`
+      );
+
+      command.complexFilter(filterParts, "[outa]");
 
       // Apply loudness normalization if requested
       if (normalize) {
@@ -312,7 +352,6 @@ export class AudioEngine {
         ]);
       }
 
-      // Set output options
       command
         .audioCodec("libmp3lame")
         .audioBitrate(this.outputBitrate)
@@ -376,8 +415,9 @@ export class AudioEngine {
       // Extract start of second song
       const toDurationMs = Math.min(halfDurationMs, toInfo.durationMs);
 
-      // Calculate gap
+      // Calculate gap / overlap
       const gapMs = this.calculateGapMs(toItem, toItem.tempoBpm);
+      const crossfadeMs = Math.min(this.getCrossfadeMs(toItem), fromDurationMs, toDurationMs);
 
       // Create temp file for preview
       const tempFile = path.join(
@@ -410,8 +450,24 @@ export class AudioEngine {
           `[1:a]atrim=start=0:duration=${toDurationSec},asetpts=PTS-STARTPTS[to]`
         );
 
-        // Add gap silence if needed
-        if (gapMs > 0) {
+        if (crossfadeMs > 0) {
+          const overlapStartSeconds = Math.max(
+            0,
+            (fromDurationMs - crossfadeMs) / 1000
+          );
+          filters.push(
+            `[from]afade=t=out:st=${overlapStartSeconds.toFixed(3)}:d=${(
+              crossfadeMs / 1000
+            ).toFixed(3)}[fromf]`
+          );
+          filters.push(
+            `[to]afade=t=in:st=0:d=${(crossfadeMs / 1000).toFixed(3)},adelay=${Math.max(
+              0,
+              Math.round(fromDurationMs - crossfadeMs)
+            )}|${Math.max(0, Math.round(fromDurationMs - crossfadeMs))}[tof]`
+          );
+          filters.push("[fromf][tof]amix=inputs=2:normalize=0:dropout_transition=0[outa]");
+        } else if (gapMs > 0) {
           const gapSeconds = gapMs / 1000;
           filters.push(
             `aevalsrc=0:d=${gapSeconds}[gap]`
@@ -470,6 +526,7 @@ export class AudioEngine {
       if (i > 0) {
         const gapMs = this.calculateGapMs(item, item.tempoBpm);
         totalMs += gapMs;
+        totalMs -= this.getCrossfadeMs(item);
       }
 
       // Add song duration if available

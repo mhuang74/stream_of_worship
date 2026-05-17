@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createR2ClientFromEnv, SignedUrlOptions } from "@/lib/r2/client";
+import { db } from "@/db";
+import { recordings, renderJobs } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 interface SignedUrlParams {
-  key?: string;
   hashPrefix?: string;
   renderJobId?: string;
   fileType?: string;
@@ -11,13 +13,14 @@ interface SignedUrlParams {
 }
 
 export async function generateSignedUrlResponse(
+  userId: number,
   params: SignedUrlParams
 ): Promise<NextResponse> {
-  if (!params.key && !params.hashPrefix && !params.renderJobId) {
+  if (!params.hashPrefix && !params.renderJobId) {
     return NextResponse.json(
       {
         error:
-          "Must provide one of: key (full R2 path), hashPrefix (for source files), or renderJobId (for rendered outputs)",
+          "Must provide one of: hashPrefix (for published source files) or renderJobId (for your rendered outputs)",
       },
       { status: 400 }
     );
@@ -33,9 +36,21 @@ export async function generateSignedUrlResponse(
   let result;
   const fileType = params.fileType || "audio";
 
-  if (params.key) {
-    result = await r2Client.generateSignedUrl(params.key, fileType, options);
-  } else if (params.renderJobId) {
+  if (params.renderJobId) {
+    const renderJob = await db.query.renderJobs.findFirst({
+      where: and(
+        eq(renderJobs.id, params.renderJobId),
+        eq(renderJobs.userId, userId)
+      ),
+    });
+
+    if (!renderJob) {
+      return NextResponse.json(
+        { error: "Render job not found" },
+        { status: 404 }
+      );
+    }
+
     if (fileType === "video") {
       result = await r2Client.getVideoSignedUrl(params.renderJobId, options);
     } else if (fileType === "audio") {
@@ -58,6 +73,20 @@ export async function generateSignedUrlResponse(
       );
     }
   } else if (params.hashPrefix) {
+    const recording = await db.query.recordings.findFirst({
+      where: and(
+        eq(recordings.hashPrefix, params.hashPrefix),
+        eq(recordings.visibilityStatus, "published")
+      ),
+    });
+
+    if (!recording) {
+      return NextResponse.json(
+        { error: "Recording not found" },
+        { status: 404 }
+      );
+    }
+
     if (fileType === "audio") {
       result = await r2Client.getAudioSignedUrl(params.hashPrefix, options);
     } else if (fileType === "lrc") {

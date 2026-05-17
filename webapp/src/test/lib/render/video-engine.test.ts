@@ -13,7 +13,6 @@ import {
 } from "@/lib/render/frame-renderer";
 import { parseLRC, GlobalLRCLine, convertToGlobalTimeline, estimateLastLyricDuration, isValidLRC, getLyricsTimeRange, findCurrentLyricIndex, groupLyricsBySong } from "@/lib/render/lrc-parser";
 import { AssetFetcher } from "@/lib/render/asset-fetcher";
-import { spawn as childProcessSpawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 
 const mockFfprobe = vi.fn();

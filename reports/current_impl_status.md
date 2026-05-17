@@ -1,6 +1,6 @@
 # Stream of Worship - Current Implementation Status Report
 
-**Generated:** 2026-02-06
+**Generated:** 2026-05-17
 **Project:** Stream of Worship - Admin CLI & Analysis Service
 **Repository:** sow_cli_admin
 

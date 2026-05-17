@@ -12,7 +12,6 @@ vi.mock("@/lib/auth", () => ({
 const mockFindFirstShare = vi.fn();
 const mockFindFirstJob = vi.fn();
 const mockFindFirstSongset = vi.fn();
-const mockUpdate = vi.fn();
 const mockSet = vi.fn();
 const mockWhere = vi.fn();
 

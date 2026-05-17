@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SettingsForm, UserSettingsData } from "@/components/settings/SettingsForm";
 import { SettingsSkeleton } from "@/components/settings/SettingsSkeleton";
-import { useServerQuery } from "@/hooks/useServerQuery";
-import { setQueryData } from "@/lib/query-client";
 import { toast } from "sonner";
-
-const SETTINGS_QUERY_KEY = "/api/settings";
 
 const DEFAULT_SETTINGS: UserSettingsData = {
   offlineAutoCache: true,
@@ -30,18 +26,41 @@ async function fetchSettings(): Promise<UserSettingsData> {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const [settings, setSettings] = useState<UserSettingsData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const { data: settings, isLoading, error } = useServerQuery<UserSettingsData>(
-    SETTINGS_QUERY_KEY,
-    fetchSettings,
-    { staleTimeMs: 5 * 60_000 }
-  );
+  useEffect(() => {
+    let cancelled = false;
 
-  if (error?.message === "Failed to load settings" && !settings) {
-    // Redirect on auth error; we can't distinguish 401 from fetch error here
-    // without changing fetchSettings — so just show error.
-  }
+    async function loadSettings() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const nextSettings = await fetchSettings();
+        if (!cancelled) {
+          setSettings(nextSettings);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load settings"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSave(updated: UserSettingsData) {
     setIsSaving(true);
@@ -61,8 +80,7 @@ export default function SettingsPage() {
         throw new Error(data.error || "Failed to save settings");
       }
 
-      // Update cache so the next page visit sees fresh data without a fetch
-      setQueryData(SETTINGS_QUERY_KEY, updated);
+      setSettings(updated);
       toast.success("Settings saved");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save settings");
@@ -78,7 +96,7 @@ export default function SettingsPage() {
       {isLoading && <SettingsSkeleton />}
 
       {error && !isLoading && (
-        <p className="text-destructive">{error.message}</p>
+        <p className="text-destructive">{error}</p>
       )}
 
       {settings && !isLoading && (

@@ -4,7 +4,6 @@ import { generateSignedUrlResponse } from "./shared-handler";
 import { z } from "zod";
 
 const signedUrlRequestSchema = z.object({
-  key: z.string().min(1).optional(),
   hashPrefix: z.string().min(1).optional(),
   renderJobId: z.string().min(1).optional(),
   fileType: z.enum(["audio", "video", "lrc", "json"]).optional(),
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return await generateSignedUrlResponse(parseResult.data);
+    return await generateSignedUrlResponse(Number(session.user.id), parseResult.data);
   } catch (error) {
     console.error("Error generating signed URL:", error);
 
@@ -74,7 +73,6 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const key = searchParams.get("key") || undefined;
     const hashPrefix = searchParams.get("hashPrefix") || undefined;
     const renderJobId = searchParams.get("renderJobId") || undefined;
     const fileTypeRaw = searchParams.get("fileType");
@@ -101,8 +99,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return await generateSignedUrlResponse({
-      key,
+    return await generateSignedUrlResponse(Number(session.user.id), {
       hashPrefix,
       renderJobId,
       fileType,

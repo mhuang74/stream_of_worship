@@ -11,7 +11,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -116,7 +115,6 @@ import { SemanticSearch } from "@/components/search/SemanticSearch";
 import { SongSearch } from "@/components/songset/SongSearch";
 import { LyricsReviewSheet } from "@/components/lyrics/LyricsReviewSheet";
 import { PlaybackControls } from "@/components/play/PlaybackControls";
-import { AudioPlayerBar } from "@/components/audio/AudioPlayerBar";
 import { SongCard } from "@/components/songset/SongCard";
 
 // ---------------------------------------------------------------------------

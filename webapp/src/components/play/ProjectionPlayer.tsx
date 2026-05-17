@@ -22,12 +22,15 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
   useEffect(() => {
     const lockOrientation = async () => {
       try {
+        const orientation = screen.orientation as ScreenOrientation & {
+          lock?: (type: string) => Promise<void>;
+        };
         if (
           typeof window !== "undefined" &&
-          screen.orientation &&
-          typeof (screen.orientation as ScreenOrientation & { lock?: (type: string) => Promise<void> }).lock === "function"
+          orientation &&
+          typeof orientation.lock === "function"
         ) {
-          await (screen.orientation as ScreenOrientation & { lock?: (type: string) => Promise<void> }).lock("landscape");
+          await orientation.lock("landscape");
         }
       } catch {
         // Orientation lock not supported or permission denied

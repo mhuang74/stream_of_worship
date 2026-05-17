@@ -7,6 +7,7 @@ Web application for rendering worship music transitions with synchronized lyrics
 - Node.js 18+
 - pnpm
 - PostgreSQL database (Neon recommended)
+- PostgreSQL `pgvector` extension enabled
 - Cloudflare R2 account
 
 ## Environment Setup
@@ -34,6 +35,7 @@ pnpm build        # Production build
 ## Database Migrations
 
 ```bash
+psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 npx drizzle-kit push       # Push schema changes to DB
 npx drizzle-kit generate   # Generate migration files
 npx drizzle-kit migrate    # Run pending migrations
@@ -52,6 +54,29 @@ npx drizzle-kit migrate    # Run pending migrations
 | `/songsets/[id]/play/projection` | Second-screen lyrics projection |
 | `/share/[token]` | Public shared player |
 | `/settings` | User settings |
+
+## API Summary
+
+- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`
+  Auth required. Returns only songs with at least one published recording for app callers.
+- `POST /api/songs/search/semantic`
+  Auth required. Natural-language search backed by pgvector plus the local embedding model.
+- `GET|POST|PATCH|DELETE /api/songsets`, `/api/songsets/[id]`, `/api/songsets/[id]/items`, `/api/songsets/[id]/items/reorder`
+  Auth required. Songset CRUD, item editing, and reorder, all ownership-scoped.
+- `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`
+  Auth required. Render creation, status lookup, and SSE progress streaming.
+- `GET|POST /api/signed-url`
+  Auth required. Signs published source recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`.
+- `GET|DELETE /api/offline/cache`
+  Auth required. Returns artifact URLs for offline caching or invalidates cached metadata for a completed render job.
+- `GET|PUT /api/settings`
+  Auth required. Reads and writes per-user transition/video/offline defaults.
+- `GET|POST|DELETE /api/lyrics/marks`, `GET|PUT|DELETE /api/lyrics/overrides`
+  Auth required. Stores lyric review marks and per-user LRC overrides.
+- `POST /api/share`, `GET /api/share`, `DELETE /api/share/[token]`
+  Auth required. Creates, lists, and revokes shares. Active shares are capped at 20 per user.
+- `GET /api/share/[token]`
+  Public. Validates a share token and returns signed playback URLs.
 
 ## Architecture
 
@@ -96,11 +121,13 @@ app ID pointing to the preview URL. See `.env.production.example` for details.
 
 1. Go to [https://cast.google.com/publish](https://cast.google.com/publish).
 2. Register a **Custom Receiver** for each environment:
-   - **Dev**: your ngrok or local tunnel URL + `/cast-receiver`
-   - **Staging/Preview**: `https://your-app-preview.vercel.app/cast-receiver`
-   - **Production**: `https://your-app.vercel.app/cast-receiver`
+   - **Dev**: your ngrok or local tunnel URL + `/songsets/<songset-id>/play/projection`
+   - **Staging/Preview**: `https://your-app-preview.vercel.app/songsets/<songset-id>/play/projection`
+   - **Production**: `https://your-app.vercel.app/songsets/<songset-id>/play/projection`
 3. Copy the generated 8-character App ID and set it as `NEXT_PUBLIC_CAST_RECEIVER_APP_ID`
    in the matching Vercel environment.
+
+For public share playback, the receiver route is `/share/<token>/play/projection`.
 
 #### Production Cast approval
 

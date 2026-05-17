@@ -54,7 +54,7 @@ export default function ProjectionPage() {
         }
 
         const signedUrlResponse = await fetch(
-          `/api/signed-url?key=${encodeURIComponent(jobData.mp4R2Key as string)}`
+          `/api/signed-url?renderJobId=${encodeURIComponent(songsetData.latestRenderJobId)}&fileType=video`
         );
         if (!signedUrlResponse.ok) {
           throw new Error("Failed to get video URL");

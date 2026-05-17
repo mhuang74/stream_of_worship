@@ -26,6 +26,7 @@ This project consists of three components. Here's how to run each:
 ### Prerequisites
 - **Admin CLI & User App**: Python 3.11+, `uv` package manager
 - **Web App**: Node.js 18+, `pnpm` package manager
+- **Web App Database**: PostgreSQL with the `pgvector` extension available
 - **Analysis Service**: Docker Desktop, Cloudflare R2 credentials
 
 ### Component Details
@@ -121,6 +122,7 @@ The Web App is the primary end-user interface for worship leaders and media team
 
 External services (required for full functionality):
 - Neon PostgreSQL database
+- pgvector enabled in that PostgreSQL database
 - Cloudflare R2 object storage (for rendered audio/video files)
 
 ### Setup
@@ -134,6 +136,7 @@ cp .env.example .env.local
 # Edit .env.local with your credentials (see .env.production.example for full docs)
 
 # Push database schema
+psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 npx drizzle-kit push
 
 # Start dev server
@@ -168,6 +171,18 @@ npx drizzle-kit migrate    # Run pending migrations
 | `/songsets/[id]/play/projection` | Second-screen lyrics projection |
 | `/share/[token]` | Public shared player |
 | `/settings` | User settings |
+
+### API Summary
+
+- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `POST /api/songs/search/semantic`: authenticated catalog APIs. App users only see songs with at least one published recording.
+- `GET|POST|PATCH|DELETE /api/songsets...`: authenticated songset CRUD, item editing, and reorder operations scoped to the owner.
+- `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`: authenticated render creation, polling, and SSE progress.
+- `GET|POST /api/signed-url`: authenticated signed URL minting for published recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`.
+- `GET|DELETE /api/offline/cache`: authenticated offline artifact URL generation and invalidation.
+- `GET|PUT /api/settings`: authenticated per-user settings.
+- `GET|POST|DELETE /api/lyrics/marks`, `GET|PUT|DELETE /api/lyrics/overrides`: authenticated lyric review and override storage.
+- `POST /api/share`, `GET /api/share`, `DELETE /api/share/[token]`: authenticated share management with a 20-active-share cap per user.
+- `GET /api/share/[token]`: public share-token lookup used by shared playback pages.
 
 ### Deployment
 

@@ -33,14 +33,12 @@ function buildLrc(lines: LRCLine[]): string {
 interface LyricsTimingEditorProps {
   recordingContentHash: string;
   lines: LRCLine[];
-  originalLrc: string;
   onSave: (newLrc: string) => void;
 }
 
 export function LyricsTimingEditor({
   recordingContentHash,
   lines,
-  originalLrc,
   onSave,
 }: LyricsTimingEditorProps) {
   const [editedLines, setEditedLines] = useState<LRCLine[]>(() => lines.map((l) => ({ ...l })));
