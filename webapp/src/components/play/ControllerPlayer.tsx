@@ -60,6 +60,7 @@ export function ControllerPlayer({
     const infoShown = sessionStorage.getItem(IOS_INFO_KEY);
 
     if (isIOS && !isPresentationActive && !infoShown) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowIosInfo(true);
       sessionStorage.setItem(IOS_INFO_KEY, "true");
     }

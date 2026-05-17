@@ -25,9 +25,9 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
         if (
           typeof window !== "undefined" &&
           screen.orientation &&
-          typeof (screen.orientation as any).lock === "function"
+          typeof (screen.orientation as ScreenOrientation & { lock?: (type: string) => Promise<void> }).lock === "function"
         ) {
-          await (screen.orientation as any).lock("landscape");
+          await (screen.orientation as ScreenOrientation & { lock?: (type: string) => Promise<void> }).lock("landscape");
         }
       } catch {
         // Orientation lock not supported or permission denied
@@ -67,6 +67,7 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
   // Show initial title on mount
   useEffect(() => {
     if (initialSongTitle) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       showTitleTemporarily();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

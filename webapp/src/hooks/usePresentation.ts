@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 export interface PresentationCommand {
   type: "play" | "pause" | "seek" | "volume" | "songTitle";
@@ -21,7 +21,9 @@ export interface UsePresentationReceiverOptions {
 
 export function usePresentationReceiver(options: UsePresentationReceiverOptions) {
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+  useLayoutEffect(() => {
+    optionsRef.current = options;
+  });
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;

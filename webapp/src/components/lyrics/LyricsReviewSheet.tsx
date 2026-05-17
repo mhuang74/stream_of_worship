@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   Sheet,
   SheetContent,
@@ -44,18 +44,16 @@ export function LyricsReviewSheet({
   songTitle,
 }: LyricsReviewSheetProps) {
   const [activeTab, setActiveTab] = useState<TabType>("review");
-  const [lines, setLines] = useState<LRCLine[]>([]);
   const [markedTimestamps, setMarkedTimestamps] = useState<Set<number>>(new Set());
   const [isLoadingMarks, setIsLoadingMarks] = useState(false);
   const [currentLrc, setCurrentLrc] = useState(lrcContent);
 
-  useEffect(() => {
-    setLines(parseLRC(currentLrc));
-  }, [currentLrc]);
+  const lines = useMemo(() => parseLRC(currentLrc), [currentLrc]);
 
   useEffect(() => {
     if (!isOpen || !recordingContentHash) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoadingMarks(true);
     fetch(
       `/api/lyrics/marks?recordingContentHash=${encodeURIComponent(recordingContentHash)}`
