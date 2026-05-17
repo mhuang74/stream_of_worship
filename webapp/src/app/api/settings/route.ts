@@ -154,6 +154,7 @@ export async function PUT(request: NextRequest) {
     if (
       b.defaultKeyShiftSemitones !== undefined &&
       (typeof b.defaultKeyShiftSemitones !== "number" ||
+        !Number.isInteger(b.defaultKeyShiftSemitones) ||
         b.defaultKeyShiftSemitones < -6 ||
         b.defaultKeyShiftSemitones > 6)
     ) {

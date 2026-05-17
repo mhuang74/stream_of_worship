@@ -143,7 +143,7 @@ export async function createRenderJob(
     })
     .returning();
 
-  // Update songset with latest render job
+  // Update songset with latest render job (atomic: last writer wins)
   await db
     .update(songsets)
     .set({

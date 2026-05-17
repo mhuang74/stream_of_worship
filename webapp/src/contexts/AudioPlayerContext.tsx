@@ -75,7 +75,16 @@ export function AudioPlayerProvider({
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [state, setState] = useState<AudioPlayerState>(defaultState);
 
-  // Track duration from currentTrack in a ref to avoid setState in effect
+  const isLoopingRef = useRef(false);
+  const loopWindowStartRef = useRef(0);
+  const loopWindowEndRef = useRef(0);
+
+  useEffect(() => {
+    isLoopingRef.current = state.isLooping;
+    loopWindowStartRef.current = state.loopWindowStart;
+    loopWindowEndRef.current = state.loopWindowEnd;
+  });
+
   const trackDurationRef = useRef<number>(0);
   
   // Update duration ref when track changes
@@ -95,9 +104,9 @@ export function AudioPlayerProvider({
       }));
 
       // Handle loop window
-      if (state.isLooping && state.loopWindowEnd > 0) {
-        if (audio.currentTime >= state.loopWindowEnd) {
-          audio.currentTime = state.loopWindowStart;
+      if (isLoopingRef.current && loopWindowEndRef.current > 0) {
+        if (audio.currentTime >= loopWindowEndRef.current) {
+          audio.currentTime = loopWindowStartRef.current;
         }
       }
     };
@@ -132,7 +141,7 @@ export function AudioPlayerProvider({
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("volumechange", handleVolumeChange);
     };
-  }, [state.isLooping, state.loopWindowStart, state.loopWindowEnd]);
+  }, []);
 
   const play = useCallback((track: AudioTrack) => {
     setCurrentTrack(track);

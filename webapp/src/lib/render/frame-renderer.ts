@@ -6,7 +6,7 @@
  */
 
 import { createCanvas, Canvas, CanvasRenderingContext2D } from "canvas";
-import { GlobalLRCLine } from "./lrc-parser";
+import { GlobalLRCLine, estimateLastLyricDuration, groupLyricsBySong } from "./lrc-parser";
 
 export type VideoTemplateName = "dark" | "gradient_warm" | "gradient_blue";
 export type FontSizePreset = "S" | "M" | "L" | "XL";
@@ -175,7 +175,7 @@ export class FrameRenderer {
     }
 
     // Group lyrics by song
-    const lyricsBySong = this.groupLyricsBySong(lyrics);
+    const lyricsBySong = groupLyricsBySong(lyrics);
     const currentSongLyrics = lyricsBySong.get(currentTitle) || [];
 
     // Track intro info alpha
@@ -379,7 +379,7 @@ export class FrameRenderer {
 
     if (isLastLyric) {
       // Estimate display duration
-      const maxDisplay = this.estimateLastLyricDuration(songLyrics);
+      const maxDisplay = estimateLastLyricDuration(songLyrics);
       const elapsedSinceLastLyric =
         currentTime - currentLine.globalTimeSeconds;
 
@@ -433,61 +433,6 @@ export class FrameRenderer {
         ctx.fillText(nextLine.text, width / 2, nextY);
       }
     }
-  }
-
-  /**
-   * Estimate display duration for the last lyric line.
-   */
-  private estimateLastLyricDuration(songLyrics: GlobalLRCLine[]): number {
-    if (songLyrics.length === 0) {
-      return 5.0;
-    }
-
-    const lastLyric = songLyrics[songLyrics.length - 1];
-
-    // Primary approach: find previous occurrence of same text
-    for (let i = songLyrics.length - 2; i >= 0; i--) {
-      if (songLyrics[i].text === lastLyric.text) {
-        if (i + 1 < songLyrics.length) {
-          const duration =
-            songLyrics[i + 1].globalTimeSeconds -
-            songLyrics[i].globalTimeSeconds;
-          return Math.max(3.0, duration);
-        }
-      }
-    }
-
-    // Fallback: character count estimation
-    const text = lastLyric.text;
-    let charCount = 0;
-    for (const char of text) {
-      const code = char.charCodeAt(0);
-      if (code > 0x7f) {
-        charCount += 1.0;
-      } else if (!char.trim()) {
-        charCount += 0.5;
-      }
-    }
-
-    // Assume 2 seconds per character
-    const duration = charCount * 2;
-    return Math.max(3.0, duration);
-  }
-
-  /**
-   * Group lyrics by song title.
-   */
-  private groupLyricsBySong(
-    lyrics: GlobalLRCLine[]
-  ): Map<string, GlobalLRCLine[]> {
-    const grouped = new Map<string, GlobalLRCLine[]>();
-    for (const line of lyrics) {
-      if (!grouped.has(line.title)) {
-        grouped.set(line.title, []);
-      }
-      grouped.get(line.title)!.push(line);
-    }
-    return grouped;
   }
 
   /**

@@ -17,6 +17,18 @@ vi.mock("@/lib/r2/client", () => ({
   }),
 }));
 
+const mockFindFirst = vi.fn();
+
+vi.mock("@/db", () => ({
+  db: {
+    query: {
+      recordings: {
+        findFirst: (...args: any[]) => mockFindFirst(...args),
+      },
+    },
+  },
+}));
+
 const sessionUser = { user: { id: 1 } };
 
 function makeRequest(body?: unknown): NextRequest {
@@ -34,6 +46,10 @@ function makeRequest(body?: unknown): NextRequest {
 describe("POST /api/transitions/preview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindFirst.mockResolvedValue({
+      hashPrefix: "hash-b",
+      visibilityStatus: "published",
+    });
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -78,6 +94,16 @@ describe("POST /api/transitions/preview", () => {
     expect(data.error).toBe("Invalid request body");
   });
 
+  it("returns 404 when recording not found or not published", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirst.mockResolvedValue(null);
+
+    const res = await POST(makeRequest({ toHash: "hash-b" }));
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toMatch(/not found|not published/i);
+  });
+
   it("returns signed URL using toHash when provided", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     const expiresAt = new Date(Date.now() + 3600_000);
@@ -113,6 +139,10 @@ describe("POST /api/transitions/preview", () => {
     mockGetAudioSignedUrl.mockResolvedValue({
       url: "https://r2.example.com/audio/hash-a.mp3",
       expiresAt,
+    });
+    mockFindFirst.mockResolvedValue({
+      hashPrefix: "hash-a",
+      visibilityStatus: "published",
     });
 
     const res = await POST(makeRequest({ fromHash: "hash-a" }));

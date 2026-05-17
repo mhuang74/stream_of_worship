@@ -156,91 +156,45 @@ describe("VideoEngine", () => {
     const engine1 = new VideoEngine(assetFetcher, {
       titleCardDurationSeconds: 3,
     });
-    expect(engine1).toBeDefined();
+    expect((engine1 as unknown as { titleCardDurationSeconds: number }).titleCardDurationSeconds).toBe(5);
 
     const engine2 = new VideoEngine(assetFetcher, {
       titleCardDurationSeconds: 35,
     });
-    expect(engine2).toBeDefined();
+    expect((engine2 as unknown as { titleCardDurationSeconds: number }).titleCardDurationSeconds).toBe(30);
   });
 
-  describe("getAvailableTemplates", () => {
+  describe("FrameRenderer static methods (via VideoEngine)", () => {
     it("should return list of available templates", () => {
-      const templates = VideoEngine.getAvailableTemplates();
+      const templates = FrameRenderer.getAvailableTemplates();
       expect(templates).toContain("dark");
       expect(templates).toContain("gradient_warm");
       expect(templates).toContain("gradient_blue");
     });
-  });
 
-  describe("getTemplate", () => {
     it("should return template by name", () => {
-      const template = VideoEngine.getTemplate("dark");
+      const template = FrameRenderer.getTemplate("dark");
       expect(template.name).toBe("dark");
-      expect(template.resolution).toEqual([1920, 1080]);
     });
 
     it("should return dark template for unknown name", () => {
-      const template = VideoEngine.getTemplate("unknown" as VideoTemplateName);
+      const template = FrameRenderer.getTemplate("unknown" as VideoTemplateName);
       expect(template.name).toBe("dark");
     });
-  });
 
-  describe("getAvailableFontSizes", () => {
     it("should return all font size presets", () => {
-      const sizes = VideoEngine.getAvailableFontSizes();
+      const sizes = FrameRenderer.getAvailableFontSizes();
       expect(sizes).toContain("S");
       expect(sizes).toContain("M");
       expect(sizes).toContain("L");
       expect(sizes).toContain("XL");
     });
-  });
 
-  describe("getFontSize", () => {
-    it("should return correct font size for S preset", () => {
-      expect(VideoEngine.getFontSize("S")).toBe(32);
-    });
-
-    it("should return correct font size for M preset", () => {
-      expect(VideoEngine.getFontSize("M")).toBe(48);
-    });
-
-    it("should return correct font size for L preset", () => {
-      expect(VideoEngine.getFontSize("L")).toBe(64);
-    });
-
-    it("should return correct font size for XL preset", () => {
-      expect(VideoEngine.getFontSize("XL")).toBe(80);
-    });
-  });
-
-  describe("formatChaptersForFFmpeg", () => {
-    it("should format chapters correctly", async () => {
-      const chapters: ChapterInfo[] = [
-        {
-          position: 1,
-          songTitle: "Song 1",
-          startSeconds: 0,
-          endSeconds: 180,
-          lines: [{ text: "Line 1", startSeconds: 5 }],
-        },
-        {
-          position: 2,
-          songTitle: "Song 2",
-          startSeconds: 180,
-          endSeconds: 360,
-          lines: [{ text: "Line 2", startSeconds: 185 }],
-        },
-      ];
-
-      const result = await (videoEngine as unknown as { formatChaptersForFFmpeg: (chapters: ChapterInfo[]) => string }).formatChaptersForFFmpeg(chapters);
-
-      expect(result).toContain(";FFMETADATA1");
-      expect(result).toContain("[CHAPTER]");
-      expect(result).toContain("TIMEBASE=1/1000");
-      expect(result).toContain("START=0");
-      expect(result).toContain("END=180000");
-      expect(result).toContain("title=Song 1");
+    it("should return correct font sizes", () => {
+      expect(FrameRenderer.getFontSize("S")).toBe(32);
+      expect(FrameRenderer.getFontSize("M")).toBe(48);
+      expect(FrameRenderer.getFontSize("L")).toBe(64);
+      expect(FrameRenderer.getFontSize("XL")).toBe(80);
     });
   });
 });

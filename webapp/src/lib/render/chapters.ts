@@ -7,7 +7,7 @@
 
 import { AudioSegmentInfo } from "./audio-engine";
 import { AssetFetcher } from "./asset-fetcher";
-import { parseLRC, LRCLine } from "./lrc-parser";
+import { parseLRC } from "./lrc-parser";
 
 export interface ChapterLine {
   text: string;
@@ -80,43 +80,6 @@ export async function generateChaptersManifest(
       return [];
     }
   );
-
-  return {
-    chapters,
-    totalDurationSeconds,
-    generatedAt: new Date().toISOString(),
-  };
-}
-
-export function generateChaptersManifestFromLyrics(
-  segments: AudioSegmentInfo[],
-  lyricsMap: Map<string, LRCLine[]>,
-  totalDurationSeconds: number
-): ChaptersManifest {
-  const chapters = segments.map((segment, i) => {
-    const startSeconds = segment.startTimeSeconds;
-    const endSeconds = startSeconds + segment.durationSeconds;
-    const songTitle = segment.item.songTitle ?? segment.item.songId ?? `Song ${i + 1}`;
-
-    const hashPrefix = segment.item.recordingHashPrefix;
-    let lines: ChapterLine[] = [];
-
-    if (hashPrefix && lyricsMap.has(hashPrefix)) {
-      const localLyrics = lyricsMap.get(hashPrefix)!;
-      lines = localLyrics.map((line) => ({
-        text: line.text,
-        startSeconds: startSeconds + line.timeSeconds,
-      }));
-    }
-
-    return {
-      position: i + 1,
-      songTitle,
-      startSeconds,
-      endSeconds,
-      lines,
-    };
-  });
 
   return {
     chapters,

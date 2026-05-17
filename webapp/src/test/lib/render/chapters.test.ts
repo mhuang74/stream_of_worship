@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   generateChaptersManifest,
-  generateChaptersManifestFromLyrics,
   chaptersToFFmpegMetadata,
   findChapterAtTime,
   getSongTitleAtTime,
@@ -204,80 +203,6 @@ describe("chapters", () => {
       );
 
       expect(manifest.chapters[0].lines).toEqual([]);
-    });
-  });
-
-  describe("generateChaptersManifestFromLyrics", () => {
-    it("generates manifest from pre-loaded lyrics", () => {
-      const segments: AudioSegmentInfo[] = [
-        {
-          item: {
-            id: "item-1",
-            songsetId: "set-1",
-            songId: "Song One",
-            recordingHashPrefix: "abc123",
-            position: 0,
-            gapBeats: 2,
-            crossfadeEnabled: 0,
-            crossfadeDurationSeconds: null,
-            keyShiftSemitones: 0,
-            tempoRatio: 1,
-          },
-          audioPath: "/tmp/audio1.mp3",
-          startTimeSeconds: 0,
-          durationSeconds: 60,
-          gapBeforeSeconds: 0,
-        },
-        {
-          item: {
-            id: "item-2",
-            songsetId: "set-1",
-            songId: "Song Two",
-            recordingHashPrefix: "def456",
-            position: 1,
-            gapBeats: 2,
-            crossfadeEnabled: 0,
-            crossfadeDurationSeconds: null,
-            keyShiftSemitones: 0,
-            tempoRatio: 1,
-          },
-          audioPath: "/tmp/audio2.mp3",
-          startTimeSeconds: 60,
-          durationSeconds: 90,
-          gapBeforeSeconds: 2,
-        },
-      ];
-
-      const lyricsMap = new Map<string, LRCLine[]>([
-        [
-          "abc123",
-          [
-            { timeSeconds: 0, text: "Line 1" },
-            { timeSeconds: 5, text: "Line 2" },
-          ],
-        ],
-        [
-          "def456",
-          [
-            { timeSeconds: 0, text: "Verse 1" },
-            { timeSeconds: 10, text: "Verse 2" },
-          ],
-        ],
-      ]);
-
-      const manifest = generateChaptersManifestFromLyrics(
-        segments,
-        lyricsMap,
-        150
-      );
-
-      expect(manifest.chapters).toHaveLength(2);
-      expect(manifest.chapters[0].lines).toHaveLength(2);
-      expect(manifest.chapters[0].lines[0].text).toBe("Line 1");
-      expect(manifest.chapters[0].lines[0].startSeconds).toBe(0);
-      expect(manifest.chapters[1].lines).toHaveLength(2);
-      expect(manifest.chapters[1].lines[0].text).toBe("Verse 1");
-      expect(manifest.chapters[1].lines[0].startSeconds).toBe(60);
     });
   });
 

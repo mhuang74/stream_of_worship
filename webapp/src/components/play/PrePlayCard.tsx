@@ -87,7 +87,7 @@ export function PrePlayCard({
       if (hasPresentation) {
         try {
           // @ts-expect-error - PresentationRequest may not be in types
-          const request = new PresentationRequest(["/songsets/${songset.id}/play/projection"]);
+          const request = new PresentationRequest([`/songsets/${songset.id}/play/projection`]);
           const availability = await request.getAvailability();
           setIsCastAvailable(availability.value);
 

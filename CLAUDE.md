@@ -71,7 +71,7 @@ npx drizzle-kit migrate    # Run pending migrations
 
 ## Architecture & Structure
 
-The project consists of **four architecturally separate components**:
+The project consists of **five architecturally separate components**:
 
 ### 1. POC Scripts (Experimental)
 - **Location:** `poc/` directory
@@ -85,7 +85,12 @@ The project consists of **four architecturally separate components**:
 ### 4. User App (End-User Application)
 - **Location:** `src/stream_of_worship/app/` (Python package)
 
-**Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies.
+### 5. Web App (Next.js Browser Application)
+- **Location:** `webapp/` (Node.js/TypeScript, Next.js 16 App Router)
+- **Stack:** Drizzle ORM + Neon Postgres, Better Auth, Cloudflare R2, FFmpeg (fluent-ffmpeg + ffmpeg-static), fastembed-js
+- **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `webapp/` or via `pnpm --filter sow-webapp`)
+
+**Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components.
 
 - **Admin CLI**: Lightweight catalog/audio management
 - **User App**: TUI for transitions, read-only from PostgreSQL/R2

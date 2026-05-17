@@ -73,39 +73,28 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const hashPrefix = searchParams.get("hashPrefix") || undefined;
-    const renderJobId = searchParams.get("renderJobId") || undefined;
-    const fileTypeRaw = searchParams.get("fileType");
-    const allowedFileTypes = ["audio", "video", "lrc", "json"] as const;
-    if (fileTypeRaw !== null && !allowedFileTypes.includes(fileTypeRaw as typeof allowedFileTypes[number])) {
+    const params = {
+      hashPrefix: searchParams.get("hashPrefix") || undefined,
+      renderJobId: searchParams.get("renderJobId") || undefined,
+      fileType: searchParams.get("fileType") || undefined,
+      expiresInSeconds: searchParams.get("expiresInSeconds")
+        ? parseInt(searchParams.get("expiresInSeconds")!, 10)
+        : undefined,
+      contentDisposition: searchParams.get("contentDisposition") || undefined,
+    };
+
+    const parseResult = signedUrlRequestSchema.safeParse(params);
+    if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid fileType. Must be one of: audio, video, lrc, json" },
+        {
+          error: "Invalid query parameters",
+          details: parseResult.error.issues,
+        },
         { status: 400 }
       );
     }
-    const fileType = fileTypeRaw as "audio" | "video" | "lrc" | "json" | undefined;
-    const expiresInSecondsRaw = searchParams.get("expiresInSeconds");
-    const expiresInSeconds = expiresInSecondsRaw
-      ? parseInt(expiresInSecondsRaw, 10)
-      : undefined;
-    const contentDisposition = searchParams.get("contentDisposition") || undefined;
 
-    if (expiresInSeconds !== undefined) {
-      if (isNaN(expiresInSeconds) || expiresInSeconds < 60 || expiresInSeconds > 86400) {
-        return NextResponse.json(
-          { error: "expiresInSeconds must be between 60 and 86400" },
-          { status: 400 }
-        );
-      }
-    }
-
-    return await generateSignedUrlResponse(Number(session.user.id), {
-      hashPrefix,
-      renderJobId,
-      fileType,
-      expiresInSeconds,
-      contentDisposition,
-    });
+    return await generateSignedUrlResponse(Number(session.user.id), parseResult.data);
   } catch (error) {
     console.error("Error generating signed URL:", error);
 

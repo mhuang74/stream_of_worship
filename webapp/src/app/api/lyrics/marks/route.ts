@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { recordingContentHash, timestampSeconds } = body;
 
-    if (!recordingContentHash || typeof timestampSeconds !== "number") {
+    if (!recordingContentHash || typeof timestampSeconds !== "number" || !isFinite(timestampSeconds) || timestampSeconds < 0) {
       return NextResponse.json(
         { error: "recordingContentHash and timestampSeconds are required" },
         { status: 400 }

@@ -12,7 +12,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import { R2Config } from "@/lib/r2/client";
+import { R2Client, R2Config, createR2ClientFromEnv } from "@/lib/r2/client";
 import { ChaptersManifest } from "./chapters";
 
 export interface UploadOptions {
@@ -55,42 +55,9 @@ export class R2Uploader {
   private bucketName: string;
 
   constructor(config?: R2Config) {
-    if (config) {
-      const endpoint = `https://${config.accountId}.r2.cloudflarestorage.com`;
-      this.client = new S3Client({
-        region: config.region || "auto",
-        endpoint,
-        credentials: {
-          accessKeyId: config.accessKeyId,
-          secretAccessKey: config.secretAccessKey,
-        },
-      });
-      this.bucketName = config.bucketName;
-    } else {
-      // Use environment variables
-      const accountId = process.env.R2_ACCOUNT_ID;
-      const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-      const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-      const bucketName = process.env.R2_BUCKET_NAME;
-
-      if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
-        throw new Error(
-          "R2 credentials not configured. " +
-            "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME environment variables."
-        );
-      }
-
-      const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
-      this.client = new S3Client({
-        region: "auto",
-        endpoint,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
-      });
-      this.bucketName = bucketName;
-    }
+    const r2Client = config ? new R2Client(config) : createR2ClientFromEnv();
+    this.client = (r2Client as unknown as { client: S3Client }).client;
+    this.bucketName = (r2Client as unknown as { bucketName: string }).bucketName;
   }
 
   /**
@@ -246,12 +213,6 @@ export class R2Uploader {
     return result;
   }
 
-  /**
-   * Check if a file exists in R2.
-   *
-   * @param key - R2 object key
-   * @returns True if file exists
-   */
   async fileExists(key: string): Promise<boolean> {
     try {
       const command = new HeadObjectCommand({
@@ -261,7 +222,6 @@ export class R2Uploader {
       await this.client.send(command);
       return true;
     } catch (error) {
-      // Check if it's a 404 error
       if (
         error &&
         typeof error === "object" &&
@@ -274,11 +234,6 @@ export class R2Uploader {
     }
   }
 
-  /**
-   * Delete a file from R2.
-   *
-   * @param key - R2 object key
-   */
   async deleteFile(key: string): Promise<void> {
     const { DeleteObjectCommand } = await import("@aws-sdk/client-s3");
     const command = new DeleteObjectCommand({
@@ -288,11 +243,6 @@ export class R2Uploader {
     await this.client.send(command);
   }
 
-  /**
-   * Delete all artifacts for a render job.
-   *
-   * @param renderJobId - Render job ID
-   */
   async deleteRenderArtifacts(renderJobId: string): Promise<void> {
     const keys = [
       `renders/${renderJobId}/output.mp3`,
@@ -311,12 +261,6 @@ export class R2Uploader {
     }
   }
 
-  /**
-   * Infer content type from file extension.
-   *
-   * @param key - R2 object key
-   * @returns Content type
-   */
   private inferContentType(key: string): string {
     const ext = path.extname(key).toLowerCase();
     const contentTypes: Record<string, string> = {
@@ -332,35 +276,5 @@ export class R2Uploader {
       ".webp": "image/webp",
     };
     return contentTypes[ext] ?? "application/octet-stream";
-  }
-
-  /**
-   * Get the R2 key for a render job's MP3 file.
-   *
-   * @param renderJobId - Render job ID
-   * @returns R2 key
-   */
-  static getMp3Key(renderJobId: string): string {
-    return `renders/${renderJobId}/output.mp3`;
-  }
-
-  /**
-   * Get the R2 key for a render job's MP4 file.
-   *
-   * @param renderJobId - Render job ID
-   * @returns R2 key
-   */
-  static getMp4Key(renderJobId: string): string {
-    return `renders/${renderJobId}/output.mp4`;
-  }
-
-  /**
-   * Get the R2 key for a render job's chapters.json file.
-   *
-   * @param renderJobId - Render job ID
-   * @returns R2 key
-   */
-  static getChaptersKey(renderJobId: string): string {
-    return `renders/${renderJobId}/chapters.json`;
   }
 }
