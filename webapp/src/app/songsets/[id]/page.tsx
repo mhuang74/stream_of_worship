@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
+import { BrowseSheet } from "@/components/songset/BrowseSheet";
+import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import { RenderState } from "@/components/songset/RenderStateButton";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
-import { toast } from "sonner";
 
 interface ApiSongset {
   id: string;
@@ -69,6 +70,7 @@ export default function SongsetEditorPage() {
 
   const [songset, setSongset] = useState<ApiSongset | null>(null);
   const [items, setItems] = useState<SongListItem[]>([]);
+  const [isBrowseSheetOpen, setIsBrowseSheetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -188,6 +190,14 @@ export default function SongsetEditorPage() {
 
       // Update local state
       setItems((prev) => prev.filter((item) => item.id !== itemId));
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              itemCount: Math.max(0, prev.itemCount - 1),
+            }
+          : prev
+      );
     },
     [songsetId]
   );
@@ -335,9 +345,58 @@ export default function SongsetEditorPage() {
 
   // Handle add songs
   const handleAddSongs = useCallback(() => {
-    // This will open the browse sheet (to be implemented in Task 3.3)
-    toast.info("Browse sheet coming in Task 3.3");
+    setIsBrowseSheetOpen(true);
   }, []);
+
+  const handleAddSong = useCallback(
+    async (song: SongCardData) => {
+      const nextPosition = items.length;
+      const primaryRecording = song.recordings[0];
+
+      const response = await fetch(`/api/songsets/${songsetId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          songId: song.id,
+          recordingHashPrefix: primaryRecording?.hashPrefix ?? null,
+          position: nextPosition,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to add song to songset");
+      }
+
+      const item: ApiSongsetItem = await response.json();
+
+      setItems((prev) => [
+        ...prev,
+        {
+          id: item.id,
+          songId: item.songId,
+          position: item.position,
+          song: item.song,
+          recording: item.recording,
+          gapBeats: item.gapBeats,
+          crossfadeEnabled: item.crossfadeEnabled,
+          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+          keyShiftSemitones: item.keyShiftSemitones,
+          tempoRatio: item.tempoRatio,
+          markedLineCount: item.markedLineCount,
+        },
+      ]);
+
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              itemCount: prev.itemCount + 1,
+            }
+          : prev
+      );
+    },
+    [items.length, songsetId]
+  );
 
   if (isLoading) {
     return (
@@ -362,20 +421,28 @@ export default function SongsetEditorPage() {
   }
 
   return (
-    <SongsetEditor
-      songset={songset}
-      items={items}
-      onUpdateItems={handleUpdateItems}
-      onRemoveItem={handleRemoveItem}
-      onUpdateTransition={handleUpdateTransition}
-      onRender={handleRender}
-      onPlay={handlePlay}
-      onRetry={handleRetry}
-      onUpdateDescription={handleUpdateDescription}
-      onDuplicate={handleDuplicate}
-      onDelete={handleDelete}
-      onShare={handleShare}
-      onAddSongs={handleAddSongs}
-    />
+    <>
+      <SongsetEditor
+        songset={songset}
+        items={items}
+        onUpdateItems={handleUpdateItems}
+        onRemoveItem={handleRemoveItem}
+        onUpdateTransition={handleUpdateTransition}
+        onRender={handleRender}
+        onPlay={handlePlay}
+        onRetry={handleRetry}
+        onUpdateDescription={handleUpdateDescription}
+        onDuplicate={handleDuplicate}
+        onDelete={handleDelete}
+        onShare={handleShare}
+        onAddSongs={handleAddSongs}
+      />
+      <BrowseSheet
+        isOpen={isBrowseSheetOpen}
+        onOpenChange={setIsBrowseSheetOpen}
+        onAddSong={handleAddSong}
+        existingSongIds={items.map((item) => item.songId)}
+      />
+    </>
   );
 }

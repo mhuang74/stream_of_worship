@@ -8,7 +8,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { parseLRC, LRCLine } from "@/lib/render/lrc-parser";
+import { parseLRC } from "@/lib/render/lrc-parser";
 import { cn } from "@/lib/utils";
 import { AlertCircle } from "lucide-react";
 import { LyricsEditor } from "./LyricsEditor";
@@ -222,7 +222,6 @@ export function LyricsReviewSheet({
             <LyricsTimingEditor
               recordingContentHash={recordingContentHash}
               lines={lines}
-              originalLrc={currentLrc}
               onSave={handleLrcSave}
             />
           </div>

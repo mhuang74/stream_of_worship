@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
-import { AuthProvider } from "@/contexts/AuthContext";
 import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 
 const geistSans = Geist({
@@ -36,13 +35,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <AuthProvider>
-          <GlobalAudioPlayer>
-            <Header />
-            <main className="flex-1 pb-16 lg:pb-0">{children}</main>
-            <BottomNav />
-          </GlobalAudioPlayer>
-        </AuthProvider>
+        <GlobalAudioPlayer>
+          <Header />
+          <main className="flex-1 pb-16 lg:pb-0">{children}</main>
+          <BottomNav />
+        </GlobalAudioPlayer>
       </body>
     </html>
   );

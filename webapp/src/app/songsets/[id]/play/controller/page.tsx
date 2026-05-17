@@ -7,13 +7,6 @@ import { Chapter } from "@/components/play/LyricJumpList";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-interface RenderJobData {
-  id: string;
-  status: string;
-  mp4R2Key: string | null;
-  chaptersR2Key: string | null;
-}
-
 interface SongsetData {
   id: string;
   name: string;
@@ -27,7 +20,6 @@ export default function ControllerPage() {
   const songsetId = params.id as string;
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
-  const [renderJob, setRenderJob] = useState<RenderJobData | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,15 +74,13 @@ export default function ControllerPage() {
         const jobData = await jobResponse.json();
         if (cancelled) return;
 
-        setRenderJob(jobData);
-
         if (!jobData.mp4R2Key) {
           throw new Error("No video available for this songset");
         }
 
         // Get signed URL for video
         const signedUrlResponse = await fetch(
-          `/api/signed-url?key=${encodeURIComponent(jobData.mp4R2Key)}`
+          `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video`
         );
         if (!signedUrlResponse.ok) {
           throw new Error("Failed to get video URL");
@@ -104,7 +94,7 @@ export default function ControllerPage() {
         // Load chapters if available
         if (jobData.chaptersR2Key) {
           const chaptersResponse = await fetch(
-            `/api/signed-url?key=${encodeURIComponent(jobData.chaptersR2Key)}`
+            `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=json`
           );
           if (chaptersResponse.ok) {
             const { url: chaptersUrl } = await chaptersResponse.json();

@@ -201,12 +201,15 @@ describe("ProjectionPage", () => {
       });
     });
 
-    it("fetches signed URL with encoded R2 key", async () => {
+    it("fetches signed URL with renderJobId and fileType", async () => {
       render(<ProjectionPage />);
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(
-          expect.stringContaining(encodeURIComponent("renders/test-songset/video.mp4"))
+          expect.stringContaining("renderJobId=job-123")
+        );
+        expect(global.fetch).toHaveBeenCalledWith(
+          expect.stringContaining("fileType=video")
         );
       });
     });

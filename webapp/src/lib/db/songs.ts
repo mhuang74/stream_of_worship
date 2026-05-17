@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { songs } from "@/db/schema";
+import { recordings, songs } from "@/db/schema";
 import { eq, desc, and, or, ilike, sql } from "drizzle-orm";
 
 export interface SongWithRecordings {
@@ -46,13 +46,36 @@ export interface ListSongsFilters {
   visibilityStatus?: string;
 }
 
-export async function listSongs(
-  limit: number = 50,
-  offset: number = 0,
-  filters?: ListSongsFilters
-): Promise<{ songs: SongWithRecordings[]; total: number }> {
-  // Build where clause with filters
+function buildPublishedRecordingExistsClause(visibilityStatus?: string) {
+  if (!visibilityStatus || visibilityStatus === "all") {
+    return undefined;
+  }
+
+  return sql`exists (
+    select 1
+    from ${recordings}
+    where ${recordings.songId} = ${songs.id}
+      and ${recordings.visibilityStatus} = ${visibilityStatus}
+  )`;
+}
+
+function buildSongWhereClause(
+  filters?: ListSongsFilters,
+  query?: string
+) {
   const whereConditions = [];
+
+  if (query) {
+    const searchTerm = `%${query}%`;
+    whereConditions.push(
+      or(
+        ilike(songs.title, searchTerm),
+        ilike(songs.composer, searchTerm),
+        ilike(songs.lyricist, searchTerm),
+        ilike(songs.albumName, searchTerm)
+      )
+    );
+  }
 
   if (filters?.albumName) {
     whereConditions.push(eq(songs.albumName, filters.albumName));
@@ -67,34 +90,39 @@ export async function listSongs(
     whereConditions.push(eq(songs.lyricist, filters.lyricist));
   }
 
-  const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+  const publishedRecordingsClause = buildPublishedRecordingExistsClause(
+    filters?.visibilityStatus
+  );
+  if (publishedRecordingsClause) {
+    whereConditions.push(publishedRecordingsClause);
+  }
 
-  // Get songs with recordings
+  return whereConditions.length > 0 ? and(...whereConditions) : undefined;
+}
+
+export async function listSongs(
+  limit: number = 50,
+  offset: number = 0,
+  filters?: ListSongsFilters
+): Promise<{ songs: SongWithRecordings[]; total: number }> {
+  const whereClause = buildSongWhereClause(filters);
+  const recordingWhereClause =
+    filters?.visibilityStatus && filters.visibilityStatus !== "all"
+      ? eq(recordings.visibilityStatus, filters.visibilityStatus)
+      : undefined;
+
   const result = await db.query.songs.findMany({
     where: whereClause,
     orderBy: [desc(songs.updatedAt)],
     limit,
     offset,
     with: {
-      recordings: true,
+      recordings: recordingWhereClause
+        ? { where: recordingWhereClause }
+        : true,
     },
   });
 
-  // Filter recordings by visibility_status if specified
-  const filteredResult = result.map((song) => {
-    let filteredRecordings = song.recordings;
-    if (filters?.visibilityStatus) {
-      filteredRecordings = song.recordings.filter(
-        (r) => r.visibilityStatus === filters.visibilityStatus
-      );
-    }
-    return {
-      ...song,
-      recordings: filteredRecordings,
-    };
-  });
-
-  // Get total count
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(songs)
@@ -102,7 +130,7 @@ export async function listSongs(
 
   const total = countResult[0]?.count ?? 0;
 
-  const songsWithRecordings: SongWithRecordings[] = filteredResult.map((song) => ({
+  const songsWithRecordings: SongWithRecordings[] = result.map((song) => ({
     id: song.id,
     title: song.title,
     titlePinyin: song.titlePinyin,
@@ -132,11 +160,23 @@ export async function listSongs(
   return { songs: songsWithRecordings, total };
 }
 
-export async function getSong(id: string): Promise<SongDetail | null> {
+export async function getSong(
+  id: string,
+  visibilityStatus: string = "published"
+): Promise<SongDetail | null> {
+  const visibilityWhereClause = buildSongWhereClause({ visibilityStatus });
+  const recordingWhereClause =
+    visibilityStatus !== "all"
+      ? eq(recordings.visibilityStatus, visibilityStatus)
+      : undefined;
   const song = await db.query.songs.findFirst({
-    where: eq(songs.id, id),
+    where: visibilityWhereClause
+      ? and(eq(songs.id, id), visibilityWhereClause)
+      : eq(songs.id, id),
     with: {
-      recordings: true,
+      recordings: recordingWhereClause
+        ? { where: recordingWhereClause }
+        : true,
     },
   });
 
@@ -187,19 +227,11 @@ export async function searchSongs(
   offset: number = 0,
   visibilityStatus?: string
 ): Promise<SearchSongsResult> {
-  const searchTerm = `%${query}%`;
-
-  // Search in songs table
-  const whereConditions = [
-    or(
-      ilike(songs.title, searchTerm),
-      ilike(songs.composer, searchTerm),
-      ilike(songs.lyricist, searchTerm),
-      ilike(songs.albumName, searchTerm)
-    ),
-  ];
-
-  const whereClause = and(...whereConditions);
+  const whereClause = buildSongWhereClause({ visibilityStatus }, query);
+  const recordingWhereClause =
+    visibilityStatus && visibilityStatus !== "all"
+      ? eq(recordings.visibilityStatus, visibilityStatus)
+      : undefined;
 
   const result = await db.query.songs.findMany({
     where: whereClause,
@@ -207,25 +239,12 @@ export async function searchSongs(
     limit,
     offset,
     with: {
-      recordings: true,
+      recordings: recordingWhereClause
+        ? { where: recordingWhereClause }
+        : true,
     },
   });
 
-  // Filter recordings by visibility_status if specified
-  const filteredResult = result.map((song) => {
-    let filteredRecordings = song.recordings;
-    if (visibilityStatus) {
-      filteredRecordings = song.recordings.filter(
-        (r) => r.visibilityStatus === visibilityStatus
-      );
-    }
-    return {
-      ...song,
-      recordings: filteredRecordings,
-    };
-  });
-
-  // Get total count
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(songs)
@@ -233,7 +252,7 @@ export async function searchSongs(
 
   const total = countResult[0]?.count ?? 0;
 
-  const songsWithRecordings: SongWithRecordings[] = filteredResult.map((song) => ({
+  const songsWithRecordings: SongWithRecordings[] = result.map((song) => ({
     id: song.id,
     title: song.title,
     titlePinyin: song.titlePinyin,
@@ -330,7 +349,9 @@ export async function semanticSearchSongs(
     LIMIT ${limit}
   `);
 
-  return (rows as Record<string, unknown>[]).map((row) => ({
+  const resultRows = rows as unknown as Record<string, unknown>[];
+
+  return resultRows.map((row) => ({
     id: row.id as string,
     title: row.title as string,
     titlePinyin: (row.title_pinyin as string | null) ?? null,

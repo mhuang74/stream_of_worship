@@ -86,6 +86,10 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
     setIsDirty(true);
   }
 
+  function withSelectValue<T>(value: string | null, transform: (next: string) => T): T | null {
+    return value === null ? null : transform(value);
+  }
+
   function handleReset() {
     setSettings(initialSettings);
     setIsDirty(false);
@@ -111,7 +115,10 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
               <Label htmlFor="defaultGapBeats">Default gap beats</Label>
               <Select
                 value={settings.defaultGapBeats.toString()}
-                onValueChange={(v) => update("defaultGapBeats", parseFloat(v))}
+                onValueChange={(v) => {
+                  const next = withSelectValue(v, (value) => parseFloat(value));
+                  if (next !== null) update("defaultGapBeats", next);
+                }}
               >
                 <SelectTrigger id="defaultGapBeats">
                   <SelectValue />
@@ -139,7 +146,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
               <Label htmlFor="defaultVideoTemplate">Default template</Label>
               <Select
                 value={settings.defaultVideoTemplate}
-                onValueChange={(v) => update("defaultVideoTemplate", v)}
+                onValueChange={(v) => {
+                  if (v !== null) update("defaultVideoTemplate", v);
+                }}
               >
                 <SelectTrigger id="defaultVideoTemplate">
                   <SelectValue />
@@ -158,7 +167,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
               <Label htmlFor="defaultResolution">Default resolution</Label>
               <Select
                 value={settings.defaultResolution}
-                onValueChange={(v) => update("defaultResolution", v)}
+                onValueChange={(v) => {
+                  if (v !== null) update("defaultResolution", v);
+                }}
               >
                 <SelectTrigger id="defaultResolution">
                   <SelectValue />
@@ -177,7 +188,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
               <Label htmlFor="defaultFontSizePreset">Default font size</Label>
               <Select
                 value={settings.defaultFontSizePreset}
-                onValueChange={(v) => update("defaultFontSizePreset", v)}
+                onValueChange={(v) => {
+                  if (v !== null) update("defaultFontSizePreset", v);
+                }}
               >
                 <SelectTrigger id="defaultFontSizePreset">
                   <SelectValue />
@@ -205,7 +218,10 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
               <Label htmlFor="lyricsLoopWindowSeconds">Lyrics loop window</Label>
               <Select
                 value={settings.lyricsLoopWindowSeconds.toString()}
-                onValueChange={(v) => update("lyricsLoopWindowSeconds", parseFloat(v))}
+                onValueChange={(v) => {
+                  const next = withSelectValue(v, (value) => parseFloat(value));
+                  if (next !== null) update("lyricsLoopWindowSeconds", next);
+                }}
               >
                 <SelectTrigger id="lyricsLoopWindowSeconds">
                   <SelectValue />
@@ -281,7 +297,10 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <Label htmlFor="defaultKeyShiftSemitones">Default key shift</Label>
                 <Select
                   value={settings.defaultKeyShiftSemitones.toString()}
-                  onValueChange={(v) => update("defaultKeyShiftSemitones", parseInt(v, 10))}
+                  onValueChange={(v) => {
+                    const next = withSelectValue(v, (value) => parseInt(value, 10));
+                    if (next !== null) update("defaultKeyShiftSemitones", next);
+                  }}
                 >
                   <SelectTrigger id="defaultKeyShiftSemitones">
                     <SelectValue />
@@ -303,7 +322,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <Label htmlFor="timingReviewFont">Timing review font</Label>
                 <Select
                   value={settings.timingReviewFont}
-                  onValueChange={(v) => update("timingReviewFont", v)}
+                  onValueChange={(v) => {
+                    if (v !== null) update("timingReviewFont", v);
+                  }}
                 >
                   <SelectTrigger id="timingReviewFont">
                     <SelectValue />

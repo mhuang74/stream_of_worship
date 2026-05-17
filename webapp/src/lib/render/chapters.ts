@@ -36,7 +36,6 @@ function buildChaptersFromSegments(
   segments: AudioSegmentInfo[],
   getLyrics: (hashPrefix: string, startSeconds: number) => ChapterLine[] | Promise<ChapterLine[]>
 ): Promise<Chapter[]> {
-  const chapters: Chapter[] = [];
   const promises = segments.map(async (segment, i) => {
     const startSeconds = segment.startTimeSeconds;
     const endSeconds = startSeconds + segment.durationSeconds;
@@ -61,8 +60,7 @@ function buildChaptersFromSegments(
 export async function generateChaptersManifest(
   segments: AudioSegmentInfo[],
   assetFetcher: AssetFetcher,
-  totalDurationSeconds: number,
-  options: ChapterGenerationOptions = {}
+  totalDurationSeconds: number
 ): Promise<ChaptersManifest> {
   const chapters = await buildChaptersFromSegments(
     segments,

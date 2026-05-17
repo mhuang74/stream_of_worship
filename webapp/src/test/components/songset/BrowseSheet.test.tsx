@@ -8,7 +8,7 @@ global.fetch = mockFetch;
 
 describe("BrowseSheet", () => {
   const mockOnOpenChange = vi.fn();
-  const mockOnAddSongs = vi.fn().mockResolvedValue(undefined);
+  const mockOnAddSong = vi.fn().mockResolvedValue(undefined);
 
   const mockSongs = [
     {
@@ -21,6 +21,7 @@ describe("BrowseSheet", () => {
       recordings: [
         {
           contentHash: "abc123",
+          hashPrefix: "abc123",
           durationSeconds: 180,
           tempoBpm: 120,
           musicalKey: "G",
@@ -37,6 +38,7 @@ describe("BrowseSheet", () => {
       recordings: [
         {
           contentHash: "def456",
+          hashPrefix: "def456",
           durationSeconds: 240,
           tempoBpm: 100,
           musicalKey: "A",
@@ -50,7 +52,7 @@ describe("BrowseSheet", () => {
   const defaultProps = {
     isOpen: true,
     onOpenChange: mockOnOpenChange,
-    onAddSongs: mockOnAddSongs,
+    onAddSong: mockOnAddSong,
     existingSongIds: [],
   };
 
@@ -156,7 +158,7 @@ describe("BrowseSheet", () => {
   });
 
   describe("add song functionality", () => {
-    it("calls onAddSongs when add button is clicked", async () => {
+    it("calls onAddSong when add button is clicked", async () => {
       renderSheet();
       
       await waitFor(() => {
@@ -167,7 +169,7 @@ describe("BrowseSheet", () => {
       fireEvent.click(addButtons[0]);
 
       await waitFor(() => {
-        expect(mockOnAddSongs).toHaveBeenCalledWith(["song-1"]);
+        expect(mockOnAddSong).toHaveBeenCalledWith(mockSongs[0]);
       });
     });
 

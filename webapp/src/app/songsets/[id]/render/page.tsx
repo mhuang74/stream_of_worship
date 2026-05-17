@@ -99,13 +99,15 @@ export default function RenderPage() {
             } else if (job.status === "completed") {
               setJobId(job.id)
               const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
-              const fetchSigned = async (key: string, type: string) => {
-                const res = await fetch(`/api/signed-url?key=${encodeURIComponent(key)}&fileType=${type}`)
+              const fetchSigned = async (type: string) => {
+                const res = await fetch(
+                  `/api/signed-url?renderJobId=${encodeURIComponent(job.id)}&fileType=${type}`
+                )
                 return res.ok ? (await res.json()).url as string : undefined
               }
-              if (job.mp3R2Key) signedUrls.mp3Url = await fetchSigned(job.mp3R2Key, "audio")
-              if (job.mp4R2Key) signedUrls.mp4Url = await fetchSigned(job.mp4R2Key, "video")
-              if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSigned(job.chaptersR2Key, "json")
+              if (job.mp3R2Key) signedUrls.mp3Url = await fetchSigned("audio")
+              if (job.mp4R2Key) signedUrls.mp4Url = await fetchSigned("video")
+              if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSigned("json")
               setJobData({ ...job, ...signedUrls })
               setScreenState("complete")
             }
@@ -183,8 +185,10 @@ export default function RenderPage() {
           const job = await response.json()
           const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
 
-          const fetchSignedUrl = async (r2Key: string, fileType: string) => {
-            const res = await fetch(`/api/signed-url?key=${encodeURIComponent(r2Key)}&fileType=${fileType}`)
+          const fetchSignedUrl = async (fileType: string) => {
+            const res = await fetch(
+              `/api/signed-url?renderJobId=${encodeURIComponent(job.id)}&fileType=${fileType}`
+            )
             if (res.ok) {
               const data = await res.json()
               return data.url as string
@@ -192,9 +196,9 @@ export default function RenderPage() {
             return undefined
           }
 
-          if (job.mp3R2Key) signedUrls.mp3Url = await fetchSignedUrl(job.mp3R2Key, "audio")
-          if (job.mp4R2Key) signedUrls.mp4Url = await fetchSignedUrl(job.mp4R2Key, "video")
-          if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSignedUrl(job.chaptersR2Key, "json")
+          if (job.mp3R2Key) signedUrls.mp3Url = await fetchSignedUrl("audio")
+          if (job.mp4R2Key) signedUrls.mp4Url = await fetchSignedUrl("video")
+          if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSignedUrl("json")
 
           setJobData({ ...job, ...signedUrls })
         }

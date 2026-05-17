@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { songsetItems } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { songsetItems, songsets } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 const reorderSchema = z.object({
@@ -39,9 +39,10 @@ export async function POST(
     }
 
     const { updates } = parsed.data;
+    const userId = Number(session.user.id);
 
     const songset = await db.query.songsets.findFirst({
-      where: eq(songsetItems.songsetId, id),
+      where: and(eq(songsets.id, id), eq(songsets.userId, userId)),
     });
 
     if (!songset) {
@@ -52,6 +53,8 @@ export async function POST(
     }
 
     await db.transaction(async (tx) => {
+      const now = new Date();
+
       for (const update of updates) {
         const item = await tx.query.songsetItems.findFirst({
           where: eq(songsetItems.id, update.itemId),
@@ -60,7 +63,7 @@ export async function POST(
           },
         });
 
-        if (!item || item.songsetId !== id || item.songset.userId !== Number(session.user.id)) {
+        if (!item || item.songsetId !== id || item.songset.userId !== userId) {
           throw new Error(`Item ${update.itemId} not found or access denied`);
         }
 
@@ -69,6 +72,11 @@ export async function POST(
           .set({ position: update.position })
           .where(eq(songsetItems.id, update.itemId));
       }
+
+      await tx
+        .update(songsets)
+        .set({ updatedAt: now })
+        .where(eq(songsets.id, id));
     });
 
     return NextResponse.json({ success: true });

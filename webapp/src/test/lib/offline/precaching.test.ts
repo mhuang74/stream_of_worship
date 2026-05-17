@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
   const register = vi.fn();
 
   // A true function (not arrow) so it can be called with `new`.
-  function WorkboxCtor(this: unknown, _url: string) {
+  function WorkboxCtor(this: unknown) {
     return { addEventListener, messageSkipWaiting, register };
   }
 
