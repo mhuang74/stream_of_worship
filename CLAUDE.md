@@ -22,6 +22,11 @@ uv run --extra admin sow-admin --help
 # User App TUI
 uv run --extra app sow-app run
 
+# Web App (Next.js, from webapp/ directory)
+cd webapp && pnpm dev
+# Or from project root:
+pnpm --filter sow-webapp dev
+
 # Analysis Service (heavy ML, requires Docker + R2 credentials)
 cd services/analysis && docker compose up -d
 ```
@@ -47,6 +52,21 @@ PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/ \
   --ignore=tests/services/analysis \
   --ignore=services/qwen3/tests \
   --ignore=services/analysis/tests -v
+```
+
+**Web App Commands (webapp/ directory):**
+```bash
+# Development
+pnpm dev          # Start dev server on http://localhost:8080
+pnpm test         # Run tests (Vitest)
+pnpm test:watch   # Run tests in watch mode
+pnpm lint         # Lint with ESLint
+pnpm build        # Production build
+
+# Database migrations (Drizzle ORM)
+npx drizzle-kit push       # Push schema changes to DB (dev)
+npx drizzle-kit generate   # Generate migration files
+npx drizzle-kit migrate    # Run pending migrations
 ```
 
 ## Architecture & Structure
