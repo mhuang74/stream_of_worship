@@ -11,7 +11,6 @@ import {
 } from "@/lib/render/chapters";
 import { AudioSegmentInfo } from "@/lib/render/audio-engine";
 import { AssetFetcher } from "@/lib/render/asset-fetcher";
-import { LRCLine } from "@/lib/render/lrc-parser";
 
 describe("chapters", () => {
   let mockAssetFetcher: AssetFetcher;
