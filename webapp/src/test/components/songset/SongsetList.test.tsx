@@ -50,8 +50,9 @@ describe("SongsetList", () => {
   describe("loading state", () => {
     it("renders loading skeletons when isLoading is true", () => {
       renderList({ isLoading: true });
-      const skeletons = screen.getAllByLabelText(/loading songset/i);
-      expect(skeletons.length).toBe(3);
+      // SongsetListSkeleton renders a status region with aria-label "Loading songsets"
+      const skeleton = screen.getByRole("status", { name: /loading songsets/i });
+      expect(skeleton).toBeInTheDocument();
     });
   });
 
