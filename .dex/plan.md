@@ -541,15 +541,15 @@ Build a Next.js (App Router) web application to replace the existing Python TUI 
 - Create: `webapp/vercel.json`
 - Create: `webapp/.env.production.example`
 
-- [ ] Configure Vercel Pro plan settings
-- [ ] Set maxDuration: 800 for render function
-- [ ] Enable Fluid Compute
-- [ ] Configure environment variables (DATABASE_URL, R2 credentials, Better Auth secret, Cast receiver app ID)
-- [ ] Set up preview deployments
-- [ ] Register Cast receiver app in Google Cast SDK Developer Console (dev/staging/prod receiver app IDs)
-- [ ] Document Cast receiver approval process for production
-- [ ] Write deployment documentation
-- [ ] Run test suite - must pass before task 8.5
+- [x] Configure Vercel Pro plan settings
+- [x] Set maxDuration: 800 for render function
+- [x] Enable Fluid Compute
+- [x] Configure environment variables (DATABASE_URL, R2 credentials, Better Auth secret, Cast receiver app ID)
+- [x] Set up preview deployments
+- [x] Register Cast receiver app in Google Cast SDK Developer Console (dev/staging/prod receiver app IDs) (skipped — not automatable; documented in .env.production.example and README.md)
+- [x] Document Cast receiver approval process for production
+- [x] Write deployment documentation
+- [x] Run test suite - must pass before task 8.5
 
 ### Task 8.5: Verify Acceptance Criteria
 
