@@ -2,12 +2,22 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { RenderForm, RenderFormData } from "@/components/render/RenderForm"
-import { RenderProgress } from "@/components/render/RenderProgress"
-import { RenderComplete } from "@/components/render/RenderComplete"
+import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
+import { Skeleton } from "@/components/ui/skeleton"
+import type { RenderFormData } from "@/components/render/RenderForm"
+
+const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((m) => ({ default: m.RenderForm })), {
+  loading: () => <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-12 w-40" /></div>,
+})
+const RenderProgress = dynamic(() => import("@/components/render/RenderProgress").then((m) => ({ default: m.RenderProgress })), {
+  loading: () => <Skeleton className="h-32 w-full" />,
+})
+const RenderComplete = dynamic(() => import("@/components/render/RenderComplete").then((m) => ({ default: m.RenderComplete })), {
+  loading: () => <Skeleton className="h-32 w-full" />,
+})
 
 type RenderScreenState = "form" | "progress" | "complete"
 

@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SongsetListSkeleton } from "./SongsetListSkeleton";
 
 export interface Songset {
   id: string;
@@ -137,13 +138,7 @@ export function SongsetList({
   if (isLoading) {
     return (
       <div className={cn("space-y-4", className)}>
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-32 rounded-xl bg-muted animate-pulse"
-            aria-label="Loading songset"
-          />
-        ))}
+        <SongsetListSkeleton />
       </div>
     );
   }
