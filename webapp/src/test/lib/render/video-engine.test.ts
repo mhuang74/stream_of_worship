@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeEach, vi, beforeAll } from "vitest";
 import {
   VideoEngine,
-  ChapterInfo,
 } from "@/lib/render/video-engine";
 import {
   FrameRenderer,
@@ -122,22 +121,12 @@ vi.mock("fs/promises", () => ({
 
 describe("VideoEngine", () => {
   let assetFetcher: AssetFetcher;
-  let videoEngine: VideoEngine;
 
   beforeEach(() => {
     assetFetcher = {
       downloadLrc: vi.fn(),
       getTempDir: vi.fn().mockResolvedValue("/tmp/test"),
     } as unknown as AssetFetcher;
-
-    videoEngine = new VideoEngine(assetFetcher, {
-      template: "dark",
-      fontSizePreset: "M",
-      resolution: "1080p",
-      fps: 24,
-      includeTitleCard: true,
-      titleCardDurationSeconds: 5,
-    });
   });
 
   it("should create VideoEngine with custom options", () => {

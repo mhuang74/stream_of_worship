@@ -659,21 +659,34 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 
 ## Next Steps / Pending Work
 
-**All 8 phases are complete!** There are no pending implementation items.
+**All 9 phases are complete!** There are no pending implementation items.
 
 The system now fully supports:
 - Catalog management via Admin CLI (`sow-admin catalog` commands)
 - Audio download and analysis via Analysis Service (`sow-admin audio` commands)
 - Interactive songset building via User App TUI (`sow-app`)
 - Export of audio + lyrics video with smooth transitions
+- Browser-based songset builder, render pipeline, worship playback, and sharing via Web App (`webapp/`)
+
+### Phase 9: Web App (Completed)
+
+A Next.js 16 (App Router) web application providing phone-first worship preparation and playback:
+
+- **Authentication**: Email/password login and registration via Better Auth
+- **Songset Management**: Create, edit, reorder songs with drag-and-drop
+- **Render Pipeline**: Server-side audio mixing (fluent-ffmpeg) and video generation (node-canvas + FFmpeg) with SSE progress streaming
+- **Worship Playback**: Controller player with Presentation API for second-screen lyrics projection
+- **Offline Caching**: Service Worker with Cache Storage API for artifact persistence
+- **Semantic Search**: Natural language song search via pgvector + fastembed-js
+- **Sharing**: Public share links with token-based access and revocation
+- **Settings**: Per-user defaults for gap, crossfade, template, resolution, and offline caching
+- **Deployment**: Vercel Pro with Fluid Compute for long-running renders
 
 ### Future Enhancements (Optional)
 
 Potential future improvements (not required for core functionality):
 
 - **Turso Sync** - Bidirectional cloud synchronization for multi-device support
-- **GUI Version** - Desktop GUI alternative to the TUI
-- **Web Interface** - Browser-based songset builder
 - **Additional Video Templates** - More visual styles for lyrics videos
 
 ---

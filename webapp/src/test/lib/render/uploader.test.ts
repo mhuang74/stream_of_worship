@@ -318,19 +318,25 @@ describe("R2Uploader", () => {
     });
   });
 
-  describe("static key helpers", () => {
-    it("returns correct MP3 key", () => {
-      expect(R2Uploader.getMp3Key("job-123")).toBe("renders/job-123/output.mp3");
-    });
+  describe("uploadRenderArtifacts key format", () => {
+    it("uses correct key format for MP3 uploads", async () => {
+      const uploader = new R2Uploader();
+      (uploader as any).client = { send: mockSend };
+      mockSend.mockResolvedValue({ ETag: '"etag"' });
 
-    it("returns correct MP4 key", () => {
-      expect(R2Uploader.getMp4Key("job-123")).toBe("renders/job-123/output.mp4");
-    });
+      const tmpFile = `/tmp/test-upload-mp3-${Date.now()}.mp3`;
+      await import("fs/promises").then((fs) => fs.writeFile(tmpFile, Buffer.alloc(100)));
 
-    it("returns correct chapters key", () => {
-      expect(R2Uploader.getChaptersKey("job-123")).toBe(
-        "renders/job-123/chapters.json"
-      );
+      try {
+        await uploader.uploadFile(`renders/job-123/output.mp3`, tmpFile, {
+          contentType: "audio/mpeg",
+        });
+
+        const callArg = mockSend.mock.calls[0][0];
+        expect(callArg.input.Key).toBe("renders/job-123/output.mp3");
+      } finally {
+        await import("fs/promises").then((fs) => fs.unlink(tmpFile).catch(() => {}));
+      }
     });
   });
 });

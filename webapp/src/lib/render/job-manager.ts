@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { renderJobs, songsets } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export type RenderPhase =
@@ -106,7 +106,8 @@ export async function createRenderJob(
   userId: number,
   input: CreateRenderJobInput
 ): Promise<RenderJob> {
-  // Verify songset exists and belongs to user
+  await recoverOrphanedJobs();
+
   const songset = await db.query.songsets.findFirst({
     where: and(eq(songsets.id, input.songsetId), eq(songsets.userId, userId)),
   });
@@ -143,7 +144,6 @@ export async function createRenderJob(
     })
     .returning();
 
-  // Update songset with latest render job (atomic: last writer wins)
   await db
     .update(songsets)
     .set({
@@ -317,4 +317,47 @@ export async function startRenderJob(
   if (!updated) return null;
 
   return mapRowToRenderJob(updated);
+}
+
+const ORPHANED_JOB_THRESHOLD_MINUTES = 30;
+
+export async function recoverOrphanedJobs(): Promise<number> {
+  const threshold = new Date(
+    Date.now() - ORPHANED_JOB_THRESHOLD_MINUTES * 60 * 1000
+  );
+
+  const orphaned = await db
+    .select({ id: renderJobs.id, songsetId: renderJobs.songsetId })
+    .from(renderJobs)
+    .where(
+      and(
+        eq(renderJobs.status, "running"),
+        lt(renderJobs.updatedAt, threshold)
+      )
+    );
+
+  if (orphaned.length === 0) return 0;
+
+  const now = new Date();
+
+  for (const job of orphaned) {
+    await db
+      .update(renderJobs)
+      .set({
+        status: "failed",
+        errorMessage: `Job timed out after ${ORPHANED_JOB_THRESHOLD_MINUTES} minutes without progress`,
+        updatedAt: now,
+      })
+      .where(eq(renderJobs.id, job.id));
+
+    await db
+      .update(songsets)
+      .set({
+        lastFailedRenderJobId: job.id,
+        updatedAt: now,
+      })
+      .where(eq(songsets.id, job.songsetId));
+  }
+
+  return orphaned.length;
 }

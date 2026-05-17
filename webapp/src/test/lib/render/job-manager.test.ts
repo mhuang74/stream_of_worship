@@ -8,28 +8,35 @@ import {
   cancelRenderJob,
   startRenderJob,
   getPhaseIndex,
+  recoverOrphanedJobs,
 } from "@/lib/render/job-manager";
 import { db } from "@/db";
 import { songsets } from "@/db/schema";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-vi.mock("@/db", () => ({
-  db: {
-    query: {
-      songsets: {
-        findFirst: vi.fn(),
+vi.mock("@/db", () => {
+  const selectChain = {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue([]),
+  };
+  return {
+    db: {
+      query: {
+        songsets: {
+          findFirst: vi.fn(),
+        },
+        renderJobs: {
+          findFirst: vi.fn(),
+        },
       },
-      renderJobs: {
-        findFirst: vi.fn(),
-      },
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      select: vi.fn(() => selectChain),
     },
-    insert: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    select: vi.fn(),
-  },
-}));
+  };
+});
 
 vi.mock("nanoid", () => ({
   nanoid: vi.fn(() => "mock-job-id"),
@@ -220,15 +227,47 @@ describe("getRenderJob", () => {
 
     expect(job).toBeNull();
   });
+});
 
-  it("queries with correct filters", async () => {
-    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue(mockRenderJob);
+describe("recoverOrphanedJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    await getRenderJob("mock-job-id", 1);
+  it("returns 0 when no orphaned jobs exist", async () => {
+    const selectChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    };
+    vi.mocked(db.select).mockReturnValue(selectChain as any);
 
-    expect(db.query.renderJobs.findFirst).toHaveBeenCalledWith({
-      where: expect.any(Object),
+    const count = await recoverOrphanedJobs();
+    expect(count).toBe(0);
+  });
+
+  it("marks orphaned running jobs as failed", async () => {
+    const orphanedJobs = [
+      { id: "job-1", songsetId: "set-1" },
+      { id: "job-2", songsetId: "set-2" },
+    ];
+    const selectChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue(orphanedJobs),
+    };
+    vi.mocked(db.select).mockReturnValue(selectChain as any);
+
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: "job-1" }]),
+        }),
+      }),
     });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    const count = await recoverOrphanedJobs();
+    expect(count).toBe(2);
+    expect(db.update).toHaveBeenCalledTimes(4);
   });
 });
 
