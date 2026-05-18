@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Music, Clock, Disc, Plus, Check } from "lucide-react";
+import { Music, Clock, Disc, Plus, Check, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -26,16 +26,22 @@ export interface SongCardData {
 interface SongCardProps {
   song: SongCardData;
   onAdd?: (songId: string) => void | Promise<void>;
+  onPlay?: (songId: string) => void;
   isAdded?: boolean;
   isAdding?: boolean;
+  isPlaying?: boolean;
+  isPreviewLoading?: boolean;
   className?: string;
 }
 
 export function SongCard({
   song,
   onAdd,
+  onPlay,
   isAdded = false,
   isAdding = false,
+  isPlaying = false,
+  isPreviewLoading = false,
   className,
 }: SongCardProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -72,8 +78,26 @@ export function SongCard({
       <CardContent className="p-3">
         <div className="flex items-start gap-3">
           {/* Album art placeholder */}
-          <div className="shrink-0 w-12 h-12 rounded-md bg-muted flex items-center justify-center">
-            <Disc className="size-6 text-muted-foreground" />
+          <div
+            className={cn(
+              "shrink-0 w-12 h-12 rounded-md bg-muted flex items-center justify-center relative",
+              onPlay && "cursor-pointer hover:bg-muted/80 transition-colors",
+              isPlaying && "bg-primary/10"
+            )}
+            onClick={onPlay ? () => onPlay(song.id) : undefined}
+            data-testid={onPlay ? "song-play-button" : "song-art-placeholder"}
+            aria-label={isPlaying ? "Pause preview" : "Play preview"}
+            role={onPlay ? "button" : undefined}
+          >
+            {isPreviewLoading ? (
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            ) : isPlaying ? (
+              <Pause className="size-6 text-primary" />
+            ) : isHovered && onPlay ? (
+              <Play className="size-6 text-primary ml-0.5" />
+            ) : (
+              <Disc className="size-6 text-muted-foreground" />
+            )}
           </div>
 
           {/* Song info */}

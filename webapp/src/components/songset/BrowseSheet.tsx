@@ -15,6 +15,7 @@ import { SemanticSearch } from "@/components/search/SemanticSearch";
 import { Loader2, Music, AlertCircle, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 
 type SearchMode = "browse" | "describe";
 
@@ -48,6 +49,9 @@ export function BrowseSheet({
   const [error, setError] = useState<string | null>(null);
   const [addingSongIds, setAddingSongIds] = useState<Set<string>>(new Set());
   const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
+  const { play, currentTrack, state: playerState } = useAudioPlayerContext();
 
   // Load albums function
   const loadAlbums = useCallback(async () => {
@@ -123,6 +127,8 @@ export function BrowseSheet({
         setAddingSongIds(new Set());
         setAddedSongIds(new Set());
         setMode("browse");
+        setPlayingSongId(null);
+        setPreviewLoadingSongId(null);
       }, 300);
       return () => clearTimeout(timeoutId);
     }
@@ -179,6 +185,71 @@ export function BrowseSheet({
     (songId: string) => addingSongIds.has(songId),
     [addingSongIds]
   );
+
+  const handlePlaySong = useCallback(
+    async (songId: string) => {
+      const song = results.find((r) => r.id === songId);
+      if (!song || song.recordings.length === 0) {
+        toast.error("No audio available for this song");
+        return;
+      }
+
+      if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
+        if (playerState.isPlaying) {
+          setPlayingSongId(null);
+          return;
+        }
+      }
+
+      const recording = song.recordings[0];
+      setPreviewLoadingSongId(songId);
+
+      try {
+        const res = await fetch("/api/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hashPrefix: recording.hashPrefix,
+            fileType: "audio",
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to get audio URL");
+        }
+
+        const data = await res.json();
+        const artist = song.composer || song.lyricist || "Unknown Artist";
+
+        play({
+          id: `song-${songId}`,
+          title: song.title,
+          artist,
+          src: data.url,
+          type: "song",
+          duration: recording.durationSeconds ?? undefined,
+        });
+
+        setPlayingSongId(songId);
+      } catch {
+        toast.error("Failed to load audio preview");
+      } finally {
+        setPreviewLoadingSongId(null);
+      }
+    },
+    [results, playingSongId, currentTrack, playerState.isPlaying, play]
+  );
+
+  useEffect(() => {
+    if (!currentTrack || !playerState.isPlaying) {
+      const timeout = setTimeout(() => {
+        if (!currentTrack || !playerState.isPlaying) {
+          setPlayingSongId(null);
+        }
+      }, 200);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentTrack, playerState.isPlaying]);
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -283,8 +354,11 @@ export function BrowseSheet({
                         key={song.id}
                         song={song}
                         onAdd={handleAddSong}
+                        onPlay={handlePlaySong}
                         isAdded={isSongAdded(song.id)}
                         isAdding={isSongAdding(song.id)}
+                        isPlaying={playingSongId === song.id}
+                        isPreviewLoading={previewLoadingSongId === song.id}
                       />
                     ))}
                   </div>

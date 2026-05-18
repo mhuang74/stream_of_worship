@@ -13,6 +13,7 @@ describe("SongCard", () => {
     recordings: [
       {
         contentHash: "abc123",
+        hashPrefix: "abc",
         durationSeconds: 180,
         tempoBpm: 120,
         musicalKey: "G",
@@ -167,6 +168,80 @@ describe("SongCard", () => {
     it("has data-testid for song card", () => {
       renderCard();
       expect(screen.getByTestId("song-card")).toBeInTheDocument();
+    });
+  });
+
+  describe("play button", () => {
+    it("renders song-play-button when onPlay is provided", () => {
+      renderCard({ onPlay: vi.fn() });
+      expect(screen.getByTestId("song-play-button")).toBeInTheDocument();
+    });
+
+    it("renders song-art-placeholder when onPlay is not provided", () => {
+      renderCard({ onAdd: undefined });
+      expect(screen.getByTestId("song-art-placeholder")).toBeInTheDocument();
+    });
+
+    it("shows Disc icon when not hovered and not playing", () => {
+      renderCard({ onPlay: vi.fn() });
+      const playButton = screen.getByTestId("song-play-button");
+      expect(playButton.querySelector("svg")).toHaveClass("lucide", "lucide-disc");
+    });
+
+    it("shows Play icon on hover when onPlay is provided", () => {
+      renderCard({ onPlay: vi.fn() });
+      fireEvent.mouseEnter(screen.getByTestId("song-card"));
+      const playButton = screen.getByTestId("song-play-button");
+      expect(playButton.querySelector("svg")).toHaveClass("lucide", "lucide-play");
+    });
+
+    it("shows Pause icon when isPlaying is true", () => {
+      renderCard({ onPlay: vi.fn(), isPlaying: true });
+      const playButton = screen.getByTestId("song-play-button");
+      expect(playButton.querySelector("svg")).toHaveClass("lucide", "lucide-pause");
+    });
+
+    it("shows Loader2 spinner when isPreviewLoading is true", () => {
+      renderCard({ onPlay: vi.fn(), isPreviewLoading: true });
+      const playButton = screen.getByTestId("song-play-button");
+      expect(playButton.querySelector("svg")).toHaveClass("lucide", "lucide-loader-circle");
+    });
+
+    it("calls onPlay with song ID when play area is clicked", () => {
+      const onPlay = vi.fn();
+      renderCard({ onPlay });
+      fireEvent.click(screen.getByTestId("song-play-button"));
+      expect(onPlay).toHaveBeenCalledWith("song-1");
+    });
+
+    it("has role=button when onPlay is provided", () => {
+      renderCard({ onPlay: vi.fn() });
+      expect(screen.getByTestId("song-play-button")).toHaveAttribute("role", "button");
+    });
+
+    it("does not have role=button when onPlay is not provided", () => {
+      renderCard({ onAdd: undefined });
+      expect(screen.getByTestId("song-art-placeholder")).not.toHaveAttribute("role");
+    });
+
+    it("has aria-label 'Play preview' when not playing", () => {
+      renderCard({ onPlay: vi.fn() });
+      expect(screen.getByTestId("song-play-button")).toHaveAttribute("aria-label", "Play preview");
+    });
+
+    it("has aria-label 'Pause preview' when playing", () => {
+      renderCard({ onPlay: vi.fn(), isPlaying: true });
+      expect(screen.getByTestId("song-play-button")).toHaveAttribute("aria-label", "Pause preview");
+    });
+
+    it("has bg-primary/10 class when playing", () => {
+      renderCard({ onPlay: vi.fn(), isPlaying: true });
+      expect(screen.getByTestId("song-play-button")).toHaveClass("bg-primary/10");
+    });
+
+    it("has cursor-pointer class when onPlay is provided", () => {
+      renderCard({ onPlay: vi.fn() });
+      expect(screen.getByTestId("song-play-button")).toHaveClass("cursor-pointer");
     });
   });
 });

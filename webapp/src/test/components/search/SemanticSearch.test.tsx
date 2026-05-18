@@ -2,6 +2,43 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SemanticSearch } from "@/components/search/SemanticSearch";
 
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+const mockPlay = vi.fn();
+
+vi.mock("@/contexts/AudioPlayerContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/contexts/AudioPlayerContext")>();
+  return {
+    ...actual,
+    useAudioPlayerContext: () => ({
+      play: mockPlay,
+      pause: vi.fn(),
+      stop: vi.fn(),
+      currentTrack: null,
+      state: {
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+        volume: 1,
+        isMuted: false,
+        isLooping: false,
+        loopWindowStart: 0,
+        loopWindowEnd: 0,
+      },
+      togglePlay: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      toggleMute: vi.fn(),
+      toggleLoop: vi.fn(),
+      setLoopWindow: vi.fn(),
+      clearLoopWindow: vi.fn(),
+      audioRef: { current: null },
+    }),
+  };
+});
+
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
@@ -17,6 +54,7 @@ const mockSongs = [
     recordings: [
       {
         contentHash: "abc123",
+        hashPrefix: "abc",
         durationSeconds: 180,
         tempoBpm: 72,
         musicalKey: "G",
@@ -34,6 +72,7 @@ const mockSongs = [
     recordings: [
       {
         contentHash: "def456",
+        hashPrefix: "def",
         durationSeconds: 210,
         tempoBpm: 80,
         musicalKey: "D",
@@ -286,6 +325,177 @@ describe("SemanticSearch", () => {
       await waitFor(() => {
         const addButtons = screen.getAllByTestId("add-song-button");
         expect(addButtons[0]).toBeDisabled();
+      });
+    });
+  });
+
+  describe("play functionality", () => {
+    it("renders song cards with play buttons", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        const playButtons = screen.getAllByTestId("song-play-button");
+        expect(playButtons.length).toBeGreaterThan(0);
+      });
+    });
+
+    it("calls /api/signed-url when play button is clicked", async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/songs/search/semantic") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+          });
+        }
+        if (url === "/api/signed-url") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ url: "https://r2.example.com/audio.mp3" }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
+      });
+
+      const playButtons = screen.getAllByTestId("song-play-button");
+      fireEvent.click(playButtons[0]);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/signed-url",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({ hashPrefix: "abc", fileType: "audio" }),
+          })
+        );
+      });
+    });
+
+    it("calls play() from audio context with correct track data", async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/songs/search/semantic") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+          });
+        }
+        if (url === "/api/signed-url") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ url: "https://r2.example.com/audio.mp3" }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
+      });
+
+      const playButtons = screen.getAllByTestId("song-play-button");
+      fireEvent.click(playButtons[0]);
+
+      await waitFor(() => {
+        expect(mockPlay).toHaveBeenCalledWith({
+          id: "song-song-1",
+          title: "Amazing Grace",
+          artist: "John Newton",
+          src: "https://r2.example.com/audio.mp3",
+          type: "song",
+          duration: 180,
+        });
+      });
+    });
+
+    it("shows error toast when signed URL fetch fails", async () => {
+      const { toast } = await import("sonner");
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/songs/search/semantic") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+          });
+        }
+        if (url === "/api/signed-url") {
+          return Promise.resolve({ ok: false });
+        }
+        return Promise.resolve({ ok: false });
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
+      });
+
+      const playButtons = screen.getAllByTestId("song-play-button");
+      fireEvent.click(playButtons[0]);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("Failed to load audio preview");
+      });
+    });
+
+    it("shows error toast when song has no recordings", async () => {
+      const { toast } = await import("sonner");
+
+      const songsNoRecordings = [
+        {
+          id: "song-nr",
+          title: "No Recording Song",
+          composer: "Test",
+          lyricist: null,
+          albumName: null,
+          musicalKey: null,
+          similarity: 0.5,
+          recordings: [],
+        },
+      ];
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: songsNoRecordings, query: "test", total: 1 }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "test" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("No Recording Song")).toBeInTheDocument();
+      });
+
+      const playButtons = screen.getAllByTestId("song-play-button");
+      fireEvent.click(playButtons[0]);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("No audio available for this song");
       });
     });
   });
