@@ -346,7 +346,7 @@ export function ControllerPlayer({
   return (
     <div
       className={cn(
-        "fixed inset-0 bg-black flex flex-col",
+        "fixed inset-0 z-[70] bg-black flex flex-col",
         className
       )}
       onClick={handleInteraction}

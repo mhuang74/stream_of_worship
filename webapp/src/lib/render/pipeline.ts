@@ -61,6 +61,18 @@ async function fetchSongsetItems(songsetId: string): Promise<SongsetItem[]> {
   }));
 }
 
+function computeTimerValues(
+  startTime: number,
+  percentComplete: number
+): { elapsedSeconds: number; estimatedSecondsLeft: number } {
+  const elapsedSeconds = (Date.now() - startTime) / 1000;
+  const estimatedSecondsLeft =
+    percentComplete > 0
+      ? (elapsedSeconds / percentComplete) * (100 - percentComplete)
+      : 0;
+  return { elapsedSeconds, estimatedSecondsLeft };
+}
+
 export async function executeRenderPipeline(
   jobId: string,
   userId: number
@@ -72,6 +84,7 @@ export async function executeRenderPipeline(
 
   const assetFetcher = new AssetFetcher();
   const tempDir = await assetFetcher.getTempDir();
+  const pipelineStartTime = Date.now();
 
   const checkCancelled = async () => {
     const current = await getRenderJob(jobId, userId);
@@ -88,8 +101,7 @@ export async function executeRenderPipeline(
       phaseIndex: 0,
       totalPhases: PHASES.length,
       percentComplete: PHASES[0].percent,
-      estimatedSecondsLeft: 0,
-      elapsedSeconds: 0,
+      ...computeTimerValues(pipelineStartTime, PHASES[0].percent),
     });
 
     await checkCancelled();
@@ -107,8 +119,7 @@ export async function executeRenderPipeline(
       phaseIndex: 1,
       totalPhases: PHASES.length,
       percentComplete: PHASES[1].percent,
-      estimatedSecondsLeft: 0,
-      elapsedSeconds: 0,
+      ...computeTimerValues(pipelineStartTime, PHASES[1].percent),
     });
 
     const audioResult = await audioEngine.generateSongsetAudio(
@@ -118,6 +129,7 @@ export async function executeRenderPipeline(
         const audioPercent = Math.round((currentStep / totalSteps) * 25) + 5;
         updateRenderProgress(jobId, userId, {
           percentComplete: audioPercent,
+          ...computeTimerValues(pipelineStartTime, audioPercent),
         }).catch((err) => {
           console.warn(`Progress update failed for job ${jobId}:`, err);
         });
@@ -131,8 +143,7 @@ export async function executeRenderPipeline(
       phaseIndex: 2,
       totalPhases: PHASES.length,
       percentComplete: PHASES[2].percent,
-      estimatedSecondsLeft: 0,
-      elapsedSeconds: 0,
+      ...computeTimerValues(pipelineStartTime, PHASES[2].percent),
     });
 
     let videoOutputPath: string | undefined;
@@ -154,6 +165,7 @@ export async function executeRenderPipeline(
         phaseIndex: 3,
         totalPhases: PHASES.length,
         percentComplete: PHASES[3].percent,
+        ...computeTimerValues(pipelineStartTime, PHASES[3].percent),
       });
 
       await videoEngine.generateVideo(
@@ -164,6 +176,7 @@ export async function executeRenderPipeline(
           const videoPercent = Math.round((currentFrame / totalFrames) * 20) + 60;
           updateRenderProgress(jobId, userId, {
             percentComplete: videoPercent,
+            ...computeTimerValues(pipelineStartTime, videoPercent),
           }).catch((err) => {
             console.warn(`Progress update failed for job ${jobId}:`, err);
           });
@@ -178,6 +191,7 @@ export async function executeRenderPipeline(
       phaseIndex: 4,
       totalPhases: PHASES.length,
       percentComplete: PHASES[4].percent,
+      ...computeTimerValues(pipelineStartTime, PHASES[4].percent),
     });
 
     const chaptersManifest = await generateChaptersManifest(
@@ -199,6 +213,7 @@ export async function executeRenderPipeline(
         const uploadPercent = Math.round((bytesUploaded / totalBytes) * 5) + 95;
         updateRenderProgress(jobId, userId, {
           percentComplete: uploadPercent,
+          ...computeTimerValues(pipelineStartTime, uploadPercent),
         }).catch((err) => {
           console.warn(`Progress update failed for job ${jobId}:`, err);
         });

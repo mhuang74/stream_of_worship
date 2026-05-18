@@ -11,6 +11,10 @@ const navItems = [
 export function BottomNav() {
   const pathname = usePathname();
 
+  if (pathname.includes("/play/controller")) {
+    return null;
+  }
+
   return (
     <nav
       className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background"
