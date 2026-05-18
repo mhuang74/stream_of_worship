@@ -16,6 +16,7 @@ import { Loader2, Music, AlertCircle, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
+import { getPublicAudioUrl } from "@/lib/r2/public-url";
 
 type SearchMode = "browse" | "describe";
 
@@ -202,6 +203,22 @@ export function BrowseSheet({
       }
 
       const recording = song.recordings[0];
+      const artist = song.composer || song.lyricist || "Unknown Artist";
+      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
+
+      if (publicUrl) {
+        play({
+          id: `song-${songId}`,
+          title: song.title,
+          artist,
+          src: publicUrl,
+          type: "song",
+          duration: recording.durationSeconds ?? undefined,
+        });
+        setPlayingSongId(songId);
+        return;
+      }
+
       setPreviewLoadingSongId(songId);
 
       try {
@@ -219,7 +236,6 @@ export function BrowseSheet({
         }
 
         const data = await res.json();
-        const artist = song.composer || song.lyricist || "Unknown Artist";
 
         play({
           id: `song-${songId}`,

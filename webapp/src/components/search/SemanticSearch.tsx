@@ -9,6 +9,7 @@ import { Loader2, Sparkles, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
+import { getPublicAudioUrl } from "@/lib/r2/public-url";
 
 interface SemanticSearchResult extends SongCardData {
   similarity: number;
@@ -104,6 +105,22 @@ export function SemanticSearch({
       }
 
       const recording = song.recordings[0];
+      const artist = song.composer || song.lyricist || "Unknown Artist";
+      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
+
+      if (publicUrl) {
+        play({
+          id: `song-${songId}`,
+          title: song.title,
+          artist,
+          src: publicUrl,
+          type: "song",
+          duration: recording.durationSeconds ?? undefined,
+        });
+        setPlayingSongId(songId);
+        return;
+      }
+
       setPreviewLoadingSongId(songId);
 
       try {
@@ -121,7 +138,6 @@ export function SemanticSearch({
         }
 
         const data = await res.json();
-        const artist = song.composer || song.lyricist || "Unknown Artist";
 
         play({
           id: `song-${songId}`,

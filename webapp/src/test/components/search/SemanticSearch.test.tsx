@@ -39,6 +39,12 @@ vi.mock("@/contexts/AudioPlayerContext", async (importOriginal) => {
   };
 });
 
+const mockGetPublicAudioUrl = vi.fn(() => null);
+
+vi.mock("@/lib/r2/public-url", () => ({
+  getPublicAudioUrl: (...args: unknown[]) => mockGetPublicAudioUrl(...args),
+}));
+
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
@@ -347,7 +353,45 @@ describe("SemanticSearch", () => {
       });
     });
 
-    it("calls /api/signed-url when play button is clicked", async () => {
+    it("uses public R2 URL when available", async () => {
+      mockGetPublicAudioUrl.mockReturnValue("https://pub-test.r2.dev/abc/audio.mp3");
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
+      });
+
+      const playButtons = screen.getAllByTestId("song-play-button");
+      fireEvent.click(playButtons[0]);
+
+      await waitFor(() => {
+        expect(mockGetPublicAudioUrl).toHaveBeenCalledWith("abc");
+        expect(mockPlay).toHaveBeenCalledWith({
+          id: "song-song-1",
+          title: "Amazing Grace",
+          artist: "John Newton",
+          src: "https://pub-test.r2.dev/abc/audio.mp3",
+          type: "song",
+          duration: 180,
+        });
+      });
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        "/api/signed-url",
+        expect.anything()
+      );
+    });
+
+    it("falls back to /api/signed-url when public URL is not available", async () => {
+      mockGetPublicAudioUrl.mockReturnValue(null);
       mockFetch.mockImplementation((url: string) => {
         if (url === "/api/songs/search/semantic") {
           return Promise.resolve({
@@ -387,7 +431,8 @@ describe("SemanticSearch", () => {
       });
     });
 
-    it("calls play() from audio context with correct track data", async () => {
+    it("calls play() with signed URL data when falling back", async () => {
+      mockGetPublicAudioUrl.mockReturnValue(null);
       mockFetch.mockImplementation((url: string) => {
         if (url === "/api/songs/search/semantic") {
           return Promise.resolve({
@@ -429,6 +474,7 @@ describe("SemanticSearch", () => {
     });
 
     it("shows error toast when signed URL fetch fails", async () => {
+      mockGetPublicAudioUrl.mockReturnValue(null);
       const { toast } = await import("sonner");
 
       mockFetch.mockImplementation((url: string) => {
