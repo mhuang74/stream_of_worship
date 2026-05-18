@@ -21,11 +21,14 @@ const RenderComplete = dynamic(() => import("@/components/render/RenderComplete"
 
 type RenderScreenState = "form" | "progress" | "complete"
 
+type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed"
+
 interface SongsetData {
   id: string
   name: string
   description: string | null
   markedLineCount: number
+  renderState: RenderState
 }
 
 interface RenderJobData {
@@ -77,6 +80,8 @@ export default function RenderPage() {
 
         if (cancelled) return
 
+        const renderState = data.renderState as RenderState
+
         setSongset({
           id: data.id,
           name: data.name,
@@ -86,6 +91,7 @@ export default function RenderPage() {
               sum + (item.markedLineCount || 0),
             0
           ) || 0,
+          renderState,
         })
 
         // Check if there's an active render job
@@ -96,7 +102,7 @@ export default function RenderPage() {
             if (job.status === "running" || job.status === "queued") {
               setJobId(job.id)
               setScreenState("progress")
-            } else if (job.status === "completed") {
+            } else if (job.status === "completed" && renderState === "fresh") {
               setJobId(job.id)
               const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
               const fetchSigned = async (type: string) => {
