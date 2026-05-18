@@ -52,6 +52,24 @@ vi.mock("@dnd-kit/utilities", async (importOriginal) => {
   };
 });
 
+vi.mock("@/contexts/AudioPlayerContext", () => ({
+  useAudioPlayerContext: () => ({
+    currentTrack: null,
+    state: { isPlaying: false },
+    play: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/r2/public-url", () => ({
+  getPublicAudioUrl: vi.fn(() => null),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}));
+
 describe("SongList", () => {
   const mockItems: SongListItem[] = [
     {
@@ -68,6 +86,7 @@ describe("SongList", () => {
       },
       recording: {
         contentHash: "abc123",
+        hashPrefix: "ab",
         durationSeconds: 180,
         tempoBpm: 120,
         musicalKey: "G",
@@ -91,6 +110,7 @@ describe("SongList", () => {
       },
       recording: {
         contentHash: "def456",
+        hashPrefix: "de",
         durationSeconds: 240,
         tempoBpm: 100,
         musicalKey: "A",
@@ -122,10 +142,10 @@ describe("SongList", () => {
       expect(screen.getByText("How Great Thou Art")).toBeInTheDocument();
     });
 
-    it("renders song numbers", () => {
+    it("renders play buttons for each song", () => {
       renderList();
-      expect(screen.getByText("1")).toBeInTheDocument();
-      expect(screen.getByText("2")).toBeInTheDocument();
+      const playButtons = screen.getAllByRole("button", { name: /play/i });
+      expect(playButtons.length).toBe(2);
     });
 
     it("renders song metadata (composer, duration, key)", () => {

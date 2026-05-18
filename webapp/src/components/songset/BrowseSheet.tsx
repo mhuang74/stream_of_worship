@@ -52,7 +52,7 @@ export function BrowseSheet({
   const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
-  const { play, currentTrack, state: playerState } = useAudioPlayerContext();
+  const { play, pause, currentTrack, state: playerState } = useAudioPlayerContext();
 
   // Load albums function
   const loadAlbums = useCallback(async () => {
@@ -197,6 +197,7 @@ export function BrowseSheet({
 
       if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
         if (playerState.isPlaying) {
+          pause();
           setPlayingSongId(null);
           return;
         }
@@ -253,7 +254,7 @@ export function BrowseSheet({
         setPreviewLoadingSongId(null);
       }
     },
-    [results, playingSongId, currentTrack, playerState.isPlaying, play]
+    [results, playingSongId, currentTrack, playerState.isPlaying, play, pause]
   );
 
   useEffect(() => {
@@ -277,7 +278,7 @@ export function BrowseSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col h-full min-h-0 pb-8">
+        <div className={cn("flex flex-col h-full min-h-0", currentTrack ? "pb-28" : "pb-8")}>
           {/* Mode tabs */}
           <div className="flex gap-1 pb-4 border-b mb-4" role="tablist" aria-label="Search mode">
             <Button
