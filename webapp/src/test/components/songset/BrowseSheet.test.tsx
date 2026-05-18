@@ -39,6 +39,12 @@ vi.mock("@/contexts/AudioPlayerContext", async (importOriginal) => {
   };
 });
 
+const mockGetPublicAudioUrl = vi.fn(() => null);
+
+vi.mock("@/lib/r2/public-url", () => ({
+  getPublicAudioUrl: (...args: unknown[]) => mockGetPublicAudioUrl(...args),
+}));
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -346,7 +352,38 @@ describe("BrowseSheet", () => {
       });
     });
 
-    it("calls /api/signed-url when play button is clicked", async () => {
+    it("uses public R2 URL when available", async () => {
+      mockGetPublicAudioUrl.mockReturnValue("https://pub-test.r2.dev/abc123/audio.mp3");
+
+      renderSheet();
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
+      });
+
+      const playButtons = screen.getAllByTestId("song-play-button");
+      fireEvent.click(playButtons[0]);
+
+      await waitFor(() => {
+        expect(mockGetPublicAudioUrl).toHaveBeenCalledWith("abc123");
+        expect(mockPlay).toHaveBeenCalledWith({
+          id: "song-song-1",
+          title: "Amazing Grace",
+          artist: "John Newton",
+          src: "https://pub-test.r2.dev/abc123/audio.mp3",
+          type: "song",
+          duration: 180,
+        });
+      });
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        "/api/signed-url",
+        expect.anything()
+      );
+    });
+
+    it("falls back to /api/signed-url when public URL is not available", async () => {
+      mockGetPublicAudioUrl.mockReturnValue(null);
       mockFetch.mockImplementation((url: string) => {
         if (url === "/api/signed-url") {
           return Promise.resolve({
@@ -389,7 +426,8 @@ describe("BrowseSheet", () => {
       });
     });
 
-    it("calls play() from audio context with correct track data", async () => {
+    it("calls play() with signed URL data when falling back", async () => {
+      mockGetPublicAudioUrl.mockReturnValue(null);
       mockFetch.mockImplementation((url: string) => {
         if (url === "/api/signed-url") {
           return Promise.resolve({
@@ -434,6 +472,7 @@ describe("BrowseSheet", () => {
     });
 
     it("shows error toast when signed URL fetch fails", async () => {
+      mockGetPublicAudioUrl.mockReturnValue(null);
       const { toast } = await import("sonner");
 
       mockFetch.mockImplementation((url: string) => {
