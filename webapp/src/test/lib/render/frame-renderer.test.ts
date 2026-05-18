@@ -9,6 +9,7 @@ vi.mock("canvas", () => ({
     getContext: vi.fn(() => ({
       fillRect: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 100 })),
       font: "48px sans-serif",
       textAlign: "center",
       getImageData: vi.fn(() => ({
