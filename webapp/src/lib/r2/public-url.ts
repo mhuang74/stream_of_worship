@@ -1,4 +1,4 @@
-const R2_PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN;
+const R2_PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN?.replace(/^https?:\/\//, "");
 
 export function getPublicAudioUrl(hashPrefix: string): string | null {
   if (!R2_PUBLIC_DOMAIN) return null;
