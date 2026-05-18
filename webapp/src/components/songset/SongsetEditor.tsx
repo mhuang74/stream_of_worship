@@ -56,7 +56,7 @@ export interface SongsetEditorProps {
     updatedAt: string;
   };
   items: SongListItem[];
-  onUpdateItems: (items: SongListItem[]) => Promise<void>;
+  onUpdateItems: (items: SongListItem[]) => void;
   onRemoveItem: (itemId: string) => Promise<void>;
   onUpdateTransition: (itemId: string, settings: TransitionSettings) => Promise<void>;
   onRender: () => void;
@@ -107,13 +107,8 @@ export function SongsetEditor({
 
   // Handle reorder
   const handleReorder = useCallback(
-    async (newItems: SongListItem[]) => {
-      try {
-        await onUpdateItems(newItems);
-        toast.success("Song order updated");
-      } catch {
-        toast.error("Failed to update song order");
-      }
+    (newItems: SongListItem[]) => {
+      onUpdateItems(newItems);
     },
     [onUpdateItems]
   );

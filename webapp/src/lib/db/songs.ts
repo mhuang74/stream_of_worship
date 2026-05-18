@@ -53,9 +53,9 @@ function buildPublishedRecordingExistsClause(visibilityStatus?: string) {
 
   return sql`exists (
     select 1
-    from ${recordings}
-    where ${recordings.songId} = ${songs.id}
-      and ${recordings.visibilityStatus} = ${visibilityStatus}
+    from recordings
+    where recordings.song_id = ${songs.id}
+      and recordings.visibility_status = ${visibilityStatus}
   )`;
 }
 

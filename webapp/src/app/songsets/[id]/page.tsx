@@ -149,29 +149,31 @@ export default function SongsetEditorPage() {
     };
   }, [songsetId, router]);
 
-  // Handle item reorder
+  // Handle item reorder (optimistic)
   const handleUpdateItems = useCallback(
-    async (newItems: SongListItem[]) => {
-      // Update positions for all items
+    (newItems: SongListItem[]) => {
+      const previousItems = items;
+      setItems(newItems);
+
       const updates = newItems.map((item, index) => ({
         itemId: item.id,
         position: index,
       }));
 
-      const response = await fetch(`/api/songsets/${songsetId}/items/reorder`, {
+      fetch(`/api/songsets/${songsetId}/items/reorder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ updates }),
+      }).then((response) => {
+        if (!response.ok) {
+          setItems(previousItems);
+          throw new Error("Failed to reorder items");
+        }
+      }).catch(() => {
+        setItems(previousItems);
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to reorder items");
-      }
-
-      // Update local state
-      setItems(newItems);
     },
-    [songsetId]
+    [songsetId, items]
   );
 
   // Handle item removal
