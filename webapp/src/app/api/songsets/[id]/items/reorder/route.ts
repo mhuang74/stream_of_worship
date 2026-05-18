@@ -71,7 +71,7 @@ export async function POST(
 
       await db
         .update(songsetItems)
-        .set({ position: update.position })
+        .set({ position: update.position, updatedAt: now })
         .where(eq(songsetItems.id, update.itemId));
     }
 
