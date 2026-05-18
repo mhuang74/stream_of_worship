@@ -182,7 +182,7 @@ export function BrowseSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className={cn("h-[85vh] sm:h-[75vh]", className)}>
+      <SheetContent side="bottom" className={cn("data-[side=bottom]:!h-[85vh] sm:data-[side=bottom]:!h-[75vh] overflow-hidden", className)}>
         <SheetHeader className="pb-4">
           <SheetTitle>Browse Songs</SheetTitle>
           <SheetDescription>
@@ -190,7 +190,7 @@ export function BrowseSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col h-full pb-8">
+        <div className="flex flex-col h-full min-h-0 pb-8">
           {/* Mode tabs */}
           <div className="flex gap-1 pb-4 border-b mb-4" role="tablist" aria-label="Search mode">
             <Button
@@ -220,7 +220,7 @@ export function BrowseSheet({
           </div>
 
           {mode === "browse" && (
-            <div role="tabpanel" aria-label="Browse songs">
+            <div role="tabpanel" aria-label="Browse songs" className="flex flex-col min-h-0 flex-1">
               {/* Search section */}
               <div className="px-1 pb-4">
                 <SongSearch
@@ -294,7 +294,7 @@ export function BrowseSheet({
           )}
 
           {mode === "describe" && (
-            <div className="flex-1 overflow-y-auto px-1 -mx-1" role="tabpanel" aria-label="Describe songs">
+            <div className="flex-1 min-h-0 overflow-y-auto px-1 -mx-1" role="tabpanel" aria-label="Describe songs">
               <SemanticSearch
                 onAddSong={handleAddSong}
                 existingSongIds={existingSongIds}
