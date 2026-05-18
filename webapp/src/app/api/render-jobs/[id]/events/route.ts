@@ -72,81 +72,79 @@ export async function GET(
           encoder.encode(`data: ${JSON.stringify(initialEvent)}\n\n`)
         );
 
-        // Set up polling interval to check for updates
+        // Set up polling to check for updates
         const MAX_DURATION_MS = 30 * 60 * 1000;
         const startTime = Date.now();
+        let polling = true;
 
-        const intervalId = setInterval(async () => {
-          try {
-            if (Date.now() - startTime > MAX_DURATION_MS) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ error: "Connection timed out" })}\n\n`)
-              );
-              controller.close();
-              clearInterval(intervalId);
-              return;
-            }
+        async function poll() {
+          if (!polling) return;
+          if (Date.now() - startTime > MAX_DURATION_MS) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ error: "Connection timed out" })}\n\n`)
+            );
+            controller.close();
+            return;
+          }
 
-            const updatedJob = await getRenderJob(id, Number(session.user.id));
+          const updatedJob = await getRenderJob(id, Number(session.user.id));
 
-            if (!updatedJob) {
-              // Job was deleted
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ error: "Job not found" })}\n\n`)
-              );
-              controller.close();
-              clearInterval(intervalId);
-              return;
-            }
+          if (!updatedJob) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ error: "Job not found" })}\n\n`)
+            );
+            controller.close();
+            return;
+          }
 
-            // Check if job reached terminal state
-            if (
-              updatedJob.status === "completed" ||
-              updatedJob.status === "failed" ||
-              updatedJob.status === "cancelled"
-            ) {
-              const finalEvent: SSEEvent = {
-                phase: updatedJob.phase ?? "completed",
-                phaseIndex: updatedJob.phaseIndex ?? updatedJob.totalPhases ?? 5,
-                totalPhases: updatedJob.totalPhases ?? 5,
-                percentComplete: updatedJob.status === "completed" ? 100 : updatedJob.percentComplete,
-                estimatedSecondsLeft: 0,
-                elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
-              };
-
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify(finalEvent)}\n\n`)
-              );
-              controller.close();
-              clearInterval(intervalId);
-              return;
-            }
-
-            // Send progress update
-            const event: SSEEvent = {
-              phase: updatedJob.phase ?? "preparing",
-              phaseIndex: updatedJob.phaseIndex ?? 0,
+          // Check if job reached terminal state
+          if (
+            updatedJob.status === "completed" ||
+            updatedJob.status === "failed" ||
+            updatedJob.status === "cancelled"
+          ) {
+            const finalEvent: SSEEvent = {
+              phase: updatedJob.phase ?? "completed",
+              phaseIndex: updatedJob.phaseIndex ?? updatedJob.totalPhases ?? 5,
               totalPhases: updatedJob.totalPhases ?? 5,
-              percentComplete: updatedJob.percentComplete ?? 0,
-              estimatedSecondsLeft: updatedJob.estimatedSecondsLeft ?? 0,
+              percentComplete: updatedJob.status === "completed" ? 100 : updatedJob.percentComplete,
+              estimatedSecondsLeft: 0,
               elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
             };
 
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+              encoder.encode(`data: ${JSON.stringify(finalEvent)}\n\n`)
             );
-          } catch (error) {
-            console.error("Error polling job status:", error);
-            clearInterval(intervalId);
             controller.close();
+            return;
           }
-        }, 1000); // Poll every second
+
+          // Send progress update
+          const event: SSEEvent = {
+            phase: updatedJob.phase ?? "preparing",
+            phaseIndex: updatedJob.phaseIndex ?? 0,
+            totalPhases: updatedJob.totalPhases ?? 5,
+            percentComplete: updatedJob.percentComplete ?? 0,
+            estimatedSecondsLeft: updatedJob.estimatedSecondsLeft ?? 0,
+            elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
+          };
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+          );
+
+          // Schedule next poll after current one completes
+          setTimeout(poll, 1000);
+        }
 
         // Clean up on client disconnect
         request.signal.addEventListener("abort", () => {
-          clearInterval(intervalId);
+          polling = false;
           controller.close();
         });
+
+        // Start the first poll
+        poll();
       },
     });
 

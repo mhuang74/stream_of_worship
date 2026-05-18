@@ -1,4 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+
+vi.mock("next/server", async () => {
+  const actual = await vi.importActual<typeof import("next/server")>("next/server");
+  return {
+    ...actual,
+    after: vi.fn(),
+  };
+});
+
 import { POST } from "@/app/api/render-jobs/route";
 import { auth } from "@/lib/auth";
 import { createRenderJob } from "@/lib/render/job-manager";

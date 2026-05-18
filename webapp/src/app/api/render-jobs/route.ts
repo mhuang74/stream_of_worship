@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { createRenderJob } from "@/lib/render/job-manager";
 import { executeRenderPipeline } from "@/lib/render/pipeline";
@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
 
     const job = await createRenderJob(Number(session.user.id), parsed.data);
 
-    executeRenderPipeline(job.id, Number(session.user.id)).catch(console.error);
+    after(() =>
+      executeRenderPipeline(job.id, Number(session.user.id)).catch((err) => {
+        console.error("Render pipeline failed:", err);
+      })
+    );
 
     return NextResponse.json(job, { status: 201 });
   } catch (error) {

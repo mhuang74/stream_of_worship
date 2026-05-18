@@ -465,3 +465,39 @@ export async function deleteSongsetItem(
 
   return true;
 }
+
+export async function duplicateSongset(
+  sourceId: string,
+  userId: number,
+  newName: string,
+  newDescription: string | null
+): Promise<SongsetDetail | null> {
+  const source = await getSongset(sourceId, userId);
+  if (!source) return null;
+
+  const newId = nanoid();
+  await db
+    .insert(songsets)
+    .values({ id: newId, userId, name: newName, description: newDescription })
+    .returning();
+
+  if (source.items.length > 0) {
+    const itemsToInsert = source.items.map((item) => ({
+      id: nanoid(),
+      songsetId: newId,
+      songId: item.songId,
+      recordingHashPrefix: item.recordingHashPrefix,
+      position: item.position,
+      gapBeats: item.gapBeats,
+      crossfadeEnabled: item.crossfadeEnabled,
+      crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+      keyShiftSemitones: item.keyShiftSemitones,
+      tempoRatio: item.tempoRatio,
+    }));
+
+    await db.insert(songsetItems).values(itemsToInsert);
+  }
+
+  const duplicated = await getSongset(newId, userId);
+  return duplicated;
+}

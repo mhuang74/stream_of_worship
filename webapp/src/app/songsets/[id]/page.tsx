@@ -279,53 +279,25 @@ export default function SongsetEditorPage() {
 
   // Handle duplicate
   const handleDuplicate = useCallback(async () => {
-    // First get the songset details
-    const response = await fetch(`/api/songsets/${songsetId}`);
-    if (!response.ok) {
-      throw new Error("Failed to fetch songset details");
-    }
-
-    const songset = await response.json();
-
-    // Create a new songset with "Copy of" prefix
-    const createResponse = await fetch("/api/songsets", {
+    const response = await fetch(`/api/songsets/${songsetId}/duplicate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: `Copy of ${songset.name}`,
-        description: songset.description,
+        name: `Copy of ${songset?.name ?? ""}`,
+        description: songset?.description,
       }),
     });
 
-    if (!createResponse.ok) {
-      throw new Error("Failed to duplicate songset");
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || "Failed to duplicate songset");
     }
 
-    const newSongset = await createResponse.json();
-
-    // Copy items if any
-    if (songset.items && songset.items.length > 0) {
-      for (const item of songset.items) {
-        await fetch(`/api/songsets/${newSongset.id}/items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            songId: item.songId,
-            recordingHashPrefix: item.recordingHashPrefix,
-            position: item.position,
-            gapBeats: item.gapBeats,
-            crossfadeEnabled: item.crossfadeEnabled,
-            crossfadeDurationSeconds: item.crossfadeDurationSeconds,
-            keyShiftSemitones: item.keyShiftSemitones,
-            tempoRatio: item.tempoRatio,
-          }),
-        });
-      }
-    }
+    const newSongset = await response.json();
 
     // Navigate to the new songset
     router.push(`/songsets/${newSongset.id}`);
-  }, [songsetId, router]);
+  }, [songsetId, router, songset]);
 
   // Handle delete
   const handleDelete = useCallback(async () => {
