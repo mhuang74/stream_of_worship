@@ -41,6 +41,7 @@ export function LyricJumpList({
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
+      e.stopPropagation();
       const clientY =
         "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
       setStartY(clientY);
@@ -52,12 +53,12 @@ export function LyricJumpList({
   const handleTouchMove = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
       if (!isDragging) return;
+      e.stopPropagation();
 
       const clientY =
         "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
       const deltaY = startY - clientY;
 
-      // Only allow dragging up to open, or down to close
       if (!isOpen && deltaY > 0) {
         setCurrentY(Math.min(deltaY, 300));
       } else if (isOpen && deltaY < 0) {
@@ -67,19 +68,23 @@ export function LyricJumpList({
     [isDragging, startY, isOpen]
   );
 
-  const handleTouchEnd = useCallback(() => {
-    if (!isDragging) return;
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent | React.MouseEvent) => {
+      if (!isDragging) return;
+      e.stopPropagation();
 
-    const threshold = 100;
-    if (!isOpen && currentY > threshold) {
-      setIsOpen(true);
-    } else if (isOpen && currentY < -threshold) {
-      setIsOpen(false);
-    }
+      const threshold = 100;
+      if (!isOpen && currentY > threshold) {
+        setIsOpen(true);
+      } else if (isOpen && currentY < -threshold) {
+        setIsOpen(false);
+      }
 
-    setIsDragging(false);
-    setCurrentY(0);
-  }, [isDragging, currentY, isOpen]);
+      setIsDragging(false);
+      setCurrentY(0);
+    },
+    [isDragging, currentY, isOpen]
+  );
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -114,6 +119,8 @@ export function LyricJumpList({
               }
             : undefined
         }
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
       >
         {/* Handle bar */}
         <div

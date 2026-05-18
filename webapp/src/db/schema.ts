@@ -169,6 +169,7 @@ export const songsetItems = pgTable("songset_items", {
   tempoRatio: real("tempo_ratio").default(1.0),
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ---------------------------------------------------------------------------
