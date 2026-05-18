@@ -56,24 +56,23 @@ export function AudioPlayerBar() {
     <div
       className={cn(
         "fixed bottom-0 left-0 right-0 z-50",
-        "bg-background/95 backdrop-blur-sm border-t",
-        "lg:bottom-0" // On desktop, stays at bottom (no bottom nav)
+        "bg-background/95 backdrop-blur-sm border-t"
       )}
       data-testid="audio-player-bar"
     >
-      {/* Progress bar (full width) */}
-      <div className="w-full h-1 bg-muted">
+      {/* Seek bar (full width, taller for touch) */}
+      <div className="w-full px-3 pt-2 lg:pt-3">
         <Slider
           value={[progress]}
           min={0}
           max={100}
           onValueChange={handleSeek}
-          className="w-full h-1"
+          className="w-full h-6 [&_[data-slot=slider-track]]:h-1.5 [&_[data-slot=slider-track]]:hover:h-2 [&_[data-slot=slider-track]]:transition-all [&_[data-slot=slider-thumb]]:size-3.5 [&_[data-slot=slider-thumb]]:hover:size-4 [&_[data-slot=slider-thumb]]:transition-all"
           data-testid="seek-slider"
         />
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-3">
+      <div className="flex items-center gap-2 px-3 pb-2 pt-1 lg:px-4 lg:pb-3">
         {/* Track info */}
         <div className="flex items-center gap-3 min-w-0 flex-1 lg:flex-none">
           {/* Album art placeholder */}
@@ -166,18 +165,34 @@ export function AudioPlayerBar() {
           )}
         </div>
 
-        {/* Time display and volume - hidden on small screens, visible on lg */}
-        <div className="hidden lg:flex items-center gap-4">
-          {/* Time */}
+        {/* Time display and volume */}
+        <div className="flex items-center gap-2 lg:gap-4 min-w-0 flex-1 lg:flex-none justify-end">
+          {/* Time - visible on all screen sizes */}
           <span
-            className="text-xs text-muted-foreground tabular-nums min-w-[80px] text-center"
+            className="text-xs text-muted-foreground tabular-nums whitespace-nowrap"
             data-testid="time-display"
           >
             {formattedCurrentTime} / {formattedDuration}
           </span>
 
-          {/* Volume control */}
-          <div className="flex items-center gap-2">
+          {/* Volume - mute toggle on mobile, full slider on desktop */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 lg:hidden"
+            onClick={toggleMute}
+            aria-label={isMuted ? "Unmute" : "Mute"}
+            data-testid="mute-button-mobile"
+          >
+            {isMuted || volume === 0 ? (
+              <VolumeX className="size-4" />
+            ) : (
+              <Volume2 className="size-4" />
+            )}
+          </Button>
+
+          {/* Volume slider - desktop only */}
+          <div className="hidden lg:flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
