@@ -7,11 +7,12 @@
 
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
+import { existsSync } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { AssetFetcher } from "./asset-fetcher";
 
-if (ffmpegStatic) {
+if (ffmpegStatic && existsSync(ffmpegStatic)) {
   ffmpeg.setFfmpegPath(ffmpegStatic);
 }
 
@@ -347,20 +348,18 @@ export class AudioEngine {
         outputLabels.push(`[${outputLabel}]`);
       }
 
+      const amixOutLabel = normalize ? "[amix_out]" : "[outa]";
       filterParts.push(
-        `${outputLabels.join("")}amix=inputs=${outputLabels.length}:normalize=0:dropout_transition=0[outa]`
+        `${outputLabels.join("")}amix=inputs=${outputLabels.length}:normalize=0:dropout_transition=0${amixOutLabel}`
       );
 
-      command.complexFilter(filterParts, "[outa]");
-
-      // Apply loudness normalization if requested
       if (normalize) {
-        // Use loudnorm filter for EBU R128 loudness normalization
-        // target_offset is the target integrated loudness (-14 LUFS is common for streaming)
-        command.audioFilters([
-          `loudnorm=I=${this.targetLufs}:TP=-1.5:LRA=11`,
-        ]);
+        filterParts.push(
+          `${amixOutLabel}loudnorm=I=${this.targetLufs}:TP=-1.5:LRA=11[outa]`
+        );
       }
+
+      command.complexFilter(filterParts, "[outa]");
 
       command
         .audioCodec("libmp3lame")

@@ -6,6 +6,7 @@
  */
 
 import * as fs from "fs/promises";
+import { existsSync } from "fs";
 import * as path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
@@ -91,7 +92,7 @@ export class VideoEngine {
       Math.max(options.titleCardDurationSeconds ?? 5, 5),
       30
     );
-    this.ffmpegPath = options.ffmpegPath ?? ffmpegStatic ?? "ffmpeg";
+    this.ffmpegPath = options.ffmpegPath ?? (ffmpegStatic && existsSync(ffmpegStatic) ? ffmpegStatic : "ffmpeg");
     this.ffprobePath = options.ffprobePath ?? "ffprobe";
 
     this.frameRenderer = new FrameRenderer({

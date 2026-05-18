@@ -1,2 +1,10 @@
 packages:
   - webapp
+onlyBuiltDependencies:
+  - canvas
+  - esbuild
+  - ffmpeg-static
+  - msw
+  - onnxruntime-node
+  - sharp
+  - unrs-resolver
