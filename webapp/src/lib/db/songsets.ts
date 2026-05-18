@@ -77,7 +77,7 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
       const newerItem = await db.query.songsetItems.findFirst({
         where: and(
           eq(songsetItems.songsetId, songsetId),
-          gt(songsetItems.createdAt, job.completedAt)
+          gt(songsetItems.updatedAt, job.completedAt)
         ),
       });
       if (newerItem) return "stale";

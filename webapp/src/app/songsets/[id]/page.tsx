@@ -154,6 +154,14 @@ export default function SongsetEditorPage() {
     };
   }, [songsetId, router]);
 
+  const markStale = useCallback(() => {
+    setSongset((prev) =>
+      prev
+        ? { ...prev, renderState: "stale" as RenderState, isArtifactsStale: true }
+        : prev
+    );
+  }, []);
+
   // Handle item reorder (optimistic)
   const handleUpdateItems = useCallback(
     (newItems: SongListItem[]) => {
@@ -174,11 +182,12 @@ export default function SongsetEditorPage() {
           setItems(previousItems);
           throw new Error("Failed to reorder items");
         }
+        markStale();
       }).catch(() => {
         setItems(previousItems);
       });
     },
-    [songsetId, items]
+    [songsetId, items, markStale]
   );
 
   // Handle item removal
@@ -202,6 +211,8 @@ export default function SongsetEditorPage() {
           ? {
               ...prev,
               itemCount: Math.max(0, prev.itemCount - 1),
+              renderState: "stale" as RenderState,
+              isArtifactsStale: true,
             }
           : prev
       );
@@ -244,8 +255,9 @@ export default function SongsetEditorPage() {
             : item
         )
       );
+      markStale();
     },
-    [songsetId]
+    [songsetId, markStale]
   );
 
   // Handle render
@@ -375,6 +387,8 @@ export default function SongsetEditorPage() {
           ? {
               ...prev,
               itemCount: prev.itemCount + 1,
+              renderState: "stale" as RenderState,
+              isArtifactsStale: true,
             }
           : prev
       );
