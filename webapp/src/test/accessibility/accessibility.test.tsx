@@ -40,6 +40,37 @@ vi.mock("@/hooks/useMediaSession", () => ({
   }),
 }));
 
+vi.mock("@/contexts/AudioPlayerContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/contexts/AudioPlayerContext")>();
+  return {
+    ...actual,
+    useAudioPlayerContext: () => ({
+      play: vi.fn(),
+      pause: vi.fn(),
+      stop: vi.fn(),
+      currentTrack: null,
+      state: {
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+        volume: 1,
+        isMuted: false,
+        isLooping: false,
+        loopWindowStart: 0,
+        loopWindowEnd: 0,
+      },
+      togglePlay: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      toggleMute: vi.fn(),
+      toggleLoop: vi.fn(),
+      setLoopWindow: vi.fn(),
+      clearLoopWindow: vi.fn(),
+      audioRef: { current: null },
+    }),
+  };
+});
+
 // Sheet / Dialog: render children when open=true
 vi.mock("@base-ui/react/dialog", () => ({
   Dialog: {
@@ -199,6 +230,7 @@ const mockSongCard = {
   recordings: [
     {
       contentHash: "abc",
+      hashPrefix: "abc",
       durationSeconds: 180,
       tempoBpm: 120,
       musicalKey: "G",

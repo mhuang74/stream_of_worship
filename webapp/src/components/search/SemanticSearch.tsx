@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
 import { Loader2, Sparkles, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
+import { toast } from "sonner";
 
 interface SemanticSearchResult extends SongCardData {
   similarity: number;
@@ -32,6 +34,9 @@ export function SemanticSearch({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
+  const { play, currentTrack, state: playerState } = useAudioPlayerContext();
 
   const handleSearch = useCallback(async () => {
     const trimmed = query.trim();
@@ -82,6 +87,71 @@ export function SemanticSearch({
     (songId: string) => addingSongIds.has(songId),
     [addingSongIds]
   );
+
+  const handlePlaySong = useCallback(
+    async (songId: string) => {
+      const song = results.find((r) => r.id === songId);
+      if (!song || song.recordings.length === 0) {
+        toast.error("No audio available for this song");
+        return;
+      }
+
+      if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
+        if (playerState.isPlaying) {
+          setPlayingSongId(null);
+          return;
+        }
+      }
+
+      const recording = song.recordings[0];
+      setPreviewLoadingSongId(songId);
+
+      try {
+        const res = await fetch("/api/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hashPrefix: recording.hashPrefix,
+            fileType: "audio",
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to get audio URL");
+        }
+
+        const data = await res.json();
+        const artist = song.composer || song.lyricist || "Unknown Artist";
+
+        play({
+          id: `song-${songId}`,
+          title: song.title,
+          artist,
+          src: data.url,
+          type: "song",
+          duration: recording.durationSeconds ?? undefined,
+        });
+
+        setPlayingSongId(songId);
+      } catch {
+        toast.error("Failed to load audio preview");
+      } finally {
+        setPreviewLoadingSongId(null);
+      }
+    },
+    [results, playingSongId, currentTrack, playerState.isPlaying, play]
+  );
+
+  useEffect(() => {
+    if (!currentTrack || !playerState.isPlaying) {
+      const timeout = setTimeout(() => {
+        if (!currentTrack || !playerState.isPlaying) {
+          setPlayingSongId(null);
+        }
+      }, 200);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentTrack, playerState.isPlaying]);
 
   const formatSimilarity = (score: number) =>
     `${Math.round(score * 100)}% match`;
@@ -152,8 +222,11 @@ export function SemanticSearch({
               <SongCard
                 song={song}
                 onAdd={onAddSong}
+                onPlay={handlePlaySong}
                 isAdded={isSongAdded(song.id)}
                 isAdding={isSongAdding(song.id)}
+                isPlaying={playingSongId === song.id}
+                isPreviewLoading={previewLoadingSongId === song.id}
               />
               <Badge
                 variant="secondary"
