@@ -139,6 +139,33 @@ export class FrameRenderer {
   }
 
   /**
+   * Measure text at target font size and scale down if it exceeds maxWidth.
+   * Returns the fitted font size (<= targetFontSize).
+   */
+  private fitText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    targetFontSize: number,
+    maxWidth: number
+  ): number {
+    ctx.font = this.getFontString(targetFontSize);
+    const metrics = ctx.measureText(text);
+    if (metrics.width <= maxWidth) {
+      return targetFontSize;
+    }
+    const scale = maxWidth / metrics.width;
+    return Math.floor(targetFontSize * scale);
+  }
+
+  /**
+   * Compute a single-character margin width using "中" as reference.
+   */
+  private getMargin(ctx: CanvasRenderingContext2D, fontSize: number): number {
+    ctx.font = this.getFontString(fontSize);
+    return ctx.measureText("中").width;
+  }
+
+  /**
    * Render a single video frame.
    *
    * @param lyrics - All lyrics with global timing
@@ -201,7 +228,13 @@ export class FrameRenderer {
     if (currentTitle && introInfoAlpha === 0) {
       const [textR, textG, textB] = this.template.textColor;
       ctx.fillStyle = `rgb(${textR}, ${textG}, ${textB})`;
-      ctx.font = this.getFontString(Math.floor(this.baseFontSize * 0.8));
+      const titleFontSize = this.fitText(
+        ctx,
+        currentTitle,
+        Math.floor(this.baseFontSize * 0.8),
+        width - this.getMargin(ctx, Math.floor(this.baseFontSize * 0.8)) * 2
+      );
+      ctx.font = this.getFontString(titleFontSize);
       ctx.textAlign = "center";
       ctx.fillText(currentTitle, width / 2, 50);
     }
@@ -312,11 +345,14 @@ export class FrameRenderer {
     const [textR, textG, textB] = this.template.textColor;
 
     // Render each line centered
-    ctx.font = this.getFontString(Math.floor(this.baseFontSize * 0.9));
+    const introFontSize = Math.floor(this.baseFontSize * 0.9);
+    const margin = this.getMargin(ctx, introFontSize);
+    const maxWidth = width - margin * 2;
     ctx.textAlign = "center";
     for (let i = 0; i < infoLines.length; i++) {
       const line = infoLines[i];
       ctx.fillStyle = `rgba(${textR}, ${textG}, ${textB}, ${alpha / 255})`;
+      ctx.font = this.getFontString(this.fitText(ctx, line, introFontSize, maxWidth));
       ctx.fillText(line, width / 2, baseY + i * lineHeight + lineHeight / 2);
     }
 
@@ -406,7 +442,13 @@ export class FrameRenderer {
 
     // Draw current line: 2x larger font, centered vertically
     const [highlightR, highlightG, highlightB] = this.template.highlightColor;
-    ctx.font = this.getFontString(this.baseFontSize * 2);
+    const currentFontSize = this.fitText(
+      ctx,
+      currentLine.text,
+      this.baseFontSize * 2,
+      width - this.getMargin(ctx, this.baseFontSize * 2) * 2
+    );
+    ctx.font = this.getFontString(currentFontSize);
     ctx.textAlign = "center";
     ctx.fillStyle = `rgba(${highlightR}, ${highlightG}, ${highlightB}, ${fadeAlpha / 255})`;
     const y = height * 0.33;
@@ -426,7 +468,13 @@ export class FrameRenderer {
         }
 
         const [textR, textG, textB] = this.template.textColor;
-        ctx.font = this.getFontString(this.baseFontSize);
+        const nextFontSize = this.fitText(
+          ctx,
+          nextLine.text,
+          this.baseFontSize,
+          width - this.getMargin(ctx, this.baseFontSize) * 2
+        );
+        ctx.font = this.getFontString(nextFontSize);
         ctx.textAlign = "center";
         ctx.fillStyle = `rgba(${textR}, ${textG}, ${textB}, ${nextAlpha / 255})`;
         const nextY = height * 0.33 + 200;
@@ -455,7 +503,13 @@ export class FrameRenderer {
     ctx.fillStyle = `rgb(${textR}, ${textG}, ${textB})`;
 
     // Draw songset name
-    ctx.font = this.getFontString(this.baseFontSize * 2);
+    const titleCardFontSize = this.fitText(
+      ctx,
+      config.songsetName,
+      this.baseFontSize * 2,
+      width - this.getMargin(ctx, this.baseFontSize * 2) * 2
+    );
+    ctx.font = this.getFontString(titleCardFontSize);
     ctx.textAlign = "center";
     ctx.fillText(config.songsetName, width / 2, height * 0.4);
 
