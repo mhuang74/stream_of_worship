@@ -21,8 +21,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Trash2, Music, Clock, ChevronRight } from "lucide-react";
+import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
+import { getPublicAudioUrl } from "@/lib/r2/public-url";
+import { toast } from "sonner";
 
 export interface SongListItem {
   id: string;
@@ -38,6 +41,7 @@ export interface SongListItem {
   } | null;
   recording: {
     contentHash: string;
+    hashPrefix: string;
     durationSeconds: number | null;
     tempoBpm: number | null;
     musicalKey: string | null;
@@ -66,6 +70,9 @@ interface SortableSongItemProps {
   onEditTransition?: (itemId: string) => void;
   onSelectSong?: (itemId: string) => void;
   readOnly?: boolean;
+  isPlaying?: boolean;
+  isPreviewLoading?: boolean;
+  onPlaySong?: (songId: string) => void;
 }
 
 function SortableSongItem({
@@ -75,6 +82,9 @@ function SortableSongItem({
   onEditTransition,
   onSelectSong,
   readOnly = false,
+  isPlaying = false,
+  isPreviewLoading = false,
+  onPlaySong,
 }: SortableSongItemProps) {
   const {
     attributes,
@@ -109,7 +119,10 @@ function SortableSongItem({
         isDragging && "opacity-50"
       )}
     >
-      <Card className="border-border/50 hover:border-border transition-colors">
+      <Card className={cn(
+        "border-border/50 hover:border-border transition-colors",
+        isPlaying && "border-primary/30 bg-primary/5"
+      )}>
         <CardContent className="p-3">
           <div className="flex items-center gap-3">
             {/* Drag handle */}
@@ -126,10 +139,25 @@ function SortableSongItem({
               </Button>
             )}
 
-            {/* Song number */}
-            <span className="text-sm font-medium text-muted-foreground w-6 text-center shrink-0">
-              {index + 1}
-            </span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "shrink-0 rounded-full",
+                isPlaying && "bg-primary/10 text-primary"
+              )}
+              onClick={() => onPlaySong?.(item.songId)}
+              aria-label={isPlaying ? `Pause ${item.song?.title || "song"}` : `Play ${item.song?.title || "song"}`}
+              disabled={!item.recording}
+            >
+              {isPreviewLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : isPlaying ? (
+                <Pause className="size-4" />
+              ) : (
+                <Play className="size-4 ml-0.5" />
+              )}
+            </Button>
 
             {/* Song info */}
             <div
@@ -218,6 +246,89 @@ export function SongList({
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
 
+  const { currentTrack, state: playerState, play, pause } = useAudioPlayerContext();
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
+
+  const handlePlaySong = useCallback(
+    async (songId: string) => {
+      const item = localItems.find((i) => i.songId === songId);
+      if (!item?.recording) {
+        toast.error("No audio available for this song");
+        return;
+      }
+
+      if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
+        if (playerState.isPlaying) {
+          pause();
+          setPlayingSongId(null);
+          return;
+        }
+      }
+
+      const recording = item.recording;
+      const artist = item.song?.composer || item.song?.lyricist || "Unknown Artist";
+      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
+
+      if (publicUrl) {
+        play({
+          id: `song-${songId}`,
+          title: item.song?.title || "Unknown Song",
+          artist,
+          src: publicUrl,
+          type: "song",
+          duration: recording.durationSeconds ?? undefined,
+        });
+        setPlayingSongId(songId);
+        return;
+      }
+
+      setPreviewLoadingSongId(songId);
+
+      try {
+        const res = await fetch("/api/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hashPrefix: recording.hashPrefix,
+            fileType: "audio",
+          }),
+        });
+
+        if (!res.ok) throw new Error("Failed to get audio URL");
+
+        const data = await res.json();
+
+        play({
+          id: `song-${songId}`,
+          title: item.song?.title || "Unknown Song",
+          artist,
+          src: data.url,
+          type: "song",
+          duration: recording.durationSeconds ?? undefined,
+        });
+
+        setPlayingSongId(songId);
+      } catch {
+        toast.error("Failed to load audio preview");
+      } finally {
+        setPreviewLoadingSongId(null);
+      }
+    },
+    [localItems, playingSongId, currentTrack, playerState.isPlaying, play, pause]
+  );
+
+  useEffect(() => {
+    if (!currentTrack || !playerState.isPlaying) {
+      const timeout = setTimeout(() => {
+        if (!currentTrack || !playerState.isPlaying) {
+          setPlayingSongId(null);
+        }
+      }, 200);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentTrack, playerState.isPlaying]);
+
   useEffect(() => {
     const currentItemIds = items.map((i) => i.id).join(",");
     if (prevItemIdsRef.current !== currentItemIds) {
@@ -288,6 +399,9 @@ export function SongList({
               onEditTransition={onEditTransition}
               onSelectSong={onSelectSong}
               readOnly={readOnly}
+              isPlaying={playingSongId === item.songId}
+              isPreviewLoading={previewLoadingSongId === item.songId}
+              onPlaySong={handlePlaySong}
             />
           ))}
         </div>

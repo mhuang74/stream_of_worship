@@ -12,6 +12,24 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "test-songset" }),
 }));
 
+vi.mock("@/contexts/AudioPlayerContext", () => ({
+  useAudioPlayerContext: () => ({
+    currentTrack: null,
+    state: { isPlaying: false },
+    play: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/r2/public-url", () => ({
+  getPublicAudioUrl: vi.fn(() => null),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}));
+
 describe("SongsetEditor", () => {
   const mockSongset = {
     id: "songset-1",
@@ -40,6 +58,7 @@ describe("SongsetEditor", () => {
       },
       recording: {
         contentHash: "abc123",
+        hashPrefix: "ab",
         durationSeconds: 180,
         tempoBpm: 120,
         musicalKey: "G",
@@ -63,6 +82,7 @@ describe("SongsetEditor", () => {
       },
       recording: {
         contentHash: "def456",
+        hashPrefix: "de",
         durationSeconds: 240,
         tempoBpm: 100,
         musicalKey: "A",
@@ -113,7 +133,7 @@ describe("SongsetEditor", () => {
 
     it("has render state button", () => {
       renderEditor();
-      expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /play songset/i })).toBeInTheDocument();
     });
 
     it("has overflow menu", () => {
@@ -331,7 +351,7 @@ describe("SongsetEditor", () => {
       const onPlay = vi.fn();
       renderEditor({ onPlay });
 
-      fireEvent.click(screen.getByRole("button", { name: /play/i }));
+      fireEvent.click(screen.getByRole("button", { name: /play songset/i }));
       expect(onPlay).toHaveBeenCalled();
     });
 

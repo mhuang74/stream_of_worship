@@ -120,7 +120,12 @@ export default function SongsetEditorPage() {
             songId: item.songId,
             position: item.position,
             song: item.song,
-            recording: item.recording,
+            recording: item.recording
+              ? {
+                  ...item.recording,
+                  hashPrefix: item.recordingHashPrefix ?? "",
+                }
+              : null,
             gapBeats: item.gapBeats,
             crossfadeEnabled: item.crossfadeEnabled,
             crossfadeDurationSeconds: item.crossfadeDurationSeconds,
@@ -350,7 +355,12 @@ export default function SongsetEditorPage() {
           songId: item.songId,
           position: item.position,
           song: item.song,
-          recording: item.recording,
+          recording: item.recording
+            ? {
+                ...item.recording,
+                hashPrefix: item.recordingHashPrefix ?? "",
+              }
+            : null,
           gapBeats: item.gapBeats,
           crossfadeEnabled: item.crossfadeEnabled,
           crossfadeDurationSeconds: item.crossfadeDurationSeconds,
