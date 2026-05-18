@@ -450,7 +450,7 @@ export function ControllerPlayer({
       <div
         ref={controlsRef}
         className={cn(
-          "transition-opacity duration-300",
+          "transition-opacity duration-300 pb-12",
           controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
         )}
       >
