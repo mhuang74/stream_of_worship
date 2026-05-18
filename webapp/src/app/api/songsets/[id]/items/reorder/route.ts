@@ -52,32 +52,33 @@ export async function POST(
       );
     }
 
-    await db.transaction(async (tx) => {
-      const now = new Date();
+    const now = new Date();
 
-      for (const update of updates) {
-        const item = await tx.query.songsetItems.findFirst({
-          where: eq(songsetItems.id, update.itemId),
-          with: {
-            songset: true,
-          },
-        });
+    for (const update of updates) {
+      const item = await db.query.songsetItems.findFirst({
+        where: eq(songsetItems.id, update.itemId),
+        with: {
+          songset: true,
+        },
+      });
 
-        if (!item || item.songsetId !== id || item.songset.userId !== userId) {
-          throw new Error(`Item ${update.itemId} not found or access denied`);
-        }
-
-        await tx
-          .update(songsetItems)
-          .set({ position: update.position })
-          .where(eq(songsetItems.id, update.itemId));
+      if (!item || item.songsetId !== id || item.songset.userId !== userId) {
+        return NextResponse.json(
+          { error: `Item ${update.itemId} not found or access denied` },
+          { status: 403 }
+        );
       }
 
-      await tx
-        .update(songsets)
-        .set({ updatedAt: now })
-        .where(eq(songsets.id, id));
-    });
+      await db
+        .update(songsetItems)
+        .set({ position: update.position })
+        .where(eq(songsetItems.id, update.itemId));
+    }
+
+    await db
+      .update(songsets)
+      .set({ updatedAt: now })
+      .where(eq(songsets.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

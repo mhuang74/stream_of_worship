@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   DndContext,
   closestCenter,
@@ -216,11 +216,15 @@ export function SongList({
   className,
 }: SongListProps) {
   const [localItems, setLocalItems] = useState(items);
+  const prevItemIdsRef = useRef<string | null>(null);
 
-  // Update local items when props change
-  if (JSON.stringify(items.map(i => i.id)) !== JSON.stringify(localItems.map(i => i.id))) {
-    setLocalItems(items);
-  }
+  useEffect(() => {
+    const currentItemIds = items.map((i) => i.id).join(",");
+    if (prevItemIdsRef.current !== currentItemIds) {
+      prevItemIdsRef.current = currentItemIds;
+      setLocalItems(items);
+    }
+  }, [items]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -238,23 +242,18 @@ export function SongList({
       const { active, over } = event;
 
       if (over && active.id !== over.id) {
-        setLocalItems((items) => {
-          const oldIndex = items.findIndex((item) => item.id === active.id);
-          const newIndex = items.findIndex((item) => item.id === over.id);
-          const newItems = arrayMove(items, oldIndex, newIndex);
-          
-          // Update positions
-          const updatedItems = newItems.map((item, index) => ({
-            ...item,
-            position: index,
-          }));
-          
-          onReorder(updatedItems);
-          return updatedItems;
-        });
+        const oldIndex = localItems.findIndex((item) => item.id === active.id);
+        const newIndex = localItems.findIndex((item) => item.id === over.id);
+        const newItems = arrayMove(localItems, oldIndex, newIndex);
+        const updatedItems = newItems.map((item, index) => ({
+          ...item,
+          position: index,
+        }));
+        setLocalItems(updatedItems);
+        onReorder(updatedItems);
       }
     },
-    [onReorder]
+    [onReorder, localItems]
   );
 
   if (items.length === 0) {

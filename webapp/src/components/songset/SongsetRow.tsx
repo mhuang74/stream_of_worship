@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,10 @@ export function SongsetRow({
           <div className="flex-1 min-w-0">
             {/* Header row */}
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
+              <Link
+                href={`/songsets/${id}`}
+                className="min-w-0 flex-1 rounded-md p-1 -m-1 hover:bg-accent/50 transition-colors"
+              >
                 <h3 className="font-medium text-base truncate" title={name}>
                   {name}
                 </h3>
@@ -117,7 +121,7 @@ export function SongsetRow({
                     {description}
                   </p>
                 )}
-              </div>
+              </Link>
 
               {/* Context menu */}
               <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
@@ -166,35 +170,40 @@ export function SongsetRow({
             </div>
 
             {/* Metadata row */}
-            <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Music className="size-3.5" />
-                {itemCount} {itemCount === 1 ? "song" : "songs"}
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="size-3.5" />
-                {formatDuration(durationSeconds)}
-              </span>
-              <span className="text-xs">
-                Updated {formatDate(updatedAt)}
-              </span>
-            </div>
+            <Link
+              href={`/songsets/${id}`}
+              className="block rounded-md p-1 -m-1 hover:bg-accent/50 transition-colors"
+            >
+              <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Music className="size-3.5" />
+                  {itemCount} {itemCount === 1 ? "song" : "songs"}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3.5" />
+                  {formatDuration(durationSeconds)}
+                </span>
+                <span className="text-xs">
+                  Updated {formatDate(updatedAt)}
+                </span>
+              </div>
 
-            {/* Status indicators */}
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              {isOfflineAvailable && (
-                <Badge variant="secondary" className="text-xs gap-1">
-                  <WifiOff className="size-3" />
-                  Offline
-                </Badge>
-              )}
-              {isArtifactsStale && (
-                <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-500/50">
-                  <AlertTriangle className="size-3" />
-                  Artifacts out of date
-                </Badge>
-              )}
-            </div>
+              {/* Status indicators */}
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {isOfflineAvailable && (
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <WifiOff className="size-3" />
+                    Offline
+                  </Badge>
+                )}
+                {isArtifactsStale && (
+                  <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-500/50">
+                    <AlertTriangle className="size-3" />
+                    Artifacts out of date
+                  </Badge>
+                )}
+              </div>
+            </Link>
 
             {/* Action buttons */}
             <div className="flex items-center gap-2 mt-3">
