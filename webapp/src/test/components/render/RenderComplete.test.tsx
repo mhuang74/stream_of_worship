@@ -58,6 +58,28 @@ describe("RenderComplete", () => {
       render(<RenderComplete {...defaultProps} />)
       expect(screen.getByRole("button", { name: /share songset/i })).toBeInTheDocument()
     })
+
+    it("renders elapsed time when elapsedSeconds provided", () => {
+      render(<RenderComplete {...defaultProps} elapsedSeconds={204} />)
+      expect(screen.getByText(/Total time:/)).toBeInTheDocument()
+      expect(screen.getByText(/3m 24s/)).toBeInTheDocument()
+    })
+
+    it("renders elapsed time in seconds when under a minute", () => {
+      render(<RenderComplete {...defaultProps} elapsedSeconds={45} />)
+      expect(screen.getByText(/Total time:/)).toBeInTheDocument()
+      expect(screen.getByText(/45s/)).toBeInTheDocument()
+    })
+
+    it("does not render elapsed time when elapsedSeconds not provided", () => {
+      render(<RenderComplete {...defaultProps} />)
+      expect(screen.queryByText(/Total time:/)).not.toBeInTheDocument()
+    })
+
+    it("does not render elapsed time when elapsedSeconds is zero", () => {
+      render(<RenderComplete {...defaultProps} elapsedSeconds={0} />)
+      expect(screen.queryByText(/Total time:/)).not.toBeInTheDocument()
+    })
   })
 
   describe("download buttons", () => {

@@ -12,6 +12,7 @@ import {
   Video,
   FileJson,
   Loader2,
+  Timer,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -22,8 +23,18 @@ interface RenderCompleteProps {
   mp3Url?: string
   mp4Url?: string
   chaptersUrl?: string
+  elapsedSeconds?: number
   onDone: () => void
   onShare: () => void
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`
+  }
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
 }
 
 export function RenderComplete({
@@ -32,6 +43,7 @@ export function RenderComplete({
   mp3Url,
   mp4Url,
   chaptersUrl,
+  elapsedSeconds,
   onDone,
   onShare,
 }: RenderCompleteProps) {
@@ -110,6 +122,12 @@ export function RenderComplete({
         <CardDescription>
           &ldquo;{songsetName}&rdquo; is ready for playback
         </CardDescription>
+        {elapsedSeconds != null && elapsedSeconds > 0 && (
+          <div className="mt-2 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
+            <Timer className="size-3.5" />
+            <span>Total time: {formatDuration(elapsedSeconds)}</span>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Download Options */}

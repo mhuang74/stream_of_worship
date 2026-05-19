@@ -65,7 +65,9 @@ export async function GET(
           phaseIndex: job.phaseIndex ?? 0,
           totalPhases: job.totalPhases ?? 5,
           estimatedTotalSeconds: job.estimatedTotalSeconds ?? 0,
-          elapsedSeconds: job.elapsedSeconds ?? 0,
+          elapsedSeconds: job.startedAt
+            ? (Date.now() - job.startedAt.getTime()) / 1000
+            : 0,
           status: job.status,
         };
 
@@ -110,9 +112,13 @@ export async function GET(
               totalPhases: updatedJob.totalPhases ?? 5,
               estimatedTotalSeconds:
                 updatedJob.status === "completed"
-                  ? updatedJob.elapsedSeconds ?? 0
+                  ? updatedJob.startedAt
+                    ? (Date.now() - updatedJob.startedAt.getTime()) / 1000
+                    : 0
                   : updatedJob.estimatedTotalSeconds ?? 0,
-              elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
+              elapsedSeconds: updatedJob.startedAt
+                ? (Date.now() - updatedJob.startedAt.getTime()) / 1000
+                : 0,
               status: updatedJob.status,
               ...(updatedJob.status === "failed" && updatedJob.errorMessage
                 ? { errorMessage: updatedJob.errorMessage }
@@ -132,7 +138,9 @@ export async function GET(
             phaseIndex: updatedJob.phaseIndex ?? 0,
             totalPhases: updatedJob.totalPhases ?? 5,
             estimatedTotalSeconds: updatedJob.estimatedTotalSeconds ?? 0,
-            elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
+            elapsedSeconds: updatedJob.startedAt
+              ? (Date.now() - updatedJob.startedAt.getTime()) / 1000
+              : 0,
             status: updatedJob.status,
           };
 
