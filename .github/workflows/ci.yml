@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "webapp/**"
+      - "services/render-worker/**"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webapp-lint-and-test:
+    name: Webapp Lint & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm test
+
+  render-worker-test:
+    name: Render Worker Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/render-worker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install --no-cache-dir -r requirements.txt pytest pytest-mock pytest-asyncio
+
+      - run: PYTHONPATH=src pytest tests/ -v

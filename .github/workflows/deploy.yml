@@ -1,0 +1,80 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webapp/**"
+      - "services/render-worker/**"
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-webapp:
+    name: Deploy Webapp to Vercel
+    if: ${{ contains(github.event.commits.*.modified, 'webapp/') || contains(github.event.commits.*.added, 'webapp/') }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run DB migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx drizzle-kit migrate
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          working-directory: webapp
+
+  deploy-render-worker:
+    name: Deploy Render Worker to Lambda
+    if: ${{ contains(github.event.commits.*.modified, 'services/render-worker/') || contains(github.event.commits.*.added, 'services/render-worker/') }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/render-worker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: sow-render-worker
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Update Lambda function
+        env:
+          IMAGE_URI: ${{ steps.build-image.outputs.image }}
+        run: |
+          aws lambda update-function-code \
+            --function-name sow-render-worker \
+            --image-uri $IMAGE_URI \
+            --publish
