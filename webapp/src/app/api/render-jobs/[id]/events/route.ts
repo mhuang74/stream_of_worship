@@ -59,6 +59,27 @@ export async function GET(
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
+        let closed = false;
+
+        const safeEnqueue = (data: Uint8Array) => {
+          if (closed) return;
+          try {
+            controller.enqueue(data);
+          } catch {
+            closed = true;
+          }
+        };
+
+        const safeClose = () => {
+          if (closed) return;
+          closed = true;
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+        };
+
         // Send initial event with current state
         const initialEvent: SSEEvent = {
           phase: job.phase ?? "preparing",
@@ -71,7 +92,7 @@ export async function GET(
           status: job.status,
         };
 
-        controller.enqueue(
+        safeEnqueue(
           encoder.encode(`data: ${JSON.stringify(initialEvent)}\n\n`)
         );
 
@@ -81,22 +102,24 @@ export async function GET(
         let polling = true;
 
         async function poll() {
-          if (!polling) return;
+          if (!polling || closed) return;
           if (Date.now() - startTime > MAX_DURATION_MS) {
-            controller.enqueue(
+            safeEnqueue(
               encoder.encode(`data: ${JSON.stringify({ error: "Connection timed out" })}\n\n`)
             );
-            controller.close();
+            safeClose();
             return;
           }
 
           const updatedJob = await getRenderJob(id, Number(session!.user.id));
 
+          if (!polling || closed) return;
+
           if (!updatedJob) {
-            controller.enqueue(
+            safeEnqueue(
               encoder.encode(`data: ${JSON.stringify({ error: "Job not found" })}\n\n`)
             );
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -125,10 +148,10 @@ export async function GET(
                 : {}),
             };
 
-            controller.enqueue(
+            safeEnqueue(
               encoder.encode(`data: ${JSON.stringify(finalEvent)}\n\n`)
             );
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -144,18 +167,20 @@ export async function GET(
             status: updatedJob.status,
           };
 
-          controller.enqueue(
+          safeEnqueue(
             encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
           );
 
           // Schedule next poll after current one completes
-          setTimeout(poll, 1000);
+          if (polling && !closed) {
+            setTimeout(poll, 1000);
+          }
         }
 
         // Clean up on client disconnect
         request.signal.addEventListener("abort", () => {
           polling = false;
-          controller.close();
+          safeClose();
         });
 
         // Start the first poll

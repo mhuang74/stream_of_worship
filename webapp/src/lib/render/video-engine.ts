@@ -276,14 +276,51 @@ export class VideoEngine {
 
     return new Promise((resolve, reject) => {
       const process = spawn(this.ffmpegPath, args, {
-        stdio: ["pipe", "ignore", "ignore"],
+        stdio: ["pipe", "ignore", "pipe"],
       });
 
       let frameCount = 0;
       let isProcessing = true;
+      let ffmpegExited = false;
+      let ffmpegStderr = "";
+      let settled = false;
+
+      const safeReject = (err: Error) => {
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      };
+
+      const safeResolve = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
+
+      process.stderr?.on("data", (data: Buffer) => {
+        ffmpegStderr += data.toString();
+        if (ffmpegStderr.length > 50000) {
+          ffmpegStderr = ffmpegStderr.slice(-25000);
+        }
+      });
+
+      process.stdin?.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EPIPE") {
+          isProcessing = false;
+          ffmpegExited = true;
+          const stderrInfo = ffmpegStderr
+            ? `\nFFmpeg stderr (last 2000 chars): ${ffmpegStderr.slice(-2000)}`
+            : "";
+          safeReject(new Error(`FFmpeg process closed prematurely (EPIPE on stdin write).${stderrInfo}`));
+        } else {
+          safeReject(err);
+        }
+      });
 
       const writeFrame = async () => {
-        if (!isProcessing) return;
+        if (!isProcessing || ffmpegExited) return;
 
         try {
           let buffer: Buffer;
@@ -309,63 +346,92 @@ export class VideoEngine {
             buffer = this.frameRenderer.canvasToBuffer(canvas);
           }
 
-          if (process.stdin && process.stdin.writable) {
-            const canContinue = process.stdin.write(buffer, (err) => {
-              if (err) {
-                isProcessing = false;
-                reject(err);
-                return;
+          if (ffmpegExited || !process.stdin || !process.stdin.writable) {
+            if (!ffmpegExited && !settled) {
+              safeReject(new Error("FFmpeg stdin no longer writable"));
+            }
+            return;
+          }
+
+          const canContinue = process.stdin.write(buffer, (err) => {
+            if (err) {
+              isProcessing = false;
+              const stderrInfo = ffmpegStderr
+                ? `\nFFmpeg stderr (last 2000 chars): ${ffmpegStderr.slice(-2000)}`
+                : "";
+              safeReject(
+                err.code === "EPIPE"
+                  ? new Error(`FFmpeg process closed prematurely (EPIPE on stdin write).${stderrInfo}`)
+                  : err
+              );
+              return;
+            }
+
+            frameCount++;
+
+            if (progressCallback && frameCount % this.fps === 0) {
+              progressCallback(frameCount, totalFrames);
+            }
+
+            if (frameCount >= totalFrames) {
+              if (process.stdin) {
+                process.stdin.end();
               }
+            }
+          });
 
-              frameCount++;
-
-              if (progressCallback && frameCount % this.fps === 0) {
-                progressCallback(frameCount, totalFrames);
-              }
-
-              if (frameCount >= totalFrames) {
-                if (process.stdin) {
-                  process.stdin.end();
+          if (!canContinue && isProcessing && frameCount < totalFrames && !ffmpegExited) {
+            await new Promise<void>((resolveDrain, rejectDrain) => {
+              const drainTimeout = setTimeout(() => {
+                if (!ffmpegExited && isProcessing) {
+                  resolveDrain();
+                } else {
+                  rejectDrain(new Error("Drain timeout: FFmpeg process may have stalled"));
                 }
-              }
-            });
+              }, 30000);
 
-            if (!canContinue && isProcessing && frameCount < totalFrames) {
-              await new Promise<void>((resolve) => {
-                process.stdin!.once("drain", resolve);
+              process.stdin!.once("drain", () => {
+                clearTimeout(drainTimeout);
+                resolveDrain();
               });
-            }
+            }).catch((err) => {
+              isProcessing = false;
+              safeReject(err);
+              return;
+            });
+          }
 
-            if (frameCount < totalFrames && isProcessing && canContinue) {
-              setImmediate(writeFrame);
-            } else if (frameCount < totalFrames && isProcessing) {
-              setImmediate(writeFrame);
-            }
+          if (frameCount < totalFrames && isProcessing && !ffmpegExited) {
+            setImmediate(writeFrame);
           }
         } catch (error) {
           isProcessing = false;
-          reject(error);
+          safeReject(error instanceof Error ? error : new Error(String(error)));
         }
       };
 
       process.on("error", (err) => {
         isProcessing = false;
-        reject(err);
+        ffmpegExited = true;
+        safeReject(err);
       });
 
       process.on("exit", (code) => {
         isProcessing = false;
+        ffmpegExited = true;
         if (code === 0) {
           if (progressCallback) {
             progressCallback(totalFrames, totalFrames);
           }
-          resolve();
+          safeResolve();
         } else {
-          reject(new Error(`FFmpeg exited with code ${code}`));
+          const stderrInfo = ffmpegStderr
+            ? `\nFFmpeg stderr (last 2000 chars): ${ffmpegStderr.slice(-2000)}`
+            : "";
+          safeReject(new Error(`FFmpeg exited with code ${code}.${stderrInfo}`));
         }
       });
 
-      // Start writing frames
       writeFrame();
     });
   }
