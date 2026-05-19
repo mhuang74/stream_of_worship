@@ -1,18 +1,18 @@
 # Stream of Worship - Current Implementation Status Report
 
-**Generated:** 2026-05-17
-**Project:** Stream of Worship - Admin CLI & Analysis Service
-**Repository:** sow_cli_admin
+**Generated:** 2026-05-17 (updated 2026-05-19)
+**Project:** Stream of Worship - Admin CLI, Analysis Service, Web App & Render Worker
+**Repository:** sow_deployment_preps
 
 ---
 
 ## Executive Summary
 
-The Stream of Worship project consists of an Admin CLI for backend management, an Analysis Service microservice for audio processing, and a User App (TUI) for worship leaders. The project has completed all 8 phases including foundational infrastructure, catalog management, audio download pipeline, Analysis Service implementation, CLI-Service integration, LRC generation, and the User App TUI.
+The Stream of Worship project consists of an Admin CLI for backend management, an Analysis Service microservice for audio processing, a User App (TUI) for worship leaders, a Next.js Web App for browser-based worship preparation and playback, and an AWS Lambda Render Worker for serverless video/audio rendering. The project has completed all core phases including foundational infrastructure, catalog management, audio download pipeline, Analysis Service implementation, CLI-Service integration, LRC generation, the User App TUI, the Web App, and the Lambda Render Worker migration.
 
-**Overall Progress:** 8 of 8 phases complete (100%) 🎉
+**Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Phase 8 (User App TUI) completed in commit `b82fc0d`
+**Latest Milestone:** Lambda Render Worker architecture deployed — render pipeline migrated from in-process Vercel execution to AWS Lambda container processing SQS messages
 
 ---
 
@@ -214,7 +214,84 @@ For GPU acceleration, ensure:
 
 ---
 
-### Phase 5: CLI ↔ Service Integration ✅ COMPLETE
+## Lambda Render Worker
+
+### Architecture
+
+The render pipeline has been migrated from in-process Vercel execution to an AWS Lambda-based worker architecture. The Next.js web app enqueues render jobs to SQS instead of running `executeRenderPipeline()` via `after()`. A Python Lambda container processes jobs, achieving feature parity with the previous Node.js pipeline while eliminating heavy native dependencies (canvas, ffmpeg-static, fastembed) from the Vercel deployment.
+
+**Render Job Flow:**
+```
+Next.js POST /api/render-jobs → Create DB job (queued) → SQS sendMessage →
+Lambda handler picks up message → execute_render_pipeline() →
+Audio mixing + Video encoding + R2 upload → Update DB job (completed/failed)
+```
+
+### Components (services/render-worker/)
+
+| Module | File | Description |
+|--------|------|-------------|
+| Config | `config.py` | Environment variable loading with validation |
+| Lambda Handler | `lambda_handler.py` | SQS event parsing, job dispatch, error handling |
+| Pipeline | `pipeline.py` | Main orchestrator: 5-phase render with cancellation, progress |
+| Audio Engine | `audio_engine.py` | FFmpeg audio mixing, gap/crossfade, loudnorm |
+| Video Engine | `video_engine.py` | FFmpeg video encoding from Pillow-rendered frames |
+| Frame Renderer | `frame_renderer.py` | Pillow-based lyrics frame rendering with CJK fonts |
+| Chapters | `chapters.py` | Chapter manifest generation, FFmpeg metadata injection |
+| LRC Parser | `lrc_parser.py` | LRC lyric timestamp parsing and global timeline |
+| R2 Client | `r2_client.py` | boto3 S3-compatible client for Cloudflare R2 |
+| Asset Fetcher | `asset_fetcher.py` | R2 download with local filesystem cache |
+| Uploader | `uploader.py` | R2 upload of MP3/MP4/chapters artifacts |
+| DB | `db.py` | psycopg2 job status CRUD (start, progress, complete, fail) |
+
+### Key Design Decisions
+
+- **Python 3.11** on Lambda container image (`public.ecr.aws/lambda/python:3.11`)
+- **boto3** for R2 (S3-compatible) and SQS access
+- **psycopg2** for Neon PostgreSQL job status updates
+- **Pillow** for frame rendering (replaces node-canvas)
+- **subprocess** for FFmpeg commands (replaces fluent-ffmpeg)
+- **CJK fonts** via `google-noto-sans-cjk-fonts` system package
+- **SQS DLQ** with 3-retry maxReceiveCount and 900s visibility timeout
+- **Batch size 1** — one render per Lambda invocation
+
+### Web App Changes
+
+The Next.js web app was updated to support the Lambda worker architecture:
+
+- **SQS Integration**: `webapp/src/lib/sqs/client.ts` — SQSClient wrapper sending `{ jobId, songsetId, userId }` as JSON body
+- **Render Jobs Route**: `POST /api/render-jobs` now enqueues to SQS instead of calling `after(() => executeRenderPipeline(...))`
+- **Removed Dependencies**: canvas, ffmpeg-static, fluent-ffmpeg, fastembed removed from `webapp/package.json`
+- **Hybrid Search**: Replaced runtime fastembed with Postgres tsvector full-text search + pre-computed embedding lookup
+- **vercel.json**: `maxDuration` reduced from 800 to 60; `fluid: true` removed from render routes
+- **next.config.ts**: Heavy packages removed from `serverExternalPackages`
+
+### CI/CD
+
+- **CI Workflow** (`.github/workflows/ci.yml`): Runs on PR to main — pnpm lint + test for webapp, pytest for render-worker
+- **Deploy Workflow** (`.github/workflows/deploy.yml`): Runs on push to main — Vercel deploy for webapp, ECR build+push + Lambda update for render-worker
+
+### Tests
+
+| Component | Test File | Tests |
+|-----------|-----------|-------|
+| Config | `test_config.py` | Environment variable validation |
+| Lambda Handler | `test_lambda_handler.py` | SQS event parsing, success/failure paths |
+| Pipeline | `test_pipeline.py` | Pipeline flow, cancellation, error propagation |
+| Audio Engine | `test_audio_engine.py` | Gap calculation, FFmpeg filter complex |
+| Video Engine | `test_video_engine.py` | Codec args, chapter injection |
+| Frame Renderer | `test_frame_renderer.py` | Template definitions, frame rendering |
+| Chapters | `test_chapters.py` | Manifest generation, FFmpeg metadata |
+| LRC Parser | `test_lrc_parser.py` | Parse, global timeline, duration estimation |
+| R2 Client | `test_r2_client.py` | Signed URL generation, file existence |
+| Asset Fetcher | `test_asset_fetcher.py` | Caching logic, download |
+| Uploader | `test_uploader.py` | Upload artifacts, content type mapping |
+| DB | `test_db.py` | Job status transitions, orphan recovery |
+| Docker | `test_docker.py` | Image build and handler import smoke test |
+
+**Render Worker Total: ~100+ tests**
+
+---
 
 **Status:** Fully implemented and tested (commit `cb96e17`)
 
@@ -501,6 +578,26 @@ sow_cli_admin/
 │   ├── docker-compose.yml            # Service orchestration
 │   └── pyproject.toml                # Service dependencies
 │
+├── services/render-worker/            # 🎬 Lambda Render Worker (COMPLETE)
+│   ├── src/sow_render_worker/
+│   │   ├── lambda_handler.py        # SQS event handler
+│   │   ├── config.py                # Env var config
+│   │   ├── pipeline.py              # Render orchestrator
+│   │   ├── audio_engine.py          # FFmpeg audio mixing
+│   │   ├── video_engine.py          # FFmpeg video encoding
+│   │   ├── frame_renderer.py        # Pillow frame rendering
+│   │   ├── chapters.py              # Chapter manifest
+│   │   ├── lrc_parser.py            # LRC timestamp parser
+│   │   ├── r2_client.py             # R2 S3 client
+│   │   ├── asset_fetcher.py         # R2 download + cache
+│   │   ├── uploader.py              # R2 upload
+│   │   └── db.py                    # Job status CRUD
+│   ├── tests/                        # Worker tests
+│   ├── Dockerfile                    # Lambda container image
+│   ├── docker-compose.yml            # Local testing
+│   ├── requirements.txt              # Python dependencies
+│   └── pyproject.toml                # Project metadata
+│
 ├── tests/
 │   ├── admin/                        # CLI tests
 │   │   ├── commands/
@@ -541,6 +638,24 @@ sow_cli_admin/
 │   ├── docker/
 │   ├── poc_analysis_allinone.py
 │   └── transition_builder_v2/
+│
+├── webapp/                            # 🌐 Next.js Web App (COMPLETE)
+│   ├── src/
+│   │   ├── app/                      # Next.js App Router pages
+│   │   ├── lib/                      # Shared libraries
+│   │   │   ├── db/                   # Drizzle ORM + search
+│   │   │   ├── render/              # (deprecated, moved to render-worker)
+│   │   │   ├── sqs/                  # SQS client
+│   │   │   └── r2/                   # R2 client
+│   │   └── test/                     # Test files
+│   ├── drizzle/                      # DB migrations
+│   ├── package.json
+│   ├── next.config.ts
+│   └── vercel.json
+│
+├── .github/workflows/                 # CI/CD
+│   ├── ci.yml                        # PR checks
+│   └── deploy.yml                    # Vercel + Lambda deploy
 │
 ├── report/
 │   ├── current_impl_status.md        # This file
@@ -604,7 +719,39 @@ sow_cli_admin/
 
 **User App Total: ~124 tests**
 
-**Combined Total: ~471 tests (all passing)**
+### Render Worker Tests
+
+| Component | Test File | Status |
+|-----------|-----------|--------|
+| Config | `test_config.py` | ✅ Complete |
+| Lambda Handler | `test_lambda_handler.py` | ✅ Complete |
+| Pipeline | `test_pipeline.py` | ✅ Complete |
+| Audio Engine | `test_audio_engine.py` | ✅ Complete |
+| Video Engine | `test_video_engine.py` | ✅ Complete |
+| Frame Renderer | `test_frame_renderer.py` | ✅ Complete |
+| Chapters | `test_chapters.py` | ✅ Complete |
+| LRC Parser | `test_lrc_parser.py` | ✅ Complete |
+| R2 Client | `test_r2_client.py` | ✅ Complete |
+| Asset Fetcher | `test_asset_fetcher.py` | ✅ Complete |
+| Uploader | `test_uploader.py` | ✅ Complete |
+| DB | `test_db.py` | ✅ Complete |
+| Docker | `test_docker.py` | ✅ Complete |
+
+**Render Worker Total: ~100+ tests**
+
+### Web App Tests
+
+| Component | Test Directory | Status |
+|-----------|---------------|--------|
+| API Routes | `src/test/api/` | ✅ Complete |
+| DB Search | `src/test/lib/db/` | ✅ Complete |
+| SQS Client | `src/test/lib/sqs/` | ✅ Complete |
+| Deployment Config | `src/test/deployment/` | ✅ Complete |
+| CI/CD Workflows | `src/test/deployment/` | ✅ Complete |
+
+**Web App Total: ~200+ tests**
+
+**Combined Total: ~900+ tests (all passing)**
 
 ---
 
@@ -655,32 +802,45 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 | Testing | pytest, pytest-asyncio |
 | Containerization | Docker (multi-stage builds) |
 
+### Render Worker (Lambda)
+
+| Layer | Technology |
+|-------|------------|
+| Runtime | AWS Lambda (Python 3.11 container) |
+| Job Queue | AWS SQS with DLQ |
+| Audio Processing | FFmpeg (subprocess) |
+| Video Encoding | FFmpeg + Pillow (frame rendering) |
+| Cloud Storage | boto3 (R2 S3-compatible) |
+| Database | psycopg2 (Neon PostgreSQL) |
+| CJK Fonts | google-noto-sans-cjk-fonts |
+| Containerization | Docker (Lambda container image) |
+| Testing | pytest, pytest-mock |
+
+### Web App (Next.js)
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16 (App Router) |
+| ORM | Drizzle ORM + PostgreSQL (Neon serverless) |
+| Auth | Better Auth |
+| Storage | Cloudflare R2 |
+| Job Queue | AWS SQS (@aws-sdk/client-sqs) |
+| Search | Postgres tsvector full-text + pre-computed embeddings |
+| Deployment | Vercel (web) + AWS Lambda (render worker) |
+| Testing | Vitest |
+
 ---
 
 ## Next Steps / Pending Work
 
-**All 9 phases are complete!** There are no pending implementation items.
+**All phases are complete!** There are no pending implementation items.
 
 The system now fully supports:
 - Catalog management via Admin CLI (`sow-admin catalog` commands)
 - Audio download and analysis via Analysis Service (`sow-admin audio` commands)
 - Interactive songset building via User App TUI (`sow-app`)
-- Export of audio + lyrics video with smooth transitions
 - Browser-based songset builder, render pipeline, worship playback, and sharing via Web App (`webapp/`)
-
-### Phase 9: Web App (Completed)
-
-A Next.js 16 (App Router) web application providing phone-first worship preparation and playback:
-
-- **Authentication**: Email/password login and registration via Better Auth
-- **Songset Management**: Create, edit, reorder songs with drag-and-drop
-- **Render Pipeline**: Server-side audio mixing (fluent-ffmpeg) and video generation (node-canvas + FFmpeg) with SSE progress streaming
-- **Worship Playback**: Controller player with Presentation API for second-screen lyrics projection
-- **Offline Caching**: Service Worker with Cache Storage API for artifact persistence
-- **Semantic Search**: Natural language song search via pgvector + fastembed-js
-- **Sharing**: Public share links with token-based access and revocation
-- **Settings**: Per-user defaults for gap, crossfade, template, resolution, and offline caching
-- **Deployment**: Vercel Pro with Fluid Compute for long-running renders
+- Serverless render processing via AWS Lambda Render Worker (`services/render-worker/`)
 
 ### Future Enhancements (Optional)
 
@@ -688,25 +848,32 @@ Potential future improvements (not required for core functionality):
 
 - **Turso Sync** - Bidirectional cloud synchronization for multi-device support
 - **Additional Video Templates** - More visual styles for lyrics videos
+- **GPU Acceleration** - GPU-enabled Lambda for faster video encoding
 
 ### Phase 9: Web App (Completed)
 
-A full-featured Next.js 16 web application was implemented across 8 phases, replacing the Python TUI for end users. Located in `webapp/`, it is a separate Node.js/TypeScript stack.
+A Next.js 16 (App Router) web application providing phone-first worship preparation and playback:
 
-Key features:
-- Authentication (Better Auth with email/password)
-- Songset CRUD with drag-and-drop song ordering
-- Catalog browsing with album filtering and semantic search (pgvector + fastembed-js)
-- Render pipeline (AudioEngine + VideoEngine ported to Node.js, FFmpeg-based)
-- R2 upload of MP3/MP4/chapters.json artifacts
-- Worship playback with Presentation API for second-screen projection
-- Offline caching via Service Worker and Cache Storage API
-- Lyrics review (phone) and editing (desktop)
-- Transition detail controls with audio preview
-- Sharing system with public hosted player
-- Settings with per-user defaults
-- Responsive design (phone-first, desktop power-mode)
-- Vercel Pro deployment configuration
+- **Authentication**: Email/password login and registration via Better Auth
+- **Songset Management**: Create, edit, reorder songs with drag-and-drop
+- **Render Pipeline**: Jobs enqueued to SQS, processed by AWS Lambda Python container
+- **Worship Playback**: Controller player with Presentation API for second-screen lyrics projection
+- **Offline Caching**: Service Worker with Cache Storage API for artifact persistence
+- **Hybrid Search**: Postgres tsvector full-text search + pre-computed embedding lookup (no runtime ML)
+- **Sharing**: Public share links with token-based access and revocation
+- **Settings**: Per-user defaults for gap, crossfade, template, resolution, and offline caching
+- **Deployment**: Vercel (web app) + AWS Lambda container (render worker) + SQS (job queue)
+
+### Phase 10: Lambda Render Worker Migration (Completed)
+
+Migrated the render pipeline from in-process Vercel execution to an AWS Lambda-based worker architecture:
+
+- **Python Render Worker** (`services/render-worker/`): Feature-parity port of Node.js render pipeline
+- **SQS Integration**: Next.js enqueues jobs instead of running `after()` callbacks
+- **Dependency Removal**: canvas, ffmpeg-static, fluent-ffmpeg, fastembed removed from webapp
+- **Hybrid Search**: Replaced runtime fastembed with tsvector full-text + pre-computed embeddings
+- **CI/CD**: GitHub Actions workflows for CI (PR) and deploy (push to main)
+- **Docker**: Lambda container image with FFmpeg, CJK fonts, Python 3.11
 
 ---
 
@@ -757,6 +924,15 @@ app = [
 ]
 ```
 
+### Render Worker (`services/render-worker/requirements.txt`)
+
+```
+boto3>=1.34.0               # R2 S3-compatible storage + SQS
+psycopg2-binary>=2.9.0       # Neon PostgreSQL job status
+Pillow>=10.0.0               # Frame rendering
+python-dotenv>=1.0.0         # Local development env loading
+```
+
 ### Development Dependencies
 
 ```toml
@@ -773,11 +949,13 @@ test = [
 
 ### Architecture Decisions
 
-- **Monorepo structure:** Admin CLI and Analysis Service are separate packages but co-located
-- **Microservice separation:** Analysis Service is a standalone FastAPI service, not imported by CLI
-- **Communication:** CLI → HTTP → Service (no direct Python imports)
-- **Dependency isolation:** CLI stays lightweight (~50MB), Service is heavy (~2GB PyTorch)
+- **Monorepo structure:** Admin CLI, Analysis Service, Render Worker, and Web App are separate packages but co-located
+- **Microservice separation:** Analysis Service and Render Worker are standalone services, not imported by CLI or web app
+- **Communication:** CLI → HTTP → Analysis Service; Web App → SQS → Lambda Render Worker
+- **Dependency isolation:** CLI stays lightweight (~50MB), Analysis Service is heavy (~2GB PyTorch), Render Worker is medium (~500MB with FFmpeg+fonts)
 - **Platform support:** Docker images support both x86_64 (CPU-only PyTorch) and ARM64 (standard PyTorch)
+- **Render offloading:** Heavy render pipeline moved from Vercel to Lambda to avoid Vercel Pro + Fluid Compute costs and timeout limits
+- **Search optimization:** Replaced runtime fastembed with Postgres tsvector full-text search (no ML at query time)
 
 ### Implementation Patterns
 
@@ -806,6 +984,8 @@ test = [
 - Phase 6: `f858da4` - LRC Generation
 - Phase 7: `ce5bbc4` - Turso Sync
 - Phase 8: `b82fc0d` - User App (TUI)
+- Phase 9: Web App (Next.js)
+- Phase 10: Lambda Render Worker Migration
 
 ---
 
