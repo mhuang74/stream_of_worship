@@ -6,9 +6,10 @@ export interface SSEEvent {
   phase: RenderPhase;
   phaseIndex: number;
   totalPhases: number;
-  percentComplete: number;
-  estimatedSecondsLeft: number;
+  estimatedTotalSeconds: number;
   elapsedSeconds: number;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  errorMessage?: string;
 }
 
 export async function GET(
@@ -63,9 +64,9 @@ export async function GET(
           phase: job.phase ?? "preparing",
           phaseIndex: job.phaseIndex ?? 0,
           totalPhases: job.totalPhases ?? 5,
-          percentComplete: job.percentComplete ?? 0,
-          estimatedSecondsLeft: job.estimatedSecondsLeft ?? 0,
+          estimatedTotalSeconds: job.estimatedTotalSeconds ?? 0,
           elapsedSeconds: job.elapsedSeconds ?? 0,
+          status: job.status,
         };
 
         controller.enqueue(
@@ -87,7 +88,7 @@ export async function GET(
             return;
           }
 
-          const updatedJob = await getRenderJob(id, Number(session.user.id));
+          const updatedJob = await getRenderJob(id, Number(session!.user.id));
 
           if (!updatedJob) {
             controller.enqueue(
@@ -107,9 +108,15 @@ export async function GET(
               phase: updatedJob.phase ?? "completed",
               phaseIndex: updatedJob.phaseIndex ?? updatedJob.totalPhases ?? 5,
               totalPhases: updatedJob.totalPhases ?? 5,
-              percentComplete: updatedJob.status === "completed" ? 100 : updatedJob.percentComplete,
-              estimatedSecondsLeft: 0,
+              estimatedTotalSeconds:
+                updatedJob.status === "completed"
+                  ? updatedJob.elapsedSeconds ?? 0
+                  : updatedJob.estimatedTotalSeconds ?? 0,
               elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
+              status: updatedJob.status,
+              ...(updatedJob.status === "failed" && updatedJob.errorMessage
+                ? { errorMessage: updatedJob.errorMessage }
+                : {}),
             };
 
             controller.enqueue(
@@ -124,9 +131,9 @@ export async function GET(
             phase: updatedJob.phase ?? "preparing",
             phaseIndex: updatedJob.phaseIndex ?? 0,
             totalPhases: updatedJob.totalPhases ?? 5,
-            percentComplete: updatedJob.percentComplete ?? 0,
-            estimatedSecondsLeft: updatedJob.estimatedSecondsLeft ?? 0,
+            estimatedTotalSeconds: updatedJob.estimatedTotalSeconds ?? 0,
             elapsedSeconds: updatedJob.elapsedSeconds ?? 0,
+            status: updatedJob.status,
           };
 
           controller.enqueue(

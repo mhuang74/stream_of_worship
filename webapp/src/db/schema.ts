@@ -190,10 +190,15 @@ export const renderJobs = pgTable("render_jobs", {
   phase: text("phase"),
   phaseIndex: integer("phase_index"),
   totalPhases: integer("total_phases"),
+  /** @deprecated No longer written by pipeline. Retained for historical data only. */
   percentComplete: real("percent_complete").default(0),
+  /** @deprecated No longer written by pipeline. Retained for historical data only. */
   estimatedSecondsLeft: real("estimated_seconds_left"),
   elapsedSeconds: real("elapsed_seconds"),
   errorMessage: text("error_message"),
+  estimatedTotalSeconds: real("estimated_total_seconds"),
+  totalDurationSeconds: real("total_duration_seconds"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
 
   // Render options
   template: text("template").notNull().default("dark"),

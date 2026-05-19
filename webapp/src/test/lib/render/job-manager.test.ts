@@ -65,6 +65,9 @@ const mockRenderJob = {
   estimatedSecondsLeft: null,
   elapsedSeconds: 0,
   errorMessage: null,
+  estimatedTotalSeconds: null,
+  totalDurationSeconds: null,
+  startedAt: null,
   template: "dark",
   resolution: "720p",
   audioEnabled: true,
@@ -342,6 +345,51 @@ describe("updateRenderProgress", () => {
     expect(job?.elapsedSeconds).toBe(120);
   });
 
+  it("updates estimatedTotalSeconds and totalDurationSeconds", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue(mockRenderJob);
+    
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { ...mockRenderJob, estimatedTotalSeconds: 180, totalDurationSeconds: 120 },
+          ]),
+        }),
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    const job = await updateRenderProgress(1, "mock-job-id", {
+      estimatedTotalSeconds: 180,
+      totalDurationSeconds: 120,
+    });
+
+    expect(job?.estimatedTotalSeconds).toBe(180);
+    expect(job?.totalDurationSeconds).toBe(120);
+  });
+
+  it("updates startedAt", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue(mockRenderJob);
+    
+    const startedAt = new Date();
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { ...mockRenderJob, startedAt },
+          ]),
+        }),
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    const job = await updateRenderProgress(1, "mock-job-id", {
+      startedAt,
+    });
+
+    expect(job?.startedAt).toEqual(startedAt);
+  });
+
   it("returns null when job not found", async () => {
     vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue(null);
 
@@ -359,6 +407,11 @@ describe("completeRenderJob", () => {
   });
 
   it("marks job as completed with output keys", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      startedAt: new Date("2024-01-01T00:00:00Z"),
+    });
+    
     const mockUpdate = vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
@@ -394,6 +447,52 @@ describe("completeRenderJob", () => {
     expect(job?.mp4R2Key).toBe("video.mp4");
     expect(job?.chaptersR2Key).toBe("chapters.json");
     expect(job?.completedAt).not.toBeNull();
+  });
+
+  it("computes elapsedSeconds from startedAt", async () => {
+    const startedAt = new Date("2024-01-01T00:00:00Z");
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      startedAt,
+    });
+    
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockImplementation((updates: any) => {
+        expect(updates.elapsedSeconds).toBeGreaterThan(0);
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              { ...mockRenderJob, status: "completed", elapsedSeconds: updates.elapsedSeconds },
+            ]),
+          }),
+        };
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    const job = await completeRenderJob(1, "mock-job-id", {});
+    expect(job?.status).toBe("completed");
+  });
+
+  it("handles null startedAt gracefully", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      startedAt: null,
+    });
+    
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { ...mockRenderJob, status: "completed", elapsedSeconds: null },
+          ]),
+        }),
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    const job = await completeRenderJob(1, "mock-job-id", {});
+    expect(job?.status).toBe("completed");
   });
 
   it("returns null when job not found", async () => {

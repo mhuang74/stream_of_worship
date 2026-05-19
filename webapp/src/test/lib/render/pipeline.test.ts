@@ -51,6 +51,10 @@ vi.mock("@/lib/render/uploader", () => ({
   R2Uploader: vi.fn(),
 }));
 
+vi.mock("@/lib/render/render-ratio", () => ({
+  getRenderRatio: vi.fn().mockResolvedValue(1.5),
+}));
+
 import { executeRenderPipeline } from "@/lib/render/pipeline";
 import * as jobManagerModule from "@/lib/render/job-manager";
 import * as audioEngineModule from "@/lib/render/audio-engine";
@@ -71,6 +75,9 @@ const mockJob = {
   estimatedSecondsLeft: null,
   elapsedSeconds: 0,
   errorMessage: null,
+  estimatedTotalSeconds: null,
+  totalDurationSeconds: null,
+  startedAt: null,
   template: "dark",
   resolution: "720p",
   audioEnabled: true,
@@ -167,11 +174,24 @@ describe("executeRenderPipeline", () => {
     expect(jobManagerModule.failRenderJob).not.toHaveBeenCalled();
   });
 
-  it("throws error when job is cancelled", async () => {
+  it("returns early when job is cancelled at start", async () => {
     vi.mocked(jobManagerModule.getRenderJob).mockResolvedValue({ ...mockJob, status: "cancelled" });
 
-    await expect(executeRenderPipeline("job-3", 1)).rejects.toThrow("Render job job-3 was cancelled");
+    await executeRenderPipeline("job-3", 1);
+    expect(jobManagerModule.failRenderJob).not.toHaveBeenCalled();
     expect(typeof assetFetcherMock.cleanupTemp).toBe("function");
+  });
+
+  it("does not call failRenderJob when job is cancelled during pipeline", async () => {
+    let callCount = 0;
+    vi.mocked(jobManagerModule.getRenderJob).mockImplementation(() => {
+      callCount++;
+      if (callCount <= 2) return Promise.resolve(mockJob);
+      return Promise.resolve({ ...mockJob, status: "cancelled" });
+    });
+
+    await executeRenderPipeline("job-cancelled", 1);
+    expect(jobManagerModule.failRenderJob).not.toHaveBeenCalled();
   });
 
   it("calls failRenderJob on error", async () => {
