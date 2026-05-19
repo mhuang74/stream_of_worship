@@ -1,0 +1,484 @@
+from __future__ import annotations
+
+import json
+import math
+import shutil
+import subprocess
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Protocol
+
+from sow_render_worker.audio_engine import AudioSegmentInfo
+from sow_render_worker.chapters import Chapter, ChaptersManifest, chapters_to_ffmpeg_metadata
+from sow_render_worker.frame_renderer import (
+    FONT_SIZE_PRESETS,
+    VIDEO_TEMPLATES,
+    FontSizePreset,
+    FrameRenderer,
+    SegmentInfo,
+    TitleCardConfig,
+    VideoTemplateName,
+    VideoTemplate,
+)
+from sow_render_worker.lrc_parser import GlobalLRCLine, convert_to_global_timeline, parse_lrc
+
+
+RESOLUTION_MAP: dict[str, tuple[int, int]] = {
+    "720p": (1280, 720),
+    "1080p": (1920, 1080),
+}
+
+
+@dataclass(frozen=True)
+class VideoExportResult:
+    output_path: str
+    total_frames: int
+    duration_seconds: float
+    width: int
+    height: int
+    fps: int
+
+
+@dataclass(frozen=True)
+class ChapterInfo:
+    position: int
+    song_title: str
+    start_seconds: float
+    end_seconds: float
+    lines: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+
+
+ProgressCallback = Callable[[int, int], None]
+
+
+class AssetFetcherProtocol(Protocol):
+    async def download_lrc(self, hash_prefix: str) -> str | None: ...
+
+    def get_temp_dir(self) -> str: ...
+
+
+class VideoEngine:
+    def __init__(
+        self,
+        asset_fetcher: AssetFetcherProtocol,
+        template: VideoTemplateName = "dark",
+        font_size_preset: FontSizePreset = "M",
+        resolution: str = "1080p",
+        fps: int = 24,
+        include_title_card: bool = True,
+        title_card_duration_seconds: float = 5.0,
+        ffmpeg_path: str | None = None,
+        ffprobe_path: str | None = None,
+    ):
+        self.asset_fetcher = asset_fetcher
+        self.template = FrameRenderer.get_template(template)
+        self.font_size_preset = font_size_preset
+        self.resolution = RESOLUTION_MAP.get(resolution, (1920, 1080))
+        self.fps = fps
+        self.include_title_card = include_title_card
+        self.title_card_duration_seconds = max(5.0, min(title_card_duration_seconds, 30.0))
+        self.ffmpeg_path = ffmpeg_path or self._find_ffmpeg()
+        self.ffprobe_path = ffprobe_path or "ffprobe"
+
+        self.frame_renderer = FrameRenderer(
+            template=self.template,
+            font_size_preset=self.font_size_preset,
+            resolution=self.resolution,
+        )
+
+    @staticmethod
+    def _find_ffmpeg() -> str:
+        found = shutil.which("ffmpeg")
+        return found or "ffmpeg"
+
+    async def get_audio_info(
+        self, file_path: str
+    ) -> dict[str, Any] | None:
+        try:
+            p = Path(file_path)
+            if not p.exists():
+                return None
+            result = subprocess.run(
+                [
+                    self.ffprobe_path,
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    "-show_streams",
+                    file_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return None
+            metadata = json.loads(result.stdout)
+            streams = metadata.get("streams", [])
+            if not streams:
+                return None
+            audio_stream = None
+            for s in streams:
+                if s.get("codec_type") == "audio":
+                    audio_stream = s
+                    break
+            if audio_stream is None:
+                audio_stream = streams[0]
+            fmt = metadata.get("format", {})
+            duration_seconds = float(fmt.get("duration", 0))
+            return {
+                "duration_seconds": duration_seconds,
+                "duration_ms": round(duration_seconds * 1000),
+                "sample_rate": int(audio_stream.get("sample_rate", 44100)),
+                "channels": int(audio_stream.get("channels", 2)),
+            }
+        except Exception:
+            return None
+
+    def get_video_codec_args(self, bitrate: str = "8000k") -> list[str]:
+        return [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+            "-b:v",
+            bitrate,
+        ]
+
+    async def generate_video(
+        self,
+        audio_path: str,
+        segments: list[AudioSegmentInfo],
+        output_path: str,
+        progress_callback: ProgressCallback | None = None,
+    ) -> VideoExportResult:
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        audio_info = await self.get_audio_info(audio_path)
+        if not audio_info:
+            raise ValueError("Could not get audio info")
+
+        total_duration_seconds = audio_info["duration_seconds"]
+        title_card_frames = (
+            math.ceil(self.title_card_duration_seconds * self.fps)
+            if self.include_title_card
+            else 0
+        )
+        total_frames = math.ceil(total_duration_seconds * self.fps) + title_card_frames
+
+        all_lyrics: list[GlobalLRCLine] = []
+        chapters: list[ChapterInfo] = []
+
+        for i, segment in enumerate(segments):
+            hash_prefix = segment.item.recording_hash_prefix
+            if not hash_prefix:
+                continue
+
+            lrc_content = await self.asset_fetcher.download_lrc(hash_prefix)
+            if not lrc_content:
+                continue
+
+            local_lyrics = parse_lrc(lrc_content)
+            title = (
+                segment.item.song_title
+                or (str(segment.item.song_id) if segment.item.song_id else f"song-{i}")
+            )
+            global_lyrics = convert_to_global_timeline(
+                local_lyrics, segment.start_time_seconds, title
+            )
+            all_lyrics.extend(global_lyrics)
+
+            segment_end = segment.start_time_seconds + segment.duration_seconds
+            chapters.append(
+                ChapterInfo(
+                    position=i + 1,
+                    song_title=(
+                        segment.item.song_title
+                        or (str(segment.item.song_id) if segment.item.song_id else f"Song {i + 1}")
+                    ),
+                    start_seconds=segment.start_time_seconds,
+                    end_seconds=segment_end,
+                    lines=tuple(
+                        {
+                            "text": line.text,
+                            "startSeconds": segment.start_time_seconds + line.time_seconds,
+                        }
+                        for line in local_lyrics
+                    ),
+                )
+            )
+
+        if not all_lyrics:
+            return await self.generate_blank_video(
+                audio_path, output_path, total_duration_seconds
+            )
+
+        segment_infos: list[SegmentInfo] = []
+        for i, seg in enumerate(segments):
+            segment_infos.append(
+                SegmentInfo(
+                    id=seg.item.id,
+                    song_id=seg.item.song_id,
+                    position=seg.item.position,
+                    song_title=(
+                        seg.item.song_title
+                        or (str(seg.item.song_id) if seg.item.song_id else f"Song {i + 1}")
+                    ),
+                    start_time_seconds=seg.start_time_seconds,
+                    duration_seconds=seg.duration_seconds,
+                    tempo_bpm=seg.item.tempo_bpm,
+                )
+            )
+
+        title_card_config: TitleCardConfig | None = None
+        if self.include_title_card:
+            title_card_config = TitleCardConfig(
+                enabled=True,
+                duration_seconds=total_duration_seconds,
+                songset_name=(
+                    segments[0].item.song_title or "Worship Set" if segments else "Worship Set"
+                ),
+                song_count=len(segments),
+                total_duration_seconds=total_duration_seconds,
+            )
+
+        await self.encode_video_with_ffmpeg(
+            audio_path,
+            output_path,
+            total_frames,
+            total_duration_seconds,
+            all_lyrics,
+            segment_infos,
+            progress_callback,
+            title_card_config,
+        )
+
+        return VideoExportResult(
+            output_path=output_path,
+            total_frames=total_frames,
+            duration_seconds=total_duration_seconds,
+            width=self.resolution[0],
+            height=self.resolution[1],
+            fps=self.fps,
+        )
+
+    async def encode_video_with_ffmpeg(
+        self,
+        audio_path: str,
+        output_path: str,
+        total_frames: int,
+        total_duration_seconds: float,
+        lyrics: list[GlobalLRCLine],
+        segments: list[SegmentInfo],
+        progress_callback: ProgressCallback | None = None,
+        title_card_config: TitleCardConfig | None = None,
+    ) -> None:
+        width, height = self.resolution
+
+        args = [
+            self.ffmpeg_path,
+            "-y",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-s",
+            f"{width}x{height}",
+            "-pix_fmt",
+            "rgba",
+            "-r",
+            str(self.fps),
+            "-i",
+            "-",
+            "-i",
+            audio_path,
+            *self.get_video_codec_args(),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            output_path,
+        ]
+
+        process = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+
+        title_card_frame_count = (
+            math.ceil(self.title_card_duration_seconds * self.fps)
+            if title_card_config and title_card_config.enabled
+            else 0
+        )
+
+        frame_count = 0
+
+        try:
+            while frame_count < total_frames:
+                if title_card_config and frame_count < title_card_frame_count:
+                    img = self.frame_renderer.render_title_card(title_card_config)
+                else:
+                    lyrics_frame_index = (
+                        frame_count - title_card_frame_count if title_card_config else frame_count
+                    )
+                    current_time = lyrics_frame_index / self.fps
+                    img = self.frame_renderer.render_frame(lyrics, segments, current_time)
+
+                rgba_img = img.convert("RGBA")
+                frame_bytes = rgba_img.tobytes()
+
+                try:
+                    process.stdin.write(frame_bytes)
+                except BrokenPipeError:
+                    stderr_output = process.stderr.read().decode("utf-8", errors="replace")
+                    stderr_info = (
+                        f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
+                        if stderr_output
+                        else ""
+                    )
+                    raise RuntimeError(
+                        f"FFmpeg process closed prematurely (EPIPE on stdin write).{stderr_info}"
+                    )
+
+                frame_count += 1
+
+                if progress_callback and frame_count % self.fps == 0:
+                    progress_callback(frame_count, total_frames)
+
+            process.stdin.close()
+        except Exception:
+            process.kill()
+            process.wait()
+            raise
+
+        return_code = process.wait()
+        if return_code != 0:
+            stderr_output = (process.stderr.read() if process.stderr else b"").decode(
+                "utf-8", errors="replace"
+            )
+            stderr_info = (
+                f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
+                if stderr_output
+                else ""
+            )
+            raise RuntimeError(f"FFmpeg exited with code {return_code}.{stderr_info}")
+
+        if progress_callback:
+            progress_callback(total_frames, total_frames)
+
+    async def generate_blank_video(
+        self,
+        audio_path: str,
+        output_path: str,
+        duration_seconds: float,
+    ) -> VideoExportResult:
+        width, height = self.resolution
+        bg_r, bg_g, bg_b = self.template.background_color
+        hex_color = f"#{bg_r:02x}{bg_g:02x}{bg_b:02x}"
+
+        args = [
+            self.ffmpeg_path,
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c={hex_color}:s={width}x{height}:d={duration_seconds}",
+            "-i",
+            audio_path,
+            *self.get_video_codec_args("5000k"),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            output_path,
+        ]
+
+        process = subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        return_code = process.wait()
+        if return_code != 0:
+            raise RuntimeError(f"FFmpeg exited with code {return_code}")
+
+        return VideoExportResult(
+            output_path=output_path,
+            total_frames=math.ceil(duration_seconds * self.fps),
+            duration_seconds=duration_seconds,
+            width=width,
+            height=height,
+            fps=self.fps,
+        )
+
+    async def inject_chapters(
+        self,
+        video_path: str,
+        chapters: list[ChapterInfo],
+    ) -> bool:
+        try:
+            temp_dir = self.asset_fetcher.get_temp_dir()
+            chapters_path = str(Path(temp_dir) / f"chapters-{int(time.time() * 1000)}.txt")
+
+            manifest = ChaptersManifest(
+                chapters=tuple(
+                    Chapter(
+                        position=ch.position,
+                        song_title=ch.song_title,
+                        start_seconds=ch.start_seconds,
+                        end_seconds=ch.end_seconds,
+                    )
+                    for ch in chapters
+                ),
+                total_duration_seconds=0,
+                generated_at="",
+            )
+            chapters_content = chapters_to_ffmpeg_metadata(manifest)
+            Path(chapters_path).write_text(chapters_content, encoding="utf-8")
+
+            output_path = f"{video_path}.chapters.mp4"
+
+            args = [
+                self.ffmpeg_path,
+                "-y",
+                "-i",
+                video_path,
+                "-i",
+                chapters_path,
+                "-map_metadata",
+                "1",
+                "-c",
+                "copy",
+                output_path,
+            ]
+
+            process = subprocess.Popen(
+                args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            return_code = process.wait()
+
+            if return_code != 0:
+                return False
+
+            shutil.move(output_path, video_path)
+
+            try:
+                Path(chapters_path).unlink()
+            except OSError:
+                pass
+
+            return True
+        except Exception:
+            return False
