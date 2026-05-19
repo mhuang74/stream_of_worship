@@ -303,6 +303,7 @@ export default function RenderPage() {
             mp3Url={jobData.mp3Url}
             mp4Url={jobData.mp4Url}
             chaptersUrl={jobData.chaptersUrl}
+            elapsedSeconds={jobData.elapsedSeconds}
             onDone={handleDone}
             onShare={handleShare}
           />
