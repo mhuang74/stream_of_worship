@@ -129,19 +129,19 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/frame_renderer.py`
 - Create: `services/render-worker/tests/test_frame_renderer.py`
 
-- [ ] Port `VideoTemplate` dataclass — name, background_color, text_color, highlight_color, font_size, resolution
-- [ ] Port `FONT_SIZE_PRESETS` dict — S:32, M:48, L:64, XL:80
-- [ ] Port `VIDEO_TEMPLATES` dict — dark, gradient_warm, gradient_blue with exact RGB values
-- [ ] Port `FrameRenderer` class using Pillow (ImageDraw, ImageFont) instead of node-canvas
-- [ ] Port `render_frame()` — create Pillow image, fill background, find current segment, render intro info, render lyrics with highlighting
-- [ ] Port `render_intro_info()` — Traditional Chinese labels (歌曲, 專輯, 作曲, 作詞, 讚美之泉音樂事工), fade-out with sqrt-based alpha
-- [ ] Port `render_lyrics()` — current line 2x font size centered at 33% height, next line 50% transparent below, last-lyric fade-out
-- [ ] Port `render_title_card()` — songset name + song count + duration
-- [ ] Port `fit_text()` — auto-scale font size to fit width using Pillow text measurement
-- [ ] Port `get_margin()` — single-character margin using "中" as reference
-- [ ] Use `ImageFont.truetype()` with system sans-serif font; fall back to `ImageFont.load_default()` if unavailable
-- [ ] Write tests — template definitions, font size presets, frame rendering at known times (mock font), title card rendering, text fitting
-- [ ] Run tests — must pass
+- [x] Port `VideoTemplate` dataclass — name, background_color, text_color, highlight_color, font_size, resolution
+- [x] Port `FONT_SIZE_PRESETS` dict — S:32, M:48, L:64, XL:80
+- [x] Port `VIDEO_TEMPLATES` dict — dark, gradient_warm, gradient_blue with exact RGB values
+- [x] Port `FrameRenderer` class using Pillow (ImageDraw, ImageFont) instead of node-canvas
+- [x] Port `render_frame()` — create Pillow image, fill background, find current segment, render intro info, render lyrics with highlighting
+- [x] Port `render_intro_info()` — Traditional Chinese labels (歌曲, 專輯, 作曲, 作詞, 讚美之泉音樂事工), fade-out with sqrt-based alpha
+- [x] Port `render_lyrics()` — current line 2x font size centered at 33% height, next line 50% transparent below, last-lyric fade-out
+- [x] Port `render_title_card()` — songset name + song count + duration
+- [x] Port `fit_text()` — auto-scale font size to fit width using Pillow text measurement
+- [x] Port `get_margin()` — single-character margin using "中" as reference
+- [x] Use `ImageFont.truetype()` with system sans-serif font; fall back to `ImageFont.load_default()` if unavailable
+- [x] Write tests — template definitions, font size presets, frame rendering at known times (mock font), title card rendering, text fitting
+- [x] Run tests — must pass
 
 ### Task 6: Port Video Engine to Python
 
@@ -149,16 +149,16 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/video_engine.py`
 - Create: `services/render-worker/tests/test_video_engine.py`
 
-- [ ] Port `VideoEngine` class — template, font_size_preset, resolution, fps, title_card config, ffmpeg_path
-- [ ] Port `generate_video()` — get audio duration, collect lyrics with global timing, build chapters, encode with FFmpeg
-- [ ] Port `encode_video_with_ffmpeg()` — spawn ffmpeg process reading raw RGBA frames from stdin, pipe frames from FrameRenderer, handle EPIPE/backpressure
-- [ ] Port `generate_blank_video()` — FFmpeg color source for no-lyrics fallback
-- [ ] Port `inject_chapters()` — FFmpeg metadata injection for chapter atoms
-- [ ] Port `get_video_codec_args()` — libx264 ultrafast, CRF 23, configurable bitrate
-- [ ] Port `get_audio_info()` — ffprobe subprocess for duration/sample rate/channels
-- [ ] Key difference from Node.js: use `subprocess.Popen` with stdin pipe for frame streaming; write RGBA bytes from Pillow `tobytes()` instead of node-canvas `getImageData()`
-- [ ] Write tests — video codec args, blank video generation args, chapter injection, FFmpeg command construction (mock subprocess)
-- [ ] Run tests — must pass
+- [x] Port `VideoEngine` class — template, font_size_preset, resolution, fps, title_card config, ffmpeg_path
+- [x] Port `generate_video()` — get audio duration, collect lyrics with global timing, build chapters, encode with FFmpeg
+- [x] Port `encode_video_with_ffmpeg()` — spawn ffmpeg process reading raw RGBA frames from stdin, pipe frames from FrameRenderer, handle EPIPE/backpressure
+- [x] Port `generate_blank_video()` — FFmpeg color source for no-lyrics fallback
+- [x] Port `inject_chapters()` — FFmpeg metadata injection for chapter atoms
+- [x] Port `get_video_codec_args()` — libx264 ultrafast, CRF 23, configurable bitrate
+- [x] Port `get_audio_info()` — ffprobe subprocess for duration/sample rate/channels
+- [x] Key difference from Node.js: use `subprocess.Popen` with stdin pipe for frame streaming; write RGBA bytes from Pillow `tobytes()` instead of node-canvas `getImageData()`
+- [x] Write tests — video codec args, blank video generation args, chapter injection, FFmpeg command construction (mock subprocess)
+- [x] Run tests — must pass
 
 ### Task 7: Port R2 Client and Asset Fetcher to Python
 
@@ -168,17 +168,17 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/tests/test_r2_client.py`
 - Create: `services/render-worker/tests/test_asset_fetcher.py`
 
-- [ ] Port R2 client using boto3 S3 client with Cloudflare R2 endpoint (`https://{account_id}.r2.cloudflarestorage.com`)
-- [ ] Port `generate_signed_url()` — generate_presigned_url for GetObject
-- [ ] Port `get_audio_signed_url()`, `get_lrc_signed_url()` — key construction helpers
-- [ ] Port `file_exists()` — head_object with NotFound handling
-- [ ] Port `get_object_size()` — head_object ContentLength
-- [ ] Port `AssetFetcher` class — download audio/LRC from R2, local filesystem cache at `/tmp/sow-assets/cache/`
-- [ ] Port `download_audio()` — check cache, download via signed URL, write to cache
-- [ ] Port `download_lrc()` — download LRC content via signed URL
-- [ ] Port `cleanup_temp()` — clean temp directory
-- [ ] Write tests — R2 client initialization, signed URL generation, asset fetcher caching logic (mock boto3)
-- [ ] Run tests — must pass
+- [x] Port R2 client using boto3 S3 client with Cloudflare R2 endpoint (`https://{account_id}.r2.cloudflarestorage.com`)
+- [x] Port `generate_signed_url()` — generate_presigned_url for GetObject
+- [x] Port `get_audio_signed_url()`, `get_lrc_signed_url()` — key construction helpers
+- [x] Port `file_exists()` — head_object with NotFound handling
+- [x] Port `get_object_size()` — head_object ContentLength
+- [x] Port `AssetFetcher` class — download audio/LRC from R2, local filesystem cache at `/tmp/sow-assets/cache/`
+- [x] Port `download_audio()` — check cache, download via signed URL, write to cache
+- [x] Port `download_lrc()` — download LRC content via signed URL
+- [x] Port `cleanup_temp()` — clean temp directory
+- [x] Write tests — R2 client initialization, signed URL generation, asset fetcher caching logic (mock boto3)
+- [x] Run tests — must pass
 
 ### Task 8: Port R2 Uploader to Python
 
