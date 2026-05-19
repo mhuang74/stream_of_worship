@@ -36,7 +36,7 @@ def parse_lrc(lrc_content: str) -> list[LRCLine]:
         time_seconds = minutes * 60 + seconds + milliseconds / 1000.0
         if text:
             lines.append(LRCLine(time_seconds=time_seconds, text=text))
-    lines.sort(key=lambda l: l.time_seconds)
+    lines.sort(key=lambda line: line.time_seconds)
     return lines
 
 

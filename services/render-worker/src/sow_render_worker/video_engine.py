@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 import shutil
 import subprocess
@@ -9,17 +8,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from sow_render_worker.audio_engine import AudioSegmentInfo
+from sow_render_worker.audio_engine import AudioSegmentInfo, get_audio_info
 from sow_render_worker.chapters import Chapter, ChaptersManifest, chapters_to_ffmpeg_metadata
 from sow_render_worker.frame_renderer import (
-    FONT_SIZE_PRESETS,
     VIDEO_TEMPLATES,
     FontSizePreset,
     FrameRenderer,
     SegmentInfo,
     TitleCardConfig,
     VideoTemplateName,
-    VideoTemplate,
 )
 from sow_render_worker.lrc_parser import GlobalLRCLine, convert_to_global_timeline, parse_lrc
 
@@ -53,7 +50,7 @@ ProgressCallback = Callable[[int, int], None]
 
 
 class AssetFetcherProtocol(Protocol):
-    async def download_lrc(self, hash_prefix: str) -> str | None: ...
+    def download_lrc(self, hash_prefix: str) -> str | None: ...
 
     def get_temp_dir(self) -> str: ...
 
@@ -72,7 +69,7 @@ class VideoEngine:
         ffprobe_path: str | None = None,
     ):
         self.asset_fetcher = asset_fetcher
-        self.template = FrameRenderer.get_template(template)
+        self.template = VIDEO_TEMPLATES.get(template, VIDEO_TEMPLATES["dark"])
         self.font_size_preset = font_size_preset
         self.resolution = RESOLUTION_MAP.get(resolution, (1920, 1080))
         self.fps = fps
@@ -92,52 +89,6 @@ class VideoEngine:
         found = shutil.which("ffmpeg")
         return found or "ffmpeg"
 
-    async def get_audio_info(
-        self, file_path: str
-    ) -> dict[str, Any] | None:
-        try:
-            p = Path(file_path)
-            if not p.exists():
-                return None
-            result = subprocess.run(
-                [
-                    self.ffprobe_path,
-                    "-v",
-                    "quiet",
-                    "-print_format",
-                    "json",
-                    "-show_format",
-                    "-show_streams",
-                    file_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode != 0:
-                return None
-            metadata = json.loads(result.stdout)
-            streams = metadata.get("streams", [])
-            if not streams:
-                return None
-            audio_stream = None
-            for s in streams:
-                if s.get("codec_type") == "audio":
-                    audio_stream = s
-                    break
-            if audio_stream is None:
-                audio_stream = streams[0]
-            fmt = metadata.get("format", {})
-            duration_seconds = float(fmt.get("duration", 0))
-            return {
-                "duration_seconds": duration_seconds,
-                "duration_ms": round(duration_seconds * 1000),
-                "sample_rate": int(audio_stream.get("sample_rate", 44100)),
-                "channels": int(audio_stream.get("channels", 2)),
-            }
-        except Exception:
-            return None
-
     def get_video_codec_args(self, bitrate: str = "8000k") -> list[str]:
         return [
             "-c:v",
@@ -150,7 +101,7 @@ class VideoEngine:
             bitrate,
         ]
 
-    async def generate_video(
+    def generate_video(
         self,
         audio_path: str,
         segments: list[AudioSegmentInfo],
@@ -160,7 +111,7 @@ class VideoEngine:
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        audio_info = await self.get_audio_info(audio_path)
+        audio_info = get_audio_info(audio_path)
         if not audio_info:
             raise ValueError("Could not get audio info")
 
@@ -180,7 +131,7 @@ class VideoEngine:
             if not hash_prefix:
                 continue
 
-            lrc_content = await self.asset_fetcher.download_lrc(hash_prefix)
+            lrc_content = self.asset_fetcher.download_lrc(hash_prefix)
             if not lrc_content:
                 continue
 
@@ -215,7 +166,7 @@ class VideoEngine:
             )
 
         if not all_lyrics:
-            return await self.generate_blank_video(
+            return self.generate_blank_video(
                 audio_path, output_path, total_duration_seconds
             )
 
@@ -242,13 +193,13 @@ class VideoEngine:
                 enabled=True,
                 duration_seconds=total_duration_seconds,
                 songset_name=(
-                    segments[0].item.song_title or "Worship Set" if segments else "Worship Set"
+                    (segments[0].item.song_title or "Worship Set") if segments else "Worship Set"
                 ),
                 song_count=len(segments),
                 total_duration_seconds=total_duration_seconds,
             )
 
-        await self.encode_video_with_ffmpeg(
+        self.encode_video_with_ffmpeg(
             audio_path,
             output_path,
             total_frames,
@@ -268,7 +219,7 @@ class VideoEngine:
             fps=self.fps,
         )
 
-    async def encode_video_with_ffmpeg(
+    def encode_video_with_ffmpeg(
         self,
         audio_path: str,
         output_path: str,
@@ -375,7 +326,7 @@ class VideoEngine:
         if progress_callback:
             progress_callback(total_frames, total_frames)
 
-    async def generate_blank_video(
+    def generate_blank_video(
         self,
         audio_path: str,
         output_path: str,
@@ -421,7 +372,7 @@ class VideoEngine:
             fps=self.fps,
         )
 
-    async def inject_chapters(
+    def inject_chapters(
         self,
         video_path: str,
         chapters: list[ChapterInfo],

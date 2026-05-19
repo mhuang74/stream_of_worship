@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 from PIL import Image, ImageDraw, ImageFont
@@ -115,10 +115,6 @@ class FrameRenderer:
         self.font_size_preset = font_size_preset
         self.resolution = resolution or template.resolution
         self.base_font_size = FONT_SIZE_PRESETS[font_size_preset]
-        self._last_logged_song: str | None = None
-        self._last_logged_lyric_time: float | None = None
-        self._last_logged_lyric_text: str | None = None
-        self._stuck_frame_counter = 0
 
     def get_base_font_size(self) -> int:
         return self.base_font_size
@@ -323,18 +319,6 @@ class FrameRenderer:
 
         current_line = song_lyrics[current_index]
 
-        is_same_song = self._last_logged_song == current_title
-        is_same_lyric_time = self._last_logged_lyric_time == current_line.global_time_seconds
-        is_same_text = self._last_logged_lyric_text == current_line.text
-
-        if is_same_song and (is_same_lyric_time or is_same_text):
-            self._stuck_frame_counter += 1
-        else:
-            self._stuck_frame_counter = 0
-            self._last_logged_song = current_title
-            self._last_logged_lyric_time = current_line.global_time_seconds
-            self._last_logged_lyric_text = current_line.text
-
         is_last_lyric = current_index == len(song_lyrics) - 1
         fade_alpha = 255
         is_last_lyric_faded = False
@@ -448,19 +432,3 @@ class FrameRenderer:
         )
 
         return img
-
-    @staticmethod
-    def get_available_templates() -> list[VideoTemplateName]:
-        return list(VIDEO_TEMPLATES.keys())
-
-    @staticmethod
-    def get_template(name: VideoTemplateName) -> VideoTemplate:
-        return VIDEO_TEMPLATES.get(name, VIDEO_TEMPLATES["dark"])
-
-    @staticmethod
-    def get_available_font_sizes() -> list[FontSizePreset]:
-        return ["S", "M", "L", "XL"]
-
-    @staticmethod
-    def get_font_size(preset: FontSizePreset) -> int:
-        return FONT_SIZE_PRESETS[preset]

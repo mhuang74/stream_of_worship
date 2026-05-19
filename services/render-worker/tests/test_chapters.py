@@ -118,8 +118,7 @@ class TestChaptersManifest:
 
 
 class TestBuildChaptersFromSegments:
-    @pytest.mark.asyncio
-    async def test_basic_build(self):
+    def test_basic_build(self):
         segments = [
             FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
             FakeSegment("Song B", "id2", "hash2", 30.0, 45.0),
@@ -128,7 +127,7 @@ class TestBuildChaptersFromSegments:
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
             return [ChapterLine(text="Line 1", start_seconds=start_seconds + 5.0)]
 
-        chapters = await build_chapters_from_segments(segments, get_lyrics)
+        chapters = build_chapters_from_segments(segments, get_lyrics)
         assert len(chapters) == 2
         assert chapters[0].position == 1
         assert chapters[0].song_title == "Song A"
@@ -139,8 +138,7 @@ class TestBuildChaptersFromSegments:
         assert chapters[1].start_seconds == 30.0
         assert chapters[1].end_seconds == 75.0
 
-    @pytest.mark.asyncio
-    async def test_no_hash_prefix_empty_lines(self):
+    def test_no_hash_prefix_empty_lines(self):
         segments = [
             FakeSegment("Song A", "id1", None, 0.0, 30.0),
         ]
@@ -148,25 +146,23 @@ class TestBuildChaptersFromSegments:
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
             return [ChapterLine(text="Should not appear", start_seconds=0.0)]
 
-        chapters = await build_chapters_from_segments(segments, get_lyrics)
+        chapters = build_chapters_from_segments(segments, get_lyrics)
         assert len(chapters) == 1
         assert chapters[0].lines == ()
 
-    @pytest.mark.asyncio
-    async def test_async_get_lyrics(self):
+    def test_async_get_lyrics(self):
         segments = [
             FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
         ]
 
-        async def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
+        def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
             return [ChapterLine(text="Async line", start_seconds=start_seconds + 3.0)]
 
-        chapters = await build_chapters_from_segments(segments, get_lyrics)
+        chapters = build_chapters_from_segments(segments, get_lyrics)
         assert len(chapters[0].lines) == 1
         assert chapters[0].lines[0].text == "Async line"
 
-    @pytest.mark.asyncio
-    async def test_fallback_song_id_when_no_title(self):
+    def test_fallback_song_id_when_no_title(self):
         segments = [
             FakeSegment(None, "my-song-id", "hash1", 0.0, 30.0),
         ]
@@ -174,11 +170,10 @@ class TestBuildChaptersFromSegments:
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
             return []
 
-        chapters = await build_chapters_from_segments(segments, get_lyrics)
+        chapters = build_chapters_from_segments(segments, get_lyrics)
         assert chapters[0].song_title == "my-song-id"
 
-    @pytest.mark.asyncio
-    async def test_fallback_position_when_no_title_no_id(self):
+    def test_fallback_position_when_no_title_no_id(self):
         segments = [
             FakeSegment(None, "", "hash1", 0.0, 30.0),
         ]
@@ -186,18 +181,16 @@ class TestBuildChaptersFromSegments:
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
             return []
 
-        chapters = await build_chapters_from_segments(segments, get_lyrics)
+        chapters = build_chapters_from_segments(segments, get_lyrics)
         assert chapters[0].song_title == "Song 1"
 
-    @pytest.mark.asyncio
-    async def test_empty_segments(self):
-        chapters = await build_chapters_from_segments([], lambda h, s: [])
+    def test_empty_segments(self):
+        chapters = build_chapters_from_segments([], lambda h, s: [])
         assert chapters == []
 
 
 class TestGenerateChaptersManifest:
-    @pytest.mark.asyncio
-    async def test_basic_generation(self):
+    def test_basic_generation(self):
         segments = [
             FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
             FakeSegment("Song B", "id2", "hash2", 30.0, 45.0),
@@ -211,7 +204,7 @@ class TestGenerateChaptersManifest:
         def download_lrc(hash_prefix: str) -> str | None:
             return lrc_map.get(hash_prefix)
 
-        manifest = await generate_chapters_manifest(segments, download_lrc, 75.0)
+        manifest = generate_chapters_manifest(segments, download_lrc, 75.0)
         assert manifest.total_duration_seconds == 75.0
         assert len(manifest.chapters) == 2
         assert manifest.generated_at != ""
@@ -224,21 +217,19 @@ class TestGenerateChaptersManifest:
         assert manifest.chapters[1].lines[0].text == "Line 3"
         assert manifest.chapters[1].lines[0].start_seconds == 33.0
 
-    @pytest.mark.asyncio
-    async def test_async_download_lrc(self):
+    def test_async_download_lrc(self):
         segments = [
             FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
         ]
 
-        async def download_lrc(hash_prefix: str) -> str | None:
+        def download_lrc(hash_prefix: str) -> str | None:
             return "[00:05.00]Async line"
 
-        manifest = await generate_chapters_manifest(segments, download_lrc, 30.0)
+        manifest = generate_chapters_manifest(segments, download_lrc, 30.0)
         assert len(manifest.chapters[0].lines) == 1
         assert manifest.chapters[0].lines[0].text == "Async line"
 
-    @pytest.mark.asyncio
-    async def test_lrc_download_returns_none(self):
+    def test_lrc_download_returns_none(self):
         segments = [
             FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
         ]
@@ -246,11 +237,10 @@ class TestGenerateChaptersManifest:
         def download_lrc(hash_prefix: str) -> str | None:
             return None
 
-        manifest = await generate_chapters_manifest(segments, download_lrc, 30.0)
+        manifest = generate_chapters_manifest(segments, download_lrc, 30.0)
         assert manifest.chapters[0].lines == ()
 
-    @pytest.mark.asyncio
-    async def test_lrc_download_raises_exception(self):
+    def test_lrc_download_raises_exception(self):
         segments = [
             FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
         ]
@@ -258,11 +248,10 @@ class TestGenerateChaptersManifest:
         def download_lrc(hash_prefix: str) -> str | None:
             raise RuntimeError("Download failed")
 
-        manifest = await generate_chapters_manifest(segments, download_lrc, 30.0)
+        manifest = generate_chapters_manifest(segments, download_lrc, 30.0)
         assert manifest.chapters[0].lines == ()
 
-    @pytest.mark.asyncio
-    async def test_no_hash_prefix(self):
+    def test_no_hash_prefix(self):
         segments = [
             FakeSegment("Song A", "id1", None, 0.0, 30.0),
         ]
@@ -270,13 +259,12 @@ class TestGenerateChaptersManifest:
         def download_lrc(hash_prefix: str) -> str | None:
             return "[00:05.00]Should not appear"
 
-        manifest = await generate_chapters_manifest(segments, download_lrc, 30.0)
+        manifest = generate_chapters_manifest(segments, download_lrc, 30.0)
         assert manifest.chapters[0].lines == ()
 
-    @pytest.mark.asyncio
-    async def test_generated_at_is_iso_format(self):
+    def test_generated_at_is_iso_format(self):
         segments = [FakeSegment("Song A", "id1", None, 0.0, 30.0)]
-        manifest = await generate_chapters_manifest(segments, lambda h: None, 30.0)
+        manifest = generate_chapters_manifest(segments, lambda h: None, 30.0)
         assert "T" in manifest.generated_at
 
 

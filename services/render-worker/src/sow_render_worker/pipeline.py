@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import logging
-import shutil
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
@@ -137,7 +134,7 @@ class PipelineCancelledError(Exception):
     pass
 
 
-async def execute_render_pipeline(
+def execute_render_pipeline(
     job_id: str,
     user_id: int,
     conn: psycopg2.extensions.connection,
@@ -208,7 +205,7 @@ async def execute_render_pipeline(
 
         audio_output_path = str(Path(temp_dir) / job_id / "output.mp3")
 
-        audio_result = await generate_songset_audio(
+        audio_result = generate_songset_audio(
             items,
             audio_output_path,
             asset_fetcher,
@@ -259,13 +256,19 @@ async def execute_render_pipeline(
                 ),
             )
 
-            await video_engine.generate_video(
+            video_engine.generate_video(
                 audio_output_path,
                 list(audio_result.segments),
                 video_output_path,
             )
 
             check_cancelled()
+
+        chapters_manifest = generate_chapters_manifest(
+            list(audio_result.segments),
+            asset_fetcher.download_lrc,
+            audio_result.total_duration_seconds,
+        )
 
         update_render_progress(
             conn,
@@ -277,12 +280,6 @@ async def execute_render_pipeline(
                 total_phases=len(PHASES),
                 elapsed_seconds=elapsed_seconds(),
             ),
-        )
-
-        chapters_manifest = await generate_chapters_manifest(
-            list(audio_result.segments),
-            asset_fetcher.download_lrc,
-            audio_result.total_duration_seconds,
         )
 
         upload_result = uploader.upload_render_artifacts(

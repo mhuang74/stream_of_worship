@@ -1,6 +1,6 @@
 import os
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import psycopg2
@@ -107,7 +107,9 @@ def get_connection(database_url: Optional[str] = None) -> psycopg2.extensions.co
     url = database_url or os.environ.get("DATABASE_URL")
     if not url:
         raise ValueError("DATABASE_URL is required")
-    return psycopg2.connect(url)
+    conn = psycopg2.connect(url)
+    conn.autocommit = True
+    return conn
 
 
 def get_render_job(
@@ -269,9 +271,7 @@ def recover_orphaned_jobs(
     threshold_minutes: int = ORPHANED_JOB_THRESHOLD_MINUTES,
 ) -> int:
     now = datetime.now(timezone.utc)
-    threshold = datetime.now(timezone.utc) - __import__("datetime").timedelta(
-        minutes=threshold_minutes
-    )
+    threshold = now - timedelta(minutes=threshold_minutes)
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(

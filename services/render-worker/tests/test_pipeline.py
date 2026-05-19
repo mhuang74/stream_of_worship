@@ -1,7 +1,6 @@
-import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -347,8 +346,7 @@ class TestPipelineCancelledError:
 
 
 class TestExecuteRenderPipeline:
-    @pytest.mark.asyncio
-    async def test_full_pipeline_flow(self):
+    def test_full_pipeline_flow(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         items = [_make_songset_item()]
@@ -363,14 +361,14 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -378,7 +376,6 @@ class TestExecuteRenderPipeline:
 
             mock_start.assert_called_once_with(mock_conn, "job_abc123", 42)
             assert mock_update.call_count >= 4
-            mock_gen_audio = patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result)
             mock_ve_class.assert_called_once()
             mock_ve.generate_video.assert_called_once()
             mock_uploader.upload_render_artifacts.assert_called_once()
@@ -391,8 +388,7 @@ class TestExecuteRenderPipeline:
             mock_fail.assert_not_called()
             mock_fetcher.cleanup_temp.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_no_video(self):
+    def test_pipeline_no_video(self):
         job = _make_render_job(video_enabled=False)
         mock_conn = MagicMock()
         items = [_make_songset_item()]
@@ -407,11 +403,11 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.4), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -419,16 +415,14 @@ class TestExecuteRenderPipeline:
 
             mock_ve_class.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_job_not_found(self):
+    def test_pipeline_job_not_found(self):
         mock_conn = MagicMock()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=None):
             with pytest.raises(ValueError, match="Render job .* not found"):
-                await execute_render_pipeline("nonexistent", 99, mock_conn)
+                execute_render_pipeline("nonexistent", 99, mock_conn)
 
-    @pytest.mark.asyncio
-    async def test_pipeline_empty_songset(self):
+    def test_pipeline_empty_songset(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
@@ -442,7 +436,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             with pytest.raises(ValueError, match="Songset has no items"):
-                await execute_render_pipeline(
+                execute_render_pipeline(
                     "job_abc123", 42, mock_conn,
                     asset_fetcher=mock_fetcher,
                     uploader=mock_uploader,
@@ -450,8 +444,7 @@ class TestExecuteRenderPipeline:
 
             mock_fail.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_cancellation_before_audio(self):
+    def test_pipeline_cancellation_before_audio(self):
         job = _make_render_job()
         cancelled_job = _make_render_job(status="cancelled")
         mock_conn = MagicMock()
@@ -472,7 +465,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[_make_songset_item()]), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -481,8 +474,7 @@ class TestExecuteRenderPipeline:
             mock_fail.assert_not_called()
             mock_fetcher.cleanup_temp.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_cancellation_during_video(self):
+    def test_pipeline_cancellation_during_video(self):
         job = _make_render_job()
         items = [_make_songset_item()]
         audio_result = _make_audio_result(items)
@@ -504,13 +496,13 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -519,8 +511,7 @@ class TestExecuteRenderPipeline:
             mock_fail.assert_not_called()
             mock_fetcher.cleanup_temp.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_error_marks_job_failed(self):
+    def test_pipeline_error_marks_job_failed(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
@@ -534,7 +525,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             with pytest.raises(RuntimeError, match="DB error"):
-                await execute_render_pipeline(
+                execute_render_pipeline(
                     "job_abc123", 42, mock_conn,
                     asset_fetcher=mock_fetcher,
                     uploader=mock_uploader,
@@ -545,8 +536,7 @@ class TestExecuteRenderPipeline:
             )
             mock_fetcher.cleanup_temp.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_error_when_cancelled_does_not_mark_failed(self):
+    def test_pipeline_error_when_cancelled_does_not_mark_failed(self):
         job = _make_render_job()
         cancelled_job = _make_render_job(status="cancelled")
         mock_conn = MagicMock()
@@ -567,7 +557,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=RuntimeError("some error")), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -575,8 +565,7 @@ class TestExecuteRenderPipeline:
 
             mock_fail.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_cleanup_on_success(self):
+    def test_pipeline_cleanup_on_success(self):
         job = _make_render_job()
         items = [_make_songset_item()]
         audio_result = _make_audio_result(items)
@@ -591,14 +580,14 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -606,8 +595,7 @@ class TestExecuteRenderPipeline:
 
             mock_fetcher.cleanup_temp.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_cleanup_on_error(self):
+    def test_pipeline_cleanup_on_error(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
@@ -621,7 +609,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             with pytest.raises(RuntimeError, match="boom"):
-                await execute_render_pipeline(
+                execute_render_pipeline(
                     "job_abc123", 42, mock_conn,
                     asset_fetcher=mock_fetcher,
                     uploader=mock_uploader,
@@ -629,8 +617,7 @@ class TestExecuteRenderPipeline:
 
             mock_fetcher.cleanup_temp.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_cleanup_failure_does_not_suppress_original(self):
+    def test_pipeline_cleanup_failure_does_not_suppress_original(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
@@ -645,14 +632,13 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             with pytest.raises(RuntimeError, match="original error"):
-                await execute_render_pipeline(
+                execute_render_pipeline(
                     "job_abc123", 42, mock_conn,
                     asset_fetcher=mock_fetcher,
                     uploader=mock_uploader,
                 )
 
-    @pytest.mark.asyncio
-    async def test_pipeline_progress_updates_through_phases(self):
+    def test_pipeline_progress_updates_through_phases(self):
         job = _make_render_job()
         items = [_make_songset_item()]
         audio_result = _make_audio_result(items)
@@ -667,14 +653,14 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -689,8 +675,7 @@ class TestExecuteRenderPipeline:
             assert "encoding_video" in phases_seen
             assert "uploading" in phases_seen
 
-    @pytest.mark.asyncio
-    async def test_pipeline_fail_render_job_error_is_swallowed(self):
+    def test_pipeline_fail_render_job_error_is_swallowed(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
@@ -704,14 +689,13 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             with pytest.raises(RuntimeError, match="original"):
-                await execute_render_pipeline(
+                execute_render_pipeline(
                     "job_abc123", 42, mock_conn,
                     asset_fetcher=mock_fetcher,
                     uploader=mock_uploader,
                 )
 
-    @pytest.mark.asyncio
-    async def test_pipeline_creates_default_asset_fetcher(self):
+    def test_pipeline_creates_default_asset_fetcher(self):
         job = _make_render_job()
         items = [_make_songset_item()]
         audio_result = _make_audio_result(items)
@@ -725,8 +709,8 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.AssetFetcher") as mock_af_class, \
              patch("sow_render_worker.pipeline.R2Uploader", return_value=mock_uploader), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
@@ -734,10 +718,10 @@ class TestExecuteRenderPipeline:
             mock_af = MagicMock()
             mock_af.get_temp_dir.return_value = Path("/tmp/sow-test")
             mock_af_class.return_value = mock_af
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 uploader=mock_uploader,
             )
@@ -745,8 +729,7 @@ class TestExecuteRenderPipeline:
             mock_af_class.assert_called_once()
             mock_af.initialize.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_pipeline_audio_disabled_skips_mp3_upload(self):
+    def test_pipeline_audio_disabled_skips_mp3_upload(self):
         job = _make_render_job(audio_enabled=False)
         items = [_make_songset_item()]
         audio_result = _make_audio_result(items)
@@ -761,14 +744,14 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
@@ -778,8 +761,7 @@ class TestExecuteRenderPipeline:
             artifacts = call_args[0][1]
             assert artifacts.mp3_path is None
 
-    @pytest.mark.asyncio
-    async def test_pipeline_estimated_total_seconds(self):
+    def test_pipeline_estimated_total_seconds(self):
         job = _make_render_job()
         items = [_make_songset_item()]
         audio_result = _make_audio_result(items)
@@ -794,14 +776,14 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
-             patch("sow_render_worker.pipeline.generate_songset_audio", new_callable=AsyncMock, return_value=audio_result), \
-             patch("sow_render_worker.pipeline.generate_chapters_manifest", new_callable=AsyncMock, return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
-            mock_ve = AsyncMock()
+            mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
-            await execute_render_pipeline(
+            execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
                 uploader=mock_uploader,
