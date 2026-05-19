@@ -24,6 +24,7 @@ class AssetFetcher:
         self._r2_client = r2_client or create_r2_client_from_env()
         self._http = urllib3.PoolManager()
         self._lrc_cache: dict[str, str | None] = {}
+        self._job_temp_dir: Path | None = None
 
     def initialize(self) -> None:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -32,6 +33,11 @@ class AssetFetcher:
     def get_temp_dir(self) -> Path:
         self._temp_dir.mkdir(parents=True, exist_ok=True)
         return self._temp_dir
+
+    def get_job_temp_dir(self, job_id: str) -> Path:
+        self._job_temp_dir = self._temp_dir / job_id
+        self._job_temp_dir.mkdir(parents=True, exist_ok=True)
+        return self._job_temp_dir
 
     def get_cache_dir(self) -> Path:
         return self._cache_dir
@@ -84,6 +90,12 @@ class AssetFetcher:
             return None
 
     def cleanup_temp(self) -> None:
+        if self._job_temp_dir is not None:
+            try:
+                shutil.rmtree(self._job_temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return
         try:
             shutil.rmtree(self._temp_dir, ignore_errors=True)
         except Exception:

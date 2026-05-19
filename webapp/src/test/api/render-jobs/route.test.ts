@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import { POST } from "@/app/api/render-jobs/route";
 import { auth } from "@/lib/auth";
-import { createRenderJob } from "@/lib/render/job-manager";
+import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -19,6 +19,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/render/job-manager", () => ({
   createRenderJob: vi.fn(),
+  failRenderJob: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/sqs/client", () => ({
@@ -229,6 +230,7 @@ describe("POST /api/render-jobs", () => {
     expect(response.status).toBe(500);
     const data = await response.json();
     expect(data.error).toBe("Failed to enqueue render job");
+    expect(failRenderJob).toHaveBeenCalledWith("job-1", 1, "Failed to enqueue render job to SQS");
   });
 
   it("returns 400 when songsetId is missing", async () => {

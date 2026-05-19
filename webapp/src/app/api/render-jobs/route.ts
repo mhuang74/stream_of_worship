@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { createRenderJob } from "@/lib/render/job-manager";
+import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
 import { createSQSClientFromEnv } from "@/lib/sqs/client";
 import { z } from "zod";
 
@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
       });
     } catch (sqsError) {
       console.error("Failed to enqueue render job to SQS:", sqsError);
+      try {
+        await failRenderJob(job.id, Number(session.user.id), "Failed to enqueue render job to SQS");
+      } catch (cleanupError) {
+        console.error("Failed to mark orphaned job as failed:", cleanupError);
+      }
       return NextResponse.json(
         { error: "Failed to enqueue render job" },
         { status: 500 }

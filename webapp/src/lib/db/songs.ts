@@ -321,6 +321,9 @@ export async function semanticSearchSongs(
   }
 
   const vectorStr = `[${embedding.join(",")}]`;
+  if (!/^\[-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*\]$/.test(vectorStr)) {
+    throw new Error("Invalid embedding: vector string contains unexpected characters");
+  }
 
   const rows = await db.execute(sql`
     SELECT * FROM (

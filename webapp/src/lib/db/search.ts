@@ -98,7 +98,7 @@ export async function getEmbeddingForRecording(
   recordingContentHash: string
 ): Promise<number[] | null> {
   const rows = await db
-    .select({ embedding: songEmbeddings.embedding })
+    .select({ embedding: sql<string>`${songEmbeddings.embedding}::text` })
     .from(songEmbeddings)
     .where(eq(songEmbeddings.recordingContentHash, recordingContentHash))
     .limit(1);
@@ -107,10 +107,10 @@ export async function getEmbeddingForRecording(
     return null;
   }
 
-  const embeddingStr = rows[0].embedding as unknown as string;
+  const embeddingStr = rows[0].embedding;
   try {
     const parsed = JSON.parse(embeddingStr);
-    if (Array.isArray(parsed)) {
+    if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
       return parsed as number[];
     }
   } catch {

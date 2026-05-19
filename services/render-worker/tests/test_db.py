@@ -105,14 +105,26 @@ class TestGetConnection:
         with patch("sow_render_worker.db.psycopg2.connect") as mock_connect:
             mock_connect.return_value = MagicMock()
             conn = get_connection("postgresql://user:pass@localhost/db")
-            mock_connect.assert_called_once_with("postgresql://user:pass@localhost/db")
+            mock_connect.assert_called_once_with(
+                "postgresql://user:pass@localhost/db",
+                keepalives=1,
+                keepalives_idle=60,
+                keepalives_interval=10,
+                keepalives_count=5,
+            )
 
     def test_from_env_var(self):
         with patch("sow_render_worker.db.psycopg2.connect") as mock_connect:
             mock_connect.return_value = MagicMock()
             with patch.dict("os.environ", {"DATABASE_URL": "postgresql://env:pass@host/db"}):
                 conn = get_connection()
-                mock_connect.assert_called_once_with("postgresql://env:pass@host/db")
+                mock_connect.assert_called_once_with(
+                    "postgresql://env:pass@host/db",
+                    keepalives=1,
+                    keepalives_idle=60,
+                    keepalives_interval=10,
+                    keepalives_count=5,
+                )
 
     def test_missing_url_raises(self):
         with patch.dict("os.environ", {}, clear=True):

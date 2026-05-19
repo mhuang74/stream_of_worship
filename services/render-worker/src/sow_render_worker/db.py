@@ -107,7 +107,13 @@ def get_connection(database_url: Optional[str] = None) -> psycopg2.extensions.co
     url = database_url or os.environ.get("DATABASE_URL")
     if not url:
         raise ValueError("DATABASE_URL is required")
-    conn = psycopg2.connect(url)
+    conn = psycopg2.connect(
+        url,
+        keepalives=1,
+        keepalives_idle=60,
+        keepalives_interval=10,
+        keepalives_count=5,
+    )
     conn.autocommit = True
     return conn
 
@@ -290,8 +296,8 @@ def recover_orphaned_jobs(
         for job in orphaned:
             cur.execute(
                 "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
-                "WHERE id = %s",
-                ("failed", error_msg, now, job["id"]),
+                "WHERE id = %s AND status = %s",
+                ("failed", error_msg, now, job["id"], "running"),
             )
 
     return len(orphaned)

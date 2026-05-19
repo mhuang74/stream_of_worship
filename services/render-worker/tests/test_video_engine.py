@@ -69,8 +69,8 @@ class MockAssetFetcher:
     def download_lrc(self, hash_prefix: str) -> str | None:
         return self._lrc_content
 
-    def get_temp_dir(self) -> str:
-        return self._temp_dir
+    def get_temp_dir(self) -> Path:
+        return Path(self._temp_dir)
 
 
 class TestVideoEngineInit:

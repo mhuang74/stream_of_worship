@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg2
@@ -151,7 +152,7 @@ def execute_render_pipeline(
         uploader = R2Uploader()
 
     asset_fetcher.initialize()
-    temp_dir = asset_fetcher.get_temp_dir()
+    temp_dir = asset_fetcher.get_job_temp_dir(job_id)
     pipeline_start = time.monotonic()
 
     def check_cancelled() -> None:
@@ -173,6 +174,7 @@ def execute_render_pipeline(
                 phase=PHASES[0],
                 phase_index=0,
                 total_phases=len(PHASES),
+                started_at=datetime.now(timezone.utc),
                 elapsed_seconds=0,
             ),
         )
@@ -203,7 +205,7 @@ def execute_render_pipeline(
             ),
         )
 
-        audio_output_path = str(Path(temp_dir) / job_id / "output.mp3")
+        audio_output_path = str(Path(temp_dir) / "output.mp3")
 
         audio_result = generate_songset_audio(
             items,
@@ -242,7 +244,7 @@ def execute_render_pipeline(
                 title_card_duration_seconds=job.title_card_duration_seconds or 5.0,
             )
 
-            video_output_path = str(Path(temp_dir) / job_id / "output.mp4")
+            video_output_path = str(Path(temp_dir) / "output.mp4")
 
             update_render_progress(
                 conn,

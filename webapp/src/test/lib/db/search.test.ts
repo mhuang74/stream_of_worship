@@ -264,4 +264,19 @@ describe("getEmbeddingForRecording", () => {
 
     expect(result).toBeNull();
   });
+
+  it("returns null when parsed embedding contains non-number values", async () => {
+    const mockFrom = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue([{ embedding: '[0.1, "bad", 0.3]' }]),
+      }),
+    });
+    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
+
+    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
+
+    const result = await getEmbeddingForRecording("hash123");
+
+    expect(result).toBeNull();
+  });
 });
