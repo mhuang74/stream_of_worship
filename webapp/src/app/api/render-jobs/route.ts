@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createRenderJob } from "@/lib/render/job-manager";
-import { executeRenderPipeline } from "@/lib/render/pipeline";
+import { createSQSClientFromEnv } from "@/lib/sqs/client";
 import { z } from "zod";
 
 const createRenderJobSchema = z.object({
@@ -37,11 +37,20 @@ export async function POST(request: NextRequest) {
 
     const job = await createRenderJob(Number(session.user.id), parsed.data);
 
-    after(() =>
-      executeRenderPipeline(job.id, Number(session.user.id)).catch((err) => {
-        console.error("Render pipeline failed:", err);
-      })
-    );
+    try {
+      const sqsClient = createSQSClientFromEnv();
+      await sqsClient.sendMessage({
+        jobId: job.id,
+        songsetId: job.songsetId,
+        userId: Number(session.user.id),
+      });
+    } catch (sqsError) {
+      console.error("Failed to enqueue render job to SQS:", sqsError);
+      return NextResponse.json(
+        { error: "Failed to enqueue render job" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(job, { status: 201 });
   } catch (error) {

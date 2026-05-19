@@ -1,19 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("next/server", async () => {
-  const actual = await vi.importActual<typeof import("next/server")>("next/server");
-  return {
-    ...actual,
-    after: vi.fn(),
-  };
-});
-
 import { POST } from "@/app/api/render-jobs/route";
 import { auth } from "@/lib/auth";
 import { createRenderJob } from "@/lib/render/job-manager";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+const mockSendMessage = vi.fn().mockResolvedValue("msg-123");
 
 vi.mock("@/lib/auth", () => ({
   auth: {
@@ -27,8 +21,13 @@ vi.mock("@/lib/render/job-manager", () => ({
   createRenderJob: vi.fn(),
 }));
 
-vi.mock("@/lib/render/pipeline", () => ({
-  executeRenderPipeline: vi.fn().mockResolvedValue(undefined),
+vi.mock("@/lib/sqs/client", () => ({
+  SQSClient: vi.fn().mockImplementation(() => ({
+    sendMessage: mockSendMessage,
+  })),
+  createSQSClientFromEnv: vi.fn().mockImplementation(() => ({
+    sendMessage: mockSendMessage,
+  })),
 }));
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
@@ -60,7 +59,7 @@ describe("POST /api/render-jobs", () => {
     expect(data.error).toBe("Unauthorized");
   });
 
-  it("creates render job with minimal input", async () => {
+  it("creates render job and enqueues to SQS with minimal input", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
@@ -110,9 +109,14 @@ describe("POST /api/render-jobs", () => {
     expect(data.status).toBe("queued");
     expect(data.phase).toBe("preparing");
     expect(createRenderJob).toHaveBeenCalledWith(1, { songsetId: "songset-1" });
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      jobId: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+    });
   });
 
-  it("creates render job with all options", async () => {
+  it("creates render job with all options and enqueues to SQS", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
@@ -171,6 +175,60 @@ describe("POST /api/render-jobs", () => {
     expect(data.fontSizePreset).toBe("L");
     expect(data.includeTitleCard).toBe(true);
     expect(data.titleCardDurationSeconds).toBe(15);
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      jobId: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+    });
+  });
+
+  it("returns 500 when SQS enqueue fails", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const mockJob = {
+      id: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+      status: "queued",
+      phase: "preparing",
+      phaseIndex: 0,
+      totalPhases: 5,
+      percentComplete: 0,
+      estimatedSecondsLeft: null,
+      elapsedSeconds: 0,
+      errorMessage: null,
+      estimatedTotalSeconds: null,
+      totalDurationSeconds: null,
+      startedAt: null,
+      template: "dark",
+      resolution: "720p",
+      audioEnabled: true,
+      videoEnabled: true,
+      fontSizePreset: "M",
+      includeTitleCard: false,
+      titleCardDurationSeconds: null,
+      mp3R2Key: null,
+      mp4R2Key: null,
+      chaptersR2Key: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      completedAt: null,
+    };
+
+    vi.mocked(createRenderJob).mockResolvedValue(mockJob);
+    mockSendMessage.mockRejectedValueOnce(new Error("SQS service error"));
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(500);
+    const data = await response.json();
+    expect(data.error).toBe("Failed to enqueue render job");
   });
 
   it("returns 400 when songsetId is missing", async () => {
