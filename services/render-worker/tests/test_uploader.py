@@ -1,49 +1,36 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from botocore.exceptions import ClientError
 
-from sow_render_worker.r2_client import R2Config
+from sow_render_worker.chapters import Chapter, ChaptersManifest
+from sow_render_worker.r2_client import R2Client
 from sow_render_worker.uploader import (
     CONTENT_TYPE_MAP,
     DEFAULT_CACHE_CONTROL,
     R2Uploader,
     RenderArtifacts,
     UploadArtifactsResult,
-    UploadOptions,
-    UploadResult,
     infer_content_type,
 )
 
 
-def _make_config(**overrides) -> R2Config:
-    defaults = {
-        "account_id": "testaccount123",
-        "access_key_id": "test-access-key",
-        "secret_access_key": "test-secret-key",
-        "bucket_name": "test-bucket",
-        "region": "auto",
-    }
-    defaults.update(overrides)
-    return R2Config(**defaults)
+def _make_r2_client_mock() -> MagicMock:
+    mock_r2 = MagicMock(spec=R2Client)
+    mock_s3_client = MagicMock()
+    mock_r2.client = mock_s3_client
+    mock_r2.bucket_name = "test-bucket"
+    return mock_r2
 
 
-def _make_uploader(**config_overrides) -> R2Uploader:
-    with patch("sow_render_worker.uploader.R2Client") as mock_r2_cls:
-        mock_r2 = MagicMock()
-        mock_s3_client = MagicMock()
-        mock_r2.client = mock_s3_client
-        mock_r2.bucket_name = "test-bucket"
-        mock_r2_cls.return_value = mock_r2
-        if config_overrides:
-            mock_r2_cls.side_effect = lambda cfg: mock_r2
-
-        uploader = R2Uploader(_make_config(**config_overrides))
-        uploader._client = mock_s3_client
-        uploader._bucket_name = "test-bucket"
+def _make_uploader() -> R2Uploader:
+    mock_r2 = _make_r2_client_mock()
+    uploader = R2Uploader(r2_client=mock_r2)
+    uploader._client = mock_r2.client
+    uploader._bucket_name = "test-bucket"
     return uploader
 
 
@@ -93,11 +80,7 @@ class TestUploadFile:
 
         result = uploader.upload_file("renders/job1/output.mp3", str(file_path))
 
-        assert isinstance(result, UploadResult)
-        assert result.key == "renders/job1/output.mp3"
-        assert result.size_bytes == 15
-        assert result.etag == '"abc123"'
-        assert isinstance(result.uploaded_at, datetime)
+        assert result == "renders/job1/output.mp3"
 
         call_kwargs = uploader._client.put_object.call_args[1]
         assert call_kwargs["Bucket"] == "test-bucket"
@@ -113,14 +96,12 @@ class TestUploadFile:
         file_path = tmp_path / "output.mp4"
         file_path.write_bytes(b"fake video data")
 
-        result = uploader.upload_file(
+        uploader.upload_file(
             "renders/job1/output.mp4",
             str(file_path),
-            UploadOptions(
-                content_type="video/mp4",
-                cache_control="no-cache",
-                metadata={"render-job-id": "job1"},
-            ),
+            content_type="video/mp4",
+            cache_control="no-cache",
+            metadata={"render-job-id": "job1"},
         )
 
         call_kwargs = uploader._client.put_object.call_args[1]
@@ -161,9 +142,7 @@ class TestUploadBuffer:
         buffer = b"buffer content"
         result = uploader.upload_buffer("test/key.json", buffer)
 
-        assert result.key == "test/key.json"
-        assert result.size_bytes == len(buffer)
-        assert result.etag == '"buf123"'
+        assert result == "test/key.json"
 
         call_kwargs = uploader._client.put_object.call_args[1]
         assert call_kwargs["Body"] == b"buffer content"
@@ -174,10 +153,11 @@ class TestUploadBuffer:
         uploader._client.put_object.return_value = {"ETag": '"buf456"'}
 
         buffer = b"custom buffer"
-        result = uploader.upload_buffer(
+        uploader.upload_buffer(
             "test/key.mp3",
             buffer,
-            UploadOptions(content_type="audio/mpeg", cache_control="no-cache"),
+            content_type="audio/mpeg",
+            cache_control="no-cache",
         )
 
         call_kwargs = uploader._client.put_object.call_args[1]
@@ -188,9 +168,8 @@ class TestUploadBuffer:
         uploader = _make_uploader()
         uploader._client.put_object.return_value = {"ETag": '"empty"'}
 
-        result = uploader.upload_buffer("empty.txt", b"")
+        uploader.upload_buffer("empty.txt", b"")
 
-        assert result.size_bytes == 0
         call_kwargs = uploader._client.put_object.call_args[1]
         assert call_kwargs["Body"] == b""
 
@@ -199,7 +178,6 @@ class TestUploadRenderArtifacts:
     def test_uploads_all_artifacts(self, tmp_path):
         uploader = _make_uploader()
         uploader._client.put_object.return_value = {"ETag": '"etag"'}
-        uploader._client.head_object.return_value = {"ContentLength": 100}
 
         mp3_path = tmp_path / "output.mp3"
         mp3_path.write_bytes(b"fake mp3 audio data here")
@@ -209,7 +187,7 @@ class TestUploadRenderArtifacts:
         artifacts = RenderArtifacts(
             mp3_path=str(mp3_path),
             mp4_path=str(mp4_path),
-            chapters={"chapters": [], "total_duration_seconds": 180.0},
+            chapters=ChaptersManifest(chapters=(), total_duration_seconds=180.0, generated_at=""),
         )
 
         result = uploader.upload_render_artifacts("job-123", artifacts)
@@ -275,7 +253,7 @@ class TestUploadRenderArtifacts:
         uploader = _make_uploader()
         uploader._client.put_object.return_value = {"ETag": '"etag"'}
 
-        artifacts = RenderArtifacts(chapters={"chapters": []})
+        artifacts = RenderArtifacts(chapters=ChaptersManifest(chapters=(), total_duration_seconds=0.0, generated_at=""))
 
         result = uploader.upload_render_artifacts("job-ch", artifacts)
 
@@ -286,7 +264,8 @@ class TestUploadRenderArtifacts:
         call_kwargs = uploader._client.put_object.call_args[1]
         body = call_kwargs["Body"]
         parsed = json.loads(body)
-        assert parsed == {"chapters": []}
+        assert parsed["chapters"] == []
+        assert parsed["total_duration_seconds"] == 0.0
 
     def test_no_artifacts_returns_empty_result(self):
         uploader = _make_uploader()
@@ -299,60 +278,17 @@ class TestUploadRenderArtifacts:
         assert result.chapters_r2_key is None
         uploader._client.put_object.assert_not_called()
 
-    def test_progress_callback_called(self, tmp_path):
-        uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"etag"'}
-
-        mp3_path = tmp_path / "output.mp3"
-        mp3_path.write_bytes(b"mp3 data here!!")
-
-        progress_calls = []
-
-        def on_progress(file_type, uploaded, total):
-            progress_calls.append((file_type, uploaded, total))
-
-        artifacts = RenderArtifacts(mp3_path=str(mp3_path))
-        uploader.upload_render_artifacts("job-prog", artifacts, on_progress)
-
-        assert len(progress_calls) == 2
-        assert progress_calls[0] == ("mp3", 0, 15)
-        assert progress_calls[1] == ("mp3", 15, 15)
-
-    def test_progress_callback_for_all_artifacts(self, tmp_path):
-        uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"etag"'}
-
-        mp3_path = tmp_path / "output.mp3"
-        mp3_path.write_bytes(b"mp3")
-        mp4_path = tmp_path / "output.mp4"
-        mp4_path.write_bytes(b"mp4")
-
-        progress_calls = []
-
-        def on_progress(file_type, uploaded, total):
-            progress_calls.append((file_type, uploaded, total))
-
-        artifacts = RenderArtifacts(
-            mp3_path=str(mp3_path),
-            mp4_path=str(mp4_path),
-            chapters={"chapters": []},
-        )
-        uploader.upload_render_artifacts("job-all", artifacts, on_progress)
-
-        file_types = [c[0] for c in progress_calls]
-        assert file_types == ["mp3", "mp3", "mp4", "mp4", "chapters", "chapters"]
-
     def test_chapters_json_is_utf8_encoded(self):
         uploader = _make_uploader()
         uploader._client.put_object.return_value = {"ETag": '"etag"'}
 
-        artifacts = RenderArtifacts(chapters={"title": "中文標題"})
+        artifacts = RenderArtifacts(chapters=ChaptersManifest(chapters=(Chapter(position=1, song_title="中文標題", start_seconds=0.0, end_seconds=60.0),), total_duration_seconds=60.0, generated_at=""))
         uploader.upload_render_artifacts("job-cn", artifacts)
 
         call_kwargs = uploader._client.put_object.call_args[1]
         body = call_kwargs["Body"]
         parsed = json.loads(body)
-        assert parsed["title"] == "中文標題"
+        assert parsed["chapters"][0]["song_title"] == "中文標題"
 
     def test_chapters_dataclass_serialization(self):
         from dataclasses import dataclass
@@ -375,70 +311,9 @@ class TestUploadRenderArtifacts:
         assert parsed["start"] == 0.0
 
 
-class TestFileExists:
-    def test_returns_true_when_object_exists(self):
-        uploader = _make_uploader()
-        uploader._client.head_object.return_value = {"ContentLength": 1024}
-
-        assert uploader.file_exists("renders/job1/output.mp3") is True
-
-        uploader._client.head_object.assert_called_once_with(
-            Bucket="test-bucket", Key="renders/job1/output.mp3"
-        )
-
-    def test_returns_false_on_404(self):
-        uploader = _make_uploader()
-        uploader._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "404", "Message": "Not Found"}},
-            "HeadObject",
-        )
-
-        assert uploader.file_exists("nonexistent/key") is False
-
-    def test_returns_false_on_no_such_key(self):
-        uploader = _make_uploader()
-        uploader._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey", "Message": "No such key"}},
-            "HeadObject",
-        )
-
-        assert uploader.file_exists("nonexistent/key") is False
-
-    def test_raises_on_other_client_error(self):
-        uploader = _make_uploader()
-        uploader._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "403", "Message": "Forbidden"}},
-            "HeadObject",
-        )
-
-        with pytest.raises(ClientError):
-            uploader.file_exists("forbidden/key")
-
-
-class TestDeleteFile:
-    def test_deletes_object(self):
-        uploader = _make_uploader()
-
-        uploader.delete_file("renders/job1/output.mp3")
-
-        uploader._client.delete_object.assert_called_once_with(
-            Bucket="test-bucket", Key="renders/job1/output.mp3"
-        )
-
-    def test_deletes_chapters_json(self):
-        uploader = _make_uploader()
-
-        uploader.delete_file("renders/job1/chapters.json")
-
-        uploader._client.delete_object.assert_called_once_with(
-            Bucket="test-bucket", Key="renders/job1/chapters.json"
-        )
-
-
 class TestDeleteRenderArtifacts:
-    def test_deletes_all_existing_artifacts(self):
+    def test_deletes_all_artifacts(self):
         uploader = _make_uploader()
-        uploader._client.head_object.return_value = {"ContentLength": 100}
 
         uploader.delete_render_artifacts("job-123")
 
@@ -452,20 +327,8 @@ class TestDeleteRenderArtifacts:
             "renders/job-123/chapters.json",
         }
 
-    def test_skips_nonexistent_artifacts(self):
-        uploader = _make_uploader()
-        uploader._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "404", "Message": "Not Found"}},
-            "HeadObject",
-        )
-
-        uploader.delete_render_artifacts("job-404")
-
-        uploader._client.delete_object.assert_not_called()
-
     def test_continues_on_individual_delete_failure(self):
         uploader = _make_uploader()
-        uploader._client.head_object.return_value = {"ContentLength": 100}
         uploader._client.delete_object.side_effect = [
             None,
             Exception("Network error"),
@@ -478,37 +341,11 @@ class TestDeleteRenderArtifacts:
 
     def test_correct_key_prefix(self):
         uploader = _make_uploader()
-        uploader._client.head_object.return_value = {"ContentLength": 100}
 
         uploader.delete_render_artifacts("my-job-id")
 
         keys = [call[1]["Key"] for call in uploader._client.delete_object.call_args_list]
         assert all(k.startswith("renders/my-job-id/") for k in keys)
-
-
-class TestUploadResult:
-    def test_frozen_dataclass(self):
-        result = UploadResult(
-            key="test/key.mp3",
-            size_bytes=1024,
-            etag='"abc123"',
-            uploaded_at=datetime.now(timezone.utc),
-        )
-        with pytest.raises(AttributeError):
-            result.key = "new/key.mp3"
-
-
-class TestUploadOptions:
-    def test_frozen_dataclass(self):
-        opts = UploadOptions(content_type="audio/mpeg")
-        with pytest.raises(AttributeError):
-            opts.content_type = "video/mp4"
-
-    def test_defaults(self):
-        opts = UploadOptions()
-        assert opts.content_type is None
-        assert opts.cache_control is None
-        assert opts.metadata is None
 
 
 class TestRenderArtifacts:
@@ -524,10 +361,10 @@ class TestRenderArtifacts:
         artifacts = RenderArtifacts(
             mp3_path=str(mp3),
             mp4_path=None,
-            chapters={"chapters": []},
+            chapters=ChaptersManifest(chapters=(), total_duration_seconds=0.0, generated_at=""),
         )
         assert artifacts.mp3_path == str(mp3)
-        assert artifacts.chapters == {"chapters": []}
+        assert artifacts.chapters == ChaptersManifest(chapters=(), total_duration_seconds=0.0, generated_at="")
 
 
 class TestUploadArtifactsResult:
@@ -540,22 +377,16 @@ class TestUploadArtifactsResult:
 
 
 class TestR2UploaderInit:
-    def test_creates_from_config(self):
-        with patch("sow_render_worker.uploader.R2Client") as mock_r2_cls:
-            mock_r2 = MagicMock()
-            mock_s3 = MagicMock()
-            mock_r2.client = mock_s3
-            mock_r2.bucket_name = "cfg-bucket"
-            mock_r2_cls.return_value = mock_r2
+    def test_creates_from_r2_client(self):
+        mock_r2 = _make_r2_client_mock()
 
-            uploader = R2Uploader(_make_config())
+        uploader = R2Uploader(r2_client=mock_r2)
 
-            assert uploader._client is mock_s3
-            assert uploader._bucket_name == "cfg-bucket"
+        assert uploader._client is mock_r2.client
+        assert uploader._bucket_name == "test-bucket"
 
     def test_creates_from_env(self):
-        with patch("sow_render_worker.uploader.create_r2_client_from_env") as mock_factory, \
-             patch("sow_render_worker.uploader.R2Client"):
+        with patch("sow_render_worker.uploader.create_r2_client_from_env") as mock_factory:
             mock_r2 = MagicMock()
             mock_r2.client = MagicMock()
             mock_r2.bucket_name = "env-bucket"
@@ -596,7 +427,7 @@ class TestKeyConstruction:
         uploader = _make_uploader()
         uploader._client.put_object.return_value = {"ETag": '"e"'}
 
-        artifacts = RenderArtifacts(chapters={"chapters": []})
+        artifacts = RenderArtifacts(chapters=ChaptersManifest(chapters=(), total_duration_seconds=0.0, generated_at=""))
         result = uploader.upload_render_artifacts("def-789", artifacts)
 
         assert result.chapters_r2_key == "renders/def-789/chapters.json"

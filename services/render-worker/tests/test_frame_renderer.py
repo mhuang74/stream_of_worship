@@ -210,30 +210,25 @@ class TestFrameRendererInit:
         assert renderer.get_base_font_size() == 80
 
 
-class TestFrameRendererStaticMethods:
-    def test_get_available_templates(self):
-        templates = FrameRenderer.get_available_templates()
-        assert "dark" in templates
-        assert "gradient_warm" in templates
-        assert "gradient_blue" in templates
+class TestVideoTemplatesAndFontSizes:
+    def test_available_templates(self):
+        assert "dark" in VIDEO_TEMPLATES
+        assert "gradient_warm" in VIDEO_TEMPLATES
+        assert "gradient_blue" in VIDEO_TEMPLATES
 
-    def test_get_template_existing(self):
-        t = FrameRenderer.get_template("dark")
+    def test_template_existing(self):
+        t = VIDEO_TEMPLATES["dark"]
         assert t.name == "dark"
 
-    def test_get_template_fallback_to_dark(self):
-        t = FrameRenderer.get_template("dark")
+    def test_template_fallback_to_dark(self):
+        t = VIDEO_TEMPLATES.get("nonexistent", VIDEO_TEMPLATES["dark"])
         assert t.name == "dark"
 
-    def test_get_available_font_sizes(self):
-        sizes = FrameRenderer.get_available_font_sizes()
-        assert sizes == ["S", "M", "L", "XL"]
-
-    def test_get_font_size(self):
-        assert FrameRenderer.get_font_size("S") == 32
-        assert FrameRenderer.get_font_size("M") == 48
-        assert FrameRenderer.get_font_size("L") == 64
-        assert FrameRenderer.get_font_size("XL") == 80
+    def test_font_size_presets(self):
+        assert FONT_SIZE_PRESETS["S"] == 32
+        assert FONT_SIZE_PRESETS["M"] == 48
+        assert FONT_SIZE_PRESETS["L"] == 64
+        assert FONT_SIZE_PRESETS["XL"] == 80
 
 
 class TestFitText:
@@ -453,51 +448,61 @@ class TestRenderIntroInfo:
 class TestRenderLyrics:
     def test_renders_current_line(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080))
+        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
-        assert True
+        assert img.getbbox() is not None
 
     def test_before_first_lyric_no_render(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080))
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello")])
         renderer.render_lyrics(lyrics, 2.0, "Song", draw, 1920, 1080)
-        assert True
+        blank = Image.new("RGB", (1920, 1080), bg)
+        assert list(img.getdata()) == list(blank.getdata())
 
     def test_after_last_lyric_shows_last(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080))
+        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello")])
         renderer.render_lyrics(lyrics, 8.0, "Song", draw, 1920, 1080)
-        assert True
+        assert img.getbbox() is not None
 
     def test_last_lyric_fade_out(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080))
-        draw = ImageDraw.Draw(img)
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img_before = Image.new("RGB", (1920, 1080), bg)
+        draw_before = ImageDraw.Draw(img_before)
         lyrics = _make_lyrics([(5.0, "Hello")])
-        renderer.render_lyrics(lyrics, 50.0, "Song", draw, 1920, 1080)
-        assert True
+        renderer.render_lyrics(lyrics, 8.0, "Song", draw_before, 1920, 1080)
+
+        img_after = Image.new("RGB", (1920, 1080), bg)
+        draw_after = ImageDraw.Draw(img_after)
+        renderer.render_lyrics(lyrics, 50.0, "Song", draw_after, 1920, 1080)
+
+        blank = Image.new("RGB", (1920, 1080), bg)
+        assert list(img_before.getdata()) != list(blank.getdata())
+        assert list(img_after.getdata()) == list(blank.getdata())
 
     def test_next_line_rendered(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080))
+        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         renderer.render_lyrics(lyrics, 5.0, "Song", draw, 1920, 1080)
-        assert True
+        assert img.getbbox() is not None
 
     def test_chinese_lyrics(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080))
+        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "讚美之泉"), (10.0, "哈利路亞")])
         renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
-        assert True
+        assert img.getbbox() is not None
 
 
 class TestRenderTitleCard:

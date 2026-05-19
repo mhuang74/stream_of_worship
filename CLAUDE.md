@@ -87,8 +87,13 @@ The project consists of **five architecturally separate components**:
 
 ### 5. Web App (Next.js Browser Application)
 - **Location:** `webapp/` (Node.js/TypeScript, Next.js 16 App Router)
-- **Stack:** Drizzle ORM + Neon Postgres, Better Auth, Cloudflare R2, FFmpeg (fluent-ffmpeg + ffmpeg-static), fastembed-js
+- **Stack:** Drizzle ORM + Neon Postgres, Better Auth, Cloudflare R2, AWS SQS (render jobs enqueued to SQS, processed by Lambda worker)
 - **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `webapp/` or via `pnpm --filter sow-webapp`)
+
+### 6. Render Worker (AWS Lambda)
+- **Location:** `services/render-worker/` (Python, deployed as Lambda container via ECR)
+- **Stack:** psycopg2, boto3, Pillow, FFmpeg, urllib3
+- **Commands:** See `services/render-worker/README.md`
 
 **Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components.
 

@@ -43,7 +43,7 @@ class ExportResult:
 
 
 class AssetFetcherProtocol(Protocol):
-    async def download_audio(self, hash_prefix: str) -> str | None: ...
+    def download_audio(self, hash_prefix: str) -> str | None: ...
 
 
 def get_crossfade_ms(item: SongsetItem) -> int:
@@ -176,7 +176,7 @@ def concatenate_audio_files(
     subprocess.run(cmd, check=True, capture_output=True, timeout=600)
 
 
-async def generate_songset_audio(
+def generate_songset_audio(
     items: list[SongsetItem],
     output_path: str,
     asset_fetcher: AssetFetcherProtocol,
@@ -205,7 +205,7 @@ async def generate_songset_audio(
         if not item.recording_hash_prefix:
             raise ValueError(f"Item {item.id} has no recording")
 
-        audio_path = await asset_fetcher.download_audio(item.recording_hash_prefix)
+        audio_path = asset_fetcher.download_audio(item.recording_hash_prefix)
         if not audio_path:
             raise ValueError(f"Could not get audio for recording {item.recording_hash_prefix}")
 
@@ -270,7 +270,7 @@ async def generate_songset_audio(
     )
 
 
-async def calculate_total_duration(
+def calculate_total_duration(
     items: list[SongsetItem],
     asset_fetcher: AssetFetcherProtocol,
 ) -> float:
@@ -285,7 +285,7 @@ async def calculate_total_duration(
         if item.duration_seconds is not None:
             total_ms += item.duration_seconds * 1000
         elif item.recording_hash_prefix:
-            audio_path = await asset_fetcher.download_audio(item.recording_hash_prefix)
+            audio_path = asset_fetcher.download_audio(item.recording_hash_prefix)
             if audio_path:
                 info = get_audio_info(audio_path)
                 if info:

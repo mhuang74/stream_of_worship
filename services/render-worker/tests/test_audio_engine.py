@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -406,31 +406,27 @@ class TestConcatenateAudioFiles:
 
 
 class TestGenerateSongsetAudio:
-    @pytest.mark.asyncio
-    async def test_empty_items_raises(self):
-        fetcher = AsyncMock()
+    def test_empty_items_raises(self):
+        fetcher = MagicMock()
         with pytest.raises(ValueError, match="empty songset"):
-            await generate_songset_audio([], "/tmp/out.mp3", fetcher)
+            generate_songset_audio([], "/tmp/out.mp3", fetcher)
 
-    @pytest.mark.asyncio
-    async def test_no_recording_raises(self):
+    def test_no_recording_raises(self):
         item = _make_item(recording_hash_prefix=None)
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         with pytest.raises(ValueError, match="no recording"):
-            await generate_songset_audio([item], "/tmp/out.mp3", fetcher)
+            generate_songset_audio([item], "/tmp/out.mp3", fetcher)
 
-    @pytest.mark.asyncio
-    async def test_download_failure_raises(self):
+    def test_download_failure_raises(self):
         item = _make_item(recording_hash_prefix="abc")
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         fetcher.download_audio.return_value = None
         with pytest.raises(ValueError, match="Could not get audio"):
-            await generate_songset_audio([item], "/tmp/out.mp3", fetcher)
+            generate_songset_audio([item], "/tmp/out.mp3", fetcher)
 
-    @pytest.mark.asyncio
-    async def test_single_item_success(self, tmp_path):
+    def test_single_item_success(self, tmp_path):
         item = _make_item()
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         fetcher.download_audio.return_value = "/tmp/audio.mp3"
         output_path = str(tmp_path / "out.mp3")
 
@@ -449,7 +445,7 @@ class TestGenerateSongsetAudio:
                 "bitrate_kbps": 320,
                 "file_size_bytes": 1000,
             }
-            result = await generate_songset_audio([item], output_path, fetcher)
+            result = generate_songset_audio([item], output_path, fetcher)
 
         assert result.output_path == output_path
         assert result.total_duration_seconds == 180.0
@@ -458,14 +454,13 @@ class TestGenerateSongsetAudio:
         assert result.segments[0].duration_seconds == 180.0
         assert result.segments[0].gap_before_seconds == 0
 
-    @pytest.mark.asyncio
-    async def test_two_items_with_gap(self, tmp_path):
+    def test_two_items_with_gap(self, tmp_path):
         item1 = _make_item(id="1", position=0, gap_beats=2.0, tempo_bpm=120.0)
         item2 = _make_item(
             id="2", position=1, gap_beats=2.0, tempo_bpm=120.0,
             recording_hash_prefix="def456",
         )
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         fetcher.download_audio.return_value = "/tmp/audio.mp3"
         output_path = str(tmp_path / "out.mp3")
 
@@ -479,17 +474,16 @@ class TestGenerateSongsetAudio:
                 "bitrate_kbps": 320,
                 "file_size_bytes": 1000,
             }
-            result = await generate_songset_audio([item1, item2], output_path, fetcher)
+            result = generate_songset_audio([item1, item2], output_path, fetcher)
 
         assert len(result.segments) == 2
         assert result.segments[0].start_time_seconds == 0
         assert result.segments[1].start_time_seconds == 181.0
         assert result.segments[1].gap_before_seconds == 1.0
 
-    @pytest.mark.asyncio
-    async def test_progress_callback(self, tmp_path):
+    def test_progress_callback(self, tmp_path):
         item = _make_item()
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         fetcher.download_audio.return_value = "/tmp/audio.mp3"
         output_path = str(tmp_path / "out.mp3")
         progress_calls = []
@@ -507,20 +501,19 @@ class TestGenerateSongsetAudio:
                 "bitrate_kbps": 320,
                 "file_size_bytes": 1000,
             }
-            await generate_songset_audio([item], output_path, fetcher, progress_callback=progress_cb)
+            generate_songset_audio([item], output_path, fetcher, progress_callback=progress_cb)
 
         assert len(progress_calls) >= 2
         assert progress_calls[-1] == (2, 2)
 
-    @pytest.mark.asyncio
-    async def test_crossfade_adjusts_start_time(self, tmp_path):
+    def test_crossfade_adjusts_start_time(self, tmp_path):
         item1 = _make_item(id="1", position=0)
         item2 = _make_item(
             id="2", position=1,
             crossfade_enabled=1, crossfade_duration_seconds=2.0,
             recording_hash_prefix="def456",
         )
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         fetcher.download_audio.return_value = "/tmp/audio.mp3"
         output_path = str(tmp_path / "out.mp3")
 
@@ -534,45 +527,41 @@ class TestGenerateSongsetAudio:
                 "bitrate_kbps": 320,
                 "file_size_bytes": 1000,
             }
-            result = await generate_songset_audio([item1, item2], output_path, fetcher)
+            result = generate_songset_audio([item1, item2], output_path, fetcher)
 
         assert result.segments[1].gap_before_seconds == 0.0
         assert result.segments[1].start_time_seconds == 178.0
 
 
 class TestCalculateTotalDuration:
-    @pytest.mark.asyncio
-    async def test_single_item_with_duration(self):
+    def test_single_item_with_duration(self):
         item = _make_item(duration_seconds=180.0)
-        fetcher = AsyncMock()
-        result = await calculate_total_duration([item], fetcher)
+        fetcher = MagicMock()
+        result = calculate_total_duration([item], fetcher)
         assert result == 180.0
 
-    @pytest.mark.asyncio
-    async def test_two_items_with_gap(self):
+    def test_two_items_with_gap(self):
         item1 = _make_item(id="1", duration_seconds=180.0, gap_beats=2.0, tempo_bpm=120.0)
         item2 = _make_item(id="2", duration_seconds=200.0, gap_beats=2.0, tempo_bpm=120.0)
-        fetcher = AsyncMock()
-        result = await calculate_total_duration([item1, item2], fetcher)
+        fetcher = MagicMock()
+        result = calculate_total_duration([item1, item2], fetcher)
         expected = 180.0 + 1.0 + 200.0
         assert result == expected
 
-    @pytest.mark.asyncio
-    async def test_crossfade_subtracts_from_total(self):
+    def test_crossfade_subtracts_from_total(self):
         item1 = _make_item(id="1", duration_seconds=180.0)
         item2 = _make_item(
             id="2", duration_seconds=200.0,
             crossfade_enabled=1, crossfade_duration_seconds=2.0,
         )
-        fetcher = AsyncMock()
-        result = await calculate_total_duration([item1, item2], fetcher)
+        fetcher = MagicMock()
+        result = calculate_total_duration([item1, item2], fetcher)
         expected = 180.0 + 0 + 200.0 - 2.0
         assert result == expected
 
-    @pytest.mark.asyncio
-    async def test_no_duration_fetches_audio(self):
+    def test_no_duration_fetches_audio(self):
         item = _make_item(duration_seconds=None, recording_hash_prefix="abc")
-        fetcher = AsyncMock()
+        fetcher = MagicMock()
         fetcher.download_audio.return_value = "/tmp/audio.mp3"
 
         with patch("sow_render_worker.audio_engine.get_audio_info") as mock_info:
@@ -584,15 +573,14 @@ class TestCalculateTotalDuration:
                 "bitrate_kbps": 320,
                 "file_size_bytes": 1000,
             }
-            result = await calculate_total_duration([item], fetcher)
+            result = calculate_total_duration([item], fetcher)
 
         assert result == 150.0
 
-    @pytest.mark.asyncio
-    async def test_no_duration_no_recording(self):
+    def test_no_duration_no_recording(self):
         item = _make_item(duration_seconds=None, recording_hash_prefix=None)
-        fetcher = AsyncMock()
-        result = await calculate_total_duration([item], fetcher)
+        fetcher = MagicMock()
+        result = calculate_total_duration([item], fetcher)
         assert result == 0.0
 
 

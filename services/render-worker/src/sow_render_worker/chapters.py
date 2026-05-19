@@ -37,20 +37,18 @@ class SegmentInfo(Protocol):
 
 
 class LrcDownloadCallback(Protocol):
-    async def __call__(self, hash_prefix: str) -> str | None: ...
+    def __call__(self, hash_prefix: str) -> str | None: ...
 
 
 class LyricsCallback(Protocol):
     async def __call__(self, hash_prefix: str, start_seconds: float) -> list[ChapterLine]: ...
 
 
-async def build_chapters_from_segments(
+def build_chapters_from_segments(
     segments: list[SegmentInfo],
     get_lyrics: Callable[[str, float], list[ChapterLine] | object],
 ) -> list[Chapter]:
-    import asyncio
-
-    async def _build_chapter(i: int, segment: SegmentInfo) -> Chapter:
+    def _build_chapter(i: int, segment: SegmentInfo) -> Chapter:
         start_seconds = segment.start_time_seconds
         end_seconds = start_seconds + segment.duration_seconds
         song_title = segment.song_title or segment.song_id or f"Song {i + 1}"
@@ -58,10 +56,7 @@ async def build_chapters_from_segments(
         hash_prefix = segment.recording_hash_prefix
         if hash_prefix:
             result = get_lyrics(hash_prefix, start_seconds)
-            if asyncio.iscoroutine(result):
-                lines = await result
-            else:
-                lines = result
+            lines = result
         else:
             lines = []
 
@@ -73,26 +68,21 @@ async def build_chapters_from_segments(
             lines=tuple(lines),
         )
 
-    tasks = [_build_chapter(i, seg) for i, seg in enumerate(segments)]
-    return list(await asyncio.gather(*tasks))
+    return [_build_chapter(i, seg) for i, seg in enumerate(segments)]
 
 
-async def generate_chapters_manifest(
+def generate_chapters_manifest(
     segments: list[SegmentInfo],
     download_lrc: Callable[[str], str | None | object],
     total_duration_seconds: float,
 ) -> ChaptersManifest:
     from .lrc_parser import parse_lrc
 
-    async def get_lyrics(
+    def get_lyrics(
         hash_prefix: str, start_seconds: float
     ) -> list[ChapterLine]:
         try:
-            result = download_lrc(hash_prefix)
-            if isinstance(result, str) or result is None:
-                lrc_content = result
-            else:
-                lrc_content = await result
+            lrc_content = download_lrc(hash_prefix)
             if lrc_content:
                 local_lyrics = parse_lrc(lrc_content)
                 return [
@@ -106,7 +96,7 @@ async def generate_chapters_manifest(
             pass
         return []
 
-    chapters = await build_chapters_from_segments(segments, get_lyrics)
+    chapters = build_chapters_from_segments(segments, get_lyrics)
     return ChaptersManifest(
         chapters=tuple(chapters),
         total_duration_seconds=total_duration_seconds,

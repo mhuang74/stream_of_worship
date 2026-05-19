@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import traceback
@@ -11,20 +10,11 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def _parse_record_body(body: str) -> dict:
-    return json.loads(body)
-
-
-def _extract_job_fields(record_data: dict) -> tuple[str, int]:
-    job_id = record_data["jobId"]
-    user_id = int(record_data["userId"])
-    return job_id, user_id
-
-
 def _process_record(record: dict) -> None:
     body = record.get("body", "{}")
-    record_data = _parse_record_body(body)
-    job_id, user_id = _extract_job_fields(record_data)
+    record_data = json.loads(body)
+    job_id = record_data["jobId"]
+    user_id = int(record_data["userId"])
 
     logger.info(
         "Processing render job",
@@ -35,7 +25,7 @@ def _process_record(record: dict) -> None:
     conn = get_connection(config.DATABASE_URL)
 
     try:
-        asyncio.run(execute_render_pipeline(job_id, user_id, conn))
+        execute_render_pipeline(job_id, user_id, conn)
         logger.info(
             "Render job completed successfully",
             extra={"job_id": job_id, "user_id": user_id},
@@ -60,7 +50,7 @@ def handler(event, context):
         extra={"record_count": len(records)},
     )
 
-    failed_records = []
+    batch_item_failures = []
 
     for i, record in enumerate(records):
         message_id = record.get("messageId", f"record_{i}")
@@ -80,15 +70,9 @@ def handler(event, context):
                 },
             )
             logger.debug("Traceback: %s", traceback.format_exc())
-            failed_records.append({"messageId": message_id, "error": str(exc)})
+            batch_item_failures.append({"itemIdentifier": message_id})
 
-    if failed_records:
-        error_summary = json.dumps(
-            {
-                "message": "Batch item failures",
-                "failed_records": failed_records,
-            }
-        )
-        raise RuntimeError(error_summary)
+    if batch_item_failures:
+        return {"batchItemFailures": batch_item_failures}
 
     return {"statusCode": 200, "body": json.dumps({"message": "All records processed successfully"})}

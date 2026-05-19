@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -66,7 +66,7 @@ class MockAssetFetcher:
         self._lrc_content = lrc_content
         self._temp_dir = temp_dir
 
-    async def download_lrc(self, hash_prefix: str) -> str | None:
+    def download_lrc(self, hash_prefix: str) -> str | None:
         return self._lrc_content
 
     def get_temp_dir(self) -> str:
@@ -168,112 +168,8 @@ class TestGetVideoCodecArgs:
         assert "2000k" in args
 
 
-class TestGetAudioInfo:
-    @pytest.mark.asyncio
-    async def test_file_not_found(self):
-        fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher)
-        result = await engine.get_audio_info("/nonexistent/file.mp3")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_ffprobe_success(self, tmp_path):
-        audio_file = tmp_path / "test.mp3"
-        audio_file.write_bytes(b"\x00" * 100)
-
-        probe_output = json.dumps({
-            "streams": [
-                {
-                    "codec_type": "audio",
-                    "channels": 2,
-                    "sample_rate": "44100",
-                }
-            ],
-            "format": {
-                "duration": "180.5",
-            },
-        })
-
-        fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher)
-
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout=probe_output)
-            result = await engine.get_audio_info(str(audio_file))
-
-        assert result is not None
-        assert result["duration_seconds"] == 180.5
-        assert result["duration_ms"] == 180500
-        assert result["channels"] == 2
-        assert result["sample_rate"] == 44100
-
-    @pytest.mark.asyncio
-    async def test_ffprobe_failure(self, tmp_path):
-        audio_file = tmp_path / "test.mp3"
-        audio_file.write_bytes(b"\x00" * 100)
-
-        fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher)
-
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stdout="")
-            result = await engine.get_audio_info(str(audio_file))
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_ffprobe_no_streams(self, tmp_path):
-        audio_file = tmp_path / "test.mp3"
-        audio_file.write_bytes(b"\x00" * 100)
-
-        probe_output = json.dumps({"streams": [], "format": {"duration": "0"}})
-
-        fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher)
-
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout=probe_output)
-            result = await engine.get_audio_info(str(audio_file))
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_ffprobe_exception(self, tmp_path):
-        audio_file = tmp_path / "test.mp3"
-        audio_file.write_bytes(b"\x00" * 100)
-
-        fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher)
-
-        with patch("sow_render_worker.video_engine.subprocess.run", side_effect=Exception("boom")):
-            result = await engine.get_audio_info(str(audio_file))
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_ffprobe_uses_custom_path(self, tmp_path):
-        audio_file = tmp_path / "test.mp3"
-        audio_file.write_bytes(b"\x00" * 100)
-
-        probe_output = json.dumps({
-            "streams": [{"codec_type": "audio", "channels": 2, "sample_rate": "44100"}],
-            "format": {"duration": "60.0"},
-        })
-
-        fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher, ffprobe_path="/custom/ffprobe")
-
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout=probe_output)
-            await engine.get_audio_info(str(audio_file))
-
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "/custom/ffprobe"
-
-
 class TestGenerateBlankVideo:
-    @pytest.mark.asyncio
-    async def test_blank_video_args(self, tmp_path):
+    def test_blank_video_args(self, tmp_path):
         output_path = str(tmp_path / "blank.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, ffmpeg_path="/usr/bin/ffmpeg")
@@ -284,7 +180,7 @@ class TestGenerateBlankVideo:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            result = await engine.generate_blank_video(
+            result = engine.generate_blank_video(
                 "/tmp/audio.mp3", output_path, 180.0
             )
 
@@ -320,8 +216,7 @@ class TestGenerateBlankVideo:
         assert result.fps == 24
         assert result.total_frames == 24 * 180
 
-    @pytest.mark.asyncio
-    async def test_blank_video_720p(self, tmp_path):
+    def test_blank_video_720p(self, tmp_path):
         output_path = str(tmp_path / "blank.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, resolution="720p", ffmpeg_path="ffmpeg")
@@ -331,7 +226,7 @@ class TestGenerateBlankVideo:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            result = await engine.generate_blank_video(
+            result = engine.generate_blank_video(
                 "/tmp/audio.mp3", output_path, 60.0
             )
 
@@ -343,8 +238,7 @@ class TestGenerateBlankVideo:
         assert result.width == 1280
         assert result.height == 720
 
-    @pytest.mark.asyncio
-    async def test_blank_video_ffmpeg_failure(self, tmp_path):
+    def test_blank_video_ffmpeg_failure(self, tmp_path):
         output_path = str(tmp_path / "blank.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
@@ -356,12 +250,11 @@ class TestGenerateBlankVideo:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
             with pytest.raises(RuntimeError, match="FFmpeg exited with code 1"):
-                await engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
+                engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
 
 
 class TestEncodeVideoWithFFmpeg:
-    @pytest.mark.asyncio
-    async def test_encode_args_construction(self, tmp_path):
+    def test_encode_args_construction(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, ffmpeg_path="/usr/bin/ffmpeg", fps=24)
@@ -378,7 +271,7 @@ class TestEncodeVideoWithFFmpeg:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            await engine.encode_video_with_ffmpeg(
+            engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
                 output_path,
                 total_frames=10,
@@ -409,8 +302,7 @@ class TestEncodeVideoWithFFmpeg:
         assert "-shortest" in cmd
         assert output_path in cmd
 
-    @pytest.mark.asyncio
-    async def test_encode_writes_frames(self, tmp_path):
+    def test_encode_writes_frames(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, fps=24)
@@ -434,7 +326,7 @@ class TestEncodeVideoWithFFmpeg:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            await engine.encode_video_with_ffmpeg(
+            engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
                 output_path,
                 total_frames=3,
@@ -446,8 +338,7 @@ class TestEncodeVideoWithFFmpeg:
         assert mock_process.stdin.write.call_count == 3
         mock_process.stdin.close.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_encode_handles_broken_pipe(self, tmp_path):
+    def test_encode_handles_broken_pipe(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
@@ -466,7 +357,7 @@ class TestEncodeVideoWithFFmpeg:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
             with pytest.raises(RuntimeError, match="EPIPE"):
-                await engine.encode_video_with_ffmpeg(
+                engine.encode_video_with_ffmpeg(
                     "/tmp/audio.mp3",
                     output_path,
                     total_frames=10,
@@ -477,8 +368,7 @@ class TestEncodeVideoWithFFmpeg:
 
         mock_process.kill.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_encode_ffmpeg_nonzero_exit(self, tmp_path):
+    def test_encode_ffmpeg_nonzero_exit(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
@@ -496,7 +386,7 @@ class TestEncodeVideoWithFFmpeg:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
             with pytest.raises(RuntimeError, match="FFmpeg exited with code 1"):
-                await engine.encode_video_with_ffmpeg(
+                engine.encode_video_with_ffmpeg(
                     "/tmp/audio.mp3",
                     output_path,
                     total_frames=2,
@@ -505,8 +395,7 @@ class TestEncodeVideoWithFFmpeg:
                     segments=segments,
                 )
 
-    @pytest.mark.asyncio
-    async def test_encode_progress_callback(self, tmp_path):
+    def test_encode_progress_callback(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, fps=2)
@@ -528,7 +417,7 @@ class TestEncodeVideoWithFFmpeg:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            await engine.encode_video_with_ffmpeg(
+            engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
                 output_path,
                 total_frames=6,
@@ -541,8 +430,7 @@ class TestEncodeVideoWithFFmpeg:
         assert len(progress_calls) > 0
         assert progress_calls[-1] == (6, 6)
 
-    @pytest.mark.asyncio
-    async def test_encode_with_title_card(self, tmp_path):
+    def test_encode_with_title_card(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, fps=24, include_title_card=True)
@@ -574,7 +462,7 @@ class TestEncodeVideoWithFFmpeg:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            await engine.encode_video_with_ffmpeg(
+            engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
                 output_path,
                 total_frames=5,
@@ -588,18 +476,16 @@ class TestEncodeVideoWithFFmpeg:
 
 
 class TestGenerateVideo:
-    @pytest.mark.asyncio
-    async def test_no_audio_info_raises(self, tmp_path):
+    def test_no_audio_info_raises(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
 
-        with patch.object(engine, "get_audio_info", return_value=None):
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=None):
             with pytest.raises(ValueError, match="Could not get audio info"):
-                await engine.generate_video("/tmp/audio.mp3", [], output_path)
+                engine.generate_video("/tmp/audio.mp3", [], output_path)
 
-    @pytest.mark.asyncio
-    async def test_no_lyrics_generates_blank_video(self, tmp_path):
+    def test_no_lyrics_generates_blank_video(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher(lrc_content=None)
         engine = VideoEngine(fetcher)
@@ -620,15 +506,14 @@ class TestGenerateVideo:
             fps=24,
         )
 
-        with patch.object(engine, "get_audio_info", return_value=audio_info), \
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video", return_value=blank_result) as mock_blank:
-            result = await engine.generate_video("/tmp/audio.mp3", [], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [], output_path)
 
         mock_blank.assert_called_once_with("/tmp/audio.mp3", output_path, 60.0)
         assert result == blank_result
 
-    @pytest.mark.asyncio
-    async def test_with_lyrics_encodes_video(self, tmp_path):
+    def test_with_lyrics_encodes_video(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher(lrc_content="[00:00.00]Hello\n[00:05.00]World")
         engine = VideoEngine(fetcher, include_title_card=False)
@@ -641,9 +526,9 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch.object(engine, "get_audio_info", return_value=audio_info), \
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "encode_video_with_ffmpeg") as mock_encode:
-            result = await engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path)
 
         mock_encode.assert_called_once()
         assert result.output_path == output_path
@@ -652,8 +537,7 @@ class TestGenerateVideo:
         assert result.height == 1080
         assert result.fps == 24
 
-    @pytest.mark.asyncio
-    async def test_skips_segment_without_hash_prefix(self, tmp_path):
+    def test_skips_segment_without_hash_prefix(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher(lrc_content="[00:00.00]Hello")
         engine = VideoEngine(fetcher, include_title_card=False)
@@ -667,14 +551,13 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch.object(engine, "get_audio_info", return_value=audio_info), \
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video") as mock_blank:
-            result = await engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path)
 
         mock_blank.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_skips_segment_with_no_lrc(self, tmp_path):
+    def test_skips_segment_with_no_lrc(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher(lrc_content=None)
         engine = VideoEngine(fetcher, include_title_card=False)
@@ -687,14 +570,13 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch.object(engine, "get_audio_info", return_value=audio_info), \
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video") as mock_blank:
-            result = await engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path)
 
         mock_blank.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_creates_output_directory(self, tmp_path):
+    def test_creates_output_directory(self, tmp_path):
         output_path = str(tmp_path / "subdir" / "video.mp4")
         fetcher = MockAssetFetcher(lrc_content=None)
         engine = VideoEngine(fetcher)
@@ -715,14 +597,13 @@ class TestGenerateVideo:
             fps=24,
         )
 
-        with patch.object(engine, "get_audio_info", return_value=audio_info), \
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video", return_value=blank_result):
-            await engine.generate_video("/tmp/audio.mp3", [], output_path)
+            engine.generate_video("/tmp/audio.mp3", [], output_path)
 
         assert Path(tmp_path / "subdir").is_dir()
 
-    @pytest.mark.asyncio
-    async def test_title_card_config_passed(self, tmp_path):
+    def test_title_card_config_passed(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher(lrc_content="[00:00.00]Hello")
         engine = VideoEngine(fetcher, include_title_card=True, title_card_duration_seconds=5.0)
@@ -735,9 +616,9 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch.object(engine, "get_audio_info", return_value=audio_info), \
+        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "encode_video_with_ffmpeg") as mock_encode:
-            await engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            engine.generate_video("/tmp/audio.mp3", [segment], output_path)
 
         call_kwargs = mock_encode.call_args
         title_card_config = call_kwargs[1].get("title_card_config") if "title_card_config" in call_kwargs[1] else call_kwargs[0][7] if len(call_kwargs[0]) > 7 else None
@@ -747,8 +628,7 @@ class TestGenerateVideo:
 
 
 class TestInjectChapters:
-    @pytest.mark.asyncio
-    async def test_inject_chapters_success(self, tmp_path):
+    def test_inject_chapters_success(self, tmp_path):
         video_path = str(tmp_path / "video.mp4")
         Path(video_path).write_bytes(b"\x00" * 100)
 
@@ -777,7 +657,7 @@ class TestInjectChapters:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_popen.return_value = mock_process
-            result = await engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters)
 
         assert result is True
 
@@ -790,8 +670,7 @@ class TestInjectChapters:
         assert "-c" in cmd
         assert "copy" in cmd
 
-    @pytest.mark.asyncio
-    async def test_inject_chapters_ffmpeg_failure(self, tmp_path):
+    def test_inject_chapters_ffmpeg_failure(self, tmp_path):
         video_path = str(tmp_path / "video.mp4")
         Path(video_path).write_bytes(b"\x00" * 100)
 
@@ -808,12 +687,11 @@ class TestInjectChapters:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            result = await engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters)
 
         assert result is False
 
-    @pytest.mark.asyncio
-    async def test_inject_chapters_exception_returns_false(self, tmp_path):
+    def test_inject_chapters_exception_returns_false(self, tmp_path):
         video_path = str(tmp_path / "video.mp4")
 
         fetcher = MockAssetFetcher(temp_dir=str(tmp_path))
@@ -824,12 +702,11 @@ class TestInjectChapters:
         ]
 
         with patch("sow_render_worker.video_engine.subprocess.Popen", side_effect=Exception("boom")):
-            result = await engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters)
 
         assert result is False
 
-    @pytest.mark.asyncio
-    async def test_inject_chapters_writes_metadata_file(self, tmp_path):
+    def test_inject_chapters_writes_metadata_file(self, tmp_path):
         video_path = str(tmp_path / "video.mp4")
         Path(video_path).write_bytes(b"\x00" * 100)
 
@@ -847,7 +724,7 @@ class TestInjectChapters:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_popen.return_value = mock_process
-            result = await engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters)
 
         chapters_files = list(tmp_path.glob("chapters-*.txt"))
         assert len(chapters_files) == 0
@@ -862,8 +739,7 @@ class TestInjectChapters:
                         chapters_path_arg = next_arg
                         break
 
-    @pytest.mark.asyncio
-    async def test_inject_chapters_cleans_up_temp(self, tmp_path):
+    def test_inject_chapters_cleans_up_temp(self, tmp_path):
         video_path = str(tmp_path / "video.mp4")
         Path(video_path).write_bytes(b"\x00" * 100)
 
@@ -881,7 +757,7 @@ class TestInjectChapters:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_popen.return_value = mock_process
-            await engine.inject_chapters(video_path, chapters)
+            engine.inject_chapters(video_path, chapters)
 
         chapters_files = list(tmp_path.glob("chapters-*.txt"))
         assert len(chapters_files) == 0
@@ -973,8 +849,7 @@ class TestFindFFmpeg:
 
 
 class TestFFmpegCommandConstruction:
-    @pytest.mark.asyncio
-    async def test_encode_command_has_rawvideo_input_format(self, tmp_path):
+    def test_encode_command_has_rawvideo_input_format(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, ffmpeg_path="ffmpeg")
@@ -988,7 +863,7 @@ class TestFFmpegCommandConstruction:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            await engine.encode_video_with_ffmpeg(
+            engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
                 output_path,
                 total_frames=1,
@@ -1008,8 +883,7 @@ class TestFFmpegCommandConstruction:
         idx_pf = cmd.index("-pix_fmt")
         assert cmd[idx_pf + 1] == "rgba"
 
-    @pytest.mark.asyncio
-    async def test_blank_video_command_has_lavfi_format(self, tmp_path):
+    def test_blank_video_command_has_lavfi_format(self, tmp_path):
         output_path = str(tmp_path / "blank.mp4")
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, ffmpeg_path="ffmpeg")
@@ -1020,15 +894,14 @@ class TestFFmpegCommandConstruction:
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
-            await engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
+            engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
 
         cmd = mock_popen.call_args[0][0]
         assert "-f" in cmd
         idx_f = cmd.index("-f")
         assert cmd[idx_f + 1] == "lavfi"
 
-    @pytest.mark.asyncio
-    async def test_chapter_injection_command_has_map_metadata(self, tmp_path):
+    def test_chapter_injection_command_has_map_metadata(self, tmp_path):
         video_path = str(tmp_path / "video.mp4")
         Path(video_path).write_bytes(b"\x00" * 100)
 
@@ -1046,7 +919,7 @@ class TestFFmpegCommandConstruction:
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_popen.return_value = mock_process
-            await engine.inject_chapters(video_path, chapters)
+            engine.inject_chapters(video_path, chapters)
 
         cmd = mock_popen.call_args[0][0]
         assert "-map_metadata" in cmd

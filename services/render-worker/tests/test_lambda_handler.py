@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sow_render_worker.lambda_handler import (
-    _extract_job_fields,
-    _parse_record_body,
     _process_record,
     handler,
 )
@@ -22,40 +20,6 @@ def _make_sqs_record(job_id="job_abc123", user_id=42, songset_id="ss_001", messa
 
 def _make_sqs_event(records):
     return {"Records": records}
-
-
-class TestParseRecordBody:
-    def test_valid_json(self):
-        result = _parse_record_body('{"jobId": "j1", "userId": 5}')
-        assert result == {"jobId": "j1", "userId": 5}
-
-    def test_invalid_json_raises(self):
-        with pytest.raises(json.JSONDecodeError):
-            _parse_record_body("not json")
-
-    def test_empty_string_raises(self):
-        with pytest.raises(json.JSONDecodeError):
-            _parse_record_body("")
-
-
-class TestExtractJobFields:
-    def test_extracts_job_id_and_user_id(self):
-        job_id, user_id = _extract_job_fields({"jobId": "job_123", "userId": 42})
-        assert job_id == "job_123"
-        assert user_id == 42
-
-    def test_user_id_converted_to_int(self):
-        _, user_id = _extract_job_fields({"jobId": "job_123", "userId": "99"})
-        assert user_id == 99
-        assert isinstance(user_id, int)
-
-    def test_missing_job_id_raises(self):
-        with pytest.raises(KeyError):
-            _extract_job_fields({"userId": 42})
-
-    def test_missing_user_id_raises(self):
-        with pytest.raises(KeyError):
-            _extract_job_fields({"jobId": "job_123"})
 
 
 class TestProcessRecord:
@@ -158,15 +122,17 @@ class TestHandler:
         assert mock_process.call_count == 3
 
     @patch("sow_render_worker.lambda_handler._process_record")
-    def test_single_record_failure_raises(self, mock_process):
+    def test_single_record_failure_returns_batch_item_failures(self, mock_process):
         mock_process.side_effect = RuntimeError("render error")
-        event = _make_sqs_event([_make_sqs_record()])
+        event = _make_sqs_event([_make_sqs_record(message_id="msg-fail")])
 
-        with pytest.raises(RuntimeError, match="Batch item failures"):
-            handler(event, None)
+        result = handler(event, None)
+
+        assert "batchItemFailures" in result
+        assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-fail"
 
     @patch("sow_render_worker.lambda_handler._process_record")
-    def test_multiple_records_partial_failure_raises(self, mock_process):
+    def test_multiple_records_partial_failure(self, mock_process):
         call_count = [0]
 
         def side_effect(record):
@@ -183,8 +149,11 @@ class TestHandler:
         ]
         event = _make_sqs_event(records)
 
-        with pytest.raises(RuntimeError, match="Batch item failures"):
-            handler(event, None)
+        result = handler(event, None)
+
+        assert "batchItemFailures" in result
+        assert len(result["batchItemFailures"]) == 1
+        assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-2"
 
     @patch("sow_render_worker.lambda_handler._process_record")
     def test_empty_records_returns_200(self, mock_process):
@@ -205,28 +174,6 @@ class TestHandler:
         mock_process.assert_not_called()
 
     @patch("sow_render_worker.lambda_handler._process_record")
-    def test_failure_includes_message_id(self, mock_process):
-        mock_process.side_effect = RuntimeError("render error")
-        event = _make_sqs_event([_make_sqs_record(message_id="msg-special-001")])
-
-        with pytest.raises(RuntimeError) as exc_info:
-            handler(event, None)
-
-        error_data = json.loads(str(exc_info.value))
-        assert error_data["failed_records"][0]["messageId"] == "msg-special-001"
-
-    @patch("sow_render_worker.lambda_handler._process_record")
-    def test_failure_includes_error_message(self, mock_process):
-        mock_process.side_effect = RuntimeError("specific render error")
-        event = _make_sqs_event([_make_sqs_record()])
-
-        with pytest.raises(RuntimeError) as exc_info:
-            handler(event, None)
-
-        error_data = json.loads(str(exc_info.value))
-        assert "specific render error" in error_data["failed_records"][0]["error"]
-
-    @patch("sow_render_worker.lambda_handler._process_record")
     def test_all_records_processed_even_on_failure(self, mock_process):
         mock_process.side_effect = RuntimeError("always fails")
         records = [
@@ -235,27 +182,35 @@ class TestHandler:
         ]
         event = _make_sqs_event(records)
 
-        with pytest.raises(RuntimeError):
-            handler(event, None)
+        result = handler(event, None)
 
         assert mock_process.call_count == 2
+        assert len(result["batchItemFailures"]) == 2
 
-    def test_invalid_json_body_in_record(self):
+    @patch("sow_render_worker.lambda_handler.load_config")
+    @patch("sow_render_worker.lambda_handler.get_connection")
+    def test_invalid_json_body_in_record(self, mock_conn, mock_config):
         record = {
             "messageId": "msg-bad",
             "body": "not valid json{{{",
         }
         event = _make_sqs_event([record])
 
-        with pytest.raises(RuntimeError, match="Batch item failures"):
-            handler(event, None)
+        result = handler(event, None)
 
-    def test_missing_job_id_in_body(self):
+        assert "batchItemFailures" in result
+        assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-bad"
+
+    @patch("sow_render_worker.lambda_handler.load_config")
+    @patch("sow_render_worker.lambda_handler.get_connection")
+    def test_missing_job_id_in_body(self, mock_conn, mock_config):
         record = {
             "messageId": "msg-no-job",
             "body": json.dumps({"userId": 42}),
         }
         event = _make_sqs_event([record])
 
-        with pytest.raises(RuntimeError, match="Batch item failures"):
-            handler(event, None)
+        result = handler(event, None)
+
+        assert "batchItemFailures" in result
+        assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-no-job"

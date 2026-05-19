@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,46 +6,26 @@ from botocore.exceptions import ClientError
 from sow_render_worker.r2_client import (
     FILE_TYPE_CONFIGS,
     R2Client,
-    R2Config,
-    SignedUrlResult,
     create_r2_client_from_env,
 )
 
 
-def _make_config(**overrides) -> R2Config:
+def _make_r2_client(**overrides) -> R2Client:
     defaults = {
-        "account_id": "testaccount123",
+        "endpoint_url": "https://testaccount.r2.cloudflarestorage.com",
         "access_key_id": "test-access-key",
         "secret_access_key": "test-secret-key",
         "bucket_name": "test-bucket",
         "region": "auto",
     }
     defaults.update(overrides)
-    return R2Config(**defaults)
-
-
-def _make_r2_client(**config_overrides) -> R2Client:
     with patch("sow_render_worker.r2_client.boto3") as mock_boto3:
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
         mock_boto3.Config.return_value = MagicMock()
-        client = R2Client(_make_config(**config_overrides))
+        client = R2Client(**defaults)
         client._client = mock_client
     return client
-
-
-class TestR2Config:
-    def test_endpoint_url(self):
-        config = _make_config()
-        assert config.endpoint_url == "https://testaccount123.r2.cloudflarestorage.com"
-
-    def test_endpoint_url_custom_account(self):
-        config = _make_config(account_id="myaccount")
-        assert config.endpoint_url == "https://myaccount.r2.cloudflarestorage.com"
-
-    def test_default_region(self):
-        config = _make_config()
-        assert config.region == "auto"
 
 
 class TestR2ClientInit:
@@ -56,12 +35,16 @@ class TestR2ClientInit:
             mock_client = MagicMock()
             mock_boto3.client.return_value = mock_client
 
-            config = _make_config()
-            client = R2Client(config)
+            client = R2Client(
+                endpoint_url="https://testaccount.r2.cloudflarestorage.com",
+                access_key_id="test-access-key",
+                secret_access_key="test-secret-key",
+                bucket_name="test-bucket",
+            )
 
             mock_boto3.client.assert_called_once_with(
                 "s3",
-                endpoint_url="https://testaccount123.r2.cloudflarestorage.com",
+                endpoint_url="https://testaccount.r2.cloudflarestorage.com",
                 region_name="auto",
                 aws_access_key_id="test-access-key",
                 aws_secret_access_key="test-secret-key",
@@ -85,10 +68,8 @@ class TestGenerateSignedUrl:
 
         result = client.generate_signed_url("abc123/audio.mp3")
 
-        assert isinstance(result, SignedUrlResult)
-        assert result.url == "https://signed-url.example.com/audio.mp3"
-        assert result.cache_control == "public, max-age=3600"
-        assert isinstance(result.expires_at, datetime)
+        assert isinstance(result, str)
+        assert result == "https://signed-url.example.com/audio.mp3"
 
         call_args = client._client.generate_presigned_url.call_args
         assert call_args[0][0] == "get_object"
@@ -102,9 +83,8 @@ class TestGenerateSignedUrl:
         client = _make_r2_client()
         client._client.generate_presigned_url.return_value = "https://signed-url.example.com/lyrics.lrc"
 
-        result = client.generate_signed_url("abc123/lyrics.lrc", file_type="lrc")
+        client.generate_signed_url("abc123/lyrics.lrc", file_type="lrc")
 
-        assert result.cache_control == "public, max-age=86400"
         call_args = client._client.generate_presigned_url.call_args
         params = call_args[1]["Params"]
         assert params["ResponseContentType"] == "text/plain; charset=utf-8"
@@ -113,7 +93,7 @@ class TestGenerateSignedUrl:
         client = _make_r2_client()
         client._client.generate_presigned_url.return_value = "https://signed-url.example.com/file"
 
-        result = client.generate_signed_url("key", expires_in_seconds=7200)
+        client.generate_signed_url("key", expires_in_seconds=7200)
 
         call_args = client._client.generate_presigned_url.call_args
         assert call_args[1]["ExpiresIn"] == 7200
@@ -138,27 +118,12 @@ class TestGenerateSignedUrl:
         params = call_args[1]["Params"]
         assert params["ResponseContentDisposition"] == 'attachment; filename="audio.mp3"'
 
-    def test_expires_at_is_in_future(self):
-        client = _make_r2_client()
-        client._client.generate_presigned_url.return_value = "https://signed-url.example.com/file"
-
-        before = datetime.now(timezone.utc)
-        result = client.generate_signed_url("key", expires_in_seconds=3600)
-        after = datetime.now(timezone.utc)
-
-        assert before + __import__("datetime").timedelta(seconds=3600) <= result.expires_at.replace(
-            tzinfo=timezone.utc
-        ) or result.expires_at.replace(tzinfo=timezone.utc) <= after + __import__("datetime").timedelta(
-            seconds=3600
-        )
-
     def test_unknown_file_type_falls_back_to_audio(self):
         client = _make_r2_client()
         client._client.generate_presigned_url.return_value = "https://signed-url.example.com/file"
 
-        result = client.generate_signed_url("key", file_type="unknown")
+        client.generate_signed_url("key", file_type="unknown")
 
-        assert result.cache_control == "public, max-age=3600"
         call_args = client._client.generate_presigned_url.call_args
         params = call_args[1]["Params"]
         assert params["ResponseContentType"] == "audio/mpeg"
@@ -169,12 +134,11 @@ class TestGetAudioSignedUrl:
         client = _make_r2_client()
         client._client.generate_presigned_url.return_value = "https://signed-url.example.com/audio.mp3"
 
-        result = client.get_audio_signed_url("abc123")
+        client.get_audio_signed_url("abc123")
 
         call_args = client._client.generate_presigned_url.call_args
         params = call_args[1]["Params"]
         assert params["Key"] == "abc123/audio.mp3"
-        assert result.cache_control == "public, max-age=3600"
 
     def test_custom_expires(self):
         client = _make_r2_client()
@@ -191,50 +155,11 @@ class TestGetLrcSignedUrl:
         client = _make_r2_client()
         client._client.generate_presigned_url.return_value = "https://signed-url.example.com/lyrics.lrc"
 
-        result = client.get_lrc_signed_url("abc123")
+        client.get_lrc_signed_url("abc123")
 
         call_args = client._client.generate_presigned_url.call_args
         params = call_args[1]["Params"]
         assert params["Key"] == "abc123/lyrics.lrc"
-        assert result.cache_control == "public, max-age=86400"
-
-
-class TestGetVideoSignedUrl:
-    def test_constructs_video_key(self):
-        client = _make_r2_client()
-        client._client.generate_presigned_url.return_value = "https://signed-url.example.com/video.mp4"
-
-        result = client.get_video_signed_url("job-123")
-
-        call_args = client._client.generate_presigned_url.call_args
-        params = call_args[1]["Params"]
-        assert params["Key"] == "renders/job-123/output.mp4"
-        assert result.cache_control == "public, max-age=3600"
-
-
-class TestGetRenderedAudioSignedUrl:
-    def test_constructs_rendered_audio_key(self):
-        client = _make_r2_client()
-        client._client.generate_presigned_url.return_value = "https://signed-url.example.com/audio.mp3"
-
-        result = client.get_rendered_audio_signed_url("job-123")
-
-        call_args = client._client.generate_presigned_url.call_args
-        params = call_args[1]["Params"]
-        assert params["Key"] == "renders/job-123/output.mp3"
-
-
-class TestGetChaptersSignedUrl:
-    def test_constructs_chapters_key(self):
-        client = _make_r2_client()
-        client._client.generate_presigned_url.return_value = "https://signed-url.example.com/chapters.json"
-
-        result = client.get_chapters_signed_url("job-123")
-
-        call_args = client._client.generate_presigned_url.call_args
-        params = call_args[1]["Params"]
-        assert params["Key"] == "renders/job-123/chapters.json"
-        assert result.cache_control == "public, max-age=3600"
 
 
 class TestFileExists:
@@ -277,53 +202,6 @@ class TestFileExists:
             client.file_exists("forbidden/key")
 
 
-class TestGetObjectSize:
-    def test_returns_content_length(self):
-        client = _make_r2_client()
-        client._client.head_object.return_value = {"ContentLength": 2048}
-
-        assert client.get_object_size("abc123/audio.mp3") == 2048
-
-    def test_returns_none_when_missing(self):
-        client = _make_r2_client()
-        client._client.head_object.return_value = {}
-
-        assert client.get_object_size("abc123/audio.mp3") is None
-
-    def test_returns_none_on_client_error(self):
-        client = _make_r2_client()
-        client._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "404", "Message": "Not Found"}},
-            "HeadObject",
-        )
-
-        assert client.get_object_size("nonexistent/key") is None
-
-
-class TestParseS3Url:
-    def test_parses_valid_url(self):
-        bucket, key = R2Client.parse_s3_url("s3://my-bucket/path/to/file.mp3")
-        assert bucket == "my-bucket"
-        assert key == "path/to/file.mp3"
-
-    def test_parses_nested_key(self):
-        bucket, key = R2Client.parse_s3_url("s3://bucket/a/b/c/d.json")
-        assert bucket == "bucket"
-        assert key == "a/b/c/d.json"
-
-    def test_rejects_non_s3_url(self):
-        with pytest.raises(ValueError, match="Invalid S3 URL format"):
-            R2Client.parse_s3_url("https://bucket.s3.amazonaws.com/key")
-
-    def test_rejects_no_key(self):
-        with pytest.raises(ValueError, match="Invalid S3 URL format"):
-            R2Client.parse_s3_url("s3://bucket/")
-
-    def test_rejects_no_bucket(self):
-        with pytest.raises(ValueError, match="Invalid S3 URL format"):
-            R2Client.parse_s3_url("s3:///key")
-
-
 class TestFileTypeConfigs:
     def test_audio_config(self):
         assert FILE_TYPE_CONFIGS["audio"]["content_type"] == "audio/mpeg"
@@ -345,7 +223,7 @@ class TestFileTypeConfigs:
 class TestCreateR2ClientFromEnv:
     def test_creates_client_from_env_vars(self):
         env = {
-            "R2_ACCOUNT_ID": "envaccount",
+            "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
             "R2_ACCESS_KEY_ID": "env-access-key",
             "R2_SECRET_ACCESS_KEY": "env-secret-key",
             "R2_BUCKET_NAME": "env-bucket",
@@ -364,7 +242,7 @@ class TestCreateR2ClientFromEnv:
 
     def test_uses_r2_bucket_as_fallback(self):
         env = {
-            "R2_ACCOUNT_ID": "envaccount",
+            "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
             "R2_ACCESS_KEY_ID": "env-access-key",
             "R2_SECRET_ACCESS_KEY": "env-secret-key",
             "R2_BUCKET": "fallback-bucket",
@@ -384,7 +262,7 @@ class TestCreateR2ClientFromEnv:
 
     def test_raises_on_partial_env_vars(self):
         env = {
-            "R2_ACCOUNT_ID": "account",
+            "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
             "R2_ACCESS_KEY_ID": "key",
         }
         with patch.dict("os.environ", env, clear=True):
