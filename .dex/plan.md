@@ -186,16 +186,16 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/uploader.py`
 - Create: `services/render-worker/tests/test_uploader.py`
 
-- [ ] Port `R2Uploader` class using boto3 S3 client
-- [ ] Port `upload_file()` — read file, put_object with content type, cache control, metadata
-- [ ] Port `upload_buffer()` — put_object with bytes body
-- [ ] Port `upload_render_artifacts()` — upload MP3, MP4, chapters.json to `renders/{jobId}/` prefix
-- [ ] Port `file_exists()` — head_object
-- [ ] Port `delete_file()` — delete_object
-- [ ] Port `delete_render_artifacts()` — delete all artifacts for a job
-- [ ] Port content type inference from file extension
-- [ ] Write tests — upload artifacts logic, content type mapping, key construction (mock boto3)
-- [ ] Run tests — must pass
+- [x] Port `R2Uploader` class using boto3 S3 client
+- [x] Port `upload_file()` — read file, put_object with content type, cache control, metadata
+- [x] Port `upload_buffer()` — put_object with bytes body
+- [x] Port `upload_render_artifacts()` — upload MP3, MP4, chapters.json to `renders/{jobId}/` prefix
+- [x] Port `file_exists()` — head_object
+- [x] Port `delete_file()` — delete_object
+- [x] Port `delete_render_artifacts()` — delete all artifacts for a job
+- [x] Port content type inference from file extension
+- [x] Write tests — upload artifacts logic, content type mapping, key construction (mock boto3)
+- [x] Run tests — must pass
 
 ### Task 9: Port DB Job Manager to Python
 
@@ -203,17 +203,17 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/db.py`
 - Create: `services/render-worker/tests/test_db.py`
 
-- [ ] Create DB module using psycopg2 with connection from `DATABASE_URL`
-- [ ] Port `get_render_job()` — SELECT from render_jobs by id and user_id
-- [ ] Port `start_render_job()` — UPDATE status to 'running'
-- [ ] Port `update_render_progress()` — UPDATE phase, phase_index, estimated_total_seconds, total_duration_seconds, elapsed_seconds
-- [ ] Port `complete_render_job()` — UPDATE status to 'completed', set mp3/mp4/chapters R2 keys, completed_at
-- [ ] Port `fail_render_job()` — UPDATE status to 'failed', set error_message
-- [ ] Port `recover_orphaned_jobs()` — UPDATE running jobs older than 30 min to failed
-- [ ] Port phase index constants and ordering
-- [ ] Use parameterized queries (no string interpolation) for SQL injection safety
-- [ ] Write tests — job status transitions, progress updates, orphan recovery (mock psycopg2 or use test fixtures)
-- [ ] Run tests — must pass
+- [x] Create DB module using psycopg2 with connection from `DATABASE_URL`
+- [x] Port `get_render_job()` — SELECT from render_jobs by id and user_id
+- [x] Port `start_render_job()` — UPDATE status to 'running'
+- [x] Port `update_render_progress()` — UPDATE phase, phase_index, estimated_total_seconds, total_duration_seconds, elapsed_seconds
+- [x] Port `complete_render_job()` — UPDATE status to 'completed', set mp3/mp4/chapters R2 keys, completed_at
+- [x] Port `fail_render_job()` — UPDATE status to 'failed', set error_message
+- [x] Port `recover_orphaned_jobs()` — UPDATE running jobs older than 30 min to failed
+- [x] Port phase index constants and ordering
+- [x] Use parameterized queries (no string interpolation) for SQL injection safety
+- [x] Write tests — job status transitions, progress updates, orphan recovery (mock psycopg2 or use test fixtures)
+- [x] Run tests — must pass
 
 ### Task 10: Port Render Pipeline Orchestrator to Python
 
@@ -221,16 +221,16 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/pipeline.py`
 - Create: `services/render-worker/tests/test_pipeline.py`
 
-- [ ] Port `execute_render_pipeline()` — the main orchestrator function
-- [ ] Port phase sequence: preparing -> mixing_audio -> rendering_frames -> encoding_video -> uploading
-- [ ] Port `fetch_songset_items()` — query songset_items joined with recordings and songs
-- [ ] Port cancellation check — read job status from DB between phases
-- [ ] Port progress estimation using `get_render_ratio()` — query historical jobs for ratio
-- [ ] Port error handling — mark job as failed on exception, skip if cancelled
-- [ ] Port temp directory cleanup in finally block
-- [ ] Wire up all modules: AudioEngine, VideoEngine, AssetFetcher, R2Uploader, DB
-- [ ] Write integration-style tests — pipeline flow with mocked sub-components, cancellation mid-pipeline, error propagation
-- [ ] Run tests — must pass
+- [x] Port `execute_render_pipeline()` — the main orchestrator function
+- [x] Port phase sequence: preparing -> mixing_audio -> rendering_frames -> encoding_video -> uploading
+- [x] Port `fetch_songset_items()` — query songset_items joined with recordings and songs
+- [x] Port cancellation check — read job status from DB between phases
+- [x] Port progress estimation using `get_render_ratio()` — query historical jobs for ratio
+- [x] Port error handling — mark job as failed on exception, skip if cancelled
+- [x] Port temp directory cleanup in finally block
+- [x] Wire up all modules: AudioEngine, VideoEngine, AssetFetcher, R2Uploader, DB
+- [x] Write integration-style tests — pipeline flow with mocked sub-components, cancellation mid-pipeline, error propagation
+- [x] Run tests — must pass
 
 ### Task 11: Implement Lambda Handler
 
