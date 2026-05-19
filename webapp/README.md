@@ -16,6 +16,7 @@ Copy `.env.example` to `.env.local` and configure:
 
 - `DATABASE_URL` — PostgreSQL connection string
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` — Cloudflare R2 credentials
+- `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — AWS SQS credentials for render job queue
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` — Better Auth configuration
 - `NEXT_PUBLIC_BASE_URL` — Base URL of the app (for share links)
 - `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` — (optional) Google Cast SDK receiver app ID
@@ -91,11 +92,12 @@ npx drizzle-kit migrate    # Run pending migrations
 - **ORM**: Drizzle ORM with PostgreSQL (Neon serverless)
 - **Auth**: Better Auth
 - **Storage**: Cloudflare R2
-- **Rendering**: FFmpeg (audio mixing, video encoding)
+- **Render Queue**: AWS SQS (render jobs are enqueued, not run inline)
+- **Render Worker**: AWS Lambda container (Python, processes jobs from SQS)
 
-## Deployment (Vercel Pro)
+## Deployment (Vercel Pro + AWS Lambda)
 
-### Setup
+### Web App (Vercel)
 
 1. Connect the repository to a Vercel project.
 2. Set the **Root Directory** to `webapp/`.
@@ -103,13 +105,69 @@ npx drizzle-kit migrate    # Run pending migrations
 4. Add all environment variables from `.env.production.example` in:
    Vercel Dashboard → Project Settings → Environment Variables
 
-### Vercel Pro requirements
-
-Render jobs are now enqueued to SQS and processed by an AWS Lambda worker.
+Render jobs are enqueued to SQS and processed by an AWS Lambda worker.
 The `/api/render-jobs` endpoints only create jobs and return status, so
 `maxDuration: 60` is sufficient (set in `vercel.json`). Fluid Compute is
 no longer required on render routes since long-running encoding happens in
 the Lambda worker, not in the Vercel function.
+
+### Lambda Worker Deployment
+
+The render worker is a Python container deployed to AWS Lambda via ECR:
+
+1. **Build the Docker image** from `services/render-worker/Dockerfile`:
+   ```bash
+   cd services/render-worker
+   docker build -t sow-render-worker .
+   ```
+
+2. **Push to AWS ECR**:
+   ```bash
+   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+   docker tag sow-render-worker:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+   docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+   ```
+
+3. **Update the Lambda function** to use the new image:
+   ```bash
+   aws lambda update-function-code \
+     --function-name sow-render-worker \
+     --image-uri <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+   ```
+
+This is automated in the GitHub Actions deploy workflow (`.github/workflows/deploy.yml`).
+
+### SQS Queue Setup
+
+Create the SQS queue and dead-letter queue (DLQ) in AWS:
+
+1. **Create the DLQ**:
+   ```bash
+   aws sqs create-queue --queue-name sow-render-jobs-dlq
+   ```
+
+2. **Create the main queue** with a redrive policy pointing to the DLQ:
+   ```bash
+   aws sqs create-queue --queue-name sow-render-jobs \
+     --attributes '{
+       "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:<account-id>:sow-render-jobs-dlq\",\"maxReceiveCount\":\"3\"}",
+       "VisibilityTimeout": "900"
+     }'
+   ```
+
+   - **Visibility timeout**: 900 seconds (15 minutes) — must exceed the maximum
+     expected render duration so the message is not re-delivered while the
+     Lambda is still processing it.
+   - **maxReceiveCount**: 3 — after 3 failed processing attempts, the message
+     is moved to the DLQ for investigation.
+
+3. **Configure the Lambda event source** to read from the queue:
+   ```bash
+   aws lambda create-event-source-mapping \
+     --function-name sow-render-worker \
+     --batch-size 1 \
+     --event-source-arn arn:aws:sqs:us-east-1:<account-id>:sow-render-jobs
+   ```
 
 ### Preview Deployments
 

@@ -237,6 +237,44 @@ describe(".env.production.example", () => {
     const content = readEnvExample();
     expect(content).toContain("NEXT_PUBLIC_BASE_URL=");
   });
+
+  it("documents AWS_REGION", () => {
+    const content = readEnvExample();
+    expect(content).toContain("AWS_REGION=");
+  });
+
+  it("documents SQS_QUEUE_URL", () => {
+    const content = readEnvExample();
+    expect(content).toContain("SQS_QUEUE_URL=");
+  });
+
+  it("documents AWS_ACCESS_KEY_ID", () => {
+    const content = readEnvExample();
+    expect(content).toContain("AWS_ACCESS_KEY_ID=");
+  });
+
+  it("documents AWS_SECRET_ACCESS_KEY", () => {
+    const content = readEnvExample();
+    expect(content).toContain("AWS_SECRET_ACCESS_KEY=");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AWS SQS documentation
+// ---------------------------------------------------------------------------
+
+describe(".env.production.example — AWS SQS documentation", () => {
+  it("explains IAM permissions needed for SQS", () => {
+    const content = readEnvExample();
+    expect(content.toLowerCase()).toContain("iam");
+    expect(content.toLowerCase()).toContain("sqs:sendmessage");
+  });
+
+  it("documents the SQS queue URL format", () => {
+    const content = readEnvExample();
+    expect(content).toContain("sqs.");
+    expect(content).toContain("amazonaws.com");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -286,6 +324,19 @@ describe("README.md — deployment documentation", () => {
     expect(content.toLowerCase()).toContain("lambda");
   });
 
+  it("documents Lambda worker deployment flow (ECR push -> Lambda update)", () => {
+    const content = readReadme();
+    expect(content.toLowerCase()).toContain("ecr");
+    expect(content.toLowerCase()).toContain("update-function-code");
+  });
+
+  it("documents SQS queue setup with DLQ and visibility timeout", () => {
+    const content = readReadme();
+    expect(content.toLowerCase()).toContain("dlq");
+    expect(content.toLowerCase()).toContain("visibility");
+    expect(content.toLowerCase()).toContain("dead-letter");
+  });
+
   it("documents preview deployments", () => {
     const content = readReadme();
     expect(content.toLowerCase()).toContain("preview");
@@ -313,4 +364,8 @@ describe("external setup steps (not automatable)", () => {
   it.todo("Submit production Cast receiver app for Google review");
   it.todo("Activate Vercel Pro plan on the project");
   it.todo("Add environment variables in Vercel Dashboard → Project Settings → Environment Variables");
+  it.todo("Create AWS SQS queue with DLQ and visibility timeout for render jobs");
+  it.todo("Create AWS ECR repository for render worker container images");
+  it.todo("Create AWS Lambda function from ECR container image");
+  it.todo("Configure Lambda event source mapping to SQS queue");
 });
