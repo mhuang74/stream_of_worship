@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Callable, Protocol
+
+
+@dataclass(frozen=True)
+class ChapterLine:
+    text: str
+    start_seconds: float
+
+
+@dataclass(frozen=True)
+class Chapter:
+    position: int
+    song_title: str
+    start_seconds: float
+    end_seconds: float
+    lines: tuple[ChapterLine, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class ChaptersManifest:
+    chapters: tuple[Chapter, ...] = field(default_factory=tuple)
+    total_duration_seconds: float = 0.0
+    generated_at: str = ""
+
+
+class SegmentInfo(Protocol):
+    song_title: str | None
+    song_id: str
+    recording_hash_prefix: str | None
+    start_time_seconds: float
+    duration_seconds: float
+
+
+class LrcDownloadCallback(Protocol):
+    async def __call__(self, hash_prefix: str) -> str | None: ...
+
+
+class LyricsCallback(Protocol):
+    async def __call__(self, hash_prefix: str, start_seconds: float) -> list[ChapterLine]: ...
+
+
+async def build_chapters_from_segments(
+    segments: list[SegmentInfo],
+    get_lyrics: Callable[[str, float], list[ChapterLine] | object],
+) -> list[Chapter]:
+    import asyncio
+
+    async def _build_chapter(i: int, segment: SegmentInfo) -> Chapter:
+        start_seconds = segment.start_time_seconds
+        end_seconds = start_seconds + segment.duration_seconds
+        song_title = segment.song_title or segment.song_id or f"Song {i + 1}"
+
+        hash_prefix = segment.recording_hash_prefix
+        if hash_prefix:
+            result = get_lyrics(hash_prefix, start_seconds)
+            if asyncio.iscoroutine(result):
+                lines = await result
+            else:
+                lines = result
+        else:
+            lines = []
+
+        return Chapter(
+            position=i + 1,
+            song_title=song_title,
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+            lines=tuple(lines),
+        )
+
+    tasks = [_build_chapter(i, seg) for i, seg in enumerate(segments)]
+    return list(await asyncio.gather(*tasks))
+
+
+async def generate_chapters_manifest(
+    segments: list[SegmentInfo],
+    download_lrc: Callable[[str], str | None | object],
+    total_duration_seconds: float,
+) -> ChaptersManifest:
+    from .lrc_parser import parse_lrc
+
+    async def get_lyrics(
+        hash_prefix: str, start_seconds: float
+    ) -> list[ChapterLine]:
+        try:
+            result = download_lrc(hash_prefix)
+            if isinstance(result, str) or result is None:
+                lrc_content = result
+            else:
+                lrc_content = await result
+            if lrc_content:
+                local_lyrics = parse_lrc(lrc_content)
+                return [
+                    ChapterLine(
+                        text=line.text,
+                        start_seconds=start_seconds + line.time_seconds,
+                    )
+                    for line in local_lyrics
+                ]
+        except Exception:
+            pass
+        return []
+
+    chapters = await build_chapters_from_segments(segments, get_lyrics)
+    return ChaptersManifest(
+        chapters=tuple(chapters),
+        total_duration_seconds=total_duration_seconds,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def chapters_to_ffmpeg_metadata(manifest: ChaptersManifest) -> str:
+    lines: list[str] = [";FFMETADATA1"]
+    for chapter in manifest.chapters:
+        lines.append("[CHAPTER]")
+        lines.append("TIMEBASE=1/1000")
+        lines.append(f"START={int(chapter.start_seconds * 1000)}")
+        lines.append(f"END={int(chapter.end_seconds * 1000)}")
+        lines.append(f"title={chapter.song_title}")
+    return "\n".join(lines)
+
+
+def find_chapter_at_time(manifest: ChaptersManifest, position_seconds: float) -> int:
+    for i, chapter in enumerate(manifest.chapters):
+        if position_seconds >= chapter.start_seconds and position_seconds < chapter.end_seconds:
+            return i
+    if manifest.chapters:
+        last_chapter = manifest.chapters[-1]
+        if position_seconds == last_chapter.end_seconds:
+            return len(manifest.chapters) - 1
+    return -1
+
+
+def get_song_title_at_time(manifest: ChaptersManifest, position_seconds: float) -> str | None:
+    chapter_index = find_chapter_at_time(manifest, position_seconds)
+    if chapter_index >= 0:
+        return manifest.chapters[chapter_index].song_title
+    return None
+
+
+def get_lyric_at_time(manifest: ChaptersManifest, position_seconds: float) -> str | None:
+    chapter_index = find_chapter_at_time(manifest, position_seconds)
+    if chapter_index < 0:
+        return None
+    chapter = manifest.chapters[chapter_index]
+    for i in range(len(chapter.lines) - 1, -1, -1):
+        if position_seconds >= chapter.lines[i].start_seconds:
+            return chapter.lines[i].text
+    return None
+
+
+def parse_chapters_manifest(json_str: str) -> ChaptersManifest:
+    parsed = json.loads(json_str)
+    if not isinstance(parsed.get("chapters"), list):
+        raise ValueError("Invalid chapters manifest: chapters must be an array")
+    if not isinstance(parsed.get("totalDurationSeconds"), (int, float)):
+        raise ValueError("Invalid chapters manifest: totalDurationSeconds must be a number")
+    if not isinstance(parsed.get("generatedAt"), str):
+        raise ValueError("Invalid chapters manifest: generatedAt must be a string")
+
+    chapters: list[Chapter] = []
+    for chapter_data in parsed["chapters"]:
+        if (
+            not isinstance(chapter_data.get("position"), (int, float))
+            or not isinstance(chapter_data.get("songTitle"), str)
+            or not isinstance(chapter_data.get("startSeconds"), (int, float))
+            or not isinstance(chapter_data.get("endSeconds"), (int, float))
+            or not isinstance(chapter_data.get("lines"), list)
+        ):
+            raise ValueError("Invalid chapter structure")
+
+        chapter_lines: list[ChapterLine] = []
+        for line_data in chapter_data["lines"]:
+            if (
+                not isinstance(line_data.get("text"), str)
+                or not isinstance(line_data.get("startSeconds"), (int, float))
+            ):
+                raise ValueError("Invalid chapter line structure")
+            chapter_lines.append(
+                ChapterLine(
+                    text=line_data["text"],
+                    start_seconds=float(line_data["startSeconds"]),
+                )
+            )
+
+        chapters.append(
+            Chapter(
+                position=int(chapter_data["position"]),
+                song_title=chapter_data["songTitle"],
+                start_seconds=float(chapter_data["startSeconds"]),
+                end_seconds=float(chapter_data["endSeconds"]),
+                lines=tuple(chapter_lines),
+            )
+        )
+
+    return ChaptersManifest(
+        chapters=tuple(chapters),
+        total_duration_seconds=float(parsed["totalDurationSeconds"]),
+        generated_at=parsed["generatedAt"],
+    )
