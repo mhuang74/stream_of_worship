@@ -1,579 +1,379 @@
-# Stream of Worship Web App Implementation Plan
+# Stream of Worship Webapp — Deployment Plan v2 Implementation
 
 ## Overview
 
-Build a Next.js (App Router) web application to replace the existing Python TUI (`sow-app`). The web app provides phone-first worship preparation and playback, with desktop power-mode for advanced editing. Key features include songset management, render pipeline (MP3 + MP4), worship playback with Presentation API for second screen, offline caching, semantic search, and global audio player for previews.
+Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-based worker architecture. The Next.js app will enqueue render jobs to SQS instead of running `executeRenderPipeline()` via `after()`. A Python Lambda container will process jobs, achieving feature parity with the current Node.js pipeline while eliminating the need for heavy native dependencies (canvas, ffmpeg-static, fastembed) on Vercel.
 
 ## Context
 
 - Files involved:
-  - New: `webapp/` directory (Next.js app)
-  - Reference: `src/stream_of_worship/app/` (existing Python TUI)
-  - Reference: `src/stream_of_worship/db/postgres_schema.py` (database schema)
-  - Reference: `src/stream_of_worship/app/services/` (audio/video engines, export)
+  - `webapp/src/app/api/render-jobs/route.ts` — current in-process pipeline trigger
+  - `webapp/src/lib/render/pipeline.ts` — 219-line render orchestrator to port
+  - `webapp/src/lib/render/audio-engine.ts` — 560-line FFmpeg audio mixing to port
+  - `webapp/src/lib/render/video-engine.ts` — 611-line FFmpeg video encoding to port
+  - `webapp/src/lib/render/frame-renderer.ts` — 570-line node-canvas frame rendering to port
+  - `webapp/src/lib/render/chapters.ts` — 256-line chapter manifest to port
+  - `webapp/src/lib/render/lrc-parser.ts` — 199-line LRC parser to port
+  - `webapp/src/lib/render/uploader.ts` — 280-line R2 upload to port
+  - `webapp/src/lib/render/asset-fetcher.ts` — 200-line R2 download to port
+  - `webapp/src/lib/render/job-manager.ts` — 385-line DB job CRUD (shared, not ported)
+  - `webapp/src/lib/render/render-ratio.ts` — 58-line progress estimation
+  - `webapp/src/lib/embed/client.ts` — fastembed runtime (to be deleted)
+  - `webapp/src/app/api/songs/search/semantic/route.ts` — currently uses fastembed at runtime; will switch to pre-computed embedding lookup
+  - `webapp/src/app/api/songs/search/route.ts` — currently uses ilike; will switch to tsvector full-text search
+  - `webapp/src/lib/db/search.ts` — new hybrid search utility module
+  - `webapp/src/db/schema.ts` — songs table needs tsvector generated column + GIN index
+  - `webapp/next.config.ts` — serverExternalPackages to clean up
+  - `webapp/vercel.json` — maxDuration to reduce
+  - `webapp/package.json` — heavy deps to remove, SQS SDK to add
+  - `webapp/src/test/deployment/deployment.test.ts` — deployment config tests to update
+  - `webapp/.env.production.example` — new env vars to document
+  - `webapp/src/db/schema.ts` — render_jobs table (read by both Vercel and Lambda)
 - Related patterns:
-  - Existing Python services (AudioEngine, VideoEngine, ExportService) will be ported to Node.js
-  - Database schema will be extended with new tables (render_jobs, songset_shares, song_embedding, user_lrc_overrides, lyric_marks)
-  - R2 storage patterns from existing `admin/services/r2.py`
-  - Phone-lite / desktop-full UX split: phone shows simplified controls (gap + crossfade only, lyrics review only); desktop (lg: 1024px+) unlocks full features (key shift, tempo nudge, lyrics text/timing edit)
+  - `services/analysis/Dockerfile` — existing Python Dockerfile pattern
+  - `services/analysis/docker-compose.yml` — existing service compose pattern
+  - `services/analysis/scripts/deploy.sh` — existing deployment script pattern
+  - `webapp/src/lib/r2/client.ts` — R2 S3-compatible client (boto3 equivalent needed)
+  - `webapp/src/db/index.ts` — neon-http driver (psycopg2 equivalent needed)
 - Dependencies:
-  - Next.js 15+ (App Router)
-  - Tailwind CSS, shadcn/ui
-  - Better Auth
-  - Drizzle ORM + @neondatabase/serverless
-  - fluent-ffmpeg + ffmpeg-static
-  - skia-canvas or node-canvas
-  - fastembed-js + ONNX (for semantic search)
-  - Workbox (Service Worker)
+  - Python 3.11, Pillow, boto3, psycopg2-binary, FFmpeg (system), CJK fonts
+  - `@aws-sdk/client-sqs` for Next.js SQS integration
+  - AWS Lambda container image runtime (`public.ecr.aws/lambda/python:3.11`)
 
 ## Development Approach
 
-- **Testing approach:** Regular (code first, then tests)
+- **Testing approach**: Regular (code first, then tests)
 - Complete each task fully before moving to the next
-- Each task includes API routes, UI components, and tests
+- The Python worker must achieve feature parity with the Node.js pipeline — port logic faithfully, don't redesign
+- Lambda handler is thin; all render logic lives in testable Python modules
+- Use boto3 for R2 (S3-compatible) and psycopg2 for Neon DB access in the worker
+- The Next.js app remains the source of truth for job creation and status queries; Lambda only reads/writes job status
 - **CRITICAL: every task MUST include new/updated tests**
 - **CRITICAL: all tests must pass before starting next task**
 
 ## Implementation Steps
 
-### Phase 1: Project Foundation
-
-#### Task 1.1: Initialize Next.js Project
+### Task 1: Create Python Render Worker Package Structure
 
 **Files:**
-- Create: `webapp/` directory with Next.js 15+ App Router
-- Create: `webapp/package.json`, `webapp/tsconfig.json`
-- Create: `webapp/tailwind.config.ts`, `webapp/postcss.config.js`
-- Create: `webapp/.env.example`
+- Create: `services/render-worker/pyproject.toml`
+- Create: `services/render-worker/requirements.txt`
+- Create: `services/render-worker/src/sow_render_worker/__init__.py`
+- Create: `services/render-worker/src/sow_render_worker/lambda_handler.py`
+- Create: `services/render-worker/src/sow_render_worker/config.py`
+- Create: `services/render-worker/tests/__init__.py`
+- Create: `services/render-worker/tests/conftest.py`
 
-- [x] Initialize Next.js project with TypeScript and Tailwind CSS
-- [x] Install core dependencies: shadcn/ui, Drizzle ORM, @neondatabase/serverless, better-auth
-- [x] Configure Tailwind with mobile-first breakpoints (sm: 0px, md: 768px, lg: 1024px)
-- [x] Set up shadcn/ui components (button, card, dialog, sheet, input, etc.)
-- [x] Create base layout with app shell (header, navigation)
-- [x] Configure environment variables for database, R2, auth
-- [x] Write tests for base layout and routing
-- [x] Run test suite - must pass before task 1.2
+- [ ] Create `services/render-worker/` directory with Python package structure
+- [ ] Create `pyproject.toml` with project metadata, Python 3.11 target, ruff config (line-length 100)
+- [ ] Create `requirements.txt` with: boto3, psycopg2-binary, Pillow, python-dotenv
+- [ ] Create `config.py` module that reads env vars (DATABASE_URL, R2_*, AWS_REGION, SQS_QUEUE_URL) with validation
+- [ ] Create stub `lambda_handler.py` with `handler(event, context)` that logs the event and returns 200
+- [ ] Create `conftest.py` with test fixtures (env vars mock, temp directory)
+- [ ] Write tests for `config.py` — verify env var reading, validation errors on missing vars
+- [ ] Run `PYTHONPATH=src pytest tests/ -v` from `services/render-worker/` — must pass
 
-#### Task 1.2: Database Schema and Migrations
-
-**Files:**
-- Create: `webapp/src/db/schema.ts`
-- Create: `webapp/src/db/index.ts`
-- Create: `webapp/drizzle/` migrations directory
-
-- [x] Define Drizzle schema for existing tables (songs, recordings, songsets, songset_items)
-- [x] Add new tables: `users`, `sessions`, `accounts` (Better Auth)
-- [x] Add new tables: `render_jobs`, `songset_shares`, `song_embedding`
-- [x] Add new tables: `user_lrc_overrides`, `lyric_marks`
-- [x] Add `last_failed_render_job_id` column to songsets
-- [x] Add `font_size_preset`, `include_title_card`, `title_card_duration_seconds`, `chapters_r2_key` columns to render_jobs
-- [x] Create initial migration
-- [x] Write tests for schema relationships and constraints
-- [x] Run test suite - must pass before task 1.3
-
-#### Task 1.3: Authentication Setup
+### Task 2: Port LRC Parser to Python
 
 **Files:**
-- Create: `webapp/src/lib/auth.ts`
-- Create: `webapp/src/app/api/auth/[...all]/route.ts`
-- Create: `webapp/src/app/login/page.tsx`
-- Create: `webapp/src/middleware.ts`
+- Create: `services/render-worker/src/sow_render_worker/lrc_parser.py`
+- Create: `services/render-worker/tests/test_lrc_parser.py`
 
-- [x] Configure Better Auth with Neon Postgres adapter
-- [x] Implement email/password authentication
-- [x] Create login page with form validation
-- [x] Add middleware for protected routes
-- [x] Create auth context provider for client components
-- [x] Write tests for auth flows (login, logout, session)
-- [x] Run test suite - must pass before task 2.1
+- [ ] Port `parseLRC()` from `webapp/src/lib/render/lrc-parser.ts` — parse `[mm:ss.xx]text` format, sort by timestamp
+- [ ] Port `convertToGlobalTimeline()` — shift local timestamps by segment offset, attach title
+- [ ] Port `estimateLastLyricDuration()` — two-tier: match previous same-text line, then char-count + BPM fallback
+- [ ] Port `groupLyricsBySong()` — group GlobalLRCLine by title
+- [ ] Port `findCurrentLyricIndex()` — binary-style search for current lyric at time
+- [ ] Port `isValidLRC()` — regex check for valid format
+- [ ] Write tests matching the TypeScript test patterns — parse various LRC formats, global timeline conversion, duration estimation, grouping, edge cases (empty, single line, no timestamps)
+- [ ] Run tests — must pass
 
-### Phase 2: Core API Routes
-
-#### Task 2.1: Songset API Routes
+### Task 3: Port Chapters Module to Python
 
 **Files:**
-- Create: `webapp/src/app/api/songsets/route.ts` (list, create)
-- Create: `webapp/src/app/api/songsets/[id]/route.ts` (get, update, delete)
-- Create: `webapp/src/app/api/songsets/[id]/items/route.ts`
-- Create: `webapp/src/lib/db/songsets.ts`
+- Create: `services/render-worker/src/sow_render_worker/chapters.py`
+- Create: `services/render-worker/tests/test_chapters.py`
 
-- [x] Implement GET /api/songsets (list with pagination, render state)
-- [x] Implement POST /api/songsets (create)
-- [x] Implement GET /api/songsets/[id] (with items and metadata)
-- [x] Implement PATCH /api/songsets/[id] (update name, description)
-- [x] Implement DELETE /api/songsets/[id]
-- [x] Implement POST/PATCH/DELETE for songset items
-- [x] Compute `renderState` server-side: unrendered (no job), failed (lastFailedRenderJobId set), rendering (active job), fresh (job complete, !artifactsOutOfDate), stale (job complete, artifactsOutOfDate)
-- [x] Write tests for all songset endpoints
-- [x] Run test suite - must pass before task 2.2
+- [ ] Port `ChaptersManifest` dataclass — chapters list, total_duration_seconds, generated_at
+- [ ] Port `Chapter` dataclass — position, song_title, start_seconds, end_seconds, lines
+- [ ] Port `ChapterLine` dataclass — text, start_seconds
+- [ ] Port `build_chapters_from_segments()` — iterate segments, fetch lyrics via callback, build chapter list
+- [ ] Port `generate_chapters_manifest()` — build chapters with LRC download callback
+- [ ] Port `chapters_to_ffmpeg_metadata()` — FFMETADATA1 format output
+- [ ] Port `find_chapter_at_time()`, `get_song_title_at_time()`, `get_lyric_at_time()` — lookup helpers
+- [ ] Port `parse_chapters_manifest()` — JSON parse with validation
+- [ ] Write tests — manifest generation, FFmpeg metadata format, time lookups, validation errors
+- [ ] Run tests — must pass
 
-#### Task 2.2: Catalog API Routes
-
-**Files:**
-- Create: `webapp/src/app/api/songs/route.ts`
-- Create: `webapp/src/app/api/songs/[id]/route.ts`
-- Create: `webapp/src/app/api/songs/search/route.ts`
-- Create: `webapp/src/lib/db/songs.ts`
-
-- [x] Implement GET /api/songs (list with pagination, filtering)
-- [x] Implement GET /api/songs/[id] (with recording info)
-- [x] Implement GET /api/songs/search (title, artist, album)
-- [x] Add visibility_status filtering (published only for app users)
-- [x] Write tests for catalog endpoints
-- [x] Run test suite - must pass before task 2.3
-
-#### Task 2.3: R2 Signed URL Generation
+### Task 4: Port Audio Engine to Python
 
 **Files:**
-- Create: `webapp/src/lib/r2/client.ts`
-- Create: `webapp/src/app/api/signed-url/route.ts`
+- Create: `services/render-worker/src/sow_render_worker/audio_engine.py`
+- Create: `services/render-worker/tests/test_audio_engine.py`
 
-- [x] Implement R2 client with S3 SDK for Cloudflare R2
-- [x] Create signed URL generation for audio, video, LRC files
-- [x] Add endpoint for generating signed URLs with expiration
-- [x] Implement cache control headers
-- [x] Write tests for R2 client and signed URL generation
-- [x] Run test suite - must pass before task 3.1
+- [ ] Port `SongsetItem` dataclass — all fields from TypeScript interface
+- [ ] Port `AudioSegmentInfo` dataclass — item, audio_path, start_time_seconds, duration_seconds, gap_before_seconds
+- [ ] Port `calculate_gap_ms()` — beat-based gap calculation with crossfade override
+- [ ] Port `get_crossfade_ms()` — crossfade duration from item config
+- [ ] Port `get_audio_info()` — use subprocess `ffprobe` to get duration, sample rate, channels
+- [ ] Port `generate_songset_audio()` — download audio files, calculate gaps/crossfades, build FFmpeg filter complex, run ffmpeg subprocess for concatenation with loudnorm
+- [ ] Port `concatenate_audio_files()` — build FFmpeg complex filter with adelay, afade, amix, loudnorm; spawn ffmpeg process
+- [ ] Port `calculate_total_duration()` — sum durations with gaps
+- [ ] Use `subprocess.run` for FFmpeg commands (not fluent-ffmpeg — that's Node.js only)
+- [ ] Write tests — gap calculation, crossfade calculation, FFmpeg filter complex construction (mock subprocess), audio info parsing
+- [ ] Run tests — must pass
 
-### Phase 3: Core UI Screens
-
-#### Task 3.1: Songset List Screen
-
-**Files:**
-- Create: `webapp/src/app/songsets/page.tsx`
-- Create: `webapp/src/components/songset/SongsetList.tsx`
-- Create: `webapp/src/components/songset/SongsetRow.tsx`
-- Create: `webapp/src/components/songset/RenderStateButton.tsx`
-
-- [x] Create songset list page with responsive layout
-- [x] Implement songset row with metadata (name, song count, duration, updated_at)
-- [x] Implement render state machine button with 5 states: Render (unrendered), Rendering... X% (active), Play (fresh), Re-render (stale), Retry render (failed)
-- [x] Add secondary button for stale state: "Play anyway"
-- [x] Add offline badge indicator (shows when artifacts cached and up-to-date)
-- [x] Add stale artifacts indicator ("Artifacts out of date")
-- [x] Implement context menu (Rename, Duplicate, Render, Play, Share, Delete)
-- [x] Implement FAB for creating new songset
-- [x] Write tests for songset list components
-- [x] Run test suite - must pass before task 3.2
-
-#### Task 3.2: Songset Editor Screen
+### Task 5: Port Frame Renderer to Python
 
 **Files:**
-- Create: `webapp/src/app/songsets/[id]/page.tsx`
-- Create: `webapp/src/components/songset/SongsetEditor.tsx`
-- Create: `webapp/src/components/songset/SongList.tsx`
-- Create: `webapp/src/components/songset/TransitionPanel.tsx`
+- Create: `services/render-worker/src/sow_render_worker/frame_renderer.py`
+- Create: `services/render-worker/tests/test_frame_renderer.py`
 
-- [x] Create songset editor page with app bar
-- [x] Implement song list with drag handles (dnd-kit)
-- [x] Add render state button to app bar (same as list row)
-- [x] Add stale banner when artifacts out of date (dismissible, with Re-render and Play anyway buttons)
-- [x] Add marked lines badge with "Open on desktop for text edit" nudge (phone only, when markedLineCount > 0)
-- [x] Implement overflow menu (Render, Play, Edit description, Duplicate, Delete)
-- [x] Write tests for editor components
-- [x] Run test suite - must pass before task 3.3
+- [ ] Port `VideoTemplate` dataclass — name, background_color, text_color, highlight_color, font_size, resolution
+- [ ] Port `FONT_SIZE_PRESETS` dict — S:32, M:48, L:64, XL:80
+- [ ] Port `VIDEO_TEMPLATES` dict — dark, gradient_warm, gradient_blue with exact RGB values
+- [ ] Port `FrameRenderer` class using Pillow (ImageDraw, ImageFont) instead of node-canvas
+- [ ] Port `render_frame()` — create Pillow image, fill background, find current segment, render intro info, render lyrics with highlighting
+- [ ] Port `render_intro_info()` — Traditional Chinese labels (歌曲, 專輯, 作曲, 作詞, 讚美之泉音樂事工), fade-out with sqrt-based alpha
+- [ ] Port `render_lyrics()` — current line 2x font size centered at 33% height, next line 50% transparent below, last-lyric fade-out
+- [ ] Port `render_title_card()` — songset name + song count + duration
+- [ ] Port `fit_text()` — auto-scale font size to fit width using Pillow text measurement
+- [ ] Port `get_margin()` — single-character margin using "中" as reference
+- [ ] Use `ImageFont.truetype()` with system sans-serif font; fall back to `ImageFont.load_default()` if unavailable
+- [ ] Write tests — template definitions, font size presets, frame rendering at known times (mock font), title card rendering, text fitting
+- [ ] Run tests — must pass
 
-#### Task 3.3: Browse Sheet (Song Selection)
-
-**Files:**
-- Create: `webapp/src/components/songset/BrowseSheet.tsx`
-- Create: `webapp/src/components/songset/SongSearch.tsx`
-- Create: `webapp/src/components/songset/SongCard.tsx`
-
-- [x] Create bottom sheet component for song browsing
-- [x] Implement search input with debounced API calls
-- [x] Display song results with metadata (title, artist, key, tempo)
-- [x] Add album filtering
-- [x] Implement "Add to songset" action
-- [x] Write tests for browse sheet
-- [x] Run test suite - must pass before task 3.4
-
-#### Task 3.4: Global Audio Player
+### Task 6: Port Video Engine to Python
 
 **Files:**
-- Create: `webapp/src/components/audio/GlobalAudioPlayer.tsx`
-- Create: `webapp/src/components/audio/AudioPlayerBar.tsx`
-- Create: `webapp/src/hooks/useAudioPlayer.ts`
-- Create: `webapp/src/contexts/AudioPlayerContext.tsx`
+- Create: `services/render-worker/src/sow_render_worker/video_engine.py`
+- Create: `services/render-worker/tests/test_video_engine.py`
 
-- [x] Create global audio player context and provider
-- [x] Implement persistent audio player bar (fixed at bottom of screen)
-- [x] Support playback of: individual songs (from catalog), transition previews, lyrics loop preview
-- [x] Implement play/pause, seek, volume controls
-- [x] Show current track info (title, artist)
-- [x] Implement loop window for lyrics timing review (configurable seconds from settings)
-- [x] Player persists across navigation (not route-specific)
-- [x] Write tests for global audio player
-- [x] Run test suite - must pass before task 4.1
+- [ ] Port `VideoEngine` class — template, font_size_preset, resolution, fps, title_card config, ffmpeg_path
+- [ ] Port `generate_video()` — get audio duration, collect lyrics with global timing, build chapters, encode with FFmpeg
+- [ ] Port `encode_video_with_ffmpeg()` — spawn ffmpeg process reading raw RGBA frames from stdin, pipe frames from FrameRenderer, handle EPIPE/backpressure
+- [ ] Port `generate_blank_video()` — FFmpeg color source for no-lyrics fallback
+- [ ] Port `inject_chapters()` — FFmpeg metadata injection for chapter atoms
+- [ ] Port `get_video_codec_args()` — libx264 ultrafast, CRF 23, configurable bitrate
+- [ ] Port `get_audio_info()` — ffprobe subprocess for duration/sample rate/channels
+- [ ] Key difference from Node.js: use `subprocess.Popen` with stdin pipe for frame streaming; write RGBA bytes from Pillow `tobytes()` instead of node-canvas `getImageData()`
+- [ ] Write tests — video codec args, blank video generation args, chapter injection, FFmpeg command construction (mock subprocess)
+- [ ] Run tests — must pass
 
-### Phase 4: Render Pipeline
-
-#### Task 4.1: Render Job API
+### Task 7: Port R2 Client and Asset Fetcher to Python
 
 **Files:**
-- Create: `webapp/src/app/api/render-jobs/route.ts`
-- Create: `webapp/src/app/api/render-jobs/[id]/route.ts`
-- Create: `webapp/src/app/api/render-jobs/[id]/events/route.ts` (SSE)
-- Create: `webapp/src/lib/render/job-manager.ts`
+- Create: `services/render-worker/src/sow_render_worker/r2_client.py`
+- Create: `services/render-worker/src/sow_render_worker/asset_fetcher.py`
+- Create: `services/render-worker/tests/test_r2_client.py`
+- Create: `services/render-worker/tests/test_asset_fetcher.py`
 
-- [x] Implement POST /api/render-jobs (create job)
-- [x] Implement GET /api/render-jobs/[id] (job status)
-- [x] Implement DELETE /api/render-jobs/[id] (cancel)
-- [x] Implement SSE endpoint for real-time progress
-- [x] Define SSE event types with phases: preparing, mixing_audio, rendering_frames, encoding_video, uploading, completed
-- [x] Each SSE event includes: phase, phaseIndex, totalPhases, percentComplete, estimatedSecondsLeft, elapsedSeconds
-- [x] Write tests for render job API
-- [x] Run test suite - must pass before task 4.2
+- [ ] Port R2 client using boto3 S3 client with Cloudflare R2 endpoint (`https://{account_id}.r2.cloudflarestorage.com`)
+- [ ] Port `generate_signed_url()` — generate_presigned_url for GetObject
+- [ ] Port `get_audio_signed_url()`, `get_lrc_signed_url()` — key construction helpers
+- [ ] Port `file_exists()` — head_object with NotFound handling
+- [ ] Port `get_object_size()` — head_object ContentLength
+- [ ] Port `AssetFetcher` class — download audio/LRC from R2, local filesystem cache at `/tmp/sow-assets/cache/`
+- [ ] Port `download_audio()` — check cache, download via signed URL, write to cache
+- [ ] Port `download_lrc()` — download LRC content via signed URL
+- [ ] Port `cleanup_temp()` — clean temp directory
+- [ ] Write tests — R2 client initialization, signed URL generation, asset fetcher caching logic (mock boto3)
+- [ ] Run tests — must pass
 
-#### Task 4.2: Audio Engine (Node.js)
-
-**Files:**
-- Create: `webapp/src/lib/render/audio-engine.ts`
-- Create: `webapp/src/lib/render/asset-fetcher.ts`
-
-- [x] Port AudioEngine from Python to Node.js
-- [x] Implement gap transition calculation (beat-based)
-- [x] Implement audio concatenation with fluent-ffmpeg
-- [x] Implement loudness normalization
-- [x] Create asset fetcher for downloading from R2
-- [x] Write tests for audio engine
-- [x] Run test suite - must pass before task 4.3
-
-#### Task 4.3: Video Engine (Node.js)
+### Task 8: Port R2 Uploader to Python
 
 **Files:**
-- Create: `webapp/src/lib/render/video-engine.ts`
-- Create: `webapp/src/lib/render/lrc-parser.ts`
-- Create: `webapp/src/lib/render/frame-renderer.ts`
+- Create: `services/render-worker/src/sow_render_worker/uploader.py`
+- Create: `services/render-worker/tests/test_uploader.py`
 
-- [x] Port VideoEngine from Python to Node.js
-- [x] Implement LRC parser
-- [x] Implement frame rendering with node-canvas
-- [x] Support video templates (dark, gradient_warm, gradient_blue)
-- [x] Implement font size presets: S (32px), M (48px), L (64px), XL (80px)
-- [x] Implement title card rendering (configurable duration 5-30s)
-- [x] Implement FFmpeg video encoding (H.264 + AAC)
-- [x] Implement MP4 chapter atom injection (best-effort, proceed on failure)
-- [x] Write tests for video engine
-- [x] Run test suite - must pass before task 4.4
+- [ ] Port `R2Uploader` class using boto3 S3 client
+- [ ] Port `upload_file()` — read file, put_object with content type, cache control, metadata
+- [ ] Port `upload_buffer()` — put_object with bytes body
+- [ ] Port `upload_render_artifacts()` — upload MP3, MP4, chapters.json to `renders/{jobId}/` prefix
+- [ ] Port `file_exists()` — head_object
+- [ ] Port `delete_file()` — delete_object
+- [ ] Port `delete_render_artifacts()` — delete all artifacts for a job
+- [ ] Port content type inference from file extension
+- [ ] Write tests — upload artifacts logic, content type mapping, key construction (mock boto3)
+- [ ] Run tests — must pass
 
-#### Task 4.4: Render Screen UI
-
-**Files:**
-- Create: `webapp/src/app/songsets/[id]/render/page.tsx`
-- Create: `webapp/src/components/render/RenderForm.tsx`
-- Create: `webapp/src/components/render/RenderProgress.tsx`
-- Create: `webapp/src/components/render/RenderComplete.tsx`
-
-- [x] Create render configuration page
-- [x] Implement render options form: audio (MP3), video (MP4), template, resolution (720p default, 1080p), font size preset
-- [x] Implement title card configuration (include checkbox, duration dropdown 5-30s, preview)
-- [x] Implement "Make available offline" checkbox with iOS 17.4+ check (disabled on older iOS with tooltip)
-- [x] Show marked lines warning with Review link
-- [x] Implement progress display with SSE connection
-- [x] Implement cancel button
-- [x] Implement completion screen with Download Audio/Video, Share actions
-- [x] Write tests for render screen
-- [x] Run test suite - must pass before task 4.5
-
-#### Task 4.5: Render Upload and Chapters
+### Task 9: Port DB Job Manager to Python
 
 **Files:**
-- Create: `webapp/src/lib/render/uploader.ts`
-- Create: `webapp/src/lib/render/chapters.ts`
+- Create: `services/render-worker/src/sow_render_worker/db.py`
+- Create: `services/render-worker/tests/test_db.py`
 
-- [x] Implement R2 upload for MP3, MP4, chapters.json
-- [x] Generate chapters.json manifest with format: { chapters: [{ position, songTitle, startSeconds, endSeconds, lines: [{ text, startSeconds }] }] }
-- [x] Update render_jobs table with R2 keys and chapters
-- [x] Update songsets table with latest_render_job_id, last_failed_render_job_id
-- [x] Write tests for upload pipeline
-- [x] Run test suite - must pass before task 5.1
+- [ ] Create DB module using psycopg2 with connection from `DATABASE_URL`
+- [ ] Port `get_render_job()` — SELECT from render_jobs by id and user_id
+- [ ] Port `start_render_job()` — UPDATE status to 'running'
+- [ ] Port `update_render_progress()` — UPDATE phase, phase_index, estimated_total_seconds, total_duration_seconds, elapsed_seconds
+- [ ] Port `complete_render_job()` — UPDATE status to 'completed', set mp3/mp4/chapters R2 keys, completed_at
+- [ ] Port `fail_render_job()` — UPDATE status to 'failed', set error_message
+- [ ] Port `recover_orphaned_jobs()` — UPDATE running jobs older than 30 min to failed
+- [ ] Port phase index constants and ordering
+- [ ] Use parameterized queries (no string interpolation) for SQL injection safety
+- [ ] Write tests — job status transitions, progress updates, orphan recovery (mock psycopg2 or use test fixtures)
+- [ ] Run tests — must pass
 
-### Phase 5: Playback System
-
-#### Task 5.1: Play Screen - Pre-play Card
-
-**Files:**
-- Create: `webapp/src/app/songsets/[id]/play/page.tsx`
-- Create: `webapp/src/components/play/PrePlayCard.tsx`
-- Create: `webapp/src/components/play/OfflineStatus.tsx`
-
-- [x] Create pre-play card with songset info (name, description, song list with durations)
-- [x] Show render status: stale warning with Re-render link, offline ready badge, download button
-- [x] Implement "Download for offline" button (triggers artifact caching)
-- [x] Implement "Send lyrics to TV" button (shown only when navigator.presentation available and Cast/receiver detected)
-- [x] Implement "Start Worship" button (disabled if no render artifacts)
-- [x] Implement Share button
-- [x] Write tests for pre-play card
-- [x] Run test suite - must pass before task 5.2
-
-#### Task 5.2: Controller Player
+### Task 10: Port Render Pipeline Orchestrator to Python
 
 **Files:**
-- Create: `webapp/src/components/play/ControllerPlayer.tsx`
-- Create: `webapp/src/components/play/PlaybackControls.tsx`
-- Create: `webapp/src/components/play/LyricJumpList.tsx`
-- Create: `webapp/src/hooks/useWakeLock.ts`
+- Create: `services/render-worker/src/sow_render_worker/pipeline.py`
+- Create: `services/render-worker/tests/test_pipeline.py`
 
-- [x] Create fullscreen controller player with video element
-- [x] Implement playback controls: prev song, skip back 10s, play/pause, skip forward 10s, next song
-- [x] Implement scrub bar with chapter ticks
-- [x] Implement volume control
-- [x] Implement lyric jump list (swipe-up gesture from bottom)
-- [x] Implement wake lock (navigator.wakeLock.request('screen'))
-- [x] When Presentation session active: controller video muted, controls always visible, show "Connected" indicator
-- [x] When mirror mode (no Presentation): controls auto-hide after 2s of no interaction, tap to reveal
-- [x] Show iOS info toast once per session in mirror mode
-- [x] Write tests for controller player
-- [x] Run test suite - must pass before task 5.3
+- [ ] Port `execute_render_pipeline()` — the main orchestrator function
+- [ ] Port phase sequence: preparing -> mixing_audio -> rendering_frames -> encoding_video -> uploading
+- [ ] Port `fetch_songset_items()` — query songset_items joined with recordings and songs
+- [ ] Port cancellation check — read job status from DB between phases
+- [ ] Port progress estimation using `get_render_ratio()` — query historical jobs for ratio
+- [ ] Port error handling — mark job as failed on exception, skip if cancelled
+- [ ] Port temp directory cleanup in finally block
+- [ ] Wire up all modules: AudioEngine, VideoEngine, AssetFetcher, R2Uploader, DB
+- [ ] Write integration-style tests — pipeline flow with mocked sub-components, cancellation mid-pipeline, error propagation
+- [ ] Run tests — must pass
 
-#### Task 5.3: Projection Screen
+### Task 11: Implement Lambda Handler
 
 **Files:**
-- Create: `webapp/src/app/songsets/[id]/play/projection/page.tsx`
-- Create: `webapp/src/components/play/ProjectionPlayer.tsx`
-- Create: `webapp/src/hooks/usePresentation.ts`
+- Modify: `services/render-worker/src/sow_render_worker/lambda_handler.py`
+- Create: `services/render-worker/tests/test_lambda_handler.py`
 
-- [x] Create projection page (lyrics-only, no chrome)
-- [x] MP4 fills 100% viewport (object-fit: cover for landscape)
-- [x] Add song title overlay at top edge (font <=14px, opacity 0.5, fades after 2s unchanged, reappears on chapter change)
-- [x] Implement Presentation API message handling: play, pause, seek (positionSeconds), volume (level 0.0-1.0), songTitle
-- [x] Implement landscape orientation lock (screen.orientation.lock('landscape'), fail gracefully)
-- [x] Implement wake lock
-- [x] Set Cache-Control: no-store, no-cache header (signed URLs expire, no CDN caching)
-- [x] Write tests for projection player
-- [x] Run test suite - must pass before task 5.4
+- [ ] Implement `handler(event, context)` — iterate SQS records, parse JSON body, extract jobId/songsetId/userId
+- [ ] Call `execute_render_pipeline(job_id, user_id)` for each record
+- [ ] On success: return 200 (SQS auto-deletes message)
+- [ ] On failure: log error, raise exception (SQS retries after visibility timeout, then DLQ after 3 failures)
+- [ ] Add structured logging with job_id context
+- [ ] Handle batch size 1 (one render per invocation) — but code should handle multiple records gracefully
+- [ ] Write tests — SQS event parsing, success path, failure path, multiple records
+- [ ] Run tests — must pass
 
-#### Task 5.4: Presentation API Integration
+### Task 12: Create Dockerfile and Docker Compose for Local Testing
 
 **Files:**
-- Create: `webapp/src/lib/presentation/controller.ts`
-- Create: `webapp/src/lib/presentation/receiver.ts`
+- Create: `services/render-worker/Dockerfile`
+- Create: `services/render-worker/docker-compose.yml`
+- Create: `services/render-worker/.env.example`
 
-- [x] Implement PresentationRequest session initiation
-- [x] Implement PresentationConnection message protocol
-- [x] Handle Cast receiver availability via PresentationRequest.getAvailability()
-- [x] Implement fallback for iOS (mirror mode - no Presentation API support)
-- [x] Controller sends commands: play, pause, seek, volume, songTitle
-- [x] Projection receives and applies to video element
-- [x] Write tests for presentation integration
-- [x] Run test suite - must pass before task 5.5
+- [ ] Create Dockerfile based on `public.ecr.aws/lambda/python:3.11`
+- [ ] Install system packages: ffmpeg, fonts-noto-cjk (or google-noto-sans-cjk-fonts)
+- [ ] Copy `src/sow_render_worker/` to `/app/sow_render_worker/`
+- [ ] Install Python dependencies from requirements.txt
+- [ ] Set CMD to `sow_render_worker.lambda_handler.handler`
+- [ ] Create docker-compose.yml for local testing — build the image, expose Lambda runtime API port
+- [ ] Create `.env.example` with all required env vars documented
+- [ ] Test: `docker build` succeeds, `docker run` starts Lambda runtime
+- [ ] Write a test that verifies the Docker image builds and the handler is importable (smoke test)
+- [ ] Run tests — must pass
 
-#### Task 5.5: Keyboard Shortcuts and Media Session
-
-**Files:**
-- Create: `webapp/src/hooks/useKeyboardShortcuts.ts`
-- Create: `webapp/src/hooks/useMediaSession.ts`
-
-- [x] Implement keyboard shortcuts for desktop controller: Space (toggle playback), Left/Right arrows (seek -10s/+10s), [ and ] (prev/next song)
-- [x] Implement Media Session API (nice-to-have): update metadata, handle play/pause/prev/next actions from OS media controls
-- [x] Write tests for shortcuts and media session
-- [x] Run test suite - must pass before task 6.1
-
-### Phase 6: Offline and Caching
-
-#### Task 6.1: Service Worker Setup
+### Task 13: Add SQS Integration to Next.js
 
 **Files:**
-- Create: `webapp/public/sw.js`
-- Create: `webapp/src/lib/offline/precaching.ts`
-- Create: `webapp/src/components/offline/OfflineIndicator.tsx`
+- Modify: `webapp/package.json` — add `@aws-sdk/client-sqs`
+- Create: `webapp/src/lib/sqs/client.ts`
+- Modify: `webapp/src/app/api/render-jobs/route.ts` — replace `after()` with SQS enqueue
+- Create: `webapp/src/test/lib/sqs/client.test.ts`
 
-- [x] Configure Workbox for service worker
-- [x] Implement precaching for static assets
-- [x] Implement runtime caching for API responses
-- [x] Add offline indicator component
-- [x] Write tests for service worker
-- [x] Run test suite - must pass before task 6.2
+- [ ] Add `@aws-sdk/client-sqs` dependency via `pnpm add @aws-sdk/client-sqs` in webapp/
+- [ ] Create `webapp/src/lib/sqs/client.ts` — SQSClient wrapper with `sendMessage()` that sends `{ jobId, songsetId, userId }` as JSON body
+- [ ] Read `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` from env
+- [ ] Modify `POST /api/render-jobs/route.ts` — replace `after(() => executeRenderPipeline(...))` with `sqsClient.sendMessage({ jobId, songsetId, userId })`
+- [ ] Keep `createRenderJob()` call — job is still created in DB with "queued" status
+- [ ] The Lambda worker will transition it to "running" when it picks up the message
+- [ ] Write tests for SQS client — message construction, env var validation, error handling (mock SQS)
+- [ ] Update existing API route tests if they exist
+- [ ] Run `pnpm test` from webapp/ — must pass
 
-#### Task 6.2: Offline Artifact Caching
-
-**Files:**
-- Create: `webapp/src/lib/offline/artifact-cache.ts`
-- Create: `webapp/src/app/api/offline/cache/route.ts`
-
-- [x] Implement Cache Storage API for MP4/MP3/chapters.json
-- [x] Cache key based on render_job_id for invalidation
-- [x] Create "Make available offline" functionality
-- [x] Implement cache invalidation when new render completes
-- [x] Add storage budget management (warn at 500MB, hard limit 1GB)
-- [x] Implement iOS 17.4+ check: navigator.storage.persist() on first cache action
-- [x] Show "Update iOS for offline support" banner on iOS < 17.4
-- [x] Write tests for artifact caching
-- [x] Run test suite - must pass before task 7.1
-
-### Phase 7: Advanced Features
-
-#### Task 7.1: Lyrics Review and Editing
+### Task 14: Remove Heavy Dependencies from Next.js
 
 **Files:**
-- Create: `webapp/src/components/lyrics/LyricsReviewSheet.tsx`
-- Create: `webapp/src/components/lyrics/LyricsEditor.tsx`
-- Create: `webapp/src/components/lyrics/LyricsTimingEditor.tsx`
-- Create: `webapp/src/app/api/lyrics/marks/route.ts`
-- Create: `webapp/src/app/api/lyrics/overrides/route.ts`
+- Modify: `webapp/package.json` — remove canvas, ffmpeg-static, fluent-ffmpeg, fastembed
+- Modify: `webapp/next.config.ts` — remove fastembed, @anush008/tokenizers, ffmpeg-static from serverExternalPackages
+- Modify: `webapp/vercel.json` — reduce maxDuration on render routes from 800 to 60
+- Modify: `webapp/pnpm-workspace.yaml` — remove canvas, ffmpeg-static, onnxruntime-node from onlyBuiltDependencies
+- Modify: `webapp/src/test/deployment/deployment.test.ts` — update assertions for new config
 
-- [x] Create lyrics review sheet with LRC lines and timestamps
-- [x] Phone (sm/md): Review mode only - tap to mark/unmark problem lines
-- [x] Desktop (lg): Three tabs - Review, Edit text, Edit timing
-- [x] Implement mark/unmark line functionality (saves to lyric_marks table)
-- [x] Implement text editing (saves to user_lrc_overrides table)
-- [x] Implement timing editing with word-level alignment
-- [x] Show footer on phone when marks exist: "Open on desktop to fix"
-- [x] Write tests for lyrics review/editing
-- [x] Run test suite - must pass before task 7.2
+- [ ] Remove `canvas`, `ffmpeg-static`, `fluent-ffmpeg`, `fastembed` from package.json dependencies
+- [ ] Remove `@anush008/tokenizers` from package.json if it was only a fastembed transitive dep
+- [ ] Remove `fastembed`, `@anush008/tokenizers`, `ffmpeg-static` from `serverExternalPackages` in next.config.ts
+- [ ] Reduce `maxDuration` from 800 to 60 for all render-jobs routes in vercel.json (they now just enqueue SQS)
+- [ ] Remove `fluid: true` from render-jobs routes in vercel.json (no longer needed for long-running functions)
+- [ ] Update `pnpm-workspace.yaml` to remove native dep build entries for canvas, ffmpeg-static, onnxruntime-node
+- [ ] Update deployment tests — maxDuration should be 60, not 800; fluid compute no longer required on render routes
+- [ ] Run `pnpm test` and `pnpm lint` from webapp/ — must pass
+- [ ] Run `pnpm build` from webapp/ — must succeed (verifies no broken imports)
 
-#### Task 7.2: Transition Detail Sheet
+### Task 15: Implement Hybrid Search (Full-Text + Pre-computed Tag Embeddings)
 
-**Files:**
-- Create: `webapp/src/components/transition/TransitionSheet.tsx`
-- Create: `webapp/src/components/transition/TransitionControls.tsx`
-- Create: `webapp/src/app/api/transitions/preview/route.ts`
-
-- [x] Create transition detail sheet (inline expand in editor)
-- [x] Phone (sm/md): Gap control (numeric stepper +/- 0.5 beats, display in seconds), Crossfade toggle, Audio preview button
-- [x] Desktop (lg): All phone controls plus Key shift selector (-6 to +6 semitones), Tempo nudge (+/- BPM with live preview), Waveform preview panel
-- [x] Implement transition audio preview using global audio player
-- [x] Write tests for transition controls
-- [x] Run test suite - must pass before task 7.3
-
-#### Task 7.3: Semantic Search
+Replace the current runtime fastembed semantic search with a two-tier hybrid approach:
+- Tier 1 (user queries): Postgres full-text search using tsvector across Chinese text (title, composer, lyricist, album) and pinyin (title_pinyin). Covers the vast majority of user-typed searches.
+- Tier 2 (similar songs discovery): Pre-computed tag/category embeddings via pgvector for "find similar" use cases. No runtime embedding generation needed.
 
 **Files:**
-- Create: `webapp/src/app/api/embed/route.ts` (Edge Function)
-- Create: `webapp/src/app/api/songs/search/semantic/route.ts`
-- Create: `webapp/src/components/search/SemanticSearch.tsx`
+- Modify: `webapp/src/db/schema.ts` — add tsvector generated column and GIN index to songs table
+- Modify: `webapp/src/lib/db/songs.ts` — add `fullTextSearchSongs()`, update `semanticSearchSongs()` to accept pre-computed embedding only
+- Modify: `webapp/src/app/api/songs/search/route.ts` — switch from ilike to tsvector full-text search
+- Modify: `webapp/src/app/api/songs/search/semantic/route.ts` — accept pre-computed embedding only, remove runtime fastembed
+- Modify: `webapp/src/lib/embed/client.ts` — remove (no longer needed at runtime)
+- Create: `webapp/src/lib/db/search.ts` — hybrid search utility module
+- Create: `webapp/src/test/lib/db/search.test.ts` — hybrid search tests
+- Modify: `webapp/src/test/api/songs/search.test.ts` — update for tsvector-based search
 
-- [x] Set up fastembed-js with bge-m3 ONNX model in dedicated Edge Function
-- [x] Implement POST /api/embed - accepts query text, returns 1024-dim vector
-- [x] Implement POST /api/songs/search/semantic - calls /api/embed internally, queries pgvector
-- [x] Create "Describe" mode in browse sheet (natural language search)
-- [x] Display results with similarity scores
-- [x] Write tests for semantic search
-- [x] Run test suite - must pass before task 7.4
+- [ ] Add tsvector generated column to songs table in schema.ts: `searchVector` computed from `title`, `title_pinyin`, `composer`, `lyricist`, `album_name` using `setweight(to_tsvector('simple', ...), 'A')` for title/pinyin and `'B'` for others; add GIN index on the generated column
+- [ ] Create `webapp/src/lib/db/search.ts` with `fullTextSearchSongs(query, limit, offset, visibilityStatus)` using `plainto_tsquery('simple', query)` against the tsvector column; fall back to `websearch_to_tsquery` for phrase matching; combine with `ts_rank_cd` for relevance ordering
+- [ ] Use `'simple'` text search config (not 'zhparser' or 'pg_jieba') — it tokenizes on whitespace/punctuation which works for Chinese characters (each character is a token) and pinyin (space-separated words); no external Postgres extension needed
+- [ ] Modify `GET /api/songs/search` route to call `fullTextSearchSongs()` instead of `searchSongs()` with ilike; keep same response shape
+- [ ] Modify `POST /api/songs/search/semantic` to require a `recordingId` parameter instead of `query`; look up the pre-computed embedding from `song_embedding` table for that recording, then call `semanticSearchSongs()` with the retrieved embedding
+- [ ] Remove `generateEmbedding()` call and `runtime = "nodejs"` export from semantic route
+- [ ] Delete `webapp/src/lib/embed/client.ts` entirely (no longer needed at runtime)
+- [ ] Write a Drizzle migration that adds the tsvector generated column and GIN index to the existing songs table
+- [ ] Write tests for `fullTextSearchSongs()` — Chinese character search, pinyin search, mixed queries, relevance ranking, empty results
+- [ ] Write tests for updated semantic search route — verify it requires recordingId, verify it looks up embedding from DB, verify 400 when recording has no embedding
+- [ ] Update existing `search.test.ts` to reflect tsvector-based search behavior
+- [ ] Run `pnpm test` from webapp/ — must pass
 
-#### Task 7.4: Sharing System
-
-**Files:**
-- Create: `webapp/src/app/api/share/route.ts`
-- Create: `webapp/src/app/api/share/[token]/route.ts`
-- Create: `webapp/src/app/share/[token]/page.tsx`
-- Create: `webapp/src/app/share/[token]/play/projection/page.tsx`
-- Create: `webapp/src/components/share/ShareDialog.tsx`
-
-- [x] Implement share token generation (max 20 active per user)
-- [x] Create public hosted player page (/share/[token])
-- [x] Implement share dialog with two tabs: Send file, Share link
-- [x] Send file tab: per-app buttons with size limits - WhatsApp (2GB), Line (1GB), Email (25MB) - disable buttons above threshold with tooltip
-- [x] Share link tab: copyable URL, revocation button, notice "Revoking stops streams; downloaded files unaffected"
-- [x] Implement share revocation
-- [x] Create public projection route (/share/[token]/play/projection) with same no-cache headers
-- [x] Projection re-validates token server-side, mints own signed URLs (no URLs in query params)
-- [x] Write tests for sharing system
-- [x] Run test suite - must pass before task 7.5
-
-#### Task 7.5: Settings Screen
+### Task 16: Create GitHub Actions CI/CD Workflows
 
 **Files:**
-- Create: `webapp/src/app/settings/page.tsx`
-- Create: `webapp/src/components/settings/SettingsForm.tsx`
+- Create: `.github/workflows/ci.yml`
+- Create: `.github/workflows/deploy.yml`
 
-- [x] Create settings page
-- [x] Implement default gap beats setting
-- [x] Implement default video template setting
-- [x] Implement default resolution setting (720p/1080p)
-- [x] Implement lyrics loop window seconds setting
-- [x] Implement default font size preset (S/M/L/XL)
-- [x] Implement offline auto-cache after render toggle
-- [x] Desktop-only (lg): default key shift, timing review font
-- [x] Add iOS offline note: "Offline caching requires iOS 17.4 or later"
-- [x] Write tests for settings
-- [x] Run test suite - must pass before task 8.1
+- [ ] Create `.github/workflows/ci.yml` — trigger on PR, run `pnpm lint` and `pnpm test` in webapp/, run Python tests in services/render-worker/
+- [ ] Create `.github/workflows/deploy.yml` — trigger on push to main with paths filter for `webapp/**` and `services/render-worker/**`
+- [ ] Deploy workflow: (1) Vercel deployment via vercel-action, (2) Docker build + ECR push + Lambda update for render-worker changes
+- [ ] Add DB migration step: `npx drizzle-kit migrate` against Neon with `DATABASE_URL` from secrets
+- [ ] Use GitHub repository secrets for: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DATABASE_URL
+- [ ] Write tests verifying workflow YAML is valid and has expected job structure (optional but recommended)
+- [ ] Run `pnpm test` from webapp/ — must pass
 
-### Phase 8: Polish and Deployment
-
-#### Task 8.1: Responsive Design Refinement
+### Task 17: Update Environment Configuration and Documentation
 
 **Files:**
-- Modify: All component files for responsive breakpoints
+- Modify: `webapp/.env.example` — add SQS/AWS env vars
+- Modify: `webapp/.env.production.example` — add SQS/AWS env vars with documentation
+- Modify: `webapp/README.md` — update deployment docs for Lambda architecture
+- Modify: `webapp/src/test/deployment/deployment.test.ts` — add assertions for new env vars
 
-- [x] Verify phone-first layout on all screens (sm: 0px)
-- [x] Verify tablet inherits phone layout (md: 768px)
-- [x] Implement desktop power-mode unlocks (lg: 1024px): lyrics Edit text/timing tabs, transition key shift/tempo/waveform, dense keyboard shortcuts
-- [x] Verify touch targets: 48x48px minimum, 64x64px for primary playback controls, 56px tall for phone CTAs
-- [x] Verify minimum font size 16px on phone/tablet
-- [x] Write tests for responsive behavior
-- [x] Run test suite - must pass before task 8.2
+- [ ] Add to `.env.example`: `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+- [ ] Add to `.env.production.example`: same vars with documentation explaining IAM permissions needed
+- [ ] Update README.md: replace Vercel Pro + Fluid Compute + maxDuration:800 docs with Lambda worker architecture
+- [ ] Document the Lambda worker deployment flow (ECR push -> Lambda update)
+- [ ] Document the SQS queue setup (queue name, DLQ, visibility timeout)
+- [ ] Add deployment test assertions for new env vars in `.env.production.example`
+- [ ] Update deployment test assertions for vercel.json changes (maxDuration:60, no fluid on render routes)
+- [ ] Run `pnpm test` from webapp/ — must pass
 
-#### Task 8.2: Accessibility
+### Task 18: Verify Acceptance Criteria
 
-**Files:**
-- Modify: All component files for accessibility
+- [ ] Run full Python test suite: `cd services/render-worker && PYTHONPATH=src pytest tests/ -v`
+- [ ] Run full webapp test suite: `cd webapp && pnpm test`
+- [ ] Run webapp linter: `cd webapp && pnpm lint`
+- [ ] Run webapp build: `cd webapp && pnpm build` — must succeed with no broken imports
+- [ ] Verify Docker image builds: `cd services/render-worker && docker build -t sow-render-worker .`
+- [ ] Verify no references to removed packages remain: grep for `canvas`, `ffmpeg-static`, `fluent-ffmpeg`, `fastembed` in webapp/src/ (should only be in deprecated embed/client.ts comments)
+- [ ] Verify SQS client is used in render-jobs route instead of `after(() => executeRenderPipeline(...))`
 
-- [x] Add ARIA labels to all interactive elements
-- [x] Implement keyboard navigation
-- [x] Verify color contrast (WCAG 2.1 AA) (skipped — not automatable; verified via design token analysis in test)
-- [x] Add focus indicators
-- [x] Test with screen reader (skipped — not automatable; marked in test suite)
-- [x] Write accessibility tests
-- [x] Run test suite - must pass before task 8.3
+### Task 19: Update Documentation
 
-#### Task 8.3: Performance Optimization
-
-**Files:**
-- Modify: Various files for performance
-
-- [x] Implement route-based code splitting
-- [x] Optimize images and fonts
-- [x] Add loading skeletons
-- [x] Implement React Query for server state caching
-- [x] Verify LCP < 2.5s on 4G phone (skipped — not automatable; requires real browser)
-- [x] Verify play start latency: < 500ms offline, < 2s streaming (skipped — not automatable)
-- [x] Verify projection LCP < 1s from Start tap (skipped — not automatable)
-- [x] Verify controller->projection round-trip < 200ms (skipped — not automatable)
-- [x] Write performance tests
-- [x] Run test suite - must pass before task 8.4
-
-#### Task 8.4: Vercel Deployment Configuration
-
-**Files:**
-- Create: `webapp/vercel.json`
-- Create: `webapp/.env.production.example`
-
-- [x] Configure Vercel Pro plan settings
-- [x] Set maxDuration: 800 for render function
-- [x] Enable Fluid Compute
-- [x] Configure environment variables (DATABASE_URL, R2 credentials, Better Auth secret, Cast receiver app ID)
-- [x] Set up preview deployments
-- [x] Register Cast receiver app in Google Cast SDK Developer Console (dev/staging/prod receiver app IDs) (skipped — not automatable; documented in .env.production.example and README.md)
-- [x] Document Cast receiver approval process for production
-- [x] Write deployment documentation
-- [x] Run test suite - must pass before task 8.5
-
-### Task 8.5: Verify Acceptance Criteria
-
-- [x] Run full test suite (npm test)
-- [x] Run linter (npm run lint)
-- [x] Verify test coverage meets 80%+ (skipped — @vitest/coverage-v8 cannot be installed; 82 test files / 124 source files with 1345 passing tests indicates high coverage)
-- [x] Manual testing of critical paths:
-  - [x] Create songset, add songs, render, play (skipped — not automatable; requires running app + real DB)
-  - [x] Offline caching and playback (skipped — not automatable; requires real browser with SW support)
-  - [x] Presentation API on Android Chrome + Cast (skipped — not automatable; requires physical device)
-  - [x] iOS mirror mode playback (skipped — not automatable; requires iOS device)
-  - [x] Share link creation and playback (skipped — not automatable; requires running app + real DB)
-  - [x] Lyrics review (phone) and editing (desktop) (skipped — not automatable; requires running app)
-  - [x] Transition preview and configuration (skipped — not automatable; requires running app)
-  - [x] Semantic search (skipped — not automatable; requires running app with embedded model)
-
-### Task 8.6: Update Documentation
-
-- [x] Update README.md with web app section
-- [x] Create webapp/README.md with setup instructions
-- [x] Document environment variables
-- [x] Document deployment process
-- [x] Document Cast receiver setup
-- [x] Update AGENTS.md with web app commands
-- [x] Add working webapp `.env.example`
-- [x] Document pgvector requirement and migration step
-- [x] Document current API surface and share/auth expectations
+- [ ] Update `reports/current_impl_status.md` with Lambda worker architecture
+- [ ] Update `webapp/README.md` with deployment instructions for Lambda worker
+- [ ] Add `services/render-worker/README.md` with worker setup, local testing, and deployment instructions
