@@ -12,9 +12,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      webapp: ${{ steps.filter.outputs.webapp }}
+      render-worker: ${{ steps.filter.outputs.render-worker }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check changed paths
+        id: filter
+        run: |
+          webapp=false
+          render_worker=false
+          for file in $(git diff --name-only HEAD~1 HEAD); do
+            if [[ "$file" == webapp/* ]]; then
+              webapp=true
+            fi
+            if [[ "$file" == services/render-worker/* ]]; then
+              render_worker=true
+            fi
+          done
+          echo "webapp=$webapp" >> $GITHUB_OUTPUT
+          echo "render-worker=$render_worker" >> $GITHUB_OUTPUT
+
   deploy-webapp:
     name: Deploy Webapp to Vercel
-    if: ${{ contains(github.event.commits.*.modified, 'webapp/') || contains(github.event.commits.*.added, 'webapp/') || contains(github.event.commits.*.removed, 'webapp/') }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.webapp == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,7 +65,8 @@ jobs:
 
   deploy-render-worker:
     name: Deploy Render Worker to Lambda
-    if: ${{ contains(github.event.commits.*.modified, 'services/render-worker/') || contains(github.event.commits.*.added, 'services/render-worker/') || contains(github.event.commits.*.removed, 'services/render-worker/') }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.render-worker == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

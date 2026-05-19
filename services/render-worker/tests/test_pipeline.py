@@ -112,7 +112,7 @@ def _make_upload_result():
 
 def _make_mock_fetcher():
     fetcher = MagicMock()
-    fetcher.get_temp_dir.return_value = Path("/tmp/sow-test")
+    fetcher.get_job_temp_dir.return_value = Path("/tmp/sow-test")
     fetcher.download_audio.return_value = "/tmp/test/abc123.mp3"
     fetcher.download_lrc.return_value = "[00:00.00]Test line"
     return fetcher
@@ -716,7 +716,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
 
             mock_af = MagicMock()
-            mock_af.get_temp_dir.return_value = Path("/tmp/sow-test")
+            mock_af.get_job_temp_dir.return_value = Path("/tmp/sow-test")
             mock_af_class.return_value = mock_af
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve

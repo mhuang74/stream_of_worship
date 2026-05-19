@@ -105,6 +105,19 @@ describe("Deploy workflow", () => {
     expect(jobs["deploy-render-worker"]).toBeDefined();
   });
 
+  it("has detect-changes job", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, unknown>;
+    expect(jobs["detect-changes"]).toBeDefined();
+  });
+
+  it("deploy jobs depend on detect-changes", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    expect(jobs["deploy-webapp"].needs).toBe("detect-changes");
+    expect(jobs["deploy-render-worker"].needs).toBe("detect-changes");
+  });
+
   it("uses paths filter for webapp and render-worker", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const on = workflow.on as Record<string, unknown>;

@@ -22,19 +22,21 @@ def _process_record(record: dict) -> None:
     )
 
     config = load_config()
-    conn = get_connection(config.DATABASE_URL)
+    conn = None
 
     try:
+        conn = get_connection(config.DATABASE_URL)
         execute_render_pipeline(job_id, user_id, conn)
         logger.info(
             "Render job completed successfully",
             extra={"job_id": job_id, "user_id": user_id},
         )
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def handler(event, context):
