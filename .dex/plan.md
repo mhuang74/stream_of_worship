@@ -64,14 +64,14 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/tests/__init__.py`
 - Create: `services/render-worker/tests/conftest.py`
 
-- [ ] Create `services/render-worker/` directory with Python package structure
-- [ ] Create `pyproject.toml` with project metadata, Python 3.11 target, ruff config (line-length 100)
-- [ ] Create `requirements.txt` with: boto3, psycopg2-binary, Pillow, python-dotenv
-- [ ] Create `config.py` module that reads env vars (DATABASE_URL, R2_*, AWS_REGION, SQS_QUEUE_URL) with validation
-- [ ] Create stub `lambda_handler.py` with `handler(event, context)` that logs the event and returns 200
-- [ ] Create `conftest.py` with test fixtures (env vars mock, temp directory)
-- [ ] Write tests for `config.py` — verify env var reading, validation errors on missing vars
-- [ ] Run `PYTHONPATH=src pytest tests/ -v` from `services/render-worker/` — must pass
+- [x] Create `services/render-worker/` directory with Python package structure
+- [x] Create `pyproject.toml` with project metadata, Python 3.11 target, ruff config (line-length 100)
+- [x] Create `requirements.txt` with: boto3, psycopg2-binary, Pillow, python-dotenv
+- [x] Create `config.py` module that reads env vars (DATABASE_URL, R2_*, AWS_REGION, SQS_QUEUE_URL) with validation
+- [x] Create stub `lambda_handler.py` with `handler(event, context)` that logs the event and returns 200
+- [x] Create `conftest.py` with test fixtures (env vars mock, temp directory)
+- [x] Write tests for `config.py` — verify env var reading, validation errors on missing vars
+- [x] Run `PYTHONPATH=src pytest tests/ -v` from `services/render-worker/` — must pass
 
 ### Task 2: Port LRC Parser to Python
 
@@ -79,14 +79,14 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/lrc_parser.py`
 - Create: `services/render-worker/tests/test_lrc_parser.py`
 
-- [ ] Port `parseLRC()` from `webapp/src/lib/render/lrc-parser.ts` — parse `[mm:ss.xx]text` format, sort by timestamp
-- [ ] Port `convertToGlobalTimeline()` — shift local timestamps by segment offset, attach title
-- [ ] Port `estimateLastLyricDuration()` — two-tier: match previous same-text line, then char-count + BPM fallback
-- [ ] Port `groupLyricsBySong()` — group GlobalLRCLine by title
-- [ ] Port `findCurrentLyricIndex()` — binary-style search for current lyric at time
-- [ ] Port `isValidLRC()` — regex check for valid format
-- [ ] Write tests matching the TypeScript test patterns — parse various LRC formats, global timeline conversion, duration estimation, grouping, edge cases (empty, single line, no timestamps)
-- [ ] Run tests — must pass
+- [x] Port `parseLRC()` from `webapp/src/lib/render/lrc-parser.ts` — parse `[mm:ss.xx]text` format, sort by timestamp
+- [x] Port `convertToGlobalTimeline()` — shift local timestamps by segment offset, attach title
+- [x] Port `estimateLastLyricDuration()` — two-tier: match previous same-text line, then char-count + BPM fallback
+- [x] Port `groupLyricsBySong()` — group GlobalLRCLine by title
+- [x] Port `findCurrentLyricIndex()` — binary-style search for current lyric at time
+- [x] Port `isValidLRC()` — regex check for valid format
+- [x] Write tests matching the TypeScript test patterns — parse various LRC formats, global timeline conversion, duration estimation, grouping, edge cases (empty, single line, no timestamps)
+- [x] Run tests — must pass
 
 ### Task 3: Port Chapters Module to Python
 
@@ -94,16 +94,16 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/chapters.py`
 - Create: `services/render-worker/tests/test_chapters.py`
 
-- [ ] Port `ChaptersManifest` dataclass — chapters list, total_duration_seconds, generated_at
-- [ ] Port `Chapter` dataclass — position, song_title, start_seconds, end_seconds, lines
-- [ ] Port `ChapterLine` dataclass — text, start_seconds
-- [ ] Port `build_chapters_from_segments()` — iterate segments, fetch lyrics via callback, build chapter list
-- [ ] Port `generate_chapters_manifest()` — build chapters with LRC download callback
-- [ ] Port `chapters_to_ffmpeg_metadata()` — FFMETADATA1 format output
-- [ ] Port `find_chapter_at_time()`, `get_song_title_at_time()`, `get_lyric_at_time()` — lookup helpers
-- [ ] Port `parse_chapters_manifest()` — JSON parse with validation
-- [ ] Write tests — manifest generation, FFmpeg metadata format, time lookups, validation errors
-- [ ] Run tests — must pass
+- [x] Port `ChaptersManifest` dataclass — chapters list, total_duration_seconds, generated_at
+- [x] Port `Chapter` dataclass — position, song_title, start_seconds, end_seconds, lines
+- [x] Port `ChapterLine` dataclass — text, start_seconds
+- [x] Port `build_chapters_from_segments()` — iterate segments, fetch lyrics via callback, build chapter list
+- [x] Port `generate_chapters_manifest()` — build chapters with LRC download callback
+- [x] Port `chapters_to_ffmpeg_metadata()` — FFMETADATA1 format output
+- [x] Port `find_chapter_at_time()`, `get_song_title_at_time()`, `get_lyric_at_time()` — lookup helpers
+- [x] Port `parse_chapters_manifest()` — JSON parse with validation
+- [x] Write tests — manifest generation, FFmpeg metadata format, time lookups, validation errors
+- [x] Run tests — must pass
 
 ### Task 4: Port Audio Engine to Python
 
@@ -111,17 +111,17 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/src/sow_render_worker/audio_engine.py`
 - Create: `services/render-worker/tests/test_audio_engine.py`
 
-- [ ] Port `SongsetItem` dataclass — all fields from TypeScript interface
-- [ ] Port `AudioSegmentInfo` dataclass — item, audio_path, start_time_seconds, duration_seconds, gap_before_seconds
-- [ ] Port `calculate_gap_ms()` — beat-based gap calculation with crossfade override
-- [ ] Port `get_crossfade_ms()` — crossfade duration from item config
-- [ ] Port `get_audio_info()` — use subprocess `ffprobe` to get duration, sample rate, channels
-- [ ] Port `generate_songset_audio()` — download audio files, calculate gaps/crossfades, build FFmpeg filter complex, run ffmpeg subprocess for concatenation with loudnorm
-- [ ] Port `concatenate_audio_files()` — build FFmpeg complex filter with adelay, afade, amix, loudnorm; spawn ffmpeg process
-- [ ] Port `calculate_total_duration()` — sum durations with gaps
-- [ ] Use `subprocess.run` for FFmpeg commands (not fluent-ffmpeg — that's Node.js only)
-- [ ] Write tests — gap calculation, crossfade calculation, FFmpeg filter complex construction (mock subprocess), audio info parsing
-- [ ] Run tests — must pass
+- [x] Port `SongsetItem` dataclass — all fields from TypeScript interface
+- [x] Port `AudioSegmentInfo` dataclass — item, audio_path, start_time_seconds, duration_seconds, gap_before_seconds
+- [x] Port `calculate_gap_ms()` — beat-based gap calculation with crossfade override
+- [x] Port `get_crossfade_ms()` — crossfade duration from item config
+- [x] Port `get_audio_info()` — use subprocess `ffprobe` to get duration, sample rate, channels
+- [x] Port `generate_songset_audio()` — download audio files, calculate gaps/crossfades, build FFmpeg filter complex, run ffmpeg subprocess for concatenation with loudnorm
+- [x] Port `concatenate_audio_files()` — build FFmpeg complex filter with adelay, afade, amix, loudnorm; spawn ffmpeg process
+- [x] Port `calculate_total_duration()` — sum durations with gaps
+- [x] Use `subprocess.run` for FFmpeg commands (not fluent-ffmpeg — that's Node.js only)
+- [x] Write tests — gap calculation, crossfade calculation, FFmpeg filter complex construction (mock subprocess), audio info parsing
+- [x] Run tests — must pass
 
 ### Task 5: Port Frame Renderer to Python
 
