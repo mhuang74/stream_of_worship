@@ -5,9 +5,32 @@
  * and lyrics for navigation during playback.
  */
 
-import { AudioSegmentInfo } from "./audio-engine";
 import { AssetFetcher } from "./asset-fetcher";
 import { parseLRC } from "./lrc-parser";
+
+export interface SongsetItem {
+  id: string;
+  songsetId: string;
+  songId: string;
+  songTitle?: string | null;
+  recordingHashPrefix: string | null;
+  position: number;
+  gapBeats: number | null;
+  crossfadeEnabled: number | null;
+  crossfadeDurationSeconds: number | null;
+  keyShiftSemitones: number | null;
+  tempoRatio: number | null;
+  tempoBpm?: number | null;
+  durationSeconds?: number | null;
+}
+
+export interface AudioSegmentInfo {
+  item: SongsetItem;
+  audioPath: string;
+  startTimeSeconds: number;
+  durationSeconds: number;
+  gapBeforeSeconds: number;
+}
 
 export interface ChapterLine {
   text: string;

@@ -40,6 +40,7 @@ interface RenderJobData {
   mp3Url?: string
   mp4Url?: string
   chaptersUrl?: string
+  elapsedSeconds?: number
 }
 
 export default function RenderPage() {

@@ -105,13 +105,11 @@ npx drizzle-kit migrate    # Run pending migrations
 
 ### Vercel Pro requirements
 
-The render pipeline (FFmpeg audio + video encoding) can run for up to 13 minutes.
-This requires **Vercel Pro** with `maxDuration: 800` set in `vercel.json` for the
-`/api/render-jobs` endpoint. The Free/Hobby plan cap of 10/60 seconds is insufficient.
-
-**Fluid Compute** is enabled for render functions (`"fluid": true` in `vercel.json`),
-allowing a single function instance to handle multiple concurrent SSE connections and
-progress queries without cold-starting a new instance for each poll.
+Render jobs are now enqueued to SQS and processed by an AWS Lambda worker.
+The `/api/render-jobs` endpoints only create jobs and return status, so
+`maxDuration: 60` is sufficient (set in `vercel.json`). Fluid Compute is
+no longer required on render routes since long-running encoding happens in
+the Lambda worker, not in the Vercel function.
 
 ### Preview Deployments
 

@@ -9,7 +9,7 @@ import {
   getChapterDurations,
   getChapterProgress,
 } from "@/lib/render/chapters";
-import { AudioSegmentInfo } from "@/lib/render/audio-engine";
+import { AudioSegmentInfo } from "@/lib/render/chapters";
 import { AssetFetcher } from "@/lib/render/asset-fetcher";
 
 describe("chapters", () => {
