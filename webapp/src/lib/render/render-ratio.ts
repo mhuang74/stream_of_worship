@@ -3,10 +3,10 @@ import { renderJobs } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 const DEFAULT_RENDER_RATIOS: Record<string, number> = {
-  "720p_video": 0.6,
-  "720p_audio": 0.3,
-  "1080p_video": 0.7,
-  "1080p_audio": 0.3,
+  "720p_video": 0.8,
+  "720p_audio": 0.4,
+  "1080p_video": 0.65,
+  "1080p_audio": 0.4,
 };
 
 const MIN_HISTORICAL_JOBS = 3;
