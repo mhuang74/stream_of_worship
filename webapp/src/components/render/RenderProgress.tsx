@@ -14,13 +14,16 @@ export type RenderPhase =
   | "uploading"
   | "completed"
 
+export type RenderStatus = "queued" | "running" | "completed" | "failed" | "cancelled"
+
 export interface RenderProgressData {
   phase: RenderPhase
   phaseIndex: number
   totalPhases: number
-  percentComplete: number
-  estimatedSecondsLeft: number
+  estimatedTotalSeconds: number
   elapsedSeconds: number
+  status: RenderStatus
+  errorMessage?: string
 }
 
 interface RenderProgressProps {
@@ -109,10 +112,20 @@ export function RenderProgress({
           const data = JSON.parse(event.data) as RenderProgressData
           setProgress(data)
 
-          if (data.phase === "completed") {
+          if (data.status === "completed") {
             eventSource.close()
             eventSourceRef.current = null
             onComplete()
+          } else if (data.status === "failed") {
+            eventSource.close()
+            eventSourceRef.current = null
+            const errMsg = data.errorMessage || "Render failed"
+            setError(errMsg)
+            onError(errMsg)
+          } else if (data.status === "cancelled") {
+            eventSource.close()
+            eventSourceRef.current = null
+            onCancel()
           }
         } catch (err) {
           console.error("Failed to parse SSE data:", err)
@@ -175,9 +188,27 @@ export function RenderProgress({
   const currentPhase = progress?.phase ?? "preparing"
   const currentPhaseIndex = progress?.phaseIndex ?? 0
   const totalPhases = progress?.totalPhases ?? 5
-  const percentComplete = progress?.percentComplete ?? 0
-  const estimatedSecondsLeft = progress?.estimatedSecondsLeft ?? 0
+  const estimatedTotalSeconds = progress?.estimatedTotalSeconds ?? 0
   const elapsedSeconds = progress?.elapsedSeconds ?? 0
+  const status = progress?.status ?? "queued"
+
+  let percentComplete: number
+  let displayEstimatedTotal: number
+
+  if (estimatedTotalSeconds <= 0) {
+    percentComplete = 0
+    displayEstimatedTotal = 0
+  } else if (elapsedSeconds > estimatedTotalSeconds) {
+    displayEstimatedTotal = elapsedSeconds * 1.1
+    percentComplete = Math.min(99, (elapsedSeconds / displayEstimatedTotal) * 100)
+  } else {
+    displayEstimatedTotal = estimatedTotalSeconds
+    percentComplete = (elapsedSeconds / estimatedTotalSeconds) * 100
+  }
+
+  if (status === "completed") {
+    percentComplete = 100
+  }
 
   return (
     <Card className="w-full">
@@ -235,31 +266,17 @@ export function RenderProgress({
 
         {/* Progress bar */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Overall progress</span>
-            <span className="font-medium">{Math.round(percentComplete)}%</span>
-          </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-primary transition-all duration-300"
+              className="h-full rounded-full bg-primary transition-all duration-500"
               style={{ width: `${percentComplete}%` }}
             />
           </div>
-        </div>
-
-        {/* Time estimates */}
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="space-y-1">
-            <p className="text-muted-foreground">Elapsed</p>
-            <p className="font-medium">{formatDuration(elapsedSeconds)}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-muted-foreground">Estimated remaining</p>
-            <p className="font-medium">
-              {estimatedSecondsLeft > 0
-                ? formatDuration(estimatedSecondsLeft)
-                : "Calculating..."}
-            </p>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>{formatDuration(elapsedSeconds)}</span>
+            {displayEstimatedTotal > 0 && (
+              <span>~{formatDuration(displayEstimatedTotal)}</span>
+            )}
           </div>
         </div>
 

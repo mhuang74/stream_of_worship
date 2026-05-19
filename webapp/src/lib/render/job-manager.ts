@@ -15,8 +15,9 @@ export interface RenderProgress {
   phase: RenderPhase;
   phaseIndex: number;
   totalPhases: number;
-  percentComplete: number;
-  estimatedSecondsLeft: number;
+  estimatedTotalSeconds?: number;
+  totalDurationSeconds?: number;
+  startedAt?: Date;
   elapsedSeconds: number;
 }
 
@@ -43,6 +44,9 @@ export interface RenderJob {
   estimatedSecondsLeft: number | null;
   elapsedSeconds: number | null;
   errorMessage: string | null;
+  estimatedTotalSeconds: number | null;
+  totalDurationSeconds: number | null;
+  startedAt: Date | null;
   template: string;
   resolution: string;
   audioEnabled: boolean;
@@ -86,6 +90,9 @@ function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
     estimatedSecondsLeft: row.estimatedSecondsLeft,
     elapsedSeconds: row.elapsedSeconds,
     errorMessage: row.errorMessage,
+    estimatedTotalSeconds: row.estimatedTotalSeconds ?? null,
+    totalDurationSeconds: row.totalDurationSeconds ?? null,
+    startedAt: row.startedAt,
     template: row.template,
     resolution: row.resolution,
     audioEnabled: row.audioEnabled ?? true,
@@ -132,6 +139,9 @@ export async function createRenderJob(
       percentComplete: 0,
       estimatedSecondsLeft: null,
       elapsedSeconds: 0,
+      estimatedTotalSeconds: null,
+      totalDurationSeconds: null,
+      startedAt: null,
       template: input.template ?? "dark",
       resolution: input.resolution ?? "720p",
       audioEnabled: input.audioEnabled ?? true,
@@ -187,12 +197,16 @@ export async function updateRenderProgress(
     updates.phaseIndex = getPhaseIndex(progress.phase);
   }
 
-  if (progress.percentComplete !== undefined) {
-    updates.percentComplete = progress.percentComplete;
+  if (progress.estimatedTotalSeconds !== undefined) {
+    updates.estimatedTotalSeconds = progress.estimatedTotalSeconds;
   }
 
-  if (progress.estimatedSecondsLeft !== undefined) {
-    updates.estimatedSecondsLeft = progress.estimatedSecondsLeft;
+  if (progress.totalDurationSeconds !== undefined) {
+    updates.totalDurationSeconds = progress.totalDurationSeconds;
+  }
+
+  if (progress.startedAt !== undefined) {
+    updates.startedAt = progress.startedAt;
   }
 
   if (progress.elapsedSeconds !== undefined) {
@@ -221,6 +235,13 @@ export async function completeRenderJob(
 ): Promise<RenderJob | null> {
   const now = new Date();
 
+  const job = await getRenderJob(id, userId);
+  if (!job) return null;
+
+  const finalElapsedSeconds = job.startedAt
+    ? (now.getTime() - job.startedAt.getTime()) / 1000
+    : null;
+
   const [updated] = await db
     .update(renderJobs)
     .set({
@@ -228,6 +249,7 @@ export async function completeRenderJob(
       phase: "completed",
       phaseIndex: TOTAL_PHASES,
       percentComplete: 100,
+      elapsedSeconds: finalElapsedSeconds,
       mp3R2Key: output.mp3R2Key ?? null,
       mp4R2Key: output.mp4R2Key ?? null,
       chaptersR2Key: output.chaptersR2Key ?? null,

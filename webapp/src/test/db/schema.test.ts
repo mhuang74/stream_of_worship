@@ -103,6 +103,9 @@ describe("schema: render_jobs table structure", () => {
     expect(cols).toContain("percent_complete");
     expect(cols).toContain("estimated_seconds_left");
     expect(cols).toContain("elapsed_seconds");
+    expect(cols).toContain("estimated_total_seconds");
+    expect(cols).toContain("total_duration_seconds");
+    expect(cols).toContain("started_at");
   });
 
   it("has output R2 key columns", () => {
