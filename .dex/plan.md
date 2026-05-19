@@ -318,18 +318,18 @@ Replace the current runtime fastembed semantic search with a two-tier hybrid app
 - Create: `webapp/src/test/lib/db/search.test.ts` — hybrid search tests
 - Modify: `webapp/src/test/api/songs/search.test.ts` — update for tsvector-based search
 
-- [ ] Add tsvector generated column to songs table in schema.ts: `searchVector` computed from `title`, `title_pinyin`, `composer`, `lyricist`, `album_name` using `setweight(to_tsvector('simple', ...), 'A')` for title/pinyin and `'B'` for others; add GIN index on the generated column
-- [ ] Create `webapp/src/lib/db/search.ts` with `fullTextSearchSongs(query, limit, offset, visibilityStatus)` using `plainto_tsquery('simple', query)` against the tsvector column; fall back to `websearch_to_tsquery` for phrase matching; combine with `ts_rank_cd` for relevance ordering
-- [ ] Use `'simple'` text search config (not 'zhparser' or 'pg_jieba') — it tokenizes on whitespace/punctuation which works for Chinese characters (each character is a token) and pinyin (space-separated words); no external Postgres extension needed
-- [ ] Modify `GET /api/songs/search` route to call `fullTextSearchSongs()` instead of `searchSongs()` with ilike; keep same response shape
-- [ ] Modify `POST /api/songs/search/semantic` to require a `recordingId` parameter instead of `query`; look up the pre-computed embedding from `song_embedding` table for that recording, then call `semanticSearchSongs()` with the retrieved embedding
-- [ ] Remove `generateEmbedding()` call and `runtime = "nodejs"` export from semantic route
-- [ ] Delete `webapp/src/lib/embed/client.ts` entirely (no longer needed at runtime)
-- [ ] Write a Drizzle migration that adds the tsvector generated column and GIN index to the existing songs table
-- [ ] Write tests for `fullTextSearchSongs()` — Chinese character search, pinyin search, mixed queries, relevance ranking, empty results
-- [ ] Write tests for updated semantic search route — verify it requires recordingId, verify it looks up embedding from DB, verify 400 when recording has no embedding
-- [ ] Update existing `search.test.ts` to reflect tsvector-based search behavior
-- [ ] Run `pnpm test` from webapp/ — must pass
+- [x] Add tsvector generated column to songs table in schema.ts: `searchVector` computed from `title`, `title_pinyin`, `composer`, `lyricist`, `album_name` using `setweight(to_tsvector('simple', ...), 'A')` for title/pinyin and `'B'` for others; add GIN index on the generated column
+- [x] Create `webapp/src/lib/db/search.ts` with `fullTextSearchSongs(query, limit, offset, visibilityStatus)` using `plainto_tsquery('simple', query)` against the tsvector column; fall back to `websearch_to_tsquery` for phrase matching; combine with `ts_rank_cd` for relevance ordering
+- [x] Use `'simple'` text search config (not 'zhparser' or 'pg_jieba') — it tokenizes on whitespace/punctuation which works for Chinese characters (each character is a token) and pinyin (space-separated words); no external Postgres extension needed
+- [x] Modify `GET /api/songs/search` route to call `fullTextSearchSongs()` instead of `searchSongs()` with ilike; keep same response shape
+- [x] Modify `POST /api/songs/search/semantic` to require a `recordingId` parameter instead of `query`; look up the pre-computed embedding from `song_embedding` table for that recording, then call `semanticSearchSongs()` with the retrieved embedding
+- [x] Remove `generateEmbedding()` call and `runtime = "nodejs"` export from semantic route
+- [x] Delete `webapp/src/lib/embed/client.ts` entirely (no longer needed at runtime)
+- [x] Write a Drizzle migration that adds the tsvector generated column and GIN index to the existing songs table
+- [x] Write tests for `fullTextSearchSongs()` — Chinese character search, pinyin search, mixed queries, relevance ranking, empty results
+- [x] Write tests for updated semantic search route — verify it requires recordingId, verify it looks up embedding from DB, verify 400 when recording has no embedding
+- [x] Update existing `search.test.ts` to reflect tsvector-based search behavior
+- [x] Run `pnpm test` from webapp/ — must pass
 
 ### Task 16: Create GitHub Actions CI/CD Workflows
 
@@ -337,13 +337,13 @@ Replace the current runtime fastembed semantic search with a two-tier hybrid app
 - Create: `.github/workflows/ci.yml`
 - Create: `.github/workflows/deploy.yml`
 
-- [ ] Create `.github/workflows/ci.yml` — trigger on PR, run `pnpm lint` and `pnpm test` in webapp/, run Python tests in services/render-worker/
-- [ ] Create `.github/workflows/deploy.yml` — trigger on push to main with paths filter for `webapp/**` and `services/render-worker/**`
-- [ ] Deploy workflow: (1) Vercel deployment via vercel-action, (2) Docker build + ECR push + Lambda update for render-worker changes
-- [ ] Add DB migration step: `npx drizzle-kit migrate` against Neon with `DATABASE_URL` from secrets
-- [ ] Use GitHub repository secrets for: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DATABASE_URL
-- [ ] Write tests verifying workflow YAML is valid and has expected job structure (optional but recommended)
-- [ ] Run `pnpm test` from webapp/ — must pass
+- [x] Create `.github/workflows/ci.yml` — trigger on PR, run `pnpm lint` and `pnpm test` in webapp/, run Python tests in services/render-worker/
+- [x] Create `.github/workflows/deploy.yml` — trigger on push to main with paths filter for `webapp/**` and `services/render-worker/**`
+- [x] Deploy workflow: (1) Vercel deployment via vercel-action, (2) Docker build + ECR push + Lambda update for render-worker changes
+- [x] Add DB migration step: `npx drizzle-kit migrate` against Neon with `DATABASE_URL` from secrets
+- [x] Use GitHub repository secrets for: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DATABASE_URL
+- [x] Write tests verifying workflow YAML is valid and has expected job structure (optional but recommended)
+- [x] Run `pnpm test` from webapp/ — must pass
 
 ### Task 17: Update Environment Configuration and Documentation
 
@@ -353,14 +353,14 @@ Replace the current runtime fastembed semantic search with a two-tier hybrid app
 - Modify: `webapp/README.md` — update deployment docs for Lambda architecture
 - Modify: `webapp/src/test/deployment/deployment.test.ts` — add assertions for new env vars
 
-- [ ] Add to `.env.example`: `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
-- [ ] Add to `.env.production.example`: same vars with documentation explaining IAM permissions needed
-- [ ] Update README.md: replace Vercel Pro + Fluid Compute + maxDuration:800 docs with Lambda worker architecture
-- [ ] Document the Lambda worker deployment flow (ECR push -> Lambda update)
-- [ ] Document the SQS queue setup (queue name, DLQ, visibility timeout)
-- [ ] Add deployment test assertions for new env vars in `.env.production.example`
-- [ ] Update deployment test assertions for vercel.json changes (maxDuration:60, no fluid on render routes)
-- [ ] Run `pnpm test` from webapp/ — must pass
+- [x] Add to `.env.example`: `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+- [x] Add to `.env.production.example`: same vars with documentation explaining IAM permissions needed
+- [x] Update README.md: replace Vercel Pro + Fluid Compute + maxDuration:800 docs with Lambda worker architecture
+- [x] Document the Lambda worker deployment flow (ECR push -> Lambda update)
+- [x] Document the SQS queue setup (queue name, DLQ, visibility timeout)
+- [x] Add deployment test assertions for new env vars in `.env.production.example`
+- [x] Update deployment test assertions for vercel.json changes (maxDuration:60, no fluid on render routes)
+- [x] Run `pnpm test` from webapp/ — must pass
 
 ### Task 18: Verify Acceptance Criteria
 
