@@ -364,16 +364,16 @@ Replace the current runtime fastembed semantic search with a two-tier hybrid app
 
 ### Task 18: Verify Acceptance Criteria
 
-- [ ] Run full Python test suite: `cd services/render-worker && PYTHONPATH=src pytest tests/ -v`
-- [ ] Run full webapp test suite: `cd webapp && pnpm test`
-- [ ] Run webapp linter: `cd webapp && pnpm lint`
-- [ ] Run webapp build: `cd webapp && pnpm build` — must succeed with no broken imports
-- [ ] Verify Docker image builds: `cd services/render-worker && docker build -t sow-render-worker .`
-- [ ] Verify no references to removed packages remain: grep for `canvas`, `ffmpeg-static`, `fluent-ffmpeg`, `fastembed` in webapp/src/ (should only be in deprecated embed/client.ts comments)
-- [ ] Verify SQS client is used in render-jobs route instead of `after(() => executeRenderPipeline(...))`
+- [x] Run full Python test suite: `cd services/render-worker && PYTHONPATH=src pytest tests/ -v`
+- [x] Run full webapp test suite: `cd webapp && pnpm test`
+- [x] Run webapp linter: `cd webapp && pnpm lint`
+- [x] Run webapp build: `cd webapp && pnpm build` — must succeed with no broken imports
+- [x] Verify Docker image builds: `cd services/render-worker && docker build -t sow-render-worker .`
+- [x] Verify no references to removed packages remain: grep for `canvas`, `ffmpeg-static`, `fluent-ffmpeg`, `fastembed` in webapp/src/ (should only be in deprecated embed/client.ts comments)
+- [x] Verify SQS client is used in render-jobs route instead of `after(() => executeRenderPipeline(...))`
 
 ### Task 19: Update Documentation
 
-- [ ] Update `reports/current_impl_status.md` with Lambda worker architecture
-- [ ] Update `webapp/README.md` with deployment instructions for Lambda worker
-- [ ] Add `services/render-worker/README.md` with worker setup, local testing, and deployment instructions
+- [x] Update `reports/current_impl_status.md` with Lambda worker architecture
+- [x] Update `webapp/README.md` with deployment instructions for Lambda worker
+- [x] Add `services/render-worker/README.md` with worker setup, local testing, and deployment instructions
