@@ -1,0 +1,193 @@
+# Stream of Worship — Render Worker
+
+AWS Lambda container that processes render jobs from an SQS queue. Ported from the Node.js render pipeline in the web app, this Python worker handles audio mixing, lyrics video encoding, and artifact upload to R2.
+
+## Architecture
+
+```
+Next.js POST /api/render-jobs
+  → Create DB job (status: queued)
+  → SQS sendMessage({ jobId, songsetId, userId })
+  → Lambda handler picks up message
+  → execute_render_pipeline()
+      1. preparing   — fetch songset items from DB
+      2. mixing_audio — FFmpeg audio concatenation with gaps/crossfade/loudnorm
+      3. rendering_frames — Pillow frame rendering with CJK lyrics
+      4. encoding_video — FFmpeg video encoding from raw RGBA frames
+      5. uploading — R2 upload of MP3/MP4/chapters.json
+  → Update DB job (status: completed or failed)
+```
+
+## Prerequisites
+
+- Python 3.11
+- Docker (for containerized builds)
+- FFmpeg and CJK fonts (installed in the Docker image)
+- AWS account with SQS, Lambda, and ECR access
+- Cloudflare R2 account
+- Neon PostgreSQL database
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `R2_BUCKET` | Cloudflare R2 bucket name |
+| `R2_ENDPOINT_URL` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
+| `R2_ACCESS_KEY_ID` | R2 access key ID |
+| `R2_SECRET_ACCESS_KEY` | R2 secret access key |
+| `AWS_REGION` | AWS region for SQS and Lambda (default: `us-east-1`) |
+| `SQS_QUEUE_URL` | SQS queue URL for render job messages |
+
+Copy `.env.example` to `.env` and fill in the values for local development.
+
+## Local Development
+
+### Install Dependencies
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install pytest pytest-mock pytest-asyncio
+```
+
+### Run Tests
+
+```bash
+PYTHONPATH=src pytest tests/ -v
+```
+
+### Run a Single Test File
+
+```bash
+PYTHONPATH=src pytest tests/test_pipeline.py -v
+```
+
+## Local Testing with Docker
+
+The Docker Compose setup runs the Lambda container locally with the Lambda Runtime Interface Emulator (RIE) on port 9000.
+
+### Build and Start
+
+```bash
+docker compose up --build
+```
+
+### Send a Test Event
+
+```bash
+curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
+  -d '{
+    "Records": [{
+      "messageId": "test-1",
+      "body": "{\"jobId\": \"your-job-id\", \"songsetId\": \"your-songset-id\", \"userId\": 1}"
+    }]
+  }'
+```
+
+### Stop
+
+```bash
+docker compose down
+```
+
+## Module Reference
+
+| Module | Description |
+|--------|-------------|
+| `lambda_handler` | SQS event parsing, job dispatch, batch failure handling |
+| `config` | Environment variable loading with validation |
+| `pipeline` | 5-phase render orchestrator with cancellation and progress |
+| `audio_engine` | FFmpeg audio mixing with gap, crossfade, and loudnorm |
+| `video_engine` | FFmpeg video encoding from Pillow-rendered frames |
+| `frame_renderer` | Pillow-based lyrics frame rendering with CJK fonts |
+| `chapters` | Chapter manifest generation and FFFMETADATA1 output |
+| `lrc_parser` | LRC timestamp parsing and global timeline conversion |
+| `r2_client` | boto3 S3-compatible client for Cloudflare R2 |
+| `asset_fetcher` | R2 download with local filesystem cache |
+| `uploader` | R2 upload of MP3/MP4/chapters artifacts |
+| `db` | psycopg2 job status CRUD (start, progress, complete, fail, recover orphans) |
+
+## Deployment
+
+### Manual Deployment
+
+1. **Build the Docker image:**
+   ```bash
+   docker build -t sow-render-worker .
+   ```
+
+2. **Push to AWS ECR:**
+   ```bash
+   aws ecr get-login-password --region us-east-1 | \
+     docker login --username AWS --password-stdin \
+     <account-id>.dkr.ecr.us-east-1.amazonaws.com
+
+   docker tag sow-render-worker:latest \
+     <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+
+   docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+   ```
+
+3. **Update the Lambda function:**
+   ```bash
+   aws lambda update-function-code \
+     --function-name sow-render-worker \
+     --image-uri <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+   ```
+
+### Automated Deployment (GitHub Actions)
+
+Pushes to `main` that modify `services/render-worker/` trigger the deploy workflow in `.github/workflows/deploy.yml`, which:
+
+1. Configures AWS credentials from repository secrets
+2. Logs in to ECR
+3. Builds, tags, and pushes the Docker image
+4. Updates the Lambda function code with the new image URI
+
+Required GitHub secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+
+### SQS Queue Setup
+
+Create the SQS queue and dead-letter queue in AWS:
+
+1. **Create the DLQ:**
+   ```bash
+   aws sqs create-queue --queue-name sow-render-jobs-dlq
+   ```
+
+2. **Create the main queue** with redrive policy and visibility timeout:
+   ```bash
+   aws sqs create-queue --queue-name sow-render-jobs \
+     --attributes '{
+       "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:<account-id>:sow-render-jobs-dlq\",\"maxReceiveCount\":\"3\"}",
+       "VisibilityTimeout": "900"
+     }'
+   ```
+
+   - Visibility timeout: 900s (15 min) — must exceed max render duration
+   - maxReceiveCount: 3 — after 3 failures, message moves to DLQ
+
+3. **Connect Lambda to SQS:**
+   ```bash
+   aws lambda create-event-source-mapping \
+     --function-name sow-render-worker \
+     --batch-size 1 \
+     --event-source-arn arn:aws:sqs:us-east-1:<account-id>:sow-render-jobs
+   ```
+
+### IAM Permissions
+
+The Lambda execution role needs:
+
+- `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the render jobs queue
+- `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, `s3:DeleteObject` on the R2 bucket (if using IAM-compatible endpoint)
+- `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` for pulling the container image
+
+## Error Handling
+
+- **SQS retries**: Failed messages are retried up to 3 times (via maxReceiveCount), then moved to the DLQ
+- **Job failure**: The pipeline marks the DB job as `failed` with an error message before raising
+- **Orphan recovery**: Jobs stuck in `running` status for over 30 minutes are recovered to `failed` by `recover_orphaned_jobs()`
+- **Cancellation**: The pipeline checks job status between phases; cancelled jobs are skipped without marking as failed
