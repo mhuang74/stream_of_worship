@@ -4,8 +4,8 @@
  * Verifies that vercel.json and .env.production.example are correctly structured
  * so that production deployments meet the app's runtime requirements:
  *
- * - Render functions must have maxDuration: 800 (Pro plan).
- * - Fluid Compute must be enabled on render routes.
+ * - Render functions have maxDuration: 60 (jobs are enqueued to SQS, not run inline).
+ * - Fluid Compute is no longer required on render routes (Lambda worker handles long-running tasks).
  * - Preview deployments must be enabled for all branches.
  * - .env.production.example must document every required production variable.
  * - Cast receiver app ID documentation must be present.
@@ -79,28 +79,28 @@ describe("vercel.json — render function maxDuration", () => {
     expect(typeof config.functions).toBe("object");
   });
 
-  it("sets maxDuration: 800 for render-jobs POST route", () => {
+  it("sets maxDuration: 60 for render-jobs POST route", () => {
     const config = readVercelJson();
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const renderRoute = functions["src/app/api/render-jobs/route.ts"];
     expect(renderRoute).toBeDefined();
-    expect(renderRoute.maxDuration).toBe(800);
+    expect(renderRoute.maxDuration).toBe(60);
   });
 
-  it("sets maxDuration: 800 for render-jobs GET route", () => {
+  it("sets maxDuration: 60 for render-jobs GET route", () => {
     const config = readVercelJson();
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const renderRoute = functions["src/app/api/render-jobs/[id]/route.ts"];
     expect(renderRoute).toBeDefined();
-    expect(renderRoute.maxDuration).toBe(800);
+    expect(renderRoute.maxDuration).toBe(60);
   });
 
-  it("sets maxDuration: 800 for render-jobs SSE events route", () => {
+  it("sets maxDuration: 60 for render-jobs SSE events route", () => {
     const config = readVercelJson();
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const eventsRoute = functions["src/app/api/render-jobs/[id]/events/route.ts"];
     expect(eventsRoute).toBeDefined();
-    expect(eventsRoute.maxDuration).toBe(800);
+    expect(eventsRoute.maxDuration).toBe(60);
   });
 });
 
@@ -108,26 +108,26 @@ describe("vercel.json — render function maxDuration", () => {
 // Fluid Compute
 // ---------------------------------------------------------------------------
 
-describe("vercel.json — Fluid Compute", () => {
-  it("enables fluid compute on render-jobs POST route", () => {
+describe("vercel.json — Fluid Compute (not required on render routes)", () => {
+  it("does not enable fluid compute on render-jobs POST route", () => {
     const config = readVercelJson();
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const renderRoute = functions["src/app/api/render-jobs/route.ts"];
-    expect(renderRoute?.fluid).toBe(true);
+    expect(renderRoute?.fluid).toBeFalsy();
   });
 
-  it("enables fluid compute on render-jobs GET route", () => {
+  it("does not enable fluid compute on render-jobs GET route", () => {
     const config = readVercelJson();
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const renderRoute = functions["src/app/api/render-jobs/[id]/route.ts"];
-    expect(renderRoute?.fluid).toBe(true);
+    expect(renderRoute?.fluid).toBeFalsy();
   });
 
-  it("enables fluid compute on SSE events route", () => {
+  it("does not enable fluid compute on SSE events route", () => {
     const config = readVercelJson();
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const eventsRoute = functions["src/app/api/render-jobs/[id]/events/route.ts"];
-    expect(eventsRoute?.fluid).toBe(true);
+    expect(eventsRoute?.fluid).toBeFalsy();
   });
 });
 
@@ -276,14 +276,14 @@ describe("README.md — deployment documentation", () => {
     expect(content).toContain("Vercel Pro");
   });
 
-  it("mentions maxDuration: 800", () => {
+  it("mentions maxDuration: 60 for render routes", () => {
     const content = readReadme();
-    expect(content).toContain("800");
+    expect(content).toContain("60");
   });
 
-  it("explains Fluid Compute", () => {
+  it("mentions Lambda worker for rendering", () => {
     const content = readReadme();
-    expect(content.toLowerCase()).toContain("fluid compute");
+    expect(content.toLowerCase()).toContain("lambda");
   });
 
   it("documents preview deployments", () => {

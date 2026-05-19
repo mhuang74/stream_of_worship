@@ -4,16 +4,13 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "functions": {
     "src/app/api/render-jobs/route.ts": {
-      "maxDuration": 800,
-      "fluid": true
+      "maxDuration": 60
     },
     "src/app/api/render-jobs/[id]/route.ts": {
-      "maxDuration": 800,
-      "fluid": true
+      "maxDuration": 60
     },
     "src/app/api/render-jobs/[id]/events/route.ts": {
-      "maxDuration": 800,
-      "fluid": true
+      "maxDuration": 60
     }
   },
   "git": {
