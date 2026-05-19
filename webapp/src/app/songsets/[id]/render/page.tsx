@@ -51,6 +51,7 @@ export default function RenderPage() {
   const [songset, setSongset] = useState<SongsetData | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [jobData, setJobData] = useState<RenderJobData | null>(null)
+  const [initialData, setInitialData] = useState<Partial<RenderFormData> | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -102,20 +103,16 @@ export default function RenderPage() {
             if (job.status === "running" || job.status === "queued") {
               setJobId(job.id)
               setScreenState("progress")
-            } else if (job.status === "completed" && renderState === "fresh") {
-              setJobId(job.id)
-              const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
-              const fetchSigned = async (type: string) => {
-                const res = await fetch(
-                  `/api/signed-url?renderJobId=${encodeURIComponent(job.id)}&fileType=${type}`
-                )
-                return res.ok ? (await res.json()).url as string : undefined
-              }
-              if (job.mp3R2Key) signedUrls.mp3Url = await fetchSigned("audio")
-              if (job.mp4R2Key) signedUrls.mp4Url = await fetchSigned("video")
-              if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSigned("json")
-              setJobData({ ...job, ...signedUrls })
-              setScreenState("complete")
+            } else if (job.status === "completed") {
+              setInitialData({
+                template: job.template as RenderFormData["template"],
+                resolution: job.resolution as RenderFormData["resolution"],
+                audioEnabled: job.audioEnabled,
+                videoEnabled: job.videoEnabled,
+                fontSizePreset: job.fontSizePreset as RenderFormData["fontSizePreset"],
+                includeTitleCard: job.includeTitleCard,
+                titleCardDurationSeconds: job.titleCardDurationSeconds,
+              })
             }
           }
         }
@@ -283,6 +280,7 @@ export default function RenderPage() {
           <RenderForm
             songsetId={songsetId}
             markedLineCount={songset.markedLineCount}
+            initialData={initialData}
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/songsets/${songsetId}`)}
           />
