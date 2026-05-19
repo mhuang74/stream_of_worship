@@ -238,14 +238,14 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Modify: `services/render-worker/src/sow_render_worker/lambda_handler.py`
 - Create: `services/render-worker/tests/test_lambda_handler.py`
 
-- [ ] Implement `handler(event, context)` — iterate SQS records, parse JSON body, extract jobId/songsetId/userId
-- [ ] Call `execute_render_pipeline(job_id, user_id)` for each record
-- [ ] On success: return 200 (SQS auto-deletes message)
-- [ ] On failure: log error, raise exception (SQS retries after visibility timeout, then DLQ after 3 failures)
-- [ ] Add structured logging with job_id context
-- [ ] Handle batch size 1 (one render per invocation) — but code should handle multiple records gracefully
-- [ ] Write tests — SQS event parsing, success path, failure path, multiple records
-- [ ] Run tests — must pass
+- [x] Implement `handler(event, context)` — iterate SQS records, parse JSON body, extract jobId/songsetId/userId
+- [x] Call `execute_render_pipeline(job_id, user_id)` for each record
+- [x] On success: return 200 (SQS auto-deletes message)
+- [x] On failure: log error, raise exception (SQS retries after visibility timeout, then DLQ after 3 failures)
+- [x] Add structured logging with job_id context
+- [x] Handle batch size 1 (one render per invocation) — but code should handle multiple records gracefully
+- [x] Write tests — SQS event parsing, success path, failure path, multiple records
+- [x] Run tests — must pass
 
 ### Task 12: Create Dockerfile and Docker Compose for Local Testing
 
@@ -254,16 +254,16 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Create: `services/render-worker/docker-compose.yml`
 - Create: `services/render-worker/.env.example`
 
-- [ ] Create Dockerfile based on `public.ecr.aws/lambda/python:3.11`
-- [ ] Install system packages: ffmpeg, fonts-noto-cjk (or google-noto-sans-cjk-fonts)
-- [ ] Copy `src/sow_render_worker/` to `/app/sow_render_worker/`
-- [ ] Install Python dependencies from requirements.txt
-- [ ] Set CMD to `sow_render_worker.lambda_handler.handler`
-- [ ] Create docker-compose.yml for local testing — build the image, expose Lambda runtime API port
-- [ ] Create `.env.example` with all required env vars documented
-- [ ] Test: `docker build` succeeds, `docker run` starts Lambda runtime
-- [ ] Write a test that verifies the Docker image builds and the handler is importable (smoke test)
-- [ ] Run tests — must pass
+- [x] Create Dockerfile based on `public.ecr.aws/lambda/python:3.11`
+- [x] Install system packages: ffmpeg, fonts-noto-cjk (or google-noto-sans-cjk-fonts)
+- [x] Copy `src/sow_render_worker/` to `/app/sow_render_worker/`
+- [x] Install Python dependencies from requirements.txt
+- [x] Set CMD to `sow_render_worker.lambda_handler.handler`
+- [x] Create docker-compose.yml for local testing — build the image, expose Lambda runtime API port
+- [x] Create `.env.example` with all required env vars documented
+- [x] Test: `docker build` succeeds, `docker run` starts Lambda runtime
+- [x] Write a test that verifies the Docker image builds and the handler is importable (smoke test)
+- [x] Run tests — must pass
 
 ### Task 13: Add SQS Integration to Next.js
 
@@ -273,15 +273,15 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Modify: `webapp/src/app/api/render-jobs/route.ts` — replace `after()` with SQS enqueue
 - Create: `webapp/src/test/lib/sqs/client.test.ts`
 
-- [ ] Add `@aws-sdk/client-sqs` dependency via `pnpm add @aws-sdk/client-sqs` in webapp/
-- [ ] Create `webapp/src/lib/sqs/client.ts` — SQSClient wrapper with `sendMessage()` that sends `{ jobId, songsetId, userId }` as JSON body
-- [ ] Read `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` from env
-- [ ] Modify `POST /api/render-jobs/route.ts` — replace `after(() => executeRenderPipeline(...))` with `sqsClient.sendMessage({ jobId, songsetId, userId })`
-- [ ] Keep `createRenderJob()` call — job is still created in DB with "queued" status
-- [ ] The Lambda worker will transition it to "running" when it picks up the message
-- [ ] Write tests for SQS client — message construction, env var validation, error handling (mock SQS)
-- [ ] Update existing API route tests if they exist
-- [ ] Run `pnpm test` from webapp/ — must pass
+- [x] Add `@aws-sdk/client-sqs` dependency via `pnpm add @aws-sdk/client-sqs` in webapp/
+- [x] Create `webapp/src/lib/sqs/client.ts` — SQSClient wrapper with `sendMessage()` that sends `{ jobId, songsetId, userId }` as JSON body
+- [x] Read `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` from env
+- [x] Modify `POST /api/render-jobs/route.ts` — replace `after(() => executeRenderPipeline(...))` with `sqsClient.sendMessage({ jobId, songsetId, userId })`
+- [x] Keep `createRenderJob()` call — job is still created in DB with "queued" status
+- [x] The Lambda worker will transition it to "running" when it picks up the message
+- [x] Write tests for SQS client — message construction, env var validation, error handling (mock SQS)
+- [x] Update existing API route tests if they exist
+- [x] Run `pnpm test` from webapp/ — must pass
 
 ### Task 14: Remove Heavy Dependencies from Next.js
 
@@ -292,15 +292,15 @@ Migrate the render pipeline from in-process Vercel execution to an AWS Lambda-ba
 - Modify: `webapp/pnpm-workspace.yaml` — remove canvas, ffmpeg-static, onnxruntime-node from onlyBuiltDependencies
 - Modify: `webapp/src/test/deployment/deployment.test.ts` — update assertions for new config
 
-- [ ] Remove `canvas`, `ffmpeg-static`, `fluent-ffmpeg`, `fastembed` from package.json dependencies
-- [ ] Remove `@anush008/tokenizers` from package.json if it was only a fastembed transitive dep
-- [ ] Remove `fastembed`, `@anush008/tokenizers`, `ffmpeg-static` from `serverExternalPackages` in next.config.ts
-- [ ] Reduce `maxDuration` from 800 to 60 for all render-jobs routes in vercel.json (they now just enqueue SQS)
-- [ ] Remove `fluid: true` from render-jobs routes in vercel.json (no longer needed for long-running functions)
-- [ ] Update `pnpm-workspace.yaml` to remove native dep build entries for canvas, ffmpeg-static, onnxruntime-node
-- [ ] Update deployment tests — maxDuration should be 60, not 800; fluid compute no longer required on render routes
-- [ ] Run `pnpm test` and `pnpm lint` from webapp/ — must pass
-- [ ] Run `pnpm build` from webapp/ — must succeed (verifies no broken imports)
+- [x] Remove `canvas`, `ffmpeg-static`, `fluent-ffmpeg`, `fastembed` from package.json dependencies
+- [x] Remove `@anush008/tokenizers` from package.json if it was only a fastembed transitive dep
+- [x] Remove `fastembed`, `@anush008/tokenizers`, `ffmpeg-static` from `serverExternalPackages` in next.config.ts
+- [x] Reduce `maxDuration` from 800 to 60 for all render-jobs routes in vercel.json (they now just enqueue SQS)
+- [x] Remove `fluid: true` from render-jobs routes in vercel.json (no longer needed for long-running functions)
+- [x] Update `pnpm-workspace.yaml` to remove native dep build entries for canvas, ffmpeg-static, onnxruntime-node
+- [x] Update deployment tests — maxDuration should be 60, not 800; fluid compute no longer required on render routes
+- [x] Run `pnpm test` and `pnpm lint` from webapp/ — must pass
+- [x] Run `pnpm build` from webapp/ — must succeed (verifies no broken imports)
 
 ### Task 15: Implement Hybrid Search (Full-Text + Pre-computed Tag Embeddings)
 
