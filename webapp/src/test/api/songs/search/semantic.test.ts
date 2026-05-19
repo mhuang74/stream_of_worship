@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/songs/search/semantic/route";
 import { auth } from "@/lib/auth";
-import { generateEmbedding } from "@/lib/embed/client";
-import { semanticSearchSongs } from "@/lib/db/songs";
+import { getEmbeddingForRecording, semanticSearchSongs } from "@/lib/db/search";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -15,11 +14,8 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-vi.mock("@/lib/embed/client", () => ({
-  generateEmbedding: vi.fn(),
-}));
-
-vi.mock("@/lib/db/songs", () => ({
+vi.mock("@/lib/db/search", () => ({
+  getEmbeddingForRecording: vi.fn(),
   semanticSearchSongs: vi.fn(),
 }));
 
@@ -70,7 +66,7 @@ describe("POST /api/songs/search/semantic", () => {
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
-    const res = await POST(makeRequest({ query: "grace songs" }));
+    const res = await POST(makeRequest({ recordingId: "hash123" }));
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe("Unauthorized");
@@ -87,83 +83,74 @@ describe("POST /api/songs/search/semantic", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when query is missing", async () => {
+  it("returns 400 when recordingId is missing", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
     const res = await POST(makeRequest({}));
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when query is empty", async () => {
+  it("returns 400 when recordingId is empty", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    const res = await POST(makeRequest({ query: "" }));
+    const res = await POST(makeRequest({ recordingId: "" }));
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when query is too long", async () => {
+  it("returns 400 when recording has no embedding", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    const res = await POST(makeRequest({ query: "a".repeat(501) }));
+    vi.mocked(getEmbeddingForRecording).mockResolvedValue(null);
+
+    const res = await POST(makeRequest({ recordingId: "no-embedding-hash" }));
     expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("No embedding found");
   });
 
   it("returns search results on success", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(generateEmbedding).mockResolvedValue(mockEmbedding);
+    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([mockSong]);
 
-    const res = await POST(makeRequest({ query: "songs about grace" }));
+    const res = await POST(makeRequest({ recordingId: "abc123" }));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.songs).toHaveLength(1);
     expect(data.songs[0].title).toBe("Amazing Grace");
     expect(data.songs[0].similarity).toBe(0.87);
-    expect(data.query).toBe("songs about grace");
+    expect(data.recordingId).toBe("abc123");
     expect(data.total).toBe(1);
   });
 
-  it("passes embedding to semanticSearchSongs", async () => {
+  it("looks up embedding from DB and passes to semanticSearchSongs", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(generateEmbedding).mockResolvedValue(mockEmbedding);
+    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([]);
 
-    await POST(makeRequest({ query: "worship music" }));
-    expect(generateEmbedding).toHaveBeenCalledWith("worship music");
+    await POST(makeRequest({ recordingId: "hash123" }));
+    expect(getEmbeddingForRecording).toHaveBeenCalledWith("hash123");
     expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 20);
   });
 
   it("respects custom limit", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(generateEmbedding).mockResolvedValue(mockEmbedding);
+    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([]);
 
-    await POST(makeRequest({ query: "praise songs", limit: 10 }));
+    await POST(makeRequest({ recordingId: "hash123", limit: 10 }));
     expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 10);
   });
 
   it("clamps limit to max 50", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(generateEmbedding).mockResolvedValue(mockEmbedding);
-    vi.mocked(semanticSearchSongs).mockResolvedValue([]);
-
-    const res = await POST(makeRequest({ query: "songs", limit: 100 }));
+    const res = await POST(makeRequest({ recordingId: "hash123", limit: 100 }));
     expect(res.status).toBe(400);
-  });
-
-  it("returns 500 when generateEmbedding fails", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(generateEmbedding).mockRejectedValue(new Error("Model error"));
-
-    const res = await POST(makeRequest({ query: "songs" }));
-    expect(res.status).toBe(500);
-    const data = await res.json();
-    expect(data.error).toContain("Model error");
   });
 
   it("returns 500 when DB query fails", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(generateEmbedding).mockResolvedValue(mockEmbedding);
+    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockRejectedValue(new Error("DB error"));
 
-    const res = await POST(makeRequest({ query: "songs" }));
+    const res = await POST(makeRequest({ recordingId: "hash123" }));
     expect(res.status).toBe(500);
   });
 });

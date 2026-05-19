@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/songs/search/route";
 import { auth } from "@/lib/auth";
-import { searchSongs } from "@/lib/db/songs";
+import { fullTextSearchSongs } from "@/lib/db/search";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -14,8 +14,8 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-vi.mock("@/lib/db/songs", () => ({
-  searchSongs: vi.fn(),
+vi.mock("@/lib/db/search", () => ({
+  fullTextSearchSongs: vi.fn(),
 }));
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
@@ -75,7 +75,7 @@ describe("GET /api/songs/search", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(searchSongs).mockResolvedValue({
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
       songs: [
         {
           id: "song-1",
@@ -125,7 +125,7 @@ describe("GET /api/songs/search", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(searchSongs).mockResolvedValue({
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
       songs: [],
       total: 0,
     });
@@ -135,7 +135,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(searchSongs).toHaveBeenCalledWith("test", 10, 5, "published");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, "published");
   });
 
   it("caps limit at 100", async () => {
@@ -143,7 +143,7 @@ describe("GET /api/songs/search", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(searchSongs).mockResolvedValue({
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
       songs: [],
       total: 0,
     });
@@ -153,7 +153,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(searchSongs).toHaveBeenCalledWith("test", 100, 0, "published");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, "published");
   });
 
   it("defaults to published visibility status", async () => {
@@ -161,7 +161,7 @@ describe("GET /api/songs/search", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(searchSongs).mockResolvedValue({
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
       songs: [],
       total: 0,
     });
@@ -169,7 +169,7 @@ describe("GET /api/songs/search", () => {
     const request = createMockRequest("http://localhost:3000/api/songs/search?q=test");
     await GET(request);
 
-    expect(searchSongs).toHaveBeenCalledWith("test", 50, 0, "published");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "published");
   });
 
   it("allows overriding visibility status", async () => {
@@ -177,7 +177,7 @@ describe("GET /api/songs/search", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(searchSongs).mockResolvedValue({
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
       songs: [],
       total: 0,
     });
@@ -187,7 +187,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(searchSongs).toHaveBeenCalledWith("test", 50, 0, "all");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "all");
   });
 
   it("returns 500 on error", async () => {
@@ -195,7 +195,7 @@ describe("GET /api/songs/search", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(searchSongs).mockRejectedValue(new Error("Database error"));
+    vi.mocked(fullTextSearchSongs).mockRejectedValue(new Error("Database error"));
 
     const request = createMockRequest("http://localhost:3000/api/songs/search?q=test");
     const response = await GET(request);

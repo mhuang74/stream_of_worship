@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { searchSongs } from "@/lib/db/songs";
+import { fullTextSearchSongs } from "@/lib/db/search";
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,10 +28,9 @@ export async function GET(request: NextRequest) {
     );
     const offset = parseInt(searchParams.get("offset") ?? "0");
 
-    // Default to published only for app users
     const visibilityStatus = searchParams.get("visibilityStatus") ?? "published";
 
-    const result = await searchSongs(query, limit, offset, visibilityStatus);
+    const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus);
 
     return NextResponse.json(result);
   } catch (error) {

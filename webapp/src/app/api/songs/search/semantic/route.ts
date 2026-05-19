@@ -1,14 +1,10 @@
-// POST /api/songs/search/semantic — natural language song search via pgvector
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { generateEmbedding } from "@/lib/embed/client";
-import { semanticSearchSongs } from "@/lib/db/songs";
+import { getEmbeddingForRecording, semanticSearchSongs } from "@/lib/db/search";
 import { z } from "zod";
 
-export const runtime = "nodejs";
-
 const RequestSchema = z.object({
-  query: z.string().min(1, "query must not be empty").max(500, "query too long"),
+  recordingId: z.string().min(1, "recordingId must not be empty"),
   limit: z.number().int().min(1).max(50).default(20),
 });
 
@@ -34,12 +30,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { query, limit } = parsed.data;
+    const { recordingId, limit } = parsed.data;
 
-    const embedding = await generateEmbedding(query);
+    const embedding = await getEmbeddingForRecording(recordingId);
+    if (!embedding) {
+      return NextResponse.json(
+        { error: "No embedding found for the specified recording" },
+        { status: 400 }
+      );
+    }
+
     const songs = await semanticSearchSongs(embedding, limit);
 
-    return NextResponse.json({ songs, query, total: songs.length });
+    return NextResponse.json({ songs, recordingId, total: songs.length });
   } catch (error) {
     console.error("Error in semantic search:", error);
     const message = error instanceof Error ? error.message : "Semantic search failed";
