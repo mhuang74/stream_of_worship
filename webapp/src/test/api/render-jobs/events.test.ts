@@ -28,6 +28,8 @@ function createMockRequest(url: string, options?: RequestInit): NextRequest {
   return request;
 }
 
+const FAKE_NOW = new Date("2025-01-01T12:00:00Z");
+
 const mockQueuedJob = {
   id: "job-1",
   songsetId: "songset-1",
@@ -68,13 +70,13 @@ const mockRunningJob = {
   elapsedSeconds: 30,
   estimatedTotalSeconds: 180,
   totalDurationSeconds: 120,
-  startedAt: new Date(),
+  startedAt: new Date(FAKE_NOW.getTime() - 30000),
 };
 
 describe("GET /api/render-jobs/[id]/events (SSE)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
+    vi.useFakeTimers({ now: FAKE_NOW });
   });
 
   afterEach(() => {
@@ -250,11 +252,13 @@ describe("GET /api/render-jobs/[id]/events (SSE)", () => {
         return Promise.resolve(mockQueuedJob);
       }
       return Promise.resolve({
-        ...mockRunningJob,
+        ...mockQueuedJob,
+        status: "running",
         phase: "rendering_frames",
         phaseIndex: 2,
         elapsedSeconds: 60,
         estimatedTotalSeconds: 180,
+        startedAt: new Date(FAKE_NOW.getTime() + 1000 - 61000),
       });
     });
 
@@ -303,6 +307,7 @@ describe("GET /api/render-jobs/[id]/events (SSE)", () => {
         percentComplete: 100,
         elapsedSeconds: 180,
         estimatedTotalSeconds: 180,
+        startedAt: new Date(FAKE_NOW.getTime() + 1000 - 181000),
       });
     });
 
@@ -351,6 +356,7 @@ describe("GET /api/render-jobs/[id]/events (SSE)", () => {
         percentComplete: 75,
         elapsedSeconds: 120,
         estimatedTotalSeconds: 180,
+        startedAt: new Date(FAKE_NOW.getTime() + 1000 - 121000),
       });
     });
 
@@ -398,6 +404,7 @@ describe("GET /api/render-jobs/[id]/events (SSE)", () => {
         phaseIndex: 1,
         elapsedSeconds: 30,
         estimatedTotalSeconds: 180,
+        startedAt: new Date(FAKE_NOW.getTime() + 1000 - 31000),
       });
     });
 

@@ -1,7 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+}));
 
 // Test component that uses the audio player
 function TestChildComponent() {
@@ -38,7 +42,6 @@ describe("GlobalAudioPlayer", () => {
       </GlobalAudioPlayer>
     );
 
-    // Should have access to audio player state
     expect(screen.getByTestId("track-status")).toHaveTextContent("No track");
     expect(screen.getByTestId("play-status")).toHaveTextContent("Paused");
   });
@@ -50,7 +53,6 @@ describe("GlobalAudioPlayer", () => {
       </GlobalAudioPlayer>
     );
 
-    // Player bar should not be visible when no track is loaded
     expect(screen.queryByTestId("audio-player-bar")).not.toBeInTheDocument();
   });
 
@@ -62,7 +64,6 @@ describe("GlobalAudioPlayer", () => {
     );
 
     expect(screen.getByTestId("wrapped-content")).toBeInTheDocument();
-    // The provider should render without errors
     expect(container).toBeTruthy();
   });
 });
