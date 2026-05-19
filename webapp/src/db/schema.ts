@@ -10,32 +10,57 @@ import {
   index,
   unique,
   vector,
+  customType,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "tsvector";
+  },
+  toDriver(value: string) {
+    return value;
+  },
+  fromDriver(value: string) {
+    return value;
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Catalog tables (managed by admin CLI, read-only from webapp)
 // ---------------------------------------------------------------------------
 
-export const songs = pgTable("songs", {
-  id: text("id").primaryKey(),
-  title: text("title").notNull(),
-  titlePinyin: text("title_pinyin"),
-  composer: text("composer"),
-  lyricist: text("lyricist"),
-  albumName: text("album_name"),
-  albumSeries: text("album_series"),
-  musicalKey: text("musical_key"),
-  lyricsRaw: text("lyrics_raw"),
-  lyricsLines: text("lyrics_lines"),
-  sections: text("sections"),
-  sourceUrl: text("source_url").notNull(),
-  tableRowNumber: integer("table_row_number"),
-  scrapedAt: text("scraped_at").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+export const songs = pgTable(
+  "songs",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    titlePinyin: text("title_pinyin"),
+    composer: text("composer"),
+    lyricist: text("lyricist"),
+    albumName: text("album_name"),
+    albumSeries: text("album_series"),
+    musicalKey: text("musical_key"),
+    lyricsRaw: text("lyrics_raw"),
+    lyricsLines: text("lyrics_lines"),
+    sections: text("sections"),
+    sourceUrl: text("source_url").notNull(),
+    tableRowNumber: integer("table_row_number"),
+    scrapedAt: text("scraped_at").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector").generatedAlwaysAs(
+      sql`setweight(to_tsvector('simple', coalesce("title", '')), 'A') ||
+          setweight(to_tsvector('simple', coalesce("title_pinyin", '')), 'A') ||
+          setweight(to_tsvector('simple', coalesce("composer", '')), 'B') ||
+          setweight(to_tsvector('simple', coalesce("lyricist", '')), 'B') ||
+          setweight(to_tsvector('simple', coalesce("album_name", '')), 'B')`
+    ),
+  },
+  (t) => [index("idx_songs_search_vector").on(t.searchVector)]
+);
 
 export const recordings = pgTable("recordings", {
   contentHash: text("content_hash").primaryKey(),

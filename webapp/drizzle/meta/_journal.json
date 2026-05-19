@@ -43,6 +43,13 @@
       "when": 1779153951041,
       "tag": "0005_thin_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779250000000,
+      "tag": "0006_add_songs_search_vector",
+      "breakpoints": true
     }
   ]
 }
