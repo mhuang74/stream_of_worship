@@ -1,0 +1,17 @@
+FROM public.ecr.aws/lambda/python:3.11
+
+RUN yum install -y google-noto-sans-cjk-fonts tar xz \
+    && yum clean all \
+    && rm -rf /var/cache/yum
+
+RUN curl -fsSL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    | tar -xJ --strip-components=1 -C /usr/local/bin \
+    --wildcards 'ffmpeg-*-amd64-static/ffmpeg' 'ffmpeg-*-amd64-static/ffprobe' \
+    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+
+COPY src/sow_render_worker/ ${LAMBDA_TASK_ROOT}/sow_render_worker/
+
+CMD ["sow_render_worker.lambda_handler.handler"]
