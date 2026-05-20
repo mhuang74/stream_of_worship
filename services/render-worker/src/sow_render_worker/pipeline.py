@@ -179,7 +179,13 @@ def execute_render_pipeline(
         return time.monotonic() - pipeline_start
 
     try:
-        start_render_job(conn, job_id, user_id)
+        started = start_render_job(conn, job_id, user_id)
+        if not started:
+            logger.info(
+                "Render job %s was already claimed by another invocation, skipping",
+                job_id,
+            )
+            return
 
         update_render_progress(
             conn,
@@ -200,6 +206,10 @@ def execute_render_pipeline(
             raise ValueError("Songset has no items")
 
         total_duration_seconds = sum(item.duration_seconds or 0 for item in items)
+        if total_duration_seconds <= 0:
+            raise ValueError(
+                "Songset items have no valid duration_seconds — cannot estimate render time"
+            )
         render_ratio = get_render_ratio(conn, job.resolution, job.video_enabled)
         estimated_total_seconds = (
             total_duration_seconds * render_ratio if total_duration_seconds > 0 else 0
@@ -226,6 +236,11 @@ def execute_render_pipeline(
             audio_output_path,
             asset_fetcher,
         )
+
+        if not Path(audio_output_path).exists():
+            raise FileNotFoundError(
+                f"Audio output file not found after generation: {audio_output_path}"
+            )
 
         check_cancelled()
 

@@ -314,9 +314,15 @@ export async function semanticSearchSongs(
   embedding: number[],
   limit: number = 20
 ): Promise<SemanticSearchResult[]> {
+  if (embedding.length !== 1024) {
+    throw new Error(`Invalid embedding: expected 1024 dimensions, got ${embedding.length}`);
+  }
   for (const v of embedding) {
     if (typeof v !== "number" || !isFinite(v)) {
       throw new Error("Invalid embedding value: all values must be finite numbers");
+    }
+    if (Math.abs(v) > 100) {
+      throw new Error("Invalid embedding value: values must be in range [-100, 100]");
     }
   }
 

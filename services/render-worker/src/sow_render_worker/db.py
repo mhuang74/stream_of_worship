@@ -142,10 +142,10 @@ def start_render_job(
     now = datetime.now(timezone.utc)
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "UPDATE render_jobs SET status = %s, started_at = %s, updated_at = %s "
-            "WHERE id = %s AND user_id = %s "
+            "UPDATE render_jobs SET status = %s, started_at = COALESCE(started_at, %s), updated_at = %s "
+            "WHERE id = %s AND user_id = %s AND status = %s "
             "RETURNING *",
-            ("running", now, now, job_id, user_id),
+            ("running", now, now, job_id, user_id, "queued"),
         )
         row = cur.fetchone()
     if not row:
@@ -219,7 +219,12 @@ def complete_render_job(
 
     final_elapsed_seconds = None
     if job.started_at and now:
-        delta = now - job.started_at
+        aware_started = (
+            job.started_at.replace(tzinfo=timezone.utc)
+            if job.started_at.tzinfo is None
+            else job.started_at
+        )
+        delta = now - aware_started
         final_elapsed_seconds = delta.total_seconds()
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -260,22 +265,32 @@ def fail_render_job(
     error_message: str,
 ) -> Optional[RenderJob]:
     now = datetime.now(timezone.utc)
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
-            "WHERE id = %s AND user_id = %s "
-            "RETURNING *",
-            ("failed", error_message, now, job_id, user_id),
-        )
-        row = cur.fetchone()
-    if not row:
-        return None
-    with conn.cursor() as cur:
-        cur.execute(
-            "UPDATE songsets SET last_failed_render_job_id = %s, updated_at = %s "
-            "WHERE id = %s",
-            (job_id, now, row["songset_id"]),
-        )
+    original_autocommit = conn.autocommit
+    try:
+        conn.autocommit = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
+                "WHERE id = %s AND user_id = %s AND status IN %s "
+                "RETURNING *",
+                ("failed", error_message, now, job_id, user_id, ("running", "queued")),
+            )
+            row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return None
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE songsets SET last_failed_render_job_id = %s, updated_at = %s "
+                "WHERE id = %s",
+                (job_id, now, row["songset_id"]),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.autocommit = original_autocommit
     return _row_to_render_job(row)
 
 
@@ -286,22 +301,31 @@ def recover_orphaned_jobs(
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(minutes=threshold_minutes)
 
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
-            "WHERE status = %s AND updated_at < %s "
-            "RETURNING id, songset_id",
-            ("failed", f"Job timed out after {threshold_minutes} minutes without progress", now, "running", threshold),
-        )
-        affected = cur.fetchall()
+    original_autocommit = conn.autocommit
+    try:
+        conn.autocommit = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
+                "WHERE status = %s AND updated_at < %s "
+                "RETURNING id, songset_id",
+                ("failed", f"Job timed out after {threshold_minutes} minutes without progress", now, "running", threshold),
+            )
+            affected = cur.fetchall()
 
-    if affected:
-        with conn.cursor() as cur:
-            for row in affected:
-                cur.execute(
-                    "UPDATE songsets SET last_failed_render_job_id = %s, updated_at = %s "
-                    "WHERE id = %s",
-                    (row["id"], now, row["songset_id"]),
-                )
+        if affected:
+            with conn.cursor() as cur:
+                for row in affected:
+                    cur.execute(
+                        "UPDATE songsets SET last_failed_render_job_id = %s, updated_at = %s "
+                        "WHERE id = %s",
+                        (row["id"], now, row["songset_id"]),
+                    )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.autocommit = original_autocommit
 
     return len(affected)

@@ -63,6 +63,10 @@ def handler(event, context):
         for i, record in enumerate(records):
             message_id = record.get("messageId", f"record_{i}")
             try:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 _process_record(record, config, conn)
             except Exception as exc:
                 logger.error(

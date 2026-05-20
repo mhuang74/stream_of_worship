@@ -172,6 +172,7 @@ class TestStartRenderJob:
         assert "UPDATE render_jobs" in sql
         assert "SET status = %s" in sql
         assert "RETURNING *" in sql
+        assert "AND status = %s" in sql
 
     def test_not_found(self):
         conn, cursor = _make_mock_conn(fetchone_result=None)
@@ -186,6 +187,14 @@ class TestStartRenderJob:
         assert params[0] == "running"
         assert params[3] == "job_abc123"
         assert params[4] == 42
+        assert params[5] == "queued"
+
+    def test_uses_coalesce_for_started_at(self):
+        row = _make_row(status="running")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        start_render_job(conn, "job_abc123", 42)
+        sql = cursor.execute.call_args[0][0]
+        assert "COALESCE(started_at" in sql
 
 
 class TestUpdateRenderProgress:
@@ -378,7 +387,7 @@ class TestCompleteRenderJob:
 
 class TestFailRenderJob:
     def test_success(self):
-        row = _make_row(status="failed", error_message="Something went wrong")
+        row = _make_row(status="failed", error_message="Something went wrong", songset_id="ss_001")
         conn, cursor = _make_mock_conn(fetchone_result=row)
         result = fail_render_job(conn, "job_abc123", 42, "Something went wrong")
         assert result is not None
@@ -391,7 +400,7 @@ class TestFailRenderJob:
         assert result is None
 
     def test_parameterized_query(self):
-        row = _make_row(status="failed", error_message="error msg")
+        row = _make_row(status="failed", error_message="error msg", songset_id="ss_001")
         conn, cursor = _make_mock_conn(fetchone_result=row)
         fail_render_job(conn, "job_abc123", 42, "error msg")
         first_call_params = cursor.execute.call_args_list[0][0][1]
@@ -401,11 +410,24 @@ class TestFailRenderJob:
         assert first_call_params[4] == 42
 
     def test_sets_updated_at(self):
-        row = _make_row(status="failed")
+        row = _make_row(status="failed", songset_id="ss_001")
         conn, cursor = _make_mock_conn(fetchone_result=row)
         fail_render_job(conn, "job_abc123", 42, "error")
         sql = cursor.execute.call_args_list[0][0][0]
         assert "updated_at = %s" in sql
+
+    def test_status_guard_prevents_overwriting_completed(self):
+        row = _make_row(status="failed", error_message="error", songset_id="ss_001")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        fail_render_job(conn, "job_abc123", 42, "error")
+        sql = cursor.execute.call_args_list[0][0][0]
+        assert "AND status IN %s" in sql
+
+    def test_uses_transaction(self):
+        row = _make_row(status="failed", error_message="error", songset_id="ss_001")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        fail_render_job(conn, "job_abc123", 42, "error")
+        conn.commit.assert_called_once()
 
 
 class TestRecoverOrphanedJobs:
@@ -456,6 +478,11 @@ class TestRecoverOrphanedJobs:
         recover_orphaned_jobs(conn)
         sql = cursor.execute.call_args[0][0]
         assert "WHERE status = %s AND updated_at < %s" in sql
+
+    def test_uses_transaction(self):
+        conn, cursor = _make_mock_conn(fetchall_result=[{"id": "j1", "songset_id": "ss1"}])
+        recover_orphaned_jobs(conn)
+        conn.commit.assert_called_once()
 
 
 class TestRenderJobDataclass:

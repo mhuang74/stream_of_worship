@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = "/tmp/sow-assets/cache"
 DEFAULT_TEMP_DIR = "/tmp/sow-assets/temp"
+MAX_LRC_SIZE_BYTES = 1024 * 1024
 
 
 class AssetFetcher:
@@ -23,7 +24,9 @@ class AssetFetcher:
         self._cache_dir = Path(cache_dir or DEFAULT_CACHE_DIR)
         self._temp_dir = Path(temp_dir or DEFAULT_TEMP_DIR)
         self._r2_client = r2_client or create_r2_client_from_env()
-        self._http = urllib3.PoolManager()
+        self._http = urllib3.PoolManager(
+            timeout=urllib3.Timeout(connect=30, read=300)
+        )
         self._lrc_cache: dict[str, str | None] = {}
         self._job_temp_dir: Path | None = None
 
@@ -56,7 +59,7 @@ class AssetFetcher:
             response = self._http.request("GET", signed_url)
             if response.status != 200:
                 raise RuntimeError(
-                    f"Failed to download audio: {response.status}"
+                    f"Failed to download audio: HTTP {response.status}"
                 )
 
             self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -72,9 +75,11 @@ class AssetFetcher:
                 raise
 
             return str(cache_path)
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to download audio for %s", hash_prefix)
-            return None
+            raise RuntimeError(
+                f"Failed to download audio for {hash_prefix}: {exc}"
+            ) from exc
 
     def download_lrc(self, hash_prefix: str) -> str | None:
         if hash_prefix in self._lrc_cache:
@@ -88,15 +93,22 @@ class AssetFetcher:
             response = self._http.request("GET", signed_url)
             if response.status != 200:
                 raise RuntimeError(
-                    f"Failed to download LRC: {response.status}"
+                    f"Failed to download LRC: HTTP {response.status}"
+                )
+
+            if len(response.data) > MAX_LRC_SIZE_BYTES:
+                raise RuntimeError(
+                    f"LRC response too large: {len(response.data)} bytes exceeds {MAX_LRC_SIZE_BYTES} limit"
                 )
 
             content = response.data.decode("utf-8")
             self._lrc_cache[hash_prefix] = content
             return content
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to download LRC for %s", hash_prefix)
-            return None
+            raise RuntimeError(
+                f"Failed to download LRC for {hash_prefix}: {exc}"
+            ) from exc
 
     def cleanup_temp(self) -> None:
         if self._job_temp_dir is not None:
