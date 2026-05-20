@@ -20,13 +20,15 @@ jobs:
       render-worker: ${{ steps.filter.outputs.render-worker }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check changed paths
         id: filter
         run: |
           webapp=false
           render_worker=false
-          for file in $(git diff --name-only HEAD~1 HEAD); do
+          for file in $(git diff --name-only ${{ github.event.before }} ${{ github.sha }}); do
             if [[ "$file" == webapp/* ]]; then
               webapp=true
             fi

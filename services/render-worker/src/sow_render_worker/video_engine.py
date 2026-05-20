@@ -272,6 +272,7 @@ class VideoEngine:
         )
 
         frame_count = 0
+        stderr_output = ""
 
         try:
             while frame_count < total_frames:
@@ -284,13 +285,15 @@ class VideoEngine:
                     current_time = lyrics_frame_index / self.fps
                     img = self.frame_renderer.render_frame(lyrics, segments, current_time)
 
-                rgba_img = img.convert("RGBA")
-                frame_bytes = rgba_img.tobytes()
+                frame_bytes = img.tobytes()
 
                 try:
                     process.stdin.write(frame_bytes)
                 except BrokenPipeError:
-                    stderr_output = process.stderr.read().decode("utf-8", errors="replace")
+                    process.stdin.close()
+                    process.wait()
+                    stderr_bytes = process.stderr.read() if process.stderr else b""
+                    stderr_output = stderr_bytes.decode("utf-8", errors="replace")
                     stderr_info = (
                         f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
                         if stderr_output
@@ -312,10 +315,9 @@ class VideoEngine:
             raise
 
         return_code = process.wait()
+        stderr_bytes = process.stderr.read() if process.stderr else b""
+        stderr_output = stderr_bytes.decode("utf-8", errors="replace")
         if return_code != 0:
-            stderr_output = (process.stderr.read() if process.stderr else b"").decode(
-                "utf-8", errors="replace"
-            )
             stderr_info = (
                 f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
                 if stderr_output

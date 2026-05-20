@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from botocore.exceptions import ClientError
 
 from sow_render_worker.r2_client import (
     FILE_TYPE_CONFIGS,
@@ -162,46 +161,6 @@ class TestGetLrcSignedUrl:
         assert params["Key"] == "abc123/lyrics.lrc"
 
 
-class TestFileExists:
-    def test_returns_true_when_object_exists(self):
-        client = _make_r2_client()
-        client._client.head_object.return_value = {"ContentLength": 1024}
-
-        assert client.file_exists("abc123/audio.mp3") is True
-
-        client._client.head_object.assert_called_once_with(
-            Bucket="test-bucket", Key="abc123/audio.mp3"
-        )
-
-    def test_returns_false_on_404(self):
-        client = _make_r2_client()
-        client._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "404", "Message": "Not Found"}},
-            "HeadObject",
-        )
-
-        assert client.file_exists("nonexistent/key") is False
-
-    def test_returns_false_on_no_such_key(self):
-        client = _make_r2_client()
-        client._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey", "Message": "No such key"}},
-            "HeadObject",
-        )
-
-        assert client.file_exists("nonexistent/key") is False
-
-    def test_raises_on_other_client_error(self):
-        client = _make_r2_client()
-        client._client.head_object.side_effect = ClientError(
-            {"Error": {"Code": "403", "Message": "Forbidden"}},
-            "HeadObject",
-        )
-
-        with pytest.raises(ClientError):
-            client.file_exists("forbidden/key")
-
-
 class TestFileTypeConfigs:
     def test_audio_config(self):
         assert FILE_TYPE_CONFIGS["audio"]["content_type"] == "audio/mpeg"
@@ -226,7 +185,7 @@ class TestCreateR2ClientFromEnv:
             "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
             "R2_ACCESS_KEY_ID": "env-access-key",
             "R2_SECRET_ACCESS_KEY": "env-secret-key",
-            "R2_BUCKET_NAME": "env-bucket",
+            "R2_BUCKET": "env-bucket",
         }
         with patch.dict("os.environ", env, clear=False):
             with patch("sow_render_worker.r2_client.boto3") as mock_boto3:
@@ -239,21 +198,6 @@ class TestCreateR2ClientFromEnv:
                 mock_boto3.client.assert_called_once()
                 call_kwargs = mock_boto3.client.call_args[1]
                 assert call_kwargs["endpoint_url"] == "https://envaccount.r2.cloudflarestorage.com"
-
-    def test_uses_r2_bucket_as_fallback(self):
-        env = {
-            "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
-            "R2_ACCESS_KEY_ID": "env-access-key",
-            "R2_SECRET_ACCESS_KEY": "env-secret-key",
-            "R2_BUCKET": "fallback-bucket",
-        }
-        with patch.dict("os.environ", env, clear=False):
-            with patch("sow_render_worker.r2_client.boto3") as mock_boto3:
-                mock_boto3.client.return_value = MagicMock()
-                mock_boto3.Config.return_value = MagicMock()
-
-                client = create_r2_client_from_env()
-                assert client.bucket_name == "fallback-bucket"
 
     def test_raises_on_missing_env_vars(self):
         with patch.dict("os.environ", {}, clear=True):

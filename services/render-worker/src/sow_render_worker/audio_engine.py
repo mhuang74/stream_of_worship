@@ -173,7 +173,7 @@ def concatenate_audio_files(
     cmd.extend(["-ar", str(sample_rate), "-ac", str(channels)])
     cmd.append(output_path)
 
-    subprocess.run(cmd, check=True, capture_output=True, timeout=600)
+    subprocess.run(cmd, check=True, capture_output=True, timeout=1800)
 
 
 def generate_songset_audio(
