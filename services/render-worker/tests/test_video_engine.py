@@ -174,17 +174,17 @@ class TestGenerateBlankVideo:
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, ffmpeg_path="/usr/bin/ffmpeg")
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
-            mock_popen.return_value = mock_process
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
             result = engine.generate_blank_video(
                 "/tmp/audio.mp3", output_path, 180.0
             )
 
-        cmd = mock_popen.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
         assert cmd[0] == "/usr/bin/ffmpeg"
         assert "-y" in cmd
         assert "-f" in cmd
@@ -221,16 +221,17 @@ class TestGenerateBlankVideo:
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, resolution="720p", ffmpeg_path="ffmpeg")
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
-            mock_popen.return_value = mock_process
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
             result = engine.generate_blank_video(
                 "/tmp/audio.mp3", output_path, 60.0
             )
 
-        cmd = mock_popen.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
         color_input_idx = cmd.index("-i") + 1
         color_input = cmd[color_input_idx]
         assert "s=1280x720" in color_input
@@ -243,12 +244,12 @@ class TestGenerateBlankVideo:
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 1
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = b"error"
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
-            mock_popen.return_value = mock_process
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
             with pytest.raises(RuntimeError, match="FFmpeg exited with code 1"):
                 engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
 
@@ -650,18 +651,18 @@ class TestInjectChapters:
             ),
         ]
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
-            mock_popen.return_value = mock_process
+            mock_run.return_value = mock_result
             result = engine.inject_chapters(video_path, chapters)
 
         assert result is True
 
-        cmd = mock_popen.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
         assert "-y" in cmd
         assert "-i" in cmd
         assert video_path in cmd
@@ -681,12 +682,12 @@ class TestInjectChapters:
             ChapterInfo(position=1, song_title="Song 1", start_seconds=0.0, end_seconds=180.0),
         ]
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 1
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = b"error"
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
-            mock_popen.return_value = mock_process
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
             result = engine.inject_chapters(video_path, chapters)
 
         assert result is False
@@ -701,7 +702,7 @@ class TestInjectChapters:
             ChapterInfo(position=1, song_title="Song 1", start_seconds=0.0, end_seconds=180.0),
         ]
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen", side_effect=Exception("boom")):
+        with patch("sow_render_worker.video_engine.subprocess.run", side_effect=Exception("boom")):
             result = engine.inject_chapters(video_path, chapters)
 
         assert result is False
@@ -717,24 +718,24 @@ class TestInjectChapters:
             ChapterInfo(position=1, song_title="Song 1", start_seconds=0.0, end_seconds=180.0),
         ]
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
-            mock_popen.return_value = mock_process
+            mock_run.return_value = mock_result
             result = engine.inject_chapters(video_path, chapters)
 
         chapters_files = list(tmp_path.glob("chapters-*.txt"))
         assert len(chapters_files) == 0
 
         chapters_path_arg = None
-        for i, arg in enumerate(mock_popen.call_args[0][0]):
+        for i, arg in enumerate(mock_run.call_args[0][0]):
             if arg == "-i" and i > 0:
-                prev_arg = mock_popen.call_args[0][0][i - 1]
-                if prev_arg == "-i" and i + 1 < len(mock_popen.call_args[0][0]):
-                    next_arg = mock_popen.call_args[0][0][i + 1]
+                prev_arg = mock_run.call_args[0][0][i - 1]
+                if prev_arg == "-i" and i + 1 < len(mock_run.call_args[0][0]):
+                    next_arg = mock_run.call_args[0][0][i + 1]
                     if "chapters-" in next_arg:
                         chapters_path_arg = next_arg
                         break
@@ -750,13 +751,13 @@ class TestInjectChapters:
             ChapterInfo(position=1, song_title="Song 1", start_seconds=0.0, end_seconds=180.0),
         ]
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
-            mock_popen.return_value = mock_process
+            mock_run.return_value = mock_result
             engine.inject_chapters(video_path, chapters)
 
         chapters_files = list(tmp_path.glob("chapters-*.txt"))
@@ -888,15 +889,15 @@ class TestFFmpegCommandConstruction:
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher, ffmpeg_path="ffmpeg")
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
-            mock_popen.return_value = mock_process
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
             engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
 
-        cmd = mock_popen.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
         assert "-f" in cmd
         idx_f = cmd.index("-f")
         assert cmd[idx_f + 1] == "lavfi"
@@ -912,16 +913,16 @@ class TestFFmpegCommandConstruction:
             ChapterInfo(position=1, song_title="Song 1", start_seconds=0.0, end_seconds=180.0),
         ]
 
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_process.stderr = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
+        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
-            mock_popen.return_value = mock_process
+            mock_run.return_value = mock_result
             engine.inject_chapters(video_path, chapters)
 
-        cmd = mock_popen.call_args[0][0]
+        cmd = mock_run.call_args[0][0]
         assert "-map_metadata" in cmd
         idx_mm = cmd.index("-map_metadata")
         assert cmd[idx_mm + 1] == "1"

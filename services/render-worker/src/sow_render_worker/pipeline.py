@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg2
@@ -174,7 +173,6 @@ def execute_render_pipeline(
                 phase=PHASES[0],
                 phase_index=0,
                 total_phases=len(PHASES),
-                started_at=datetime.now(timezone.utc),
                 elapsed_seconds=0,
             ),
         )

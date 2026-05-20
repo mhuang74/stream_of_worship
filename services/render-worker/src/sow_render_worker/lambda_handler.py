@@ -53,7 +53,6 @@ def handler(event, context):
             try:
                 _process_record(record, config, conn)
             except Exception as exc:
-                body = record.get("body", "{}")
                 logger.error(
                     "Failed to process SQS record %s: %s",
                     message_id,
@@ -61,7 +60,6 @@ def handler(event, context):
                     extra={
                         "message_id": message_id,
                         "record_index": i,
-                        "record_body": body,
                         "error_type": type(exc).__name__,
                     },
                 )

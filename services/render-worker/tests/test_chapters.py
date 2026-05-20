@@ -18,10 +18,15 @@ from sow_render_worker.chapters import (
 
 
 @dataclass
-class FakeSegment:
+class FakeItem:
     song_title: str | None
     song_id: str
     recording_hash_prefix: str | None
+
+
+@dataclass
+class FakeSegment:
+    item: FakeItem
     start_time_seconds: float
     duration_seconds: float
 
@@ -120,8 +125,8 @@ class TestChaptersManifest:
 class TestBuildChaptersFromSegments:
     def test_basic_build(self):
         segments = [
-            FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
-            FakeSegment("Song B", "id2", "hash2", 30.0, 45.0),
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
+            FakeSegment(FakeItem("Song B", "id2", "hash2"), 30.0, 45.0),
         ]
 
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
@@ -140,7 +145,7 @@ class TestBuildChaptersFromSegments:
 
     def test_no_hash_prefix_empty_lines(self):
         segments = [
-            FakeSegment("Song A", "id1", None, 0.0, 30.0),
+            FakeSegment(FakeItem("Song A", "id1", None), 0.0, 30.0),
         ]
 
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
@@ -152,7 +157,7 @@ class TestBuildChaptersFromSegments:
 
     def test_async_get_lyrics(self):
         segments = [
-            FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
         ]
 
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
@@ -164,7 +169,7 @@ class TestBuildChaptersFromSegments:
 
     def test_fallback_song_id_when_no_title(self):
         segments = [
-            FakeSegment(None, "my-song-id", "hash1", 0.0, 30.0),
+            FakeSegment(FakeItem(None, "my-song-id", "hash1"), 0.0, 30.0),
         ]
 
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
@@ -175,7 +180,7 @@ class TestBuildChaptersFromSegments:
 
     def test_fallback_position_when_no_title_no_id(self):
         segments = [
-            FakeSegment(None, "", "hash1", 0.0, 30.0),
+            FakeSegment(FakeItem(None, "", "hash1"), 0.0, 30.0),
         ]
 
         def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
@@ -192,8 +197,8 @@ class TestBuildChaptersFromSegments:
 class TestGenerateChaptersManifest:
     def test_basic_generation(self):
         segments = [
-            FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
-            FakeSegment("Song B", "id2", "hash2", 30.0, 45.0),
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
+            FakeSegment(FakeItem("Song B", "id2", "hash2"), 30.0, 45.0),
         ]
 
         lrc_map = {
@@ -219,7 +224,7 @@ class TestGenerateChaptersManifest:
 
     def test_async_download_lrc(self):
         segments = [
-            FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
         ]
 
         def download_lrc(hash_prefix: str) -> str | None:
@@ -231,7 +236,7 @@ class TestGenerateChaptersManifest:
 
     def test_lrc_download_returns_none(self):
         segments = [
-            FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
         ]
 
         def download_lrc(hash_prefix: str) -> str | None:
@@ -242,7 +247,7 @@ class TestGenerateChaptersManifest:
 
     def test_lrc_download_raises_exception(self):
         segments = [
-            FakeSegment("Song A", "id1", "hash1", 0.0, 30.0),
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
         ]
 
         def download_lrc(hash_prefix: str) -> str | None:
@@ -253,7 +258,7 @@ class TestGenerateChaptersManifest:
 
     def test_no_hash_prefix(self):
         segments = [
-            FakeSegment("Song A", "id1", None, 0.0, 30.0),
+            FakeSegment(FakeItem("Song A", "id1", None), 0.0, 30.0),
         ]
 
         def download_lrc(hash_prefix: str) -> str | None:
@@ -263,7 +268,7 @@ class TestGenerateChaptersManifest:
         assert manifest.chapters[0].lines == ()
 
     def test_generated_at_is_iso_format(self):
-        segments = [FakeSegment("Song A", "id1", None, 0.0, 30.0)]
+        segments = [FakeSegment(FakeItem("Song A", "id1", None), 0.0, 30.0)]
         manifest = generate_chapters_manifest(segments, lambda h: None, 30.0)
         assert "T" in manifest.generated_at
 
