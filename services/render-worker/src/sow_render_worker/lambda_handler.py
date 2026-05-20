@@ -12,9 +12,21 @@ logging.basicConfig(level=logging.INFO)
 
 def _process_record(record: dict, config, conn) -> None:
     body = record.get("body", "{}")
-    record_data = json.loads(body)
-    job_id = record_data["jobId"]
-    user_id = int(record_data["userId"])
+    try:
+        record_data = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in SQS message body: {exc}") from exc
+
+    if not isinstance(record_data, dict):
+        raise ValueError(f"SQS message body is not a JSON object: {type(record_data).__name__}")
+
+    job_id = record_data.get("jobId")
+    user_id = record_data.get("userId")
+    if not job_id:
+        raise ValueError("SQS message body missing required field 'jobId'")
+    if not user_id:
+        raise ValueError("SQS message body missing required field 'userId'")
+    user_id = int(user_id)
 
     logger.info(
         "Processing render job",

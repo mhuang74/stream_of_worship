@@ -210,7 +210,9 @@ def generate_songset_audio(
             raise ValueError(f"Could not get audio for recording {item.recording_hash_prefix}")
 
         info = get_audio_info(audio_path)
-        duration_ms = info["duration_ms"] if info else 0
+        if not info:
+            raise ValueError(f"Could not probe audio file: {audio_path}")
+        duration_ms = info["duration_ms"]
 
         gap_ms = 0
         crossfade_ms = 0

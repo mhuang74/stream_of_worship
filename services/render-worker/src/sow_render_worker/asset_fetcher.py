@@ -1,4 +1,5 @@
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -59,7 +60,16 @@ class AssetFetcher:
                 )
 
             self._cache_dir.mkdir(parents=True, exist_ok=True)
-            cache_path.write_bytes(response.data)
+            tmp_path = cache_path.with_suffix(".tmp")
+            try:
+                tmp_path.write_bytes(response.data)
+                os.replace(tmp_path, cache_path)
+            except BaseException:
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+                raise
 
             return str(cache_path)
         except Exception:

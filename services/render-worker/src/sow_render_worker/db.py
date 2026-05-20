@@ -229,7 +229,7 @@ def complete_render_job(
             "  elapsed_seconds = %s, "
             "  mp3_r2_key = %s, mp4_r2_key = %s, chapters_r2_key = %s, "
             "  completed_at = %s, updated_at = %s "
-            "WHERE id = %s AND user_id = %s "
+            "WHERE id = %s AND user_id = %s AND status = %s "
             "RETURNING *",
             (
                 "completed",
@@ -244,6 +244,7 @@ def complete_render_job(
                 now,
                 job_id,
                 user_id,
+                "running",
             ),
         )
         row = cur.fetchone()
@@ -269,6 +270,12 @@ def fail_render_job(
         row = cur.fetchone()
     if not row:
         return None
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE songsets SET last_failed_render_job_id = %s, updated_at = %s "
+            "WHERE id = %s",
+            (job_id, now, row["songset_id"]),
+        )
     return _row_to_render_job(row)
 
 
@@ -282,7 +289,19 @@ def recover_orphaned_jobs(
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
-            "WHERE status = %s AND updated_at < %s",
+            "WHERE status = %s AND updated_at < %s "
+            "RETURNING id, songset_id",
             ("failed", f"Job timed out after {threshold_minutes} minutes without progress", now, "running", threshold),
         )
-        return cur.rowcount
+        affected = cur.fetchall()
+
+    if affected:
+        with conn.cursor() as cur:
+            for row in affected:
+                cur.execute(
+                    "UPDATE songsets SET last_failed_render_job_id = %s, updated_at = %s "
+                    "WHERE id = %s",
+                    (row["id"], now, row["songset_id"]),
+                )
+
+    return len(affected)
