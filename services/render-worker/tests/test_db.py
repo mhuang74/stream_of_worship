@@ -54,13 +54,14 @@ def _make_row(**overrides) -> dict:
     return defaults
 
 
-def _make_mock_conn(fetchone_result=None, fetchall_result=None):
+def _make_mock_conn(fetchone_result=None, fetchall_result=None, rowcount=None):
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
     conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
     cursor.fetchone.return_value = fetchone_result
     cursor.fetchall.return_value = fetchall_result or []
+    cursor.rowcount = rowcount if rowcount is not None else 0
     return conn, cursor
 
 
@@ -409,67 +410,50 @@ class TestFailRenderJob:
 
 class TestRecoverOrphanedJobs:
     def test_no_orphans(self):
-        conn, cursor = _make_mock_conn(fetchall_result=[])
+        conn, cursor = _make_mock_conn(rowcount=0)
         result = recover_orphaned_jobs(conn)
         assert result == 0
 
     def test_recovers_orphans(self):
-        orphaned_rows = [
-            {"id": "job1", "songset_id": "ss1"},
-            {"id": "job2", "songset_id": "ss2"},
-        ]
-        conn, cursor = _make_mock_conn(fetchall_result=orphaned_rows)
+        conn, cursor = _make_mock_conn(rowcount=2)
         result = recover_orphaned_jobs(conn)
         assert result == 2
-        assert cursor.execute.call_count >= 3
 
     def test_uses_threshold(self):
-        conn, cursor = _make_mock_conn(fetchall_result=[])
+        conn, cursor = _make_mock_conn(rowcount=0)
         recover_orphaned_jobs(conn, threshold_minutes=15)
-        select_call = cursor.execute.call_args_list[0]
-        params = select_call[0][1]
-        assert params[0] == "running"
-        assert params[1] is not None
+        params = cursor.execute.call_args[0][1]
+        assert params[3] == "running"
+        assert params[4] is not None
 
     def test_sets_failed_status(self):
-        orphaned_rows = [{"id": "job1", "songset_id": "ss1"}]
-        conn, cursor = _make_mock_conn(fetchall_result=orphaned_rows)
+        conn, cursor = _make_mock_conn(rowcount=1)
         recover_orphaned_jobs(conn)
-        update_call = cursor.execute.call_args_list[1]
-        params = update_call[0][1]
+        params = cursor.execute.call_args[0][1]
         assert params[0] == "failed"
         assert "timed out" in params[1]
 
     def test_default_threshold_30_minutes(self):
-        conn, cursor = _make_mock_conn(fetchall_result=[])
+        conn, cursor = _make_mock_conn(rowcount=0)
         recover_orphaned_jobs(conn)
-        select_params = cursor.execute.call_args[0][1]
-        threshold = select_params[1]
+        params = cursor.execute.call_args[0][1]
+        threshold = params[4]
         expected_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
         assert abs((threshold - expected_threshold).total_seconds()) < 5
 
     def test_custom_threshold(self):
-        conn, cursor = _make_mock_conn(fetchall_result=[])
+        conn, cursor = _make_mock_conn(rowcount=0)
         recover_orphaned_jobs(conn, threshold_minutes=60)
-        select_params = cursor.execute.call_args[0][1]
-        threshold = select_params[1]
+        params = cursor.execute.call_args[0][1]
+        threshold = params[4]
         expected_threshold = datetime.now(timezone.utc) - timedelta(minutes=60)
         assert abs((threshold - expected_threshold).total_seconds()) < 5
 
-    def test_parameterized_select_query(self):
-        conn, cursor = _make_mock_conn(fetchall_result=[])
+    def test_parameterized_query(self):
+        conn, cursor = _make_mock_conn(rowcount=0)
         recover_orphaned_jobs(conn)
         sql = cursor.execute.call_args[0][0]
         assert "WHERE status = %s AND updated_at < %s" in sql
-
-    def test_parameterized_update_query(self):
-        orphaned_rows = [{"id": "job_orphan", "songset_id": "ss1"}]
-        conn, cursor = _make_mock_conn(fetchall_result=orphaned_rows)
-        recover_orphaned_jobs(conn)
-        update_call = cursor.execute.call_args_list[1]
-        sql = update_call[0][0]
-        assert "%s" in sql
-        assert "WHERE id = %s" in sql
 
 
 class TestRenderJobDataclass:

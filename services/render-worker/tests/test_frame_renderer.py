@@ -300,7 +300,7 @@ class TestRenderFrame:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         result = renderer.render_frame([], [], 0.0)
         pixel = result.getpixel((0, 0))
-        assert pixel == (20, 20, 30)
+        assert pixel == (20, 20, 30, 255)
 
     def test_no_matching_segment(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
@@ -448,11 +448,13 @@ class TestRenderIntroInfo:
 class TestRenderLyrics:
     def test_renders_current_line(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
-        assert img.getbbox() is not None
+        blank = Image.new("RGB", (1920, 1080), bg)
+        assert list(img.getdata()) != list(blank.getdata())
 
     def test_before_first_lyric_no_render(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
@@ -466,11 +468,13 @@ class TestRenderLyrics:
 
     def test_after_last_lyric_shows_last(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello")])
         renderer.render_lyrics(lyrics, 8.0, "Song", draw, 1920, 1080)
-        assert img.getbbox() is not None
+        blank = Image.new("RGB", (1920, 1080), bg)
+        assert list(img.getdata()) != list(blank.getdata())
 
     def test_last_lyric_fade_out(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
@@ -490,19 +494,23 @@ class TestRenderLyrics:
 
     def test_next_line_rendered(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         renderer.render_lyrics(lyrics, 5.0, "Song", draw, 1920, 1080)
-        assert img.getbbox() is not None
+        blank = Image.new("RGB", (1920, 1080), bg)
+        assert list(img.getdata()) != list(blank.getdata())
 
     def test_chinese_lyrics(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "讚美之泉"), (10.0, "哈利路亞")])
         renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
-        assert img.getbbox() is not None
+        blank = Image.new("RGB", (1920, 1080), bg)
+        assert list(img.getdata()) != list(blank.getdata())
 
 
 class TestRenderTitleCard:
@@ -541,7 +549,7 @@ class TestRenderTitleCard:
         )
         result = renderer.render_title_card(config)
         pixel = result.getpixel((0, 0))
-        assert pixel == (20, 20, 30)
+        assert pixel == (20, 20, 30, 255)
 
     def test_duration_format(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
@@ -578,7 +586,7 @@ class TestRenderTitleCard:
         )
         result = renderer.render_title_card(config)
         pixel = result.getpixel((0, 0))
-        assert pixel == (60, 30, 20)
+        assert pixel == (60, 30, 20, 255)
 
 
 class TestLoadFont:

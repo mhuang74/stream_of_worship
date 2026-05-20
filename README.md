@@ -14,7 +14,7 @@ A seamless Chinese worship music transition system designed to analyze songs (te
 
 ## Quick Start
 
-This project consists of three components. Here's how to run each:
+This project consists of six components. Here's how to run each:
 
 | Component | Purpose | Run Command |
 |-----------|---------|-------------|
@@ -22,6 +22,7 @@ This project consists of three components. Here's how to run each:
 | **User App** | Interactive TUI for transitions | `uv run --extra app sow-app run` |
 | **Web App** | Browser-based worship set editor | `pnpm --filter sow-webapp dev` |
 | **Analysis Service** | Audio analysis & stem separation | `cd services/analysis && docker compose up -d` |
+| **Render Worker** | Serverless render processing | `cd services/render-worker && docker compose up --build` |
 
 ### Prerequisites
 - **Admin CLI & User App**: Python 3.11+, `uv` package manager
@@ -95,8 +96,8 @@ The Web App is the primary end-user interface for worship leaders and media team
 - Desktop: key shift and tempo nudge per song
 
 **Render Pipeline**
-- Generate MP3 audio: blended multi-song mix with smooth transitions
-- Generate MP4 video: synchronized lyrics video with chapter markers
+- Generate MP3 audio: blended multi-song mix with smooth transitions (processed asynchronously via AWS Lambda)
+- Generate MP4 video: synchronized lyrics video with chapter markers (processed asynchronously via AWS Lambda)
 - Real-time progress via SSE (Server-Sent Events)
 - Configurable video resolution (720p, 1080p, 1440p) and font size
 
@@ -109,7 +110,7 @@ The Web App is the primary end-user interface for worship leaders and media team
 **Content Review**
 - LRC lyrics review and editing (fix timing, correct characters)
 - Transition detail sheet (waveform alignment preview)
-- Semantic song search powered by embedded ONNX model
+- Semantic song search: full-text tsvector across Chinese text and pinyin, plus similar-song discovery via pre-computed embeddings
 
 **Sharing & Settings**
 - Generate shareable public player links with configurable expiry
@@ -124,6 +125,7 @@ External services (required for full functionality):
 - Neon PostgreSQL database
 - pgvector enabled in that PostgreSQL database
 - Cloudflare R2 object storage (for rendered audio/video files)
+- AWS SQS queue + Lambda (for render job processing)
 
 ### Setup
 
@@ -178,11 +180,10 @@ npx drizzle-kit migrate    # Run pending migrations
 
 ### API Summary
 
-- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `GET /api/songs/albums`, `POST /api/songs/search/semantic`: authenticated catalog APIs. App users only see songs with at least one published recording.
+- `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `GET /api/songs/albums`, `POST /api/songs/search/semantic`: authenticated catalog APIs. Semantic search requires a `recordingId` and uses pre-computed embeddings from the database. App users only see songs with at least one published recording.
 - `GET|POST|PATCH|DELETE /api/songsets...`: authenticated songset CRUD, item editing, and reorder operations scoped to the owner.
 - `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `DELETE /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`, `GET /api/render-jobs/[id]/artifact-sizes`: authenticated render creation, polling, cancellation, SSE progress, and artifact size queries.
 - `GET|POST /api/signed-url`: authenticated signed URL minting for published recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`.
-- `POST /api/embed`: Edge function for generating text embeddings (semantic search).
 - `POST /api/transitions/preview`: authenticated transition audio preview signed URL generation.
 - `GET|DELETE /api/offline/cache`: authenticated offline artifact URL generation and invalidation.
 - `GET|PUT /api/settings`: authenticated per-user settings.
@@ -192,7 +193,7 @@ npx drizzle-kit migrate    # Run pending migrations
 
 ### Deployment
 
-The web app deploys to **Vercel Pro** (required — FFmpeg renders can run up to ~13 minutes, which exceeds the Free/Hobby plan cap).
+The web app deploys to **Vercel**. Render jobs are enqueued to AWS SQS and processed by a Lambda worker (Docker container deployed to ECR), so the Vercel function only needs a short timeout for job creation and SSE progress streaming.
 
 See [webapp/README.md](webapp/README.md) for full deployment instructions including:
 - Vercel project setup

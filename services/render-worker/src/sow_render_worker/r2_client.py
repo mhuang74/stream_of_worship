@@ -2,7 +2,6 @@ from typing import Any
 
 import boto3
 from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError
 
 
 FILE_TYPE_CONFIGS: dict[str, dict[str, str]] = {
@@ -92,16 +91,6 @@ class R2Client:
         key = f"{hash_prefix}/lyrics.lrc"
         return self.generate_signed_url(key, "lrc", expires_in_seconds)
 
-    def file_exists(self, key: str) -> bool:
-        try:
-            self._client.head_object(Bucket=self._bucket_name, Key=key)
-            return True
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ("404", "NoSuchKey"):
-                return False
-            raise
-
 
 def create_r2_client_from_env() -> R2Client:
     import os
@@ -109,12 +98,12 @@ def create_r2_client_from_env() -> R2Client:
     endpoint_url = os.environ.get("R2_ENDPOINT_URL")
     access_key_id = os.environ.get("R2_ACCESS_KEY_ID")
     secret_access_key = os.environ.get("R2_SECRET_ACCESS_KEY")
-    bucket_name = os.environ.get("R2_BUCKET_NAME") or os.environ.get("R2_BUCKET")
+    bucket_name = os.environ.get("R2_BUCKET")
 
     if not all([endpoint_url, access_key_id, secret_access_key, bucket_name]):
         raise ValueError(
             "R2 credentials not configured. "
-            "Set R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME environment variables."
+            "Set R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET environment variables."
         )
 
     return R2Client(

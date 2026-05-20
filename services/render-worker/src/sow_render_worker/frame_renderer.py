@@ -101,7 +101,9 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     try:
         return ImageFont.truetype("sans-serif", size)
     except (OSError, IOError):
-        return ImageFont.load_default(size=size) if hasattr(ImageFont, "load_default") else ImageFont.load_default()
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
 
 
 class FrameRenderer:
@@ -153,7 +155,7 @@ class FrameRenderer:
         current_time: float,
     ) -> Image.Image:
         width, height = self.resolution
-        img = Image.new("RGB", (width, height), self.template.background_color)
+        img = Image.new("RGBA", (width, height), (*self.template.background_color, 255))
         draw = ImageDraw.Draw(img)
 
         current_title = ""
@@ -399,7 +401,7 @@ class FrameRenderer:
 
     def render_title_card(self, config: TitleCardConfig) -> Image.Image:
         width, height = self.resolution
-        img = Image.new("RGB", (width, height), self.template.background_color)
+        img = Image.new("RGBA", (width, height), (*self.template.background_color, 255))
         draw = ImageDraw.Draw(img)
 
         text_r, text_g, text_b = self.template.text_color

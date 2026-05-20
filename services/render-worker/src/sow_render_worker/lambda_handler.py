@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def _process_record(record: dict) -> None:
+def _process_record(record: dict, config, conn) -> None:
     body = record.get("body", "{}")
     record_data = json.loads(body)
     job_id = record_data["jobId"]
@@ -21,22 +21,11 @@ def _process_record(record: dict) -> None:
         extra={"job_id": job_id, "user_id": user_id},
     )
 
-    config = load_config()
-    conn = None
-
-    try:
-        conn = get_connection(config.DATABASE_URL)
-        execute_render_pipeline(job_id, user_id, conn)
-        logger.info(
-            "Render job completed successfully",
-            extra={"job_id": job_id, "user_id": user_id},
-        )
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
+    execute_render_pipeline(job_id, user_id, conn)
+    logger.info(
+        "Render job completed successfully",
+        extra={"job_id": job_id, "user_id": user_id},
+    )
 
 
 def handler(event, context):
@@ -52,29 +41,40 @@ def handler(event, context):
         extra={"record_count": len(records)},
     )
 
-    batch_item_failures = []
+    config = load_config()
+    conn = None
+    try:
+        conn = get_connection(config.DATABASE_URL)
 
-    for i, record in enumerate(records):
-        message_id = record.get("messageId", f"record_{i}")
-        try:
-            _process_record(record)
-        except Exception as exc:
-            body = record.get("body", "{}")
-            logger.error(
-                "Failed to process SQS record %s: %s",
-                message_id,
-                exc,
-                extra={
-                    "message_id": message_id,
-                    "record_index": i,
-                    "record_body": body,
-                    "error_type": type(exc).__name__,
-                },
-            )
-            logger.debug("Traceback: %s", traceback.format_exc())
-            batch_item_failures.append({"itemIdentifier": message_id})
+        batch_item_failures = []
 
-    if batch_item_failures:
-        return {"batchItemFailures": batch_item_failures}
+        for i, record in enumerate(records):
+            message_id = record.get("messageId", f"record_{i}")
+            try:
+                _process_record(record, config, conn)
+            except Exception as exc:
+                body = record.get("body", "{}")
+                logger.error(
+                    "Failed to process SQS record %s: %s",
+                    message_id,
+                    exc,
+                    extra={
+                        "message_id": message_id,
+                        "record_index": i,
+                        "record_body": body,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                logger.debug("Traceback: %s", traceback.format_exc())
+                batch_item_failures.append({"itemIdentifier": message_id})
 
-    return {"statusCode": 200, "body": json.dumps({"message": "All records processed successfully"})}
+        if batch_item_failures:
+            return {"batchItemFailures": batch_item_failures}
+
+        return {"statusCode": 200, "body": json.dumps({"message": "All records processed successfully"})}
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass

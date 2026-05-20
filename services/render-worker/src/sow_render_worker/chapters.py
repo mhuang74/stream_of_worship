@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Protocol
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,7 @@ def generate_chapters_manifest(
                     for line in local_lyrics
                 ]
         except Exception:
+            logger.warning("Failed to parse LRC for hash_prefix %s", hash_prefix, exc_info=True)
             pass
         return []
 

@@ -86,7 +86,6 @@ class AssetFetcher:
             return content
         except Exception:
             logger.exception("Failed to download LRC for %s", hash_prefix)
-            self._lrc_cache[hash_prefix] = None
             return None
 
     def cleanup_temp(self) -> None:

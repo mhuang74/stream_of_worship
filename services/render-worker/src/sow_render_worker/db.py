@@ -281,23 +281,8 @@ def recover_orphaned_jobs(
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "SELECT id, songset_id FROM render_jobs "
+            "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
             "WHERE status = %s AND updated_at < %s",
-            ("running", threshold),
+            ("failed", f"Job timed out after {threshold_minutes} minutes without progress", now, "running", threshold),
         )
-        orphaned = cur.fetchall()
-
-    if not orphaned:
-        return 0
-
-    error_msg = f"Job timed out after {threshold_minutes} minutes without progress"
-
-    with conn.cursor() as cur:
-        for job in orphaned:
-            cur.execute(
-                "UPDATE render_jobs SET status = %s, error_message = %s, updated_at = %s "
-                "WHERE id = %s AND status = %s",
-                ("failed", error_msg, now, job["id"], "running"),
-            )
-
-    return len(orphaned)
+        return cur.rowcount

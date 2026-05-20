@@ -69,9 +69,22 @@ npx drizzle-kit generate   # Generate migration files
 npx drizzle-kit migrate    # Run pending migrations
 ```
 
+**Render Worker Commands (services/render-worker/ directory):**
+```bash
+# Run tests
+PYTHONPATH=src pytest tests/ -v
+
+# Run specific test files
+PYTHONPATH=src pytest tests/test_pipeline.py -v
+PYTHONPATH=src pytest tests/test_video_engine.py -v
+
+# Local development with Docker
+docker compose up --build
+```
+
 ## Architecture & Structure
 
-The project consists of **five architecturally separate components**:
+The project consists of **six architecturally separate components**:
 
 ### 1. POC Scripts (Experimental)
 - **Location:** `poc/` directory
