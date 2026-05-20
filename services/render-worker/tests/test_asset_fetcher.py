@@ -292,7 +292,7 @@ class TestCleanupTemp:
         assert not job_dir.exists()
         assert Path(temp_dir).exists()
 
-    def test_removes_entire_temp_dir_when_no_job(self, tmp_path):
+    def test_no_op_when_no_job_temp_dir(self, tmp_path):
         temp_dir = str(tmp_path / "temp")
         Path(temp_dir).mkdir(parents=True)
         (Path(temp_dir) / "output.mp3").write_bytes(b"data1")
@@ -300,7 +300,7 @@ class TestCleanupTemp:
         fetcher = _make_fetcher(temp_dir=temp_dir)
         fetcher.cleanup_temp()
 
-        assert not Path(temp_dir).exists()
+        assert Path(temp_dir).exists()
 
     def test_handles_nonexistent_dir(self, tmp_path):
         temp_dir = str(tmp_path / "nonexistent")

@@ -142,10 +142,10 @@ def start_render_job(
     now = datetime.now(timezone.utc)
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "UPDATE render_jobs SET status = %s, updated_at = %s "
+            "UPDATE render_jobs SET status = %s, started_at = %s, updated_at = %s "
             "WHERE id = %s AND user_id = %s "
             "RETURNING *",
-            ("running", now, job_id, user_id),
+            ("running", now, now, job_id, user_id),
         )
         row = cur.fetchone()
     if not row:

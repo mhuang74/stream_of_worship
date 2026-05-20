@@ -32,9 +32,7 @@ class ChaptersManifest:
 
 
 class SegmentInfo(Protocol):
-    song_title: str | None
-    song_id: str
-    recording_hash_prefix: str | None
+    item: object
     start_time_seconds: float
     duration_seconds: float
 
@@ -54,9 +52,9 @@ def build_chapters_from_segments(
     def _build_chapter(i: int, segment: SegmentInfo) -> Chapter:
         start_seconds = segment.start_time_seconds
         end_seconds = start_seconds + segment.duration_seconds
-        song_title = segment.song_title or segment.song_id or f"Song {i + 1}"
-
-        hash_prefix = segment.recording_hash_prefix
+        item = segment.item
+        song_title = getattr(item, "song_title", None) or getattr(item, "song_id", None) or f"Song {i + 1}"
+        hash_prefix = getattr(item, "recording_hash_prefix", None)
         if hash_prefix:
             result = get_lyrics(hash_prefix, start_seconds)
             lines = result

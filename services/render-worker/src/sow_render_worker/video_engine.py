@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -265,6 +266,22 @@ class VideoEngine:
             stderr=subprocess.PIPE,
         )
 
+        stderr_chunks: list[bytes] = []
+        stderr_thread: threading.Thread | None = None
+        if process.stderr:
+            def _drain_stderr(pipe, chunks):
+                try:
+                    while True:
+                        chunk = pipe.read(4096)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                except Exception:
+                    pass
+
+            stderr_thread = threading.Thread(target=_drain_stderr, args=(process.stderr, stderr_chunks), daemon=True)
+            stderr_thread.start()
+
         title_card_frame_count = (
             math.ceil(self.title_card_duration_seconds * self.fps)
             if title_card_config and title_card_config.enabled
@@ -272,7 +289,6 @@ class VideoEngine:
         )
 
         frame_count = 0
-        stderr_output = ""
 
         try:
             while frame_count < total_frames:
@@ -291,9 +307,10 @@ class VideoEngine:
                     process.stdin.write(frame_bytes)
                 except BrokenPipeError:
                     process.stdin.close()
+                    if stderr_thread:
+                        stderr_thread.join(timeout=5)
                     process.wait()
-                    stderr_bytes = process.stderr.read() if process.stderr else b""
-                    stderr_output = stderr_bytes.decode("utf-8", errors="replace")
+                    stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
                     stderr_info = (
                         f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
                         if stderr_output
@@ -314,9 +331,10 @@ class VideoEngine:
             process.wait()
             raise
 
+        if stderr_thread:
+            stderr_thread.join(timeout=5)
         return_code = process.wait()
-        stderr_bytes = process.stderr.read() if process.stderr else b""
-        stderr_output = stderr_bytes.decode("utf-8", errors="replace")
+        stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
         if return_code != 0:
             stderr_info = (
                 f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
@@ -356,14 +374,19 @@ class VideoEngine:
             output_path,
         ]
 
-        process = subprocess.Popen(
+        result = subprocess.run(
             args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
-        return_code = process.wait()
-        if return_code != 0:
-            raise RuntimeError(f"FFmpeg exited with code {return_code}")
+        if result.returncode != 0:
+            stderr_output = result.stderr.decode("utf-8", errors="replace")
+            stderr_info = (
+                f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
+                if stderr_output
+                else ""
+            )
+            raise RuntimeError(f"FFmpeg exited with code {result.returncode}.{stderr_info}")
 
         return VideoExportResult(
             output_path=output_path,
@@ -415,14 +438,13 @@ class VideoEngine:
                 output_path,
             ]
 
-            process = subprocess.Popen(
+            result = subprocess.run(
                 args,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
             )
-            return_code = process.wait()
 
-            if return_code != 0:
+            if result.returncode != 0:
                 return False
 
             shutil.move(output_path, video_path)

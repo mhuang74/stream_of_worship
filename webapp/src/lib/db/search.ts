@@ -113,11 +113,10 @@ export async function getEmbeddingForRecording(
     if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
       return parsed as number[];
     }
+    return null;
   } catch {
     return null;
   }
-
-  return null;
 }
 
 export { semanticSearchSongs } from "./songs";

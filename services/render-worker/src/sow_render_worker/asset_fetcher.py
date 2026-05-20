@@ -94,8 +94,3 @@ class AssetFetcher:
                 shutil.rmtree(self._job_temp_dir, ignore_errors=True)
             except Exception:
                 pass
-            return
-        try:
-            shutil.rmtree(self._temp_dir, ignore_errors=True)
-        except Exception:
-            pass

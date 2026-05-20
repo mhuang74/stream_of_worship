@@ -184,8 +184,8 @@ class TestStartRenderJob:
         start_render_job(conn, "job_abc123", 42)
         params = cursor.execute.call_args[0][1]
         assert params[0] == "running"
-        assert params[2] == "job_abc123"
-        assert params[3] == 42
+        assert params[3] == "job_abc123"
+        assert params[4] == 42
 
 
 class TestUpdateRenderProgress:
