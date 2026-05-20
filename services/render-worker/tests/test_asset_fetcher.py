@@ -140,7 +140,7 @@ class TestDownloadAudio:
             "abc123", expires_in_seconds=3600
         )
 
-    def test_returns_none_on_download_failure(self, tmp_path):
+    def test_raises_on_download_failure(self, tmp_path):
         cache_dir = str(tmp_path / "cache")
         Path(cache_dir).mkdir(parents=True)
 
@@ -156,11 +156,10 @@ class TestDownloadAudio:
 
             fetcher._http = mock_http
 
-            result = fetcher.download_audio("abc123")
+            with pytest.raises(RuntimeError, match="Failed to download audio"):
+                fetcher.download_audio("abc123")
 
-        assert result is None
-
-    def test_returns_none_on_exception(self, tmp_path):
+    def test_raises_on_exception(self, tmp_path):
         cache_dir = str(tmp_path / "cache")
         Path(cache_dir).mkdir(parents=True)
 
@@ -174,9 +173,8 @@ class TestDownloadAudio:
 
             fetcher._http = mock_http
 
-            result = fetcher.download_audio("abc123")
-
-        assert result is None
+            with pytest.raises(RuntimeError, match="Failed to download audio"):
+                fetcher.download_audio("abc123")
 
     def test_creates_cache_dir_if_missing(self, tmp_path):
         cache_dir = str(tmp_path / "new_cache")
@@ -222,7 +220,7 @@ class TestDownloadLrc:
             "abc123", expires_in_seconds=3600
         )
 
-    def test_returns_none_on_download_failure(self, tmp_path):
+    def test_raises_on_download_failure(self, tmp_path):
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(r2_client=mock_r2)
 
@@ -235,11 +233,10 @@ class TestDownloadLrc:
 
             fetcher._http = mock_http
 
-            result = fetcher.download_lrc("abc123")
+            with pytest.raises(RuntimeError, match="Failed to download LRC"):
+                fetcher.download_lrc("abc123")
 
-        assert result is None
-
-    def test_returns_none_on_exception(self, tmp_path):
+    def test_raises_on_exception(self, tmp_path):
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(r2_client=mock_r2)
 
@@ -250,9 +247,8 @@ class TestDownloadLrc:
 
             fetcher._http = mock_http
 
-            result = fetcher.download_lrc("abc123")
-
-        assert result is None
+            with pytest.raises(RuntimeError, match="Failed to download LRC"):
+                fetcher.download_lrc("abc123")
 
     def test_caches_lrc_content(self, tmp_path):
         mock_r2 = _make_mock_r2_client()

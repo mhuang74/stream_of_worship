@@ -132,7 +132,10 @@ class VideoEngine:
             if not hash_prefix:
                 continue
 
-            lrc_content = self.asset_fetcher.download_lrc(hash_prefix)
+            try:
+                lrc_content = self.asset_fetcher.download_lrc(hash_prefix)
+            except Exception:
+                lrc_content = None
             if not lrc_content:
                 continue
 
@@ -329,9 +332,14 @@ class VideoEngine:
                 if progress_callback and frame_count % self.fps == 0:
                     progress_callback(frame_count, total_frames)
 
-            process.stdin.close()
+            try:
+                process.stdin.close()
+            except BrokenPipeError:
+                pass
         except Exception:
             process.kill()
+            if stderr_thread:
+                stderr_thread.join(timeout=5)
             process.wait()
             raise
 

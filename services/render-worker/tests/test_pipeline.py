@@ -355,7 +355,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job") as mock_start, \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job) as mock_start, \
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job") as mock_complete, \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
@@ -363,8 +363,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
@@ -397,7 +399,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
@@ -405,8 +407,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.4), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             execute_render_pipeline(
                 "job_abc123", 42, mock_conn,
                 asset_fetcher=mock_fetcher,
@@ -429,7 +433,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[]), \
@@ -459,7 +463,7 @@ class TestExecuteRenderPipeline:
             return job
 
         with patch("sow_render_worker.pipeline.get_render_job", side_effect=get_job_side_effect), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[_make_songset_item()]), \
@@ -491,14 +495,16 @@ class TestExecuteRenderPipeline:
             return job
 
         with patch("sow_render_worker.pipeline.get_render_job", side_effect=get_job_side_effect), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
@@ -518,7 +524,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=RuntimeError("DB error")), \
@@ -551,7 +557,7 @@ class TestExecuteRenderPipeline:
             return job
 
         with patch("sow_render_worker.pipeline.get_render_job", side_effect=get_job_side_effect), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=RuntimeError("some error")), \
@@ -574,7 +580,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
@@ -582,8 +588,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
@@ -602,7 +610,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=RuntimeError("boom")), \
@@ -625,7 +633,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
              patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=RuntimeError("original error")), \
@@ -647,7 +655,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
@@ -655,8 +663,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
@@ -682,7 +692,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job", side_effect=RuntimeError("fail also failed")), \
              patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=RuntimeError("original")), \
@@ -703,7 +713,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
@@ -713,8 +723,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
              patch("sow_render_worker.pipeline.AssetFetcher") as mock_af_class, \
              patch("sow_render_worker.pipeline.R2Uploader", return_value=mock_uploader), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_af = MagicMock()
             mock_af.get_job_temp_dir.return_value = Path("/tmp/sow-test")
             mock_af_class.return_value = mock_af
@@ -738,7 +750,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
@@ -746,8 +758,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
@@ -770,7 +784,7 @@ class TestExecuteRenderPipeline:
         mock_uploader = _make_mock_uploader()
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
-             patch("sow_render_worker.pipeline.start_render_job"), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
@@ -778,8 +792,10 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
-             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class:
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
+            mock_path_cls.return_value.exists.return_value = True
             mock_ve = MagicMock()
             mock_ve_class.return_value = mock_ve
 
@@ -799,3 +815,46 @@ class TestExecuteRenderPipeline:
             assert mixing_audio_call is not None
             assert mixing_audio_call.estimated_total_seconds == 180.0 * 0.8
             assert mixing_audio_call.total_duration_seconds == 180.0
+
+    def test_pipeline_skips_when_job_already_claimed(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=None), \
+             patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail:
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_update.assert_not_called()
+            mock_fail.assert_not_called()
+
+    def test_pipeline_rejects_zero_duration_items(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+        items = [_make_songset_item(duration_seconds=None)]
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
+
+            with pytest.raises(ValueError, match="no valid duration_seconds"):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+            mock_fail.assert_called_once()
