@@ -288,20 +288,24 @@ class VideoEngine:
             else 0
         )
 
+        title_card_bytes: bytes | None = None
+        if title_card_config and title_card_frame_count > 0:
+            title_card_img = self.frame_renderer.render_title_card(title_card_config)
+            title_card_bytes = title_card_img.tobytes()
+
         frame_count = 0
 
         try:
             while frame_count < total_frames:
                 if title_card_config and frame_count < title_card_frame_count:
-                    img = self.frame_renderer.render_title_card(title_card_config)
+                    frame_bytes = title_card_bytes
                 else:
                     lyrics_frame_index = (
                         frame_count - title_card_frame_count if title_card_config else frame_count
                     )
                     current_time = lyrics_frame_index / self.fps
                     img = self.frame_renderer.render_frame(lyrics, segments, current_time)
-
-                frame_bytes = img.tobytes()
+                    frame_bytes = img.tobytes()
 
                 try:
                     process.stdin.write(frame_bytes)

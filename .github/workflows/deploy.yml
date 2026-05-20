@@ -54,7 +54,12 @@ jobs:
       - name: Run DB migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npx drizzle-kit migrate
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Error: DATABASE_URL secret is not configured"
+            exit 1
+          fi
+          npx drizzle-kit migrate
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25

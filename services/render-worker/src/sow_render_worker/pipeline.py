@@ -19,7 +19,7 @@ from sow_render_worker.db import (
     update_render_progress,
 )
 from sow_render_worker.uploader import R2Uploader, RenderArtifacts
-from sow_render_worker.video_engine import VideoEngine
+from sow_render_worker.video_engine import ChapterInfo, VideoEngine
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +134,19 @@ class PipelineCancelledError(Exception):
     pass
 
 
+def _segment_to_chapter_info(seg, index: int) -> ChapterInfo:
+    item = seg.item
+    return ChapterInfo(
+        position=index + 1,
+        song_title=(
+            item.song_title
+            or (str(item.song_id) if item.song_id else f"Song {index + 1}")
+        ),
+        start_seconds=seg.start_time_seconds,
+        end_seconds=seg.start_time_seconds + seg.duration_seconds,
+    )
+
+
 def execute_render_pipeline(
     job_id: str,
     user_id: int,
@@ -144,6 +157,9 @@ def execute_render_pipeline(
     job = get_render_job(conn, job_id, user_id)
     if not job:
         raise ValueError(f"Render job {job_id} not found")
+
+    if not job.audio_enabled and not job.video_enabled:
+        raise ValueError("At least one of audio_enabled or video_enabled must be True")
 
     if asset_fetcher is None:
         asset_fetcher = AssetFetcher()
@@ -261,6 +277,13 @@ def execute_render_pipeline(
                 list(audio_result.segments),
                 video_output_path,
             )
+
+            chapters_for_video = [
+                _segment_to_chapter_info(seg, i)
+                for i, seg in enumerate(audio_result.segments)
+            ]
+            if chapters_for_video:
+                video_engine.inject_chapters(video_output_path, chapters_for_video)
 
             check_cancelled()
 

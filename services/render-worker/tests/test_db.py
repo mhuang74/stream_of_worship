@@ -373,7 +373,7 @@ class TestCompleteRenderJob:
             complete_render_job(conn, "job_abc123", 42)
         sql = cursor.execute.call_args[0][0]
         assert "%s" in sql
-        assert "WHERE id = %s AND user_id = %s" in sql
+        assert "WHERE id = %s AND user_id = %s AND status = %s" in sql
 
 
 class TestFailRenderJob:
@@ -394,57 +394,59 @@ class TestFailRenderJob:
         row = _make_row(status="failed", error_message="error msg")
         conn, cursor = _make_mock_conn(fetchone_result=row)
         fail_render_job(conn, "job_abc123", 42, "error msg")
-        params = cursor.execute.call_args[0][1]
-        assert params[0] == "failed"
-        assert params[1] == "error msg"
-        assert params[3] == "job_abc123"
-        assert params[4] == 42
+        first_call_params = cursor.execute.call_args_list[0][0][1]
+        assert first_call_params[0] == "failed"
+        assert first_call_params[1] == "error msg"
+        assert first_call_params[3] == "job_abc123"
+        assert first_call_params[4] == 42
 
     def test_sets_updated_at(self):
         row = _make_row(status="failed")
         conn, cursor = _make_mock_conn(fetchone_result=row)
         fail_render_job(conn, "job_abc123", 42, "error")
-        sql = cursor.execute.call_args[0][0]
+        sql = cursor.execute.call_args_list[0][0][0]
         assert "updated_at = %s" in sql
 
 
 class TestRecoverOrphanedJobs:
     def test_no_orphans(self):
-        conn, cursor = _make_mock_conn(rowcount=0)
+        conn, cursor = _make_mock_conn(fetchall_result=[])
         result = recover_orphaned_jobs(conn)
         assert result == 0
 
     def test_recovers_orphans(self):
-        conn, cursor = _make_mock_conn(rowcount=2)
+        orphan1 = {"id": "job1", "songset_id": "ss1"}
+        orphan2 = {"id": "job2", "songset_id": "ss2"}
+        conn, cursor = _make_mock_conn(fetchall_result=[orphan1, orphan2])
         result = recover_orphaned_jobs(conn)
         assert result == 2
 
     def test_uses_threshold(self):
-        conn, cursor = _make_mock_conn(rowcount=0)
+        conn, cursor = _make_mock_conn(fetchall_result=[])
         recover_orphaned_jobs(conn, threshold_minutes=15)
-        params = cursor.execute.call_args[0][1]
+        params = cursor.execute.call_args_list[0][0][1]
         assert params[3] == "running"
         assert params[4] is not None
 
     def test_sets_failed_status(self):
-        conn, cursor = _make_mock_conn(rowcount=1)
+        conn, cursor = _make_mock_conn(fetchall_result=[{"id": "j1", "songset_id": "ss1"}])
         recover_orphaned_jobs(conn)
-        params = cursor.execute.call_args[0][1]
+        params = cursor.execute.call_args_list[0][0][1]
         assert params[0] == "failed"
         assert "timed out" in params[1]
 
     def test_default_threshold_30_minutes(self):
-        conn, cursor = _make_mock_conn(rowcount=0)
+        conn, cursor = _make_mock_conn(fetchall_result=[])
         recover_orphaned_jobs(conn)
-        params = cursor.execute.call_args[0][1]
+        params = cursor.execute.call_args_list[0][0][1]
         threshold = params[4]
         expected_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
         assert abs((threshold - expected_threshold).total_seconds()) < 5
 
     def test_custom_threshold(self):
-        conn, cursor = _make_mock_conn(rowcount=0)
+        conn, cursor = _make_mock_conn(fetchall_result=[])
         recover_orphaned_jobs(conn, threshold_minutes=60)
-        params = cursor.execute.call_args[0][1]
+        params = cursor.execute.call_args_list[0][0][1]
         threshold = params[4]
         expected_threshold = datetime.now(timezone.utc) - timedelta(minutes=60)
         assert abs((threshold - expected_threshold).total_seconds()) < 5
@@ -633,8 +635,8 @@ class TestSQLInjectionSafety:
         conn, cursor = _make_mock_conn(fetchone_result=row)
         malicious_msg = "'); DROP TABLE render_jobs; --"
         fail_render_job(conn, "job_abc123", 42, malicious_msg)
-        params = cursor.execute.call_args[0][1]
-        assert params[1] == malicious_msg
+        first_call_params = cursor.execute.call_args_list[0][0][1]
+        assert first_call_params[1] == malicious_msg
 
     def test_update_progress_parameterized(self):
         row = _make_row()
