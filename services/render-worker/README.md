@@ -18,6 +18,117 @@ Next.js POST /api/render-jobs
   → Update DB job (status: completed or failed)
 ```
 
+## How the Render Worker Is Triggered from Next.js
+
+The render worker is invoked via SQS when a user submits a render request through the web app. The full dispatch flow is:
+
+### 1. User Request
+
+The browser sends `POST /api/render-jobs` with a payload like:
+
+```json
+{
+  "songsetId": "songset-1",
+  "template": "default",
+  "resolution": "1080p",
+  "audioEnabled": true,
+  "videoEnabled": true,
+  "fontSizePreset": "medium",
+  "includeTitleCard": true,
+  "titleCardDurationSeconds": 5
+}
+```
+
+### 2. Next.js API Route (`webapp/src/app/api/render-jobs/route.ts`)
+
+1. **Auth check** — validates session via `auth.api.getSession()`
+2. **Input validation** — Zod schema (`createRenderJobSchema`) validates the request body
+3. **Create DB record** — `createRenderJob()` inserts a row into `render_jobs` with `status: "queued"`, `phase: "preparing"`
+4. **Enqueue to SQS** — sends a minimal message containing only `{ jobId, songsetId, userId }`; the Lambda worker fetches all other details from the database
+5. **Error handling** — if SQS send fails, calls `failRenderJob()` to mark the DB record as failed, then returns HTTP 500
+
+### 3. SQS Queue (`sow-render-jobs`)
+
+- **Visibility timeout**: 900s (15 min) — must exceed max render duration
+- **maxReceiveCount**: 3 — after 3 failures, message moves to the DLQ (`sow-render-jobs-dlq`)
+- **Lambda event-source-mapping**: batch-size 1 (one render per invocation)
+
+### 4. Lambda Handler (`lambda_handler.py`)
+
+1. Parses `event["Records"]` array, extracts `body` JSON
+2. Validates `jobId` and `userId` fields are present
+3. Calls `execute_render_pipeline(job_id, user_id, conn)`
+4. Returns `batchItemFailures` for any failed records, causing SQS to retry those messages
+
+### 5. Render Pipeline (`pipeline.py`)
+
+The 5-phase orchestrator runs:
+
+1. **preparing** — fetch songset items from DB, estimate render time
+2. **mixing_audio** — FFmpeg audio concatenation with gaps/crossfade/loudnorm
+3. **rendering_frames** — Pillow frame rendering with CJK lyrics
+4. **encoding_video** — FFmpeg video encoding from raw RGBA frames
+5. **uploading** — R2 upload of MP3/MP4/chapters.json
+
+After completion, `complete_render_job()` sets `status: "completed"` and stores R2 keys. On failure, `fail_render_job()` sets `status: "failed"` with an error message.
+
+### 6. Progress Tracking (Pull-Based)
+
+There is **no push callback** from Lambda to the webapp. Instead:
+
+- The Lambda worker updates the shared PostgreSQL database directly at each phase transition
+- The browser subscribes to `GET /api/render-jobs/[id]/events` (SSE endpoint in `webapp/src/app/api/render-jobs/[id]/events/route.ts`)
+- The SSE endpoint polls the DB every 1 second and streams updates to the client
+- Terminal states (completed/failed/cancelled) close the SSE stream
+- Max SSE duration: 30 minutes
+
+### 7. Orphan Recovery
+
+Both the webapp (`recoverOrphanedJobs()` in `webapp/src/lib/render/job-manager.ts`) and the Lambda worker (`recover_orphaned_jobs()` in `db.py`) independently detect jobs stuck in `running` for over 30 minutes and mark them as `failed`.
+
+### End-to-End Diagram
+
+```
+Browser
+  │
+  │ POST /api/render-jobs { songsetId, template, resolution, ... }
+  ▼
+Next.js (Vercel)
+  │ 1. auth.api.getSession() — verify user
+  │ 2. createRenderJob() — INSERT render_jobs (status: "queued")
+  │ 3. SQSClient.sendMessage({ jobId, songsetId, userId })
+  │       │
+  │       ▼
+  │   AWS SQS (sow-render-jobs)
+  │   (VisibilityTimeout: 900s, maxReceiveCount: 3, DLQ: sow-render-jobs-dlq)
+  │
+  │ GET /api/render-jobs/[id]/events  (SSE stream)
+  │       │
+  │       ▼
+  │   Poll DB every 1s → stream SSE events to client
+  │
+  ▼
+AWS Lambda (sow-render-worker)
+  │ (triggered by SQS event-source-mapping, batch-size: 1)
+  │
+  │ handler(event) — parse SQS Records
+  │ _process_record() — extract jobId, userId from body
+  │
+  │ execute_render_pipeline(job_id, user_id, conn)
+  │   │ start_render_job() — atomic claim (queued → running)
+  │   │ Phase 1: preparing — fetch songset items, estimate time
+  │   │ Phase 2: mixing_audio — FFmpeg audio mix
+  │   │ Phase 3: rendering_frames — Pillow frame rendering
+  │   │ Phase 4: encoding_video — FFmpeg video encoding
+  │   │ Phase 5: uploading — R2 upload (MP3, MP4, chapters.json)
+  │   │ complete_render_job() — DB: status = "completed", store R2 keys
+  │   │ OR fail_render_job() — DB: status = "failed", error_message
+  │
+  ▼
+PostgreSQL (Neon) — shared DB, updated by both webapp and Lambda
+Cloudflare R2 — stores rendered artifacts
+```
+
 ## Prerequisites
 
 - Python 3.11
