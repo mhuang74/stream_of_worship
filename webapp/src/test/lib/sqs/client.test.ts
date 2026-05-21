@@ -44,6 +44,23 @@ describe("SQSClient", () => {
       });
       expect(client).toBeInstanceOf(SQSClient);
     });
+
+    it("creates client with custom endpoint", () => {
+      const client = new SQSClient({
+        region: "us-east-1",
+        queueUrl: "http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/sow-render-jobs",
+        endpoint: "http://localhost:4566",
+      });
+      expect(client).toBeInstanceOf(SQSClient);
+    });
+
+    it("creates client without endpoint (production AWS)", () => {
+      const client = new SQSClient({
+        region: "us-east-1",
+        queueUrl: "https://sqs.us-east-1.amazonaws.com/123456789/render-jobs",
+      });
+      expect(client).toBeInstanceOf(SQSClient);
+    });
   });
 
   describe("sendMessage", () => {
@@ -217,5 +234,25 @@ describe("createSQSClientFromEnv", () => {
     expect(() => createSQSClientFromEnv()).toThrow(
       "AWS_REGION environment variable is required for SQS client"
     );
+  });
+
+  it("reads SQS_ENDPOINT_URL from environment", () => {
+    process.env.AWS_REGION = "us-east-1";
+    process.env.SQS_QUEUE_URL =
+      "http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/sow-render-jobs";
+    process.env.SQS_ENDPOINT_URL = "http://localhost:4566";
+
+    const client = createSQSClientFromEnv();
+    expect(client).toBeInstanceOf(SQSClient);
+  });
+
+  it("creates client without endpoint when SQS_ENDPOINT_URL is not set", () => {
+    process.env.AWS_REGION = "us-east-1";
+    process.env.SQS_QUEUE_URL =
+      "https://sqs.us-east-1.amazonaws.com/123456789/render-jobs";
+    delete process.env.SQS_ENDPOINT_URL;
+
+    const client = createSQSClientFromEnv();
+    expect(client).toBeInstanceOf(SQSClient);
   });
 });
