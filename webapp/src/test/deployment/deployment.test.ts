@@ -257,6 +257,11 @@ describe(".env.production.example", () => {
     const content = readEnvExample();
     expect(content).toContain("AWS_SECRET_ACCESS_KEY=");
   });
+
+  it("documents SQS_ENDPOINT_URL", () => {
+    const content = readEnvExample();
+    expect(content).toContain("SQS_ENDPOINT_URL=");
+  });
 });
 
 // ---------------------------------------------------------------------------

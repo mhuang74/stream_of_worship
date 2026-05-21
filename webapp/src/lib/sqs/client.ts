@@ -9,6 +9,7 @@ export interface SQSMessage {
 export interface SQSClientConfig {
   region: string;
   queueUrl: string;
+  endpoint?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
 }
@@ -22,6 +23,8 @@ export class SQSClient {
 
     this.client = new AWSSQSClient({
       region: config.region,
+      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+      useQueueUrlAsEndpoint: false,
       ...(config.accessKeyId && config.secretAccessKey
         ? {
             credentials: {
@@ -50,6 +53,7 @@ export class SQSClient {
 export function createSQSClientFromEnv(): SQSClient {
   const region = process.env.AWS_REGION;
   const queueUrl = process.env.SQS_QUEUE_URL;
+  const endpoint = process.env.SQS_ENDPOINT_URL;
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
   const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
@@ -68,6 +72,7 @@ export function createSQSClientFromEnv(): SQSClient {
   return new SQSClient({
     region,
     queueUrl,
+    endpoint,
     accessKeyId,
     secretAccessKey,
   });
