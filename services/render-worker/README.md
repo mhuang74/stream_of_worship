@@ -144,10 +144,10 @@ Cloudflare R2 — stores rendered artifacts
 |----------|-------------|
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `R2_BUCKET` | Cloudflare R2 bucket name |
-| `R2_ENDPOINT_URL` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
+| `R2_ENDPOINT_URL` | R2 S3-compatible endpoint (`https://762288208920.r2.cloudflarestorage.com`) |
 | `R2_ACCESS_KEY_ID` | R2 access key ID |
 | `R2_SECRET_ACCESS_KEY` | R2 secret access key |
-| `AWS_REGION` | AWS region for SQS and Lambda (default: `us-east-1`) |
+| `AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
 | `SQS_QUEUE_URL` | SQS queue URL for render job messages |
 
 Copy `.env.example` to `.env` and fill in the values for local development.
@@ -231,21 +231,21 @@ docker compose down
 
 2. **Push to AWS ECR:**
    ```bash
-   aws ecr get-login-password --region us-east-1 | \
+   aws ecr get-login-password --region us-west-2 | \
      docker login --username AWS --password-stdin \
-     <account-id>.dkr.ecr.us-east-1.amazonaws.com
+     762288208920.dkr.ecr.us-west-2.amazonaws.com
 
    docker tag sow-render-worker:latest \
-     <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+     762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
 
-   docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+   docker push 762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
    ```
 
 3. **Update the Lambda function:**
    ```bash
    aws lambda update-function-code \
      --function-name sow-render-worker \
-     --image-uri <account-id>.dkr.ecr.us-east-1.amazonaws.com/sow-render-worker:latest
+     --image-uri 762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
    ```
 
 ### Automated Deployment (GitHub Actions)
@@ -272,7 +272,7 @@ Create the SQS queue and dead-letter queue in AWS:
    ```bash
    aws sqs create-queue --queue-name sow-render-jobs \
      --attributes '{
-       "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:<account-id>:sow-render-jobs-dlq\",\"maxReceiveCount\":\"3\"}",
+       "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-west-2:762288208920:sow-render-jobs-dlq\",\"maxReceiveCount\":\"3\"}",
        "VisibilityTimeout": "900"
      }'
    ```
@@ -285,7 +285,7 @@ Create the SQS queue and dead-letter queue in AWS:
    aws lambda create-event-source-mapping \
      --function-name sow-render-worker \
      --batch-size 1 \
-     --event-source-arn arn:aws:sqs:us-east-1:<account-id>:sow-render-jobs
+     --event-source-arn arn:aws:sqs:us-west-2:762288208920:sow-render-jobs
    ```
 
 ### IAM Permissions
