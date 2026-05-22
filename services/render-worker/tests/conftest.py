@@ -8,13 +8,13 @@ import pytest
 @pytest.fixture
 def env_vars():
     return {
-        "DATABASE_URL": "postgresql://user:pass@localhost:5432/testdb",
-        "R2_BUCKET": "test-bucket",
-        "R2_ENDPOINT_URL": "https://abc123.r2.cloudflarestorage.com",
-        "R2_ACCESS_KEY_ID": "test-access-key",
-        "R2_SECRET_ACCESS_KEY": "test-secret-key",
-        "AWS_REGION": "us-east-1",
-        "SQS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789/test-queue",
+        "SOW_DATABASE_URL": "postgresql://user:pass@localhost:5432/testdb",
+        "SOW_R2_BUCKET": "test-bucket",
+        "SOW_R2_ENDPOINT_URL": "https://abc123.r2.cloudflarestorage.com",
+        "SOW_R2_ACCESS_KEY_ID": "test-access-key",
+        "SOW_R2_SECRET_ACCESS_KEY": "test-secret-key",
+        "SOW_AWS_REGION": "us-east-1",
+        "SOW_SQS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789/test-queue",
     }
 
 

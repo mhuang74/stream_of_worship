@@ -182,10 +182,10 @@ class TestFileTypeConfigs:
 class TestCreateR2ClientFromEnv:
     def test_creates_client_from_env_vars(self):
         env = {
-            "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
-            "R2_ACCESS_KEY_ID": "env-access-key",
-            "R2_SECRET_ACCESS_KEY": "env-secret-key",
-            "R2_BUCKET": "env-bucket",
+            "SOW_R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
+            "SOW_R2_ACCESS_KEY_ID": "env-access-key",
+            "SOW_R2_SECRET_ACCESS_KEY": "env-secret-key",
+            "SOW_R2_BUCKET": "env-bucket",
         }
         with patch.dict("os.environ", env, clear=False):
             with patch("sow_render_worker.r2_client.boto3") as mock_boto3:
@@ -206,8 +206,8 @@ class TestCreateR2ClientFromEnv:
 
     def test_raises_on_partial_env_vars(self):
         env = {
-            "R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
-            "R2_ACCESS_KEY_ID": "key",
+            "SOW_R2_ENDPOINT_URL": "https://envaccount.r2.cloudflarestorage.com",
+            "SOW_R2_ACCESS_KEY_ID": "key",
         }
         with patch.dict("os.environ", env, clear=True):
             with pytest.raises(ValueError, match="R2 credentials not configured"):

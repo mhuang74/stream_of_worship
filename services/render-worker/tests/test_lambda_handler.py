@@ -48,7 +48,7 @@ class TestProcessRecord:
     def test_uses_config_database_url(self, mock_pipeline):
         mock_pipeline.return_value = None
         mock_config_obj = MagicMock()
-        mock_config_obj.DATABASE_URL = "postgresql://test:test@localhost/db"
+        mock_config_obj.SOW_DATABASE_URL = "postgresql://test:test@localhost/db"
         mock_conn = MagicMock()
 
         record = _make_sqs_record()
