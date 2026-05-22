@@ -185,6 +185,14 @@ describe("Deploy workflow", () => {
     expect(ecrStep).toBeDefined();
   });
 
+  it("deploy-render-worker uses public ECR registry type", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const steps = jobs["deploy-render-worker"].steps as Array<{ uses?: string; with?: Record<string, unknown> }>;
+    const ecrStep = steps.find((s) => s.uses?.includes("amazon-ecr-login"));
+    expect(ecrStep?.with?.["registry-type"]).toBe("public");
+  });
+
   it("deploy-render-worker references AWS_ACCESS_KEY_ID secret", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;

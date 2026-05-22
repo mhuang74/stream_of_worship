@@ -134,7 +134,7 @@ Cloudflare R2 — stores rendered artifacts
 - Python 3.11
 - Docker (for containerized builds)
 - FFmpeg and CJK fonts (installed in the Docker image)
-- AWS account with SQS, Lambda, and ECR access
+- AWS account with SQS, Lambda, and public ECR access
 - Cloudflare R2 account
 - Neon PostgreSQL database
 
@@ -142,6 +142,7 @@ Cloudflare R2 — stores rendered artifacts
 
 | Variable | Description |
 |----------|-------------|
+<<<<<<< HEAD
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `R2_BUCKET` | Cloudflare R2 bucket name |
 | `R2_ENDPOINT_URL` | R2 S3-compatible endpoint (`https://762288208920.r2.cloudflarestorage.com`) |
@@ -149,6 +150,15 @@ Cloudflare R2 — stores rendered artifacts
 | `R2_SECRET_ACCESS_KEY` | R2 secret access key |
 | `AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
 | `SQS_QUEUE_URL` | SQS queue URL for render job messages |
+=======
+| `SOW_DATABASE_URL` | Neon PostgreSQL connection string |
+| `SOW_R2_BUCKET` | Cloudflare R2 bucket name |
+| `SOW_R2_ENDPOINT_URL` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
+| `SOW_R2_ACCESS_KEY_ID` | R2 access key ID |
+| `SOW_R2_SECRET_ACCESS_KEY` | R2 secret access key |
+| `SOW_AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
+| `SOW_SQS_QUEUE_URL` | SQS queue URL for render job messages |
+>>>>>>> 2ba75a4 (docs: update ECR references from private to public ECR for render worker deployment)
 
 Copy `.env.example` to `.env` and fill in the values for local development.
 
@@ -229,23 +239,23 @@ docker compose down
    docker build -t sow-render-worker .
    ```
 
-2. **Push to AWS ECR:**
+2. **Push to AWS Public ECR:**
    ```bash
-   aws ecr get-login-password --region us-west-2 | \
+   aws --profile <your-profile> ecr-public get-login-password --region us-east-1 | \
      docker login --username AWS --password-stdin \
-     762288208920.dkr.ecr.us-west-2.amazonaws.com
+     public.ecr.aws
 
    docker tag sow-render-worker:latest \
-     762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
+     public.ecr.aws/u4p9h6o7/sow-render-worker:latest
 
-   docker push 762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
+   docker push public.ecr.aws/u4p9h6o7/sow-render-worker:latest
    ```
 
 3. **Update the Lambda function:**
    ```bash
    aws lambda update-function-code \
      --function-name sow-render-worker \
-     --image-uri 762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
+      --image-uri public.ecr.aws/u4p9h6o7/sow-render-worker:latest
    ```
 
 ### Automated Deployment (GitHub Actions)
@@ -253,7 +263,7 @@ docker compose down
 Pushes to `main` that modify `services/render-worker/` trigger the deploy workflow in `.github/workflows/deploy.yml`, which:
 
 1. Configures AWS credentials from repository secrets
-2. Logs in to ECR
+2. Logs in to public ECR
 3. Builds, tags, and pushes the Docker image
 4. Updates the Lambda function code with the new image URI
 
