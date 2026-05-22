@@ -95,15 +95,15 @@ class R2Client:
 def create_r2_client_from_env() -> R2Client:
     import os
 
-    endpoint_url = os.environ.get("R2_ENDPOINT_URL")
-    access_key_id = os.environ.get("R2_ACCESS_KEY_ID")
-    secret_access_key = os.environ.get("R2_SECRET_ACCESS_KEY")
-    bucket_name = os.environ.get("R2_BUCKET")
+    endpoint_url = os.environ.get("SOW_R2_ENDPOINT_URL")
+    access_key_id = os.environ.get("SOW_R2_ACCESS_KEY_ID")
+    secret_access_key = os.environ.get("SOW_R2_SECRET_ACCESS_KEY")
+    bucket_name = os.environ.get("SOW_R2_BUCKET")
 
     if not all([endpoint_url, access_key_id, secret_access_key, bucket_name]):
         raise ValueError(
             "R2 credentials not configured. "
-            "Set R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET environment variables."
+            "Set SOW_R2_ENDPOINT_URL, SOW_R2_ACCESS_KEY_ID, SOW_R2_SECRET_ACCESS_KEY, and SOW_R2_BUCKET environment variables."
         )
 
     return R2Client(

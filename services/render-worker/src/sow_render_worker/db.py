@@ -104,9 +104,9 @@ def _row_to_render_job(row: dict[str, Any]) -> RenderJob:
 
 
 def get_connection(database_url: Optional[str] = None) -> psycopg2.extensions.connection:
-    url = database_url or os.environ.get("DATABASE_URL")
+    url = database_url or os.environ.get("SOW_DATABASE_URL")
     if not url:
-        raise ValueError("DATABASE_URL is required")
+        raise ValueError("SOW_DATABASE_URL is required")
     conn = psycopg2.connect(
         url,
         keepalives=1,

@@ -56,7 +56,7 @@ def handler(event, context):
     config = load_config()
     conn = None
     try:
-        conn = get_connection(config.DATABASE_URL)
+        conn = get_connection(config.SOW_DATABASE_URL)
 
         batch_item_failures = []
 

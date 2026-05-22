@@ -117,7 +117,7 @@ class TestGetConnection:
     def test_from_env_var(self):
         with patch("sow_render_worker.db.psycopg2.connect") as mock_connect:
             mock_connect.return_value = MagicMock()
-            with patch.dict("os.environ", {"DATABASE_URL": "postgresql://env:pass@host/db"}):
+            with patch.dict("os.environ", {"SOW_DATABASE_URL": "postgresql://env:pass@host/db"}):
                 conn = get_connection()
                 mock_connect.assert_called_once_with(
                     "postgresql://env:pass@host/db",
@@ -129,7 +129,7 @@ class TestGetConnection:
 
     def test_missing_url_raises(self):
         with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="DATABASE_URL is required"):
+            with pytest.raises(ValueError, match="SOW_DATABASE_URL is required"):
                 get_connection()
 
 
