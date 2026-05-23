@@ -207,13 +207,15 @@ def execute_render_pipeline(
 
         total_duration_seconds = sum(item.duration_seconds or 0 for item in items)
         if total_duration_seconds <= 0:
-            raise ValueError(
-                "Songset items have no valid duration_seconds — cannot estimate render time"
+            total_duration_seconds = 180.0 * len(items)
+            logger.warning(
+                "Songset items have no valid duration_seconds — "
+                "using rough estimate of %.0fs (%d items × 180s/item)",
+                total_duration_seconds,
+                len(items),
             )
         render_ratio = get_render_ratio(conn, job.resolution, job.video_enabled)
-        estimated_total_seconds = (
-            total_duration_seconds * render_ratio if total_duration_seconds > 0 else 0
-        )
+        estimated_total_seconds = total_duration_seconds * render_ratio
 
         update_render_progress(
             conn,

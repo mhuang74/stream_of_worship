@@ -35,6 +35,7 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisServiceError,
     JobInfo,
 )
+from stream_of_worship.admin.services.ffprobe import is_ffprobe_available, probe_duration
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
 from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc
 from stream_of_worship.admin.services.r2 import R2Client
@@ -832,6 +833,12 @@ def download_audio(
     prefix = get_hash_prefix(content_hash)
     console.print(f"[dim]Hash prefix: {prefix}[/dim]")
 
+    duration = probe_duration(audio_path)
+    if duration:
+        console.print(f"[dim]Duration: {duration:.1f}s[/dim]")
+    else:
+        console.print("[yellow]Could not probe audio duration[/yellow]")
+
     # Upload to R2
     console.print("[cyan]Uploading to R2...[/cyan]")
     try:
@@ -852,6 +859,7 @@ def download_audio(
         r2_audio_url=r2_url,
         download_status="completed",
         youtube_url=video_info.get("webpage_url"),
+        duration_seconds=duration,
     )
     db_client.insert_recording(recording)
     console.print(f"[green]Recording saved (hash_prefix: {prefix})[/green]")
@@ -3616,6 +3624,10 @@ def _download_and_create_recording(
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
 
+        duration = probe_duration(audio_path)
+        if duration:
+            console.print(f"  [dim]Duration: {duration:.1f}s[/dim]")
+
         existing_recording = db_client.get_recording_by_hash(prefix)
         if existing_recording:
             existing_song = db_client.get_song(existing_recording.song_id) if existing_recording.song_id else None
@@ -3639,6 +3651,7 @@ def _download_and_create_recording(
             r2_audio_url=r2_url,
             download_status="completed",
             youtube_url=youtube_url,
+            duration_seconds=duration,
         )
         db_client.insert_recording(recording)
         console.print(f"  [green]✓ Recording created (hash_prefix: {prefix})[/green]")
@@ -3717,13 +3730,14 @@ def _download_if_needed(
         r2_url = r2_client.upload_audio(audio_path, prefix)
         console.print(f"[{song_id}] [green]→[/green] Uploaded to R2")
 
-        db_client.update_recording_status(
-            hash_prefix=hash_prefix,
-            r2_audio_url=r2_url,
-        )
+        duration = probe_duration(audio_path)
+
+        db_client.update_recording_r2_url(hash_prefix, r2_url)
         if youtube_url:
             db_client.update_recording_youtube_url(hash_prefix, youtube_url)
         db_client.update_recording_download(hash_prefix, "completed")
+        if duration is not None:
+            db_client.update_recording_duration(hash_prefix, duration)
 
         audio_path.unlink(missing_ok=True)
 
@@ -4388,3 +4402,197 @@ def _print_stats(
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
             console.print(f"  - {song_name}: {error}")
+
+
+@app.command("probe")
+def probe(
+    song_id: str = typer.Argument(..., help="Song ID to probe"),
+    force: bool = typer.Option(False, "--force", "-f", help="Re-probe even if duration_seconds is already set"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Probe audio duration via ffprobe and update the recording in the database.
+
+    Downloads the audio file from R2 (using the local cache), runs ffprobe
+    to determine duration, and updates recordings.duration_seconds.
+
+    Use --force to re-probe recordings that already have a duration.
+    """
+    from stream_of_worship.app.services.asset_cache import AssetCache
+
+    if not is_ffprobe_available():
+        console.print("[red]ffprobe is not installed or not on PATH.[/red]")
+        console.print("[dim]Install FFmpeg: https://ffmpeg.org/download.html[/dim]")
+        raise typer.Exit(1)
+
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        recording = db_client.get_recording_by_hash(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    hash_prefix = recording.hash_prefix
+
+    if recording.duration_seconds is not None and not force:
+        console.print(
+            f"[yellow]Duration already set: {recording.duration_seconds:.1f}s. "
+            f"Use --force to re-probe.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    cache_dir = get_cache_dir(config)
+    cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
+
+    console.print("[cyan]Downloading audio from R2...[/cyan]")
+    audio_path = cache.download_audio(hash_prefix)
+    if not audio_path:
+        console.print(f"[red]Failed to download audio for {hash_prefix}[/red]")
+        raise typer.Exit(1)
+
+    console.print("[cyan]Probing audio duration...[/cyan]")
+    duration = probe_duration(audio_path)
+    if duration is None:
+        console.print("[red]ffprobe failed to determine duration[/red]")
+        raise typer.Exit(1)
+
+    db_client.update_recording_duration(hash_prefix, duration)
+    console.print(f"[green]Duration updated: {duration:.1f}s[/green]")
+
+
+@app.command("probe-batch")
+def probe_batch(
+    album: Optional[str] = typer.Option(None, "--album", help="Filter by album name"),
+    song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
+    analysis_status: Optional[str] = typer.Option(None, "--analysis-status", help="Filter by analysis status"),
+    force: bool = typer.Option(False, "--force", "-f", help="Re-probe even if duration_seconds is already set"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be probed without executing"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Batch probe audio durations for recordings missing duration_seconds.
+
+    Downloads audio from R2, runs ffprobe, and updates duration_seconds
+    for all recordings that have NULL duration_seconds (or all if --force).
+    """
+    from stream_of_worship.app.services.asset_cache import AssetCache
+
+    if not is_ffprobe_available():
+        console.print("[red]ffprobe is not installed or not on PATH.[/red]")
+        console.print("[dim]Install FFmpeg: https://ffmpeg.org/download.html[/dim]")
+        raise typer.Exit(1)
+
+    try:
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    if force:
+        recordings = db_client.list_recordings(limit=limit)
+    else:
+        recordings = db_client.get_recordings_without_duration()
+        if limit:
+            recordings = recordings[:limit]
+
+    if album:
+        recordings = [
+            r for r in recordings
+            if r.song_id and db_client.get_song(r.song_id)
+            and album.lower() in (db_client.get_song(r.song_id).album_name or "").lower()
+        ]
+
+    if song:
+        recordings = [
+            r for r in recordings
+            if r.song_id and db_client.get_song(r.song_id)
+            and song.lower() in (db_client.get_song(r.song_id).title or "").lower()
+        ]
+
+    if analysis_status:
+        recordings = [r for r in recordings if r.analysis_status == analysis_status]
+
+    if not recordings:
+        console.print("[yellow]No recordings to probe.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[cyan]Found {len(recordings)} recording(s) to probe[/cyan]")
+
+    if dry_run:
+        table = Table(title="Recordings to probe")
+        table.add_column("Hash Prefix", style="cyan")
+        table.add_column("Song ID", style="green")
+        table.add_column("Duration", style="yellow")
+        table.add_column("Analysis Status", style="dim")
+        for r in recordings:
+            song_obj = db_client.get_song(r.song_id) if r.song_id else None
+            song_name = song_obj.title if song_obj else r.song_id or "—"
+            table.add_row(
+                r.hash_prefix,
+                song_name,
+                f"{r.duration_seconds:.1f}s" if r.duration_seconds else "NULL",
+                r.analysis_status,
+            )
+        console.print(table)
+        raise typer.Exit(0)
+
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    cache_dir = get_cache_dir(config)
+    cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
+
+    probed = 0
+    skipped = 0
+    failed = 0
+
+    for i, recording in enumerate(recordings, 1):
+        hash_prefix = recording.hash_prefix
+        song_obj = db_client.get_song(recording.song_id) if recording.song_id else None
+        song_name = song_obj.title if song_obj else recording.song_id or hash_prefix
+
+        console.print(f"\n[{i}/{len(recordings)}] {song_name} ({hash_prefix})")
+
+        audio_path = cache.download_audio(hash_prefix)
+        if not audio_path:
+            console.print("  [red]Failed to download audio[/red]")
+            failed += 1
+            continue
+
+        duration = probe_duration(audio_path)
+        if duration is None:
+            console.print("  [red]ffprobe failed[/red]")
+            failed += 1
+            continue
+
+        db_client.update_recording_duration(hash_prefix, duration)
+        console.print(f"  [green]Duration: {duration:.1f}s[/green]")
+        probed += 1
+
+    console.print(f"\n[bold]Summary:[/bold] {probed} probed, {skipped} skipped, {failed} failed")
