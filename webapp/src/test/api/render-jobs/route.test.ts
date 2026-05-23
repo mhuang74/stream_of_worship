@@ -7,8 +7,6 @@ import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const mockSendMessage = vi.fn().mockResolvedValue("msg-123");
-
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {
@@ -22,14 +20,13 @@ vi.mock("@/lib/render/job-manager", () => ({
   failRenderJob: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("@/lib/sqs/client", () => ({
-  SQSClient: vi.fn().mockImplementation(() => ({
-    sendMessage: mockSendMessage,
-  })),
-  createSQSClientFromEnv: vi.fn().mockImplementation(() => ({
-    sendMessage: mockSendMessage,
-  })),
+vi.mock("@/lib/render/dispatcher", () => ({
+  dispatchToRenderWorker: vi.fn().mockResolvedValue(undefined),
 }));
+
+import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
+
+const mockDispatchToRenderWorker = vi.mocked(dispatchToRenderWorker);
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
@@ -110,7 +107,7 @@ describe("POST /api/render-jobs", () => {
     expect(data.status).toBe("queued");
     expect(data.phase).toBe("preparing");
     expect(createRenderJob).toHaveBeenCalledWith(1, { songsetId: "songset-1" });
-    expect(mockSendMessage).toHaveBeenCalledWith({
+    expect(mockDispatchToRenderWorker).toHaveBeenCalledWith({
       jobId: "job-1",
       songsetId: "songset-1",
       userId: 1,
@@ -176,14 +173,14 @@ describe("POST /api/render-jobs", () => {
     expect(data.fontSizePreset).toBe("L");
     expect(data.includeTitleCard).toBe(true);
     expect(data.titleCardDurationSeconds).toBe(15);
-    expect(mockSendMessage).toHaveBeenCalledWith({
+    expect(mockDispatchToRenderWorker).toHaveBeenCalledWith({
       jobId: "job-1",
       songsetId: "songset-1",
       userId: 1,
     });
   });
 
-  it("returns 500 when SQS enqueue fails", async () => {
+  it("returns 500 when dispatch fails", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
@@ -219,7 +216,7 @@ describe("POST /api/render-jobs", () => {
     };
 
     vi.mocked(createRenderJob).mockResolvedValue(mockJob);
-    mockSendMessage.mockRejectedValueOnce(new Error("SQS service error"));
+    mockDispatchToRenderWorker.mockRejectedValueOnce(new Error("Worker service error"));
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs", {
       method: "POST",
@@ -229,8 +226,8 @@ describe("POST /api/render-jobs", () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error).toBe("Failed to enqueue render job");
-    expect(failRenderJob).toHaveBeenCalledWith("job-1", 1, "Failed to enqueue render job to SQS");
+    expect(data.error).toBe("Failed to dispatch render job");
+    expect(failRenderJob).toHaveBeenCalledWith("job-1", 1, "Failed to dispatch render job to worker");
   });
 
   it("returns 400 when songsetId is missing", async () => {
