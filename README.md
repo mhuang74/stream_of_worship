@@ -193,7 +193,7 @@ npx drizzle-kit migrate    # Run pending migrations
 
 ### Deployment
 
-The web app deploys to **Vercel**. Render jobs are enqueued to AWS SQS and processed by a Lambda worker (Docker container deployed to public ECR), so the Vercel function only needs a short timeout for job creation and SSE progress streaming.
+The web app deploys to **Vercel**. Render jobs are enqueued to AWS SQS and processed by a Lambda worker (Docker container deployed to private ECR), so the Vercel function only needs a short timeout for job creation and SSE progress streaming.
 
 See [webapp/README.md](webapp/README.md) for full deployment instructions including:
 - Vercel project setup

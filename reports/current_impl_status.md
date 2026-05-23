@@ -269,7 +269,7 @@ The Next.js web app was updated to support the Lambda worker architecture:
 ### CI/CD
 
 - **CI Workflow** (`.github/workflows/ci.yml`): Runs on PR to main — pnpm lint + test for webapp, pytest for render-worker
-- **Deploy Workflow** (`.github/workflows/deploy.yml`): Runs on push to main — Vercel deploy for webapp, public ECR build+push + Lambda update for render-worker
+- **Deploy Workflow** (`.github/workflows/deploy.yml`): Runs on push to main — Vercel deploy for webapp, private ECR build+push + Lambda update for render-worker
 
 ### Tests
 
