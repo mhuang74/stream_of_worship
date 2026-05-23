@@ -104,7 +104,7 @@ The project consists of **six architecturally separate components**:
 - **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `webapp/` or via `pnpm --filter sow-webapp`)
 
 ### 6. Render Worker (AWS Lambda)
-- **Location:** `services/render-worker/` (Python, deployed as Lambda container via public ECR)
+- **Location:** `services/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Stack:** psycopg2, boto3, Pillow, FFmpeg, urllib3
 - **Commands:** See `services/render-worker/README.md`
 

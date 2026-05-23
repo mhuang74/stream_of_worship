@@ -111,7 +111,7 @@ the Lambda worker, not in the Vercel function.
 
 ### Lambda Worker Deployment
 
-The render worker is a Python container deployed to AWS Lambda via public ECR:
+The render worker is a Python container deployed to AWS Lambda via private ECR:
 
 1. **Build the Docker image** from `services/render-worker/Dockerfile`:
    ```bash
@@ -119,23 +119,25 @@ The render worker is a Python container deployed to AWS Lambda via public ECR:
    docker build -t sow-render-worker .
    ```
 
-2. **Push to AWS Public ECR**:
+2. **Push to AWS ECR**:
    ```bash
-   aws --profile <your-profile> ecr-public get-login-password --region us-east-1 | \
-     docker login --username AWS --password-stdin public.ecr.aws
+   aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin \
+     762288208920.dkr.ecr.us-west-2.amazonaws.com
 
    docker tag sow-render-worker:latest \
-     public.ecr.aws/u4p9h6o7/sow-render-worker:latest
+     762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
 
-   docker push public.ecr.aws/u4p9h6o7/sow-render-worker:latest
+   docker push 762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
    ```
 
 3. **Update the Lambda function** to use the new image:
    ```bash
    aws lambda update-function-code \
      --function-name sow-render-worker \
-     --image-uri public.ecr.aws/u4p9h6o7/sow-render-worker:latest
+     --image-uri 762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest
    ```
+
+> **Note:** AWS Lambda requires container images to be hosted in a **private ECR repository**. Public ECR image URIs are not accepted when creating or updating a Lambda function.
 
 This is automated in the GitHub Actions deploy workflow (`.github/workflows/deploy.yml`).
 
