@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { getRenderJob, RenderPhase } from "@/lib/render/job-manager";
+import { getRenderJob, failRenderJob, RenderPhase } from "@/lib/render/job-manager";
+
+const STALE_JOB_THRESHOLD_MINUTES = 15;
 
 export interface SSEEvent {
   phase: RenderPhase;
@@ -153,6 +155,35 @@ export async function GET(
             );
             safeClose();
             return;
+          }
+
+          // Check for stale running job
+          if (updatedJob.status === "running" && updatedJob.updatedAt) {
+            const staleMinutes = (Date.now() - updatedJob.updatedAt.getTime()) / 60000;
+            if (staleMinutes > STALE_JOB_THRESHOLD_MINUTES) {
+              await failRenderJob(
+                id,
+                Number(session!.user.id),
+                `Job timed out (no progress for ${Math.round(staleMinutes)} minutes)`
+              );
+              const failedJob = await getRenderJob(id, Number(session!.user.id));
+              if (failedJob) {
+                const finalEvent: SSEEvent = {
+                  phase: failedJob.phase ?? "preparing",
+                  phaseIndex: failedJob.phaseIndex ?? 0,
+                  totalPhases: failedJob.totalPhases ?? 5,
+                  estimatedTotalSeconds: failedJob.estimatedTotalSeconds ?? 0,
+                  elapsedSeconds: failedJob.startedAt
+                    ? (Date.now() - failedJob.startedAt.getTime()) / 1000
+                    : 0,
+                  status: "failed",
+                  errorMessage: failedJob.errorMessage ?? "Job timed out",
+                };
+                safeEnqueue(encoder.encode(`data: ${JSON.stringify(finalEvent)}\n\n`));
+                safeClose();
+              }
+              return;
+            }
           }
 
           // Send progress update

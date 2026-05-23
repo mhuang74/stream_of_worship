@@ -48,6 +48,7 @@ class ChapterInfo:
 
 
 ProgressCallback = Callable[[int, int], None]
+TimeoutCheckCallback = Callable[[], None]
 
 
 class AssetFetcherProtocol(Protocol):
@@ -108,6 +109,7 @@ class VideoEngine:
         segments: list[AudioSegmentInfo],
         output_path: str,
         progress_callback: ProgressCallback | None = None,
+        timeout_check_callback: TimeoutCheckCallback | None = None,
     ) -> VideoExportResult:
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -212,6 +214,7 @@ class VideoEngine:
             segment_infos,
             progress_callback,
             title_card_config,
+            timeout_check_callback,
         )
 
         return VideoExportResult(
@@ -233,6 +236,7 @@ class VideoEngine:
         segments: list[SegmentInfo],
         progress_callback: ProgressCallback | None = None,
         title_card_config: TitleCardConfig | None = None,
+        timeout_check_callback: TimeoutCheckCallback | None = None,
     ) -> None:
         width, height = self.resolution
 
@@ -300,6 +304,9 @@ class VideoEngine:
 
         try:
             while frame_count < total_frames:
+                if timeout_check_callback:
+                    timeout_check_callback()
+
                 if title_card_config and frame_count < title_card_frame_count:
                     frame_bytes = title_card_bytes
                 else:

@@ -824,6 +824,7 @@ class TestExecuteRenderPipeline:
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.start_render_job", return_value=None), \
+             patch("sow_render_worker.pipeline.reclaim_stale_job", return_value=None), \
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail:
 

@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, X, AlertCircle } from "lucide-react"
 
+const STALE_PROGRESS_THRESHOLD_MINUTES = 10
+
 export type RenderPhase =
   | "preparing"
   | "mixing_audio"
@@ -60,7 +62,10 @@ export function RenderProgress({
   const [progress, setProgress] = useState<RenderProgressData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [staleWarning, setStaleWarning] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
+  const lastElapsedRef = useRef<number>(0)
+  const lastChangeTimeRef = useRef<number | null>(null)
 
   const handleCancel = useCallback(async () => {
     if (isCancelling) return
@@ -111,6 +116,21 @@ export function RenderProgress({
         try {
           const data = JSON.parse(event.data) as RenderProgressData
           setProgress(data)
+
+          // Stale progress detection
+          if (data.elapsedSeconds !== lastElapsedRef.current) {
+            lastElapsedRef.current = data.elapsedSeconds
+            lastChangeTimeRef.current = Date.now()
+            setStaleWarning(null)
+          } else if (lastChangeTimeRef.current !== null) {
+            const minutesSinceChange = (Date.now() - lastChangeTimeRef.current) / 60000
+            if (minutesSinceChange > STALE_PROGRESS_THRESHOLD_MINUTES) {
+              setStaleWarning(
+                `Progress hasn't updated in ${Math.round(minutesSinceChange)} minutes. ` +
+                `The render may be stuck. You can cancel and try again.`
+              )
+            }
+          }
 
           if (data.status === "completed") {
             eventSource.close()
@@ -235,6 +255,13 @@ export function RenderProgress({
           <Alert variant="destructive">
             <AlertCircle className="size-4" />
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {staleWarning && (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertDescription>{staleWarning}</AlertDescription>
           </Alert>
         )}
 

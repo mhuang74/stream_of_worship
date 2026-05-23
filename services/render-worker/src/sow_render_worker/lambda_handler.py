@@ -33,7 +33,7 @@ def _process_record(record: dict, config, conn) -> None:
         extra={"job_id": job_id, "user_id": user_id},
     )
 
-    execute_render_pipeline(job_id, user_id, conn)
+    execute_render_pipeline(job_id, user_id, conn, lambda_context=context)
     logger.info(
         "Render job completed successfully",
         extra={"job_id": job_id, "user_id": user_id},
