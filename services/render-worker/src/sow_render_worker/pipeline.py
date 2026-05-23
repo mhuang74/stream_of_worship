@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import signal
 import time
 from pathlib import Path
+from typing import Any
 
 import psycopg2
 import psycopg2.extras
@@ -15,6 +17,7 @@ from sow_render_worker.db import (
     complete_render_job,
     fail_render_job,
     get_render_job,
+    reclaim_stale_job,
     start_render_job,
     update_render_progress,
 )
@@ -22,6 +25,18 @@ from sow_render_worker.uploader import R2Uploader, RenderArtifacts
 from sow_render_worker.video_engine import ChapterInfo, VideoEngine
 
 logger = logging.getLogger(__name__)
+
+LAMBDA_TIMEOUT_SAFETY_MARGIN_SECONDS = 60
+
+_shutdown_requested = False
+
+
+def _sigterm_handler(signum: int, frame) -> None:
+    global _shutdown_requested
+    _shutdown_requested = True
+
+
+signal.signal(signal.SIGTERM, _sigterm_handler)
 
 PHASES = [
     "preparing",
@@ -153,6 +168,7 @@ def execute_render_pipeline(
     conn: psycopg2.extensions.connection,
     asset_fetcher: AssetFetcher | None = None,
     uploader: R2Uploader | None = None,
+    lambda_context: Any | None = None,
 ) -> None:
     job = get_render_job(conn, job_id, user_id)
     if not job:
@@ -175,17 +191,43 @@ def execute_render_pipeline(
         if not current or current.status == "cancelled":
             raise PipelineCancelledError(f"Render job {job_id} was cancelled")
 
+    def check_lambda_timeout() -> None:
+        global _shutdown_requested
+        if _shutdown_requested:
+            _shutdown_requested = False
+            raise TimeoutError("Lambda received SIGTERM, shutting down gracefully")
+        if lambda_context is None:
+            return
+        remaining_ms = lambda_context.get_remaining_time_in_millis()
+        remaining_seconds = remaining_ms / 1000
+        if remaining_seconds < LAMBDA_TIMEOUT_SAFETY_MARGIN_SECONDS:
+            raise TimeoutError(
+                f"Lambda timeout imminent ({remaining_seconds:.0f}s remaining, "
+                f"need {LAMBDA_TIMEOUT_SAFETY_MARGIN_SECONDS}s safety margin)"
+            )
+
     def elapsed_seconds() -> float:
         return time.monotonic() - pipeline_start
 
     try:
         started = start_render_job(conn, job_id, user_id)
         if not started:
-            logger.info(
-                "Render job %s was already claimed by another invocation, skipping",
-                job_id,
-            )
-            return
+            reclaimed = reclaim_stale_job(conn, job_id, user_id)
+            if reclaimed:
+                logger.info(
+                    "Reclaimed stale job %s (was stuck in 'running' for too long), retrying",
+                    job_id,
+                )
+                started = start_render_job(conn, job_id, user_id)
+
+            if not started:
+                logger.info(
+                    "Render job %s was already claimed by another invocation, skipping",
+                    job_id,
+                )
+                return
+
+        check_lambda_timeout()
 
         update_render_progress(
             conn,
@@ -216,6 +258,8 @@ def execute_render_pipeline(
             )
         render_ratio = get_render_ratio(conn, job.resolution, job.video_enabled)
         estimated_total_seconds = total_duration_seconds * render_ratio
+
+        check_lambda_timeout()
 
         update_render_progress(
             conn,
@@ -250,6 +294,8 @@ def execute_render_pipeline(
         accurate_render_ratio = get_render_ratio(conn, job.resolution, job.video_enabled)
         accurate_estimated_total = accurate_total_duration * accurate_render_ratio
 
+        check_lambda_timeout()
+
         update_render_progress(
             conn,
             job_id,
@@ -277,6 +323,8 @@ def execute_render_pipeline(
 
             video_output_path = str(Path(temp_dir) / "output.mp4")
 
+            check_lambda_timeout()
+
             update_render_progress(
                 conn,
                 job_id,
@@ -293,6 +341,7 @@ def execute_render_pipeline(
                 audio_output_path,
                 list(audio_result.segments),
                 video_output_path,
+                timeout_check_callback=check_lambda_timeout,
             )
 
             chapters_for_video = [
@@ -309,6 +358,8 @@ def execute_render_pipeline(
             asset_fetcher.download_lrc,
             audio_result.total_duration_seconds,
         )
+
+        check_lambda_timeout()
 
         update_render_progress(
             conn,

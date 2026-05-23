@@ -17,7 +17,9 @@ PHASE_ORDER = [
     "uploading",
 ]
 
-ORPHANED_JOB_THRESHOLD_MINUTES = 30
+ORPHANED_JOB_THRESHOLD_MINUTES = 15
+
+STALE_JOB_THRESHOLD_SECONDS = 300
 
 
 @dataclass
@@ -148,6 +150,51 @@ def start_render_job(
             ("running", now, now, job_id, user_id, "queued"),
         )
         row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_render_job(row)
+
+
+def reclaim_stale_job(
+    conn: psycopg2.extensions.connection,
+    job_id: str,
+    user_id: int,
+    stale_threshold_seconds: int = STALE_JOB_THRESHOLD_SECONDS,
+) -> Optional[RenderJob]:
+    now = datetime.now(timezone.utc)
+    threshold = now - timedelta(seconds=stale_threshold_seconds)
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT * FROM render_jobs WHERE id = %s AND user_id = %s AND status = %s",
+            (job_id, user_id, "running"),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        job = _row_to_render_job(row)
+        if job.updated_at is None:
+            return None
+
+        aware_updated = (
+            job.updated_at.replace(tzinfo=timezone.utc)
+            if job.updated_at.tzinfo is None
+            else job.updated_at
+        )
+        if aware_updated >= threshold:
+            return None
+
+        cur.execute(
+            "UPDATE render_jobs "
+            "SET status = %s, error_message = %s, updated_at = %s, "
+            "    started_at = NULL, phase = %s, phase_index = %s, percent_complete = %s "
+            "WHERE id = %s AND user_id = %s AND status = %s "
+            "RETURNING *",
+            ("queued", None, now, "preparing", 0, 0, job_id, user_id, "running"),
+        )
+        row = cur.fetchone()
+
     if not row:
         return None
     return _row_to_render_job(row)

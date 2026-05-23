@@ -341,7 +341,7 @@ export async function startRenderJob(
   return mapRowToRenderJob(updated);
 }
 
-const ORPHANED_JOB_THRESHOLD_MINUTES = 30;
+const ORPHANED_JOB_THRESHOLD_MINUTES = 15;
 
 export async function recoverOrphanedJobs(): Promise<number> {
   const threshold = new Date(

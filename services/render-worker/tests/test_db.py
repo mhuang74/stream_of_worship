@@ -6,6 +6,7 @@ import pytest
 from sow_render_worker.db import (
     ORPHANED_JOB_THRESHOLD_MINUTES,
     PHASE_ORDER,
+    STALE_JOB_THRESHOLD_SECONDS,
     TOTAL_PHASES,
     RenderJob,
     RenderProgress,
@@ -14,6 +15,7 @@ from sow_render_worker.db import (
     get_connection,
     get_phase_index,
     get_render_job,
+    reclaim_stale_job,
     recover_orphaned_jobs,
     start_render_job,
     update_render_progress,
@@ -79,7 +81,7 @@ class TestPhaseConstants:
         ]
 
     def test_orphaned_threshold(self):
-        assert ORPHANED_JOB_THRESHOLD_MINUTES == 30
+        assert ORPHANED_JOB_THRESHOLD_MINUTES == 15
 
 
 class TestGetPhaseIndex:
@@ -457,12 +459,12 @@ class TestRecoverOrphanedJobs:
         assert params[0] == "failed"
         assert "timed out" in params[1]
 
-    def test_default_threshold_30_minutes(self):
+    def test_default_threshold_15_minutes(self):
         conn, cursor = _make_mock_conn(fetchall_result=[])
         recover_orphaned_jobs(conn)
         params = cursor.execute.call_args_list[0][0][1]
         threshold = params[4]
-        expected_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
+        expected_threshold = datetime.now(timezone.utc) - timedelta(minutes=15)
         assert abs((threshold - expected_threshold).total_seconds()) < 5
 
     def test_custom_threshold(self):
@@ -483,6 +485,63 @@ class TestRecoverOrphanedJobs:
         conn, cursor = _make_mock_conn(fetchall_result=[{"id": "j1", "songset_id": "ss1"}])
         recover_orphaned_jobs(conn)
         conn.commit.assert_called_once()
+
+
+class TestReclaimStaleJob:
+    def test_reclaims_stale_job(self):
+        stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        row = _make_row(status="running", updated_at=stale_time)
+        reclaimed_row = _make_row(status="queued", phase="preparing", phase_index=0, percent_complete=0.0, started_at=None)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        cursor.fetchone.return_value = reclaimed_row
+        result = reclaim_stale_job(conn, "job_abc123", 42)
+        assert result is not None
+        assert result.status == "queued"
+
+    def test_resets_progress_fields(self):
+        stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        row = _make_row(status="running", updated_at=stale_time)
+        reclaimed_row = _make_row(status="queued", phase="preparing", phase_index=0, percent_complete=0.0, started_at=None)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        cursor.fetchone.return_value = reclaimed_row
+        reclaim_stale_job(conn, "job_abc123", 42)
+        update_call = cursor.execute.call_args_list[1]
+        sql = update_call[0][0]
+        params = update_call[0][1]
+        assert "started_at = NULL" in sql
+        assert "phase = %s" in sql
+        assert params[3] == "preparing"
+
+    def test_skips_recent_job(self):
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=60)
+        row = _make_row(status="running", updated_at=recent_time)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        result = reclaim_stale_job(conn, "job_abc123", 42)
+        assert result is None
+
+    def test_skips_non_running_job(self):
+        row = _make_row(status="completed")
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        result = reclaim_stale_job(conn, "job_abc123", 42)
+        assert result is None
+
+    def test_skips_job_without_updated_at(self):
+        row = _make_row(status="running", updated_at=None)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        result = reclaim_stale_job(conn, "job_abc123", 42)
+        assert result is None
+
+    def test_custom_threshold(self):
+        stale_time = datetime.now(timezone.utc) - timedelta(seconds=400)
+        row = _make_row(status="running", updated_at=stale_time)
+        reclaimed_row = _make_row(status="queued")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        cursor.fetchone.return_value = reclaimed_row
+        result = reclaim_stale_job(conn, "job_abc123", 42, stale_threshold_seconds=300)
+        assert result is not None
+
+    def test_default_threshold_5_minutes(self):
+        assert STALE_JOB_THRESHOLD_SECONDS == 300
 
 
 class TestRenderJobDataclass:
