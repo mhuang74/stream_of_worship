@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import traceback
 
 from sow_render_worker.config import load_config
@@ -33,10 +34,14 @@ def _process_record(record: dict, config, conn, context) -> None:
         extra={"job_id": job_id, "user_id": user_id},
     )
 
+    start = time.monotonic()
     execute_render_pipeline(job_id, user_id, conn, lambda_context=context)
+    duration = time.monotonic() - start
+
     logger.info(
-        "Render job completed successfully",
-        extra={"job_id": job_id, "user_id": user_id},
+        "Render job completed successfully in %.1fs",
+        duration,
+        extra={"job_id": job_id, "user_id": user_id, "duration_seconds": duration},
     )
 
 

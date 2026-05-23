@@ -357,7 +357,7 @@ class TestConcatenateAudioFiles:
 
         with patch("sow_render_worker.audio_engine.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            concatenate_audio_files(audio_files, "/tmp/out.mp3")
+            concatenate_audio_files(audio_files, "/tmp/out.mp3", job_id="test-job")
 
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == "ffmpeg"
@@ -384,6 +384,7 @@ class TestConcatenateAudioFiles:
                 output_bitrate="192k",
                 sample_rate=22050,
                 channels=1,
+                job_id="test-job",
             )
 
         cmd = mock_run.call_args[0][0]
@@ -402,7 +403,7 @@ class TestConcatenateAudioFiles:
         with patch("sow_render_worker.audio_engine.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.CalledProcessError(1, "ffmpeg")
             with pytest.raises(subprocess.CalledProcessError):
-                concatenate_audio_files(audio_files, "/tmp/out.mp3")
+                concatenate_audio_files(audio_files, "/tmp/out.mp3", job_id="test-job")
 
 
 class TestGenerateSongsetAudio:

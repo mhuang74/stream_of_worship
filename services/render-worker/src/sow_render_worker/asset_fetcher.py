@@ -49,6 +49,7 @@ class AssetFetcher:
     def download_audio(self, hash_prefix: str) -> str | None:
         cache_path = self._cache_dir / f"{hash_prefix}.mp3"
         if cache_path.exists():
+            logger.info("Audio cache hit: %s", hash_prefix)
             return str(cache_path)
 
         try:
@@ -74,6 +75,10 @@ class AssetFetcher:
                     pass
                 raise
 
+            logger.info(
+                "Audio downloaded: %s (%d bytes, cached at %s)",
+                hash_prefix, len(response.data), cache_path,
+            )
             return str(cache_path)
         except Exception as exc:
             logger.exception("Failed to download audio for %s", hash_prefix)
@@ -83,6 +88,7 @@ class AssetFetcher:
 
     def download_lrc(self, hash_prefix: str) -> str | None:
         if hash_prefix in self._lrc_cache:
+            logger.debug("LRC cache hit: %s", hash_prefix)
             return self._lrc_cache[hash_prefix]
 
         try:
@@ -103,6 +109,7 @@ class AssetFetcher:
 
             content = response.data.decode("utf-8")
             self._lrc_cache[hash_prefix] = content
+            logger.info("LRC downloaded: %s (%d bytes)", hash_prefix, len(response.data))
             return content
         except Exception as exc:
             logger.exception("Failed to download LRC for %s", hash_prefix)

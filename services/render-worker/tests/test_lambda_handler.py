@@ -28,21 +28,23 @@ class TestProcessRecord:
         mock_pipeline.return_value = None
         mock_conn = MagicMock()
         mock_config = MagicMock()
+        mock_context = MagicMock()
 
         record = _make_sqs_record()
-        _process_record(record, mock_config, mock_conn)
+        _process_record(record, mock_config, mock_conn, mock_context)
 
-        mock_pipeline.assert_called_once_with("job_abc123", 42, mock_conn)
+        mock_pipeline.assert_called_once_with("job_abc123", 42, mock_conn, lambda_context=mock_context)
 
     @patch("sow_render_worker.lambda_handler.execute_render_pipeline")
     def test_pipeline_failure_raises(self, mock_pipeline):
         mock_pipeline.side_effect = RuntimeError("render failed")
         mock_conn = MagicMock()
         mock_config = MagicMock()
+        mock_context = MagicMock()
 
         record = _make_sqs_record()
         with pytest.raises(RuntimeError, match="render failed"):
-            _process_record(record, mock_config, mock_conn)
+            _process_record(record, mock_config, mock_conn, mock_context)
 
     @patch("sow_render_worker.lambda_handler.execute_render_pipeline")
     def test_uses_config_database_url(self, mock_pipeline):
@@ -50,11 +52,12 @@ class TestProcessRecord:
         mock_config_obj = MagicMock()
         mock_config_obj.SOW_DATABASE_URL = "postgresql://test:test@localhost/db"
         mock_conn = MagicMock()
+        mock_context = MagicMock()
 
         record = _make_sqs_record()
-        _process_record(record, mock_config_obj, mock_conn)
+        _process_record(record, mock_config_obj, mock_conn, mock_context)
 
-        mock_pipeline.assert_called_once_with("job_abc123", 42, mock_conn)
+        mock_pipeline.assert_called_once_with("job_abc123", 42, mock_conn, lambda_context=mock_context)
 
 
 class TestHandler:
@@ -114,7 +117,7 @@ class TestHandler:
         mock_conn_func.return_value = mock_conn
         call_count = [0]
 
-        def side_effect(record, config, conn):
+        def side_effect(record, config, conn, context):
             call_count[0] += 1
             if call_count[0] == 2:
                 raise RuntimeError("middle record failed")

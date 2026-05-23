@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -5,6 +6,8 @@ from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
+
+logger = logging.getLogger(__name__)
 
 
 TOTAL_PHASES = 5
@@ -62,6 +65,8 @@ class RenderProgress:
     total_duration_seconds: Optional[float] = None
     started_at: Optional[datetime] = None
     elapsed_seconds: Optional[float] = None
+    percent_complete: Optional[float] = None
+    estimated_seconds_left: Optional[float] = None
 
 
 def get_phase_index(phase: str) -> int:
@@ -232,6 +237,14 @@ def update_render_progress(
         updates.append("elapsed_seconds = %s")
         params.append(progress.elapsed_seconds)
 
+    if progress.percent_complete is not None:
+        updates.append("percent_complete = %s")
+        params.append(progress.percent_complete)
+
+    if progress.estimated_seconds_left is not None:
+        updates.append("estimated_seconds_left = %s")
+        params.append(progress.estimated_seconds_left)
+
     if not updates:
         return get_render_job(conn, job_id, user_id)
 
@@ -240,13 +253,25 @@ def update_render_progress(
 
     params.extend([job_id, user_id])
 
-    sql = f"UPDATE render_jobs SET {', '.join(updates)} WHERE id = %s AND user_id = %s RETURNING *"
+    sql = f"UPDATE render_jobs SET {', '.join(updates)} WHERE id = %s AND user_id = %s AND status = 'running' RETURNING *"
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(sql, params)
         row = cur.fetchone()
     if not row:
         return None
+
+    logger.info(
+        "Progress update for job %s: phase=%s (%d/%d), elapsed=%.1fs, percent=%.1f%%, est_remaining=%s",
+        job_id,
+        progress.phase,
+        progress.phase_index if progress.phase_index is not None else get_phase_index(progress.phase or ""),
+        progress.total_phases,
+        progress.elapsed_seconds or 0,
+        progress.percent_complete or 0,
+        f"{progress.estimated_seconds_left:.0f}s" if progress.estimated_seconds_left is not None else "N/A",
+    )
+
     return _row_to_render_job(row)
 
 

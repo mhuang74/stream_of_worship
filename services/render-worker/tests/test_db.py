@@ -270,6 +270,39 @@ class TestUpdateRenderProgress:
         assert "phase_index = %s" in sql
         assert "elapsed_seconds = %s" in sql
 
+    def test_update_percent_complete(self):
+        row = _make_row(percent_complete=60.0)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        progress = RenderProgress(percent_complete=60.0)
+        result = update_render_progress(conn, "job_abc123", 42, progress)
+        assert result is not None
+        params = cursor.execute.call_args[0][1]
+        assert 60.0 in params
+
+    def test_update_estimated_seconds_left(self):
+        row = _make_row(estimated_seconds_left=120.0)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        progress = RenderProgress(estimated_seconds_left=120.0)
+        result = update_render_progress(conn, "job_abc123", 42, progress)
+        assert result is not None
+        params = cursor.execute.call_args[0][1]
+        assert 120.0 in params
+
+    def test_status_guard_running(self):
+        row = _make_row(phase="encoding_video", phase_index=3)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        progress = RenderProgress(phase="encoding_video")
+        result = update_render_progress(conn, "job_abc123", 42, progress)
+        assert result is not None
+        sql = cursor.execute.call_args[0][0]
+        assert "AND status = 'running'" in sql
+
+    def test_status_guard_returns_none_when_not_running(self):
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        progress = RenderProgress(phase="encoding_video")
+        result = update_render_progress(conn, "job_abc123", 42, progress)
+        assert result is None
+
     def test_parameterized_no_string_interpolation(self):
         row = _make_row(phase="mixing_audio", phase_index=1)
         conn, cursor = _make_mock_conn(fetchone_result=row)
@@ -604,6 +637,8 @@ class TestRenderProgressDataclass:
         assert p.total_duration_seconds is None
         assert p.started_at is None
         assert p.elapsed_seconds is None
+        assert p.percent_complete is None
+        assert p.estimated_seconds_left is None
 
     def test_with_values(self):
         now = datetime.now(timezone.utc)
@@ -611,10 +646,14 @@ class TestRenderProgressDataclass:
             phase="mixing_audio",
             estimated_total_seconds=120.0,
             elapsed_seconds=30.0,
+            percent_complete=20.0,
+            estimated_seconds_left=90.0,
         )
         assert p.phase == "mixing_audio"
         assert p.estimated_total_seconds == 120.0
         assert p.elapsed_seconds == 30.0
+        assert p.percent_complete == 20.0
+        assert p.estimated_seconds_left == 90.0
 
 
 class TestRowToRenderJob:
