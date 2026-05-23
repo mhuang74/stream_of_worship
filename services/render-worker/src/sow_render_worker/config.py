@@ -14,7 +14,6 @@ class RenderWorkerConfig:
     SOW_R2_ACCESS_KEY_ID: str
     SOW_R2_SECRET_ACCESS_KEY: str
     SOW_AWS_REGION: str
-    SOW_SQS_QUEUE_URL: str
 
     @classmethod
     def from_env(cls) -> "RenderWorkerConfig":
@@ -25,7 +24,6 @@ class RenderWorkerConfig:
             "SOW_R2_ACCESS_KEY_ID": os.environ.get("SOW_R2_ACCESS_KEY_ID"),
             "SOW_R2_SECRET_ACCESS_KEY": os.environ.get("SOW_R2_SECRET_ACCESS_KEY"),
             "SOW_AWS_REGION": os.environ.get("SOW_AWS_REGION"),
-            "SOW_SQS_QUEUE_URL": os.environ.get("SOW_SQS_QUEUE_URL"),
         }
 
         missing = [name for name, value in required_vars.items() if not value]

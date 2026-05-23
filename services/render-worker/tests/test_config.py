@@ -14,7 +14,6 @@ class TestRenderWorkerConfig:
         assert config.SOW_R2_ACCESS_KEY_ID == "test-access-key"
         assert config.SOW_R2_SECRET_ACCESS_KEY == "test-secret-key"
         assert config.SOW_AWS_REGION == "us-east-1"
-        assert config.SOW_SQS_QUEUE_URL == "https://sqs.us-east-1.amazonaws.com/123456789/test-queue"
 
     def test_from_env_missing_database_url(self, mock_env):
         del os.environ["SOW_DATABASE_URL"]
@@ -44,11 +43,6 @@ class TestRenderWorkerConfig:
     def test_from_env_missing_aws_region(self, mock_env):
         del os.environ["SOW_AWS_REGION"]
         with pytest.raises(ConfigError, match="SOW_AWS_REGION"):
-            RenderWorkerConfig.from_env()
-
-    def test_from_env_missing_sqs_queue_url(self, mock_env):
-        del os.environ["SOW_SQS_QUEUE_URL"]
-        with pytest.raises(ConfigError, match="SOW_SQS_QUEUE_URL"):
             RenderWorkerConfig.from_env()
 
     def test_from_env_missing_multiple_vars(self, mock_env):

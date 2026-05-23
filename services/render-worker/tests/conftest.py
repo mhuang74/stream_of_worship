@@ -14,7 +14,6 @@ def env_vars():
         "SOW_R2_ACCESS_KEY_ID": "test-access-key",
         "SOW_R2_SECRET_ACCESS_KEY": "test-secret-key",
         "SOW_AWS_REGION": "us-east-1",
-        "SOW_SQS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789/test-queue",
     }
 
 
