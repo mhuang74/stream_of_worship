@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import shutil
 import subprocess
@@ -20,6 +21,8 @@ from sow_render_worker.frame_renderer import (
     VideoTemplateName,
 )
 from sow_render_worker.lrc_parser import GlobalLRCLine, convert_to_global_timeline, parse_lrc
+
+logger = logging.getLogger(__name__)
 
 
 RESOLUTION_MAP: dict[str, tuple[int, int]] = {
@@ -110,6 +113,7 @@ class VideoEngine:
         output_path: str,
         progress_callback: ProgressCallback | None = None,
         timeout_check_callback: TimeoutCheckCallback | None = None,
+        job_id: str | None = None,
     ) -> VideoExportResult:
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -125,6 +129,12 @@ class VideoEngine:
             else 0
         )
         total_frames = math.ceil(total_duration_seconds * self.fps) + title_card_frames
+
+        logger.info(
+            "[%s] generate_video: duration=%.1fs, total_frames=%d, resolution=%s, fps=%d",
+            job_id or "unknown", total_duration_seconds, total_frames,
+            f"{self.resolution[0]}x{self.resolution[1]}", self.fps,
+        )
 
         all_lyrics: list[GlobalLRCLine] = []
         chapters: list[ChapterInfo] = []
@@ -173,7 +183,8 @@ class VideoEngine:
 
         if not all_lyrics:
             return self.generate_blank_video(
-                audio_path, output_path, total_duration_seconds
+                audio_path, output_path, total_duration_seconds,
+                job_id=job_id,
             )
 
         segment_infos: list[SegmentInfo] = []
@@ -215,6 +226,12 @@ class VideoEngine:
             progress_callback,
             title_card_config,
             timeout_check_callback,
+            job_id=job_id,
+        )
+
+        logger.info(
+            "[%s] generate_video: complete, %d frames encoded",
+            job_id or "unknown", total_frames,
         )
 
         return VideoExportResult(
@@ -237,8 +254,15 @@ class VideoEngine:
         progress_callback: ProgressCallback | None = None,
         title_card_config: TitleCardConfig | None = None,
         timeout_check_callback: TimeoutCheckCallback | None = None,
+        job_id: str | None = None,
     ) -> None:
         width, height = self.resolution
+
+        ffmpeg_start = time.monotonic()
+        logger.info(
+            "[%s] encode_video_with_ffmpeg: starting FFmpeg pipe, %d frames (%.1fs at %dfps)",
+            job_id or "unknown", total_frames, total_duration_seconds, self.fps,
+        )
 
         args = [
             self.ffmpeg_path,
@@ -320,6 +344,10 @@ class VideoEngine:
                 try:
                     process.stdin.write(frame_bytes)
                 except BrokenPipeError:
+                    logger.error(
+                        "[%s] FFmpeg pipe broken at frame %d/%d",
+                        job_id or "unknown", frame_count, total_frames,
+                    )
                     process.stdin.close()
                     if stderr_thread:
                         stderr_thread.join(timeout=5)
@@ -339,6 +367,15 @@ class VideoEngine:
                 if progress_callback and frame_count % self.fps == 0:
                     progress_callback(frame_count, total_frames)
 
+                if frame_count % (self.fps * 30) == 0 and frame_count > 0:
+                    video_seconds = frame_count / self.fps
+                    logger.info(
+                        "[%s] Video encoding progress: %.0fs/%.0fs (%d/%d frames, %.1f%%)",
+                        job_id or "unknown", video_seconds, total_duration_seconds,
+                        frame_count, total_frames,
+                        frame_count / total_frames * 100 if total_frames > 0 else 0,
+                    )
+
             try:
                 process.stdin.close()
             except BrokenPipeError:
@@ -353,6 +390,11 @@ class VideoEngine:
         if stderr_thread:
             stderr_thread.join(timeout=5)
         return_code = process.wait()
+        ffmpeg_elapsed = time.monotonic() - ffmpeg_start
+        logger.info(
+            "[%s] FFmpeg process exited with code %d in %.1fs",
+            job_id or "unknown", return_code, ffmpeg_elapsed,
+        )
         stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
         if return_code != 0:
             stderr_info = (
@@ -370,10 +412,16 @@ class VideoEngine:
         audio_path: str,
         output_path: str,
         duration_seconds: float,
+        job_id: str | None = None,
     ) -> VideoExportResult:
         width, height = self.resolution
         bg_r, bg_g, bg_b = self.template.background_color
         hex_color = f"#{bg_r:02x}{bg_g:02x}{bg_b:02x}"
+
+        logger.info(
+            "[%s] generate_blank_video: %.1fs, %s",
+            job_id or "unknown", duration_seconds, output_path,
+        )
 
         args = [
             self.ffmpeg_path,
@@ -420,7 +468,12 @@ class VideoEngine:
         self,
         video_path: str,
         chapters: list[ChapterInfo],
+        job_id: str | None = None,
     ) -> bool:
+        logger.info(
+            "[%s] inject_chapters: %d chapters into %s",
+            job_id or "unknown", len(chapters), video_path,
+        )
         try:
             temp_dir = self.asset_fetcher.get_temp_dir()
             chapters_path = str(Path(temp_dir) / f"chapters-{int(time.time() * 1000)}.txt")
@@ -464,6 +517,7 @@ class VideoEngine:
             )
 
             if result.returncode != 0:
+                logger.warning("[%s] inject_chapters: failed", job_id or "unknown")
                 return False
 
             shutil.move(output_path, video_path)
@@ -473,6 +527,8 @@ class VideoEngine:
             except OSError:
                 pass
 
+            logger.info("[%s] inject_chapters: complete", job_id or "unknown")
             return True
         except Exception:
+            logger.warning("[%s] inject_chapters: failed", job_id or "unknown")
             return False

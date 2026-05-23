@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 
 
 from sow_render_worker.r2_client import R2Client, create_r2_client_from_env
+
+logger = logging.getLogger(__name__)
 
 
 CONTENT_TYPE_MAP: dict[str, str] = {
@@ -62,7 +65,11 @@ class R2Uploader:
     ) -> str:
         file_path_obj = Path(file_path)
         body = file_path_obj.read_bytes()
+        logger.info(
+            "Uploading %s (%s, %d bytes)", key, content_type or infer_content_type(key), len(body)
+        )
         self._put_object(key, body, content_type, cache_control, metadata)
+        logger.info("Upload complete: %s", key)
         return key
 
     def upload_buffer(
@@ -73,7 +80,11 @@ class R2Uploader:
         cache_control: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> str:
+        logger.info(
+            "Uploading %s (%s, %d bytes)", key, content_type or infer_content_type(key), len(buffer)
+        )
         self._put_object(key, buffer, content_type, cache_control, metadata)
+        logger.info("Upload complete: %s", key)
         return key
 
     def upload_render_artifacts(
@@ -81,6 +92,13 @@ class R2Uploader:
         render_job_id: str,
         artifacts: RenderArtifacts,
     ) -> UploadArtifactsResult:
+        logger.info(
+            "Uploading render artifacts for job %s: mp3=%s, mp4=%s, chapters=%s",
+            render_job_id,
+            "yes" if artifacts.mp3_path else "no",
+            "yes" if artifacts.mp4_path else "no",
+            "yes" if artifacts.chapters is not None else "no",
+        )
         result = UploadArtifactsResult()
 
         if artifacts.mp3_path:
@@ -130,6 +148,7 @@ class R2Uploader:
             )
             result.chapters_r2_key = key
 
+        logger.info("All render artifacts uploaded for job %s", render_job_id)
         return result
 
     def delete_render_artifacts(self, render_job_id: str) -> None:
@@ -143,9 +162,7 @@ class R2Uploader:
             try:
                 self._client.delete_object(Bucket=self._bucket_name, Key=key)
             except Exception as e:
-                import logging
-
-                logging.getLogger(__name__).warning(f"Failed to delete {key}: {e}")
+                logger.warning("Failed to delete %s: %s", key, e)
 
     def _put_object(
         self,

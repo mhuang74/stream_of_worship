@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Literal
@@ -11,6 +12,8 @@ from sow_render_worker.lrc_parser import (
     estimate_last_lyric_duration,
     group_lyrics_by_song,
 )
+
+logger = logging.getLogger(__name__)
 
 VideoTemplateName = Literal["dark", "gradient_warm", "gradient_blue"]
 FontSizePreset = Literal["S", "M", "L", "XL"]
@@ -95,15 +98,23 @@ _SANS_SERIF_FONT_PATHS = [
 def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for path in _SANS_SERIF_FONT_PATHS:
         try:
-            return ImageFont.truetype(path, size)
+            font = ImageFont.truetype(path, size)
+            logger.info("Loaded font: %s (size=%d)", path, size)
+            return font
         except (OSError, IOError):
             continue
     try:
-        return ImageFont.truetype("sans-serif", size)
+        font = ImageFont.truetype("sans-serif", size)
+        logger.info("Loaded font: sans-serif (size=%d)", size)
+        return font
     except (OSError, IOError):
-        return ImageFont.load_default(size=size)
+        font = ImageFont.load_default(size=size)
+        logger.warning("No TrueType font found, using default font (size=%d)", size)
+        return font
     except TypeError:
-        return ImageFont.load_default()
+        font = ImageFont.load_default()
+        logger.warning("No TrueType font found, using default font (size=%d)", size)
+        return font
 
 
 class FrameRenderer:
@@ -117,6 +128,11 @@ class FrameRenderer:
         self.font_size_preset = font_size_preset
         self.resolution = resolution or template.resolution
         self.base_font_size = FONT_SIZE_PRESETS[font_size_preset]
+
+        logger.info(
+            "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d",
+            self.template.name, self.font_size_preset, self.resolution[0], self.resolution[1],
+        )
 
     def get_base_font_size(self) -> int:
         return self.base_font_size

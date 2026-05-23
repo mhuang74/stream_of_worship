@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -162,6 +165,7 @@ def concatenate_audio_files(
     output_bitrate: str = "320k",
     sample_rate: int = 44100,
     channels: int = 2,
+    job_id: str | None = None,
 ) -> None:
     filter_complex = build_ffmpeg_filter_complex(audio_files, normalize, target_lufs)
 
@@ -173,7 +177,9 @@ def concatenate_audio_files(
     cmd.extend(["-ar", str(sample_rate), "-ac", str(channels)])
     cmd.append(output_path)
 
+    logger.info("[%s] FFmpeg audio concat: starting (timeout=1800s)", job_id or "unknown")
     subprocess.run(cmd, check=True, capture_output=True, timeout=1800)
+    logger.info("[%s] FFmpeg audio concat: complete", job_id or "unknown")
 
 
 def generate_songset_audio(
@@ -186,6 +192,7 @@ def generate_songset_audio(
     output_bitrate: str = "320k",
     sample_rate: int = 44100,
     channels: int = 2,
+    job_id: str | None = None,
 ) -> ExportResult:
     if not items:
         raise ValueError("Cannot generate audio for empty songset")
@@ -205,6 +212,12 @@ def generate_songset_audio(
         if not item.recording_hash_prefix:
             raise ValueError(f"Item {item.id} has no recording")
 
+        logger.info(
+            "[%s] Audio: processing song %d/%d - %s (hash=%s)",
+            job_id or "unknown", i + 1, len(items),
+            item.song_title or "untitled", item.recording_hash_prefix or "N/A",
+        )
+
         audio_path = asset_fetcher.download_audio(item.recording_hash_prefix)
         if not audio_path:
             raise ValueError(f"Could not get audio for recording {item.recording_hash_prefix}")
@@ -219,6 +232,11 @@ def generate_songset_audio(
         if i > 0:
             gap_ms = calculate_gap_ms(item, item.tempo_bpm)
             crossfade_ms = min(get_crossfade_ms(item), duration_ms)
+
+        logger.info(
+            "[%s] Audio: song %d probed - duration=%.1fs, gap_ms=%d, crossfade_ms=%d",
+            job_id or "unknown", i + 1, duration_ms / 1000.0, gap_ms, crossfade_ms,
+        )
 
         start_time_ms = 0 if i == 0 else max(0, current_time_ms + gap_ms - crossfade_ms)
 
@@ -250,6 +268,11 @@ def generate_songset_audio(
     output_dir = Path(output_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info(
+        "[%s] Audio: starting FFmpeg concatenation of %d files -> %s",
+        job_id or "unknown", len(audio_files), output_path,
+    )
+
     concatenate_audio_files(
         audio_files,
         output_path,
@@ -258,6 +281,12 @@ def generate_songset_audio(
         output_bitrate=output_bitrate,
         sample_rate=sample_rate,
         channels=channels,
+        job_id=job_id,
+    )
+
+    logger.info(
+        "[%s] Audio: concatenation complete, total duration=%.1fs, %d segments",
+        job_id or "unknown", current_time_ms / 1000.0, len(segments),
     )
 
     if progress_callback:

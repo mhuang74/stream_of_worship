@@ -181,7 +181,7 @@ class TestGenerateBlankVideo:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
             mock_run.return_value = mock_result
             result = engine.generate_blank_video(
-                "/tmp/audio.mp3", output_path, 180.0
+                "/tmp/audio.mp3", output_path, 180.0, job_id="test-job"
             )
 
         cmd = mock_run.call_args[0][0]
@@ -228,7 +228,7 @@ class TestGenerateBlankVideo:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
             mock_run.return_value = mock_result
             result = engine.generate_blank_video(
-                "/tmp/audio.mp3", output_path, 60.0
+                "/tmp/audio.mp3", output_path, 60.0, job_id="test-job"
             )
 
         cmd = mock_run.call_args[0][0]
@@ -251,7 +251,7 @@ class TestGenerateBlankVideo:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
             mock_run.return_value = mock_result
             with pytest.raises(RuntimeError, match="FFmpeg exited with code 1"):
-                engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0)
+                engine.generate_blank_video("/tmp/audio.mp3", output_path, 60.0, job_id="test-job")
 
 
 class TestEncodeVideoWithFFmpeg:
@@ -509,9 +509,9 @@ class TestGenerateVideo:
 
         with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video", return_value=blank_result) as mock_blank:
-            result = engine.generate_video("/tmp/audio.mp3", [], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [], output_path, job_id="test-job")
 
-        mock_blank.assert_called_once_with("/tmp/audio.mp3", output_path, 60.0)
+        mock_blank.assert_called_once_with("/tmp/audio.mp3", output_path, 60.0, job_id="test-job")
         assert result == blank_result
 
     def test_with_lyrics_encodes_video(self, tmp_path):
@@ -529,7 +529,7 @@ class TestGenerateVideo:
 
         with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "encode_video_with_ffmpeg") as mock_encode:
-            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
 
         mock_encode.assert_called_once()
         assert result.output_path == output_path
@@ -554,7 +554,7 @@ class TestGenerateVideo:
 
         with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video") as mock_blank:
-            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
 
         mock_blank.assert_called_once()
 
@@ -573,7 +573,7 @@ class TestGenerateVideo:
 
         with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video") as mock_blank:
-            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
 
         mock_blank.assert_called_once()
 
@@ -600,7 +600,7 @@ class TestGenerateVideo:
 
         with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "generate_blank_video", return_value=blank_result):
-            engine.generate_video("/tmp/audio.mp3", [], output_path)
+            engine.generate_video("/tmp/audio.mp3", [], output_path, job_id="test-job")
 
         assert Path(tmp_path / "subdir").is_dir()
 
@@ -619,7 +619,7 @@ class TestGenerateVideo:
 
         with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
              patch.object(engine, "encode_video_with_ffmpeg") as mock_encode:
-            engine.generate_video("/tmp/audio.mp3", [segment], output_path)
+            engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
 
         call_kwargs = mock_encode.call_args
         title_card_config = call_kwargs[1].get("title_card_config") if "title_card_config" in call_kwargs[1] else call_kwargs[0][7] if len(call_kwargs[0]) > 7 else None
@@ -658,7 +658,7 @@ class TestInjectChapters:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_run.return_value = mock_result
-            result = engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters, job_id="test-job")
 
         assert result is True
 
@@ -688,7 +688,7 @@ class TestInjectChapters:
 
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run:
             mock_run.return_value = mock_result
-            result = engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters, job_id="test-job")
 
         assert result is False
 
@@ -703,7 +703,7 @@ class TestInjectChapters:
         ]
 
         with patch("sow_render_worker.video_engine.subprocess.run", side_effect=Exception("boom")):
-            result = engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters, job_id="test-job")
 
         assert result is False
 
@@ -725,7 +725,7 @@ class TestInjectChapters:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_run.return_value = mock_result
-            result = engine.inject_chapters(video_path, chapters)
+            result = engine.inject_chapters(video_path, chapters, job_id="test-job")
 
         chapters_files = list(tmp_path.glob("chapters-*.txt"))
         assert len(chapters_files) == 0
@@ -758,7 +758,7 @@ class TestInjectChapters:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_run.return_value = mock_result
-            engine.inject_chapters(video_path, chapters)
+            engine.inject_chapters(video_path, chapters, job_id="test-job")
 
         chapters_files = list(tmp_path.glob("chapters-*.txt"))
         assert len(chapters_files) == 0
@@ -920,7 +920,7 @@ class TestFFmpegCommandConstruction:
         with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
              patch("sow_render_worker.video_engine.shutil.move"):
             mock_run.return_value = mock_result
-            engine.inject_chapters(video_path, chapters)
+            engine.inject_chapters(video_path, chapters, job_id="test-job")
 
         cmd = mock_run.call_args[0][0]
         assert "-map_metadata" in cmd
