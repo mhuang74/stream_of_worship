@@ -261,7 +261,7 @@ def update_render_progress(
     if not row:
         return None
 
-    logger.info(
+    logger.debug(
         "Progress update for job %s: phase=%s (%d/%d), elapsed=%.1fs, percent=%.1f%%, est_remaining=%s",
         job_id,
         progress.phase,

@@ -367,15 +367,6 @@ class VideoEngine:
                 if progress_callback and frame_count % self.fps == 0:
                     progress_callback(frame_count, total_frames)
 
-                if frame_count % (self.fps * 30) == 0 and frame_count > 0:
-                    video_seconds = frame_count / self.fps
-                    logger.info(
-                        "[%s] Video encoding progress: %.0fs/%.0fs (%d/%d frames, %.1f%%)",
-                        job_id or "unknown", video_seconds, total_duration_seconds,
-                        frame_count, total_frames,
-                        frame_count / total_frames * 100 if total_frames > 0 else 0,
-                    )
-
             try:
                 process.stdin.close()
             except BrokenPipeError:

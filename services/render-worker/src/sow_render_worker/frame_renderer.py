@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Literal
 
 from PIL import Image, ImageDraw, ImageFont
@@ -95,17 +96,18 @@ _SANS_SERIF_FONT_PATHS = [
 ]
 
 
+@lru_cache(maxsize=32)
 def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for path in _SANS_SERIF_FONT_PATHS:
         try:
             font = ImageFont.truetype(path, size)
-            logger.info("Loaded font: %s (size=%d)", path, size)
+            logger.debug("Loaded font: %s (size=%d)", path, size)
             return font
         except (OSError, IOError):
             continue
     try:
         font = ImageFont.truetype("sans-serif", size)
-        logger.info("Loaded font: sans-serif (size=%d)", size)
+        logger.debug("Loaded font: sans-serif (size=%d)", size)
         return font
     except (OSError, IOError):
         font = ImageFont.load_default(size=size)

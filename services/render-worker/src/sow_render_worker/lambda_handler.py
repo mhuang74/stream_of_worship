@@ -8,7 +8,7 @@ from sow_render_worker.db import get_connection
 from sow_render_worker.pipeline import execute_render_pipeline
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 
 
 def _process_record(record: dict, config, conn, context) -> None:
