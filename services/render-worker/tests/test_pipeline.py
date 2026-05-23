@@ -836,25 +836,66 @@ class TestExecuteRenderPipeline:
             mock_update.assert_not_called()
             mock_fail.assert_not_called()
 
-    def test_pipeline_rejects_zero_duration_items(self):
+    def test_pipeline_uses_fallback_estimate_when_duration_missing(self):
         job = _make_render_job()
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
         mock_uploader = _make_mock_uploader()
         items = [_make_songset_item(duration_seconds=None)]
+        audio_result = _make_audio_result(items)
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
              patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
-             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
 
-            with pytest.raises(ValueError, match="no valid duration_seconds"):
-                execute_render_pipeline(
-                    "job_abc123", 42, mock_conn,
-                    asset_fetcher=mock_fetcher,
-                    uploader=mock_uploader,
-                )
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve_class.return_value = mock_ve
 
-            mock_fail.assert_called_once()
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_fail.assert_not_called()
+
+    def test_pipeline_fallback_estimate_multiplies_by_item_count(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+        items = [_make_songset_item(duration_seconds=None) for _ in range(3)]
+        audio_result = _make_audio_result(items)
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve_class.return_value = mock_ve
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_fail.assert_not_called()

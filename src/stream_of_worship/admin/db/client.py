@@ -449,7 +449,7 @@ class DatabaseClient:
                     r2_audio_url = EXCLUDED.r2_audio_url,
                     r2_stems_url = EXCLUDED.r2_stems_url,
                     r2_lrc_url = EXCLUDED.r2_lrc_url,
-                    duration_seconds = EXCLUDED.duration_seconds,
+                    duration_seconds = COALESCE(EXCLUDED.duration_seconds, recordings.duration_seconds),
                     tempo_bpm = EXCLUDED.tempo_bpm,
                     musical_key = EXCLUDED.musical_key,
                     musical_mode = EXCLUDED.musical_mode,
@@ -549,6 +549,19 @@ class DatabaseClient:
         if row:
             return Recording.from_row(tuple(row))
         return None
+
+    def get_recordings_without_duration(self) -> list[Recording]:
+        """Get all recordings where duration_seconds is NULL.
+
+        Returns:
+            List of Recording objects with NULL duration_seconds.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT * FROM recordings WHERE duration_seconds IS NULL AND deleted_at IS NULL",
+        )
+        rows = cursor.fetchall()
+        return [Recording.from_row(tuple(row)) for row in rows]
 
     def list_recordings(
         self,
@@ -932,6 +945,52 @@ class DatabaseClient:
             """
 
             cursor.execute(sql, (youtube_url, hash_prefix))
+
+    def update_recording_duration(
+        self,
+        hash_prefix: str,
+        duration_seconds: float,
+    ) -> None:
+        """Update duration_seconds for a recording.
+
+        Args:
+            hash_prefix: The hash prefix of the recording.
+            duration_seconds: The probed audio duration in seconds.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings SET
+                    duration_seconds = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
+                """,
+                (duration_seconds, hash_prefix),
+            )
+
+    def update_recording_r2_url(
+        self,
+        hash_prefix: str,
+        r2_audio_url: str,
+    ) -> None:
+        """Update r2_audio_url for a recording.
+
+        Args:
+            hash_prefix: The hash prefix of the recording.
+            r2_audio_url: The R2 URL for the audio file.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings SET
+                    r2_audio_url = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
+                """,
+                (r2_audio_url, hash_prefix),
+            )
 
     def update_recording_visibility(
         self,
