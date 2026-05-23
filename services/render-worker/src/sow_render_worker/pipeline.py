@@ -229,6 +229,11 @@ def execute_render_pipeline(
 
         check_lambda_timeout()
 
+        logger.info(
+            "[%s] Pipeline started: resolution=%s, video=%s, audio=%s, items=%d",
+            job_id, job.resolution, job.video_enabled, job.audio_enabled, 0,
+        )
+
         update_render_progress(
             conn,
             job_id,
@@ -238,7 +243,13 @@ def execute_render_pipeline(
                 phase_index=0,
                 total_phases=len(PHASES),
                 elapsed_seconds=0,
+                percent_complete=0.0,
+                estimated_seconds_left=None,
             ),
+        )
+        logger.info(
+            "[%s] Phase 1/%d: %s (elapsed=%.1fs)",
+            job_id, len(PHASES), PHASES[0], elapsed_seconds(),
         )
 
         check_cancelled()
@@ -251,8 +262,9 @@ def execute_render_pipeline(
         if total_duration_seconds <= 0:
             total_duration_seconds = 180.0 * len(items)
             logger.warning(
-                "Songset items have no valid duration_seconds — "
+                "[%s] Songset items have no valid duration_seconds — "
                 "using rough estimate of %.0fs (%d items × 180s/item)",
+                job_id,
                 total_duration_seconds,
                 len(items),
             )
@@ -272,15 +284,29 @@ def execute_render_pipeline(
                 estimated_total_seconds=estimated_total_seconds,
                 total_duration_seconds=total_duration_seconds,
                 elapsed_seconds=elapsed_seconds(),
+                percent_complete=(1 / len(PHASES)) * 100,
+                estimated_seconds_left=max(0, estimated_total_seconds - elapsed_seconds()) if estimated_total_seconds else None,
             ),
+        )
+        logger.info(
+            "[%s] Phase 2/%d: %s (elapsed=%.1fs)",
+            job_id, len(PHASES), PHASES[1], elapsed_seconds(),
         )
 
         audio_output_path = str(Path(temp_dir) / "output.mp3")
+
+        def audio_progress_callback(step: int, total_steps: int) -> None:
+            logger.info(
+                "[%s] Audio mixing: step %d/%d (%d%%)",
+                job_id, step, total_steps, int(step / total_steps * 100) if total_steps > 0 else 0,
+            )
 
         audio_result = generate_songset_audio(
             items,
             audio_output_path,
             asset_fetcher,
+            progress_callback=audio_progress_callback,
+            job_id=job_id,
         )
 
         if not Path(audio_output_path).exists():
@@ -307,7 +333,13 @@ def execute_render_pipeline(
                 total_duration_seconds=accurate_total_duration,
                 estimated_total_seconds=accurate_estimated_total,
                 elapsed_seconds=elapsed_seconds(),
+                percent_complete=(2 / len(PHASES)) * 100,
+                estimated_seconds_left=max(0, accurate_estimated_total - elapsed_seconds()) if accurate_estimated_total else None,
             ),
+        )
+        logger.info(
+            "[%s] Phase 3/%d: %s (elapsed=%.1fs)",
+            job_id, len(PHASES), PHASES[2], elapsed_seconds(),
         )
 
         video_output_path: str | None = None
@@ -334,14 +366,71 @@ def execute_render_pipeline(
                     phase_index=3,
                     total_phases=len(PHASES),
                     elapsed_seconds=elapsed_seconds(),
+                    percent_complete=(3 / len(PHASES)) * 100,
+                    estimated_seconds_left=max(0, accurate_estimated_total - elapsed_seconds()) if accurate_estimated_total else None,
                 ),
             )
+            logger.info(
+                "[%s] Phase 4/%d: %s (elapsed=%.1fs)",
+                job_id, len(PHASES), PHASES[3], elapsed_seconds(),
+            )
+
+            _last_video_progress_log_seconds = 0.0
+            _last_video_db_update_time = pipeline_start
+            _job_no_longer_running = False
+
+            encoding_video_phase_index = PHASES.index("encoding_video")
+
+            def video_progress_callback(frame_count: int, total_frames: int) -> None:
+                nonlocal _last_video_progress_log_seconds, _last_video_db_update_time, _job_no_longer_running
+
+                if _job_no_longer_running:
+                    return
+
+                now = time.monotonic()
+                video_seconds = frame_count / video_engine.fps
+                total_video_seconds = total_frames / video_engine.fps
+
+                if video_seconds - _last_video_progress_log_seconds >= 30:
+                    logger.info(
+                        "[%s] Video encoding: %.0fs/%.0fs (%d/%d frames, %.1f%%)",
+                        job_id, video_seconds, total_video_seconds,
+                        frame_count, total_frames,
+                        frame_count / total_frames * 100 if total_frames > 0 else 0,
+                    )
+                    _last_video_progress_log_seconds = video_seconds
+
+                if now - _last_video_db_update_time >= 5:
+                    phase_base = encoding_video_phase_index / len(PHASES) * 100
+                    phase_weight = 1 / len(PHASES) * 100
+                    frame_progress = frame_count / total_frames if total_frames > 0 else 0
+                    current_percent = phase_base + frame_progress * phase_weight
+
+                    result = update_render_progress(
+                        conn,
+                        job_id,
+                        user_id,
+                        RenderProgress(
+                            phase=PHASES[3],
+                            phase_index=3,
+                            total_phases=len(PHASES),
+                            elapsed_seconds=elapsed_seconds(),
+                            percent_complete=current_percent,
+                            estimated_seconds_left=max(0, accurate_estimated_total - elapsed_seconds()) if accurate_estimated_total else None,
+                        ),
+                    )
+                    if result is None:
+                        _job_no_longer_running = True
+                        return
+                    _last_video_db_update_time = now
 
             video_engine.generate_video(
                 audio_output_path,
                 list(audio_result.segments),
                 video_output_path,
+                progress_callback=video_progress_callback,
                 timeout_check_callback=check_lambda_timeout,
+                job_id=job_id,
             )
 
             chapters_for_video = [
@@ -349,7 +438,7 @@ def execute_render_pipeline(
                 for i, seg in enumerate(audio_result.segments)
             ]
             if chapters_for_video:
-                video_engine.inject_chapters(video_output_path, chapters_for_video)
+                video_engine.inject_chapters(video_output_path, chapters_for_video, job_id=job_id)
 
             check_cancelled()
 
@@ -370,7 +459,13 @@ def execute_render_pipeline(
                 phase_index=4,
                 total_phases=len(PHASES),
                 elapsed_seconds=elapsed_seconds(),
+                percent_complete=(4 / len(PHASES)) * 100,
+                estimated_seconds_left=max(0, accurate_estimated_total - elapsed_seconds()) if accurate_estimated_total else None,
             ),
+        )
+        logger.info(
+            "[%s] Phase 5/%d: %s (elapsed=%.1fs)",
+            job_id, len(PHASES), PHASES[4], elapsed_seconds(),
         )
 
         upload_result = uploader.upload_render_artifacts(
@@ -382,6 +477,8 @@ def execute_render_pipeline(
             ),
         )
 
+        logger.info("[%s] Pipeline completed in %.1fs", job_id, elapsed_seconds())
+
         complete_render_job(
             conn,
             job_id,
@@ -392,7 +489,7 @@ def execute_render_pipeline(
         )
 
     except PipelineCancelledError:
-        logger.info("Render job %s was cancelled, skipping failure marking", job_id)
+        logger.info("[%s] Render job was cancelled, skipping failure marking", job_id)
         return
 
     except Exception as exc:
@@ -401,11 +498,11 @@ def execute_render_pipeline(
             return
 
         error_message = str(exc) if exc else "Unknown render error"
-        logger.error("Render pipeline failed for job %s: %s", job_id, error_message)
+        logger.error("[%s] Render pipeline failed: %s", job_id, error_message)
         try:
             fail_render_job(conn, job_id, user_id, error_message)
         except Exception as fail_exc:
-            logger.error("Failed to mark job %s as failed: %s", job_id, fail_exc)
+            logger.error("[%s] Failed to mark job as failed: %s", job_id, fail_exc)
 
         raise
 
@@ -413,4 +510,4 @@ def execute_render_pipeline(
         try:
             asset_fetcher.cleanup_temp()
         except Exception as cleanup_err:
-            logger.warning("Temp cleanup failed for job %s: %s", job_id, cleanup_err)
+            logger.warning("[%s] Temp cleanup failed: %s", job_id, cleanup_err)

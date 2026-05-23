@@ -19,6 +19,7 @@ from sow_render_worker.pipeline import (
     get_render_ratio,
     PHASES,
 )
+from sow_render_worker.db import update_render_progress
 from sow_render_worker.uploader import UploadArtifactsResult
 
 
@@ -684,6 +685,156 @@ class TestExecuteRenderPipeline:
             assert "rendering_frames" in phases_seen
             assert "encoding_video" in phases_seen
             assert "uploading" in phases_seen
+
+            progress_objs = [call[0][3] for call in mock_update.call_args_list]
+            for p in progress_objs:
+                if p.phase_index is not None:
+                    assert p.percent_complete is not None
+                    assert p.percent_complete == (p.phase_index / len(PHASES)) * 100
+
+    def test_pipeline_video_progress_callback_updates_percent_complete(self):
+        job = _make_render_job()
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        def fake_generate_video(audio_path, segments, output_path, progress_callback=None, timeout_check_callback=None, job_id=None):
+            if progress_callback:
+                progress_callback(1500, 3000)
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls, \
+             patch("sow_render_worker.pipeline.time") as mock_time:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve.fps = 30
+            mock_ve.generate_video = MagicMock(side_effect=fake_generate_video)
+            mock_ve_class.return_value = mock_ve
+
+            mock_time.monotonic.side_effect = [0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            encoding_video_calls = [
+                call for call in mock_update.call_args_list
+                if call[0][3].phase == "encoding_video"
+            ]
+            assert len(encoding_video_calls) >= 1
+
+            callback_progress = encoding_video_calls[-1][0][3]
+            phase_base = PHASES.index("encoding_video") / len(PHASES) * 100
+            phase_weight = 1 / len(PHASES) * 100
+            expected_percent = phase_base + 0.5 * phase_weight
+            assert abs(callback_progress.percent_complete - expected_percent) < 0.01
+
+    def test_pipeline_estimated_seconds_left_at_each_phase(self):
+        job = _make_render_job()
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve_class.return_value = mock_ve
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            for call in mock_update.call_args_list:
+                progress = call[0][3]
+                if progress.phase_index is not None and progress.phase_index > 0:
+                    assert progress.estimated_seconds_left is not None
+                    assert progress.estimated_seconds_left >= 0
+
+    def test_pipeline_video_progress_callback_stops_when_job_not_running(self):
+        job = _make_render_job()
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        def fake_generate_video(audio_path, segments, output_path, progress_callback=None, timeout_check_callback=None, job_id=None):
+            if progress_callback:
+                progress_callback(500, 3000)
+                progress_callback(1000, 3000)
+                progress_callback(1500, 3000)
+
+        encoding_callback_count = [0]
+
+        def mock_update_side_effect(conn, job_id, user_id, progress):
+            if progress.phase == "encoding_video":
+                encoding_callback_count[0] += 1
+                if encoding_callback_count[0] >= 2:
+                    return None
+            return MagicMock()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress", side_effect=mock_update_side_effect) as mock_update, \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls, \
+             patch("sow_render_worker.pipeline.time") as mock_time:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve.fps = 30
+            mock_ve.generate_video = MagicMock(side_effect=fake_generate_video)
+            mock_ve_class.return_value = mock_ve
+
+            mock_time.monotonic.side_effect = [0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            encoding_video_update_calls = [
+                call for call in mock_update.call_args_list
+                if call[0][3].phase == "encoding_video"
+            ]
+            assert len(encoding_video_update_calls) == 2
+            assert encoding_callback_count[0] == 2
 
     def test_pipeline_fail_render_job_error_is_swallowed(self):
         job = _make_render_job()
