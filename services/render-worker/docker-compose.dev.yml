@@ -9,7 +9,7 @@ services:
       - ./src/sow_render_worker:/var/task/sow_render_worker
     environment:
       AWS_LAMBDA_FUNCTION_TIMEOUT: "900"
-      AWS_LAMBDA_FUNCTION_MEMORY_SIZE: "6144"
+      AWS_LAMBDA_FUNCTION_MEMORY_SIZE: "3008"
       SOW_DATABASE_URL: ${SOW_DATABASE_URL}
       SOW_R2_BUCKET: ${SOW_R2_BUCKET}
       SOW_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
