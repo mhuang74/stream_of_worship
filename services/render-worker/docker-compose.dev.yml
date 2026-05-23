@@ -1,0 +1,17 @@
+services:
+  render-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9000:8080"
+    volumes:
+      - ./src/sow_render_worker:/var/task/sow_render_worker
+    environment:
+      SOW_DATABASE_URL: ${SOW_DATABASE_URL}
+      SOW_R2_BUCKET: ${SOW_R2_BUCKET}
+      SOW_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
+      SOW_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
+      SOW_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
+      SOW_AWS_REGION: ${SOW_AWS_REGION:-us-west-2}
+      SOW_SQS_QUEUE_URL: ${SOW_SQS_QUEUE_URL}
