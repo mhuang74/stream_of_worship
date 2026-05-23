@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def _process_record(record: dict, config, conn) -> None:
+def _process_record(record: dict, config, conn, context) -> None:
     body = record.get("body", "{}")
     try:
         record_data = json.loads(body)
@@ -67,7 +67,7 @@ def handler(event, context):
                     conn.rollback()
                 except Exception:
                     pass
-                _process_record(record, config, conn)
+                _process_record(record, config, conn, context)
             except Exception as exc:
                 logger.error(
                     "Failed to process SQS record %s: %s",
