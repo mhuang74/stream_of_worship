@@ -203,6 +203,43 @@ curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
 docker compose down
 ```
 
+## Local Development with REST Mode
+
+For local development without an SQS queue, you can invoke the render worker directly via its Lambda RIE endpoint. This is useful when you want to test the full render pipeline without setting up AWS SQS.
+
+### Setup
+
+1. **Terminal 1: Start the render worker**
+   ```bash
+   cd services/render-worker && docker compose up --build
+   ```
+
+2. **Terminal 2: Start the webapp with REST mode**
+   ```bash
+   cd webapp
+   SOW_RENDER_WORKER_MODE=rest pnpm dev
+   ```
+
+### How It Works
+
+When `SOW_RENDER_WORKER_MODE=rest`, the webapp:
+1. Creates the render job in the database (status: "queued")
+2. Sends a POST request to the Lambda RIE endpoint (`http://localhost:9000/2015-03-31/functions/function/invocations`)
+3. The request payload is wrapped in SQS `Records` format, so the Lambda handler works unchanged
+4. The API route **blocks** until the Lambda completes (video renders take 4+ minutes)
+5. The browser polls the database for progress via SSE, just like in production
+
+### Concurrency Note
+
+REST mode sends all jobs to a single Docker container with no concurrency limit. For local development with a single user, this is fine. If the container crashes (e.g., OOM), orphan recovery will mark the job as failed after 30 minutes.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOW_RENDER_WORKER_MODE` | `sqs` | Set to `rest` for local dev without SQS |
+| `SOW_RENDER_WORKER_REST_URL` | `http://localhost:9000/2015-03-31/functions/function/invocations` | RIE endpoint URL |
+
 ## Module Reference
 
 | Module | Description |

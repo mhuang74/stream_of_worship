@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
-import { createSQSClientFromEnv } from "@/lib/sqs/client";
+import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
 import { z } from "zod";
 
 const createRenderJobSchema = z.object({
@@ -38,21 +38,20 @@ export async function POST(request: NextRequest) {
     const job = await createRenderJob(Number(session.user.id), parsed.data);
 
     try {
-      const sqsClient = createSQSClientFromEnv();
-      await sqsClient.sendMessage({
+      await dispatchToRenderWorker({
         jobId: job.id,
         songsetId: job.songsetId,
         userId: Number(session.user.id),
       });
-    } catch (sqsError) {
-      console.error("Failed to enqueue render job to SQS:", sqsError);
+    } catch (dispatchError) {
+      console.error("Failed to dispatch render job to worker:", dispatchError);
       try {
-        await failRenderJob(job.id, Number(session.user.id), "Failed to enqueue render job to SQS");
+        await failRenderJob(job.id, Number(session.user.id), "Failed to dispatch render job to worker");
       } catch (cleanupError) {
         console.error("Failed to mark orphaned job as failed:", cleanupError);
       }
       return NextResponse.json(
-        { error: "Failed to enqueue render job" },
+        { error: "Failed to dispatch render job" },
         { status: 500 }
       );
     }
