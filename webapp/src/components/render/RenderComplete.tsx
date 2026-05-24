@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -12,7 +13,7 @@ import {
   Timer,
 } from "lucide-react"
 import { toast } from "sonner"
-import { sanitizeFilename, downloadArtifact } from "@/lib/download"
+import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download"
 
 interface RenderCompleteProps {
   jobId: string
@@ -46,32 +47,18 @@ export function RenderComplete({
   onDone,
   onShare,
 }: RenderCompleteProps) {
-  const handleDownloadFile = async (
+  const handleDownloadFile = useCallback(async (
     fileType: "audio" | "video" | "json",
     extension: string,
   ) => {
     const toastId = toast.loading("Preparing download...");
-    const controller = new AbortController();
-
     try {
-      const filename = sanitizeFilename(songsetName);
-      const disposition = `attachment; filename="${filename}.${extension}"`;
-      const res = await fetch(
-        `/api/signed-url?renderJobId=${encodeURIComponent(jobId)}` +
-          `&fileType=${fileType}` +
-          `&contentDisposition=${encodeURIComponent(disposition)}`,
-        { signal: controller.signal }
-      );
-      if (!res.ok) throw new Error("Failed to get download URL");
-      const { url } = await res.json();
-
-      downloadArtifact(url);
+      await fetchSignedUrlAndDownload(jobId, fileType, sanitizeFilename(songsetName), extension);
       toast.success("Download started", { id: toastId });
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      toast.error("Download failed", { id: toastId });
+      toast.error(err instanceof Error ? err.message : "Download failed", { id: toastId });
     }
-  };
+  }, [jobId, songsetName]);
 
   const handleShare = async () => {
     if (navigator.share) {

@@ -9,7 +9,7 @@ import { SongListItem } from "@/components/songset/SongList";
 import { RenderState } from "@/components/songset/RenderStateButton";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
-import { downloadArtifact, sanitizeFilename } from "@/lib/download";
+import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 
 interface ApiSongset {
   id: string;
@@ -339,54 +339,34 @@ export default function SongsetEditorPage() {
   // Handle download audio
   const handleDownloadAudio = useCallback(async () => {
     if (!songset?.latestRenderJobId) return;
-
     const toastId = toast.loading("Preparing download...");
-    const controller = new AbortController();
-
     try {
-      const filename = sanitizeFilename(songset.name);
-      const disposition = `attachment; filename="${filename}.mp3"`;
-      const res = await fetch(
-        `/api/signed-url?renderJobId=${encodeURIComponent(songset.latestRenderJobId)}` +
-          `&fileType=audio` +
-          `&contentDisposition=${encodeURIComponent(disposition)}`,
-        { signal: controller.signal }
+      await fetchSignedUrlAndDownload(
+        songset.latestRenderJobId,
+        "audio",
+        sanitizeFilename(songset.name),
+        "mp3"
       );
-      if (!res.ok) throw new Error("Failed to get download URL");
-      const { url } = await res.json();
-
-      downloadArtifact(url);
       toast.success("Download started", { id: toastId });
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      toast.error("Failed to download audio", { id: toastId });
+      toast.error(err instanceof Error ? err.message : "Failed to download audio", { id: toastId });
     }
   }, [songset]);
 
   // Handle download video
   const handleDownloadVideo = useCallback(async () => {
     if (!songset?.latestRenderJobId) return;
-
     const toastId = toast.loading("Preparing download...");
-    const controller = new AbortController();
-
     try {
-      const filename = sanitizeFilename(songset.name);
-      const disposition = `attachment; filename="${filename}.mp4"`;
-      const res = await fetch(
-        `/api/signed-url?renderJobId=${encodeURIComponent(songset.latestRenderJobId)}` +
-          `&fileType=video` +
-          `&contentDisposition=${encodeURIComponent(disposition)}`,
-        { signal: controller.signal }
+      await fetchSignedUrlAndDownload(
+        songset.latestRenderJobId,
+        "video",
+        sanitizeFilename(songset.name),
+        "mp4"
       );
-      if (!res.ok) throw new Error("Failed to get download URL");
-      const { url } = await res.json();
-
-      downloadArtifact(url);
       toast.success("Download started", { id: toastId });
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      toast.error("Failed to download video", { id: toastId });
+      toast.error(err instanceof Error ? err.message : "Failed to download video", { id: toastId });
     }
   }, [songset]);
 
