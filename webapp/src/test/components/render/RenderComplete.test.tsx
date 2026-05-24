@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { RenderComplete } from "@/components/render/RenderComplete"
+import { fetchSignedUrlAndDownload } from "@/lib/download"
 
 vi.mock("sonner", () => ({
   toast: {
@@ -13,6 +14,7 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/download", () => ({
   sanitizeFilename: (name: string) => name.toLowerCase().replace(/\s+/g, "-"),
   downloadArtifact: vi.fn(),
+  fetchSignedUrlAndDownload: vi.fn(),
 }))
 
 describe("RenderComplete", () => {
@@ -30,17 +32,8 @@ describe("RenderComplete", () => {
     onShare: mockShare,
   }
 
-  let fetchMock: ReturnType<typeof vi.fn>
-
   beforeEach(async () => {
     vi.clearAllMocks()
-    
-    fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ url: "https://r2.example.com/signed-url" }),
-    })
-    
-    vi.stubGlobal("fetch", fetchMock)
   })
 
   afterEach(() => {
@@ -119,7 +112,7 @@ describe("RenderComplete", () => {
       expect(screen.getByRole("button", { name: /download chapters/i })).toBeInTheDocument()
     })
 
-    it("calls handleDownloadFile when audio button clicked", async () => {
+    it("calls fetchSignedUrlAndDownload when audio button clicked", async () => {
       render(<RenderComplete {...defaultProps} hasAudio={true} />)
       
       const downloadButton = screen.getByRole("button", { name: /download audio/i })
@@ -129,14 +122,19 @@ describe("RenderComplete", () => {
       })
 
       await waitFor(() => {
-        expect(fetchMock).toHaveBeenCalled()
+        expect(fetchSignedUrlAndDownload).toHaveBeenCalledWith(
+          "test-job-id",
+          "audio",
+          "sunday-worship",
+          "mp3"
+        )
       })
     })
 
     it("shows error when signed URL fetch fails", async () => {
       const { toast } = await import("sonner")
       
-      fetchMock.mockRejectedValue(new Error("Network error"))
+      vi.mocked(fetchSignedUrlAndDownload).mockRejectedValue(new Error("Network error"))
       
       render(<RenderComplete {...defaultProps} hasAudio={true} />)
       
@@ -147,7 +145,7 @@ describe("RenderComplete", () => {
       })
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Download failed", { id: "toast-id" })
+        expect(toast.error).toHaveBeenCalledWith("Network error", { id: "toast-id" })
       })
     })
   })
