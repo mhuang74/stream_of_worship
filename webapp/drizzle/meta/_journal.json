@@ -50,6 +50,13 @@
       "when": 1779250000000,
       "tag": "0006_add_songs_search_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779625440433,
+      "tag": "0007_goofy_shadow_king",
+      "breakpoints": true
     }
   ]
 }
