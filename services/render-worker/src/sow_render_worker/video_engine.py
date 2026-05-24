@@ -70,6 +70,8 @@ class VideoEngine:
         fps: int = 24,
         include_title_card: bool = True,
         title_card_duration_seconds: float = 5.0,
+        title_card_lines: list[str] | None = None,
+        songset_name: str = "",
         ffmpeg_path: str | None = None,
         ffprobe_path: str | None = None,
     ):
@@ -80,6 +82,8 @@ class VideoEngine:
         self.fps = fps
         self.include_title_card = include_title_card
         self.title_card_duration_seconds = max(5.0, min(title_card_duration_seconds, 30.0))
+        self.title_card_lines = title_card_lines
+        self.songset_name = songset_name
         self.ffmpeg_path = ffmpeg_path or self._find_ffmpeg()
         self.ffprobe_path = ffprobe_path or "ffprobe"
 
@@ -201,13 +205,17 @@ class VideoEngine:
 
         title_card_config: TitleCardConfig | None = None
         if self.include_title_card:
+            if self.title_card_lines:
+                title_lines = tuple(self.title_card_lines)
+            else:
+                song_titles = [seg.item.song_title for seg in segments if seg.item.song_title]
+                display_name = self.songset_name or "Worship Set"
+                title_lines = tuple([display_name] + song_titles) if song_titles else (display_name,)
+
             title_card_config = TitleCardConfig(
                 enabled=True,
                 duration_seconds=total_duration_seconds,
-                songset_name=(
-                    (segments[0].item.song_title or "Worship Set") if segments else "Worship Set"
-                ),
-                song_count=len(segments),
+                lines=title_lines,
                 total_duration_seconds=total_duration_seconds,
             )
 

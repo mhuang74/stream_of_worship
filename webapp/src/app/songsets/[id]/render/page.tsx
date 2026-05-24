@@ -29,6 +29,7 @@ interface SongsetData {
   description: string | null
   markedLineCount: number
   renderState: RenderState
+  songTitles: string[]
 }
 
 interface RenderJobData {
@@ -91,6 +92,9 @@ export default function RenderPage() {
             0
           ) || 0,
           renderState,
+          songTitles: data.items?.map((item: { song?: { title: string } | null }) =>
+            item.song?.title ?? "Unknown Song"
+          ) ?? [],
         })
 
         // Check if there's an active render job
@@ -110,6 +114,7 @@ export default function RenderPage() {
                 fontSizePreset: job.fontSizePreset as RenderFormData["fontSizePreset"],
                 includeTitleCard: job.includeTitleCard,
                 titleCardDurationSeconds: job.titleCardDurationSeconds,
+                titleCardLines: job.titleCardLines ?? [],
               })
             }
           }
@@ -149,6 +154,7 @@ export default function RenderPage() {
             fontSizePreset: formData.fontSizePreset,
             includeTitleCard: formData.includeTitleCard,
             titleCardDurationSeconds: formData.titleCardDurationSeconds,
+            titleCardLines: formData.titleCardLines.length > 0 ? formData.titleCardLines : undefined,
           }),
         })
 
@@ -261,6 +267,8 @@ export default function RenderPage() {
           <RenderForm
             songsetId={songsetId}
             markedLineCount={songset.markedLineCount}
+            songsetName={songset.name}
+            songTitles={songset.songTitles}
             initialData={initialData}
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/songsets/${songsetId}`)}

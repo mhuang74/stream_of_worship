@@ -235,6 +235,7 @@ export const renderJobs = pgTable("render_jobs", {
   fontSizePreset: text("font_size_preset").notNull().default("M"),
   includeTitleCard: boolean("include_title_card").notNull().default(false),
   titleCardDurationSeconds: real("title_card_duration_seconds").default(10),
+  titleCardLines: text("title_card_lines"),
 
   // Output R2 keys (set when render completes)
   mp3R2Key: text("mp3_r2_key"),

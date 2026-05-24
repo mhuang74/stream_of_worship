@@ -99,8 +99,18 @@ def get_render_ratio(
 def fetch_songset_items(
     conn: psycopg2.extensions.connection,
     songset_id: str,
-) -> list[SongsetItem]:
+) -> tuple[str, list[SongsetItem]]:
+    """
+    Returns: (songset_name, list of SongsetItem)
+    """
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT name FROM songsets WHERE id = %s",
+            (songset_id,),
+        )
+        songset_row = cur.fetchone()
+        songset_name = songset_row["name"] if songset_row else "Worship Set"
+
         cur.execute(
             "SELECT "
             "  si.id, "
@@ -125,7 +135,7 @@ def fetch_songset_items(
         )
         rows = cur.fetchall()
 
-    return [
+    items = [
         SongsetItem(
             id=row["id"],
             songset_id=row["songset_id"],
@@ -143,6 +153,8 @@ def fetch_songset_items(
         )
         for row in rows
     ]
+
+    return songset_name, items
 
 
 class PipelineCancelledError(Exception):
@@ -254,7 +266,7 @@ def execute_render_pipeline(
 
         check_cancelled()
 
-        items = fetch_songset_items(conn, job.songset_id)
+        songset_name, items = fetch_songset_items(conn, job.songset_id)
         if not items:
             raise ValueError("Songset has no items")
 
@@ -344,6 +356,7 @@ def execute_render_pipeline(
 
         video_output_path: str | None = None
         if job.video_enabled:
+            title_card_lines = job.title_card_lines if job.title_card_lines else None
             video_engine = VideoEngine(
                 asset_fetcher,
                 template=job.template,
@@ -351,6 +364,8 @@ def execute_render_pipeline(
                 resolution=job.resolution,
                 include_title_card=job.include_title_card,
                 title_card_duration_seconds=job.title_card_duration_seconds or 5.0,
+                title_card_lines=title_card_lines,
+                songset_name=songset_name,
             )
 
             video_output_path = str(Path(temp_dir) / "output.mp4")

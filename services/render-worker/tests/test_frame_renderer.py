@@ -165,8 +165,7 @@ class TestTitleCardConfig:
         c = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Test",
-            song_count=3,
+            lines=("Test", "Song 1", "Song 2"),
             total_duration_seconds=300.0,
         )
         with pytest.raises(AttributeError):
@@ -176,12 +175,10 @@ class TestTitleCardConfig:
         c = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="My Set",
-            song_count=5,
+            lines=("My Set", "Song 1", "Song 2", "Song 3"),
             total_duration_seconds=600.0,
         )
-        assert c.songset_name == "My Set"
-        assert c.song_count == 5
+        assert c.lines == ("My Set", "Song 1", "Song 2", "Song 3")
         assert c.total_duration_seconds == 600.0
 
 
@@ -519,8 +516,7 @@ class TestRenderTitleCard:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Test Set",
-            song_count=3,
+            lines=("Test Set", "Song 1", "Song 2", "Song 3"),
             total_duration_seconds=300.0,
         )
         result = renderer.render_title_card(config)
@@ -531,8 +527,7 @@ class TestRenderTitleCard:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Test Set",
-            song_count=3,
+            lines=("Test Set", "Song 1", "Song 2", "Song 3"),
             total_duration_seconds=300.0,
         )
         result = renderer.render_title_card(config)
@@ -543,8 +538,7 @@ class TestRenderTitleCard:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Test Set",
-            song_count=3,
+            lines=("Test Set", "Song 1", "Song 2", "Song 3"),
             total_duration_seconds=300.0,
         )
         result = renderer.render_title_card(config)
@@ -556,8 +550,7 @@ class TestRenderTitleCard:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Test Set",
-            song_count=3,
+            lines=("Test Set", "Song 1", "Song 2", "Song 3"),
             total_duration_seconds=125.0,
         )
         result = renderer.render_title_card(config)
@@ -568,8 +561,7 @@ class TestRenderTitleCard:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="讚美之泉詩歌集",
-            song_count=5,
+            lines=("讚美之泉詩歌集", "歌曲一", "歌曲二", "歌曲三", "歌曲四", "歌曲五"),
             total_duration_seconds=600.0,
         )
         result = renderer.render_title_card(config)
@@ -580,8 +572,7 @@ class TestRenderTitleCard:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Warm Set",
-            song_count=2,
+            lines=("Warm Set", "Song 1", "Song 2"),
             total_duration_seconds=180.0,
         )
         result = renderer.render_title_card(config)
@@ -623,8 +614,7 @@ class TestFrameRendererIntegration:
         config = TitleCardConfig(
             enabled=True,
             duration_seconds=5.0,
-            songset_name="Blue Set",
-            song_count=4,
+            lines=("Blue Set", "Song 1", "Song 2", "Song 3", "Song 4"),
             total_duration_seconds=240.0,
         )
         title_card = renderer.render_title_card(config)

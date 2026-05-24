@@ -48,8 +48,7 @@ class SegmentInfo:
 class TitleCardConfig:
     enabled: bool
     duration_seconds: float
-    songset_name: str
-    song_count: int
+    lines: tuple[str, ...]
     total_duration_seconds: float
 
 
@@ -424,31 +423,65 @@ class FrameRenderer:
 
         text_r, text_g, text_b = self.template.text_color
 
-        title_card_font_size_target = self.base_font_size * 2
-        margin = self.get_margin(draw, title_card_font_size_target)
-        title_card_font_size = self.fit_text(
-            draw, config.songset_name, title_card_font_size_target, width - margin * 2
-        )
-        font = self._get_font(title_card_font_size)
-        draw.text(
-            (width // 2, int(height * 0.4)),
-            config.songset_name,
-            fill=(text_r, text_g, text_b),
-            font=font,
-            anchor="mm",
-        )
+        if not config.lines:
+            return img
 
-        base_font = self._get_font(self.base_font_size)
-        duration_minutes = math.floor(config.total_duration_seconds / 60)
-        duration_seconds = math.floor(config.total_duration_seconds % 60)
-        duration_text = f"{duration_minutes}:{duration_seconds:02d}"
-        subtitle = f"{config.song_count} 首歌曲 · {duration_text}"
-        draw.text(
-            (width // 2, int(height * 0.55)),
-            subtitle,
-            fill=(text_r, text_g, text_b),
-            font=base_font,
-            anchor="mm",
-        )
+        margin = 40
+        min_body_font_size = 16
+        line_spacing_factor = 1.2
+        heading_gap_factor = 1.5
+
+        heading_font_size_target = self.base_font_size * 2
+        body_font_size_target = heading_font_size_target - 20
+
+        heading_font_size = heading_font_size_target
+        body_font_size = body_font_size_target
+
+        while True:
+            heading_font = self._get_font(heading_font_size)
+            body_font = self._get_font(body_font_size)
+
+            total_height = 0
+            for i, line in enumerate(config.lines):
+                font = heading_font if i == 0 else body_font
+                bbox = draw.textbbox((0, 0), line, font=font)
+                line_height = bbox[3] - bbox[1]
+                total_height += line_height
+                if i == 0 and len(config.lines) > 1:
+                    total_height += int(body_font_size * heading_gap_factor)
+                elif i > 0:
+                    total_height += int(body_font_size * line_spacing_factor)
+
+            if total_height <= height - margin * 2 or body_font_size <= min_body_font_size:
+                break
+
+            heading_font_size -= 2
+            body_font_size = max(min_body_font_size, heading_font_size - 20)
+
+        heading_font = self._get_font(heading_font_size)
+        body_font = self._get_font(body_font_size)
+
+        y_start = (height - total_height) // 2
+        current_y = y_start
+
+        for i, line in enumerate(config.lines):
+            font = heading_font if i == 0 else body_font
+            target_size = heading_font_size if i == 0 else body_font_size
+            fitted_size = self.fit_text(draw, line, target_size, width - margin * 2)
+            font = self._get_font(fitted_size)
+            draw.text(
+                (width // 2, current_y),
+                line,
+                fill=(text_r, text_g, text_b),
+                font=font,
+                anchor="mt",
+            )
+            bbox = draw.textbbox((0, 0), line, font=font)
+            line_height = bbox[3] - bbox[1]
+            current_y += line_height
+            if i == 0 and len(config.lines) > 1:
+                current_y += int(body_font_size * heading_gap_factor)
+            elif i > 0:
+                current_y += int(body_font_size * line_spacing_factor)
 
         return img
