@@ -188,34 +188,34 @@ describe(".env.production.example", () => {
     expect(fs.existsSync(ENV_EXAMPLE_PATH)).toBe(true);
   });
 
-  it("documents DATABASE_URL", () => {
+  it("documents SOW_DATABASE_URL", () => {
     const content = readEnvExample();
-    expect(content).toContain("DATABASE_URL=");
+    expect(content).toContain("SOW_DATABASE_URL=");
   });
 
-  it("documents R2_ACCOUNT_ID", () => {
+  it("documents SOW_R2_ENDPOINT_URL", () => {
     const content = readEnvExample();
-    expect(content).toContain("R2_ACCOUNT_ID=");
+    expect(content).toContain("SOW_R2_ENDPOINT_URL=");
   });
 
-  it("documents R2_ACCESS_KEY_ID", () => {
+  it("documents SOW_R2_ACCESS_KEY_ID", () => {
     const content = readEnvExample();
-    expect(content).toContain("R2_ACCESS_KEY_ID=");
+    expect(content).toContain("SOW_R2_ACCESS_KEY_ID=");
   });
 
-  it("documents R2_SECRET_ACCESS_KEY", () => {
+  it("documents SOW_R2_SECRET_ACCESS_KEY", () => {
     const content = readEnvExample();
-    expect(content).toContain("R2_SECRET_ACCESS_KEY=");
+    expect(content).toContain("SOW_R2_SECRET_ACCESS_KEY=");
   });
 
-  it("documents R2_BUCKET_NAME", () => {
+  it("documents SOW_R2_BUCKET", () => {
     const content = readEnvExample();
-    expect(content).toContain("R2_BUCKET_NAME=");
+    expect(content).toContain("SOW_R2_BUCKET=");
   });
 
-  it("documents R2_PUBLIC_DOMAIN", () => {
+  it("documents NEXT_PUBLIC_R2_PUBLIC_DOMAIN", () => {
     const content = readEnvExample();
-    expect(content).toContain("R2_PUBLIC_DOMAIN=");
+    expect(content).toContain("NEXT_PUBLIC_R2_PUBLIC_DOMAIN=");
   });
 
   it("documents BETTER_AUTH_SECRET", () => {
@@ -238,29 +238,29 @@ describe(".env.production.example", () => {
     expect(content).toContain("NEXT_PUBLIC_BASE_URL=");
   });
 
-  it("documents AWS_REGION", () => {
+  it("documents SOW_AWS_REGION", () => {
     const content = readEnvExample();
-    expect(content).toContain("AWS_REGION=");
+    expect(content).toContain("SOW_AWS_REGION=");
   });
 
-  it("documents SQS_QUEUE_URL", () => {
+  it("documents SOW_SQS_QUEUE_URL", () => {
     const content = readEnvExample();
-    expect(content).toContain("SQS_QUEUE_URL=");
+    expect(content).toContain("SOW_SQS_QUEUE_URL=");
   });
 
-  it("documents AWS_ACCESS_KEY_ID", () => {
+  it("documents SOW_AWS_ACCESS_KEY_ID", () => {
     const content = readEnvExample();
-    expect(content).toContain("AWS_ACCESS_KEY_ID=");
+    expect(content).toContain("SOW_AWS_ACCESS_KEY_ID=");
   });
 
-  it("documents AWS_SECRET_ACCESS_KEY", () => {
+  it("documents SOW_AWS_SECRET_ACCESS_KEY", () => {
     const content = readEnvExample();
-    expect(content).toContain("AWS_SECRET_ACCESS_KEY=");
+    expect(content).toContain("SOW_AWS_SECRET_ACCESS_KEY=");
   });
 
-  it("documents SQS_ENDPOINT_URL", () => {
+  it("documents SOW_SQS_ENDPOINT_URL", () => {
     const content = readEnvExample();
-    expect(content).toContain("SQS_ENDPOINT_URL=");
+    expect(content).toContain("SOW_SQS_ENDPOINT_URL=");
   });
 });
 

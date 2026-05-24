@@ -51,21 +51,21 @@ export class SQSClient {
 }
 
 export function createSQSClientFromEnv(): SQSClient {
-  const region = process.env.AWS_REGION;
-  const queueUrl = process.env.SQS_QUEUE_URL;
-  const endpoint = process.env.SQS_ENDPOINT_URL;
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const region = process.env.SOW_AWS_REGION;
+  const queueUrl = process.env.SOW_SQS_QUEUE_URL;
+  const endpoint = process.env.SOW_SQS_ENDPOINT_URL;
+  const accessKeyId = process.env.SOW_AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.SOW_AWS_SECRET_ACCESS_KEY;
 
   if (!region) {
     throw new Error(
-      "AWS_REGION environment variable is required for SQS client"
+      "SOW_AWS_REGION environment variable is required for SQS client"
     );
   }
 
   if (!queueUrl) {
     throw new Error(
-      "SQS_QUEUE_URL environment variable is required for SQS client"
+      "SOW_SQS_QUEUE_URL environment variable is required for SQS client"
     );
   }
 

@@ -14,9 +14,9 @@ Web application for rendering worship music transitions with synchronized lyrics
 
 Copy `.env.example` to `.env.local` and configure:
 
-- `DATABASE_URL` — PostgreSQL connection string
-- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` — Cloudflare R2 credentials
-- `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — AWS SQS credentials for render job queue
+- `SOW_DATABASE_URL` — PostgreSQL connection string
+- `SOW_R2_ENDPOINT_URL`, `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`, `SOW_R2_BUCKET` — Cloudflare R2 credentials
+- `SOW_AWS_REGION`, `SOW_SQS_QUEUE_URL`, `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY` — AWS SQS credentials for render job queue
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` — Better Auth configuration
 - `NEXT_PUBLIC_BASE_URL` — Base URL of the app (for share links)
 - `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` — (optional) Google Cast SDK receiver app ID
@@ -36,7 +36,7 @@ pnpm build        # Production build
 ## Database Migrations
 
 ```bash
-psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+psql "$SOW_DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 npx drizzle-kit push       # Push schema changes to DB
 npx drizzle-kit generate   # Generate migration files
 npx drizzle-kit migrate    # Run pending migrations
