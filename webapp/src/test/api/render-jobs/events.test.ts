@@ -73,6 +73,11 @@ const mockRunningJob = {
   startedAt: new Date(FAKE_NOW.getTime() - 30000),
 };
 
+// NOTE: This SSE route has maxDuration: 60 on Vercel (serverless function timeout).
+// For renders that take longer than ~60s, the SSE connection will drop.
+// The client (RenderProgress.tsx) uses REST polling as the primary transport
+// and treats SSE as an optional enhancement.
+
 describe("GET /api/render-jobs/[id]/events (SSE)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

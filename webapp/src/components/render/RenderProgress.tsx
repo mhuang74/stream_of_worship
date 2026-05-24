@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, X, AlertCircle } from "lucide-react"
 
+const POLL_INTERVAL_MS = 2000
+const SSE_FALLBACK_POLL_INTERVAL_MS = 5000
+const MAX_POLL_INTERVAL_MS = 30000
 const STALE_PROGRESS_THRESHOLD_MINUTES = 10
 
 export type RenderPhase =
@@ -53,6 +56,27 @@ function formatDuration(seconds: number): string {
   return `${minutes}m ${remainingSeconds}s`
 }
 
+function checkStaleProgress(
+  data: RenderProgressData,
+  lastElapsedRef: React.MutableRefObject<number | null>,
+  lastChangeTimeRef: React.MutableRefObject<number | null>,
+  setStaleWarning: (msg: string | null) => void,
+) {
+  if (data.elapsedSeconds !== lastElapsedRef.current) {
+    lastElapsedRef.current = data.elapsedSeconds
+    lastChangeTimeRef.current = Date.now()
+    setStaleWarning(null)
+  } else if (lastChangeTimeRef.current !== null) {
+    const minutesSinceChange = (Date.now() - lastChangeTimeRef.current) / 60000
+    if (minutesSinceChange > STALE_PROGRESS_THRESHOLD_MINUTES) {
+      setStaleWarning(
+        `Progress hasn't updated in ${Math.round(minutesSinceChange)} minutes. ` +
+        `The render may be stuck. You can cancel and try again.`
+      )
+    }
+  }
+}
+
 export function RenderProgress({
   jobId,
   onComplete,
@@ -64,21 +88,29 @@ export function RenderProgress({
   const [isCancelling, setIsCancelling] = useState(false)
   const [staleWarning, setStaleWarning] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
-  const lastElapsedRef = useRef<number>(0)
+  const lastElapsedRef = useRef<number | null>(null)
   const lastChangeTimeRef = useRef<number | null>(null)
+
+  const onCompleteRef = useRef(onComplete)
+  const onErrorRef = useRef(onError)
+  const onCancelRef = useRef(onCancel)
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+    onErrorRef.current = onError
+    onCancelRef.current = onCancel
+  })
 
   const handleCancel = useCallback(async () => {
     if (isCancelling) return
-    
+
     setIsCancelling(true)
     try {
-      // Close SSE connection first
       if (eventSourceRef.current) {
         eventSourceRef.current.close()
         eventSourceRef.current = null
       }
 
-      // Send cancel request
       const response = await fetch(`/api/render-jobs/${jobId}`, {
         method: "DELETE",
       })
@@ -95,21 +127,68 @@ export function RenderProgress({
   }, [jobId, onCancel, isCancelling])
 
   useEffect(() => {
-    let retryCount = 0
-    const maxRetries = 3
-    let retryTimeout: NodeJS.Timeout
+    let pollInterval: ReturnType<typeof setInterval>
+    let consecutiveFailures = 0
+    const abortController = new AbortController()
 
-    const connectSSE = () => {
-      // Close existing connection
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
+    const getPollInterval = () =>
+      Math.min(POLL_INTERVAL_MS * Math.pow(2, consecutiveFailures), MAX_POLL_INTERVAL_MS)
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/render-jobs/${jobId}`, {
+          signal: abortController.signal,
+        })
+        if (!response.ok) throw new Error("Failed to fetch job status")
+        const data = await response.json()
+
+        consecutiveFailures = 0
+
+        const progressData: RenderProgressData = {
+          phase: data.phase ?? "preparing",
+          phaseIndex: data.phaseIndex ?? 0,
+          totalPhases: data.totalPhases ?? 5,
+          estimatedTotalSeconds: data.estimatedTotalSeconds ?? 0,
+          elapsedSeconds: data.elapsedSeconds ?? 0,
+          status: data.status,
+          errorMessage: data.errorMessage,
+        }
+        setProgress(progressData)
+
+        checkStaleProgress(progressData, lastElapsedRef, lastChangeTimeRef, setStaleWarning)
+
+        if (data.status === "completed") {
+          onCompleteRef.current()
+          clearInterval(pollInterval)
+        } else if (data.status === "failed") {
+          const errMsg = data.errorMessage || "Render failed"
+          setError(errMsg)
+          onErrorRef.current(errMsg)
+          clearInterval(pollInterval)
+        } else if (data.status === "cancelled") {
+          onCancelRef.current()
+          clearInterval(pollInterval)
+        }
+      } catch (err) {
+        if (abortController.signal.aborted) return
+        consecutiveFailures++
+        console.warn("Poll failed:", err instanceof Error ? err.message : err)
+
+        clearInterval(pollInterval)
+        pollInterval = setInterval(poll, getPollInterval())
       }
+    }
 
+    poll()
+    pollInterval = setInterval(poll, POLL_INTERVAL_MS)
+
+    const trySSE = () => {
       const eventSource = new EventSource(`/api/render-jobs/${jobId}/events`)
       eventSourceRef.current = eventSource
 
       eventSource.onopen = () => {
-        retryCount = 0 // Reset retry count on successful connection
+        clearInterval(pollInterval)
+        pollInterval = setInterval(poll, SSE_FALLBACK_POLL_INTERVAL_MS)
       }
 
       eventSource.onmessage = (event) => {
@@ -117,93 +196,53 @@ export function RenderProgress({
           const data = JSON.parse(event.data) as RenderProgressData
           setProgress(data)
 
-          // Stale progress detection
-          if (data.elapsedSeconds !== lastElapsedRef.current) {
-            lastElapsedRef.current = data.elapsedSeconds
-            lastChangeTimeRef.current = Date.now()
-            setStaleWarning(null)
-          } else if (lastChangeTimeRef.current !== null) {
-            const minutesSinceChange = (Date.now() - lastChangeTimeRef.current) / 60000
-            if (minutesSinceChange > STALE_PROGRESS_THRESHOLD_MINUTES) {
-              setStaleWarning(
-                `Progress hasn't updated in ${Math.round(minutesSinceChange)} minutes. ` +
-                `The render may be stuck. You can cancel and try again.`
-              )
-            }
-          }
+          checkStaleProgress(data, lastElapsedRef, lastChangeTimeRef, setStaleWarning)
 
           if (data.status === "completed") {
             eventSource.close()
             eventSourceRef.current = null
-            onComplete()
+            onCompleteRef.current()
+            clearInterval(pollInterval)
           } else if (data.status === "failed") {
             eventSource.close()
             eventSourceRef.current = null
             const errMsg = data.errorMessage || "Render failed"
             setError(errMsg)
-            onError(errMsg)
+            onErrorRef.current(errMsg)
+            clearInterval(pollInterval)
           } else if (data.status === "cancelled") {
             eventSource.close()
             eventSourceRef.current = null
-            onCancel()
+            onCancelRef.current()
+            clearInterval(pollInterval)
           }
         } catch (err) {
-          console.error("Failed to parse SSE data:", err)
+          console.warn("Failed to parse SSE data:", err)
         }
       }
 
-      eventSource.onerror = (err) => {
-        console.error("SSE error:", err)
+      eventSource.onerror = () => {
+        console.warn(
+          `SSE connection dropped (readyState=${eventSource.readyState}). Falling back to polling.`
+        )
         eventSource.close()
         eventSourceRef.current = null
-
-        // Retry connection if not completed and under max retries
-        if (retryCount < maxRetries) {
-          retryCount++
-          retryTimeout = setTimeout(connectSSE, 2000 * retryCount)
-        } else {
-          setError("Lost connection to render server. Please check the status manually.")
-          onError("Connection lost")
-        }
+        clearInterval(pollInterval)
+        pollInterval = setInterval(poll, POLL_INTERVAL_MS)
       }
     }
 
-    connectSSE()
+    trySSE()
 
     return () => {
-      if (retryTimeout) {
-        clearTimeout(retryTimeout)
-      }
+      abortController.abort()
+      clearInterval(pollInterval)
       if (eventSourceRef.current) {
         eventSourceRef.current.close()
         eventSourceRef.current = null
       }
     }
-  }, [jobId, onComplete, onError])
-
-  // Fetch initial status
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch(`/api/render-jobs/${jobId}`)
-        if (!response.ok) {
-          throw new Error("Failed to fetch job status")
-        }
-        const data = await response.json()
-        
-        if (data.status === "failed") {
-          setError(data.errorMessage || "Render failed")
-          onError(data.errorMessage || "Render failed")
-        } else if (data.status === "completed") {
-          onComplete()
-        }
-      } catch (err) {
-        console.error("Failed to fetch job status:", err)
-      }
-    }
-
-    fetchStatus()
-  }, [jobId, onComplete, onError])
+  }, [jobId])
 
   const currentPhase = progress?.phase ?? "preparing"
   const currentPhaseIndex = progress?.phaseIndex ?? 0

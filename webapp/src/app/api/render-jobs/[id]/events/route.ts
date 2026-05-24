@@ -1,3 +1,9 @@
+// NOTE: This SSE route has maxDuration: 60 on Vercel (serverless function timeout).
+// For renders that take longer than ~60s, the SSE connection will drop.
+// The client (RenderProgress.tsx) uses REST polling as the primary transport
+// and treats SSE as an optional enhancement. Do NOT rely on SSE for critical
+// progress updates on Vercel deployments.
+
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { getRenderJob, failRenderJob, RenderPhase } from "@/lib/render/job-manager";
