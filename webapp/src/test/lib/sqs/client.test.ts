@@ -186,11 +186,11 @@ describe("createSQSClientFromEnv", () => {
   });
 
   it("creates client from environment variables", () => {
-    process.env.AWS_REGION = "us-east-1";
-    process.env.SQS_QUEUE_URL =
+    process.env.SOW_AWS_REGION = "us-east-1";
+    process.env.SOW_SQS_QUEUE_URL =
       "https://sqs.us-east-1.amazonaws.com/123456789/render-jobs";
-    process.env.AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE";
-    process.env.AWS_SECRET_ACCESS_KEY =
+    process.env.SOW_AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE";
+    process.env.SOW_AWS_SECRET_ACCESS_KEY =
       "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
     const client = createSQSClientFromEnv();
@@ -198,59 +198,59 @@ describe("createSQSClientFromEnv", () => {
   });
 
   it("creates client without explicit credentials when not provided", () => {
-    process.env.AWS_REGION = "us-east-1";
-    process.env.SQS_QUEUE_URL =
+    process.env.SOW_AWS_REGION = "us-east-1";
+    process.env.SOW_SQS_QUEUE_URL =
       "https://sqs.us-east-1.amazonaws.com/123456789/render-jobs";
-    delete process.env.AWS_ACCESS_KEY_ID;
-    delete process.env.AWS_SECRET_ACCESS_KEY;
+    delete process.env.SOW_AWS_ACCESS_KEY_ID;
+    delete process.env.SOW_AWS_SECRET_ACCESS_KEY;
 
     const client = createSQSClientFromEnv();
     expect(client).toBeInstanceOf(SQSClient);
   });
 
-  it("throws when AWS_REGION is missing", () => {
-    delete process.env.AWS_REGION;
-    process.env.SQS_QUEUE_URL =
+  it("throws when SOW_AWS_REGION is missing", () => {
+    delete process.env.SOW_AWS_REGION;
+    process.env.SOW_SQS_QUEUE_URL =
       "https://sqs.us-east-1.amazonaws.com/123456789/render-jobs";
 
     expect(() => createSQSClientFromEnv()).toThrow(
-      "AWS_REGION environment variable is required for SQS client"
+      "SOW_AWS_REGION environment variable is required for SQS client"
     );
   });
 
-  it("throws when SQS_QUEUE_URL is missing", () => {
-    process.env.AWS_REGION = "us-east-1";
-    delete process.env.SQS_QUEUE_URL;
+  it("throws when SOW_SQS_QUEUE_URL is missing", () => {
+    process.env.SOW_AWS_REGION = "us-east-1";
+    delete process.env.SOW_SQS_QUEUE_URL;
 
     expect(() => createSQSClientFromEnv()).toThrow(
-      "SQS_QUEUE_URL environment variable is required for SQS client"
+      "SOW_SQS_QUEUE_URL environment variable is required for SQS client"
     );
   });
 
   it("throws when both required env vars are missing", () => {
-    delete process.env.AWS_REGION;
-    delete process.env.SQS_QUEUE_URL;
+    delete process.env.SOW_AWS_REGION;
+    delete process.env.SOW_SQS_QUEUE_URL;
 
     expect(() => createSQSClientFromEnv()).toThrow(
-      "AWS_REGION environment variable is required for SQS client"
+      "SOW_AWS_REGION environment variable is required for SQS client"
     );
   });
 
-  it("reads SQS_ENDPOINT_URL from environment", () => {
-    process.env.AWS_REGION = "us-east-1";
-    process.env.SQS_QUEUE_URL =
+  it("reads SOW_SQS_ENDPOINT_URL from environment", () => {
+    process.env.SOW_AWS_REGION = "us-east-1";
+    process.env.SOW_SQS_QUEUE_URL =
       "http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/sow-render-jobs";
-    process.env.SQS_ENDPOINT_URL = "http://localhost:4566";
+    process.env.SOW_SQS_ENDPOINT_URL = "http://localhost:4566";
 
     const client = createSQSClientFromEnv();
     expect(client).toBeInstanceOf(SQSClient);
   });
 
-  it("creates client without endpoint when SQS_ENDPOINT_URL is not set", () => {
-    process.env.AWS_REGION = "us-east-1";
-    process.env.SQS_QUEUE_URL =
+  it("creates client without endpoint when SOW_SQS_ENDPOINT_URL is not set", () => {
+    process.env.SOW_AWS_REGION = "us-east-1";
+    process.env.SOW_SQS_QUEUE_URL =
       "https://sqs.us-east-1.amazonaws.com/123456789/render-jobs";
-    delete process.env.SQS_ENDPOINT_URL;
+    delete process.env.SOW_SQS_ENDPOINT_URL;
 
     const client = createSQSClientFromEnv();
     expect(client).toBeInstanceOf(SQSClient);

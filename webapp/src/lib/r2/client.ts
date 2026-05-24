@@ -6,7 +6,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export interface R2Config {
-  accountId: string;
+  endpointUrl: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucketName: string;
@@ -54,11 +54,9 @@ export class R2Client {
   private bucketName: string;
 
   constructor(config: R2Config) {
-    const endpoint = `https://${config.accountId}.r2.cloudflarestorage.com`;
-
     this.client = new S3Client({
       region: config.region || "auto",
-      endpoint,
+      endpoint: config.endpointUrl,
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
@@ -224,20 +222,20 @@ export class R2Client {
  * Create R2 client from environment variables
  */
 export function createR2ClientFromEnv(): R2Client {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucketName = process.env.R2_BUCKET_NAME;
+  const endpointUrl = process.env.SOW_R2_ENDPOINT_URL;
+  const accessKeyId = process.env.SOW_R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.SOW_R2_SECRET_ACCESS_KEY;
+  const bucketName = process.env.SOW_R2_BUCKET;
 
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
+  if (!endpointUrl || !accessKeyId || !secretAccessKey || !bucketName) {
     throw new Error(
       "R2 credentials not configured. " +
-        "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME environment variables."
+        "Set SOW_R2_ENDPOINT_URL, SOW_R2_ACCESS_KEY_ID, SOW_R2_SECRET_ACCESS_KEY, and SOW_R2_BUCKET environment variables."
     );
   }
 
   return new R2Client({
-    accountId,
+    endpointUrl,
     accessKeyId,
     secretAccessKey,
     bucketName,

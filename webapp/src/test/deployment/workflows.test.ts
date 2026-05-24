@@ -155,12 +155,12 @@ describe("Deploy workflow", () => {
     expect(pushStep).toBeDefined();
   });
 
-  it("migrate-db references DATABASE_URL secret for schema push", () => {
+  it("migrate-db references SOW_DATABASE_URL secret for schema push", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
     const steps = jobs["migrate-db"].steps as Array<Record<string, unknown>>;
     const raw = JSON.stringify(steps);
-    expect(raw).toContain("secrets.DATABASE_URL");
+    expect(raw).toContain("secrets.SOW_DATABASE_URL");
   });
 
   it("deploy-render-worker uses AWS ECR login", () => {
@@ -171,20 +171,20 @@ describe("Deploy workflow", () => {
     expect(ecrStep).toBeDefined();
   });
 
-  it("deploy-render-worker references AWS_ACCESS_KEY_ID secret", () => {
+  it("deploy-render-worker references SOW_AWS_ACCESS_KEY_ID secret", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
     const steps = jobs["deploy-render-worker"].steps as Array<Record<string, unknown>>;
     const raw = JSON.stringify(steps);
-    expect(raw).toContain("secrets.AWS_ACCESS_KEY_ID");
+    expect(raw).toContain("secrets.SOW_AWS_ACCESS_KEY_ID");
   });
 
-  it("deploy-render-worker references AWS_SECRET_ACCESS_KEY secret", () => {
+  it("deploy-render-worker references SOW_AWS_SECRET_ACCESS_KEY secret", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
     const steps = jobs["deploy-render-worker"].steps as Array<Record<string, unknown>>;
     const raw = JSON.stringify(steps);
-    expect(raw).toContain("secrets.AWS_SECRET_ACCESS_KEY");
+    expect(raw).toContain("secrets.SOW_AWS_SECRET_ACCESS_KEY");
   });
 
   it("deploy-render-worker updates Lambda function", () => {

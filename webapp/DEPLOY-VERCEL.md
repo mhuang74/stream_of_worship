@@ -34,8 +34,8 @@ After linking, Vercel creates a `.vercel/` directory in `webapp/` (already gitig
 Add all production environment variables in the Vercel dashboard under **Settings → Environment Variables**, or via the CLI:
 
 ```bash
-vercel env add DATABASE_URL production
-vercel env add R2_ACCOUNT_ID production
+vercel env add SOW_DATABASE_URL production
+vercel env add SOW_R2_ENDPOINT_URL production
 # ... repeat for each variable
 ```
 
@@ -43,21 +43,21 @@ vercel env add R2_ACCOUNT_ID production
 
 | Variable | Scope | Description |
 |---|---|---|
-| `DATABASE_URL` | Server | Neon PostgreSQL connection string |
-| `R2_ACCOUNT_ID` | Server | Cloudflare account ID |
-| `R2_ACCESS_KEY_ID` | Server | R2 API token access key |
-| `R2_SECRET_ACCESS_KEY` | Server | R2 API token secret key |
-| `R2_BUCKET_NAME` | Server | R2 bucket name (e.g. `stream-of-worship-prod`) |
+| `SOW_DATABASE_URL` | Server | Neon PostgreSQL connection string |
+| `SOW_R2_ENDPOINT_URL` | Server | Cloudflare R2 endpoint URL |
+| `SOW_R2_ACCESS_KEY_ID` | Server | R2 API token access key |
+| `SOW_R2_SECRET_ACCESS_KEY` | Server | R2 API token secret key |
+| `SOW_R2_BUCKET` | Server | R2 bucket name (e.g. `stream-of-worship-prod`) |
 | `NEXT_PUBLIC_R2_PUBLIC_DOMAIN` | Client | Public R2 domain for direct streaming |
 | `BETTER_AUTH_SECRET` | Server | 32+ char random secret (`openssl rand -base64 32`) |
 | `BETTER_AUTH_URL` | Server | Deployed app URL (e.g. `https://your-app.vercel.app`) |
 | `NEXT_PUBLIC_BASE_URL` | Client | Same as `BETTER_AUTH_URL` (embedded in client bundle) |
 | `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` | Client | Google Cast receiver app ID (optional) |
-| `AWS_REGION` | Server | AWS region for SQS (e.g. `us-east-1`) |
-| `SQS_QUEUE_URL` | Server | SQS queue URL for render jobs |
-| `AWS_ACCESS_KEY_ID` | Server | AWS IAM access key (SQS SendMessage) |
-| `AWS_SECRET_ACCESS_KEY` | Server | AWS IAM secret key |
-| `SQS_ENDPOINT_URL` | Server | Leave empty in production |
+| `SOW_AWS_REGION` | Server | AWS region for SQS (e.g. `us-east-1`) |
+| `SOW_SQS_QUEUE_URL` | Server | SQS queue URL for render jobs |
+| `SOW_AWS_ACCESS_KEY_ID` | Server | AWS IAM access key (SQS SendMessage) |
+| `SOW_AWS_SECRET_ACCESS_KEY` | Server | AWS IAM secret key |
+| `SOW_SQS_ENDPOINT_URL` | Server | Leave empty in production |
 | `SOW_RENDER_WORKER_MODE` | Server | Set to `sqs` in production |
 | `SOW_RENDER_WORKER_REST_URL` | Server | Leave empty in production |
 
@@ -74,7 +74,7 @@ vercel env add R2_ACCOUNT_ID production
 vercel env pull .env.production.local  # if project already has vars set
 
 # Or set individually:
-vercel env add DATABASE_URL production <<< "postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
+vercel env add SOW_DATABASE_URL production <<< "postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
 vercel env add BETTER_AUTH_SECRET production <<< "$(openssl rand -base64 32)"
 vercel env add BETTER_AUTH_URL production <<< "https://your-app.vercel.app"
 vercel env add NEXT_PUBLIC_BASE_URL production <<< "https://your-app.vercel.app"
@@ -221,8 +221,8 @@ These systems are already provisioned. This section documents the setup for refe
 Before the first deploy (or after schema changes), push the schema to the Neon database:
 
 ```bash
-# Set DATABASE_URL to the production Neon connection string
-export DATABASE_URL="postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
+# Set SOW_DATABASE_URL to the production Neon connection string
+export SOW_DATABASE_URL="postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
 
 # From webapp/ directory
 npx drizzle-kit push
@@ -239,7 +239,7 @@ npx drizzle-kit migrate    # Apply pending migrations
 
 - **Console:** https://dash.cloudflare.com → R2
 - The webapp stores rendered audio (MP3) and video (MP4) files in R2.
-- Required credentials: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`.
+- Required credentials: `SOW_R2_ENDPOINT_URL`, `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`, `SOW_R2_BUCKET`.
 - `NEXT_PUBLIC_R2_PUBLIC_DOMAIN` must point to a public R2 domain (custom domain or `r2.dev` public URL).
 - Signed URLs are generated server-side via `/api/signed-url` as a fallback when no public domain is configured.
 
@@ -247,6 +247,6 @@ npx drizzle-kit migrate    # Apply pending migrations
 
 - **Console:** https://console.aws.amazon.com/sqs
 - The webapp enqueues render jobs to SQS; an AWS Lambda container worker processes them.
-- Required credentials: `AWS_REGION`, `SQS_QUEUE_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+- Required credentials: `SOW_AWS_REGION`, `SOW_SQS_QUEUE_URL`, `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY`.
 - IAM user needs minimum permissions: `sqs:SendMessage` on the render jobs queue ARN.
 - `SOW_RENDER_WORKER_MODE` must be `sqs` in production. The `rest` mode is for local development only.

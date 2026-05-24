@@ -27,7 +27,7 @@ vi.mock("@aws-sdk/s3-request-presigner", () => ({
 
 describe("R2Client", () => {
   const mockConfig = {
-    accountId: "test-account",
+    endpointUrl: "https://test-account.r2.cloudflarestorage.com",
     accessKeyId: "test-access-key",
     secretAccessKey: "test-secret-key",
     bucketName: "test-bucket",
@@ -267,43 +267,47 @@ describe("createR2ClientFromEnv", () => {
   });
 
   it("creates client from environment variables", () => {
-    process.env.R2_ACCOUNT_ID = "test-account";
-    process.env.R2_ACCESS_KEY_ID = "test-access-key";
-    process.env.R2_SECRET_ACCESS_KEY = "test-secret-key";
-    process.env.R2_BUCKET_NAME = "test-bucket";
+    process.env.SOW_R2_ENDPOINT_URL = "https://test-account.r2.cloudflarestorage.com";
+    process.env.SOW_R2_ACCESS_KEY_ID = "test-access-key";
+    process.env.SOW_R2_SECRET_ACCESS_KEY = "test-secret-key";
+    process.env.SOW_R2_BUCKET = "test-bucket";
 
     const client = createR2ClientFromEnv();
     expect(client).toBeInstanceOf(R2Client);
   });
 
-  it("throws when R2_ACCOUNT_ID is missing", () => {
-    process.env.R2_ACCESS_KEY_ID = "test-access-key";
-    process.env.R2_SECRET_ACCESS_KEY = "test-secret-key";
-    process.env.R2_BUCKET_NAME = "test-bucket";
+  it("throws when SOW_R2_ENDPOINT_URL is missing", () => {
+    delete process.env.SOW_R2_ENDPOINT_URL;
+    process.env.SOW_R2_ACCESS_KEY_ID = "test-access-key";
+    process.env.SOW_R2_SECRET_ACCESS_KEY = "test-secret-key";
+    process.env.SOW_R2_BUCKET = "test-bucket";
 
     expect(() => createR2ClientFromEnv()).toThrow("R2 credentials not configured");
   });
 
-  it("throws when R2_ACCESS_KEY_ID is missing", () => {
-    process.env.R2_ACCOUNT_ID = "test-account";
-    process.env.R2_SECRET_ACCESS_KEY = "test-secret-key";
-    process.env.R2_BUCKET_NAME = "test-bucket";
+  it("throws when SOW_R2_ACCESS_KEY_ID is missing", () => {
+    process.env.SOW_R2_ENDPOINT_URL = "https://test-account.r2.cloudflarestorage.com";
+    delete process.env.SOW_R2_ACCESS_KEY_ID;
+    process.env.SOW_R2_SECRET_ACCESS_KEY = "test-secret-key";
+    process.env.SOW_R2_BUCKET = "test-bucket";
 
     expect(() => createR2ClientFromEnv()).toThrow("R2 credentials not configured");
   });
 
-  it("throws when R2_SECRET_ACCESS_KEY is missing", () => {
-    process.env.R2_ACCOUNT_ID = "test-account";
-    process.env.R2_ACCESS_KEY_ID = "test-access-key";
-    process.env.R2_BUCKET_NAME = "test-bucket";
+  it("throws when SOW_R2_SECRET_ACCESS_KEY is missing", () => {
+    process.env.SOW_R2_ENDPOINT_URL = "https://test-account.r2.cloudflarestorage.com";
+    process.env.SOW_R2_ACCESS_KEY_ID = "test-access-key";
+    delete process.env.SOW_R2_SECRET_ACCESS_KEY;
+    process.env.SOW_R2_BUCKET = "test-bucket";
 
     expect(() => createR2ClientFromEnv()).toThrow("R2 credentials not configured");
   });
 
-  it("throws when R2_BUCKET_NAME is missing", () => {
-    process.env.R2_ACCOUNT_ID = "test-account";
-    process.env.R2_ACCESS_KEY_ID = "test-access-key";
-    process.env.R2_SECRET_ACCESS_KEY = "test-secret-key";
+  it("throws when SOW_R2_BUCKET is missing", () => {
+    process.env.SOW_R2_ENDPOINT_URL = "https://test-account.r2.cloudflarestorage.com";
+    process.env.SOW_R2_ACCESS_KEY_ID = "test-access-key";
+    process.env.SOW_R2_SECRET_ACCESS_KEY = "test-secret-key";
+    delete process.env.SOW_R2_BUCKET;
 
     expect(() => createR2ClientFromEnv()).toThrow("R2 credentials not configured");
   });
