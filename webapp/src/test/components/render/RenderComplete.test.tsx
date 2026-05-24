@@ -1,13 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { RenderComplete } from "@/components/render/RenderComplete"
 
-// Mock sonner toast
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    loading: vi.fn().mockReturnValue("toast-id"),
   },
+}))
+
+vi.mock("@/lib/download", () => ({
+  sanitizeFilename: (name: string) => name.toLowerCase().replace(/\s+/g, "-"),
+  downloadArtifact: vi.fn(),
 }))
 
 describe("RenderComplete", () => {
@@ -18,22 +23,28 @@ describe("RenderComplete", () => {
     jobId: "test-job-id",
     songsetId: "test-songset",
     songsetName: "Sunday Worship",
+    hasAudio: false,
+    hasVideo: false,
+    hasChapters: false,
     onDone: mockDone,
     onShare: mockShare,
   }
 
-  beforeEach(() => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(async () => {
     vi.clearAllMocks()
     
-    // Mock fetch for downloads
-    global.fetch = vi.fn().mockResolvedValue({
+    fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      blob: vi.fn().mockResolvedValue(new Blob()),
+      json: vi.fn().mockResolvedValue({ url: "https://r2.example.com/signed-url" }),
     })
     
-    // Mock URL.createObjectURL
-    global.URL.createObjectURL = vi.fn().mockReturnValue("blob:test")
-    global.URL.revokeObjectURL = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   describe("rendering", () => {
@@ -83,57 +94,60 @@ describe("RenderComplete", () => {
   })
 
   describe("download buttons", () => {
-    it("renders audio download button when mp3Url provided", () => {
-      render(<RenderComplete {...defaultProps} mp3Url="https://r2.example.com/audio.mp3" />)
+    it("renders audio download button when hasAudio is true", () => {
+      render(<RenderComplete {...defaultProps} hasAudio={true} />)
       expect(screen.getByRole("button", { name: /download audio/i })).toBeInTheDocument()
     })
 
-    it("does not render audio button when mp3Url not provided", () => {
+    it("does not render audio button when hasAudio is false", () => {
       render(<RenderComplete {...defaultProps} />)
       expect(screen.queryByRole("button", { name: /download audio/i })).not.toBeInTheDocument()
     })
 
-    it("renders video download button when mp4Url provided", () => {
-      render(<RenderComplete {...defaultProps} mp4Url="https://r2.example.com/video.mp4" />)
+    it("renders video download button when hasVideo is true", () => {
+      render(<RenderComplete {...defaultProps} hasVideo={true} />)
       expect(screen.getByRole("button", { name: /download video/i })).toBeInTheDocument()
     })
 
-    it("does not render video button when mp4Url not provided", () => {
+    it("does not render video button when hasVideo is false", () => {
       render(<RenderComplete {...defaultProps} />)
       expect(screen.queryByRole("button", { name: /download video/i })).not.toBeInTheDocument()
     })
 
-    it("renders chapters download button when chaptersUrl provided", () => {
-      render(<RenderComplete {...defaultProps} chaptersUrl="https://r2.example.com/chapters.json" />)
+    it("renders chapters download button when hasChapters is true", () => {
+      render(<RenderComplete {...defaultProps} hasChapters={true} />)
       expect(screen.getByRole("button", { name: /download chapters/i })).toBeInTheDocument()
     })
 
-    it("downloads audio when button clicked", async () => {
-      const { toast } = await import("sonner")
-      
-      render(<RenderComplete {...defaultProps} mp3Url="https://r2.example.com/audio.mp3" />)
+    it("calls handleDownloadFile when audio button clicked", async () => {
+      render(<RenderComplete {...defaultProps} hasAudio={true} />)
       
       const downloadButton = screen.getByRole("button", { name: /download audio/i })
-      fireEvent.click(downloadButton)
+      
+      await act(async () => {
+        fireEvent.click(downloadButton)
+      })
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("https://r2.example.com/audio.mp3")
-        expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Downloaded"))
+        expect(fetchMock).toHaveBeenCalled()
       })
     })
 
-    it("shows error when download fails", async () => {
+    it("shows error when signed URL fetch fails", async () => {
       const { toast } = await import("sonner")
       
-      global.fetch = vi.fn().mockRejectedValue(new Error("Network error"))
+      fetchMock.mockRejectedValue(new Error("Network error"))
       
-      render(<RenderComplete {...defaultProps} mp3Url="https://r2.example.com/audio.mp3" />)
+      render(<RenderComplete {...defaultProps} hasAudio={true} />)
       
       const downloadButton = screen.getByRole("button", { name: /download audio/i })
-      fireEvent.click(downloadButton)
+      
+      await act(async () => {
+        fireEvent.click(downloadButton)
+      })
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Download failed")
+        expect(toast.error).toHaveBeenCalledWith("Download failed", { id: "toast-id" })
       })
     })
   })
@@ -158,20 +172,20 @@ describe("RenderComplete", () => {
     })
 
     it("uses Web Share API when available", async () => {
-      const mockShare = vi.fn().mockResolvedValue(undefined)
+      const mockNavigatorShare = vi.fn().mockResolvedValue(undefined)
       Object.defineProperty(navigator, "share", {
-        value: mockShare,
+        value: mockNavigatorShare,
         writable: true,
         configurable: true,
       })
 
-      render(<RenderComplete {...defaultProps} mp3Url="https://r2.example.com/audio.mp3" />)
+      render(<RenderComplete {...defaultProps} hasAudio={true} />)
       
       const shareButton = screen.getByRole("button", { name: /share songset/i })
       fireEvent.click(shareButton)
 
       await waitFor(() => {
-        expect(mockShare).toHaveBeenCalledWith(
+        expect(mockNavigatorShare).toHaveBeenCalledWith(
           expect.objectContaining({
             title: "Sunday Worship",
             text: expect.stringContaining("Sunday Worship"),

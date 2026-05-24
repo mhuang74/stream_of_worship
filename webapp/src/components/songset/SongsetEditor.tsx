@@ -41,6 +41,8 @@ import {
   Monitor,
   Plus,
   Loader2,
+  FileAudio,
+  FileVideo,
 } from "lucide-react";
 
 export interface SongsetEditorProps {
@@ -66,6 +68,8 @@ export interface SongsetEditorProps {
   onDuplicate: () => Promise<void>;
   onDelete: () => Promise<void>;
   onShare: () => void;
+  onDownloadAudio?: () => void;
+  onDownloadVideo?: () => void;
   onAddSongs: () => void;
   className?: string;
 }
@@ -83,6 +87,8 @@ export function SongsetEditor({
   onDuplicate,
   onDelete,
   onShare,
+  onDownloadAudio,
+  onDownloadVideo,
   onAddSongs,
   className,
 }: SongsetEditorProps) {
@@ -278,6 +284,20 @@ export function SongsetEditor({
               <DropdownMenuItem onClick={onShare}>
                 <Share2 className="size-4 mr-2" />
                 Share
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onDownloadAudio}
+                disabled={!songset.latestRenderJobId}
+              >
+                <FileAudio className="size-4 mr-2" />
+                Download Audio
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onDownloadVideo}
+                disabled={!songset.latestRenderJobId}
+              >
+                <FileVideo className="size-4 mr-2" />
+                Download Video
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
