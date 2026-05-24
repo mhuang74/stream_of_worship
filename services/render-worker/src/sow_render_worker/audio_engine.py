@@ -222,10 +222,21 @@ def generate_songset_audio(
         if not audio_path:
             raise ValueError(f"Could not get audio for recording {item.recording_hash_prefix}")
 
-        info = get_audio_info(audio_path)
-        if not info:
-            raise ValueError(f"Could not probe audio file: {audio_path}")
-        duration_ms = info["duration_ms"]
+        if item.duration_seconds is not None:
+            duration_ms = round(item.duration_seconds * 1000)
+            logger.info(
+                "[%s] Audio: song %d duration from DB - duration=%.1fs",
+                job_id or "unknown", i + 1, item.duration_seconds,
+            )
+        else:
+            info = get_audio_info(audio_path)
+            if not info:
+                raise ValueError(f"Could not probe audio file: {audio_path}")
+            duration_ms = info["duration_ms"]
+            logger.info(
+                "[%s] Audio: song %d probed (no DB duration) - duration=%.1fs",
+                job_id or "unknown", i + 1, duration_ms / 1000.0,
+            )
 
         gap_ms = 0
         crossfade_ms = 0
@@ -234,7 +245,7 @@ def generate_songset_audio(
             crossfade_ms = min(get_crossfade_ms(item), duration_ms)
 
         logger.info(
-            "[%s] Audio: song %d probed - duration=%.1fs, gap_ms=%d, crossfade_ms=%d",
+            "[%s] Audio: song %d - duration=%.1fs, gap_ms=%d, crossfade_ms=%d",
             job_id or "unknown", i + 1, duration_ms / 1000.0, gap_ms, crossfade_ms,
         )
 
