@@ -7,10 +7,6 @@ on:
       - "webapp/**"
       - "services/render-worker/**"
 
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   detect-changes:
     name: Detect Changes
@@ -26,24 +22,29 @@ jobs:
       - name: Check changed paths
         id: filter
         run: |
-          webapp=false
-          render_worker=false
-          for file in $(git diff --name-only ${{ github.event.before }} ${{ github.sha }}); do
-            if [[ "$file" == webapp/* ]]; then
-              webapp=true
-            fi
-            if [[ "$file" == services/render-worker/* ]]; then
-              render_worker=true
-            fi
-          done
-          echo "webapp=$webapp" >> $GITHUB_OUTPUT
-          echo "render-worker=$render_worker" >> $GITHUB_OUTPUT
+          before="${{ github.event.before }}"
+          if [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            echo "webapp=true" >> $GITHUB_OUTPUT
+            echo "render-worker=true" >> $GITHUB_OUTPUT
+          else
+            webapp=false
+            render_worker=false
+            for file in $(git diff --name-only "$before" "${{ github.sha }}"); do
+              if [[ "$file" == webapp/* ]]; then webapp=true; fi
+              if [[ "$file" == services/render-worker/* ]]; then render_worker=true; fi
+            done
+            echo "webapp=$webapp" >> $GITHUB_OUTPUT
+            echo "render-worker=$render_worker" >> $GITHUB_OUTPUT
+          fi
 
-  deploy-webapp:
-    name: Deploy Webapp to Vercel
+  migrate-db:
+    name: Run DB Migrations + Deploy
     needs: detect-changes
     if: needs.detect-changes.outputs.webapp == 'true'
     runs-on: ubuntu-latest
+    concurrency:
+      group: migrate-db-${{ github.ref }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: webapp
@@ -51,7 +52,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run DB migrations
+      - name: Get pnpm version
+        id: pnpm-version
+        run: echo "version=$(node -p "require('./package.json').packageManager.replace('pnpm@','')")" >> $GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.pnpm-version.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Push DB schema
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -59,22 +77,20 @@ jobs:
             echo "Error: DATABASE_URL secret is not configured"
             exit 1
           fi
-          npx drizzle-kit migrate
+          npx drizzle-kit push --force
 
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: "--prod"
-          working-directory: webapp
+      - name: Trigger Vercel deploy
+        if: success()
+        run: curl -sf -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}"
 
   deploy-render-worker:
     name: Deploy Render Worker to Lambda
     needs: detect-changes
     if: needs.detect-changes.outputs.render-worker == 'true'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-render-worker-${{ github.ref }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: services/render-worker
@@ -112,3 +128,8 @@ jobs:
             --function-name sow-render-worker \
             --image-uri $IMAGE_URI \
             --publish
+
+      - name: Wait for Lambda update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name sow-render-worker
