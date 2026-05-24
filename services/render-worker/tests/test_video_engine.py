@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 from dataclasses import dataclass
@@ -475,6 +476,96 @@ class TestEncodeVideoWithFFmpeg:
 
         assert mock_process.stdin.write.call_count == 5
 
+    def test_encode_broken_pipe_with_zero_exit_code_succeeds(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher)
+
+        lyrics: list[GlobalLRCLine] = []
+        segments: list[SegmentInfo] = []
+
+        progress_calls: list[tuple[int, int]] = []
+
+        def progress_cb(current: int, total: int) -> None:
+            progress_calls.append((current, total))
+
+        mock_process = MagicMock()
+        mock_process.stdin = MagicMock()
+        mock_process.stdin.write.side_effect = BrokenPipeError()
+        mock_process.stdin.close = MagicMock()
+        mock_process.wait.return_value = 0
+        mock_process.returncode = 0
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = b""
+
+        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
+            mock_popen.return_value = mock_process
+            engine.encode_video_with_ffmpeg(
+                "/tmp/audio.mp3",
+                output_path,
+                total_frames=10,
+                total_duration_seconds=0.5,
+                lyrics=lyrics,
+                segments=segments,
+                progress_callback=progress_cb,
+            )
+
+        assert progress_calls[-1] == (10, 10)
+
+    def test_encode_lyrics_timeline_sync_with_title_card(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher, fps=24, include_title_card=True, title_card_duration_seconds=5.0)
+
+        lyrics: list[GlobalLRCLine] = [
+            GlobalLRCLine(text="Hello", local_time_seconds=5.0, global_time_seconds=5.0, title="Song"),
+        ]
+        segments = [
+            SegmentInfo(
+                id="1", song_id="s1", position=0, song_title="Song",
+                start_time_seconds=0.0, duration_seconds=10.0,
+            ),
+        ]
+
+        title_card_config = TitleCardConfig(
+            enabled=True,
+            duration_seconds=10.0,
+            songset_name="Test Set",
+            song_count=1,
+            total_duration_seconds=10.0,
+        )
+
+        mock_process = MagicMock()
+        mock_process.stdin = MagicMock()
+        mock_process.stdin.write = MagicMock()
+        mock_process.wait.return_value = 0
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = b""
+
+        render_times: list[float] = []
+        original_render_frame = engine.frame_renderer.render_frame
+
+        def capture_render_time(lyrics_arg, segments_arg, current_time):
+            render_times.append(current_time)
+            return original_render_frame(lyrics_arg, segments_arg, current_time)
+
+        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
+             patch.object(engine.frame_renderer, "render_frame", side_effect=capture_render_time):
+            mock_popen.return_value = mock_process
+            engine.encode_video_with_ffmpeg(
+                "/tmp/audio.mp3",
+                output_path,
+                total_frames=240,
+                total_duration_seconds=10.0,
+                lyrics=lyrics,
+                segments=segments,
+                title_card_config=title_card_config,
+            )
+
+        title_card_frame_count = math.ceil(5.0 * 24)
+        if render_times:
+            assert render_times[0] >= 5.0
+
 
 class TestGenerateVideo:
     def test_no_audio_info_raises(self, tmp_path):
@@ -532,6 +623,8 @@ class TestGenerateVideo:
             result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
 
         mock_encode.assert_called_once()
+        call_args = mock_encode.call_args
+        assert call_args[0][2] == math.ceil(180.0 * 24)
         assert result.output_path == output_path
         assert result.duration_seconds == 180.0
         assert result.width == 1920
@@ -626,6 +719,7 @@ class TestGenerateVideo:
         assert title_card_config is not None
         assert title_card_config.enabled is True
         assert title_card_config.song_count == 1
+        assert call_kwargs[0][2] == math.ceil(180.0 * 24)
 
 
 class TestInjectChapters:

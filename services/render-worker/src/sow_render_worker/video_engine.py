@@ -123,12 +123,7 @@ class VideoEngine:
             raise ValueError("Could not get audio info")
 
         total_duration_seconds = audio_info["duration_seconds"]
-        title_card_frames = (
-            math.ceil(self.title_card_duration_seconds * self.fps)
-            if self.include_title_card
-            else 0
-        )
-        total_frames = math.ceil(total_duration_seconds * self.fps) + title_card_frames
+        total_frames = math.ceil(total_duration_seconds * self.fps)
 
         logger.info(
             "[%s] generate_video: duration=%.1fs, total_frames=%d, resolution=%s, fps=%d",
@@ -334,24 +329,34 @@ class VideoEngine:
                 if title_card_config and frame_count < title_card_frame_count:
                     frame_bytes = title_card_bytes
                 else:
-                    lyrics_frame_index = (
-                        frame_count - title_card_frame_count if title_card_config else frame_count
-                    )
-                    current_time = lyrics_frame_index / self.fps
+                    current_time = frame_count / self.fps
                     img = self.frame_renderer.render_frame(lyrics, segments, current_time)
                     frame_bytes = img.tobytes()
 
                 try:
                     process.stdin.write(frame_bytes)
                 except BrokenPipeError:
-                    logger.error(
-                        "[%s] FFmpeg pipe broken at frame %d/%d",
-                        job_id or "unknown", frame_count, total_frames,
-                    )
                     process.stdin.close()
                     if stderr_thread:
                         stderr_thread.join(timeout=5)
                     process.wait()
+                    if process.returncode == 0:
+                        logger.info(
+                            "[%s] FFmpeg completed early (stopped reading at frame %d/%d)",
+                            job_id or "unknown", frame_count, total_frames,
+                        )
+                        ffmpeg_elapsed = time.monotonic() - ffmpeg_start
+                        logger.info(
+                            "[%s] FFmpeg process exited with code 0 in %.1fs",
+                            job_id or "unknown", ffmpeg_elapsed,
+                        )
+                        if progress_callback:
+                            progress_callback(total_frames, total_frames)
+                        return
+                    logger.error(
+                        "[%s] FFmpeg pipe broken at frame %d/%d",
+                        job_id or "unknown", frame_count, total_frames,
+                    )
                     stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
                     stderr_info = (
                         f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
