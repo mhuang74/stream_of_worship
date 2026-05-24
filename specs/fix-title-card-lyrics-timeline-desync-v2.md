@@ -1,0 +1,342 @@
+# Fix: Title Card Audio Mode — Configurable Overlay vs Delay
+
+## Problem
+
+When `include_title_card=True`, the title card **replaces** the first N seconds of video frames while audio continues playing from time 0. This has two observable effects:
+
+1. **Audio plays during the title card** — The prelude/intro music is audible while the title card is displayed. Any lyrics that fall within the title card window (0–N seconds of the audio timeline) are never rendered on screen.
+
+2. **`TitleCardConfig.duration_seconds` is semantically wrong** — Set to `total_duration_seconds` (the full audio duration) instead of the title card's own display duration. This doesn't affect rendering today (`render_title_card` uses `config.total_duration_seconds`), but it's a misleading data model.
+
+### Is This Actually a Bug?
+
+**No — it's a design choice with tradeoffs.** After the title card ends, `current_time = frame_count / fps` maps directly to the audio timeline, so lyrics ARE in sync with what the viewer hears. The only "loss" is lyrics in the first N seconds of audio that fall under the title card window. For worship sets with long intros (15s+), this is typically unnoticeable.
+
+The current "overlay" behavior (prelude plays under title card) is often desirable — it provides a musical intro before lyrics begin. The alternative "delay" behavior (silence during title card, audio shifted) is also valid for cases where you want a clean separation.
+
+**The fix should make this configurable rather than replacing one behavior with another.**
+
+### What the Previous Spec Got Wrong
+
+The v1 spec (`fix-title-card-lyrics-timeline-desync.md`) presented three "cascading desynchronization issues," but:
+
+- **Problem #1 (audio plays during title card)** — This IS the current behavior, not a bug. It's often desirable.
+- **Problem #2 (lyrics appear at wrong video times)** — Misleading. After the title card, `current_time` maps to the audio timeline, so lyrics are in sync with the audio the viewer hears. The only issue is lyrics in the title card window are lost.
+- **Problem #3 (chapter timestamps not offset)** — NOT a current bug. In the current behavior, audio and video timelines are identical — a chapter at audio time 180s IS at video time 180s, so seeking works correctly. This issue only arises AFTER implementing the audio delay fix. It's a necessary accompaniment to the delay mode, not a pre-existing bug.
+
+---
+
+## Proposed Solution: Configurable `title_card_audio_mode`
+
+Add a `title_card_audio_mode` option to `VideoEngine` with two modes:
+
+| Mode | Behavior | Video Length | Chapter Offset | Audio During Title Card |
+|---|---|---|---|---|
+| `overlay` (default) | Prelude plays under title card | `audio_duration` | No offset needed | Audible (current behavior) |
+| `delay` | Silence during title card, audio shifted | `audio_duration + title_card_duration` | Offset by `title_card_duration` | Silent, then audio starts |
+
+### Why `overlay` as Default
+
+- Preserves current behavior (no breaking change)
+- Prelude under title card is often musically desirable
+- No video length increase, no silence period
+- Existing videos render identically
+
+---
+
+## File Changes
+
+### 1. `src/sow_render_worker/video_engine.py`
+
+#### 1a. Add `title_card_audio_mode` parameter to `VideoEngine.__init__()` (line 64)
+
+```python
+class TitleCardAudioMode(str, Enum):
+    OVERLAY = "overlay"
+    DELAY = "delay"
+
+class VideoEngine:
+    def __init__(
+        self,
+        asset_fetcher: AssetFetcherProtocol,
+        template: VideoTemplateName = "dark",
+        font_size_preset: FontSizePreset = "M",
+        resolution: str = "1080p",
+        fps: int = 24,
+        include_title_card: bool = True,
+        title_card_duration_seconds: float = 5.0,
+        title_card_audio_mode: TitleCardAudioMode = TitleCardAudioMode.OVERLAY,
+        ffmpeg_path: str | None = None,
+        ffprobe_path: str | None = None,
+    ):
+        ...
+        self.title_card_audio_mode = title_card_audio_mode
+```
+
+#### 1b. Compute `title_card_offset` in `generate_video()` (after line 125)
+
+```python
+title_card_offset = (
+    self.title_card_duration_seconds
+    if (self.include_title_card and self.title_card_audio_mode == TitleCardAudioMode.DELAY)
+    else 0.0
+)
+video_duration_seconds = total_duration_seconds + title_card_offset
+total_frames = math.ceil(video_duration_seconds * self.fps)
+```
+
+Pass `title_card_offset` to `encode_video_with_ffmpeg()` and use `video_duration_seconds` for `VideoExportResult.duration_seconds`.
+
+#### 1c. Add `title_card_offset` parameter to `encode_video_with_ffmpeg()` (line 241)
+
+Add parameter `title_card_offset: float = 0.0`.
+
+#### 1d. Delay audio in FFmpeg command when `title_card_offset > 0` (lines 262-286)
+
+When `title_card_offset > 0`, add an `adelay` filter:
+
+```python
+if title_card_offset > 0:
+    delay_ms = round(title_card_offset * 1000)
+    args = [
+        self.ffmpeg_path, "-y",
+        "-f", "rawvideo", "-vcodec", "rawvideo",
+        "-s", f"{width}x{height}", "-pix_fmt", "rgba",
+        "-r", str(self.fps),
+        "-i", "-",
+        "-i", audio_path,
+        "-filter_complex", f"[1:a]adelay={delay_ms}|{delay_ms}[delayed]",
+        "-map", "0:v", "-map", "[delayed]",
+        *self.get_video_codec_args(),
+        "-c:a", "aac", "-b:a", "192k",
+        output_path,
+    ]
+else:
+    args = [
+        self.ffmpeg_path, "-y",
+        "-f", "rawvideo", "-vcodec", "rawvideo",
+        "-s", f"{width}x{height}", "-pix_fmt", "rgba",
+        "-r", str(self.fps),
+        "-i", "-",
+        "-i", audio_path,
+        *self.get_video_codec_args(),
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest",
+        output_path,
+    ]
+```
+
+**Note:** Remove `-shortest` when `adelay` is used. With `adelay`, the audio stream becomes `title_card_offset + audio_duration` long, matching the video stream length exactly.
+
+#### 1e. Fix `current_time` calculation in delay mode (line 332)
+
+```python
+if title_card_config and frame_count < title_card_frame_count:
+    frame_bytes = title_card_bytes
+else:
+    current_time = (frame_count - title_card_frame_count) / self.fps if title_card_offset > 0 else frame_count / self.fps
+    img = self.frame_renderer.render_frame(lyrics, segments, current_time)
+    frame_bytes = img.tobytes()
+```
+
+In `overlay` mode, `current_time = frame_count / self.fps` (unchanged — maps to audio timeline).
+In `delay` mode, `current_time = (frame_count - title_card_frame_count) / self.fps` (maps to audio timeline starting at 0.0 after title card).
+
+#### 1f. Fix `TitleCardConfig.duration_seconds` (line 206) — applies to BOTH modes
+
+```python
+title_card_config = TitleCardConfig(
+    enabled=True,
+    duration_seconds=self.title_card_duration_seconds,
+    ...
+)
+```
+
+This is a semantic fix regardless of audio mode. `render_title_card()` uses `config.total_duration_seconds` (not `config.duration_seconds`) for the "X:XX" subtitle, so rendering is unaffected.
+
+#### 1g. Update `VideoExportResult` to return video duration
+
+```python
+return VideoExportResult(
+    output_path=output_path,
+    total_frames=total_frames,
+    duration_seconds=video_duration_seconds,
+    width=self.resolution[0],
+    height=self.resolution[1],
+    fps=self.fps,
+)
+```
+
+In `overlay` mode, `video_duration_seconds == total_duration_seconds` (no change).
+In `delay` mode, `video_duration_seconds == total_duration_seconds + title_card_offset`.
+
+### 2. `src/sow_render_worker/pipeline.py`
+
+#### 2a. Offset chapter timestamps in delay mode (lines 436-441)
+
+```python
+title_card_offset = (
+    job.title_card_duration_seconds
+    if (job.include_title_card and job.title_card_audio_mode == TitleCardAudioMode.DELAY)
+    else 0.0
+)
+
+chapters_for_video = [
+    ChapterInfo(
+        position=ch.position,
+        song_title=ch.song_title,
+        start_seconds=ch.start_seconds + title_card_offset,
+        end_seconds=ch.end_seconds + title_card_offset,
+        lines=tuple(
+            {
+                "text": line["text"],
+                "startSeconds": line["startSeconds"] + title_card_offset,
+            }
+            for line in ch.lines
+        ) if ch.lines else (),
+    )
+    for ch in (
+        _segment_to_chapter_info(seg, i)
+        for i, seg in enumerate(audio_result.segments)
+    )
+]
+```
+
+#### 2b. Offset chapters manifest timestamps (lines 445-449)
+
+Pass `title_card_offset` to `generate_chapters_manifest()`.
+
+### 3. `src/sow_render_worker/chapters.py`
+
+#### 3a. Add `title_card_offset` parameter to `generate_chapters_manifest()` (line 75)
+
+```python
+def generate_chapters_manifest(
+    segments: list[SegmentInfo],
+    download_lrc: Callable[[str], str | None | object],
+    total_duration_seconds: float,
+    title_card_offset: float = 0.0,
+) -> ChaptersManifest:
+```
+
+Offset all `ChapterLine.start_seconds` and `Chapter.start_seconds`/`Chapter.end_seconds` by `title_card_offset`. When `title_card_offset == 0.0`, behavior is identical to current code.
+
+### 4. `src/sow_render_worker/frame_renderer.py`
+
+No changes needed. `render_frame()` receives `current_time` on the audio timeline (regardless of mode), so segment and lyric lookups work correctly.
+
+---
+
+## Test Updates
+
+### `tests/test_video_engine.py`
+
+#### Test 1: `total_frames` includes title card duration in delay mode
+
+When `title_card_audio_mode=DELAY` with `title_card_duration_seconds=10.0` and audio duration 180s:
+- `total_frames = ceil((180 + 10) * 24) = 4560`
+
+When `title_card_audio_mode=OVERLAY`:
+- `total_frames = ceil(180 * 24) = 4320` (unchanged)
+
+#### Test 2: FFmpeg command includes `adelay` in delay mode
+
+Verify the FFmpeg args contain `-filter_complex` with `adelay={offset_ms}|{offset_ms}` and `-map 0:v -map [delayed]` when `title_card_audio_mode=DELAY`.
+
+#### Test 3: FFmpeg command has no `adelay` in overlay mode
+
+Verify the existing FFmpeg args (no `-filter_complex`, has `-shortest`) when `title_card_audio_mode=OVERLAY`.
+
+#### Test 4: `current_time` starts at 0.0 after title card in delay mode
+
+With `title_card_audio_mode=DELAY`, `title_card_duration_seconds=5.0`, `fps=24`:
+- Title card frames: 0–119
+- First lyrics frame (120): `current_time = (120 - 120) / 24 = 0.0`
+- Frame 240: `current_time = (240 - 120) / 24 = 5.0`
+
+With `title_card_audio_mode=OVERLAY`:
+- Title card frames: 0–119
+- First lyrics frame (120): `current_time = 120 / 24 = 5.0` (maps to audio timeline, unchanged)
+
+#### Test 5: `VideoExportResult.duration_seconds` includes title card in delay mode
+
+In delay mode: `result.duration_seconds == audio_duration + title_card_duration_seconds`
+In overlay mode: `result.duration_seconds == audio_duration`
+
+#### Test 6: `TitleCardConfig.duration_seconds` equals title card duration (both modes)
+
+Verify `title_card_config.duration_seconds == self.title_card_duration_seconds` (not `total_duration_seconds`).
+
+### `tests/test_chapters.py`
+
+#### Test 7: Chapter timestamps offset by `title_card_offset`
+
+Verify that `generate_chapters_manifest()` with `title_card_offset=10.0` shifts all `start_seconds`/`end_seconds` and `ChapterLine.start_seconds` by 10.0.
+Verify that `title_card_offset=0.0` produces identical output to current behavior.
+
+### `tests/test_pipeline.py`
+
+#### Test 8: Pipeline offsets chapter timestamps in delay mode only
+
+Verify that `chapters_for_video` and `chapters_manifest` have timestamps shifted by `title_card_duration_seconds` when `title_card_audio_mode=DELAY`.
+Verify no offset when `title_card_audio_mode=OVERLAY`.
+
+---
+
+## Implementation Order
+
+1. Add `TitleCardAudioMode` enum and `title_card_audio_mode` parameter to `VideoEngine.__init__()` (1a)
+2. Add `title_card_offset` computation in `generate_video()` (1b)
+3. Add `title_card_offset` parameter to `encode_video_with_ffmpeg()` (1c)
+4. Delay audio in FFmpeg command when `title_card_offset > 0` (1d)
+5. Fix `current_time` calculation for delay mode (1e)
+6. Fix `TitleCardConfig.duration_seconds` (1f) — applies to both modes
+7. Update `VideoExportResult` (1g)
+8. Offset chapter timestamps in `pipeline.py` (2a, 2b)
+9. Add `title_card_offset` to `generate_chapters_manifest()` (3a)
+10. Add/update tests
+11. Run `PYTHONPATH=src pytest tests/test_video_engine.py tests/test_chapters.py tests/test_pipeline.py -v`
+
+---
+
+## Edge Cases
+
+### Title card disabled (`include_title_card=False`)
+
+`title_card_offset = 0.0` regardless of mode. No changes to FFmpeg command, `current_time`, or chapter timestamps. Behavior identical to current code.
+
+### Overlay mode (default)
+
+`title_card_offset = 0.0`. All code paths fall through to existing behavior. The only change is `TitleCardConfig.duration_seconds` (semantic fix, no rendering impact).
+
+### Delay mode with title card duration > first song intro gap
+
+If the first song's intro gap is shorter than `title_card_duration_seconds`, the title card still shows for the full duration. After the title card, `current_time = 0.0` and the intro info display works correctly from the start of the audio timeline. No lyrics are lost.
+
+### Very short audio (< title card duration) in delay mode
+
+If audio is shorter than `title_card_duration_seconds`, the `adelay` filter would push audio beyond the video end. The video would show the title card then silence. This is unlikely in practice (worship sets are long) but should be documented.
+
+### `generate_blank_video()` with title card
+
+When no lyrics are found, `generate_blank_video()` is called. This method doesn't support title cards. No change needed — title cards are only meaningful when lyrics exist.
+
+---
+
+## Verification Checklist
+
+- [ ] `TitleCardAudioMode` enum added with `OVERLAY` and `DELAY` values
+- [ ] `VideoEngine.__init__()` accepts `title_card_audio_mode` parameter (default `OVERLAY`)
+- [ ] `title_card_offset` computed correctly based on mode
+- [ ] `total_frames = ceil((audio_duration + title_card_offset) * fps)` in delay mode
+- [ ] `total_frames = ceil(audio_duration * fps)` in overlay mode (unchanged)
+- [ ] FFmpeg command includes `adelay` filter when `title_card_offset > 0`
+- [ ] FFmpeg command omits `adelay` and uses `-shortest` when `title_card_offset == 0`
+- [ ] `current_time = (frame_count - title_card_frame_count) / fps` in delay mode
+- [ ] `current_time = frame_count / fps` in overlay mode (unchanged)
+- [ ] `TitleCardConfig.duration_seconds = self.title_card_duration_seconds` (both modes)
+- [ ] `VideoExportResult.duration_seconds` includes title card offset in delay mode
+- [ ] Chapter timestamps offset by `title_card_offset` in delay mode
+- [ ] Chapter timestamps unchanged in overlay mode
+- [ ] All existing tests pass
+- [ ] New tests pass
