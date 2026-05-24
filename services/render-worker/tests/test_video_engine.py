@@ -450,8 +450,7 @@ class TestEncodeVideoWithFFmpeg:
         title_card_config = TitleCardConfig(
             enabled=True,
             duration_seconds=10.0,
-            songset_name="Test Set",
-            song_count=1,
+            lines=("Test Set", "Song"),
             total_duration_seconds=10.0,
         )
 
@@ -530,8 +529,7 @@ class TestEncodeVideoWithFFmpeg:
         title_card_config = TitleCardConfig(
             enabled=True,
             duration_seconds=10.0,
-            songset_name="Test Set",
-            song_count=1,
+            lines=("Test Set", "Song"),
             total_duration_seconds=10.0,
         )
 
@@ -718,7 +716,7 @@ class TestGenerateVideo:
         title_card_config = call_kwargs[1].get("title_card_config") if "title_card_config" in call_kwargs[1] else call_kwargs[0][7] if len(call_kwargs[0]) > 7 else None
         assert title_card_config is not None
         assert title_card_config.enabled is True
-        assert title_card_config.song_count == 1
+        assert len(title_card_config.lines) >= 1
         assert call_kwargs[0][2] == math.ceil(180.0 * 24)
 
 
