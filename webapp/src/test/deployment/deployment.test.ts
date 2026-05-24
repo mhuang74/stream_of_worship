@@ -135,23 +135,23 @@ describe("vercel.json — Fluid Compute (not required on render routes)", () => 
 // Preview deployments
 // ---------------------------------------------------------------------------
 
-describe("vercel.json — preview deployments", () => {
+describe("vercel.json — Git-triggered deployments disabled", () => {
   it("has git configuration", () => {
     const config = readVercelJson();
     expect(config.git).toBeDefined();
   });
 
-  it("enables deployments on main branch", () => {
+  it("disables deployments on main branch (deploys via CI webhook)", () => {
     const config = readVercelJson();
     const git = config.git as { deploymentEnabled?: Record<string, boolean> };
-    expect(git.deploymentEnabled?.main).toBe(true);
+    expect(git.deploymentEnabled?.main).toBe(false);
   });
 
-  it("enables deployments on all branches (preview deployments)", () => {
+  it("disables deployments on all branches (Vercel auto-deploy off)", () => {
     const config = readVercelJson();
     const git = config.git as { deploymentEnabled?: Record<string, boolean> };
-    // wildcard "*" enables preview deployments for feature branches
-    expect(git.deploymentEnabled?.["*"]).toBe(true);
+    // All Git-triggered deployments disabled; deploys triggered via VERCEL_DEPLOY_HOOK_URL
+    expect(git.deploymentEnabled?.["*"]).toBe(false);
   });
 });
 

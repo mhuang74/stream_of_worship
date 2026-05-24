@@ -93,10 +93,10 @@ describe("Deploy workflow", () => {
     expect(push.branches).toContain("main");
   });
 
-  it("has deploy-webapp job", () => {
+  it("has migrate-db job", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, unknown>;
-    expect(jobs["deploy-webapp"]).toBeDefined();
+    expect(jobs["migrate-db"]).toBeDefined();
   });
 
   it("has deploy-render-worker job", () => {
@@ -114,7 +114,7 @@ describe("Deploy workflow", () => {
   it("deploy jobs depend on detect-changes", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    expect(jobs["deploy-webapp"].needs).toBe("detect-changes");
+    expect(jobs["migrate-db"].needs).toBe("detect-changes");
     expect(jobs["deploy-render-worker"].needs).toBe("detect-changes");
   });
 
@@ -127,52 +127,38 @@ describe("Deploy workflow", () => {
     );
   });
 
-  it("deploy-webapp uses vercel-action", () => {
+  it("migrate-db triggers Vercel deploy via hook", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    const steps = jobs["deploy-webapp"].steps as Array<{ uses?: string }>;
-    const vercelStep = steps.find((s) => s.uses?.includes("vercel-action"));
-    expect(vercelStep).toBeDefined();
-  });
-
-  it("deploy-webapp references VERCEL_TOKEN secret", () => {
-    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
-    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    const steps = jobs["deploy-webapp"].steps as Array<Record<string, unknown>>;
-    const raw = JSON.stringify(steps);
-    expect(raw).toContain("secrets.VERCEL_TOKEN");
-  });
-
-  it("deploy-webapp references VERCEL_ORG_ID secret", () => {
-    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
-    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    const steps = jobs["deploy-webapp"].steps as Array<Record<string, unknown>>;
-    const raw = JSON.stringify(steps);
-    expect(raw).toContain("secrets.VERCEL_ORG_ID");
-  });
-
-  it("deploy-webapp references VERCEL_PROJECT_ID secret", () => {
-    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
-    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    const steps = jobs["deploy-webapp"].steps as Array<Record<string, unknown>>;
-    const raw = JSON.stringify(steps);
-    expect(raw).toContain("secrets.VERCEL_PROJECT_ID");
-  });
-
-  it("deploy-webapp runs DB migration step", () => {
-    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
-    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    const steps = jobs["deploy-webapp"].steps as Array<{ run?: string; name?: string }>;
-    const migrateStep = steps.find(
-      (s) => s.run?.includes("drizzle-kit migrate") || s.name?.toLowerCase().includes("migration"),
+    const steps = jobs["migrate-db"].steps as Array<{ run?: string; name?: string }>;
+    const deployStep = steps.find(
+      (s) => s.run?.includes("curl") && s.run?.includes("VERCEL_DEPLOY_HOOK_URL"),
     );
-    expect(migrateStep).toBeDefined();
+    expect(deployStep).toBeDefined();
   });
 
-  it("deploy-webapp references DATABASE_URL secret for migration", () => {
+  it("migrate-db references VERCEL_DEPLOY_HOOK_URL secret", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
-    const steps = jobs["deploy-webapp"].steps as Array<Record<string, unknown>>;
+    const steps = jobs["migrate-db"].steps as Array<Record<string, unknown>>;
+    const raw = JSON.stringify(steps);
+    expect(raw).toContain("secrets.VERCEL_DEPLOY_HOOK_URL");
+  });
+
+  it("migrate-db runs DB schema push step", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const steps = jobs["migrate-db"].steps as Array<{ run?: string; name?: string }>;
+    const pushStep = steps.find(
+      (s) => s.run?.includes("drizzle-kit push") || s.name?.toLowerCase().includes("schema"),
+    );
+    expect(pushStep).toBeDefined();
+  });
+
+  it("migrate-db references DATABASE_URL secret for schema push", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const steps = jobs["migrate-db"].steps as Array<Record<string, unknown>>;
     const raw = JSON.stringify(steps);
     expect(raw).toContain("secrets.DATABASE_URL");
   });
