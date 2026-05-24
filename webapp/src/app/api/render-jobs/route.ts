@@ -13,6 +13,7 @@ const createRenderJobSchema = z.object({
   fontSizePreset: z.enum(["S", "M", "L", "XL"]).optional(),
   includeTitleCard: z.boolean().optional(),
   titleCardDurationSeconds: z.number().min(5).max(30).optional(),
+  titleCardLines: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
 });
 
 export async function POST(request: NextRequest) {

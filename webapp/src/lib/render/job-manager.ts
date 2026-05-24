@@ -30,6 +30,7 @@ export interface CreateRenderJobInput {
   fontSizePreset?: string;
   includeTitleCard?: boolean;
   titleCardDurationSeconds?: number;
+  titleCardLines?: string[];
 }
 
 export interface RenderJob {
@@ -54,6 +55,7 @@ export interface RenderJob {
   fontSizePreset: string;
   includeTitleCard: boolean;
   titleCardDurationSeconds: number | null;
+  titleCardLines: string[] | null;
   mp3R2Key: string | null;
   mp4R2Key: string | null;
   chaptersR2Key: string | null;
@@ -78,6 +80,16 @@ export function getPhaseIndex(phase: RenderPhase): number {
 }
 
 function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
+  let titleCardLines: string[] | null = null;
+  if (row.titleCardLines) {
+    try {
+      const parsed = JSON.parse(row.titleCardLines);
+      titleCardLines = parsed && parsed.length > 0 ? parsed : null;
+    } catch {
+      titleCardLines = null;
+    }
+  }
+
   return {
     id: row.id,
     songsetId: row.songsetId,
@@ -100,6 +112,7 @@ function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
     fontSizePreset: row.fontSizePreset,
     includeTitleCard: row.includeTitleCard ?? false,
     titleCardDurationSeconds: row.titleCardDurationSeconds,
+    titleCardLines,
     mp3R2Key: row.mp3R2Key,
     mp4R2Key: row.mp4R2Key,
     chaptersR2Key: row.chaptersR2Key,
@@ -149,6 +162,10 @@ export async function createRenderJob(
       fontSizePreset: input.fontSizePreset ?? "M",
       includeTitleCard: input.includeTitleCard ?? false,
       titleCardDurationSeconds: input.titleCardDurationSeconds ?? null,
+      titleCardLines:
+        input.titleCardLines && input.titleCardLines.length > 0
+          ? JSON.stringify(input.titleCardLines)
+          : null,
       createdAt: now,
       updatedAt: now,
     })

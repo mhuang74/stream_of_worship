@@ -29,6 +29,7 @@ export interface RenderFormData {
   fontSizePreset: "S" | "M" | "L" | "XL"
   includeTitleCard: boolean
   titleCardDurationSeconds: number
+  titleCardLines: string[]
   offlineEnabled: boolean
 }
 
@@ -36,6 +37,8 @@ interface RenderFormProps {
   songsetId: string
   initialData?: Partial<RenderFormData>
   markedLineCount?: number
+  songsetName?: string
+  songTitles?: string[]
   onSubmit: (data: RenderFormData) => void
   onCancel: () => void
   isSubmitting?: boolean
@@ -91,6 +94,8 @@ export function RenderForm({
   songsetId,
   initialData,
   markedLineCount = 0,
+  songsetName,
+  songTitles,
   onSubmit,
   onCancel,
   isSubmitting = false,
@@ -103,6 +108,7 @@ export function RenderForm({
     fontSizePreset: initialData?.fontSizePreset ?? "M",
     includeTitleCard: initialData?.includeTitleCard ?? false,
     titleCardDurationSeconds: initialData?.titleCardDurationSeconds ?? 10,
+    titleCardLines: initialData?.titleCardLines ?? [],
     offlineEnabled: initialData?.offlineEnabled ?? false,
   })
 
@@ -257,25 +263,54 @@ export function RenderForm({
             </div>
 
             {formData.includeTitleCard && (
-              <div className="space-y-2 pl-6">
-                <Label htmlFor="titleCardDuration">Duration</Label>
-                <Select
-                  value={(formData.titleCardDurationSeconds ?? 10).toString()}
-                  onValueChange={(value) =>
-                    updateField("titleCardDurationSeconds", parseInt(value ?? "10", 10))
-                  }
-                >
-                  <SelectTrigger id="titleCardDuration">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TITLE_CARD_DURATIONS.map((d) => (
-                      <SelectItem key={d.value} value={d.value.toString()}>
-                        {d.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-4 pl-6">
+                <div className="space-y-2">
+                  <Label htmlFor="titleCardDuration">Duration</Label>
+                  <Select
+                    value={(formData.titleCardDurationSeconds ?? 10).toString()}
+                    onValueChange={(value) =>
+                      updateField("titleCardDurationSeconds", parseInt(value ?? "10", 10))
+                    }
+                  >
+                    <SelectTrigger id="titleCardDuration">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TITLE_CARD_DURATIONS.map((d) => (
+                        <SelectItem key={d.value} value={d.value.toString()}>
+                          {d.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="titleCardLines">Custom title card text</Label>
+                  <p className="text-sm text-muted-foreground">
+                    One line per entry. Leave empty to use songset name and song titles.
+                  </p>
+                  <textarea
+                    id="titleCardLines"
+                    className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    placeholder={"Sunday Morning Worship\nAmazing Grace\nHow Great Thou Art"}
+                    value={formData.titleCardLines.join("\n")}
+                    onChange={(e) => {
+                      const lines = e.target.value.split("\n").filter((line) => line.trim() !== "")
+                      updateField("titleCardLines", lines)
+                    }}
+                  />
+                </div>
+
+                {formData.titleCardLines.length === 0 && songTitles && songTitles.length > 0 && (
+                  <div className="rounded-md border border-dashed border-muted-foreground/25 bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Default title card lines:</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">
+                      {songsetName || "Worship Set"}{"\n"}
+                      {songTitles.join("\n")}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

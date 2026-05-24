@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -48,6 +49,7 @@ class RenderJob:
     font_size_preset: str = "M"
     include_title_card: bool = False
     title_card_duration_seconds: Optional[float] = None
+    title_card_lines: Optional[list[str]] = None
     mp3_r2_key: Optional[str] = None
     mp4_r2_key: Optional[str] = None
     chapters_r2_key: Optional[str] = None
@@ -79,6 +81,16 @@ def get_phase_index(phase: str) -> int:
 
 
 def _row_to_render_job(row: dict[str, Any]) -> RenderJob:
+    title_card_lines_raw = row.get("title_card_lines")
+    title_card_lines = None
+    if title_card_lines_raw:
+        try:
+            parsed = json.loads(title_card_lines_raw)
+            title_card_lines = parsed if parsed else None
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse title_card_lines JSON: %s", title_card_lines_raw)
+            title_card_lines = None
+
     return RenderJob(
         id=row["id"],
         songset_id=row["songset_id"],
@@ -101,6 +113,7 @@ def _row_to_render_job(row: dict[str, Any]) -> RenderJob:
         font_size_preset=row.get("font_size_preset") or "M",
         include_title_card=row.get("include_title_card", False),
         title_card_duration_seconds=row.get("title_card_duration_seconds"),
+        title_card_lines=title_card_lines,
         mp3_r2_key=row.get("mp3_r2_key"),
         mp4_r2_key=row.get("mp4_r2_key"),
         chapters_r2_key=row.get("chapters_r2_key"),
