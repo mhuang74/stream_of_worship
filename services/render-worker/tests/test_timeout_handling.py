@@ -27,12 +27,13 @@ class TestCheckLambdaTimeout:
                 mock_fetcher_instance = MagicMock()
                 mock_fetcher_instance.get_job_temp_dir.return_value = "/tmp"
                 mock_fetcher.return_value = mock_fetcher_instance
-                with patch("sow_render_worker.pipeline.start_render_job", return_value=MagicMock()):
-                    with patch("sow_render_worker.pipeline.reclaim_stale_job", return_value=None):
-                        with pytest.raises(TimeoutError, match="Lambda timeout imminent"):
-                            execute_render_pipeline(
-                                "job1", 1, MagicMock(), lambda_context=mock_context
-                            )
+                with patch("sow_render_worker.pipeline.R2Uploader"):
+                    with patch("sow_render_worker.pipeline.start_render_job", return_value=MagicMock()):
+                        with patch("sow_render_worker.pipeline.reclaim_stale_job", return_value=None):
+                            with pytest.raises(TimeoutError, match="Lambda timeout imminent"):
+                                execute_render_pipeline(
+                                    "job1", 1, MagicMock(), lambda_context=mock_context
+                                )
 
     def test_passes_when_sufficient_time(self):
         mock_context = MagicMock()
@@ -59,14 +60,15 @@ class TestCheckLambdaTimeout:
                     mock_fetcher_instance = MagicMock()
                     mock_fetcher_instance.get_job_temp_dir.return_value = "/tmp"
                     mock_fetcher.return_value = mock_fetcher_instance
-                    with patch("sow_render_worker.pipeline.start_render_job", return_value=MagicMock()):
-                        with patch("sow_render_worker.pipeline.reclaim_stale_job", return_value=None):
-                            with patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[MagicMock()]):
-                                with patch("sow_render_worker.pipeline.update_render_progress"):
-                                    with pytest.raises(TimeoutError, match="Lambda received SIGTERM"):
-                                        execute_render_pipeline(
-                                            "job1", 1, MagicMock(), lambda_context=mock_context
-                                        )
+                    with patch("sow_render_worker.pipeline.R2Uploader"):
+                        with patch("sow_render_worker.pipeline.start_render_job", return_value=MagicMock()):
+                            with patch("sow_render_worker.pipeline.reclaim_stale_job", return_value=None):
+                                with patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[MagicMock()]):
+                                    with patch("sow_render_worker.pipeline.update_render_progress"):
+                                        with pytest.raises(TimeoutError, match="Lambda received SIGTERM"):
+                                            execute_render_pipeline(
+                                                "job1", 1, MagicMock(), lambda_context=mock_context
+                                            )
         finally:
             pipeline._shutdown_requested = False
 
