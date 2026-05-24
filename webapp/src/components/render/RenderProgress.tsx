@@ -119,17 +119,18 @@ export function RenderProgress({
         throw new Error("Failed to cancel render job")
       }
 
-      onCancel()
+      onCancelRef.current()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel")
       setIsCancelling(false)
     }
-  }, [jobId, onCancel, isCancelling])
+  }, [jobId, isCancelling])
 
   useEffect(() => {
-    let pollInterval: ReturnType<typeof setInterval>
+    let pollTimeout: ReturnType<typeof setTimeout>
     let consecutiveFailures = 0
     const abortController = new AbortController()
+    let isSseActive = false
 
     const getPollInterval = () =>
       Math.min(POLL_INTERVAL_MS * Math.pow(2, consecutiveFailures), MAX_POLL_INTERVAL_MS)
@@ -159,36 +160,35 @@ export function RenderProgress({
 
         if (data.status === "completed") {
           onCompleteRef.current()
-          clearInterval(pollInterval)
+          return
         } else if (data.status === "failed") {
           const errMsg = data.errorMessage || "Render failed"
           setError(errMsg)
           onErrorRef.current(errMsg)
-          clearInterval(pollInterval)
+          return
         } else if (data.status === "cancelled") {
           onCancelRef.current()
-          clearInterval(pollInterval)
+          return
         }
+
+        const delay = isSseActive ? SSE_FALLBACK_POLL_INTERVAL_MS : POLL_INTERVAL_MS
+        pollTimeout = setTimeout(poll, delay)
       } catch (err) {
         if (abortController.signal.aborted) return
         consecutiveFailures++
         console.warn("Poll failed:", err instanceof Error ? err.message : err)
-
-        clearInterval(pollInterval)
-        pollInterval = setInterval(poll, getPollInterval())
+        pollTimeout = setTimeout(poll, getPollInterval())
       }
     }
 
     poll()
-    pollInterval = setInterval(poll, POLL_INTERVAL_MS)
 
     const trySSE = () => {
       const eventSource = new EventSource(`/api/render-jobs/${jobId}/events`)
       eventSourceRef.current = eventSource
 
       eventSource.onopen = () => {
-        clearInterval(pollInterval)
-        pollInterval = setInterval(poll, SSE_FALLBACK_POLL_INTERVAL_MS)
+        isSseActive = true
       }
 
       eventSource.onmessage = (event) => {
@@ -202,19 +202,16 @@ export function RenderProgress({
             eventSource.close()
             eventSourceRef.current = null
             onCompleteRef.current()
-            clearInterval(pollInterval)
           } else if (data.status === "failed") {
             eventSource.close()
             eventSourceRef.current = null
             const errMsg = data.errorMessage || "Render failed"
             setError(errMsg)
             onErrorRef.current(errMsg)
-            clearInterval(pollInterval)
           } else if (data.status === "cancelled") {
             eventSource.close()
             eventSourceRef.current = null
             onCancelRef.current()
-            clearInterval(pollInterval)
           }
         } catch (err) {
           console.warn("Failed to parse SSE data:", err)
@@ -227,8 +224,7 @@ export function RenderProgress({
         )
         eventSource.close()
         eventSourceRef.current = null
-        clearInterval(pollInterval)
-        pollInterval = setInterval(poll, POLL_INTERVAL_MS)
+        isSseActive = false
       }
     }
 
@@ -236,7 +232,7 @@ export function RenderProgress({
 
     return () => {
       abortController.abort()
-      clearInterval(pollInterval)
+      clearTimeout(pollTimeout)
       if (eventSourceRef.current) {
         eventSourceRef.current.close()
         eventSourceRef.current = null
