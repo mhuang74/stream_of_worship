@@ -263,7 +263,8 @@ class TestFetchSongsetItems:
             },
         ]
         conn, cursor = _make_mock_conn(fetchall_result=rows)
-        items = fetch_songset_items(conn, "ss_001")
+        songset_name, items = fetch_songset_items(conn, "ss_001")
+        assert songset_name == "Worship Set"
         assert len(items) == 2
         assert items[0].id == "item_1"
         assert items[0].song_title == "Test Song"
@@ -272,7 +273,8 @@ class TestFetchSongsetItems:
 
     def test_empty_result(self):
         conn, cursor = _make_mock_conn(fetchall_result=[])
-        items = fetch_songset_items(conn, "ss_empty")
+        songset_name, items = fetch_songset_items(conn, "ss_empty")
+        assert songset_name == "Worship Set"
         assert items == []
 
     def test_query_joins_tables(self):
@@ -294,7 +296,7 @@ class TestFetchSongsetItems:
             }
         ]
         conn, cursor = _make_mock_conn(fetchall_result=rows)
-        fetch_songset_items(conn, "ss_001")
+        _, _ = fetch_songset_items(conn, "ss_001")
         sql = cursor.execute.call_args[0][0]
         assert "songset_items" in sql
         assert "recordings" in sql
@@ -303,13 +305,13 @@ class TestFetchSongsetItems:
 
     def test_query_uses_parameterized(self):
         conn, cursor = _make_mock_conn(fetchall_result=[])
-        fetch_songset_items(conn, "ss_001")
+        _, _ = fetch_songset_items(conn, "ss_001")
         params = cursor.execute.call_args[0][1]
         assert params == ("ss_001",)
 
     def test_query_orders_by_position(self):
         conn, cursor = _make_mock_conn(fetchall_result=[])
-        fetch_songset_items(conn, "ss_001")
+        _, _ = fetch_songset_items(conn, "ss_001")
         sql = cursor.execute.call_args[0][0]
         assert "ORDER BY si.position" in sql
 
@@ -332,7 +334,8 @@ class TestFetchSongsetItems:
             }
         ]
         conn, cursor = _make_mock_conn(fetchall_result=rows)
-        items = fetch_songset_items(conn, "ss_001")
+        songset_name, items = fetch_songset_items(conn, "ss_001")
+        assert songset_name == "Worship Set"
         assert len(items) == 1
         assert items[0].recording_hash_prefix is None
         assert items[0].song_title is None
@@ -360,7 +363,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job") as mock_complete, \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -404,7 +407,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.4), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -437,7 +440,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[]), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", [])), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             with pytest.raises(ValueError, match="Songset has no items"):
@@ -467,7 +470,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=[_make_songset_item()]), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", [_make_songset_item()])), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
 
             execute_render_pipeline(
@@ -499,7 +502,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
@@ -585,7 +588,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -660,7 +663,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -709,7 +712,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -756,7 +759,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -807,7 +810,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress", side_effect=mock_update_side_effect) as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -868,7 +871,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -905,7 +908,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -939,7 +942,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job"), \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -1001,7 +1004,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
@@ -1033,7 +1036,7 @@ class TestExecuteRenderPipeline:
              patch("sow_render_worker.pipeline.update_render_progress"), \
              patch("sow_render_worker.pipeline.complete_render_job"), \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
-             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=items), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
              patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
              patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
              patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
