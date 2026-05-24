@@ -2,6 +2,7 @@
   "name": "sow-webapp",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.24.0",
   "scripts": {
     "dev": "env-cmd -f /opt/sow/.env next dev -p 8080 -H 0.0.0.0",
     "build": "next build",
