@@ -37,9 +37,6 @@ interface RenderJobData {
   mp3R2Key: string | null
   mp4R2Key: string | null
   chaptersR2Key: string | null
-  mp3Url?: string
-  mp4Url?: string
-  chaptersUrl?: string
   elapsedSeconds?: number
 }
 
@@ -187,24 +184,7 @@ export default function RenderPage() {
         const response = await fetch(`/api/render-jobs/${jobId}`)
         if (response.ok) {
           const job = await response.json()
-          const signedUrls: { mp3Url?: string; mp4Url?: string; chaptersUrl?: string } = {}
-
-          const fetchSignedUrl = async (fileType: string) => {
-            const res = await fetch(
-              `/api/signed-url?renderJobId=${encodeURIComponent(job.id)}&fileType=${fileType}`
-            )
-            if (res.ok) {
-              const data = await res.json()
-              return data.url as string
-            }
-            return undefined
-          }
-
-          if (job.mp3R2Key) signedUrls.mp3Url = await fetchSignedUrl("audio")
-          if (job.mp4R2Key) signedUrls.mp4Url = await fetchSignedUrl("video")
-          if (job.chaptersR2Key) signedUrls.chaptersUrl = await fetchSignedUrl("json")
-
-          setJobData({ ...job, ...signedUrls })
+          setJobData(job)
         }
       } catch (err) {
         console.error("Failed to fetch job data:", err)
@@ -301,9 +281,9 @@ export default function RenderPage() {
             jobId={jobId!}
             songsetId={songsetId}
             songsetName={songset.name}
-            mp3Url={jobData.mp3Url}
-            mp4Url={jobData.mp4Url}
-            chaptersUrl={jobData.chaptersUrl}
+            hasAudio={!!jobData.mp3R2Key}
+            hasVideo={!!jobData.mp4R2Key}
+            hasChapters={!!jobData.chaptersR2Key}
             elapsedSeconds={jobData.elapsedSeconds}
             onDone={handleDone}
             onShare={handleShare}

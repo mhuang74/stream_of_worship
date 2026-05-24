@@ -8,6 +8,8 @@ import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import { RenderState } from "@/components/songset/RenderStateButton";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
+import { toast } from "sonner";
+import { downloadArtifact, sanitizeFilename } from "@/lib/download";
 
 interface ApiSongset {
   id: string;
@@ -334,6 +336,60 @@ export default function SongsetEditorPage() {
     router.push(`/songsets/${songsetId}?share=true`);
   }, [songsetId, router]);
 
+  // Handle download audio
+  const handleDownloadAudio = useCallback(async () => {
+    if (!songset?.latestRenderJobId) return;
+
+    const toastId = toast.loading("Preparing download...");
+    const controller = new AbortController();
+
+    try {
+      const filename = sanitizeFilename(songset.name);
+      const disposition = `attachment; filename="${filename}.mp3"`;
+      const res = await fetch(
+        `/api/signed-url?renderJobId=${encodeURIComponent(songset.latestRenderJobId)}` +
+          `&fileType=audio` +
+          `&contentDisposition=${encodeURIComponent(disposition)}`,
+        { signal: controller.signal }
+      );
+      if (!res.ok) throw new Error("Failed to get download URL");
+      const { url } = await res.json();
+
+      downloadArtifact(url);
+      toast.success("Download started", { id: toastId });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Failed to download audio", { id: toastId });
+    }
+  }, [songset]);
+
+  // Handle download video
+  const handleDownloadVideo = useCallback(async () => {
+    if (!songset?.latestRenderJobId) return;
+
+    const toastId = toast.loading("Preparing download...");
+    const controller = new AbortController();
+
+    try {
+      const filename = sanitizeFilename(songset.name);
+      const disposition = `attachment; filename="${filename}.mp4"`;
+      const res = await fetch(
+        `/api/signed-url?renderJobId=${encodeURIComponent(songset.latestRenderJobId)}` +
+          `&fileType=video` +
+          `&contentDisposition=${encodeURIComponent(disposition)}`,
+        { signal: controller.signal }
+      );
+      if (!res.ok) throw new Error("Failed to get download URL");
+      const { url } = await res.json();
+
+      downloadArtifact(url);
+      toast.success("Download started", { id: toastId });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Failed to download video", { id: toastId });
+    }
+  }, [songset]);
+
   // Handle add songs
   const handleAddSongs = useCallback(() => {
     setIsBrowseSheetOpen(true);
@@ -433,6 +489,8 @@ export default function SongsetEditorPage() {
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
         onShare={handleShare}
+        onDownloadAudio={handleDownloadAudio}
+        onDownloadVideo={handleDownloadVideo}
         onAddSongs={handleAddSongs}
       />
       <BrowseSheet

@@ -29,6 +29,7 @@ export interface Songset {
   renderProgress?: number;
   isOfflineAvailable?: boolean;
   isArtifactsStale?: boolean;
+  latestRenderJobId: string | null;
 }
 
 interface SongsetListProps {
@@ -42,6 +43,8 @@ interface SongsetListProps {
   onRename?: (id: string, name: string) => Promise<void>;
   onDuplicate?: (id: string) => Promise<void>;
   onShare?: (id: string) => void;
+  onDownloadAudio?: (id: string) => void;
+  onDownloadVideo?: (id: string) => void;
   onDelete?: (id: string) => Promise<void>;
   className?: string;
 }
@@ -57,6 +60,8 @@ export function SongsetList({
   onRename,
   onDuplicate,
   onShare,
+  onDownloadAudio,
+  onDownloadVideo,
   onDelete,
   className,
 }: SongsetListProps) {
@@ -244,6 +249,8 @@ export function SongsetList({
             onRename={() => openRenameDialog(songset.id, songset.name)}
             onDuplicate={() => onDuplicate?.(songset.id)}
             onShare={() => onShare?.(songset.id)}
+            onDownloadAudio={() => onDownloadAudio?.(songset.id)}
+            onDownloadVideo={() => onDownloadVideo?.(songset.id)}
             onDelete={() => openDeleteDialog(songset.id)}
           />
         ))}

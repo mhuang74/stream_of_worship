@@ -1,28 +1,26 @@
 "use client"
 
-import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   CheckCircle2,
-  Download,
   Share2,
   Music,
   Video,
   FileJson,
-  Loader2,
   Timer,
 } from "lucide-react"
 import { toast } from "sonner"
+import { sanitizeFilename, downloadArtifact } from "@/lib/download"
 
 interface RenderCompleteProps {
   jobId: string
   songsetId: string
   songsetName: string
-  mp3Url?: string
-  mp4Url?: string
-  chaptersUrl?: string
+  hasAudio: boolean
+  hasVideo: boolean
+  hasChapters: boolean
   elapsedSeconds?: number
   onDone: () => void
   onShare: () => void
@@ -38,79 +36,61 @@ function formatDuration(seconds: number): string {
 }
 
 export function RenderComplete({
+  jobId,
   songsetId,
   songsetName,
-  mp3Url,
-  mp4Url,
-  chaptersUrl,
+  hasAudio,
+  hasVideo,
+  hasChapters,
   elapsedSeconds,
   onDone,
   onShare,
 }: RenderCompleteProps) {
-  const [isDownloadingAudio, setIsDownloadingAudio] = useState(false)
-  const [isDownloadingVideo, setIsDownloadingVideo] = useState(false)
-  const [isDownloadingChapters, setIsDownloadingChapters] = useState(false)
-
-  const handleDownload = async (
-    url: string | undefined,
-    filename: string,
-    setLoading: (loading: boolean) => void
+  const handleDownloadFile = async (
+    fileType: "audio" | "video" | "json",
+    extension: string,
   ) => {
-    if (!url) {
-      toast.error("File not available")
-      return
-    }
+    const toastId = toast.loading("Preparing download...");
+    const controller = new AbortController();
 
-    setLoading(true)
     try {
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error("Failed to download file")
-      }
+      const filename = sanitizeFilename(songsetName);
+      const disposition = `attachment; filename="${filename}.${extension}"`;
+      const res = await fetch(
+        `/api/signed-url?renderJobId=${encodeURIComponent(jobId)}` +
+          `&fileType=${fileType}` +
+          `&contentDisposition=${encodeURIComponent(disposition)}`,
+        { signal: controller.signal }
+      );
+      if (!res.ok) throw new Error("Failed to get download URL");
+      const { url } = await res.json();
 
-      const blob = await response.blob()
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = downloadUrl
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
-
-      toast.success(`Downloaded ${filename}`)
-    } catch (error) {
-      toast.error("Download failed")
-      console.error("Download error:", error)
-    } finally {
-      setLoading(false)
+      downloadArtifact(url);
+      toast.success("Download started", { id: toastId });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Download failed", { id: toastId });
     }
-  }
+  };
 
   const handleShare = async () => {
-    // Check if Web Share API is available
-    if (navigator.share && (mp3Url || mp4Url)) {
+    if (navigator.share) {
       try {
         await navigator.share({
           title: songsetName,
           text: `Check out "${songsetName}" on Stream of Worship`,
           url: `${window.location.origin}/songsets/${songsetId}`,
-        })
+        });
       } catch (error) {
-        // User cancelled or share failed
         if ((error as Error).name !== "AbortError") {
-          console.error("Share failed:", error)
-          onShare()
+          console.error("Share failed:", error);
+          onShare();
         }
       }
     } else {
-      onShare()
+      onShare();
     }
   }
-
-  const hasAudio = !!mp3Url
-  const hasVideo = !!mp4Url
-  const hasChapters = !!chaptersUrl
 
   return (
     <Card className="w-full">
@@ -140,22 +120,10 @@ export function RenderComplete({
             <Button
               variant="outline"
               className="w-full justify-start gap-3"
-              onClick={() =>
-                handleDownload(
-                  mp3Url,
-                  `${songsetName.replace(/\s+/g, "_")}.mp3`,
-                  setIsDownloadingAudio
-                )
-              }
-              disabled={isDownloadingAudio}
+              onClick={() => handleDownloadFile("audio", "mp3")}
             >
-              {isDownloadingAudio ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Music className="size-4" />
-              )}
+              <Music className="size-4" />
               <span className="flex-1 text-left">Download Audio (MP3)</span>
-              <Download className="size-4" />
             </Button>
           )}
 
@@ -163,22 +131,10 @@ export function RenderComplete({
             <Button
               variant="outline"
               className="w-full justify-start gap-3"
-              onClick={() =>
-                handleDownload(
-                  mp4Url,
-                  `${songsetName.replace(/\s+/g, "_")}.mp4`,
-                  setIsDownloadingVideo
-                )
-              }
-              disabled={isDownloadingVideo}
+              onClick={() => handleDownloadFile("video", "mp4")}
             >
-              {isDownloadingVideo ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Video className="size-4" />
-              )}
+              <Video className="size-4" />
               <span className="flex-1 text-left">Download Video (MP4)</span>
-              <Download className="size-4" />
             </Button>
           )}
 
@@ -186,22 +142,10 @@ export function RenderComplete({
             <Button
               variant="outline"
               className="w-full justify-start gap-3"
-              onClick={() =>
-                handleDownload(
-                  chaptersUrl,
-                  `${songsetName.replace(/\s+/g, "_")}_chapters.json`,
-                  setIsDownloadingChapters
-                )
-              }
-              disabled={isDownloadingChapters}
+              onClick={() => handleDownloadFile("json", "json")}
             >
-              {isDownloadingChapters ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <FileJson className="size-4" />
-              )}
+              <FileJson className="size-4" />
               <span className="flex-1 text-left">Download Chapters (JSON)</span>
-              <Download className="size-4" />
             </Button>
           )}
         </div>

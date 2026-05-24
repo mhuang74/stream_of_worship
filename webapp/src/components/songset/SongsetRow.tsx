@@ -29,6 +29,8 @@ import {
   WifiOff,
   Music,
   Clock,
+  FileAudio,
+  FileVideo,
 } from "lucide-react";
 
 export interface SongsetRowProps {
@@ -42,12 +44,15 @@ export interface SongsetRowProps {
   renderProgress?: number;
   isOfflineAvailable?: boolean;
   isArtifactsStale?: boolean;
+  latestRenderJobId: string | null;
   onRender?: () => void;
   onPlay?: () => void;
   onRetry?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onShare?: () => void;
+  onDownloadAudio?: () => void;
+  onDownloadVideo?: () => void;
   onDelete?: () => void;
   className?: string;
 }
@@ -63,12 +68,15 @@ export function SongsetRow({
   renderProgress = 0,
   isOfflineAvailable = false,
   isArtifactsStale = false,
+  latestRenderJobId,
   onRender,
   onPlay,
   onRetry,
   onRename,
   onDuplicate,
   onShare,
+  onDownloadAudio,
+  onDownloadVideo,
   onDelete,
   className,
 }: SongsetRowProps) {
@@ -156,6 +164,20 @@ export function SongsetRow({
                   <DropdownMenuItem onClick={onShare}>
                     <Share2 className="size-4 mr-2" />
                     Share
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={onDownloadAudio}
+                    disabled={!latestRenderJobId}
+                  >
+                    <FileAudio className="size-4 mr-2" />
+                    Download Audio
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={onDownloadVideo}
+                    disabled={!latestRenderJobId}
+                  >
+                    <FileVideo className="size-4 mr-2" />
+                    Download Video
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
