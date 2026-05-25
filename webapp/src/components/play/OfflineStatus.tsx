@@ -100,12 +100,32 @@ export function OfflineStatus({
     setCacheProgress(0);
 
     try {
-      const cache = await caches.open("sow-artifacts");
-      const artifactsToCache: string[] = [];
+      // Fetch signed URLs from the API
+      const apiUrl = `/api/offline/cache?renderJobId=${renderJobId}`;
+      console.log("Fetching signed URLs from:", apiUrl);
+      
+      const signedUrlsResponse = await fetch(apiUrl);
+      console.log("API response status:", signedUrlsResponse.status);
 
-      if (mp3R2Key) artifactsToCache.push(mp3R2Key);
-      if (mp4R2Key) artifactsToCache.push(mp4R2Key);
-      if (chaptersR2Key) artifactsToCache.push(chaptersR2Key);
+      if (!signedUrlsResponse.ok) {
+        const errorData = await signedUrlsResponse.json().catch(() => ({}));
+        console.error("API error response:", errorData);
+        throw new Error(errorData.error || "Failed to get download URLs");
+      }
+
+      const signedUrls = await signedUrlsResponse.json();
+      console.log("API response:", JSON.stringify(signedUrls, null, 2));
+      const artifactsToCache: { r2Key: string; signedUrl: string }[] = [];
+
+      if (mp3R2Key && signedUrls.mp3Url) {
+        artifactsToCache.push({ r2Key: mp3R2Key, signedUrl: signedUrls.mp3Url });
+      }
+      if (mp4R2Key && signedUrls.mp4Url) {
+        artifactsToCache.push({ r2Key: mp4R2Key, signedUrl: signedUrls.mp4Url });
+      }
+      if (chaptersR2Key && signedUrls.chaptersUrl) {
+        artifactsToCache.push({ r2Key: chaptersR2Key, signedUrl: signedUrls.chaptersUrl });
+      }
 
       if (artifactsToCache.length === 0) {
         toast.error("No artifacts available to cache");
@@ -113,16 +133,19 @@ export function OfflineStatus({
         return;
       }
 
-      // Cache each artifact
+      const cache = await caches.open("sow-artifacts");
+
+      // Cache each artifact using signed URL, but store with R2 key as cache key
       for (let i = 0; i < artifactsToCache.length; i++) {
-        const url = artifactsToCache[i];
-        const response = await fetch(url);
+        const { r2Key, signedUrl } = artifactsToCache[i];
+        const response = await fetch(signedUrl);
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch ${url}`);
+          throw new Error(`Failed to fetch ${r2Key}`);
         }
 
-        await cache.put(url, response.clone());
+        // Store in cache with R2 key as the cache key for consistent lookups
+        await cache.put(r2Key, response.clone());
         setCacheProgress(Math.round(((i + 1) / artifactsToCache.length) * 100));
       }
 
