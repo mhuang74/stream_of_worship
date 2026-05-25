@@ -296,7 +296,7 @@ Pushes to `main` that modify `services/render-worker/` trigger the deploy workfl
 3. Builds, tags, and pushes the Docker image
 4. Updates the Lambda function code with the new image URI
 
-Required GitHub secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+Required GitHub secrets: `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY`
 
 ### SQS Queue Setup
 
