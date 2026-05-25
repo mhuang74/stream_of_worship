@@ -68,6 +68,12 @@ workbox.routing.registerRoute(
   new workbox.strategies.NetworkOnly()
 );
 
+// R2 proxy endpoint serves large binary files – never cache.
+workbox.routing.registerRoute(
+  ({ url }) => url.pathname.startsWith("/api/r2/"),
+  new workbox.strategies.NetworkOnly()
+);
+
 // Offline fallback: return a minimal JSON error for uncached API requests.
 workbox.routing.setCatchHandler(async ({ event }) => {
   if (event.request.destination === "document") {

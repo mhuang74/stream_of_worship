@@ -91,19 +91,14 @@ export default function ControllerPage() {
 
         setVideoUrl(url);
 
-        // Load chapters if available
+        // Load chapters if available via proxy URL
         if (jobData.chaptersR2Key) {
-          const chaptersResponse = await fetch(
-            `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=json`
-          );
-          if (chaptersResponse.ok) {
-            const { url: chaptersUrl } = await chaptersResponse.json();
-            const chaptersDataResponse = await fetch(chaptersUrl);
-            if (chaptersDataResponse.ok) {
-              const chaptersData = await chaptersDataResponse.json();
-              if (chaptersData.chapters) {
-                setChapters(chaptersData.chapters);
-              }
+          const chaptersProxyUrl = `/api/r2/artifact/${jobData.id}/chapters.json`;
+          const chaptersDataResponse = await fetch(chaptersProxyUrl);
+          if (chaptersDataResponse.ok) {
+            const chaptersData = await chaptersDataResponse.json();
+            if (chaptersData.chapters) {
+              setChapters(chaptersData.chapters);
             }
           }
         }

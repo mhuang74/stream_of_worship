@@ -49,3 +49,15 @@ export async function fetchSignedUrlAndDownload(
   const { url } = await res.json();
   downloadArtifact(url);
 }
+
+export function downloadArtifactViaProxy(
+  renderJobId: string,
+  fileType: "audio" | "video" | "json",
+): void {
+  const artifactFile =
+    fileType === "audio" ? "output.mp3" :
+    fileType === "video" ? "output.mp4" : "chapters.json";
+
+  const proxyUrl = `/api/r2/artifact/${renderJobId}/${artifactFile}?download=1`;
+  downloadArtifact(proxyUrl);
+}
