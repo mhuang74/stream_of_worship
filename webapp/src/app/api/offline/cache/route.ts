@@ -3,12 +3,11 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { renderJobs } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { createR2ClientFromEnv } from "@/lib/r2/client";
 
 /**
  * GET /api/offline/cache?renderJobId=<id>
  *
- * Returns signed download URLs for a completed render job's artifacts so the
+ * Returns proxy URLs for a completed render job's artifacts so the
  * client can fetch and store them in Cache Storage for offline playback.
  *
  * Requires authentication; verifies the caller owns the render job.
@@ -58,37 +57,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let r2Client: ReturnType<typeof createR2ClientFromEnv>;
-    try {
-      r2Client = createR2ClientFromEnv();
-    } catch {
-      return NextResponse.json(
-        { error: "R2 storage not configured" },
-        { status: 503 }
-      );
-    }
-
-    // Generate signed URLs for each available artifact (1-hour expiry for caching).
-    const expiresInSeconds = 3600;
-
-    const [mp3Result, mp4Result, chaptersResult] = await Promise.all([
-      job.mp3R2Key
-        ? r2Client.generateSignedUrl(job.mp3R2Key, "audio", { expiresInSeconds })
-        : null,
-      job.mp4R2Key
-        ? r2Client.generateSignedUrl(job.mp4R2Key, "video", { expiresInSeconds })
-        : null,
-      job.chaptersR2Key
-        ? r2Client.generateSignedUrl(job.chaptersR2Key, "json", { expiresInSeconds })
-        : null,
-    ]);
-
     return NextResponse.json({
       renderJobId: job.id,
-      mp3Url: mp3Result?.url ?? null,
-      mp4Url: mp4Result?.url ?? null,
-      chaptersUrl: chaptersResult?.url ?? null,
-      expiresAt: (mp3Result ?? mp4Result)?.expiresAt ?? null,
+      mp3Url: job.mp3R2Key ? `/api/r2/artifact/${renderJobId}/output.mp3` : null,
+      mp4Url: job.mp4R2Key ? `/api/r2/artifact/${renderJobId}/output.mp4` : null,
+      chaptersUrl: job.chaptersR2Key ? `/api/r2/artifact/${renderJobId}/chapters.json` : null,
     });
   } catch (error) {
     console.error("Error generating offline cache URLs:", error);

@@ -254,13 +254,6 @@ describe("ControllerPage", () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              url: "https://r2.example.com/chapters/test.json",
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
               chapters: [
                 {
                   position: 0,

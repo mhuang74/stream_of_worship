@@ -5,10 +5,6 @@ import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// --------------------------------------------------------------------------
-// Mocks
-// --------------------------------------------------------------------------
-
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: { getSession: vi.fn() },
@@ -26,20 +22,6 @@ vi.mock("@/db", () => ({
     },
   },
 }));
-
-const mockGenerateSignedUrl = vi.fn();
-
-vi.mock("@/lib/r2/client", () => ({
-  createR2ClientFromEnv: vi.fn().mockReturnValue({
-    generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
-  }),
-}));
-
-import { createR2ClientFromEnv } from "@/lib/r2/client";
-
-// --------------------------------------------------------------------------
-// Helpers
-// --------------------------------------------------------------------------
 
 function makeRequest(url: string, method = "GET"): NextRequest {
   const request = new Request(url, { method }) as unknown as NextRequest;
@@ -59,22 +41,9 @@ const completedJob = {
   chaptersR2Key: "renders/job-123/chapters.json",
 };
 
-const signedUrlResult = (suffix: string) => ({
-  url: `https://r2.example.com/${suffix}?sig=abc`,
-  expiresAt: new Date("2026-01-01T02:00:00Z"),
-  cacheControl: "public, max-age=3600",
-});
-
-// --------------------------------------------------------------------------
-// GET /api/offline/cache
-// --------------------------------------------------------------------------
-
 describe("GET /api/offline/cache", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGenerateSignedUrl.mockImplementation((_key: string, fileType: string) =>
-      Promise.resolve(signedUrlResult(fileType))
-    );
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -127,18 +96,7 @@ describe("GET /api/offline/cache", () => {
     expect(data.error).toMatch(/no artifacts/i);
   });
 
-  it("returns 503 when R2 is not configured", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockResolvedValue(completedJob);
-    vi.mocked(createR2ClientFromEnv).mockImplementationOnce(() => {
-      throw new Error("R2 credentials not configured");
-    });
-
-    const res = await GET(makeRequest("http://localhost/api/offline/cache?renderJobId=job-123"));
-    expect(res.status).toBe(503);
-  });
-
-  it("returns signed URLs for all three artifacts", async () => {
+  it("returns proxy URLs for all three artifacts", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     mockFindFirst.mockResolvedValue(completedJob);
 
@@ -147,10 +105,9 @@ describe("GET /api/offline/cache", () => {
 
     const data = await res.json();
     expect(data.renderJobId).toBe("job-123");
-    expect(data.mp3Url).toContain("r2.example.com");
-    expect(data.mp4Url).toContain("r2.example.com");
-    expect(data.chaptersUrl).toContain("r2.example.com");
-    expect(data.expiresAt).toBeDefined();
+    expect(data.mp3Url).toBe("/api/r2/artifact/job-123/output.mp3");
+    expect(data.mp4Url).toBe("/api/r2/artifact/job-123/output.mp4");
+    expect(data.chaptersUrl).toBe("/api/r2/artifact/job-123/chapters.json");
   });
 
   it("returns null chaptersUrl when job has no chapters key", async () => {
@@ -172,10 +129,6 @@ describe("GET /api/offline/cache", () => {
     expect(res.status).toBe(500);
   });
 });
-
-// --------------------------------------------------------------------------
-// DELETE /api/offline/cache
-// --------------------------------------------------------------------------
 
 describe("DELETE /api/offline/cache", () => {
   beforeEach(() => {
