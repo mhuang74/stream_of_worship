@@ -92,7 +92,7 @@ export function OfflineStatus({
     setCacheProgress(0);
 
     try {
-      const apiUrl = `/api/offline/cache?renderJobId=${renderJobId}`;
+      const apiUrl = `/api/offline/cache?renderJobId=${encodeURIComponent(renderJobId)}`;
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
