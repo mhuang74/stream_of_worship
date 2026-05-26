@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
 import type { Chapter } from "@/lib/render/chapters";
@@ -36,17 +36,18 @@ export function LyricJumpList({
 
   const isSwipeEnabled = isIOS();
 
+  useEffect(() => {
+    if (isOpen) {
+      setContentInteractive(false);
+      const timer = setTimeout(() => setContentInteractive(true), 350);
+      return () => clearTimeout(timer);
+    } else {
+      setContentInteractive(false);
+    }
+  }, [isOpen]);
+
   const handleToggle = useCallback(() => {
-    setIsOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setContentInteractive(false);
-        setTimeout(() => setContentInteractive(true), 350);
-      } else {
-        setContentInteractive(false);
-      }
-      return next;
-    });
+    setIsOpen((prev) => !prev);
   }, []);
 
   const handleTouchStart = useCallback(
