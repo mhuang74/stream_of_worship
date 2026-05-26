@@ -145,14 +145,14 @@ describe("Deploy workflow", () => {
     expect(raw).toContain("secrets.VERCEL_DEPLOY_HOOK_URL");
   });
 
-  it("migrate-db runs DB schema push step", () => {
+  it("migrate-db runs DB migration step", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
     const steps = jobs["migrate-db"].steps as Array<{ run?: string; name?: string }>;
-    const pushStep = steps.find(
-      (s) => s.run?.includes("drizzle-kit push") || s.name?.toLowerCase().includes("schema"),
+    const migrateStep = steps.find(
+      (s) => s.run?.includes("scripts/migrate.ts") || s.name?.toLowerCase().includes("migrate"),
     );
-    expect(pushStep).toBeDefined();
+    expect(migrateStep).toBeDefined();
   });
 
   it("migrate-db references SOW_DATABASE_URL secret for schema push", () => {
