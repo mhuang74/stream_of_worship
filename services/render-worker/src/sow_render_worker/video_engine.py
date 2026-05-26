@@ -329,7 +329,6 @@ class VideoEngine:
 
         frame_count = 0
         render_total_ns = 0
-        tobytes_total_ns = 0
         write_total_ns = 0
 
         try:
@@ -342,12 +341,8 @@ class VideoEngine:
                 else:
                     current_time = frame_count / self.fps
                     t0 = time.monotonic_ns()
-                    img = self.frame_renderer.render_frame(lyrics, segments, current_time)
+                    frame_bytes = self.frame_renderer.render_frame_bytes(lyrics, segments, current_time)
                     render_total_ns += time.monotonic_ns() - t0
-
-                    t0 = time.monotonic_ns()
-                    frame_bytes = img.tobytes()
-                    tobytes_total_ns += time.monotonic_ns() - t0
 
                 try:
                     t0 = time.monotonic_ns()
@@ -392,15 +387,24 @@ class VideoEngine:
 
                 if frame_count > 0 and frame_count % (self.fps * 5) == 0:
                     elapsed_so_far = time.monotonic_ns() - ffmpeg_start_ns
+                    cache_info = ""
+                    if self.frame_renderer and self.frame_renderer._cache_enabled:
+                        stats = self.frame_renderer.get_cache_stats()
+                        hit_rate = stats["hits"] / max(1, stats["hits"] + stats["misses"]) * 100
+                        cache_info = (
+                            f", cache={stats['entries']}entries/"
+                            f"{stats['hits']}hits/{stats['misses']}misses ({hit_rate:.0f}%)"
+                        )
                     logger.info(
                         "[%s] Encoding breakdown at frame %d/%d: "
-                        "render=%.1fs (%.1f%%), pipe_write=%.1fs (%.1f%%)",
+                        "render=%.1fs (%.1f%%), pipe_write=%.1fs (%.1f%%)%s",
                         job_id or "unknown",
                         frame_count, total_frames,
                         render_total_ns / 1e9,
                         render_total_ns / elapsed_so_far * 100,
                         write_total_ns / 1e9,
                         write_total_ns / elapsed_so_far * 100,
+                        cache_info,
                     )
 
             try:
@@ -415,21 +419,27 @@ class VideoEngine:
             raise
         finally:
             total_elapsed_ns = time.monotonic_ns() - ffmpeg_start_ns
+            if self.frame_renderer and self.frame_renderer._cache_enabled:
+                stats = self.frame_renderer.get_cache_stats()
+                hit_rate = stats["hits"] / max(1, stats["hits"] + stats["misses"]) * 100
+                logger.info(
+                    "[%s] Frame cache final: %d entries, %d hits, %d misses (%.1f%% hit rate), max=%d",
+                    job_id or "unknown",
+                    stats["entries"], stats["hits"], stats["misses"], hit_rate, stats["max_entries"],
+                )
             if total_elapsed_ns > 0:
                 logger.info(
                     "[%s] Encoding breakdown: total=%.1fs, render=%.1fs (%.1f%%), "
-                    "tobytes=%.1fs (%.1f%%), pipe_write=%.1fs (%.1f%%), "
+                    "pipe_write=%.1fs (%.1f%%), "
                     "other=%.1fs (%.1f%%)",
                     job_id or "unknown",
                     total_elapsed_ns / 1e9,
                     render_total_ns / 1e9,
                     render_total_ns / total_elapsed_ns * 100,
-                    tobytes_total_ns / 1e9,
-                    tobytes_total_ns / total_elapsed_ns * 100,
                     write_total_ns / 1e9,
                     write_total_ns / total_elapsed_ns * 100,
-                    (total_elapsed_ns - render_total_ns - tobytes_total_ns - write_total_ns) / 1e9,
-                    (total_elapsed_ns - render_total_ns - tobytes_total_ns - write_total_ns) / total_elapsed_ns * 100,
+                    (total_elapsed_ns - render_total_ns - write_total_ns) / 1e9,
+                    (total_elapsed_ns - render_total_ns - write_total_ns) / total_elapsed_ns * 100,
                 )
             else:
                 logger.info(

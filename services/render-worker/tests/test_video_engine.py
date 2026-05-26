@@ -541,14 +541,14 @@ class TestEncodeVideoWithFFmpeg:
         mock_process.stderr.read.return_value = b""
 
         render_times: list[float] = []
-        original_render_frame = engine.frame_renderer.render_frame
+        original_render_frame_bytes = engine.frame_renderer.render_frame_bytes
 
         def capture_render_time(lyrics_arg, segments_arg, current_time):
             render_times.append(current_time)
-            return original_render_frame(lyrics_arg, segments_arg, current_time)
+            return original_render_frame_bytes(lyrics_arg, segments_arg, current_time)
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
-             patch.object(engine.frame_renderer, "render_frame", side_effect=capture_render_time):
+             patch.object(engine.frame_renderer, "render_frame_bytes", side_effect=capture_render_time):
             mock_popen.return_value = mock_process
             engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",

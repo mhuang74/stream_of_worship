@@ -220,7 +220,7 @@ create_lambda() {
         --code "ImageUri=${ECR_URI}:latest" \
         --role "$role_arn" \
         --timeout 900 \
-        --memory-size 2048 \
+        --memory-size 3072 \
         --ephemeral-storage Size=2048 \
         --environment "$env_vars"
 
@@ -230,14 +230,17 @@ create_lambda() {
 build_env_vars() {
     local sqs_url="$QUEUE_URL"
 
-    printf '{"Variables":{"SOW_DATABASE_URL":"%s","SOW_R2_BUCKET":"%s","SOW_R2_ENDPOINT_URL":"%s","SOW_R2_ACCESS_KEY_ID":"%s","SOW_R2_SECRET_ACCESS_KEY":"%s","SOW_AWS_REGION":"%s","SOW_SQS_QUEUE_URL":"%s"}}' \
+    printf '{"Variables":{"SOW_DATABASE_URL":"%s","SOW_R2_BUCKET":"%s","SOW_R2_ENDPOINT_URL":"%s","SOW_R2_ACCESS_KEY_ID":"%s","SOW_R2_SECRET_ACCESS_KEY":"%s","SOW_AWS_REGION":"%s","SOW_SQS_QUEUE_URL":"%s","SOW_FRAME_CACHE_ENABLED":"%s","SOW_FADE_ALPHA_STEPS":"%s","SOW_MAX_CACHE_ENTRIES":"%s"}}' \
         "${SOW_DATABASE_URL:-postgresql://user:password@localhost/db}" \
         "${SOW_R2_BUCKET:-your-r2-bucket}" \
         "${SOW_R2_ENDPOINT_URL:-https://your-account-id.r2.cloudflarestorage.com}" \
         "${SOW_R2_ACCESS_KEY_ID:-your-r2-access-key-id}" \
         "${SOW_R2_SECRET_ACCESS_KEY:-your-r2-secret-access-key}" \
         "${SOW_AWS_REGION:-us-west-2}" \
-        "$sqs_url"
+        "$sqs_url" \
+        "${SOW_FRAME_CACHE_ENABLED:-true}" \
+        "${SOW_FADE_ALPHA_STEPS:-16}" \
+        "${SOW_MAX_CACHE_ENTRIES:-300}"
 }
 
 # ── Wait for Lambda to become Active ───────────────────────────────────────
