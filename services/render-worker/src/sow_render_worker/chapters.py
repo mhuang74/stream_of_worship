@@ -2,17 +2,40 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timezone
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 logger = logging.getLogger(__name__)
+
+
+def _snake_to_camel(name: str) -> str:
+    components = name.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+def dataclass_to_camel_case_dict(obj: Any) -> dict | list | str | int | float | bool | None:
+    if is_dataclass(obj) and not isinstance(obj, type):
+        result = {}
+        for f in fields(obj):
+            value = getattr(obj, f.name)
+            result[_snake_to_camel(f.name)] = dataclass_to_camel_case_dict(value)
+        return result
+    elif isinstance(obj, tuple):
+        return [dataclass_to_camel_case_dict(item) for item in obj]
+    elif isinstance(obj, list):
+        return [dataclass_to_camel_case_dict(item) for item in obj]
+    else:
+        return obj
 
 
 @dataclass(frozen=True)
 class ChapterLine:
     text: str
     start_seconds: float
+
+    def to_camel_case_dict(self) -> dict:
+        return dataclass_to_camel_case_dict(self)
 
 
 @dataclass(frozen=True)
@@ -23,12 +46,18 @@ class Chapter:
     end_seconds: float
     lines: tuple[ChapterLine, ...] = field(default_factory=tuple)
 
+    def to_camel_case_dict(self) -> dict:
+        return dataclass_to_camel_case_dict(self)
+
 
 @dataclass(frozen=True)
 class ChaptersManifest:
     chapters: tuple[Chapter, ...] = field(default_factory=tuple)
     total_duration_seconds: float = 0.0
     generated_at: str = ""
+
+    def to_camel_case_dict(self) -> dict:
+        return dataclass_to_camel_case_dict(self)
 
 
 class SegmentInfo(Protocol):

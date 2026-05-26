@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlaybackControls } from "./PlaybackControls";
-import { LyricJumpList, Chapter } from "./LyricJumpList";
+import { LyricJumpList } from "./LyricJumpList";
+import type { Chapter } from "@/lib/render/chapters";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaSession } from "@/hooks/useMediaSession";
@@ -173,6 +174,11 @@ export function ControllerPlayer({
       const video = videoRef.current;
       if (!video) return;
 
+      if (!isFinite(time)) {
+        console.warn("handleSeek called with non-finite time:", time);
+        return;
+      }
+
       const clampedTime = Math.max(0, Math.min(duration, time));
       video.currentTime = clampedTime;
       setCurrentTime(clampedTime);
@@ -191,14 +197,18 @@ export function ControllerPlayer({
   const handlePrevSong = useCallback(() => {
     if (currentSongIndex > 0) {
       const prevChapter = chapters[currentSongIndex - 1];
-      handleSeek(prevChapter.startSeconds);
+      if (prevChapter) {
+        handleSeek(prevChapter.startSeconds);
+      }
     }
   }, [currentSongIndex, chapters, handleSeek]);
 
   const handleNextSong = useCallback(() => {
     if (currentSongIndex < chapters.length - 1) {
       const nextChapter = chapters[currentSongIndex + 1];
-      handleSeek(nextChapter.startSeconds);
+      if (nextChapter) {
+        handleSeek(nextChapter.startSeconds);
+      }
     }
   }, [currentSongIndex, chapters, handleSeek]);
 
@@ -220,7 +230,10 @@ export function ControllerPlayer({
   const handleJumpToChapter = useCallback(
     (index: number) => {
       if (index >= 0 && index < chapters.length) {
-        handleSeek(chapters[index].startSeconds);
+        const chapter = chapters[index];
+        if (chapter) {
+          handleSeek(chapter.startSeconds);
+        }
       }
     },
     [chapters, handleSeek]
@@ -230,8 +243,11 @@ export function ControllerPlayer({
     (chapterIndex: number, lineIndex: number) => {
       if (chapterIndex >= 0 && chapterIndex < chapters.length) {
         const chapter = chapters[chapterIndex];
-        if (lineIndex >= 0 && lineIndex < chapter.lines.length) {
-          handleSeek(chapter.lines[lineIndex].startSeconds);
+        if (chapter && lineIndex >= 0 && lineIndex < chapter.lines.length) {
+          const line = chapter.lines[lineIndex];
+          if (line) {
+            handleSeek(line.startSeconds);
+          }
         }
       }
     },

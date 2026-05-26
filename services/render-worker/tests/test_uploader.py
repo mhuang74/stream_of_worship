@@ -265,7 +265,7 @@ class TestUploadRenderArtifacts:
         body = call_kwargs["Body"]
         parsed = json.loads(body)
         assert parsed["chapters"] == []
-        assert parsed["total_duration_seconds"] == 0.0
+        assert parsed["totalDurationSeconds"] == 0.0
 
     def test_no_artifacts_returns_empty_result(self):
         uploader = _make_uploader()
@@ -288,27 +288,24 @@ class TestUploadRenderArtifacts:
         call_kwargs = uploader._client.put_object.call_args[1]
         body = call_kwargs["Body"]
         parsed = json.loads(body)
-        assert parsed["chapters"][0]["song_title"] == "中文標題"
+        assert parsed["chapters"][0]["songTitle"] == "中文標題"
 
     def test_chapters_dataclass_serialization(self):
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeChapter:
-            title: str
-            start: float
-
         uploader = _make_uploader()
         uploader._client.put_object.return_value = {"ETag": '"etag"'}
 
-        artifacts = RenderArtifacts(chapters=FakeChapter(title="Test", start=0.0))
+        artifacts = RenderArtifacts(chapters=ChaptersManifest(
+            chapters=(Chapter(position=1, song_title="Test", start_seconds=0.0, end_seconds=60.0),),
+            total_duration_seconds=60.0,
+            generated_at="2024-01-01",
+        ))
         uploader.upload_render_artifacts("job-dc", artifacts)
 
         call_kwargs = uploader._client.put_object.call_args[1]
         body = call_kwargs["Body"]
         parsed = json.loads(body)
-        assert parsed["title"] == "Test"
-        assert parsed["start"] == 0.0
+        assert parsed["chapters"][0]["songTitle"] == "Test"
+        assert parsed["chapters"][0]["startSeconds"] == 0.0
 
 
 class TestDeleteRenderArtifacts:

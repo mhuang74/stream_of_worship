@@ -8,6 +8,7 @@ import {
   parseChaptersManifest,
   getChapterDurations,
   getChapterProgress,
+  normalizeChaptersManifest,
 } from "@/lib/render/chapters";
 import { AudioSegmentInfo } from "@/lib/render/chapters";
 import { AssetFetcher } from "@/lib/render/asset-fetcher";
@@ -469,6 +470,106 @@ describe("chapters", () => {
     it("returns null for time outside chapters", () => {
       expect(getChapterProgress(manifest, -1)).toBeNull();
       expect(getChapterProgress(manifest, 101)).toBeNull();
+    });
+  });
+
+  describe("normalizeChaptersManifest", () => {
+    it("normalizes snake_case keys to camelCase", () => {
+      const snakeCaseData = {
+        chapters: [
+          {
+            position: 1,
+            song_title: "Song A",
+            start_seconds: 0,
+            end_seconds: 30,
+            lines: [
+              { text: "Line 1", start_seconds: 5 },
+            ],
+          },
+        ],
+        total_duration_seconds: 30,
+        generated_at: "2024-01-01T00:00:00Z",
+      };
+
+      const manifest = normalizeChaptersManifest(snakeCaseData);
+
+      expect(manifest.chapters).toHaveLength(1);
+      expect(manifest.chapters[0].songTitle).toBe("Song A");
+      expect(manifest.chapters[0].startSeconds).toBe(0);
+      expect(manifest.chapters[0].endSeconds).toBe(30);
+      expect(manifest.chapters[0].lines[0].startSeconds).toBe(5);
+      expect(manifest.totalDurationSeconds).toBe(30);
+      expect(manifest.generatedAt).toBe("2024-01-01T00:00:00Z");
+    });
+
+    it("passes through already-camelCase data unchanged", () => {
+      const camelCaseData = {
+        chapters: [
+          {
+            position: 1,
+            songTitle: "Song A",
+            startSeconds: 0,
+            endSeconds: 30,
+            lines: [
+              { text: "Line 1", startSeconds: 5 },
+            ],
+          },
+        ],
+        totalDurationSeconds: 30,
+        generatedAt: "2024-01-01T00:00:00Z",
+      };
+
+      const manifest = normalizeChaptersManifest(camelCaseData);
+
+      expect(manifest.chapters).toHaveLength(1);
+      expect(manifest.chapters[0].songTitle).toBe("Song A");
+      expect(manifest.chapters[0].startSeconds).toBe(0);
+    });
+
+    it("handles mixed snake_case and camelCase keys", () => {
+      const mixedData = {
+        chapters: [
+          {
+            position: 1,
+            songTitle: "Song A",
+            start_seconds: 0,
+            endSeconds: 30,
+            lines: [
+              { text: "Line 1", start_seconds: 5 },
+            ],
+          },
+        ],
+        total_duration_seconds: 30,
+        generatedAt: "2024-01-01",
+      };
+
+      const manifest = normalizeChaptersManifest(mixedData);
+
+      expect(manifest.chapters[0].songTitle).toBe("Song A");
+      expect(manifest.chapters[0].startSeconds).toBe(0);
+      expect(manifest.chapters[0].lines[0].startSeconds).toBe(5);
+      expect(manifest.totalDurationSeconds).toBe(30);
+    });
+
+    it("throws on invalid chapters structure", () => {
+      expect(() => normalizeChaptersManifest({ chapters: "not an array" }))
+        .toThrow("chapters must be an array");
+    });
+
+    it("throws on missing startSeconds in chapter", () => {
+      expect(() => normalizeChaptersManifest({
+        chapters: [{ position: 1, songTitle: "Test" }],
+      })).toThrow("missing or invalid startSeconds/endSeconds");
+    });
+
+    it("handles empty chapters array", () => {
+      const manifest = normalizeChaptersManifest({
+        chapters: [],
+        totalDurationSeconds: 0,
+        generatedAt: "2024-01-01",
+      });
+
+      expect(manifest.chapters).toEqual([]);
     });
   });
 });
