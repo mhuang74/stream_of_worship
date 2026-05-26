@@ -10,7 +10,7 @@ from stream_of_worship.db.user_client import DuplicateEmailError, UserClient
 @pytest.fixture(scope="function")
 def user_client(postgres_url):
     """Create a UserClient with a fresh schema."""
-    provider = ConnectionProvider(postgres_url)
+    provider = ConnectionProvider(postgres_url, sslmode="disable")
     conn = provider.get_connection()
 
     with conn.cursor() as cur:
@@ -21,7 +21,7 @@ def user_client(postgres_url):
     yield client
 
     try:
-        cleanup_provider = ConnectionProvider(postgres_url)
+        cleanup_provider = ConnectionProvider(postgres_url, sslmode="disable")
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute(
                 """
@@ -92,7 +92,7 @@ class TestUserClient:
 
         user = user_client.create_user("alice@example.com", name="Alice")
         songset_client = SongsetClient(
-            ConnectionProvider(postgres_url), user_id=user.id
+            ConnectionProvider(postgres_url, sslmode="disable"), user_id=user.id
         )
         songset_client.create_songset("Sunday")
         songset_client.create_songset("Evening")

@@ -35,7 +35,13 @@ def unified_db(postgres_url):
 
     admin_client = DatabaseClient(provider)
     read_client = ReadOnlyClient(provider)
-    songset_client = SongsetClient(provider)
+
+    # Create a test user for SongsetClient
+    from stream_of_worship.db.user_client import UserClient
+    with UserClient(provider) as user_client:
+        user = user_client.create_user(email="test-catalog@example.com", name="Test User")
+
+    songset_client = SongsetClient(provider, user_id=user.id)
 
     yield admin_client, read_client, songset_client
 
@@ -44,11 +50,13 @@ def unified_db(postgres_url):
         cleanup_provider = make_test_provider(postgres_url)
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
-                DROP TABLE IF EXISTS songset_items CASCADE;
-                DROP TABLE IF EXISTS songsets CASCADE;
-                DROP TABLE IF EXISTS recordings CASCADE;
-                DROP TABLE IF EXISTS songs CASCADE;
+                DROP TABLE IF EXISTS songset_share, lyric_mark,
+                    user_lrc_override, user_settings,
+                    songset_items, songsets,
+                    recordings, songs,
+                    "session", "account", "verification", "user" CASCADE;
                 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+                DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
             """)
         cleanup_provider.close()
     except Exception:
