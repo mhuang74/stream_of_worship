@@ -16,6 +16,7 @@ export const auth = betterAuth({
     usePlural: false,
   }),
   trustedOrigins: (request) => {
+    if (!request) return [];
     const origin = request.headers.get("origin");
     if (
       origin &&
