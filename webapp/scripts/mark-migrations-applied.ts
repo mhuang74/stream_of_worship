@@ -32,7 +32,7 @@ async function main() {
   console.log(`Found ${migrations.length} migration files`);
 
   for (const migration of migrations) {
-    console.log(`Marking ${migration.folderName} as applied (hash: ${migration.hash}, created_at: ${migration.folderMillis})`);
+    console.log(`Marking migration ${migration.hash} as applied (created_at: ${migration.folderMillis})`);
     await sqlClient`
       INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
       VALUES (${migration.hash}, ${migration.folderMillis})
