@@ -261,6 +261,9 @@ class VideoEngine:
     ) -> None:
         width, height = self.resolution
 
+        if self.frame_renderer:
+            self.frame_renderer.clear_cache()
+
         ffmpeg_start_ns = time.monotonic_ns()
         logger.info(
             "[%s] encode_video_with_ffmpeg: starting FFmpeg pipe, %d frames (%.1fs at %dfps)",
