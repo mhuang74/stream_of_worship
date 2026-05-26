@@ -258,36 +258,20 @@ describe("ControllerPlayer", () => {
       expect(nextButton).not.toBeDisabled();
     });
 
-    it("skips back 10 seconds when skip back clicked", async () => {
+    it("clicking video shows controls without toggling play/pause", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);
       });
 
-      const skipBackButton = screen.getByRole("button", { name: /skip back 10 seconds/i });
+      const video = document.querySelector("video");
       
       await act(async () => {
-        fireEvent.click(skipBackButton);
+        fireEvent.click(video!);
       });
 
-      // Button should exist and be clickable
-      expect(skipBackButton).toBeInTheDocument();
-      expect(skipBackButton).not.toBeDisabled();
-    });
-
-    it("skips forward 10 seconds when skip forward clicked", async () => {
-      await act(async () => {
-        render(<ControllerPlayer {...defaultProps} />);
-      });
-
-      const skipForwardButton = screen.getByRole("button", { name: /skip forward 10 seconds/i });
-      
-      await act(async () => {
-        fireEvent.click(skipForwardButton);
-      });
-
-      // Button should exist and be clickable
-      expect(skipForwardButton).toBeInTheDocument();
-      expect(skipForwardButton).not.toBeDisabled();
+      // Video click should not toggle play/pause (it shows controls instead)
+      const playButton = screen.getByRole("button", { name: /^play$/i });
+      expect(playButton).toBeInTheDocument();
     });
   });
 

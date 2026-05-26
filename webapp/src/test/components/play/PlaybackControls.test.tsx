@@ -5,8 +5,6 @@ import { PlaybackControls } from "@/components/play/PlaybackControls";
 describe("PlaybackControls", () => {
   const mockPlayPause = vi.fn();
   const mockSeek = vi.fn();
-  const mockSkipBack = vi.fn();
-  const mockSkipForward = vi.fn();
   const mockPrevSong = vi.fn();
   const mockNextSong = vi.fn();
   const mockVolumeChange = vi.fn();
@@ -23,8 +21,6 @@ describe("PlaybackControls", () => {
     isPresentationActive: false,
     onPlayPause: mockPlayPause,
     onSeek: mockSeek,
-    onSkipBack: mockSkipBack,
-    onSkipForward: mockSkipForward,
     onPrevSong: mockPrevSong,
     onNextSong: mockNextSong,
     onVolumeChange: mockVolumeChange,
@@ -63,24 +59,6 @@ describe("PlaybackControls", () => {
       expect(screen.getByText("1/3")).toBeInTheDocument();
     });
 
-    it("renders skip back button with 10s label", () => {
-      render(<PlaybackControls {...defaultProps} />);
-
-      const skipBackButton = screen.getByRole("button", {
-        name: /skip back 10 seconds/i,
-      });
-      expect(skipBackButton).toBeInTheDocument();
-    });
-
-    it("renders skip forward button with 10s label", () => {
-      render(<PlaybackControls {...defaultProps} />);
-
-      const skipForwardButton = screen.getByRole("button", {
-        name: /skip forward 10 seconds/i,
-      });
-      expect(skipForwardButton).toBeInTheDocument();
-    });
-
     it("renders previous song button", () => {
       render(<PlaybackControls {...defaultProps} />);
 
@@ -109,7 +87,7 @@ describe("PlaybackControls", () => {
       expect(volumeSlider).toBeInTheDocument();
     });
 
-    it("renders scrub bar", () => {
+    it("renders scrub bar on desktop", () => {
       render(<PlaybackControls {...defaultProps} />);
 
       const scrubBar = screen.getByRole("slider", { name: /seek/i });
@@ -139,28 +117,6 @@ describe("PlaybackControls", () => {
       fireEvent.click(playButton);
 
       expect(mockPlayPause).toHaveBeenCalled();
-    });
-
-    it("calls onSkipBack when skip back button clicked", () => {
-      render(<PlaybackControls {...defaultProps} />);
-
-      const skipBackButton = screen.getByRole("button", {
-        name: /skip back 10 seconds/i,
-      });
-      fireEvent.click(skipBackButton);
-
-      expect(mockSkipBack).toHaveBeenCalled();
-    });
-
-    it("calls onSkipForward when skip forward button clicked", () => {
-      render(<PlaybackControls {...defaultProps} />);
-
-      const skipForwardButton = screen.getByRole("button", {
-        name: /skip forward 10 seconds/i,
-      });
-      fireEvent.click(skipForwardButton);
-
-      expect(mockSkipForward).toHaveBeenCalled();
     });
 
     it("calls onPrevSong when previous song button clicked", () => {
