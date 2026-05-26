@@ -829,6 +829,22 @@ pytest tests/ --cov=src --cov=services/analysis/src --cov-report=html
 | Deployment | Vercel (web) + AWS Lambda (render worker) |
 | Testing | Vitest |
 
+#### Database Migrations (CI/CD)
+
+**Problem:** `drizzle-kit push --force` and `drizzle-kit migrate` both fail in CI:
+- `push --force` prompts for TTY when encountering destructive schema changes (e.g., adding unique constraint to populated table)
+- `migrate` hangs indefinitely with `@neondatabase/serverless` driver (websocket connection issues)
+
+**Solution:**
+1. Custom migration script `webapp/scripts/migrate.ts` using `drizzle-orm/neon-http/migrator` (works with Neon serverless)
+2. CI runs `npx tsx scripts/migrate.ts` instead of `drizzle-kit migrate`
+3. One-time setup script `webapp/scripts/mark-migrations-applied.ts` to populate `drizzle.__drizzle_migrations` table when migrating from `push`-based to `migrate`-based workflow
+
+**Developer Workflow:**
+- Local dev: `npx drizzle-kit push` for rapid prototyping
+- Before committing schema changes: `npx drizzle-kit generate` → commit migration files in `webapp/drizzle/`
+- CI: `npx tsx scripts/migrate.ts` applies pending migrations non-interactively
+
 ---
 
 ## Next Steps / Pending Work
