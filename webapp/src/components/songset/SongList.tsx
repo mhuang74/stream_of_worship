@@ -183,7 +183,7 @@ function SortableSongItem({
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                 <span className="flex items-center gap-1">
                   <Music className="size-3" />
                   {item.song?.composer || item.song?.lyricist || "Unknown Artist"}
@@ -205,7 +205,7 @@ function SortableSongItem({
               <Button
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-xs text-muted-foreground hidden sm:flex"
+                className="shrink-0 text-xs text-muted-foreground hidden md:flex"
                 onClick={() => onEditTransition?.(item.id)}
                 aria-label={`Edit transition before ${item.song?.title || "song"}: gap ${item.gapBeats} beats${item.crossfadeEnabled ? ", crossfade" : ""}`}
               >
