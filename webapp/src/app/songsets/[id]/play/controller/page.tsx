@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
-import { Chapter } from "@/components/play/LyricJumpList";
+import type { Chapter } from "@/lib/render/chapters";
+import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -97,8 +98,11 @@ export default function ControllerPage() {
           const chaptersDataResponse = await fetch(chaptersProxyUrl);
           if (chaptersDataResponse.ok) {
             const chaptersData = await chaptersDataResponse.json();
-            if (chaptersData.chapters) {
-              setChapters(chaptersData.chapters);
+            try {
+              const manifest = normalizeChaptersManifest(chaptersData);
+              setChapters(manifest.chapters);
+            } catch (e) {
+              console.error("Failed to parse chapters:", e);
             }
           }
         }

@@ -1,5 +1,6 @@
 import json
-from dataclasses import dataclass
+import dataclasses
+from dataclasses import dataclass, fields as dc_fields
 
 import pytest
 
@@ -7,8 +8,10 @@ from sow_render_worker.chapters import (
     Chapter,
     ChapterLine,
     ChaptersManifest,
+    _snake_to_camel,
     build_chapters_from_segments,
     chapters_to_ffmpeg_metadata,
+    dataclass_to_camel_case_dict,
     find_chapter_at_time,
     generate_chapters_manifest,
     get_lyric_at_time,
@@ -619,3 +622,94 @@ class TestParseChaptersManifest:
         assert ffmpeg_str.startswith(";FFMETADATA1")
         assert "title=Song A" in ffmpeg_str
         assert "title=Song B" in ffmpeg_str
+
+
+class TestChaptersManifestRoundtrip:
+    def test_serialize_and_parse_roundtrip(self):
+        chapters = [
+            Chapter(
+                position=1,
+                song_title="Song A",
+                start_seconds=0.0,
+                end_seconds=30.0,
+                lines=(ChapterLine(text="Line 1", start_seconds=5.0),),
+            ),
+            Chapter(
+                position=2,
+                song_title="Song B",
+                start_seconds=30.0,
+                end_seconds=60.0,
+                lines=(),
+            ),
+        ]
+        original = ChaptersManifest(
+            chapters=tuple(chapters),
+            total_duration_seconds=60.0,
+            generated_at="2024-01-01T00:00:00Z",
+        )
+
+        json_str = json.dumps(original.to_camel_case_dict())
+        parsed = parse_chapters_manifest(json_str)
+
+        assert len(parsed.chapters) == 2
+        assert parsed.chapters[0].song_title == "Song A"
+        assert parsed.chapters[0].start_seconds == 0.0
+        assert parsed.chapters[0].end_seconds == 30.0
+        assert len(parsed.chapters[0].lines) == 1
+        assert parsed.chapters[0].lines[0].text == "Line 1"
+        assert parsed.chapters[0].lines[0].start_seconds == 5.0
+        assert parsed.chapters[1].song_title == "Song B"
+        assert parsed.total_duration_seconds == 60.0
+        assert parsed.generated_at == "2024-01-01T00:00:00Z"
+
+    def test_to_camel_case_dict_produces_camel_case_keys(self):
+        chapter = Chapter(
+            position=1,
+            song_title="Test Song",
+            start_seconds=0.0,
+            end_seconds=30.0,
+            lines=(ChapterLine(text="Hello", start_seconds=5.0),),
+        )
+        manifest = ChaptersManifest(
+            chapters=(chapter,),
+            total_duration_seconds=30.0,
+            generated_at="2024-01-01T00:00:00Z",
+        )
+
+        d = manifest.to_camel_case_dict()
+
+        assert "chapters" in d
+        assert "totalDurationSeconds" in d
+        assert "generatedAt" in d
+        assert "total_duration_seconds" not in d
+
+        chapter_dict = d["chapters"][0]
+        assert "position" in chapter_dict
+        assert "songTitle" in chapter_dict
+        assert "startSeconds" in chapter_dict
+        assert "endSeconds" in chapter_dict
+        assert "lines" in chapter_dict
+        assert "song_title" not in chapter_dict
+        assert "start_seconds" not in chapter_dict
+
+        line_dict = chapter_dict["lines"][0]
+        assert "text" in line_dict
+        assert "startSeconds" in line_dict
+        assert "start_seconds" not in line_dict
+
+    def test_to_camel_case_dict_covers_all_fields(self):
+        for cls in (ChapterLine, Chapter, ChaptersManifest):
+            instance = cls.__new__(cls)
+            for f in dc_fields(cls):
+                default = f.default if f.default is not dataclasses.MISSING else (
+                    f.default_factory() if f.default_factory is not dataclasses.MISSING else None
+                )
+                object.__setattr__(instance, f.name, default)
+
+            camel_dict = instance.to_camel_case_dict()
+            for f in dc_fields(cls):
+                expected_key = _snake_to_camel(f.name)
+                assert expected_key in camel_dict, (
+                    f"{cls.__name__}.to_camel_case_dict() is missing field "
+                    f"'{f.name}' (expected key '{expected_key}')"
+                )

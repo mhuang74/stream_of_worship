@@ -277,3 +277,86 @@ export function getChapterProgress(
 
   return { chapterIndex, progressPercent };
 }
+
+export function normalizeChaptersManifest(data: unknown): ChaptersManifest {
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid chapters manifest: expected an object");
+  }
+
+  const raw = data as Record<string, unknown>;
+
+  const chapters = raw.chapters;
+  const totalDurationSeconds =
+    (raw.totalDurationSeconds as number) ?? (raw.total_duration_seconds as number) ?? 0;
+  const generatedAt =
+    (raw.generatedAt as string) ?? (raw.generated_at as string) ?? "";
+
+  if (!Array.isArray(chapters)) {
+    throw new Error("Invalid chapters manifest: chapters must be an array");
+  }
+
+  const normalizedChapters: Chapter[] = chapters.map((chapter, index) => {
+    if (!chapter || typeof chapter !== "object") {
+      throw new Error(`Invalid chapter at index ${index}`);
+    }
+
+    const c = chapter as Record<string, unknown>;
+
+    const position = (c.position as number) ?? index + 1;
+    const songTitle =
+      (c.songTitle as string) ?? (c.song_title as string) ?? `Song ${index + 1}`;
+    const startSeconds =
+      (c.startSeconds as number) ?? (c.start_seconds as number);
+    const endSeconds =
+      (c.endSeconds as number) ?? (c.end_seconds as number);
+    const lines = (c.lines as unknown[]) ?? [];
+
+    if (typeof startSeconds !== "number" || typeof endSeconds !== "number") {
+      throw new Error(
+        `Invalid chapter at index ${index}: missing or invalid startSeconds/endSeconds`
+      );
+    }
+
+    if (!Array.isArray(lines)) {
+      throw new Error(`Invalid chapter at index ${index}: lines must be an array`);
+    }
+
+    const normalizedLines: ChapterLine[] = lines.map((line, lineIndex) => {
+      if (!line || typeof line !== "object") {
+        throw new Error(`Invalid line at index ${lineIndex} in chapter ${index}`);
+      }
+
+      const l = line as Record<string, unknown>;
+
+      const text = l.text as string;
+      const lineStartSeconds =
+        (l.startSeconds as number) ?? (l.start_seconds as number);
+
+      if (typeof text !== "string" || typeof lineStartSeconds !== "number") {
+        throw new Error(
+          `Invalid line at index ${lineIndex} in chapter ${index}: missing text or startSeconds`
+        );
+      }
+
+      return {
+        text,
+        startSeconds: lineStartSeconds,
+      };
+    });
+
+    return {
+      position: typeof position === "number" ? position : index + 1,
+      songTitle: typeof songTitle === "string" ? songTitle : `Song ${index + 1}`,
+      startSeconds,
+      endSeconds,
+      lines: normalizedLines,
+    };
+  });
+
+  return {
+    chapters: normalizedChapters,
+    totalDurationSeconds:
+      typeof totalDurationSeconds === "number" ? totalDurationSeconds : 0,
+    generatedAt: typeof generatedAt === "string" ? generatedAt : "",
+  };
+}

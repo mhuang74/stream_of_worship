@@ -3,17 +3,9 @@
 import { useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
+import type { Chapter } from "@/lib/render/chapters";
 
-export interface Chapter {
-  position: number;
-  songTitle: string;
-  startSeconds: number;
-  endSeconds: number;
-  lines: {
-    text: string;
-    startSeconds: number;
-  }[];
-}
+export type { Chapter, ChapterLine } from "@/lib/render/chapters";
 
 export interface LyricJumpListProps {
   chapters: Chapter[];

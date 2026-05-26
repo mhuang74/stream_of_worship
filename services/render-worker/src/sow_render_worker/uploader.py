@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
-
+from sow_render_worker.chapters import ChaptersManifest
 from sow_render_worker.r2_client import R2Client, create_r2_client_from_env
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,7 @@ DEFAULT_CACHE_CONTROL = "public, max-age=3600"
 class RenderArtifacts:
     mp3_path: str | None = None
     mp4_path: str | None = None
-    chapters: Any = None
+    chapters: ChaptersManifest | None = None
 
 
 @dataclass
@@ -132,7 +131,7 @@ class R2Uploader:
         if artifacts.chapters is not None:
             key = f"renders/{render_job_id}/chapters.json"
             json_content = json.dumps(
-                asdict(artifacts.chapters), indent=2, ensure_ascii=False
+                artifacts.chapters.to_camel_case_dict(), indent=2, ensure_ascii=False
             )
             buffer = json_content.encode("utf-8")
 
