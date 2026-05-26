@@ -169,8 +169,8 @@ class FrameRenderer:
         self.base_font_size = FONT_SIZE_PRESETS[font_size_preset]
 
         self._cache_enabled = _get_bool_env("SOW_FRAME_CACHE_ENABLED", _DEFAULT_CACHE_ENABLED)
-        self._fade_alpha_steps = max(2, _get_int_env("SOW_FADE_ALPHA_STEPS", _DEFAULT_FADE_ALPHA_STEPS))
-        self._max_cache_entries = max(10, _get_int_env("SOW_MAX_CACHE_ENTRIES", _DEFAULT_MAX_CACHE_ENTRIES))
+        self._fade_alpha_steps = min(256, max(2, _get_int_env("SOW_FADE_ALPHA_STEPS", _DEFAULT_FADE_ALPHA_STEPS)))
+        self._max_cache_entries = max(1, _get_int_env("SOW_MAX_CACHE_ENTRIES", _DEFAULT_MAX_CACHE_ENTRIES))
         self._frame_cache: OrderedDict[tuple, bytes] = OrderedDict()
         self._cache_hits = 0
         self._cache_misses = 0
@@ -327,9 +327,6 @@ class FrameRenderer:
                     current_lyric_index = i
                 else:
                     break
-
-            if current_lyric_index < 0 and current_time > current_song_lyrics[-1].global_time_seconds:
-                current_lyric_index = len(current_song_lyrics) - 1
 
             if current_lyric_index >= 0:
                 is_last = current_lyric_index == len(current_song_lyrics) - 1
