@@ -30,7 +30,7 @@ EXPECTED_TABLES = {
 class TestFullSchemaInit:
     def test_all_tables_created(self, postgres_url):
         """Running ALL_SCHEMA_STATEMENTS creates every expected table."""
-        provider = ConnectionProvider(postgres_url)
+        provider = ConnectionProvider(postgres_url, sslmode="disable")
         conn = provider.get_connection()
 
         with conn.cursor() as cur:
@@ -64,7 +64,7 @@ class TestFullSchemaInit:
 
     def test_critical_foreign_keys(self, postgres_url):
         """Verify the FKs that enforce multi-user isolation are in place."""
-        provider = ConnectionProvider(postgres_url)
+        provider = ConnectionProvider(postgres_url, sslmode="disable")
         conn = provider.get_connection()
 
         with conn.cursor() as cur:

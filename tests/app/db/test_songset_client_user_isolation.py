@@ -14,7 +14,7 @@ from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
 @pytest.fixture(scope="function")
 def two_user_clients(postgres_url, seed_user):
     """Set up schema, two users (alice and bob), and a client for each."""
-    provider = ConnectionProvider(postgres_url)
+    provider = ConnectionProvider(postgres_url, sslmode="disable")
     conn = provider.get_connection()
 
     with conn.cursor() as cur:
@@ -30,7 +30,7 @@ def two_user_clients(postgres_url, seed_user):
     yield alice, bob
 
     try:
-        cleanup_provider = ConnectionProvider(postgres_url)
+        cleanup_provider = ConnectionProvider(postgres_url, sslmode="disable")
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute(
                 """
