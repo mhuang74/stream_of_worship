@@ -109,46 +109,46 @@ export function PlaybackControls({
       </div>
 
       {/* Main controls */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-1 sm:gap-4">
         {/* Song navigation */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="ghost"
             size="icon"
-            className="size-12 text-white hover:bg-white/20"
+            className="size-10 sm:size-12 text-white hover:bg-white/20"
             onClick={onPrevSong}
             disabled={currentSongIndex <= 0}
             aria-label="Previous song"
           >
-            <SkipBack className="size-6" />
+            <SkipBack className="size-5 sm:size-6" />
           </Button>
-          <span className="text-sm text-white/70 min-w-[3rem] text-center">
+          <span className="text-xs sm:text-sm text-white/70 min-w-[2.5rem] sm:min-w-[3rem] text-center">
             {currentSongIndex + 1}/{totalSongs}
           </span>
           <Button
             variant="ghost"
             size="icon"
-            className="size-12 text-white hover:bg-white/20"
+            className="size-10 sm:size-12 text-white hover:bg-white/20"
             onClick={onNextSong}
             disabled={currentSongIndex >= totalSongs - 1}
             aria-label="Next song"
           >
-            <SkipForward className="size-6" />
+            <SkipForward className="size-5 sm:size-6" />
           </Button>
         </div>
 
         {/* Playback controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="ghost"
             size="icon"
-            className="size-14 text-white hover:bg-white/20"
+            className="size-12 sm:size-14 text-white hover:bg-white/20"
             onClick={onSkipBack}
             aria-label="Skip back 10 seconds"
           >
             <div className="relative">
-              <SkipBack className="size-6" />
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold">
+              <SkipBack className="size-5 sm:size-6" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] sm:text-[8px] font-bold">
                 10
               </span>
             </div>
@@ -157,27 +157,27 @@ export function PlaybackControls({
           <Button
             variant="default"
             size="icon"
-            className="size-16 rounded-full bg-white text-black hover:bg-white/90"
+            className="size-12 sm:size-16 rounded-full bg-white text-black hover:bg-white/90"
             onClick={onPlayPause}
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
-              <Pause className="size-8" />
+              <Pause className="size-6 sm:size-8" />
             ) : (
-              <Play className="size-8 ml-1" />
+              <Play className="size-6 sm:size-8 ml-1" />
             )}
           </Button>
 
           <Button
             variant="ghost"
             size="icon"
-            className="size-14 text-white hover:bg-white/20"
+            className="size-12 sm:size-14 text-white hover:bg-white/20"
             onClick={onSkipForward}
             aria-label="Skip forward 10 seconds"
           >
             <div className="relative">
-              <SkipForward className="size-6" />
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold">
+              <SkipForward className="size-5 sm:size-6" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] sm:text-[8px] font-bold">
                 10
               </span>
             </div>
@@ -185,11 +185,11 @@ export function PlaybackControls({
         </div>
 
         {/* Volume and presentation status */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="ghost"
             size="icon"
-            className="size-10 text-white hover:bg-white/20"
+            className="hidden sm:flex size-10 text-white hover:bg-white/20"
             onClick={onToggleMute}
             aria-label={isMuted ? "Unmute" : "Mute"}
           >

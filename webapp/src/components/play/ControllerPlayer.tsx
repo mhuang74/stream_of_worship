@@ -11,7 +11,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaSession } from "@/hooks/useMediaSession";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, X, Info } from "lucide-react";
+import { ArrowLeft, X, Info, Maximize } from "lucide-react";
 
 export interface ControllerPlayerProps {
   songsetId: string;
@@ -45,6 +45,7 @@ export function ControllerPlayer({
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showIosInfo, setShowIosInfo] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Wake lock hook
   const { isSupported: wakeLockSupported } = useWakeLock();
@@ -129,6 +130,11 @@ export function ControllerPlayer({
     setControlsVisible(true);
     startHideTimer();
   }, [startHideTimer]);
+
+  const showControlsRef = useRef(showControls);
+  useEffect(() => {
+    showControlsRef.current = showControls;
+  }, [showControls]);
 
   // Handle user interaction
   const handleInteraction = useCallback(() => {
@@ -255,7 +261,6 @@ export function ControllerPlayer({
   );
 
   const handleExit = useCallback(() => {
-    // Exit fullscreen if active
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {
         // Ignore errors
@@ -263,6 +268,10 @@ export function ControllerPlayer({
     }
     router.push(`/songsets/${songsetId}/play`);
   }, [router, songsetId]);
+
+  const handleReenterFullscreen = useCallback(() => {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }, []);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -315,7 +324,18 @@ export function ControllerPlayer({
     }
   }, [duration, currentTime, updatePositionState]);
 
-  // Request fullscreen on mount
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   useEffect(() => {
     const requestFullscreen = async () => {
       try {
@@ -331,7 +351,7 @@ export function ControllerPlayer({
 
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
-        showControls();
+        showControlsRef.current();
       }
     };
 
@@ -343,7 +363,7 @@ export function ControllerPlayer({
         document.exitFullscreen().catch(() => {});
       }
     };
-  }, [showControls]);
+  }, []);
 
   // Mute video when presentation is active (audio plays on receiver)
   useEffect(() => {
@@ -367,6 +387,7 @@ export function ControllerPlayer({
       )}
       onClick={handleInteraction}
       onTouchStart={handleInteraction}
+      onMouseMove={handleInteraction}
     >
       {/* Video */}
       <div className="flex-1 relative">
@@ -380,7 +401,22 @@ export function ControllerPlayer({
             e.stopPropagation();
             handlePlayPause();
           }}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+          }}
         />
+
+        {!isFullscreen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="fixed top-4 left-4 z-[80] size-10 text-white hover:bg-white/20"
+            onClick={handleReenterFullscreen}
+            aria-label="Re-enter fullscreen"
+          >
+            <Maximize className="size-5" />
+          </Button>
+        )}
 
         {/* Top bar */}
         <div
@@ -467,8 +503,16 @@ export function ControllerPlayer({
         ref={controlsRef}
         className={cn(
           "transition-opacity duration-300 pb-12",
-          controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
+          controlsVisible || isPresentationActive
+            ? "opacity-100"
+            : "opacity-0 pointer-events-none"
         )}
+        onMouseEnter={() => {
+          if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current);
+          }
+        }}
+        onMouseLeave={startHideTimer}
       >
         <PlaybackControls
           isPlaying={isPlaying}
