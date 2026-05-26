@@ -15,6 +15,16 @@ export const auth = betterAuth({
     },
     usePlural: false,
   }),
+  trustedOrigins: (request) => {
+    const origin = request.headers.get("origin");
+    if (
+      origin &&
+      /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin)
+    ) {
+      return [origin];
+    }
+    return [];
+  },
   emailAndPassword: {
     enabled: true,
     maxPasswordLength: 128,
