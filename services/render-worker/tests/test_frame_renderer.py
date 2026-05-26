@@ -14,6 +14,9 @@ from sow_render_worker.frame_renderer import (
     TitleCardConfig,
     VideoTemplate,
     VideoTemplateName,
+    VisualState,
+    _get_bool_env,
+    _get_int_env,
     _load_font,
 )
 from sow_render_worker.lrc_parser import GlobalLRCLine
@@ -644,3 +647,292 @@ class TestFrameRendererIntegration:
             )
             result = renderer.render_frame(lyrics, segments, 7.0)
             assert result.size == (1920, 1080)
+
+
+class TestGetBoolEnv:
+    def test_true_values(self):
+        for val in ("1", "true", "True", "TRUE", "yes", "on"):
+            with patch.dict("os.environ", {"TEST_VAR": val}):
+                assert _get_bool_env("TEST_VAR", False) is True
+
+    def test_false_values(self):
+        for val in ("0", "false", "False", "FALSE", "no", "off"):
+            with patch.dict("os.environ", {"TEST_VAR": val}):
+                assert _get_bool_env("TEST_VAR", True) is False
+
+    def test_missing_returns_default(self):
+        with patch.dict("os.environ", {}, clear=True):
+            assert _get_bool_env("MISSING_VAR", True) is True
+            assert _get_bool_env("MISSING_VAR", False) is False
+
+    def test_empty_returns_default(self):
+        with patch.dict("os.environ", {"TEST_VAR": ""}):
+            assert _get_bool_env("TEST_VAR", True) is True
+
+    def test_invalid_returns_default(self):
+        with patch.dict("os.environ", {"TEST_VAR": "maybe"}):
+            assert _get_bool_env("TEST_VAR", True) is True
+
+
+class TestGetIntEnv:
+    def test_valid_integer(self):
+        with patch.dict("os.environ", {"TEST_VAR": "42"}):
+            assert _get_int_env("TEST_VAR", 0) == 42
+
+    def test_missing_returns_default(self):
+        with patch.dict("os.environ", {}, clear=True):
+            assert _get_int_env("MISSING_VAR", 99) == 99
+
+    def test_empty_returns_default(self):
+        with patch.dict("os.environ", {"TEST_VAR": ""}):
+            assert _get_int_env("TEST_VAR", 99) == 99
+
+    def test_invalid_returns_default(self):
+        with patch.dict("os.environ", {"TEST_VAR": "abc"}):
+            assert _get_int_env("TEST_VAR", 99) == 99
+
+
+class TestQuantizeAlpha:
+    def test_255_returns_255(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer._quantize_alpha(255) == 255
+
+    def test_0_returns_0(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer._quantize_alpha(0) == 0
+
+    def test_quantizes_to_step_boundary(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        step = renderer._alpha_step_size
+        assert renderer._quantize_alpha(step - 1) == 0
+        assert renderer._quantize_alpha(step) == step
+        assert renderer._quantize_alpha(step + 1) == step
+        assert renderer._quantize_alpha(2 * step - 1) == step
+        assert renderer._quantize_alpha(2 * step) == 2 * step
+
+    def test_custom_step_size(self):
+        with patch.dict("os.environ", {"SOW_FADE_ALPHA_STEPS": "4"}):
+            renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+            assert renderer._alpha_step_size == 64
+            assert renderer._quantize_alpha(63) == 0
+            assert renderer._quantize_alpha(64) == 64
+            assert renderer._quantize_alpha(127) == 64
+            assert renderer._quantize_alpha(128) == 128
+            assert renderer._quantize_alpha(254) == 192
+
+
+class TestVisualState:
+    def test_intro_phase(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(10.0, "Hello")], title="Test Song")
+        segment = _make_segment(start=0.0, duration=60.0, composer="Test")
+        state = renderer._resolve_visual_state(lyrics, [segment], 2.0)
+        assert state.intro_alpha == 255
+        assert state.current_lyric_index == -1
+        assert state.segment_id == "seg1"
+
+    def test_lyric_phase(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")], title="Test Song")
+        segment = _make_segment(start=0.0, duration=60.0)
+        state = renderer._resolve_visual_state(lyrics, [segment], 7.0)
+        assert state.intro_alpha == 0
+        assert state.current_lyric_index == 0
+        assert state.current_title == "Test Song"
+
+    def test_no_segment(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        state = renderer._resolve_visual_state(lyrics, [], 7.0)
+        assert state.segment_id == ""
+        assert state.current_title == ""
+        assert state.current_lyric_index == -1
+
+    def test_no_lyrics(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        segment = _make_segment(start=0.0, duration=60.0)
+        state = renderer._resolve_visual_state([], [segment], 7.0)
+        assert state.current_lyric_index == -1
+        assert state.current_song_lyrics == []
+
+    def test_last_lyric_fade(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")], title="Test Song")
+        segment = _make_segment(start=0.0, duration=60.0)
+        state = renderer._resolve_visual_state(lyrics, [segment], 50.0)
+        assert state.is_last_lyric_faded is True
+        assert state.current_lyric_index == -1
+
+    def test_segment_transition(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics_song1 = _make_lyrics([(5.0, "Hello")], title="Song 1", offset=0.0)
+        lyrics_song2 = _make_lyrics([(5.0, "World")], title="Song 2", offset=60.0)
+        lyrics = lyrics_song1 + lyrics_song2
+        seg1 = _make_segment(song_title="Song 1", start=0.0, duration=60.0)
+        seg2 = _make_segment(song_title="Song 2", start=60.0, duration=60.0)
+        state = renderer._resolve_visual_state(lyrics, [seg1, seg2], 65.0)
+        assert state.segment_id == "seg1"
+        assert state.current_title == "Song 2"
+
+
+class TestComputeCacheKey:
+    def test_same_state_same_key(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        state1 = renderer._resolve_visual_state(lyrics, [segment], 7.0)
+        state2 = renderer._resolve_visual_state(lyrics, [segment], 7.5)
+        assert renderer._compute_cache_key(state1) == renderer._compute_cache_key(state2)
+
+    def test_different_segment_different_key(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics_song1 = _make_lyrics([(5.0, "Hello")], title="Song 1", offset=0.0)
+        lyrics_song2 = _make_lyrics([(5.0, "World")], title="Song 2", offset=60.0)
+        lyrics = lyrics_song1 + lyrics_song2
+        seg1 = _make_segment(song_title="Song 1", start=0.0, duration=60.0)
+        seg2 = _make_segment(song_title="Song 2", start=60.0, duration=60.0)
+        state1 = renderer._resolve_visual_state(lyrics, [seg1, seg2], 7.0)
+        state2 = renderer._resolve_visual_state(lyrics, [seg1, seg2], 65.0)
+        assert renderer._compute_cache_key(state1) != renderer._compute_cache_key(state2)
+
+    def test_different_lyric_index_different_key(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")], title="Test Song")
+        segment = _make_segment(start=0.0, duration=60.0)
+        state1 = renderer._resolve_visual_state(lyrics, [segment], 6.0)
+        state2 = renderer._resolve_visual_state(lyrics, [segment], 11.0)
+        assert renderer._compute_cache_key(state1) != renderer._compute_cache_key(state2)
+
+    def test_no_lyrics_key(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        state = renderer._resolve_visual_state([], [], 0.0)
+        key = renderer._compute_cache_key(state)
+        assert key == ("", "", -1, 0, 255, False)
+
+
+class TestFrameCache:
+    def test_cache_hit_on_repeated_call(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        result1 = renderer.render_frame_bytes(lyrics, [segment], 7.0)
+        result2 = renderer.render_frame_bytes(lyrics, [segment], 7.0)
+        assert result1 == result2
+        stats = renderer.get_cache_stats()
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+
+    def test_cache_miss_on_different_state(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")], title="Test Song")
+        segment = _make_segment(start=0.0, duration=60.0)
+        renderer.render_frame_bytes(lyrics, [segment], 6.0)
+        renderer.render_frame_bytes(lyrics, [segment], 11.0)
+        stats = renderer.get_cache_stats()
+        assert stats["misses"] == 2
+        assert stats["hits"] == 0
+
+    def test_lru_eviction(self):
+        with patch.dict("os.environ", {"SOW_MAX_CACHE_ENTRIES": "2"}):
+            renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+            lyrics = _make_lyrics([(5.0, "A"), (10.0, "B"), (15.0, "C")])
+            segment = _make_segment(start=0.0, duration=60.0)
+            renderer.render_frame_bytes(lyrics, [segment], 6.0)
+            renderer.render_frame_bytes(lyrics, [segment], 11.0)
+            renderer.render_frame_bytes(lyrics, [segment], 16.0)
+            stats = renderer.get_cache_stats()
+            assert stats["entries"] <= 2
+
+    def test_render_frame_bytes_matches_render_frame_tobytes(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        img = renderer.render_frame(lyrics, [segment], 7.0)
+        frame_bytes = renderer.render_frame_bytes(lyrics, [segment], 7.0)
+        assert frame_bytes == img.tobytes()
+
+    def test_clear_cache(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        renderer.render_frame_bytes(lyrics, [segment], 7.0)
+        renderer.render_frame_bytes(lyrics, [segment], 7.0)
+        renderer.clear_cache()
+        stats = renderer.get_cache_stats()
+        assert stats["entries"] == 0
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+
+
+class TestCacheDisabled:
+    def test_no_caching_when_disabled(self):
+        with patch.dict("os.environ", {"SOW_FRAME_CACHE_ENABLED": "false"}):
+            renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+            assert renderer._cache_enabled is False
+            lyrics = _make_lyrics([(5.0, "Hello")])
+            segment = _make_segment(start=0.0, duration=60.0)
+            renderer.render_frame_bytes(lyrics, [segment], 7.0)
+            renderer.render_frame_bytes(lyrics, [segment], 7.0)
+            stats = renderer.get_cache_stats()
+            assert stats["entries"] == 0
+            assert stats["hits"] == 0
+            assert stats["misses"] == 0
+
+    def test_render_frame_bytes_returns_correct_bytes_when_disabled(self):
+        with patch.dict("os.environ", {"SOW_FRAME_CACHE_ENABLED": "false"}):
+            renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+            lyrics = _make_lyrics([(5.0, "Hello")])
+            segment = _make_segment(start=0.0, duration=60.0)
+            result = renderer.render_frame_bytes(lyrics, [segment], 7.0)
+            assert isinstance(result, bytes)
+            assert len(result) == 1920 * 1080 * 4
+
+
+class TestFrameCachePerformance:
+    def test_cache_speedup(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "讚美之泉"), (10.0, "哈利路亞")])
+        segments = [_make_segment(start=0.0, duration=60.0)]
+
+        renderer.render_frame_bytes(lyrics, segments, 7.0)
+
+        import time
+        start = time.monotonic()
+        for _ in range(100):
+            renderer.render_frame_bytes(lyrics, segments, 7.0)
+        cached_elapsed = time.monotonic() - start
+
+        renderer_uncached = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        renderer_uncached._cache_enabled = False
+        start = time.monotonic()
+        for _ in range(100):
+            renderer_uncached.render_frame_bytes(lyrics, segments, 7.0)
+        uncached_elapsed = time.monotonic() - start
+
+        assert cached_elapsed < uncached_elapsed
+
+
+class TestRenderFrameBytesBackwardCompat:
+    def test_render_frame_returns_image(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        result = renderer.render_frame(lyrics, [segment], 7.0)
+        assert isinstance(result, Image.Image)
+
+    def test_render_frame_bytes_returns_bytes(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        result = renderer.render_frame_bytes(lyrics, [segment], 7.0)
+        assert isinstance(result, bytes)
+
+    def test_bytes_match_image_tobytes(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        for t in [0.0, 3.0, 7.0, 12.0, 20.0]:
+            renderer.clear_cache()
+            img = renderer.render_frame(lyrics, [segment], t)
+            frame_bytes = renderer.render_frame_bytes(lyrics, [segment], t)
+            assert frame_bytes == img.tobytes()

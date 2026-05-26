@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import math
+import os
+from collections import OrderedDict
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
@@ -18,6 +20,29 @@ logger = logging.getLogger(__name__)
 
 VideoTemplateName = Literal["dark", "gradient_warm", "gradient_blue"]
 FontSizePreset = Literal["S", "M", "L", "XL"]
+
+_DEFAULT_FADE_ALPHA_STEPS = 16
+_DEFAULT_MAX_CACHE_ENTRIES = 300
+_DEFAULT_CACHE_ENABLED = True
+
+
+def _get_bool_env(name: str, default: bool) -> bool:
+    val = os.environ.get(name, "").strip().lower()
+    if val in ("1", "true", "yes", "on"):
+        return True
+    if val in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
+def _get_int_env(name: str, default: int) -> int:
+    val = os.environ.get(name, "")
+    if val.strip():
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
 
 
 @dataclass(frozen=True)
@@ -50,6 +75,19 @@ class TitleCardConfig:
     duration_seconds: float
     lines: tuple[str, ...]
     total_duration_seconds: float
+
+
+@dataclass(frozen=True)
+class VisualState:
+    segment_id: str
+    current_title: str
+    current_segment: SegmentInfo | None
+    current_song_lyrics: list[GlobalLRCLine]
+    current_lyric_index: int
+    intro_alpha: int
+    fade_alpha: int
+    is_last_lyric_faded: bool
+    current_time: float
 
 
 FONT_SIZE_PRESETS: dict[FontSizePreset, int] = {
@@ -130,9 +168,19 @@ class FrameRenderer:
         self.resolution = resolution or template.resolution
         self.base_font_size = FONT_SIZE_PRESETS[font_size_preset]
 
+        self._cache_enabled = _get_bool_env("SOW_FRAME_CACHE_ENABLED", _DEFAULT_CACHE_ENABLED)
+        self._fade_alpha_steps = max(2, _get_int_env("SOW_FADE_ALPHA_STEPS", _DEFAULT_FADE_ALPHA_STEPS))
+        self._max_cache_entries = max(10, _get_int_env("SOW_MAX_CACHE_ENTRIES", _DEFAULT_MAX_CACHE_ENTRIES))
+        self._frame_cache: OrderedDict[tuple, bytes] = OrderedDict()
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._alpha_step_size = 256 // self._fade_alpha_steps
+
         logger.info(
-            "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d",
+            "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d, "
+            "cache_enabled=%s, fade_alpha_steps=%d, max_entries=%d",
             self.template.name, self.font_size_preset, self.resolution[0], self.resolution[1],
+            self._cache_enabled, self._fade_alpha_steps, self._max_cache_entries,
         )
 
     def get_base_font_size(self) -> int:
@@ -165,16 +213,88 @@ class FrameRenderer:
         bbox = draw.textbbox((0, 0), "中", font=font)
         return bbox[2] - bbox[0]
 
-    def render_frame(
+    def clear_cache(self) -> None:
+        self._frame_cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    def get_cache_stats(self) -> dict[str, int]:
+        return {
+            "entries": len(self._frame_cache),
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "max_entries": self._max_cache_entries,
+        }
+
+    def _quantize_alpha(self, alpha: int) -> int:
+        if alpha >= 255:
+            return 255
+        return (alpha // self._alpha_step_size) * self._alpha_step_size
+
+    def _compute_intro_alpha(
+        self,
+        segment: SegmentInfo,
+        current_time: float,
+        first_lyric_time: float,
+    ) -> int:
+        segment_start = segment.start_time_seconds
+        gap_duration = first_lyric_time - segment_start
+
+        if current_time >= first_lyric_time or gap_duration < 3.0:
+            return 0
+
+        if gap_duration < 7.0:
+            info_duration = gap_duration * 0.6
+            fade_duration = gap_duration * 0.4
+        else:
+            fade_duration = 4.0
+            title_only_duration = 3.0
+            info_duration = gap_duration - fade_duration - title_only_duration
+
+        time_into_gap = current_time - segment_start
+
+        if time_into_gap >= info_duration + fade_duration:
+            return 0
+
+        if time_into_gap < info_duration:
+            return 255
+
+        fade_progress = (time_into_gap - info_duration) / fade_duration
+        return math.floor(255 * (1.0 - math.sqrt(fade_progress)))
+
+    def _compute_last_lyric_fade_alpha(
+        self,
+        song_lyrics: list[GlobalLRCLine],
+        current_time: float,
+        current_index: int,
+    ) -> int:
+        if current_index != len(song_lyrics) - 1:
+            return 255
+
+        max_display = estimate_last_lyric_duration(song_lyrics)
+        elapsed_since_last_lyric = current_time - song_lyrics[current_index].global_time_seconds
+
+        fade_duration = 7.0
+        margin = 1.3
+        fade_start_threshold = max_display * margin
+
+        if elapsed_since_last_lyric > fade_start_threshold + fade_duration:
+            return 0
+        elif elapsed_since_last_lyric > fade_start_threshold:
+            fade_progress = min(
+                1.0,
+                (elapsed_since_last_lyric - fade_start_threshold) / fade_duration,
+            )
+            return math.floor(255 * (1.0 - math.sqrt(fade_progress)))
+
+        return 255
+
+    def _resolve_visual_state(
         self,
         lyrics: list[GlobalLRCLine],
         segments: list[SegmentInfo],
         current_time: float,
-    ) -> Image.Image:
-        width, height = self.resolution
-        img = Image.new("RGBA", (width, height), (*self.template.background_color, 255))
-        draw = ImageDraw.Draw(img)
-
+    ) -> VisualState:
         current_title = ""
         current_segment: SegmentInfo | None = None
 
@@ -189,19 +309,122 @@ class FrameRenderer:
         lyrics_by_song = group_lyrics_by_song(lyrics)
         current_song_lyrics = lyrics_by_song.get(current_title, [])
 
-        intro_info_alpha = 0
-
+        intro_alpha = 0
         if current_segment and current_song_lyrics:
             first_lyric_time = current_song_lyrics[0].global_time_seconds
             if current_time < first_lyric_time:
-                intro_info_alpha = self.render_intro_info(
-                    current_segment,
-                    current_time,
-                    first_lyric_time,
-                    draw,
-                    width,
-                    height,
+                intro_alpha = self._compute_intro_alpha(
+                    current_segment, current_time, first_lyric_time
                 )
+
+        current_lyric_index = -1
+        fade_alpha = 255
+        is_last_lyric_faded = False
+
+        if current_song_lyrics and current_time >= current_song_lyrics[0].global_time_seconds:
+            for i, line in enumerate(current_song_lyrics):
+                if line.global_time_seconds <= current_time:
+                    current_lyric_index = i
+                else:
+                    break
+
+            if current_lyric_index < 0 and current_time > current_song_lyrics[-1].global_time_seconds:
+                current_lyric_index = len(current_song_lyrics) - 1
+
+            if current_lyric_index >= 0:
+                is_last = current_lyric_index == len(current_song_lyrics) - 1
+                if is_last:
+                    fade_alpha = self._compute_last_lyric_fade_alpha(
+                        current_song_lyrics, current_time, current_lyric_index
+                    )
+                    if fade_alpha <= 0:
+                        is_last_lyric_faded = True
+                        current_lyric_index = -1
+
+        return VisualState(
+            segment_id=current_segment.id if current_segment else "",
+            current_title=current_title,
+            current_segment=current_segment,
+            current_song_lyrics=current_song_lyrics,
+            current_lyric_index=current_lyric_index,
+            intro_alpha=intro_alpha,
+            fade_alpha=fade_alpha,
+            is_last_lyric_faded=is_last_lyric_faded,
+            current_time=current_time,
+        )
+
+    def _compute_cache_key(self, state: VisualState) -> tuple:
+        quantized_intro = self._quantize_alpha(state.intro_alpha) if state.intro_alpha > 0 else 0
+        quantized_fade = self._quantize_alpha(state.fade_alpha) if state.fade_alpha < 255 else 255
+
+        return (
+            state.segment_id,
+            state.current_title,
+            state.current_lyric_index,
+            quantized_intro,
+            quantized_fade,
+            state.is_last_lyric_faded,
+        )
+
+    def render_frame(
+        self,
+        lyrics: list[GlobalLRCLine],
+        segments: list[SegmentInfo],
+        current_time: float,
+        _state: VisualState | None = None,
+    ) -> Image.Image:
+        state = _state or self._resolve_visual_state(lyrics, segments, current_time)
+        return self._render_frame_impl(state)
+
+    def render_frame_bytes(
+        self,
+        lyrics: list[GlobalLRCLine],
+        segments: list[SegmentInfo],
+        current_time: float,
+    ) -> bytes:
+        state = self._resolve_visual_state(lyrics, segments, current_time)
+
+        if self._cache_enabled:
+            cache_key = self._compute_cache_key(state)
+            if cache_key in self._frame_cache:
+                self._cache_hits += 1
+                self._frame_cache.move_to_end(cache_key)
+                return self._frame_cache[cache_key]
+
+            self._cache_misses += 1
+            img = self._render_frame_impl(state)
+            frame_bytes = img.tobytes()
+
+            self._frame_cache[cache_key] = frame_bytes
+            if len(self._frame_cache) > self._max_cache_entries:
+                self._frame_cache.popitem(last=False)
+
+            return frame_bytes
+
+        img = self._render_frame_impl(state)
+        return img.tobytes()
+
+    def _render_frame_impl(self, state: VisualState) -> Image.Image:
+        width, height = self.resolution
+        img = Image.new("RGBA", (width, height), (*self.template.background_color, 255))
+        draw = ImageDraw.Draw(img)
+
+        current_title = state.current_title
+        current_segment = state.current_segment
+        current_song_lyrics = state.current_song_lyrics
+        current_time = state.current_time
+
+        intro_info_alpha = 0
+
+        if current_segment and current_song_lyrics and state.intro_alpha > 0:
+            intro_info_alpha = self.render_intro_info(
+                current_segment,
+                current_time,
+                current_song_lyrics[0].global_time_seconds,
+                draw,
+                width,
+                height,
+            )
 
         if current_title and intro_info_alpha == 0:
             text_r, text_g, text_b = self.template.text_color
@@ -242,14 +465,12 @@ class FrameRenderer:
         width: int,
         height: int,
     ) -> int:
+        alpha = self._compute_intro_alpha(segment, current_time, first_lyric_time)
+        if alpha <= 0:
+            return 0
+
         segment_start = segment.start_time_seconds
         gap_duration = first_lyric_time - segment_start
-
-        if current_time >= first_lyric_time:
-            return 0
-
-        if gap_duration < 3.0:
-            return 0
 
         if gap_duration < 7.0:
             info_duration = gap_duration * 0.6
@@ -279,11 +500,6 @@ class FrameRenderer:
 
         if not info_lines:
             return 0
-
-        alpha = 255
-        if time_into_gap >= info_duration:
-            fade_progress = (time_into_gap - info_duration) / fade_duration
-            alpha = math.floor(255 * (1.0 - math.sqrt(fade_progress)))
 
         line_height = self.base_font_size * 1.3
         total_height = len(info_lines) * line_height
@@ -337,29 +553,13 @@ class FrameRenderer:
             return
 
         current_line = song_lyrics[current_index]
-
         is_last_lyric = current_index == len(song_lyrics) - 1
-        fade_alpha = 255
-        is_last_lyric_faded = False
 
-        if is_last_lyric:
-            max_display = estimate_last_lyric_duration(song_lyrics)
-            elapsed_since_last_lyric = current_time - current_line.global_time_seconds
+        fade_alpha = self._compute_last_lyric_fade_alpha(song_lyrics, current_time, current_index)
+        is_last_lyric_faded = is_last_lyric and fade_alpha <= 0
 
-            fade_duration = 7.0
-            margin = 1.3
-            fade_start_threshold = max_display * margin
-
-            if elapsed_since_last_lyric > fade_start_threshold + fade_duration:
-                return
-            elif elapsed_since_last_lyric > fade_start_threshold:
-                fade_progress = min(
-                    1.0,
-                    (elapsed_since_last_lyric - fade_start_threshold) / fade_duration,
-                )
-                log_alpha = 1.0 - math.sqrt(fade_progress)
-                fade_alpha = math.floor(255 * log_alpha)
-                is_last_lyric_faded = True
+        if is_last_lyric_faded:
+            return
 
         highlight_r, highlight_g, highlight_b = self.template.highlight_color
         current_font_size_target = self.base_font_size * 2
