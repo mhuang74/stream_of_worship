@@ -261,7 +261,7 @@ class VideoEngine:
     ) -> None:
         width, height = self.resolution
 
-        ffmpeg_start = time.monotonic()
+        ffmpeg_start_ns = time.monotonic_ns()
         logger.info(
             "[%s] encode_video_with_ffmpeg: starting FFmpeg pipe, %d frames (%.1fs at %dfps)",
             job_id or "unknown", total_frames, total_duration_seconds, self.fps,
@@ -328,6 +328,9 @@ class VideoEngine:
             title_card_bytes = title_card_img.tobytes()
 
         frame_count = 0
+        render_total_ns = 0
+        tobytes_total_ns = 0
+        write_total_ns = 0
 
         try:
             while frame_count < total_frames:
@@ -338,11 +341,18 @@ class VideoEngine:
                     frame_bytes = title_card_bytes
                 else:
                     current_time = frame_count / self.fps
+                    t0 = time.monotonic_ns()
                     img = self.frame_renderer.render_frame(lyrics, segments, current_time)
+                    render_total_ns += time.monotonic_ns() - t0
+
+                    t0 = time.monotonic_ns()
                     frame_bytes = img.tobytes()
+                    tobytes_total_ns += time.monotonic_ns() - t0
 
                 try:
+                    t0 = time.monotonic_ns()
                     process.stdin.write(frame_bytes)
+                    write_total_ns += time.monotonic_ns() - t0
                 except BrokenPipeError:
                     process.stdin.close()
                     if stderr_thread:
@@ -353,7 +363,7 @@ class VideoEngine:
                             "[%s] FFmpeg completed early (stopped reading at frame %d/%d)",
                             job_id or "unknown", frame_count, total_frames,
                         )
-                        ffmpeg_elapsed = time.monotonic() - ffmpeg_start
+                        ffmpeg_elapsed = (time.monotonic_ns() - ffmpeg_start_ns) / 1e9
                         logger.info(
                             "[%s] FFmpeg process exited with code 0 in %.1fs",
                             job_id or "unknown", ffmpeg_elapsed,
@@ -380,6 +390,19 @@ class VideoEngine:
                 if progress_callback and frame_count % self.fps == 0:
                     progress_callback(frame_count, total_frames)
 
+                if frame_count > 0 and frame_count % (self.fps * 5) == 0:
+                    elapsed_so_far = time.monotonic_ns() - ffmpeg_start_ns
+                    logger.info(
+                        "[%s] Encoding breakdown at frame %d/%d: "
+                        "render=%.1fs (%.1f%%), pipe_write=%.1fs (%.1f%%)",
+                        job_id or "unknown",
+                        frame_count, total_frames,
+                        render_total_ns / 1e9,
+                        render_total_ns / elapsed_so_far * 100,
+                        write_total_ns / 1e9,
+                        write_total_ns / elapsed_so_far * 100,
+                    )
+
             try:
                 process.stdin.close()
             except BrokenPipeError:
@@ -390,11 +413,34 @@ class VideoEngine:
                 stderr_thread.join(timeout=5)
             process.wait()
             raise
+        finally:
+            total_elapsed_ns = time.monotonic_ns() - ffmpeg_start_ns
+            if total_elapsed_ns > 0:
+                logger.info(
+                    "[%s] Encoding breakdown: total=%.1fs, render=%.1fs (%.1f%%), "
+                    "tobytes=%.1fs (%.1f%%), pipe_write=%.1fs (%.1f%%), "
+                    "other=%.1fs (%.1f%%)",
+                    job_id or "unknown",
+                    total_elapsed_ns / 1e9,
+                    render_total_ns / 1e9,
+                    render_total_ns / total_elapsed_ns * 100,
+                    tobytes_total_ns / 1e9,
+                    tobytes_total_ns / total_elapsed_ns * 100,
+                    write_total_ns / 1e9,
+                    write_total_ns / total_elapsed_ns * 100,
+                    (total_elapsed_ns - render_total_ns - tobytes_total_ns - write_total_ns) / 1e9,
+                    (total_elapsed_ns - render_total_ns - tobytes_total_ns - write_total_ns) / total_elapsed_ns * 100,
+                )
+            else:
+                logger.info(
+                    "[%s] Encoding breakdown: total=0s (too fast to measure)",
+                    job_id or "unknown",
+                )
 
         if stderr_thread:
             stderr_thread.join(timeout=5)
         return_code = process.wait()
-        ffmpeg_elapsed = time.monotonic() - ffmpeg_start
+        ffmpeg_elapsed = (time.monotonic_ns() - ffmpeg_start_ns) / 1e9
         logger.info(
             "[%s] FFmpeg process exited with code %d in %.1fs",
             job_id or "unknown", return_code, ffmpeg_elapsed,
