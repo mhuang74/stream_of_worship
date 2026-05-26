@@ -225,6 +225,8 @@ export function parseChaptersManifest(json: string): ChaptersManifest {
       typeof chapter.songTitle !== "string" ||
       typeof chapter.startSeconds !== "number" ||
       typeof chapter.endSeconds !== "number" ||
+      !Number.isFinite(chapter.startSeconds) ||
+      !Number.isFinite(chapter.endSeconds) ||
       !Array.isArray(chapter.lines)
     ) {
       throw new Error("Invalid chapter structure");
@@ -311,7 +313,12 @@ export function normalizeChaptersManifest(data: unknown): ChaptersManifest {
       (c.endSeconds as number) ?? (c.end_seconds as number);
     const lines = (c.lines as unknown[]) ?? [];
 
-    if (typeof startSeconds !== "number" || typeof endSeconds !== "number") {
+    if (
+      typeof startSeconds !== "number" ||
+      typeof endSeconds !== "number" ||
+      !Number.isFinite(startSeconds) ||
+      !Number.isFinite(endSeconds)
+    ) {
       throw new Error(
         `Invalid chapter at index ${index}: missing or invalid startSeconds/endSeconds`
       );
@@ -332,7 +339,11 @@ export function normalizeChaptersManifest(data: unknown): ChaptersManifest {
       const lineStartSeconds =
         (l.startSeconds as number) ?? (l.start_seconds as number);
 
-      if (typeof text !== "string" || typeof lineStartSeconds !== "number") {
+      if (
+        typeof text !== "string" ||
+        typeof lineStartSeconds !== "number" ||
+        !Number.isFinite(lineStartSeconds)
+      ) {
         throw new Error(
           `Invalid line at index ${lineIndex} in chapter ${index}: missing text or startSeconds`
         );

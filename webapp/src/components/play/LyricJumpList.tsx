@@ -30,6 +30,7 @@ export function LyricJumpList({
   const [currentY, setCurrentY] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const lastToggleTimeRef = useRef(0);
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
@@ -65,11 +66,19 @@ export function LyricJumpList({
       if (!isDragging) return;
       e.stopPropagation();
 
+      const now = Date.now();
       const threshold = 100;
-      if (!isOpen && currentY > threshold) {
+      const absY = Math.abs(currentY);
+
+      const shouldToggle =
+        (currentY > threshold || absY < 30) && now - lastToggleTimeRef.current > 100;
+
+      if (!isOpen && shouldToggle) {
         setIsOpen(true);
-      } else if (isOpen && currentY < -threshold) {
+        lastToggleTimeRef.current = now;
+      } else if (isOpen && shouldToggle) {
         setIsOpen(false);
+        lastToggleTimeRef.current = now;
       }
 
       setIsDragging(false);
@@ -79,6 +88,7 @@ export function LyricJumpList({
   );
 
   const formatTime = (seconds: number): string => {
+    if (!isFinite(seconds) || seconds < 0) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
