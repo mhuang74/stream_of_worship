@@ -1,6 +1,5 @@
 import { neon } from "@neondatabase/serverless";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { sql } from "drizzle-orm/sql";
 
 async function main() {
   const connectionString = process.env.SOW_DATABASE_URL;

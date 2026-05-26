@@ -38,15 +38,13 @@ export function LyricJumpList({
 
   useEffect(() => {
     if (isOpen) {
-      setContentInteractive(false);
       const timer = setTimeout(() => setContentInteractive(true), 350);
       return () => clearTimeout(timer);
-    } else {
-      setContentInteractive(false);
     }
   }, [isOpen]);
 
   const handleToggle = useCallback(() => {
+    setContentInteractive(false);
     setIsOpen((prev) => !prev);
   }, []);
 
@@ -93,9 +91,11 @@ export function LyricJumpList({
         (currentY > threshold || absY < 30) && now - lastToggleTimeRef.current > 100;
 
       if (!isOpen && shouldToggle) {
+        setContentInteractive(false);
         setIsOpen(true);
         lastToggleTimeRef.current = now;
       } else if (isOpen && shouldToggle) {
+        setContentInteractive(false);
         setIsOpen(false);
         lastToggleTimeRef.current = now;
       }
@@ -279,12 +279,16 @@ export function LyricJumpList({
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setIsOpen(false)}
+          onClick={() => {
+            setContentInteractive(false);
+            setIsOpen(false);
+          }}
           role="button"
           tabIndex={0}
           aria-label="Close lyric jump list"
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === "Escape") {
+              setContentInteractive(false);
               setIsOpen(false);
             }
           }}

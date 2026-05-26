@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { lyricMarks, songsets, songsetItems, renderJobs, recordings } from "@/db/schema";
-import { eq, and, desc, gt, sql, isNull } from "drizzle-orm";
+import { lyricMarks, songsets, songsetItems, renderJobs } from "@/db/schema";
+import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
