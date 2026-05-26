@@ -310,14 +310,17 @@ describe("LyricJumpList", () => {
         expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
       });
 
-      // Press escape on handle to close
+      // Find the backdrop (it's the one with class containing "bg-black/50")
+      const closeButtons = screen.getAllByRole("button", { name: /close lyric jump list/i });
+      const backdrop = closeButtons.find(btn => btn.className.includes("bg-black/50"));
+      
       await act(async () => {
-        fireEvent.keyDown(handle, { key: "Escape" });
+        fireEvent.keyDown(backdrop!, { key: "Escape" });
       });
 
-      // Should close - check that the handle text changes back
+      // Should close - check that the backdrop is gone
       await waitFor(() => {
-        expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /close lyric jump list/i })).not.toBeInTheDocument();
       });
     });
   });

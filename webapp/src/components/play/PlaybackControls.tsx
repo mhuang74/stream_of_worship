@@ -23,8 +23,6 @@ export interface PlaybackControlsProps {
   isPresentationActive: boolean;
   onPlayPause: () => void;
   onSeek: (time: number) => void;
-  onSkipBack: () => void;
-  onSkipForward: () => void;
   onPrevSong: () => void;
   onNextSong: () => void;
   onVolumeChange: (volume: number) => void;
@@ -43,8 +41,6 @@ export function PlaybackControls({
   isPresentationActive,
   onPlayPause,
   onSeek,
-  onSkipBack,
-  onSkipForward,
   onPrevSong,
   onNextSong,
   onVolumeChange,
@@ -74,10 +70,19 @@ export function PlaybackControls({
         className
       )}
     >
-      {/* Scrub bar */}
+      {/* Progress bar */}
       <div className="space-y-1">
+        {/* Mobile: thin read-only progress bar */}
+        <div className="md:hidden h-0.5 bg-white/20 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-primary transition-all duration-100"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        {/* Desktop: interactive scrub bar */}
         <div
-          className="relative h-2 bg-white/20 rounded-full cursor-pointer touch-none"
+          className="hidden md:block relative h-2 bg-white/20 rounded-full cursor-pointer touch-none group"
           onClick={handleScrubClick}
           role="slider"
           aria-label="Seek"
@@ -98,11 +103,13 @@ export function PlaybackControls({
             style={{ width: `${progress}%` }}
           />
           <div
-            className="absolute h-4 w-4 bg-white rounded-full -top-1 shadow-lg transform -translate-x-1/2"
-            style={{ left: `${progress}%` }}
+            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ left: `calc(${progress}% - 8px)` }}
           />
         </div>
-        <div className="flex justify-between text-xs text-white/70">
+
+        {/* Time display - all screen sizes */}
+        <div className="flex justify-between text-xs text-white/60 mt-1">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
@@ -137,50 +144,20 @@ export function PlaybackControls({
           </Button>
         </div>
 
-        {/* Playback controls */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-12 sm:size-14 text-white hover:bg-white/20"
-            onClick={onSkipBack}
-            aria-label="Skip back 10 seconds"
-          >
-            <div className="relative">
-              <SkipBack className="size-5 sm:size-6" />
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] sm:text-[8px] font-bold">
-                10
-              </span>
-            </div>
-          </Button>
-
+        {/* Play/Pause */}
+        <div className="flex items-center justify-center">
           <Button
             variant="default"
             size="icon"
-            className="size-12 sm:size-16 rounded-full bg-white text-black hover:bg-white/90"
+            className="size-14 sm:size-16 rounded-full bg-white text-black hover:bg-white/90"
             onClick={onPlayPause}
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
-              <Pause className="size-6 sm:size-8" />
+              <Pause className="size-7 sm:size-8" />
             ) : (
-              <Play className="size-6 sm:size-8 ml-1" />
+              <Play className="size-7 sm:size-8 ml-1" />
             )}
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-12 sm:size-14 text-white hover:bg-white/20"
-            onClick={onSkipForward}
-            aria-label="Skip forward 10 seconds"
-          >
-            <div className="relative">
-              <SkipForward className="size-5 sm:size-6" />
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] sm:text-[8px] font-bold">
-                10
-              </span>
-            </div>
           </Button>
         </div>
 
@@ -189,7 +166,7 @@ export function PlaybackControls({
           <Button
             variant="ghost"
             size="icon"
-            className="hidden sm:flex size-10 text-white hover:bg-white/20"
+            className="hidden md:flex size-10 text-white hover:bg-white/20"
             onClick={onToggleMute}
             aria-label={isMuted ? "Unmute" : "Mute"}
           >
@@ -201,7 +178,7 @@ export function PlaybackControls({
           </Button>
 
           {/* Volume slider */}
-          <div className="w-20 hidden sm:block">
+          <div className="w-20 hidden md:block">
             <input
               type="range"
               min={0}

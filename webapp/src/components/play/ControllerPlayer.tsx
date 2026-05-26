@@ -399,7 +399,7 @@ export function ControllerPlayer({
           muted={isPresentationActive}
           onClick={(e) => {
             e.stopPropagation();
-            handlePlayPause();
+            handleInteraction();
           }}
           onDoubleClick={(e) => {
             e.preventDefault();
@@ -525,8 +525,6 @@ export function ControllerPlayer({
           isPresentationActive={isPresentationActive}
           onPlayPause={handlePlayPause}
           onSeek={handleSeek}
-          onSkipBack={handleSkipBack}
-          onSkipForward={handleSkipForward}
           onPrevSong={handlePrevSong}
           onNextSong={handleNextSong}
           onVolumeChange={handleVolumeChange}

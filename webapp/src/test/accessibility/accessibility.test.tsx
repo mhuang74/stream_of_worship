@@ -212,8 +212,6 @@ const defaultPlaybackControlsProps = {
   isPresentationActive: false,
   onPlayPause: vi.fn(),
   onSeek: vi.fn(),
-  onSkipBack: vi.fn(),
-  onSkipForward: vi.fn(),
   onPrevSong: vi.fn(),
   onNextSong: vi.fn(),
   onVolumeChange: vi.fn(),
@@ -293,16 +291,6 @@ describe("Accessibility (Task 8.2)", () => {
     it("play/pause button has accessible label when playing", () => {
       render(<PlaybackControls {...defaultPlaybackControlsProps} isPlaying={true} />);
       expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
-    });
-
-    it("skip back button has descriptive aria-label", () => {
-      render(<PlaybackControls {...defaultPlaybackControlsProps} />);
-      expect(screen.getByRole("button", { name: /skip back 10 seconds/i })).toBeInTheDocument();
-    });
-
-    it("skip forward button has descriptive aria-label", () => {
-      render(<PlaybackControls {...defaultPlaybackControlsProps} />);
-      expect(screen.getByRole("button", { name: /skip forward 10 seconds/i })).toBeInTheDocument();
     });
 
     it("previous song button has aria-label", () => {

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
 import type { Chapter } from "@/lib/render/chapters";
+import { isIOS } from "@/lib/platform";
 
 export type { Chapter, ChapterLine } from "@/lib/render/chapters";
 
@@ -25,6 +26,7 @@ export function LyricJumpList({
   className,
 }: LyricJumpListProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [contentInteractive, setContentInteractive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [startY, setStartY] = useState(0);
   const [currentY, setCurrentY] = useState(0);
@@ -32,20 +34,36 @@ export function LyricJumpList({
   const contentRef = useRef<HTMLDivElement>(null);
   const lastToggleTimeRef = useRef(0);
 
+  const isSwipeEnabled = isIOS();
+
+  const handleToggle = useCallback(() => {
+    setIsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setContentInteractive(false);
+        setTimeout(() => setContentInteractive(true), 350);
+      } else {
+        setContentInteractive(false);
+      }
+      return next;
+    });
+  }, []);
+
   const handleTouchStart = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
+      if (!isSwipeEnabled) return;
       e.stopPropagation();
       const clientY =
         "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
       setStartY(clientY);
       setIsDragging(true);
     },
-    []
+    [isSwipeEnabled]
   );
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
-      if (!isDragging) return;
+      if (!isSwipeEnabled || !isDragging) return;
       e.stopPropagation();
 
       const clientY =
@@ -58,12 +76,12 @@ export function LyricJumpList({
         setCurrentY(Math.max(deltaY, -300));
       }
     },
-    [isDragging, startY, isOpen]
+    [isSwipeEnabled, isDragging, startY, isOpen]
   );
 
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
-      if (!isDragging) return;
+      if (!isSwipeEnabled || !isDragging) return;
       e.stopPropagation();
 
       const now = Date.now();
@@ -84,7 +102,7 @@ export function LyricJumpList({
       setIsDragging(false);
       setCurrentY(0);
     },
-    [isDragging, currentY, isOpen]
+    [isSwipeEnabled, isDragging, currentY, isOpen]
   );
 
   const formatTime = (seconds: number): string => {
@@ -115,7 +133,7 @@ export function LyricJumpList({
           className
         )}
         style={
-          isDragging
+          isSwipeEnabled && isDragging
             ? {
                 transform: `translateY(${isOpen ? currentY : currentY - 48}px)`,
               }
@@ -126,20 +144,22 @@ export function LyricJumpList({
       >
         {/* Handle bar */}
         <div
-          className="flex flex-col items-center justify-center h-12 bg-black/90 backdrop-blur-sm rounded-t-2xl cursor-grab active:cursor-grabbing"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onMouseDown={handleTouchStart}
-          onMouseMove={handleTouchMove}
-          onMouseUp={handleTouchEnd}
-          onMouseLeave={handleTouchEnd}
+          className="flex flex-col items-center justify-center h-12 bg-black/90 backdrop-blur-sm rounded-t-2xl cursor-pointer"
+          onClick={handleToggle}
+          onTouchStart={isSwipeEnabled ? handleTouchStart : undefined}
+          onTouchMove={isSwipeEnabled ? handleTouchMove : undefined}
+          onTouchEnd={isSwipeEnabled ? handleTouchEnd : undefined}
+          onMouseDown={isSwipeEnabled ? handleTouchStart : undefined}
+          onMouseMove={isSwipeEnabled ? handleTouchMove : undefined}
+          onMouseUp={isSwipeEnabled ? handleTouchEnd : undefined}
+          onMouseLeave={isSwipeEnabled ? handleTouchEnd : undefined}
           role="button"
           tabIndex={0}
           aria-label={isOpen ? "Close lyric jump list" : "Open lyric jump list"}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
-              setIsOpen(!isOpen);
+              e.preventDefault();
+              handleToggle();
             }
           }}
         >
@@ -151,14 +171,24 @@ export function LyricJumpList({
                 isOpen ? "rotate-180" : ""
               )}
             />
-            <span>{isOpen ? "Swipe down to close" : "Lyrics"}</span>
+            <span>
+              {isOpen
+                ? isSwipeEnabled
+                  ? "Swipe down to close"
+                  : "Tap to close"
+                : "Lyrics"}
+            </span>
           </div>
         </div>
 
         {/* Content */}
         <div
           ref={contentRef}
-          className="bg-black/90 backdrop-blur-sm max-h-[60vh] overflow-y-auto"
+          className={cn(
+            "bg-black/90 backdrop-blur-sm max-h-[60vh] overflow-y-auto",
+            !contentInteractive && "pointer-events-none",
+            isSwipeEnabled && "overscroll-y-contain"
+          )}
         >
           <div className="p-4 space-y-4">
             {chapters.map((chapter, chapterIndex) => {
