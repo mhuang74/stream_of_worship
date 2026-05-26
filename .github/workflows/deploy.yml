@@ -77,7 +77,7 @@ jobs:
             echo "Error: SOW_DATABASE_URL secret is not configured"
             exit 1
           fi
-          npx drizzle-kit push --force
+          npx drizzle-kit migrate
 
       - name: Trigger Vercel deploy
         if: success()
