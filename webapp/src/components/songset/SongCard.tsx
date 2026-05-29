@@ -31,6 +31,7 @@ interface SongCardProps {
   isAdding?: boolean;
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -42,6 +43,7 @@ export function SongCard({
   isAdding = false,
   isPlaying = false,
   isPreviewLoading = false,
+  disabled = false,
   className,
 }: SongCardProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -61,7 +63,7 @@ export function SongCard({
   const artist = song.composer || song.lyricist || "Unknown Artist";
 
   const handleAdd = async () => {
-    if (isAdded || isAdding || !onAdd) return;
+    if (isAdded || isAdding || disabled || !onAdd) return;
     await onAdd(song.id);
   };
 
@@ -144,8 +146,8 @@ export function SongCard({
                 !isHovered && !isAdded && "opacity-0 sm:opacity-100"
               )}
               onClick={handleAdd}
-              disabled={isAdded || isAdding}
-              aria-label={isAdded ? "Already added" : "Add to songset"}
+              disabled={isAdded || isAdding || disabled}
+              aria-label={isAdded ? "Already added" : disabled ? "Songset full" : "Add to songset"}
               data-testid="add-song-button"
             >
               {isAdding ? (
