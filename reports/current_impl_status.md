@@ -891,6 +891,19 @@ Migrated the render pipeline from in-process Vercel execution to an AWS Lambda-b
 - **CI/CD**: GitHub Actions workflows for CI (PR) and deploy (push to main)
 - **Docker**: Lambda container image with FFmpeg, CJK fonts, Python 3.11
 
+### Phase 11: Simplify Render Progress Notification v2 (Completed)
+
+Simplified the render progress UX by removing real-time SSE polling and percentage-based progress in favor of a static "submitted" card and text-only status badges:
+
+- **Songset Size Limit**: Max 5 songs / 25 min per songset, enforced at API (`route.ts`), DB layer (`songsets.ts`), UI (`SongsetEditor`, `BrowseSheet`), and worker (`pipeline.py`)
+- **Static RenderSubmitted Card**: Replaced `RenderProgress` (SSE/polling) with a static card showing estimated time and "You can leave this page" message
+- **RenderStatusBadge**: Replaced `RenderStateButton` (with percentage) with a text-only badge (unrendered/rendering/fresh/stale/failed)
+- **Removed Deprecated Fields**: `percentComplete` and `estimatedSecondsLeft` removed from `RenderJob` interface and `job-manager.ts` (DB columns kept for backward compat)
+- **Updated Render Ratios**: 720p/1080p video default ratios changed from 0.8/0.65 to 0.5
+- **Deleted SSE Endpoint**: `api/render-jobs/[id]/events/route.ts` and related test removed
+- **New Files**: `constants.ts`, `RenderSubmitted.tsx`, `RenderStatusBadge.tsx` + tests
+- **Commit**: `029b7f5`
+
 ---
 
 ## Dependencies
@@ -1002,6 +1015,7 @@ test = [
 - Phase 8: `b82fc0d` - User App (TUI)
 - Phase 9: Web App (Next.js)
 - Phase 10: Lambda Render Worker Migration
+- Phase 11: `029b7f5` - Simplify Render Progress Notification v2
 
 ---
 
