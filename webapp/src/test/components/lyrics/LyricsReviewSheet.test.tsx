@@ -99,15 +99,9 @@ describe("LyricsReviewSheet", () => {
 
   it("marks a line when tapped and calls API", async () => {
     renderSheet();
-    await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
-    });
 
-    const lineButton = screen.getAllByRole("button").find((b) =>
-      b.getAttribute("aria-label")?.includes("Hello world")
-    );
-    expect(lineButton).toBeDefined();
-    fireEvent.click(lineButton!);
+    const lineButton = await screen.findByRole("button", { name: /Hello world/ });
+    fireEvent.click(lineButton);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -130,14 +124,9 @@ describe("LyricsReviewSheet", () => {
       } as any);
 
     renderSheet();
-    await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
-    });
 
-    const lineButton = screen.getAllByRole("button").find((b) =>
-      b.getAttribute("aria-label")?.includes("Hello world")
-    );
-    fireEvent.click(lineButton!);
+    const lineButton = await screen.findByRole("button", { name: /Hello world/ });
+    fireEvent.click(lineButton);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
