@@ -147,9 +147,9 @@ class TestDefaultRenderRatios:
         assert "1080p_audio" in DEFAULT_RENDER_RATIOS
 
     def test_values(self):
-        assert DEFAULT_RENDER_RATIOS["720p_video"] == 0.8
+        assert DEFAULT_RENDER_RATIOS["720p_video"] == 0.5
         assert DEFAULT_RENDER_RATIOS["720p_audio"] == 0.4
-        assert DEFAULT_RENDER_RATIOS["1080p_video"] == 0.65
+        assert DEFAULT_RENDER_RATIOS["1080p_video"] == 0.5
         assert DEFAULT_RENDER_RATIOS["1080p_audio"] == 0.4
 
     def test_thresholds(self):
@@ -160,9 +160,9 @@ class TestDefaultRenderRatios:
 
 class TestGetDefaultRatio:
     def test_known_keys(self):
-        assert get_default_ratio("720p", True) == 0.8
+        assert get_default_ratio("720p", True) == 0.5
         assert get_default_ratio("720p", False) == 0.4
-        assert get_default_ratio("1080p", True) == 0.65
+        assert get_default_ratio("1080p", True) == 0.5
         assert get_default_ratio("1080p", False) == 0.4
 
     def test_unknown_resolution_returns_max(self):
