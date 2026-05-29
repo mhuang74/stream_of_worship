@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 LAMBDA_TIMEOUT_SAFETY_MARGIN_SECONDS = 60
 
+MAX_SONGSET_ITEMS = 5
+MAX_SONGSET_DURATION_SECONDS = 1500
+
 _shutdown_requested = False
 
 
@@ -47,9 +50,9 @@ PHASES = [
 ]
 
 DEFAULT_RENDER_RATIOS: dict[str, float] = {
-    "720p_video": 0.8,
+    "720p_video": 0.5,
     "720p_audio": 0.4,
-    "1080p_video": 0.65,
+    "1080p_video": 0.5,
     "1080p_audio": 0.4,
 }
 
@@ -269,6 +272,13 @@ def execute_render_pipeline(
         songset_name, items = fetch_songset_items(conn, job.songset_id)
         if not items:
             raise ValueError("Songset has no items")
+
+        total_duration = sum(item.duration_seconds or 0 for item in items)
+        if len(items) > MAX_SONGSET_ITEMS or total_duration > MAX_SONGSET_DURATION_SECONDS:
+            raise ValueError(
+                f"Songset exceeds limit: {len(items)} songs / {total_duration:.0f}s "
+                f"(max {MAX_SONGSET_ITEMS} songs / {MAX_SONGSET_DURATION_SECONDS}s)"
+            )
 
         total_duration_seconds = sum(item.duration_seconds or 0 for item in items)
         if total_duration_seconds <= 0:

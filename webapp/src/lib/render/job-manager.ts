@@ -41,8 +41,6 @@ export interface RenderJob {
   phase: RenderPhase | null;
   phaseIndex: number | null;
   totalPhases: number | null;
-  percentComplete: number;
-  estimatedSecondsLeft: number | null;
   elapsedSeconds: number | null;
   errorMessage: string | null;
   estimatedTotalSeconds: number | null;
@@ -98,8 +96,6 @@ function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
     phase: row.phase as RenderPhase | null,
     phaseIndex: row.phaseIndex,
     totalPhases: row.totalPhases,
-    percentComplete: row.percentComplete ?? 0,
-    estimatedSecondsLeft: row.estimatedSecondsLeft,
     elapsedSeconds: row.elapsedSeconds,
     errorMessage: row.errorMessage,
     estimatedTotalSeconds: row.estimatedTotalSeconds ?? null,
@@ -149,8 +145,6 @@ export async function createRenderJob(
       phase: "preparing",
       phaseIndex: 0,
       totalPhases: TOTAL_PHASES,
-      percentComplete: 0,
-      estimatedSecondsLeft: null,
       elapsedSeconds: 0,
       estimatedTotalSeconds: null,
       totalDurationSeconds: null,
@@ -265,7 +259,6 @@ export async function completeRenderJob(
       status: "completed",
       phase: "completed",
       phaseIndex: TOTAL_PHASES,
-      percentComplete: 100,
       elapsedSeconds: finalElapsedSeconds,
       mp3R2Key: output.mp3R2Key ?? null,
       mp4R2Key: output.mp4R2Key ?? null,

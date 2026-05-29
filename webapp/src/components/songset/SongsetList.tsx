@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { SongsetRow } from "./SongsetRow";
-import { RenderState } from "./RenderStateButton";
+import { RenderState } from "./RenderStatusBadge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,7 +26,6 @@ export interface Songset {
   durationSeconds?: number;
   updatedAt: Date;
   renderState: RenderState;
-  renderProgress?: number;
   isOfflineAvailable?: boolean;
   isArtifactsStale?: boolean;
   latestRenderJobId: string | null;

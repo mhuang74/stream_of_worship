@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { lyricMarks, songsets, songsetItems, renderJobs } from "@/db/schema";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { SONGSET_MAX_SONGS } from "@/lib/constants";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
 
@@ -337,6 +338,15 @@ export async function addSongsetItem(
     where: and(eq(songsets.id, songsetId), eq(songsets.userId, userId)),
   });
   if (!songset) return null;
+
+  const currentCount = await db.query.songsetItems.findMany({
+    where: eq(songsetItems.songsetId, songsetId),
+    columns: { id: true },
+  });
+
+  if (currentCount.length >= SONGSET_MAX_SONGS) {
+    throw new Error(`Songset already has maximum of ${SONGSET_MAX_SONGS} songs`);
+  }
 
   const id = nanoid();
   await db.insert(songsetItems).values({ id, songsetId, ...data }).returning();

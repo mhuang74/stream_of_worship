@@ -94,14 +94,6 @@ describe("vercel.json — render function maxDuration", () => {
     expect(renderRoute).toBeDefined();
     expect(renderRoute.maxDuration).toBe(60);
   });
-
-  it("sets maxDuration: 60 for render-jobs SSE events route", () => {
-    const config = readVercelJson();
-    const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
-    const eventsRoute = functions["src/app/api/render-jobs/[id]/events/route.ts"];
-    expect(eventsRoute).toBeDefined();
-    expect(eventsRoute.maxDuration).toBe(60);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -121,13 +113,6 @@ describe("vercel.json — Fluid Compute (not required on render routes)", () => 
     const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
     const renderRoute = functions["src/app/api/render-jobs/[id]/route.ts"];
     expect(renderRoute?.fluid).toBeFalsy();
-  });
-
-  it("does not enable fluid compute on SSE events route", () => {
-    const config = readVercelJson();
-    const functions = config.functions as Record<string, { maxDuration?: number; fluid?: boolean }>;
-    const eventsRoute = functions["src/app/api/render-jobs/[id]/events/route.ts"];
-    expect(eventsRoute?.fluid).toBeFalsy();
   });
 });
 

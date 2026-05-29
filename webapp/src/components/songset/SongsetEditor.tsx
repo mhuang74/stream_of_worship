@@ -4,7 +4,8 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { SongList, SongListItem } from "./SongList";
 import { TransitionPanel, TransitionSettings } from "./TransitionPanel";
-import { RenderStateButton, RenderState } from "./RenderStateButton";
+import { RenderStatusBadge, RenderState } from "./RenderStatusBadge";
+import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -51,7 +52,6 @@ export interface SongsetEditorProps {
     name: string;
     description: string | null;
     renderState: RenderState;
-    renderProgress?: number;
     isArtifactsStale?: boolean;
     latestRenderJobId: string | null;
     lastFailedRenderJobId: string | null;
@@ -82,7 +82,6 @@ export function SongsetEditor({
   onUpdateTransition,
   onRender,
   onPlay,
-  onRetry,
   onUpdateDescription,
   onDuplicate,
   onDelete,
@@ -105,6 +104,11 @@ export function SongsetEditor({
 
   // Calculate total marked lines across all songs
   const totalMarkedLines = items.reduce((sum, item) => sum + (item.markedLineCount ?? 0), 0);
+  const totalDurationSeconds = items.reduce(
+    (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+    0
+  );
+  const isDurationOverLimit = totalDurationSeconds > SONGSET_MAX_DURATION_SECONDS;
 
   // Handle back navigation
   const handleBack = () => {
@@ -239,18 +243,16 @@ export function SongsetEditor({
             <h1 className="font-semibold text-lg truncate">{songset.name}</h1>
             <p className="text-xs text-muted-foreground">
               {items.length} {items.length === 1 ? "song" : "songs"}
+              {isDurationOverLimit && (
+                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500/50 text-xs">
+                  Over 25 min
+                </Badge>
+              )}
             </p>
           </div>
 
-          {/* Render state button */}
-          <RenderStateButton
-            state={songset.renderState}
-            progress={songset.renderProgress}
-            onRender={onRender}
-            onPlay={onPlay}
-            onRetry={onRetry}
-            size="sm"
-          />
+          {/* Render status badge */}
+          <RenderStatusBadge state={songset.renderState} />
 
           {/* Overflow menu */}
           <DropdownMenu>
@@ -377,14 +379,20 @@ export function SongsetEditor({
       </main>
 
       {/* FAB for adding songs */}
-      <Button
-        size="icon-lg"
-        className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 shadow-lg"
-        onClick={onAddSongs}
-        aria-label="Add songs"
-      >
-        <Plus className="size-6" />
-      </Button>
+      {items.length < SONGSET_MAX_SONGS ? (
+        <Button
+          size="icon-lg"
+          className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 shadow-lg"
+          onClick={onAddSongs}
+          aria-label="Add songs"
+        >
+          <Plus className="size-6" />
+        </Button>
+      ) : (
+        <div className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 bg-muted text-muted-foreground text-sm px-4 py-2 rounded-full">
+          Maximum {SONGSET_MAX_SONGS} songs reached
+        </div>
+      )}
 
       {/* Transition Sheet */}
       {selectedTransitionItem && (

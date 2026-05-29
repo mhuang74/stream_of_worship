@@ -27,6 +27,7 @@ vi.mock("@/db", () => ({
       },
       songsetItems: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
       },
     },
     select: vi.fn(),
@@ -478,6 +479,7 @@ describe("addSongsetItem", () => {
     };
 
     vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongset as any);
+    vi.mocked(db.query.songsetItems.findMany).mockResolvedValue([{ id: "existing-1" }] as any);
     vi.mocked(db.insert).mockReturnValue({
       values: vi.fn().mockReturnValue({
         returning: vi.fn().mockResolvedValue([mockItem]),

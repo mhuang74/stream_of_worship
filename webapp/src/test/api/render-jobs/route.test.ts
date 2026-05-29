@@ -24,9 +24,24 @@ vi.mock("@/lib/render/dispatcher", () => ({
   dispatchToRenderWorker: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/db", () => ({
+  db: {
+    query: {
+      songsetItems: {
+        findMany: vi.fn().mockResolvedValue([
+          { recording: { durationSeconds: 180 } },
+          { recording: { durationSeconds: 200 } },
+        ]),
+      },
+    },
+  },
+}));
+
 import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
+import { db } from "@/db";
 
 const mockDispatchToRenderWorker = vi.mocked(dispatchToRenderWorker);
+const mockFindMany = vi.mocked(db.query.songsetItems.findMany);
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
@@ -70,8 +85,6 @@ describe("POST /api/render-jobs", () => {
       phase: "preparing",
       phaseIndex: 0,
       totalPhases: 5,
-      percentComplete: 0,
-      estimatedSecondsLeft: null,
       elapsedSeconds: 0,
       errorMessage: null,
       estimatedTotalSeconds: null,
@@ -127,8 +140,6 @@ describe("POST /api/render-jobs", () => {
       phase: "preparing",
       phaseIndex: 0,
       totalPhases: 5,
-      percentComplete: 0,
-      estimatedSecondsLeft: null,
       elapsedSeconds: 0,
       errorMessage: null,
       estimatedTotalSeconds: null,
@@ -193,8 +204,6 @@ describe("POST /api/render-jobs", () => {
       phase: "preparing",
       phaseIndex: 0,
       totalPhases: 5,
-      percentComplete: 0,
-      estimatedSecondsLeft: null,
       elapsedSeconds: 0,
       errorMessage: null,
       estimatedTotalSeconds: null,
@@ -379,5 +388,47 @@ describe("POST /api/render-jobs", () => {
     expect(response.status).toBe(500);
     const data = await response.json();
     expect(data.error).toBe("Failed to create render job");
+  });
+
+  it("returns 400 when songset exceeds maximum songs", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    mockFindMany.mockResolvedValueOnce(
+      Array.from({ length: 6 }, () => ({ recording: { durationSeconds: 180 } }))
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("maximum of 5 songs");
+  });
+
+  it("returns 400 when songset exceeds maximum duration", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    mockFindMany.mockResolvedValueOnce([
+      { recording: { durationSeconds: 500 } },
+      { recording: { durationSeconds: 500 } },
+      { recording: { durationSeconds: 600 } },
+    ]);
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("maximum duration");
   });
 });

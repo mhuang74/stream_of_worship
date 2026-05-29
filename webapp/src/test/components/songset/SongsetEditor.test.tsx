@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
-import { RenderState } from "@/components/songset/RenderStateButton";
+import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { SongListItem } from "@/components/songset/SongList";
 
 // Mock next/navigation
@@ -36,7 +36,6 @@ describe("SongsetEditor", () => {
     name: "Sunday Worship",
     description: "Easter service songs",
     renderState: "fresh" as RenderState,
-    renderProgress: 0,
     isArtifactsStale: false,
     latestRenderJobId: "job-1",
     lastFailedRenderJobId: null,
@@ -131,9 +130,9 @@ describe("SongsetEditor", () => {
       expect(screen.getByRole("button", { name: /go back/i })).toBeInTheDocument();
     });
 
-    it("has render state button", () => {
+    it("has render status badge", () => {
       renderEditor();
-      expect(screen.getByRole("button", { name: /play songset/i })).toBeInTheDocument();
+      expect(screen.getByText("Rendered")).toBeInTheDocument();
     });
 
     it("has overflow menu", () => {
@@ -336,34 +335,43 @@ describe("SongsetEditor", () => {
   });
 
   describe("callbacks", () => {
-    it("calls onRender when render state button clicked (unrendered)", async () => {
+    it("calls onRender when render menu item clicked (unrendered)", async () => {
       const onRender = vi.fn();
       renderEditor({
         songset: { ...mockSongset, renderState: "unrendered" as RenderState },
         onRender,
       });
 
-      fireEvent.click(screen.getByRole("button", { name: /render/i }));
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^render$/i }));
+      });
       expect(onRender).toHaveBeenCalled();
     });
 
-    it("calls onPlay when render state button clicked (fresh)", async () => {
+    it("calls onPlay when play menu item clicked (fresh)", async () => {
       const onPlay = vi.fn();
       renderEditor({ onPlay });
 
-      fireEvent.click(screen.getByRole("button", { name: /play songset/i }));
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^play$/i }));
+      });
       expect(onPlay).toHaveBeenCalled();
     });
 
-    it("calls onRetry when render state button clicked (failed)", async () => {
-      const onRetry = vi.fn();
+    it("calls onRender when render menu item clicked (failed)", async () => {
+      const onRender = vi.fn();
       renderEditor({
         songset: { ...mockSongset, renderState: "failed" as RenderState },
-        onRetry,
+        onRender,
       });
 
-      fireEvent.click(screen.getByRole("button", { name: /retry render/i }));
-      expect(onRetry).toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^render$/i }));
+      });
+      expect(onRender).toHaveBeenCalled();
     });
   });
 });
