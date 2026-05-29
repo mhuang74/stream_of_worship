@@ -373,7 +373,7 @@ export async function semanticSearchSongs(
     LIMIT ${limit}
   `);
 
-  const resultRows = rows as unknown as Record<string, unknown>[];
+  const resultRows = rows.rows as unknown as Record<string, unknown>[];
 
   return resultRows.map((row) => ({
     id: row.id as string,
@@ -436,7 +436,7 @@ export async function findTopMatchingLines(
     ORDER BY song_id, rn
   `);
 
-  const resultRows = rows as unknown as Record<string, unknown>[];
+  const resultRows = rows.rows as unknown as Record<string, unknown>[];
   const result = new Map<string, { lineText: string; lineSimilarity: number }[]>();
   for (const row of resultRows) {
     const songId = row.song_id as string;
@@ -458,6 +458,6 @@ export async function hasMismatchedModelVersion(expectedModel: string): Promise<
       LIMIT 1
     ) AS mismatch
   `);
-  const resultRows = rows as unknown as Record<string, unknown>[];
+  const resultRows = rows.rows as unknown as Record<string, unknown>[];
   return (resultRows[0]?.mismatch as boolean) ?? false;
 }
