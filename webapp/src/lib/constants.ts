@@ -1,0 +1,2 @@
+export const SONGSET_MAX_SONGS = 5;
+export const SONGSET_MAX_DURATION_SECONDS = 1500;

@@ -61,8 +61,6 @@ const mockRenderJob = {
   phase: "preparing",
   phaseIndex: 0,
   totalPhases: 5,
-  percentComplete: 0,
-  estimatedSecondsLeft: null,
   elapsedSeconds: 0,
   errorMessage: null,
   estimatedTotalSeconds: null,
@@ -125,7 +123,6 @@ describe("createRenderJob", () => {
     expect(job.phase).toBe("preparing");
     expect(job.phaseIndex).toBe(0);
     expect(job.totalPhases).toBe(5);
-    expect(job.percentComplete).toBe(0);
     expect(job.template).toBe("dark");
     expect(job.resolution).toBe("720p");
     expect(job.audioEnabled).toBe(true);
@@ -301,14 +298,14 @@ describe("updateRenderProgress", () => {
     expect(job?.phaseIndex).toBe(1);
   });
 
-  it("updates percentComplete", async () => {
+  it("updates elapsedSeconds", async () => {
     vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue(mockRenderJob);
     
     const mockUpdate = vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
-            { ...mockRenderJob, percentComplete: 50 },
+            { ...mockRenderJob, elapsedSeconds: 120 },
           ]),
         }),
       }),
@@ -316,32 +313,9 @@ describe("updateRenderProgress", () => {
     vi.mocked(db.update).mockImplementation(mockUpdate as any);
 
     const job = await updateRenderProgress(1, "mock-job-id", {
-      percentComplete: 50,
-    });
-
-    expect(job?.percentComplete).toBe(50);
-  });
-
-  it("updates estimatedSecondsLeft and elapsedSeconds", async () => {
-    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue(mockRenderJob);
-    
-    const mockUpdate = vi.fn().mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            { ...mockRenderJob, estimatedSecondsLeft: 60, elapsedSeconds: 120 },
-          ]),
-        }),
-      }),
-    });
-    vi.mocked(db.update).mockImplementation(mockUpdate as any);
-
-    const job = await updateRenderProgress(1, "mock-job-id", {
-      estimatedSecondsLeft: 60,
       elapsedSeconds: 120,
     });
 
-    expect(job?.estimatedSecondsLeft).toBe(60);
     expect(job?.elapsedSeconds).toBe(120);
   });
 
@@ -421,7 +395,6 @@ describe("completeRenderJob", () => {
               status: "completed",
               phase: "completed",
               phaseIndex: 5,
-              percentComplete: 100,
               mp3R2Key: "audio.mp3",
               mp4R2Key: "video.mp4",
               chaptersR2Key: "chapters.json",
@@ -442,7 +415,6 @@ describe("completeRenderJob", () => {
     expect(job?.status).toBe("completed");
     expect(job?.phase).toBe("completed");
     expect(job?.phaseIndex).toBe(5);
-    expect(job?.percentComplete).toBe(100);
     expect(job?.mp3R2Key).toBe("audio.mp3");
     expect(job?.mp4R2Key).toBe("video.mp4");
     expect(job?.chaptersR2Key).toBe("chapters.json");

@@ -13,9 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  RenderStateButton,
+  RenderStatusBadge,
   RenderState,
-} from "./RenderStateButton";
+} from "./RenderStatusBadge";
 import { cn } from "@/lib/utils";
 import {
   MoreVertical,
@@ -32,7 +32,6 @@ import {
   FileAudio,
   FileVideo,
 } from "lucide-react";
-
 export interface SongsetRowProps {
   id: string;
   name: string;
@@ -41,7 +40,6 @@ export interface SongsetRowProps {
   durationSeconds?: number;
   updatedAt: Date;
   renderState: RenderState;
-  renderProgress?: number;
   isOfflineAvailable?: boolean;
   isArtifactsStale?: boolean;
   latestRenderJobId: string | null;
@@ -65,13 +63,11 @@ export function SongsetRow({
   durationSeconds,
   updatedAt,
   renderState,
-  renderProgress = 0,
   isOfflineAvailable = false,
   isArtifactsStale = false,
   latestRenderJobId,
   onRender,
   onPlay,
-  onRetry,
   onRename,
   onDuplicate,
   onShare,
@@ -96,10 +92,6 @@ export function SongsetRow({
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(date));
-  };
-
-  const handlePlayAnyway = () => {
-    onPlay?.();
   };
 
   return (
@@ -212,6 +204,7 @@ export function SongsetRow({
 
               {/* Status indicators */}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <RenderStatusBadge state={renderState} />
                 {isOfflineAvailable && (
                   <Badge variant="secondary" className="text-xs gap-1">
                     <WifiOff className="size-3" />
@@ -226,28 +219,6 @@ export function SongsetRow({
                 )}
               </div>
             </Link>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 mt-3">
-              <RenderStateButton
-                state={renderState}
-                progress={renderProgress}
-                onRender={onRender}
-                onPlay={onPlay}
-                onRetry={onRetry}
-                size="sm"
-              />
-              {renderState === "stale" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handlePlayAnyway}
-                  className="text-muted-foreground"
-                >
-                  Play anyway
-                </Button>
-              )}
-            </div>
           </div>
         </div>
       </CardContent>

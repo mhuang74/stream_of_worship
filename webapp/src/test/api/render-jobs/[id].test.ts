@@ -37,8 +37,6 @@ const mockJob = {
   phase: "preparing",
   phaseIndex: 0,
   totalPhases: 5,
-  percentComplete: 0,
-  estimatedSecondsLeft: null,
   elapsedSeconds: 0,
   errorMessage: null,
   estimatedTotalSeconds: null,
@@ -68,7 +66,7 @@ describe("GET /api/render-jobs/[id]", () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1");
-    const response = await GET(request, { params: { id: "job-1" } });
+    const response = await GET(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(401);
     const data = await response.json();
@@ -83,7 +81,7 @@ describe("GET /api/render-jobs/[id]", () => {
     vi.mocked(getRenderJob).mockResolvedValue(mockJob);
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1");
-    const response = await GET(request, { params: { id: "job-1" } });
+    const response = await GET(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -103,7 +101,6 @@ describe("GET /api/render-jobs/[id]", () => {
       status: "completed",
       phase: "completed",
       phaseIndex: 5,
-      percentComplete: 100,
       mp3R2Key: "renders/job-1/audio.mp3",
       mp4R2Key: "renders/job-1/video.mp4",
       chaptersR2Key: "renders/job-1/chapters.json",
@@ -113,13 +110,12 @@ describe("GET /api/render-jobs/[id]", () => {
     vi.mocked(getRenderJob).mockResolvedValue(completedJob);
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1");
-    const response = await GET(request, { params: { id: "job-1" } });
+    const response = await GET(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.status).toBe("completed");
     expect(data.phase).toBe("completed");
-    expect(data.percentComplete).toBe(100);
     expect(data.mp3R2Key).toBe("renders/job-1/audio.mp3");
     expect(data.mp4R2Key).toBe("renders/job-1/video.mp4");
     expect(data.chaptersR2Key).toBe("renders/job-1/chapters.json");
@@ -139,7 +135,7 @@ describe("GET /api/render-jobs/[id]", () => {
     vi.mocked(getRenderJob).mockResolvedValue(failedJob);
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1");
-    const response = await GET(request, { params: { id: "job-1" } });
+    const response = await GET(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -155,7 +151,7 @@ describe("GET /api/render-jobs/[id]", () => {
     vi.mocked(getRenderJob).mockResolvedValue(null);
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1");
-    const response = await GET(request, { params: { id: "job-1" } });
+    const response = await GET(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(404);
     const data = await response.json();
@@ -170,7 +166,7 @@ describe("GET /api/render-jobs/[id]", () => {
     vi.mocked(getRenderJob).mockRejectedValue(new Error("Database error"));
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1");
-    const response = await GET(request, { params: { id: "job-1" } });
+    const response = await GET(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(500);
     const data = await response.json();
@@ -189,7 +185,7 @@ describe("DELETE /api/render-jobs/[id]", () => {
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1", {
       method: "DELETE",
     });
-    const response = await DELETE(request, { params: { id: "job-1" } });
+    const response = await DELETE(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(401);
     const data = await response.json();
@@ -211,7 +207,7 @@ describe("DELETE /api/render-jobs/[id]", () => {
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1", {
       method: "DELETE",
     });
-    const response = await DELETE(request, { params: { id: "job-1" } });
+    const response = await DELETE(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -229,7 +225,6 @@ describe("DELETE /api/render-jobs/[id]", () => {
       status: "running",
       phase: "mixing_audio",
       phaseIndex: 1,
-      percentComplete: 25,
     };
 
     const cancelledJob = {
@@ -242,7 +237,7 @@ describe("DELETE /api/render-jobs/[id]", () => {
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1", {
       method: "DELETE",
     });
-    const response = await DELETE(request, { params: { id: "job-1" } });
+    const response = await DELETE(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -259,7 +254,7 @@ describe("DELETE /api/render-jobs/[id]", () => {
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1", {
       method: "DELETE",
     });
-    const response = await DELETE(request, { params: { id: "job-1" } });
+    const response = await DELETE(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(404);
     const data = await response.json();
@@ -278,7 +273,7 @@ describe("DELETE /api/render-jobs/[id]", () => {
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1", {
       method: "DELETE",
     });
-    const response = await DELETE(request, { params: { id: "job-1" } });
+    const response = await DELETE(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(400);
     const data = await response.json();
@@ -295,7 +290,7 @@ describe("DELETE /api/render-jobs/[id]", () => {
     const request = createMockRequest("http://localhost:3000/api/render-jobs/job-1", {
       method: "DELETE",
     });
-    const response = await DELETE(request, { params: { id: "job-1" } });
+    const response = await DELETE(request, { params: Promise.resolve({ id: "job-1" }) });
 
     expect(response.status).toBe(500);
     const data = await response.json();

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { SongsetList, Songset } from "@/components/songset/SongsetList";
-import { RenderState } from "@/components/songset/RenderStateButton";
+import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { toast } from "sonner";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 

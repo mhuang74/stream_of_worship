@@ -6,7 +6,7 @@ import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
-import { RenderState } from "@/components/songset/RenderStateButton";
+import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
@@ -478,6 +478,7 @@ export default function SongsetEditorPage() {
         onOpenChange={setIsBrowseSheetOpen}
         onAddSong={handleAddSong}
         existingSongIds={items.map((item) => item.songId)}
+        itemCount={items.length}
       />
     </>
   );

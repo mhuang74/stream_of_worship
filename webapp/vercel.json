@@ -8,9 +8,6 @@
     },
     "src/app/api/render-jobs/[id]/route.ts": {
       "maxDuration": 60
-    },
-    "src/app/api/render-jobs/[id]/events/route.ts": {
-      "maxDuration": 60
     }
   },
   "git": {

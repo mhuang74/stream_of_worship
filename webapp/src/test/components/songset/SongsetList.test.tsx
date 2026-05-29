@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SongsetList } from "@/components/songset/SongsetList";
-import { RenderState } from "@/components/songset/RenderStateButton";
+import { RenderState } from "@/components/songset/RenderStatusBadge";
 
 describe("SongsetList", () => {
   const mockSongsets = [

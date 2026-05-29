@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
 import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
+import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
+import { db } from "@/db";
+import { songsetItems } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 const createRenderJobSchema = z.object({
@@ -32,6 +36,29 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const items = await db.query.songsetItems.findMany({
+      where: eq(songsetItems.songsetId, parsed.data.songsetId),
+      with: { recording: { columns: { durationSeconds: true } } },
+    });
+
+    if (items.length > SONGSET_MAX_SONGS) {
+      return NextResponse.json(
+        { error: `Songset exceeds maximum of ${SONGSET_MAX_SONGS} songs` },
+        { status: 400 }
+      );
+    }
+
+    const totalDuration = items.reduce(
+      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+      0
+    );
+    if (totalDuration > SONGSET_MAX_DURATION_SECONDS) {
+      return NextResponse.json(
+        { error: `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes` },
         { status: 400 }
       );
     }

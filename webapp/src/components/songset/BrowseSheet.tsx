@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
+import { SONGSET_MAX_SONGS } from "@/lib/constants";
 
 type SearchMode = "browse" | "describe";
 
@@ -25,6 +26,7 @@ interface BrowseSheetProps {
   onOpenChange: (open: boolean) => void;
   onAddSong: (song: SongCardData) => Promise<void>;
   existingSongIds?: string[];
+  itemCount?: number;
   className?: string;
 }
 
@@ -38,6 +40,7 @@ export function BrowseSheet({
   onOpenChange,
   onAddSong,
   existingSongIds = [],
+  itemCount = 0,
   className,
 }: BrowseSheetProps) {
   const [mode, setMode] = useState<SearchMode>("browse");
@@ -186,6 +189,8 @@ export function BrowseSheet({
     (songId: string) => addingSongIds.has(songId),
     [addingSongIds]
   );
+
+  const isSongsetFull = itemCount >= SONGSET_MAX_SONGS;
 
   const handlePlaySong = useCallback(
     async (songId: string) => {
@@ -372,7 +377,7 @@ export function BrowseSheet({
                         song={song}
                         onAdd={handleAddSong}
                         onPlay={handlePlaySong}
-                        isAdded={isSongAdded(song.id)}
+                        isAdded={isSongsetFull || isSongAdded(song.id)}
                         isAdding={isSongAdding(song.id)}
                         isPlaying={playingSongId === song.id}
                         isPreviewLoading={previewLoadingSongId === song.id}
@@ -399,7 +404,9 @@ export function BrowseSheet({
           <div className="pt-4 border-t mt-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {mode === "browse" && results.length > 0 && `${results.length} songs found`}
+                {isSongsetFull
+                  ? "Songset full"
+                  : mode === "browse" && results.length > 0 && `${results.length} songs found`}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Done

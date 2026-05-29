@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SongsetRow } from "@/components/songset/SongsetRow";
-import { RenderState } from "@/components/songset/RenderStateButton";
+import { RenderState } from "@/components/songset/RenderStatusBadge";
 
 describe("SongsetRow", () => {
   const defaultProps = {
@@ -62,34 +62,22 @@ describe("SongsetRow", () => {
     });
   });
 
-  describe("render state button", () => {
-    it("renders render state button", () => {
+  describe("render status badge", () => {
+    it("renders render status badge", () => {
       renderRow();
-      expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
-    });
-
-    it("calls onPlay when play button clicked", () => {
-      renderRow();
-      fireEvent.click(screen.getByRole("button", { name: /play/i }));
-      expect(defaultProps.onPlay).toHaveBeenCalled();
+      expect(screen.getByText("Rendered")).toBeInTheDocument();
     });
   });
 
-  describe("stale state with 'Play anyway'", () => {
-    it("renders 'Play anyway' button when stale", () => {
+  describe("stale state badge", () => {
+    it("renders 'Needs re-render' badge when stale", () => {
       renderRow({ renderState: "stale" as RenderState });
-      expect(screen.getByRole("button", { name: /play anyway/i })).toBeInTheDocument();
+      expect(screen.getByText("Needs re-render")).toBeInTheDocument();
     });
 
-    it("calls onPlay when 'Play anyway' clicked", () => {
-      renderRow({ renderState: "stale" as RenderState });
-      fireEvent.click(screen.getByRole("button", { name: /play anyway/i }));
-      expect(defaultProps.onPlay).toHaveBeenCalled();
-    });
-
-    it("does not render 'Play anyway' when not stale", () => {
+    it("renders 'Rendered' badge when fresh", () => {
       renderRow({ renderState: "fresh" as RenderState });
-      expect(screen.queryByRole("button", { name: /play anyway/i })).not.toBeInTheDocument();
+      expect(screen.getByText("Rendered")).toBeInTheDocument();
     });
   });
 
