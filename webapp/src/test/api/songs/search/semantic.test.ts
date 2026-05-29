@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/songs/search/semantic/route";
 import { auth } from "@/lib/auth";
-import { getEmbeddingForRecording, semanticSearchSongs } from "@/lib/db/search";
+import { embedQuery } from "@/lib/embedding";
+import {
+  semanticSearchSongs,
+  findTopMatchingLines,
+  hasMismatchedModelVersion,
+} from "@/lib/db/songs";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -14,9 +19,15 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-vi.mock("@/lib/db/search", () => ({
-  getEmbeddingForRecording: vi.fn(),
+vi.mock("@/lib/embedding", () => ({
+  embedQuery: vi.fn(),
+  QUERY_MODEL: "openai-text-embedding-3-small",
+}));
+
+vi.mock("@/lib/db/songs", () => ({
   semanticSearchSongs: vi.fn(),
+  findTopMatchingLines: vi.fn(),
+  hasMismatchedModelVersion: vi.fn(),
 }));
 
 function makeRequest(body: unknown): NextRequest {
@@ -27,7 +38,7 @@ function makeRequest(body: unknown): NextRequest {
   }) as unknown as NextRequest;
 }
 
-const mockEmbedding = Array.from({ length: 1024 }, () => 0.1);
+const mockEmbedding = Array.from({ length: 1536 }, () => 0.1);
 
 const mockSong = {
   id: "song-1",
@@ -41,6 +52,9 @@ const mockSong = {
   createdAt: new Date(),
   updatedAt: new Date(),
   similarity: 0.87,
+  modelVersion: "openai-text-embedding-3-small",
+  matchingSnippet: null,
+  whyThisMatch: [],
   recordings: [
     {
       contentHash: "abc123",
@@ -59,6 +73,10 @@ const mockSong = {
   ],
 };
 
+const mockSnippets = new Map<string, { lineText: string; lineSimilarity: number }[]>([
+  ["song-1", [{ lineText: "Amazing grace how sweet the sound", lineSimilarity: 0.85 }]],
+]);
+
 describe("POST /api/songs/search/semantic", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,7 +84,7 @@ describe("POST /api/songs/search/semantic", () => {
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
-    const res = await POST(makeRequest({ recordingId: "hash123" }));
+    const res = await POST(makeRequest({ query: "grace" }));
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe("Unauthorized");
@@ -83,74 +101,108 @@ describe("POST /api/songs/search/semantic", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when recordingId is missing", async () => {
+  it("returns 400 when query is missing", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
     const res = await POST(makeRequest({}));
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when recordingId is empty", async () => {
+  it("returns 400 when query is empty", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    const res = await POST(makeRequest({ recordingId: "" }));
+    const res = await POST(makeRequest({ query: "" }));
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when recording has no embedding", async () => {
+  it("returns 503 when model version mismatch (pre-check)", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(getEmbeddingForRecording).mockResolvedValue(null);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(true);
 
-    const res = await POST(makeRequest({ recordingId: "no-embedding-hash" }));
-    expect(res.status).toBe(400);
+    const res = await POST(makeRequest({ query: "grace" }));
+    expect(res.status).toBe(503);
     const data = await res.json();
-    expect(data.error).toContain("No embedding found");
+    expect(data.error).toContain("embeddings need regeneration");
+  });
+
+  it("returns 503 when OpenAI API fails", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
+    vi.mocked(embedQuery).mockRejectedValue(new Error("OpenAI API error"));
+
+    const res = await POST(makeRequest({ query: "grace" }));
+    expect(res.status).toBe(503);
+    const data = await res.json();
+    expect(data.error).toContain("Semantic search unavailable");
   });
 
   it("returns search results on success", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([mockSong]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(mockSnippets);
 
-    const res = await POST(makeRequest({ recordingId: "abc123" }));
+    const res = await POST(makeRequest({ query: "God's faithfulness" }));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.songs).toHaveLength(1);
     expect(data.songs[0].title).toBe("Amazing Grace");
     expect(data.songs[0].similarity).toBe(0.87);
-    expect(data.recordingId).toBe("abc123");
+    expect(data.songs[0].matchingSnippet).toBe("Amazing grace how sweet the sound");
+    expect(data.songs[0].whyThisMatch).toEqual(["Amazing grace how sweet the sound"]);
+    expect(data.query).toBe("God's faithfulness");
     expect(data.total).toBe(1);
   });
 
-  it("looks up embedding from DB and passes to semanticSearchSongs", async () => {
+  it("embeds query and passes to semanticSearchSongs", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
 
-    await POST(makeRequest({ recordingId: "hash123" }));
-    expect(getEmbeddingForRecording).toHaveBeenCalledWith("hash123");
+    await POST(makeRequest({ query: "grace" }));
+    expect(embedQuery).toHaveBeenCalledWith("grace");
     expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 20);
   });
 
   it("respects custom limit", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
 
-    await POST(makeRequest({ recordingId: "hash123", limit: 10 }));
-    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 10);
+    await POST(makeRequest({ query: "test", limit: 5 }));
+    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 5);
   });
 
-  it("clamps limit to max 50", async () => {
+  it("returns 400 when limit > 50", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    const res = await POST(makeRequest({ recordingId: "hash123", limit: 100 }));
+    const res = await POST(makeRequest({ query: "test", limit: 100 }));
     expect(res.status).toBe(400);
+  });
+
+  it("returns null snippets when song has no line embeddings", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
+    vi.mocked(semanticSearchSongs).mockResolvedValue([mockSong]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
+
+    const res = await POST(makeRequest({ query: "grace" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.songs[0].matchingSnippet).toBeNull();
+    expect(data.songs[0].whyThisMatch).toEqual([]);
   });
 
   it("returns 500 when DB query fails", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(getEmbeddingForRecording).mockResolvedValue(mockEmbedding);
+    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockRejectedValue(new Error("DB error"));
 
-    const res = await POST(makeRequest({ recordingId: "hash123" }));
+    const res = await POST(makeRequest({ query: "test" }));
     expect(res.status).toBe(500);
   });
 });

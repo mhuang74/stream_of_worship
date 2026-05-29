@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from ..config import settings
 from ..models import (
     AnalyzeJobRequest,
+    EmbeddingJobRequest,
     JobResponse,
     JobStatus,
     JobType,
@@ -194,6 +195,29 @@ async def submit_stem_separation_job(
         raise HTTPException(500, "Job queue not initialized")
 
     job = await job_queue.submit(JobType.STEM_SEPARATION, request)
+    return job_to_response(job)
+
+
+@router.post("/jobs/embedding", response_model=JobResponse)
+async def submit_embedding_job(
+    request: EmbeddingJobRequest,
+    api_key: str = Depends(verify_api_key),
+) -> JobResponse:
+    """Submit embedding generation job.
+
+    Generates text embeddings for a song using OpenAI text-embedding-3-small.
+
+    Args:
+        request: Embedding job request
+        api_key: Validated API key
+
+    Returns:
+        Job response with status
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    job = await job_queue.submit(JobType.EMBEDDING, request)
     return job_to_response(job)
 
 

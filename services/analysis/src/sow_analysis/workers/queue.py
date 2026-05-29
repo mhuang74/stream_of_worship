@@ -51,6 +51,8 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str) -> str:
 
 from ..models import (
     AnalyzeJobRequest,
+    EmbeddingJobRequest,
+    EmbeddingJobResult,
     Job,
     JobResult,
     JobStatus,
@@ -77,6 +79,12 @@ try:
 except ImportError:
     LRCWorkerError = Exception
     generate_lrc = None
+
+# Optional embedding imports - require openai
+try:
+    from .embedder import EmbeddingWorker
+except ImportError:
+    EmbeddingWorker = None
 
 # Optional stem separation imports - require audio-separator
 try:
@@ -114,6 +122,8 @@ class JobQueue:
         # Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
         # Cloud operations (YouTube transcript, MVSEP, LLM alignment) don't acquire this.
         self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
+        # Separate semaphore for embedding jobs (external API, no GPU needed)
+        self._embedding_semaphore = asyncio.Semaphore(5)
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
@@ -200,7 +210,12 @@ class JobQueue:
     async def submit(
         self,
         job_type: JobType,
-        request: Union[AnalyzeJobRequest, LrcJobRequest, StemSeparationJobRequest],
+        request: Union[
+            AnalyzeJobRequest,
+            LrcJobRequest,
+            StemSeparationJobRequest,
+            EmbeddingJobRequest,
+        ],
     ) -> Job:
         """Submit a new job to the queue.
 
@@ -326,6 +341,10 @@ class JobQueue:
             # Stem separation tries MVSEP (cloud) first; semaphore acquired inside
             # process_stem_separation() only for local fallback
             await self._process_stem_separation_job(job)
+        elif job.type == JobType.EMBEDDING:
+            # Embedding uses external OpenAI API - separate semaphore
+            async with self._embedding_semaphore:
+                await self._process_embedding_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -1031,6 +1050,98 @@ class JobQueue:
 
         job.updated_at = datetime.now(timezone.utc)
 
+    async def _process_embedding_job(self, job: Job) -> None:
+        """Process an embedding job.
+
+        Args:
+            job: Job to process
+        """
+        set_job_id(job.id)
+        logger.info(f"Starting embedding job for song: {job.request.song_id}")
+
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "embedding"
+        job.progress = 0.1
+
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="embedding", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        request = job.request
+        if not isinstance(request, EmbeddingJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for embedding job"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        if EmbeddingWorker is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "Embedding dependencies not available (openai)"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="Embedding dependencies not available (openai)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        try:
+            worker = EmbeddingWorker()
+            result = await worker.embed_song(request)
+
+            job.result = result
+            job.status = JobStatus.COMPLETED
+            job.progress = 1.0
+            job.stage = "completed"
+            job.updated_at = datetime.now(timezone.utc)
+
+            logger.info(
+                f"Embedding job completed for song {result.song_id}: "
+                f"{len(result.line_embeddings)} line embeddings"
+            )
+
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="completed",
+                    stage="completed",
+                    progress=1.0,
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        except Exception as e:
+            logger.error(f"Embedding job {job.id} failed: {e}")
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "error"
+            job.updated_at = datetime.now(timezone.utc)
+
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="error",
+                    error_message=f"Unexpected error: {e}",
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+
     async def cancel_job(self, job_id: str) -> tuple[Optional[Job], Optional[str]]:
         """Cancel a job by ID.
 
@@ -1173,6 +1284,8 @@ class JobQueue:
         stats: Dict[JobType, Dict[JobStatus, int]] = {
             JobType.ANALYZE: {status: 0 for status in JobStatus},
             JobType.LRC: {status: 0 for status in JobStatus},
+            JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
+            JobType.EMBEDDING: {status: 0 for status in JobStatus},
             JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
         }
 

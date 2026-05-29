@@ -20,6 +20,7 @@ interface SongSearchProps {
   className?: string;
   placeholder?: string;
   debounceMs?: number;
+  initialQuery?: string;
 }
 
 export function SongSearch({
@@ -29,11 +30,21 @@ export function SongSearch({
   className,
   placeholder = "Search songs by title, artist, or album...",
   debounceMs = 300,
+  initialQuery,
 }: SongSearchProps) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [selectedAlbum, setSelectedAlbum] = useState<string>("all");
   const [isSearching, setIsSearching] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const initialSearchTriggered = useRef(false);
+
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim() && !initialSearchTriggered.current) {
+      initialSearchTriggered.current = true;
+      setIsSearching(true);
+      onSearch(initialQuery, undefined);
+    }
+  }, [initialQuery, onSearch]);
 
   // Debounced search handler
   const debouncedSearch = useCallback(

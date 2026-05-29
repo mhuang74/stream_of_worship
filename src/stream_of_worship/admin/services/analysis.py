@@ -6,8 +6,8 @@ over HTTP. Handles authentication, job submission, polling, and result parsing.
 
 import os
 import time
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import requests
 
@@ -56,6 +56,40 @@ class AnalysisResult:
 
 
 @dataclass
+class LineEmbeddingResult:
+    """Embedding for a single lyric line from the service.
+
+    Attributes:
+        line_index: Index of the line in the lyrics.
+        line_text: Text of the lyric line.
+        embedding: Embedding vector.
+    """
+
+    line_index: int = 0
+    line_text: str = ""
+    embedding: List[float] = field(default_factory=list)
+
+
+@dataclass
+class EmbeddingResult:
+    """Embedding results from the service.
+
+    Attributes:
+        song_id: Song ID.
+        embedding: Song-level embedding vector.
+        line_embeddings: List of line-level embeddings.
+        model_version: Model version string.
+        content_hash: Content hash for staleness detection.
+    """
+
+    song_id: str = ""
+    embedding: List[float] = field(default_factory=list)
+    line_embeddings: List[LineEmbeddingResult] = field(default_factory=list)
+    model_version: str = "openai-text-embedding-3-small"
+    content_hash: str = ""
+
+
+@dataclass
 class JobInfo:
     """Information about an analysis job.
 
@@ -77,7 +111,7 @@ class JobInfo:
     progress: float = 0.0
     stage: str = ""
     error_message: Optional[str] = None
-    result: Optional[AnalysisResult] = None
+    result: Optional[Union[AnalysisResult, EmbeddingResult]] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -300,6 +334,67 @@ class AnalysisClient:
                     status_code=status,
                 )
             raise AnalysisServiceError(f"LRC submission failed: {e}")
+
+    def submit_embedding(
+        self,
+        song_id: str,
+        title: str,
+        composer: str = "",
+        lyrics_raw: str = "",
+        lyrics_lines: Optional[List[str]] = None,
+    ) -> JobInfo:
+        """Submit a song for embedding generation.
+
+        Args:
+            song_id: Song ID
+            title: Song title
+            composer: Song composer
+            lyrics_raw: Raw lyrics text
+            lyrics_lines: List of lyric lines (parsed from JSON)
+
+        Returns:
+            JobInfo for the submitted job
+
+        Raises:
+            AnalysisServiceError: If submission fails
+        """
+        payload = {
+            "song_id": song_id,
+            "title": title,
+            "composer": composer,
+            "lyrics_raw": lyrics_raw,
+            "lyrics_lines": lyrics_lines or [],
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/embedding",
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid API key", status_code=401
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_job_response(data)
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e.response, "status_code"):
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Embedding submission failed (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Embedding submission failed: {e}")
 
     def get_job(self, job_id: str) -> JobInfo:
         """Get information about a job.
@@ -543,26 +638,47 @@ class AnalysisClient:
             data: JSON response from the API
 
         Returns:
-            Parsed JobInfo with optional AnalysisResult
+            Parsed JobInfo with optional AnalysisResult or EmbeddingResult
         """
         result = None
         if data.get("result"):
             result_data = data["result"]
-            result = AnalysisResult(
-                duration_seconds=result_data.get("duration_seconds"),
-                tempo_bpm=result_data.get("tempo_bpm"),
-                musical_key=result_data.get("musical_key"),
-                musical_mode=result_data.get("musical_mode"),
-                key_confidence=result_data.get("key_confidence"),
-                loudness_db=result_data.get("loudness_db"),
-                beats=result_data.get("beats"),
-                downbeats=result_data.get("downbeats"),
-                sections=result_data.get("sections"),
-                embeddings_shape=result_data.get("embeddings_shape"),
-                stems_url=result_data.get("stems_url"),
-                lrc_url=result_data.get("lrc_url"),
-                lrc_source=result_data.get("lrc_source"),
-            )
+            job_type = data.get("job_type", "analysis")
+
+            if job_type == "embedding":
+                line_embeddings = [
+                    LineEmbeddingResult(
+                        line_index=le.get("line_index", 0),
+                        line_text=le.get("line_text", ""),
+                        embedding=le.get("embedding", []),
+                    )
+                    for le in result_data.get("line_embeddings", [])
+                ]
+                result = EmbeddingResult(
+                    song_id=result_data.get("song_id", ""),
+                    embedding=result_data.get("embedding", []),
+                    line_embeddings=line_embeddings,
+                    model_version=result_data.get(
+                        "model_version", "openai-text-embedding-3-small"
+                    ),
+                    content_hash=result_data.get("content_hash", ""),
+                )
+            else:
+                result = AnalysisResult(
+                    duration_seconds=result_data.get("duration_seconds"),
+                    tempo_bpm=result_data.get("tempo_bpm"),
+                    musical_key=result_data.get("musical_key"),
+                    musical_mode=result_data.get("musical_mode"),
+                    key_confidence=result_data.get("key_confidence"),
+                    loudness_db=result_data.get("loudness_db"),
+                    beats=result_data.get("beats"),
+                    downbeats=result_data.get("downbeats"),
+                    sections=result_data.get("sections"),
+                    embeddings_shape=result_data.get("embeddings_shape"),
+                    stems_url=result_data.get("stems_url"),
+                    lrc_url=result_data.get("lrc_url"),
+                    lrc_source=result_data.get("lrc_source"),
+                )
 
         return JobInfo(
             job_id=data["job_id"],

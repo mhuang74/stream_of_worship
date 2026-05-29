@@ -113,6 +113,45 @@ CREATE_INDEXES = [
     """,
 ]
 
+# Song embedding table (pgvector for semantic search)
+CREATE_SONG_EMBEDDING_TABLE = """
+CREATE TABLE IF NOT EXISTS song_embedding (
+    song_id       TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
+    embedding     vector(1536) NOT NULL,
+    model_version TEXT NOT NULL DEFAULT 'openai-text-embedding-3-small',
+    content_hash  TEXT NOT NULL,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+# Song line embedding table (pgvector for snippet matching)
+CREATE_SONG_LINE_EMBEDDING_TABLE = """
+CREATE TABLE IF NOT EXISTS song_line_embedding (
+    id           SERIAL PRIMARY KEY,
+    song_id      TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    line_index   INTEGER NOT NULL,
+    line_text    TEXT NOT NULL,
+    embedding    vector(1536) NOT NULL,
+    model_version TEXT NOT NULL DEFAULT 'openai-text-embedding-3-small'
+);
+"""
+
+# Indexes for embedding tables
+CREATE_EMBEDDING_INDEXES = [
+    """
+    CREATE INDEX IF NOT EXISTS idx_song_embedding_cosine
+    ON song_embedding USING hnsw (embedding vector_cosine_ops);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_song_line_embedding_song
+    ON song_line_embedding(song_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_song_line_embedding_cosine
+    ON song_line_embedding USING hnsw (embedding vector_cosine_ops);
+    """,
+]
+
 # Postgres function to auto-update updated_at columns
 CREATE_UPDATE_TIMESTAMP_FUNCTION = """
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -147,6 +186,9 @@ ALL_SCHEMA_STATEMENTS = [
     CREATE_SONGS_TABLE,
     CREATE_RECORDINGS_TABLE,
     *CREATE_INDEXES,
+    CREATE_SONG_EMBEDDING_TABLE,
+    CREATE_SONG_LINE_EMBEDDING_TABLE,
+    *CREATE_EMBEDDING_INDEXES,
     CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_RECORDINGS_UPDATE_TRIGGER,

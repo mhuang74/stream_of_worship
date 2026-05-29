@@ -45,6 +45,7 @@ export function BrowseSheet({
 }: BrowseSheetProps) {
   const [mode, setMode] = useState<SearchMode>("browse");
   const [query, setQuery] = useState("");
+  const [initialSearchQuery, setInitialSearchQuery] = useState<string | undefined>();
   const [albumFilter, setAlbumFilter] = useState<string | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [albums, setAlbums] = useState<string[]>([]);
@@ -192,6 +193,11 @@ export function BrowseSheet({
 
   const isSongsetFull = itemCount >= SONGSET_MAX_SONGS;
 
+  const handleSwitchToSearchTab = useCallback((searchQuery: string) => {
+    setInitialSearchQuery(searchQuery);
+    setMode("browse");
+  }, []);
+
   const handlePlaySong = useCallback(
     async (songId: string) => {
       const song = results.find((r) => r.id === songId);
@@ -320,6 +326,7 @@ export function BrowseSheet({
                   onSearch={handleSearch}
                   albums={albums}
                   isLoading={isLoading || isLoadingAlbums}
+                  initialQuery={initialSearchQuery}
                 />
               </div>
 
@@ -397,6 +404,7 @@ export function BrowseSheet({
                 existingSongIds={existingSongIds}
                 addingSongIds={addingSongIds}
                 addedSongIds={addedSongIds}
+                onSwitchToSearchTab={handleSwitchToSearchTab}
               />
             </div>
           )}

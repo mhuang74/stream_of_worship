@@ -308,14 +308,17 @@ export async function getAlbums(): Promise<string[]> {
 
 export interface SemanticSearchResult extends SongWithRecordings {
   similarity: number;
+  modelVersion: string;
+  matchingSnippet: string | null;
+  whyThisMatch: string[];
 }
 
 export async function semanticSearchSongs(
   embedding: number[],
   limit: number = 20
 ): Promise<SemanticSearchResult[]> {
-  if (embedding.length !== 1024) {
-    throw new Error(`Invalid embedding: expected 1024 dimensions, got ${embedding.length}`);
+  if (embedding.length !== 1536) {
+    throw new Error(`Invalid embedding: expected 1536 dimensions, got ${embedding.length}`);
   }
   for (const v of embedding) {
     if (typeof v !== "number" || !isFinite(v)) {
@@ -356,13 +359,14 @@ export async function semanticSearchSongs(
         r.r2_lrc_url,
         r.visibility_status,
         r.analysis_status,
+        se.model_version,
         (1 - (se.embedding <=> ${vectorStr}::vector))::float AS similarity
       FROM song_embedding se
-      JOIN recordings r ON se.recording_content_hash = r.content_hash
-      JOIN songs s ON r.song_id = s.id
-      WHERE r.visibility_status = 'published'
-        AND s.deleted_at IS NULL
+      JOIN songs s ON se.song_id = s.id
+      JOIN recordings r ON r.song_id = s.id
+        AND r.visibility_status = 'published'
         AND r.deleted_at IS NULL
+      WHERE s.deleted_at IS NULL
       ORDER BY s.id, se.embedding <=> ${vectorStr}::vector ASC
     ) ranked
     ORDER BY similarity DESC
@@ -383,6 +387,9 @@ export async function semanticSearchSongs(
     createdAt: row.created_at ? new Date(row.created_at as string) : null,
     updatedAt: row.updated_at ? new Date(row.updated_at as string) : null,
     similarity: Number(row.similarity),
+    modelVersion: row.model_version as string,
+    matchingSnippet: null,
+    whyThisMatch: [],
     recordings: [
       {
         contentHash: row.content_hash as string,
@@ -400,4 +407,57 @@ export async function semanticSearchSongs(
       },
     ],
   }));
+}
+
+export async function findTopMatchingLines(
+  queryEmbedding: number[],
+  songIds: string[]
+): Promise<Map<string, { lineText: string; lineSimilarity: number }[]>> {
+  if (songIds.length === 0) return new Map();
+
+  const vectorStr = `[${queryEmbedding.join(",")}]`;
+
+  const rows = await db.execute(sql`
+    SELECT song_id, line_text, line_similarity
+    FROM (
+      SELECT
+        sle.song_id,
+        sle.line_text,
+        (1 - (sle.embedding <=> ${vectorStr}::vector))::float AS line_similarity,
+        ROW_NUMBER() OVER (
+          PARTITION BY sle.song_id
+          ORDER BY sle.embedding <=> ${vectorStr}::vector ASC
+        ) AS rn
+      FROM song_line_embedding sle
+      WHERE sle.song_id = ANY(${songIds}::text[])
+        AND length(regexp_replace(sle.line_text, '[^\u4e00-\u9fff]', '', 'g')) >= 4
+    ) ranked
+    WHERE rn <= 2
+    ORDER BY song_id, rn
+  `);
+
+  const resultRows = rows as unknown as Record<string, unknown>[];
+  const result = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+  for (const row of resultRows) {
+    const songId = row.song_id as string;
+    const lines = result.get(songId) ?? [];
+    lines.push({
+      lineText: row.line_text as string,
+      lineSimilarity: Number(row.line_similarity),
+    });
+    result.set(songId, lines);
+  }
+  return result;
+}
+
+export async function hasMismatchedModelVersion(expectedModel: string): Promise<boolean> {
+  const rows = await db.execute(sql`
+    SELECT EXISTS(
+      SELECT 1 FROM song_embedding
+      WHERE model_version != ${expectedModel}
+      LIMIT 1
+    ) AS mismatch
+  `);
+  const resultRows = rows as unknown as Record<string, unknown>[];
+  return (resultRows[0]?.mismatch as boolean) ?? false;
 }

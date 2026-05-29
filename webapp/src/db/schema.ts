@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   integer,
+  serial,
   real,
   boolean,
   bigint,
@@ -249,22 +250,53 @@ export const renderJobs = pgTable("render_jobs", {
 
 // ---------------------------------------------------------------------------
 // New webapp table: song_embedding (pgvector for semantic search)
+// Keyed by song_id per spec v4; embedding content is title+composer+lyrics_raw
 // ---------------------------------------------------------------------------
 
 export const songEmbeddings = pgTable(
   "song_embedding",
   {
-    id: text("id").primaryKey(),
-    recordingContentHash: text("recording_content_hash")
+    songId: text("song_id")
+      .primaryKey()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+    modelVersion: text("model_version")
       .notNull()
-      .references(() => recordings.contentHash, { onDelete: "cascade" }),
-    embedding: vector("embedding", { dimensions: 1024 }).notNull(),
-    modelVersion: text("model_version").notNull(),
+      .default("openai-text-embedding-3-small"),
+    contentHash: text("content_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [
-    unique().on(t.recordingContentHash, t.modelVersion),
-    index("idx_song_embedding_hash").on(t.recordingContentHash),
+    index("idx_song_embedding_cosine").on(
+      sql`${t.embedding} vector_cosine_ops`
+    ),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// New webapp table: song_line_embedding (pgvector for snippet matching)
+// Pre-computed during batch pipeline; eliminates query-time OpenAI call
+// ---------------------------------------------------------------------------
+
+export const songLineEmbeddings = pgTable(
+  "song_line_embedding",
+  {
+    id: serial("id").primaryKey(),
+    songId: text("song_id")
+      .notNull()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    lineIndex: integer("line_index").notNull(),
+    lineText: text("line_text").notNull(),
+    embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+    modelVersion: text("model_version")
+      .notNull()
+      .default("openai-text-embedding-3-small"),
+  },
+  (t) => [
+    index("idx_song_line_embedding_song").on(t.songId),
+    index("idx_song_line_embedding_cosine").on(
+      sql`${t.embedding} vector_cosine_ops`
+    ),
   ]
 );
 
@@ -345,13 +377,14 @@ export const songsetShares = pgTable("songset_share", {
 
 export const songsRelations = relations(songs, ({ many }) => ({
   recordings: many(recordings),
+  songEmbeddings: many(songEmbeddings),
+  songLineEmbeddings: many(songLineEmbeddings),
 }));
 
 export const recordingsRelations = relations(recordings, ({ one, many }) => ({
   song: one(songs, { fields: [recordings.songId], references: [songs.id] }),
   userLrcOverrides: many(userLrcOverrides),
   lyricMarks: many(lyricMarks),
-  songEmbeddings: many(songEmbeddings),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -395,11 +428,21 @@ export const renderJobsRelations = relations(renderJobs, ({ one }) => ({
 }));
 
 export const songEmbeddingsRelations = relations(songEmbeddings, ({ one }) => ({
-  recording: one(recordings, {
-    fields: [songEmbeddings.recordingContentHash],
-    references: [recordings.contentHash],
+  song: one(songs, {
+    fields: [songEmbeddings.songId],
+    references: [songs.id],
   }),
 }));
+
+export const songLineEmbeddingsRelations = relations(
+  songLineEmbeddings,
+  ({ one }) => ({
+    song: one(songs, {
+      fields: [songLineEmbeddings.songId],
+      references: [songs.id],
+    }),
+  })
+);
 
 export const userSettingsRelations = relations(userSettings, ({ one }) => ({
   user: one(users, { fields: [userSettings.userId], references: [users.id] }),
