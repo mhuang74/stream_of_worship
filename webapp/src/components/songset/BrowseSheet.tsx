@@ -377,8 +377,9 @@ export function BrowseSheet({
                         song={song}
                         onAdd={handleAddSong}
                         onPlay={handlePlaySong}
-                        isAdded={isSongsetFull || isSongAdded(song.id)}
+                        isAdded={isSongAdded(song.id)}
                         isAdding={isSongAdding(song.id)}
+                        disabled={isSongsetFull}
                         isPlaying={playingSongId === song.id}
                         isPreviewLoading={previewLoadingSongId === song.id}
                       />

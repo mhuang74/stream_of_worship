@@ -50,7 +50,7 @@ const STATE_CONFIG: Record<RenderState, {
 }
 
 export function RenderStatusBadge({ state, className }: RenderStatusBadgeProps) {
-  const config = STATE_CONFIG[state]
+  const config = STATE_CONFIG[state] || STATE_CONFIG.unrendered
   const Icon = config.icon
 
   return (
