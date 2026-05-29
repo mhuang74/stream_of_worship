@@ -6,6 +6,7 @@ recordings, and viewing recording details.
 
 import json
 import logging
+import os
 import select
 import sys
 import tempfile
@@ -1667,6 +1668,185 @@ def lrc_recording(
             no_qwen3=no_qwen3,
             console=console,
         )
+
+
+def _compute_content_hash(
+    title: str, composer: str, lyrics_raw: str, lyrics_lines: list[str]
+) -> str:
+    import hashlib
+
+    content = f"{title}\0{composer}\0{lyrics_raw}\0{'|'.join(lyrics_lines)}"
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+
+def _submit_embedding_single(
+    song: "Song",
+    analysis_client: "AnalysisClient",
+    db_client: "DatabaseClient",
+    console: "Console",
+    force: bool = False,
+) -> Optional[str]:
+    from stream_of_worship.admin.db.models import Song
+
+    lyrics_list = song.lyrics_list
+    current_hash = _compute_content_hash(
+        song.title, song.composer or "", song.lyrics_raw or "", lyrics_list
+    )
+
+    if not force:
+        existing_hash = db_client.get_embedding_content_hash(song.id)
+        if existing_hash == current_hash:
+            console.print(f"  [dim]Skipping {song.id}: embedding up-to-date[/dim]")
+            return None
+
+    try:
+        job_info = analysis_client.submit_embedding(
+            song_id=song.id,
+            title=song.title,
+            composer=song.composer or "",
+            lyrics_raw=song.lyrics_raw or "",
+            lyrics_lines=lyrics_list,
+        )
+        console.print(f"  [green]Submitted[/green] embedding job {job_info.job_id} for {song.id}")
+        return job_info.job_id
+    except Exception as e:
+        console.print(f"  [red]Failed[/red] to submit embedding for {song.id}: {e}")
+        return None
+
+
+def _write_embedding_result(
+    job_info: "JobInfo",
+    db_client: "DatabaseClient",
+    console: "Console",
+) -> bool:
+    if not job_info.result or not hasattr(job_info.result, "embedding"):
+        console.print(f"  [red]No embedding result[/red] for job {job_info.job_id}")
+        return False
+
+    result = job_info.result
+    try:
+        db_client.upsert_song_embedding(
+            song_id=result.song_id,
+            embedding=result.embedding,
+            model_version=result.model_version,
+            content_hash=result.content_hash,
+        )
+        db_client.upsert_song_line_embeddings(
+            song_id=result.song_id,
+            model_version=result.model_version,
+            line_embeddings=[
+                {
+                    "line_index": le.line_index,
+                    "line_text": le.line_text,
+                    "embedding": le.embedding,
+                }
+                for le in result.line_embeddings
+            ],
+        )
+        console.print(
+            f"  [green]Wrote[/green] embedding for {result.song_id} "
+            f"({len(result.line_embeddings)} lines)"
+        )
+        return True
+    except Exception as e:
+        console.print(f"  [red]Failed[/red] to write embedding for {result.song_id}: {e}")
+        return False
+
+
+@app.command("embed")
+def embed_songs(
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to embed"),
+    all_songs: bool = typer.Option(False, "--all", help="Embed all songs without embeddings"),
+    force: bool = typer.Option(False, "--force", help="Re-embed even if content hash matches"),
+    wait: bool = typer.Option(False, "--wait", help="Wait for all jobs to complete"),
+) -> None:
+    """Generate text embeddings for songs using OpenAI text-embedding-3-small.
+
+    Embeddings power semantic search in the webapp. Run this after scraping
+    new songs or when lyrics are corrected.
+
+    Examples:
+        sow-admin audio embed song_0001
+        sow-admin audio embed --all
+        sow-admin audio embed --all --force
+        sow-admin audio embed --all --wait
+    """
+    from rich.console import Console
+
+    from stream_of_worship.admin.db.client import DatabaseClient
+    from stream_of_worship.admin.db.models import Song
+    from stream_of_worship.admin.services.analysis import AnalysisClient, AnalysisServiceError
+    from stream_of_worship.db.connection import ConnectionProvider
+
+    console = Console()
+
+    if not song_id and not all_songs:
+        console.print("[red]Error:[/red] Provide a song_id or use --all")
+        raise typer.Exit(1)
+
+    db_client = DatabaseClient(ConnectionProvider.from_env())
+    try:
+        analysis_client = AnalysisClient(
+            os.environ.get("SOW_ANALYSIS_SERVICE_URL", "http://localhost:8000")
+        )
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if song_id:
+        song = db_client.get_song(song_id)
+        if not song:
+            console.print(f"[red]Error:[/red] Song {song_id} not found")
+            raise typer.Exit(1)
+        songs_to_embed = [song]
+    elif all_songs:
+        if force:
+            songs_to_embed = db_client.get_all_songs_with_lyrics()
+            console.print(f"Found {len(songs_to_embed)} songs with lyrics (force mode)")
+        else:
+            songs_to_embed = db_client.get_songs_without_embeddings()
+            console.print(f"Found {len(songs_to_embed)} songs without embeddings")
+    else:
+        songs_to_embed = []
+
+    if not songs_to_embed:
+        console.print("[dim]No songs to embed[/dim]")
+        return
+
+    job_ids: list[str] = []
+    for song in songs_to_embed:
+        jid = _submit_embedding_single(
+            song, analysis_client, db_client, console, force=force
+        )
+        if jid:
+            job_ids.append(jid)
+
+    if not job_ids:
+        console.print("[dim]No embedding jobs submitted[/dim]")
+        return
+
+    console.print(f"\nSubmitted {len(job_ids)} embedding jobs")
+
+    if not wait:
+        console.print("Use --wait to poll until jobs complete")
+        return
+
+    console.print("Waiting for jobs to complete...")
+    failed = 0
+    for jid in job_ids:
+        try:
+            result = analysis_client.wait_for_completion(jid, poll_interval=2.0, timeout=120.0)
+            if result.status == "completed":
+                _write_embedding_result(result, db_client, console)
+            else:
+                console.print(f"  [red]Job {jid} failed:[/red] {result.error_message}")
+                failed += 1
+        except AnalysisServiceError as e:
+            console.print(f"  [red]Job {jid} error:[/red] {e}")
+            failed += 1
+
+    console.print(f"\nDone: {len(job_ids) - failed} succeeded, {failed} failed")
+    db_client.close()
 
 
 @app.command("vocal")
@@ -3936,6 +4116,32 @@ def _process_batch(
             stale_after_minutes=stale_after_minutes,
             console=console,
         )
+
+    # Phase 3.5: Submit embedding jobs for songs without embeddings
+    embedding_job_ids: list[str] = []
+    songs_needing_embedding = []
+    for song_id in song_ids:
+        if results.get(song_id, {}).get("download") == "failed":
+            continue
+        existing_hash = db_client.get_embedding_content_hash(song_id)
+        if existing_hash is None:
+            song = db_client.get_song(song_id)
+            if song and song.lyrics_raw:
+                songs_needing_embedding.append(song)
+
+    if songs_needing_embedding:
+        console.print(f"[cyan]Phase 3.5: Submitting {len(songs_needing_embedding)} embedding jobs[/cyan]")
+        for song in songs_needing_embedding:
+            jid = _submit_embedding_single(
+                song, analysis_client, db_client, console, force=False
+            )
+            if jid:
+                embedding_job_ids.append(jid)
+
+        if embedding_job_ids:
+            console.print(f"  Submitted {len(embedding_job_ids)} embedding jobs")
+            console.print("  (Use 'sow-admin audio embed --all --wait' to poll results)")
+        console.print()
 
     # Phase 4: Print stats (done by caller)
     return results

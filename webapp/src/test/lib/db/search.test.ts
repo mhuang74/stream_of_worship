@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fullTextSearchSongs, getEmbeddingForRecording } from "@/lib/db/search";
+import { fullTextSearchSongs } from "@/lib/db/search";
 import { db } from "@/db";
 
 vi.mock("@/db", () => ({
@@ -22,10 +22,6 @@ vi.mock("@/db/schema", () => ({
     deletedAt: "deleted_at",
   },
   recordings: {},
-  songEmbeddings: {
-    embedding: "embedding",
-    recordingContentHash: "recording_content_hash",
-  },
 }));
 
 describe("fullTextSearchSongs", () => {
@@ -179,104 +175,5 @@ describe("fullTextSearchSongs", () => {
     await fullTextSearchSongs("test", 50, 0);
 
     expect(mockFindMany).toHaveBeenCalled();
-  });
-});
-
-describe("getEmbeddingForRecording", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns parsed embedding array when found", async () => {
-    const mockEmbedding = Array.from({ length: 1024 }, () => 0.1);
-    const mockFrom = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue([
-          { embedding: JSON.stringify(mockEmbedding) },
-        ]),
-      }),
-    });
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
-
-    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
-
-    const result = await getEmbeddingForRecording("hash123");
-
-    expect(result).toEqual(mockEmbedding);
-  });
-
-  it("returns null when no embedding found", async () => {
-    const mockFrom = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue([]),
-      }),
-    });
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
-
-    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
-
-    const result = await getEmbeddingForRecording("nonexistent");
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when embedding is null", async () => {
-    const mockFrom = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue([{ embedding: null }]),
-      }),
-    });
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
-
-    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
-
-    const result = await getEmbeddingForRecording("hash123");
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when embedding is not valid JSON", async () => {
-    const mockFrom = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue([{ embedding: "not-json" }]),
-      }),
-    });
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
-
-    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
-
-    const result = await getEmbeddingForRecording("hash123");
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when parsed embedding is not an array", async () => {
-    const mockFrom = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue([{ embedding: '{"key": "value"}' }]),
-      }),
-    });
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
-
-    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
-
-    const result = await getEmbeddingForRecording("hash123");
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when parsed embedding contains non-number values", async () => {
-    const mockFrom = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue([{ embedding: '[0.1, "bad", 0.3]' }]),
-      }),
-    });
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
-
-    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
-
-    const result = await getEmbeddingForRecording("hash123");
-
-    expect(result).toBeNull();
   });
 });

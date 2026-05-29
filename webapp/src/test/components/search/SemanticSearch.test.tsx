@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SemanticSearch } from "@/components/search/SemanticSearch";
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
 const mockPlay = vi.fn();
@@ -57,6 +57,8 @@ const mockSongs = [
     albumName: "Hymns",
     musicalKey: "G",
     similarity: 0.92,
+    matchingSnippet: "Amazing grace how sweet the sound",
+    whyThisMatch: ["Amazing grace how sweet the sound", "That saved a wretch like me"],
     recordings: [
       {
         contentHash: "abc123",
@@ -75,6 +77,8 @@ const mockSongs = [
     albumName: "Hymns",
     musicalKey: "D",
     similarity: 0.78,
+    matchingSnippet: null,
+    whyThisMatch: [],
     recordings: [
       {
         contentHash: "def456",
@@ -173,6 +177,23 @@ describe("SemanticSearch", () => {
       });
     });
 
+    it("displays matching snippet for songs with snippets", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("matching-snippet")).toBeInTheDocument();
+        expect(screen.getByText(/Amazing grace how sweet the sound/)).toBeInTheDocument();
+      });
+    });
+
     it("displays similarity badges on results", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -188,6 +209,44 @@ describe("SemanticSearch", () => {
         const badges = screen.getAllByTestId("similarity-badge");
         expect(badges.length).toBeGreaterThan(0);
         expect(badges[0].textContent).toContain("92% match");
+      });
+    });
+
+    it("shows Why this match? toggle for songs with whyThisMatch", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("why-this-match-toggle")).toBeInTheDocument();
+      });
+    });
+
+    it("expands Why this match? content on click", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("why-this-match-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("why-this-match-toggle"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("why-this-match-content")).toBeInTheDocument();
       });
     });
 
@@ -262,6 +321,7 @@ describe("SemanticSearch", () => {
     it("shows error when API returns error status", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
+        status: 500,
         json: () => Promise.resolve({ error: "Semantic search failed" }),
       });
 
@@ -282,6 +342,43 @@ describe("SemanticSearch", () => {
       renderComponent();
       const input = screen.getByTestId("semantic-search-input");
       fireEvent.change(input, { target: { value: "songs" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-error")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("503 auto-fallback", () => {
+    it("calls onSwitchToSearchTab on 503 response", async () => {
+      const onSwitchToSearchTab = vi.fn();
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({ error: "Semantic search unavailable" }),
+      });
+
+      renderComponent({ onSwitchToSearchTab });
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(onSwitchToSearchTab).toHaveBeenCalledWith("grace");
+      });
+    });
+
+    it("shows error when onSwitchToSearchTab is not provided and 503", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({ error: "Semantic search unavailable" }),
+      });
+
+      renderComponent();
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
       fireEvent.click(screen.getByTestId("semantic-search-button"));
 
       await waitFor(() => {
@@ -383,128 +480,6 @@ describe("SemanticSearch", () => {
           duration: 180,
         });
       });
-
-      expect(mockFetch).not.toHaveBeenCalledWith(
-        "/api/signed-url",
-        expect.anything()
-      );
-    });
-
-    it("falls back to /api/signed-url when public URL is not available", async () => {
-      mockGetPublicAudioUrl.mockReturnValue(null);
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/songs/search/semantic") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
-          });
-        }
-        if (url === "/api/signed-url") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ url: "https://r2.example.com/audio.mp3" }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderComponent();
-      const input = screen.getByTestId("semantic-search-input");
-      fireEvent.change(input, { target: { value: "grace" } });
-      fireEvent.click(screen.getByTestId("semantic-search-button"));
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/signed-url",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({ hashPrefix: "abc", fileType: "audio" }),
-          })
-        );
-      });
-    });
-
-    it("calls play() with signed URL data when falling back", async () => {
-      mockGetPublicAudioUrl.mockReturnValue(null);
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/songs/search/semantic") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
-          });
-        }
-        if (url === "/api/signed-url") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ url: "https://r2.example.com/audio.mp3" }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderComponent();
-      const input = screen.getByTestId("semantic-search-input");
-      fireEvent.change(input, { target: { value: "grace" } });
-      fireEvent.click(screen.getByTestId("semantic-search-button"));
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(mockPlay).toHaveBeenCalledWith({
-          id: "song-song-1",
-          title: "Amazing Grace",
-          artist: "John Newton",
-          src: "https://r2.example.com/audio.mp3",
-          type: "song",
-          duration: 180,
-        });
-      });
-    });
-
-    it("shows error toast when signed URL fetch fails", async () => {
-      mockGetPublicAudioUrl.mockReturnValue(null);
-      const { toast } = await import("sonner");
-
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/songs/search/semantic") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
-          });
-        }
-        if (url === "/api/signed-url") {
-          return Promise.resolve({ ok: false });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderComponent();
-      const input = screen.getByTestId("semantic-search-input");
-      fireEvent.change(input, { target: { value: "grace" } });
-      fireEvent.click(screen.getByTestId("semantic-search-button"));
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Failed to load audio preview");
-      });
     });
 
     it("shows error toast when song has no recordings", async () => {
@@ -519,6 +494,8 @@ describe("SemanticSearch", () => {
           albumName: null,
           musicalKey: null,
           similarity: 0.5,
+          matchingSnippet: null,
+          whyThisMatch: [],
           recordings: [],
         },
       ];

@@ -24,6 +24,7 @@ class JobType(str, Enum):
     ANALYZE = "analyze"
     LRC = "lrc"
     STEM_SEPARATION = "stem_separation"
+    EMBEDDING = "embedding"
 
 
 class AnalyzeOptions(BaseModel):
@@ -132,6 +133,34 @@ class JobResponse(BaseModel):
     result: Optional[JobResult] = None
 
 
+class EmbeddingJobRequest(BaseModel):
+    """Request to submit an embedding job."""
+
+    song_id: str
+    title: str
+    composer: str = ""
+    lyrics_raw: str = ""
+    lyrics_lines: List[str] = []
+
+
+class LineEmbedding(BaseModel):
+    """Embedding for a single lyric line."""
+
+    line_index: int
+    line_text: str
+    embedding: List[float]
+
+
+class EmbeddingJobResult(BaseModel):
+    """Result data for a completed embedding job."""
+
+    song_id: str
+    embedding: List[float]
+    line_embeddings: List[LineEmbedding]
+    model_version: str = "openai-text-embedding-3-small"
+    content_hash: str
+
+
 @dataclass
 class Job:
     """Represents a job in the queue."""
@@ -139,8 +168,13 @@ class Job:
     id: str
     type: JobType
     status: JobStatus
-    request: Union[AnalyzeJobRequest, LrcJobRequest, StemSeparationJobRequest]
-    result: Optional[JobResult] = None
+    request: Union[
+        AnalyzeJobRequest,
+        LrcJobRequest,
+        StemSeparationJobRequest,
+        EmbeddingJobRequest,
+    ]
+    result: Optional[Union[JobResult, EmbeddingJobResult]] = None
     error_message: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

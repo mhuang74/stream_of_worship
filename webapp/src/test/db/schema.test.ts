@@ -12,6 +12,7 @@ import {
   songsetItems,
   renderJobs,
   songEmbeddings,
+  songLineEmbeddings,
   userSettings,
   userLrcOverrides,
   lyricMarks,
@@ -42,6 +43,8 @@ describe("schema: table names match SQL", () => {
     expect(getTableName(renderJobs)).toBe("render_jobs"));
   it("songEmbeddings maps to 'song_embedding'", () =>
     expect(getTableName(songEmbeddings)).toBe("song_embedding"));
+  it("songLineEmbeddings maps to 'song_line_embedding'", () =>
+    expect(getTableName(songLineEmbeddings)).toBe("song_line_embedding"));
   it("userSettings maps to 'user_settings'", () =>
     expect(getTableName(userSettings)).toBe("user_settings"));
   it("userLrcOverrides maps to 'user_lrc_override'", () =>
@@ -130,9 +133,32 @@ describe("schema: song_embedding table structure", () => {
     expect(cols).toContain("embedding");
   });
 
-  it("has recording reference and model version", () => {
+  it("has song_id as primary key and model version", () => {
     const cols = columnNames(songEmbeddings);
-    expect(cols).toContain("recording_content_hash");
+    expect(cols).toContain("song_id");
+    expect(cols).toContain("model_version");
+  });
+
+  it("has content_hash column", () => {
+    const cols = columnNames(songEmbeddings);
+    expect(cols).toContain("content_hash");
+  });
+});
+
+describe("schema: song_line_embedding table structure", () => {
+  it("maps to 'song_line_embedding'", () =>
+    expect(getTableName(songLineEmbeddings)).toBe("song_line_embedding"));
+
+  it("has embedding vector column", () => {
+    const cols = columnNames(songLineEmbeddings);
+    expect(cols).toContain("embedding");
+  });
+
+  it("has song_id, line_index, line_text, and model_version", () => {
+    const cols = columnNames(songLineEmbeddings);
+    expect(cols).toContain("song_id");
+    expect(cols).toContain("line_index");
+    expect(cols).toContain("line_text");
     expect(cols).toContain("model_version");
   });
 });
@@ -207,10 +233,10 @@ describe("schema: foreign key references are defined", () => {
     expect(getTableName(fk!.reference().foreignTable)).toBe("recordings");
   });
 
-  it("songEmbeddings.recordingContentHash references recordings.contentHash", () => {
-    const fk = findFkByColumnName(songEmbeddings, "recording_content_hash");
+  it("songEmbeddings.songId references songs.id", () => {
+    const fk = findFkByColumnName(songEmbeddings, "song_id");
     expect(fk).toBeDefined();
-    expect(getTableName(fk!.reference().foreignTable)).toBe("recordings");
+    expect(getTableName(fk!.reference().foreignTable)).toBe("songs");
   });
 });
 
@@ -237,6 +263,14 @@ describe("schema: column defaults", () => {
 
   it("songset_items gap_beats defaults to 2", () => {
     expect(songsetItems.gapBeats.default).toBe(2);
+  });
+
+  it("songEmbeddings model_version defaults to openai-text-embedding-3-small", () => {
+    expect(songEmbeddings.modelVersion.default).toBe("openai-text-embedding-3-small");
+  });
+
+  it("songLineEmbeddings model_version defaults to openai-text-embedding-3-small", () => {
+    expect(songLineEmbeddings.modelVersion.default).toBe("openai-text-embedding-3-small");
   });
 
   it("user_settings offline_auto_cache defaults to true", () => {

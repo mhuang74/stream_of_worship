@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { songs, songEmbeddings } from "@/db/schema";
-import { sql, eq, and, isNull } from "drizzle-orm";
+import { songs } from "@/db/schema";
+import { sql, and, isNull } from "drizzle-orm";
 import type { SongWithRecordings } from "./songs";
 
 export async function fullTextSearchSongs(
@@ -93,30 +93,3 @@ export async function fullTextSearchSongs(
 
   return { songs: songsWithRecordings, total };
 }
-
-export async function getEmbeddingForRecording(
-  recordingContentHash: string
-): Promise<number[] | null> {
-  const rows = await db
-    .select({ embedding: sql<string>`${songEmbeddings.embedding}::text` })
-    .from(songEmbeddings)
-    .where(eq(songEmbeddings.recordingContentHash, recordingContentHash))
-    .limit(1);
-
-  if (rows.length === 0 || !rows[0].embedding) {
-    return null;
-  }
-
-  const embeddingStr = rows[0].embedding;
-  try {
-    const parsed = JSON.parse(embeddingStr);
-    if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
-      return parsed as number[];
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export { semanticSearchSongs } from "./songs";

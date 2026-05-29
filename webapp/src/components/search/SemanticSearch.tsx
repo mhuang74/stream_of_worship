@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
-import { Loader2, Sparkles, Music } from "lucide-react";
+import { Loader2, Sparkles, Music, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
@@ -13,6 +13,8 @@ import { getPublicAudioUrl } from "@/lib/r2/public-url";
 
 interface SemanticSearchResult extends SongCardData {
   similarity: number;
+  matchingSnippet: string | null;
+  whyThisMatch: string[];
 }
 
 interface SemanticSearchProps {
@@ -20,6 +22,7 @@ interface SemanticSearchProps {
   existingSongIds?: string[];
   addingSongIds?: Set<string>;
   addedSongIds?: Set<string>;
+  onSwitchToSearchTab?: (query: string) => void;
   className?: string;
 }
 
@@ -28,6 +31,7 @@ export function SemanticSearch({
   existingSongIds = [],
   addingSongIds = new Set(),
   addedSongIds = new Set(),
+  onSwitchToSearchTab,
   className,
 }: SemanticSearchProps) {
   const [query, setQuery] = useState("");
@@ -37,6 +41,7 @@ export function SemanticSearch({
   const [hasSearched, setHasSearched] = useState(false);
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
+  const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
   const { play, currentTrack, state: playerState } = useAudioPlayerContext();
 
   const handleSearch = useCallback(async () => {
@@ -46,6 +51,7 @@ export function SemanticSearch({
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
+    setExpandedSongId(null);
 
     try {
       const response = await fetch("/api/songs/search/semantic", {
@@ -53,6 +59,17 @@ export function SemanticSearch({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: trimmed, limit: 20 }),
       });
+
+      if (response.status === 503) {
+        const data = await response.json().catch(() => ({}));
+        const errorMsg = (data as { error?: string }).error ?? "Semantic search unavailable";
+        if (onSwitchToSearchTab) {
+          toast.info("Semantic search unavailable, switching to text search");
+          onSwitchToSearchTab(trimmed);
+          return;
+        }
+        throw new Error(errorMsg);
+      }
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -67,7 +84,7 @@ export function SemanticSearch({
     } finally {
       setIsLoading(false);
     }
-  }, [query]);
+  }, [query, onSwitchToSearchTab]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -172,6 +189,10 @@ export function SemanticSearch({
   const formatSimilarity = (score: number) =>
     `${Math.round(score * 100)}% match`;
 
+  const toggleExpand = (songId: string) => {
+    setExpandedSongId(expandedSongId === songId ? null : songId);
+  };
+
   return (
     <div className={cn("flex flex-col gap-4", className)} data-testid="semantic-search">
       <div className="space-y-2">
@@ -251,6 +272,39 @@ export function SemanticSearch({
               >
                 {formatSimilarity(song.similarity)}
               </Badge>
+              {song.matchingSnippet && (
+                <p
+                  className="text-xs italic text-muted-foreground pl-3 -mt-1"
+                  data-testid="matching-snippet"
+                >
+                  ▸ {song.matchingSnippet}
+                </p>
+              )}
+              {song.whyThisMatch.length > 0 && (
+                <button
+                  className="flex items-center gap-1 text-xs text-muted-foreground pl-3 py-1 hover:text-foreground transition-colors"
+                  onClick={() => toggleExpand(song.id)}
+                  data-testid="why-this-match-toggle"
+                  aria-expanded={expandedSongId === song.id}
+                  aria-label="Why this match?"
+                >
+                  {expandedSongId === song.id ? (
+                    <ChevronDown className="size-3" />
+                  ) : (
+                    <ChevronRight className="size-3" />
+                  )}
+                  Why this match?
+                </button>
+              )}
+              {expandedSongId === song.id && song.whyThisMatch.length > 0 && (
+                <div className="pl-6 space-y-0.5" data-testid="why-this-match-content">
+                  {song.whyThisMatch.map((line, i) => (
+                    <p key={i} className="text-xs text-muted-foreground">
+                      Lyric {i + 1}: {line}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

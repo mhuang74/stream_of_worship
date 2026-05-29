@@ -413,3 +413,43 @@ class DatabaseStats:
             Number of recordings in the database.
         """
         return self.table_counts.get("recordings", 0)
+
+
+@dataclass
+class SongEmbedding:
+    """Embedding vector for a song.
+
+    Attributes:
+        song_id: Song ID (primary key).
+        embedding: Embedding vector as list of floats.
+        model_version: Model version string.
+        content_hash: Content hash for staleness detection.
+        created_at: Timestamp when embedding was created.
+    """
+
+    song_id: str
+    embedding: list[float] = field(default_factory=list)
+    model_version: str = "openai-text-embedding-3-small"
+    content_hash: str = ""
+    created_at: Optional[str] = None
+
+
+@dataclass
+class SongLineEmbedding:
+    """Embedding vector for a single lyric line.
+
+    Attributes:
+        id: Row ID (auto-generated).
+        song_id: Song ID.
+        line_index: Index of the line in the lyrics.
+        line_text: Text of the lyric line.
+        embedding: Embedding vector as list of floats.
+        model_version: Model version string.
+    """
+
+    id: Optional[int] = None
+    song_id: str = ""
+    line_index: int = 0
+    line_text: str = ""
+    embedding: list[float] = field(default_factory=list)
+    model_version: str = "openai-text-embedding-3-small"

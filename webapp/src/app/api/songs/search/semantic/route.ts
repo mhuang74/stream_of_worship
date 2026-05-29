@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getEmbeddingForRecording, semanticSearchSongs } from "@/lib/db/search";
+import { embedQuery, QUERY_MODEL } from "@/lib/embedding";
+import {
+  semanticSearchSongs,
+  findTopMatchingLines,
+  hasMismatchedModelVersion,
+} from "@/lib/db/songs";
 import { z } from "zod";
 
 const RequestSchema = z.object({
-  recordingId: z.string().min(1, "recordingId must not be empty"),
+  query: z.string().min(1, "query must not be empty"),
   limit: z.number().int().min(1).max(50).default(20),
 });
 
@@ -30,22 +35,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { recordingId, limit } = parsed.data;
+    const { query, limit } = parsed.data;
 
-    const embedding = await getEmbeddingForRecording(recordingId);
-    if (!embedding) {
+    const mismatch = await hasMismatchedModelVersion(QUERY_MODEL);
+    if (mismatch) {
       return NextResponse.json(
-        { error: "No embedding found for the specified recording" },
-        { status: 400 }
+        {
+          error:
+            "Semantic search unavailable — embeddings need regeneration. Contact admin.",
+        },
+        { status: 503 }
       );
     }
 
-    const songs = await semanticSearchSongs(embedding, limit);
+    let queryEmbedding: number[];
+    try {
+      queryEmbedding = await embedQuery(query);
+    } catch {
+      return NextResponse.json(
+        { error: "Semantic search unavailable. Try Search mode." },
+        { status: 503 }
+      );
+    }
 
-    return NextResponse.json({ songs, recordingId, total: songs.length });
+    const songs = await semanticSearchSongs(queryEmbedding, limit);
+
+    const snippets = await findTopMatchingLines(
+      queryEmbedding,
+      songs.map((s) => s.id)
+    );
+
+    const songsWithSnippets = songs.map((s) => ({
+      ...s,
+      matchingSnippet: snippets.get(s.id)?.[0]?.lineText ?? null,
+      whyThisMatch: snippets.get(s.id)?.map((l) => l.lineText) ?? [],
+    }));
+
+    return NextResponse.json({
+      songs: songsWithSnippets,
+      query,
+      total: songsWithSnippets.length,
+    });
   } catch (error) {
     console.error("Error in semantic search:", error);
-    const message = error instanceof Error ? error.message : "Semantic search failed";
+    const message =
+      error instanceof Error ? error.message : "Semantic search failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1113,3 +1113,128 @@ class DatabaseClient:
                 "UPDATE recordings SET deleted_at = NULL WHERE hash_prefix = %s", (hash_prefix,)
             )
             return cursor.rowcount > 0
+
+    def upsert_song_embedding(
+        self, song_id: str, embedding: list[float], model_version: str, content_hash: str
+    ) -> None:
+        """Insert or update a song embedding.
+
+        Args:
+            song_id: Song ID (primary key).
+            embedding: Embedding vector as list of floats.
+            model_version: Model version string.
+            content_hash: Content hash for staleness detection.
+        """
+        import json
+
+        emb_str = json.dumps(embedding)
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO song_embedding (song_id, embedding, model_version, content_hash)
+                VALUES (%s, %s::vector, %s, %s)
+                ON CONFLICT (song_id) DO UPDATE
+                SET embedding = EXCLUDED.embedding,
+                    model_version = EXCLUDED.model_version,
+                    content_hash = EXCLUDED.content_hash,
+                    created_at = NOW()
+                """,
+                (song_id, emb_str, model_version, content_hash),
+            )
+
+    def upsert_song_line_embeddings(
+        self, song_id: str, model_version: str, line_embeddings: list[dict]
+    ) -> None:
+        """Replace all line embeddings for a song.
+
+        Args:
+            song_id: Song ID.
+            model_version: Model version string.
+            line_embeddings: List of dicts with keys: line_index, line_text, embedding.
+        """
+        import json
+
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM song_line_embedding WHERE song_id = %s", (song_id,)
+            )
+            if not line_embeddings:
+                return
+            values = []
+            for le in line_embeddings:
+                emb_str = json.dumps(le["embedding"])
+                values.append(
+                    (song_id, le["line_index"], le["line_text"], emb_str, model_version)
+                )
+            cursor.executemany(
+                """
+                INSERT INTO song_line_embedding (song_id, line_index, line_text, embedding, model_version)
+                VALUES (%s, %s, %s, %s::vector, %s)
+                """,
+                values,
+            )
+
+    def get_songs_without_embeddings(self) -> list[Song]:
+        """Get songs that have no embedding and have non-empty lyrics.
+
+        Returns:
+            List of Song objects without embeddings.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
+                   s.album_name, s.album_series, s.musical_key,
+                   s.lyrics_raw, s.lyrics_lines, s.sections,
+                   s.source_url, s.table_row_number, s.scraped_at,
+                   s.created_at, s.updated_at, s.deleted_at
+            FROM songs s
+            LEFT JOIN song_embedding se ON s.id = se.song_id
+            WHERE se.song_id IS NULL
+              AND s.deleted_at IS NULL
+              AND s.lyrics_raw IS NOT NULL
+              AND s.lyrics_raw != ''
+            """
+        )
+        return [Song.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def get_all_songs_with_lyrics(self) -> list[Song]:
+        """Get all non-deleted songs that have non-empty lyrics.
+
+        Returns:
+            List of Song objects with lyrics.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
+                   s.album_name, s.album_series, s.musical_key,
+                   s.lyrics_raw, s.lyrics_lines, s.sections,
+                   s.source_url, s.table_row_number, s.scraped_at,
+                   s.created_at, s.updated_at, s.deleted_at
+            FROM songs s
+            WHERE s.deleted_at IS NULL
+              AND s.lyrics_raw IS NOT NULL
+              AND s.lyrics_raw != ''
+            """
+        )
+        return [Song.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def get_embedding_content_hash(self, song_id: str) -> Optional[str]:
+        """Get the content hash of an existing song embedding.
+
+        Args:
+            song_id: Song ID.
+
+        Returns:
+            Content hash string, or None if no embedding exists.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT content_hash FROM song_embedding WHERE song_id = %s",
+            (song_id,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
