@@ -1,5 +1,6 @@
 """Health check endpoint."""
 
+import asyncio
 import logging
 
 from fastapi import APIRouter
@@ -149,7 +150,7 @@ async def health_check() -> dict:
             "r2": check_r2_connection(),
             "cache": check_cache_access(),
             "llm": check_llm_connection(),
-            "embedding": check_embedding_connection(),
+            "embedding": await asyncio.to_thread(check_embedding_connection),
             "separator": {"status": separator_status},
         },
     }

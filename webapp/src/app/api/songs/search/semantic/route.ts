@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const songs = await semanticSearchSongs(queryEmbedding, limit, QUERY_MODEL);
+    const songs = await semanticSearchSongs(queryEmbedding, QUERY_MODEL, limit);
 
     const snippets = await findTopMatchingLines(
       queryEmbedding,

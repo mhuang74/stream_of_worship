@@ -315,8 +315,8 @@ export interface SemanticSearchResult extends SongWithRecordings {
 
 export async function semanticSearchSongs(
   embedding: number[],
-  limit: number = 20,
   expectedModelVersion: string,
+  limit: number = 20,
 ): Promise<SemanticSearchResult[]> {
   if (embedding.length !== 1536) {
     throw new Error(`Invalid embedding: expected 1536 dimensions, got ${embedding.length}`);
