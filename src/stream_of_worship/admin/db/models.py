@@ -429,7 +429,7 @@ class SongEmbedding:
 
     song_id: str
     embedding: list[float] = field(default_factory=list)
-    model_version: str = "openai-text-embedding-3-small"
+    model_version: str = "text-embedding-3-small"
     content_hash: str = ""
     created_at: Optional[str] = None
 
@@ -452,4 +452,4 @@ class SongLineEmbedding:
     line_index: int = 0
     line_text: str = ""
     embedding: list[float] = field(default_factory=list)
-    model_version: str = "openai-text-embedding-3-small"
+    model_version: str = "text-embedding-3-small"

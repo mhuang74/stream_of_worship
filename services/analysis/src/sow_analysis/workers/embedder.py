@@ -1,14 +1,15 @@
-"""Embedding worker for generating text embeddings via OpenAI."""
+"""Embedding worker for generating text embeddings via OpenAI-compatible API."""
 
 import asyncio
 import hashlib
 import logging
-import os
 from typing import List
 
 from openai import OpenAI
 
+from ..config import settings
 from ..models import EmbeddingJobRequest, EmbeddingJobResult, LineEmbedding
+from .exceptions import LLMConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,20 @@ class EmbeddingWorker:
     """Generates text embeddings using OpenAI text-embedding-3-small."""
 
     def __init__(self):
+        if not settings.SOW_LLM_API_KEY:
+            raise LLMConfigError(
+                "SOW_LLM_API_KEY environment variable not set. "
+                "Set this to your OpenAI-compatible API key."
+            )
+        if not settings.SOW_LLM_BASE_URL:
+            raise LLMConfigError(
+                "SOW_LLM_BASE_URL environment variable not set. "
+                "Set this to your OpenAI-compatible API base URL "
+                "(e.g., https://openrouter.ai/api/v1)."
+            )
         self._client = OpenAI(
-            api_key=os.environ.get("SOW_OPENAI_API_KEY"),
+            api_key=settings.SOW_LLM_API_KEY,
+            base_url=settings.SOW_LLM_BASE_URL,
             timeout=60.0,
             max_retries=2,
         )
@@ -78,14 +91,14 @@ class EmbeddingWorker:
             song_id=request.song_id,
             embedding=song_embedding[0],
             line_embeddings=line_embeddings,
-            model_version="openai-text-embedding-3-small",
+            model_version="text-embedding-3-small",
             content_hash=content_hash,
         )
 
     async def _embed_texts(self, texts: List[str]) -> List[List[float]]:
         response = await asyncio.to_thread(
             self._client.embeddings.create,
-            model="text-embedding-3-small",
+            model=settings.SOW_LLM_EMBEDDING_MODEL,
             input=texts,
             dimensions=1536,
         )

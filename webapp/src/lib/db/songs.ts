@@ -315,7 +315,8 @@ export interface SemanticSearchResult extends SongWithRecordings {
 
 export async function semanticSearchSongs(
   embedding: number[],
-  limit: number = 20
+  limit: number = 20,
+  expectedModelVersion: string,
 ): Promise<SemanticSearchResult[]> {
   if (embedding.length !== 1536) {
     throw new Error(`Invalid embedding: expected 1536 dimensions, got ${embedding.length}`);
@@ -367,6 +368,7 @@ export async function semanticSearchSongs(
         AND r.visibility_status = 'published'
         AND r.deleted_at IS NULL
       WHERE s.deleted_at IS NULL
+        AND se.model_version = ${expectedModelVersion}
       ORDER BY s.id, se.embedding <=> ${vectorStr}::vector ASC
     ) ranked
     ORDER BY similarity DESC
@@ -448,16 +450,4 @@ export async function findTopMatchingLines(
     result.set(songId, lines);
   }
   return result;
-}
-
-export async function hasMismatchedModelVersion(expectedModel: string): Promise<boolean> {
-  const rows = await db.execute(sql`
-    SELECT EXISTS(
-      SELECT 1 FROM song_embedding
-      WHERE model_version != ${expectedModel}
-      LIMIT 1
-    ) AS mismatch
-  `);
-  const resultRows = rows.rows as unknown as Record<string, unknown>[];
-  return (resultRows[0]?.mismatch as boolean) ?? false;
 }

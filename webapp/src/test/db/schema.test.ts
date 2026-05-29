@@ -265,12 +265,12 @@ describe("schema: column defaults", () => {
     expect(songsetItems.gapBeats.default).toBe(2);
   });
 
-  it("songEmbeddings model_version defaults to openai-text-embedding-3-small", () => {
-    expect(songEmbeddings.modelVersion.default).toBe("openai-text-embedding-3-small");
+  it("songEmbeddings model_version defaults to text-embedding-3-small", () => {
+    expect(songEmbeddings.modelVersion.default).toBe("text-embedding-3-small");
   });
 
-  it("songLineEmbeddings model_version defaults to openai-text-embedding-3-small", () => {
-    expect(songLineEmbeddings.modelVersion.default).toBe("openai-text-embedding-3-small");
+  it("songLineEmbeddings model_version defaults to text-embedding-3-small", () => {
+    expect(songLineEmbeddings.modelVersion.default).toBe("text-embedding-3-small");
   });
 
   it("user_settings offline_auto_cache defaults to true", () => {

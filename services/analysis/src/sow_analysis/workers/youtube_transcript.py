@@ -15,7 +15,8 @@ import time
 from typing import Any, List, Optional
 
 from ..config import settings
-from .lrc import LLMConfigError, LRCLine, LRCWorkerError
+from ..workers.exceptions import LLMConfigError
+from .lrc import LRCLine, LRCWorkerError
 
 logger = logging.getLogger(__name__)
 

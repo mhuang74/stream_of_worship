@@ -4,7 +4,6 @@ import { embedQuery, QUERY_MODEL } from "@/lib/embedding";
 import {
   semanticSearchSongs,
   findTopMatchingLines,
-  hasMismatchedModelVersion,
 } from "@/lib/db/songs";
 import { z } from "zod";
 
@@ -37,17 +36,6 @@ export async function POST(request: NextRequest) {
 
     const { query, limit } = parsed.data;
 
-    const mismatch = await hasMismatchedModelVersion(QUERY_MODEL);
-    if (mismatch) {
-      return NextResponse.json(
-        {
-          error:
-            "Semantic search unavailable — embeddings need regeneration. Contact admin.",
-        },
-        { status: 503 }
-      );
-    }
-
     let queryEmbedding: number[];
     try {
       queryEmbedding = await embedQuery(query);
@@ -58,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const songs = await semanticSearchSongs(queryEmbedding, limit);
+    const songs = await semanticSearchSongs(queryEmbedding, limit, QUERY_MODEL);
 
     const snippets = await findTopMatchingLines(
       queryEmbedding,

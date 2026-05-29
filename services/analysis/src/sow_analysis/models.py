@@ -157,7 +157,7 @@ class EmbeddingJobResult(BaseModel):
     song_id: str
     embedding: List[float]
     line_embeddings: List[LineEmbedding]
-    model_version: str = "openai-text-embedding-3-small"
+    model_version: str = "text-embedding-3-small"
     content_hash: str
 
 

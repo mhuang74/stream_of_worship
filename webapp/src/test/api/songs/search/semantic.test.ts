@@ -5,7 +5,6 @@ import { embedQuery } from "@/lib/embedding";
 import {
   semanticSearchSongs,
   findTopMatchingLines,
-  hasMismatchedModelVersion,
 } from "@/lib/db/songs";
 import { NextRequest } from "next/server";
 
@@ -21,13 +20,12 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/embedding", () => ({
   embedQuery: vi.fn(),
-  QUERY_MODEL: "openai-text-embedding-3-small",
+  QUERY_MODEL: "text-embedding-3-small",
 }));
 
 vi.mock("@/lib/db/songs", () => ({
   semanticSearchSongs: vi.fn(),
   findTopMatchingLines: vi.fn(),
-  hasMismatchedModelVersion: vi.fn(),
 }));
 
 function makeRequest(body: unknown): NextRequest {
@@ -52,7 +50,7 @@ const mockSong = {
   createdAt: new Date(),
   updatedAt: new Date(),
   similarity: 0.87,
-  modelVersion: "openai-text-embedding-3-small",
+  modelVersion: "text-embedding-3-small",
   matchingSnippet: null,
   whyThisMatch: [],
   recordings: [
@@ -113,19 +111,8 @@ describe("POST /api/songs/search/semantic", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 503 when model version mismatch (pre-check)", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(true);
-
-    const res = await POST(makeRequest({ query: "grace" }));
-    expect(res.status).toBe(503);
-    const data = await res.json();
-    expect(data.error).toContain("embeddings need regeneration");
-  });
-
   it("returns 503 when OpenAI API fails", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
     vi.mocked(embedQuery).mockRejectedValue(new Error("OpenAI API error"));
 
     const res = await POST(makeRequest({ query: "grace" }));
@@ -136,7 +123,6 @@ describe("POST /api/songs/search/semantic", () => {
 
   it("returns search results on success", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
     vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([mockSong]);
     vi.mocked(findTopMatchingLines).mockResolvedValue(mockSnippets);
@@ -153,27 +139,25 @@ describe("POST /api/songs/search/semantic", () => {
     expect(data.total).toBe(1);
   });
 
-  it("embeds query and passes to semanticSearchSongs", async () => {
+  it("embeds query and passes to semanticSearchSongs with model version", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
     vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([]);
     vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
 
     await POST(makeRequest({ query: "grace" }));
     expect(embedQuery).toHaveBeenCalledWith("grace");
-    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 20);
+    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 20, "text-embedding-3-small");
   });
 
   it("respects custom limit", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
     vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([]);
     vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
 
     await POST(makeRequest({ query: "test", limit: 5 }));
-    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 5);
+    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, 5, "text-embedding-3-small");
   });
 
   it("returns 400 when limit > 50", async () => {
@@ -184,7 +168,6 @@ describe("POST /api/songs/search/semantic", () => {
 
   it("returns null snippets when song has no line embeddings", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
     vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockResolvedValue([mockSong]);
     vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
@@ -198,11 +181,27 @@ describe("POST /api/songs/search/semantic", () => {
 
   it("returns 500 when DB query fails", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
-    vi.mocked(hasMismatchedModelVersion).mockResolvedValue(false);
     vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
     vi.mocked(semanticSearchSongs).mockRejectedValue(new Error("DB error"));
 
     const res = await POST(makeRequest({ query: "test" }));
     expect(res.status).toBe(500);
+  });
+
+  it("excludes songs with mismatched model_version from results", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
+    vi.mocked(semanticSearchSongs).mockResolvedValue([mockSong]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(mockSnippets);
+
+    const res = await POST(makeRequest({ query: "grace" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.songs).toHaveLength(1);
+    expect(semanticSearchSongs).toHaveBeenCalledWith(
+      mockEmbedding,
+      20,
+      "text-embedding-3-small"
+    );
   });
 });

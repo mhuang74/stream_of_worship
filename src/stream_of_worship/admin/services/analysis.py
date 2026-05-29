@@ -85,7 +85,7 @@ class EmbeddingResult:
     song_id: str = ""
     embedding: List[float] = field(default_factory=list)
     line_embeddings: List[LineEmbeddingResult] = field(default_factory=list)
-    model_version: str = "openai-text-embedding-3-small"
+    model_version: str = "text-embedding-3-small"
     content_hash: str = ""
 
 
@@ -659,7 +659,7 @@ class AnalysisClient:
                     embedding=result_data.get("embedding", []),
                     line_embeddings=line_embeddings,
                     model_version=result_data.get(
-                        "model_version", "openai-text-embedding-3-small"
+                        "model_version", "text-embedding-3-small"
                     ),
                     content_hash=result_data.get("content_hash", ""),
                 )

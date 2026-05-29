@@ -19,18 +19,13 @@ from ..config import settings
 from ..models import LrcOptions
 from ..services import Qwen3Client
 from ..services.qwen3_client import OutputFormat
+from .exceptions import LLMConfigError, WorkerError
 
 logger = logging.getLogger(__name__)
 
 
-class LRCWorkerError(Exception):
+class LRCWorkerError(WorkerError):
     """Base exception for LRC worker errors."""
-
-    pass
-
-
-class LLMConfigError(LRCWorkerError):
-    """Raised when LLM configuration is missing or invalid."""
 
     pass
 

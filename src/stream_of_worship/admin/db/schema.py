@@ -118,7 +118,7 @@ CREATE_SONG_EMBEDDING_TABLE = """
 CREATE TABLE IF NOT EXISTS song_embedding (
     song_id       TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
     embedding     vector(1536) NOT NULL,
-    model_version TEXT NOT NULL DEFAULT 'openai-text-embedding-3-small',
+    model_version TEXT NOT NULL DEFAULT 'text-embedding-3-small',
     content_hash  TEXT NOT NULL,
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS song_line_embedding (
     line_index   INTEGER NOT NULL,
     line_text    TEXT NOT NULL,
     embedding    vector(1536) NOT NULL,
-    model_version TEXT NOT NULL DEFAULT 'openai-text-embedding-3-small'
+    model_version TEXT NOT NULL DEFAULT 'text-embedding-3-small'
 );
 """
 
