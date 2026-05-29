@@ -1137,8 +1137,7 @@ class DatabaseClient:
                 ON CONFLICT (song_id) DO UPDATE
                 SET embedding = EXCLUDED.embedding,
                     model_version = EXCLUDED.model_version,
-                    content_hash = EXCLUDED.content_hash,
-                    created_at = NOW()
+                    content_hash = EXCLUDED.content_hash
                 """,
                 (song_id, emb_str, model_version, content_hash),
             )

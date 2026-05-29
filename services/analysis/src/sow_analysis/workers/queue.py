@@ -1286,7 +1286,6 @@ class JobQueue:
             JobType.LRC: {status: 0 for status in JobStatus},
             JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
             JobType.EMBEDDING: {status: 0 for status in JobStatus},
-            JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
         }
 
         # Track wait times for queued and processing jobs
