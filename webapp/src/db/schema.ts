@@ -262,7 +262,7 @@ export const songEmbeddings = pgTable(
     embedding: vector("embedding", { dimensions: 1536 }).notNull(),
     modelVersion: text("model_version")
       .notNull()
-      .default("openai-text-embedding-3-small"),
+      .default("text-embedding-3-small"),
     contentHash: text("content_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
@@ -290,7 +290,7 @@ export const songLineEmbeddings = pgTable(
     embedding: vector("embedding", { dimensions: 1536 }).notNull(),
     modelVersion: text("model_version")
       .notNull()
-      .default("openai-text-embedding-3-small"),
+      .default("text-embedding-3-small"),
   },
   (t) => [
     index("idx_song_line_embedding_song").on(t.songId),

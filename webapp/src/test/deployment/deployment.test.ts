@@ -247,6 +247,21 @@ describe(".env.production.example", () => {
     const content = readEnvExample();
     expect(content).toContain("SOW_SQS_ENDPOINT_URL=");
   });
+
+  it("documents SOW_LLM_API_KEY", () => {
+    const content = readEnvExample();
+    expect(content).toContain("SOW_LLM_API_KEY=");
+  });
+
+  it("documents SOW_LLM_BASE_URL", () => {
+    const content = readEnvExample();
+    expect(content).toContain("SOW_LLM_BASE_URL=");
+  });
+
+  it("documents SOW_LLM_EMBEDDING_MODEL", () => {
+    const content = readEnvExample();
+    expect(content).toContain("SOW_LLM_EMBEDDING_MODEL=");
+  });
 });
 
 // ---------------------------------------------------------------------------

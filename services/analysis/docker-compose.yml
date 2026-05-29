@@ -16,6 +16,8 @@ x-common-env: &common-env
   SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
   SOW_LLM_BASE_URL: ${SOW_LLM_BASE_URL}
   SOW_LLM_MODEL: ${SOW_LLM_MODEL}
+  # Embedding Model Configuration
+  SOW_LLM_EMBEDDING_MODEL: ${SOW_LLM_EMBEDDING_MODEL:-text-embedding-3-small}
   # Whisper Configuration
   SOW_WHISPER_DEVICE: ${SOW_WHISPER_DEVICE:-cpu}
   # MVSEP Cloud API Configuration

@@ -89,6 +89,42 @@ def check_llm_connection() -> dict:
         }
 
 
+def check_embedding_connection() -> dict:
+    """Check if embedding provider is configured and can create an embedding."""
+    if not settings.SOW_LLM_BASE_URL:
+        return {"status": "not_configured", "error": "SOW_LLM_BASE_URL not set"}
+    if not settings.SOW_LLM_API_KEY:
+        return {"status": "missing_credentials", "error": "SOW_LLM_API_KEY not set"}
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=settings.SOW_LLM_API_KEY,
+            base_url=settings.SOW_LLM_BASE_URL,
+        )
+
+        response = client.embeddings.create(
+            model=settings.SOW_LLM_EMBEDDING_MODEL,
+            input="health check",
+            dimensions=1536,
+        )
+
+        return {
+            "status": "healthy",
+            "model": settings.SOW_LLM_EMBEDDING_MODEL,
+            "dimensions": len(response.data[0].embedding),
+        }
+
+    except Exception as e:
+        logger.warning(f"Embedding health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "model": settings.SOW_LLM_EMBEDDING_MODEL,
+            "error": str(e),
+        }
+
+
 @router.get("/health")
 async def health_check() -> dict:
     """Health check endpoint.
@@ -113,6 +149,7 @@ async def health_check() -> dict:
             "r2": check_r2_connection(),
             "cache": check_cache_access(),
             "llm": check_llm_connection(),
+            "embedding": check_embedding_connection(),
             "separator": {"status": separator_status},
         },
     }
