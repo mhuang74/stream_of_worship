@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Clock, X } from "lucide-react"
+import { Clock } from "lucide-react"
 
 interface RenderSubmittedProps {
   estimatedMinutes: number
@@ -18,18 +18,7 @@ export function RenderSubmitted({
   return (
     <Card className="w-full">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Render Started</CardTitle>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onCancel}
-            disabled={isCancelling}
-            aria-label="Cancel render"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
+        <CardTitle>Render Started</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2 text-muted-foreground">

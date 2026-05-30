@@ -32,23 +32,20 @@ describe("RenderSubmitted", () => {
 
     it("renders cancel button", () => {
       render(<RenderSubmitted {...defaultProps} />)
-      const cancelButtons = screen.getAllByRole("button", { name: /cancel render/i })
-      expect(cancelButtons.length).toBeGreaterThan(0)
+      expect(screen.getByRole("button", { name: /cancel render/i })).toBeInTheDocument()
     })
   })
 
   describe("cancel functionality", () => {
     it("calls onCancel when cancel button clicked", () => {
       render(<RenderSubmitted {...defaultProps} />)
-      const cancelButtons = screen.getAllByRole("button", { name: /cancel render/i })
-      fireEvent.click(cancelButtons[cancelButtons.length - 1])
+      fireEvent.click(screen.getByRole("button", { name: /cancel render/i }))
       expect(mockCancel).toHaveBeenCalled()
     })
 
-    it("disables cancel buttons when isCancelling is true", () => {
+    it("disables cancel button when isCancelling is true", () => {
       render(<RenderSubmitted {...defaultProps} isCancelling={true} />)
-      const cancelButtons = screen.getAllByRole("button", { name: /cancel render/i })
-      cancelButtons.forEach((btn) => expect(btn).toBeDisabled())
+      expect(screen.getByRole("button", { name: /cancel render/i })).toBeDisabled()
     })
   })
 
