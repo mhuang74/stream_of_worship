@@ -93,9 +93,7 @@ class DatabaseClient:
             cursor = conn.cursor()
 
             if wipe_songsets:
-                cursor.execute(
-                    "DROP TABLE IF EXISTS songset_items, songsets CASCADE;"
-                )
+                cursor.execute("DROP TABLE IF EXISTS songset_items, songsets CASCADE;")
 
             for statement in ALL_SCHEMA_STATEMENTS:
                 cursor.execute(statement)
@@ -259,7 +257,9 @@ class DatabaseClient:
             cursor = conn.cursor()
             cursor.executemany(sql, params_list)
             elapsed = time.time() - start_time
-            logger.info(f"Bulk insert completed: {len(songs)} songs in {elapsed:.2f}s ({len(songs)/elapsed:.1f} songs/sec)")
+            logger.info(
+                f"Bulk insert completed: {len(songs)} songs in {elapsed:.2f}s ({len(songs) / elapsed:.1f} songs/sec)"
+            )
             return len(songs)
 
     def get_song(self, song_id: str, include_deleted: bool = False) -> Optional[Song]:
@@ -388,13 +388,17 @@ class DatabaseClient:
         deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
 
         if field == "title":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE %s OR title_pinyin LIKE %s)"
+            sql = (
+                f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE %s OR title_pinyin LIKE %s)"
+            )
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
             sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE %s"
             params = [search_pattern]
         elif field == "composer":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE %s OR lyricist LIKE %s)"
+            sql = (
+                f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE %s OR lyricist LIKE %s)"
+            )
             params = [search_pattern, search_pattern]
         elif field == "album":
             sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name LIKE %s OR album_series LIKE %s)"
@@ -759,7 +763,7 @@ class DatabaseClient:
 
             sql = f"""
                 UPDATE recordings
-                SET {', '.join(updates)}, updated_at = NOW()
+                SET {", ".join(updates)}, updated_at = NOW()
                 WHERE hash_prefix = %s
             """
             cursor.execute(sql, params)
@@ -1156,17 +1160,13 @@ class DatabaseClient:
 
         with self.transaction() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "DELETE FROM song_line_embedding WHERE song_id = %s", (song_id,)
-            )
+            cursor.execute("DELETE FROM song_line_embedding WHERE song_id = %s", (song_id,))
             if not line_embeddings:
                 return
             values = []
             for le in line_embeddings:
                 emb_str = json.dumps(le["embedding"])
-                values.append(
-                    (song_id, le["line_index"], le["line_text"], emb_str, model_version)
-                )
+                values.append((song_id, le["line_index"], le["line_text"], emb_str, model_version))
             cursor.executemany(
                 """
                 INSERT INTO song_line_embedding (song_id, line_index, line_text, embedding, model_version)
@@ -1176,7 +1176,8 @@ class DatabaseClient:
             )
 
     def get_songs_without_embeddings(self) -> list[Song]:
-        """Get songs that have no embedding and have non-empty lyrics.
+        """Get songs that have no embedding, have non-empty lyrics, and have
+        at least one published recording (i.e. visible in webapp Browse Song).
 
         Returns:
             List of Song objects without embeddings.
@@ -1195,15 +1196,22 @@ class DatabaseClient:
               AND s.deleted_at IS NULL
               AND s.lyrics_raw IS NOT NULL
               AND s.lyrics_raw != ''
+              AND EXISTS (
+                  SELECT 1 FROM recordings r
+                  WHERE r.song_id = s.id
+                    AND r.visibility_status = 'published'
+                    AND r.deleted_at IS NULL
+              )
             """
         )
         return [Song.from_row(tuple(row)) for row in cursor.fetchall()]
 
     def get_all_songs_with_lyrics(self) -> list[Song]:
-        """Get all non-deleted songs that have non-empty lyrics.
+        """Get all non-deleted songs that have non-empty lyrics and at least
+        one published recording (i.e. visible in webapp Browse Song).
 
         Returns:
-            List of Song objects with lyrics.
+            List of Song objects with lyrics and published recordings.
         """
         cursor = self.connection.cursor()
         cursor.execute(
@@ -1217,6 +1225,12 @@ class DatabaseClient:
             WHERE s.deleted_at IS NULL
               AND s.lyrics_raw IS NOT NULL
               AND s.lyrics_raw != ''
+              AND EXISTS (
+                  SELECT 1 FROM recordings r
+                  WHERE r.song_id = s.id
+                    AND r.visibility_status = 'published'
+                    AND r.deleted_at IS NULL
+              )
             """
         )
         return [Song.from_row(tuple(row)) for row in cursor.fetchall()]
