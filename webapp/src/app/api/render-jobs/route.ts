@@ -42,7 +42,6 @@ export async function POST(request: NextRequest) {
 
     const items = await db.query.songsetItems.findMany({
       where: eq(songsetItems.songsetId, parsed.data.songsetId),
-      with: { recording: { columns: { durationSeconds: true } } },
     });
 
     if (items.length > SONGSET_MAX_SONGS) {
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const totalDuration = items.reduce(
-      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+      (sum, item) => sum + ((item as { durationSeconds?: number }).durationSeconds ?? 0),
       0
     );
     if (totalDuration > SONGSET_MAX_DURATION_SECONDS) {

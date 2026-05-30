@@ -36,7 +36,6 @@ describe("SongsetList", () => {
     onCreateSongset: vi.fn(),
     onRender: vi.fn(),
     onPlay: vi.fn(),
-    onRetry: vi.fn(),
     onRename: vi.fn(),
     onDuplicate: vi.fn(),
     onShare: vi.fn(),

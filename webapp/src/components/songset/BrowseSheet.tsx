@@ -26,7 +26,7 @@ interface BrowseSheetProps {
   onOpenChange: (open: boolean) => void;
   onAddSong: (song: SongCardData) => Promise<void>;
   existingSongIds?: string[];
-  itemCount?: number;
+  isSongsetFull?: boolean;
   className?: string;
 }
 
@@ -40,12 +40,11 @@ export function BrowseSheet({
   onOpenChange,
   onAddSong,
   existingSongIds = [],
-  itemCount = 0,
+  isSongsetFull = false,
   className,
 }: BrowseSheetProps) {
   const [mode, setMode] = useState<SearchMode>("browse");
   const [query, setQuery] = useState("");
-  const [initialSearchQuery, setInitialSearchQuery] = useState<string | undefined>();
   const [albumFilter, setAlbumFilter] = useState<string | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [albums, setAlbums] = useState<string[]>([]);
@@ -191,13 +190,6 @@ export function BrowseSheet({
     [addingSongIds]
   );
 
-  const isSongsetFull = itemCount >= SONGSET_MAX_SONGS;
-
-  const handleSwitchToSearchTab = useCallback((searchQuery: string) => {
-    setInitialSearchQuery(searchQuery);
-    setMode("browse");
-  }, []);
-
   const handlePlaySong = useCallback(
     async (songId: string) => {
       const song = results.find((r) => r.id === songId);
@@ -326,7 +318,6 @@ export function BrowseSheet({
                   onSearch={handleSearch}
                   albums={albums}
                   isLoading={isLoading || isLoadingAlbums}
-                  initialQuery={initialSearchQuery}
                 />
               </div>
 
@@ -404,7 +395,6 @@ export function BrowseSheet({
                 existingSongIds={existingSongIds}
                 addingSongIds={addingSongIds}
                 addedSongIds={addedSongIds}
-                onSwitchToSearchTab={handleSwitchToSearchTab}
               />
             </div>
           )}
@@ -414,7 +404,7 @@ export function BrowseSheet({
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {isSongsetFull
-                  ? "Songset full"
+                  ? `Songset full (max ${SONGSET_MAX_SONGS} songs)`
                   : mode === "browse" && results.length > 0 && `${results.length} songs found`}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -45,7 +45,6 @@ export interface SongsetRowProps {
   latestRenderJobId: string | null;
   onRender?: () => void;
   onPlay?: () => void;
-  onRetry?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onShare?: () => void;
@@ -204,7 +203,6 @@ export function SongsetRow({
 
               {/* Status indicators */}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <RenderStatusBadge state={renderState} />
                 {isOfflineAvailable && (
                   <Badge variant="secondary" className="text-xs gap-1">
                     <WifiOff className="size-3" />
@@ -219,6 +217,21 @@ export function SongsetRow({
                 )}
               </div>
             </Link>
+
+            {/* Status badge */}
+            <div className="flex items-center gap-2 mt-3">
+              <RenderStatusBadge state={renderState} />
+              {renderState === "stale" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onPlay}
+                  className="text-muted-foreground"
+                >
+                  Play anyway
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>

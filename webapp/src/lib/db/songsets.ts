@@ -1,8 +1,8 @@
 import { db } from "@/db";
-import { lyricMarks, songsets, songsetItems, renderJobs } from "@/db/schema";
+import { lyricMarks, songsets, songsetItems, renderJobs, recordings } from "@/db/schema";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { SONGSET_MAX_SONGS } from "@/lib/constants";
+import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
 
@@ -339,13 +339,28 @@ export async function addSongsetItem(
   });
   if (!songset) return null;
 
-  const currentCount = await db.query.songsetItems.findMany({
+  const currentItems = await db.query.songsetItems.findMany({
     where: eq(songsetItems.songsetId, songsetId),
     columns: { id: true },
   });
 
-  if (currentCount.length >= SONGSET_MAX_SONGS) {
+  if (currentItems.length >= SONGSET_MAX_SONGS) {
     throw new Error(`Songset already has maximum of ${SONGSET_MAX_SONGS} songs`);
+  }
+
+  const currentDuration = await db
+    .select({ durationSeconds: recordings.durationSeconds })
+    .from(songsetItems)
+    .innerJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+    .where(eq(songsetItems.songsetId, songsetId));
+
+  const totalDuration = currentDuration.reduce(
+    (sum, row) => sum + (row.durationSeconds ?? 0),
+    0
+  );
+
+  if (totalDuration >= SONGSET_MAX_DURATION_SECONDS) {
+    throw new Error(`Songset already exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes`);
   }
 
   const id = nanoid();

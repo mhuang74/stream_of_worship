@@ -14,7 +14,6 @@ describe("SongsetRow", () => {
     renderState: "fresh" as RenderState,
     onRender: vi.fn(),
     onPlay: vi.fn(),
-    onRetry: vi.fn(),
     onRename: vi.fn(),
     onDuplicate: vi.fn(),
     onShare: vi.fn(),
@@ -78,6 +77,17 @@ describe("SongsetRow", () => {
     it("renders 'Rendered' badge when fresh", () => {
       renderRow({ renderState: "fresh" as RenderState });
       expect(screen.getByText("Rendered")).toBeInTheDocument();
+    });
+
+    it("renders 'Play anyway' button when stale", () => {
+      const onPlay = vi.fn();
+      renderRow({ renderState: "stale" as RenderState, onPlay });
+      expect(screen.getByRole("button", { name: /play anyway/i })).toBeInTheDocument();
+    });
+
+    it("does not render 'Play anyway' button when fresh", () => {
+      renderRow({ renderState: "fresh" as RenderState });
+      expect(screen.queryByRole("button", { name: /play anyway/i })).not.toBeInTheDocument();
     });
   });
 

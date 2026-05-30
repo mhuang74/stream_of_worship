@@ -102,7 +102,6 @@ describe("SongsetEditor", () => {
     onUpdateTransition: vi.fn().mockResolvedValue(undefined),
     onRender: vi.fn(),
     onPlay: vi.fn(),
-    onRetry: vi.fn(),
     onUpdateDescription: vi.fn().mockResolvedValue(undefined),
     onDuplicate: vi.fn().mockResolvedValue(undefined),
     onDelete: vi.fn().mockResolvedValue(undefined),

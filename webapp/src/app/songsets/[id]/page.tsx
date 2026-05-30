@@ -10,6 +10,7 @@ import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
+import { SONGSET_MAX_SONGS } from "@/lib/constants";
 
 interface ApiSongset {
   id: string;
@@ -272,11 +273,6 @@ export default function SongsetEditorPage() {
     router.push(`/songsets/${songsetId}/play`);
   }, [songsetId, router]);
 
-  // Handle retry
-  const handleRetry = useCallback(() => {
-    router.push(`/songsets/${songsetId}/render`);
-  }, [songsetId, router]);
-
   // Handle description update
   const handleUpdateDescription = useCallback(
     async (description: string) => {
@@ -464,7 +460,6 @@ export default function SongsetEditorPage() {
         onUpdateTransition={handleUpdateTransition}
         onRender={handleRender}
         onPlay={handlePlay}
-        onRetry={handleRetry}
         onUpdateDescription={handleUpdateDescription}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
@@ -478,7 +473,7 @@ export default function SongsetEditorPage() {
         onOpenChange={setIsBrowseSheetOpen}
         onAddSong={handleAddSong}
         existingSongIds={items.map((item) => item.songId)}
-        itemCount={items.length}
+        isSongsetFull={items.length >= SONGSET_MAX_SONGS}
       />
     </>
   );
