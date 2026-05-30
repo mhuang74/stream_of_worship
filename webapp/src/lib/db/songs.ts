@@ -313,13 +313,9 @@ export interface SemanticSearchResult extends SongWithRecordings {
   whyThisMatch: string[];
 }
 
-export async function semanticSearchSongs(
-  embedding: number[],
-  expectedModelVersion: string,
-  limit: number = 20,
-): Promise<SemanticSearchResult[]> {
-  if (embedding.length !== 1536) {
-    throw new Error(`Invalid embedding: expected 1536 dimensions, got ${embedding.length}`);
+function validateEmbedding(embedding: number[], expectedDims: number = 1536): string {
+  if (embedding.length !== expectedDims) {
+    throw new Error(`Invalid embedding: expected ${expectedDims} dimensions, got ${embedding.length}`);
   }
   for (const v of embedding) {
     if (typeof v !== "number" || !isFinite(v)) {
@@ -329,11 +325,19 @@ export async function semanticSearchSongs(
       throw new Error("Invalid embedding value: values must be in range [-100, 100]");
     }
   }
-
   const vectorStr = `[${embedding.join(",")}]`;
   if (!/^\[-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*\]$/.test(vectorStr)) {
     throw new Error("Invalid embedding: vector string contains unexpected characters");
   }
+  return vectorStr;
+}
+
+export async function semanticSearchSongs(
+  embedding: number[],
+  expectedModelVersion: string,
+  limit: number = 20,
+): Promise<SemanticSearchResult[]> {
+  const vectorStr = validateEmbedding(embedding);
 
   const rows = await db.execute(sql`
     SELECT * FROM (
@@ -417,7 +421,7 @@ export async function findTopMatchingLines(
 ): Promise<Map<string, { lineText: string; lineSimilarity: number }[]>> {
   if (songIds.length === 0) return new Map();
 
-  const vectorStr = `[${queryEmbedding.join(",")}]`;
+  const vectorStr = validateEmbedding(queryEmbedding);
 
   const rows = await db.execute(sql`
     SELECT song_id, line_text, line_similarity
@@ -431,7 +435,7 @@ export async function findTopMatchingLines(
           ORDER BY sle.embedding <=> ${vectorStr}::vector ASC
         ) AS rn
       FROM song_line_embedding sle
-      WHERE sle.song_id = ANY(${songIds}::text[])
+      WHERE sle.song_id = ANY(ARRAY[${sql.join(songIds.map(id => sql`${id}`), sql`, `)}]::text[])
         AND length(regexp_replace(sle.line_text, '[^\u4e00-\u9fff]', '', 'g')) >= 4
     ) ranked
     WHERE rn <= 2
