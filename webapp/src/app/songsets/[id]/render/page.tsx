@@ -112,7 +112,6 @@ export default function RenderPage() {
               setScreenState("submitted")
             } else if (job.status === "completed") {
               setJobData(job)
-              setScreenState("complete")
               setInitialData({
                 template: job.template as RenderFormData["template"],
                 resolution: job.resolution as RenderFormData["resolution"],
@@ -123,6 +122,9 @@ export default function RenderPage() {
                 titleCardDurationSeconds: job.titleCardDurationSeconds,
                 titleCardLines: job.titleCardLines ?? [],
               })
+              if (renderState === "fresh") {
+                setScreenState("complete")
+              }
             }
           }
         }
