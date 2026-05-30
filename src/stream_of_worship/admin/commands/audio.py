@@ -768,8 +768,12 @@ def download_audio(
     video_title = video_info.get("title") if video_info else None
     chinese_title = _extract_chinese_title_from_youtube(video_title)
     if chinese_title and chinese_title != song.title:
-        console.print(f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
-        console.print(f"[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]")
+        console.print(
+            f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+        )
+        console.print(
+            f"[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]"
+        )
 
     # Step 4: Confirmation prompt
     download_confirmed = skip_confirm
@@ -803,7 +807,9 @@ def download_audio(
         video_title = video_info.get("title") if video_info else None
         chinese_title = _extract_chinese_title_from_youtube(video_title)
         if chinese_title and chinese_title != song.title:
-            console.print(f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
+            console.print(
+                f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+            )
             console.print(f"[yellow]  This may be the wrong video.[/yellow]")
 
         # Confirm the manual URL
@@ -1041,7 +1047,9 @@ def _delete_recordings_batch(
             not_found.append(sid)
 
     if not_found:
-        console.print(f"[yellow]No recording found for {len(not_found)} song(s): {', '.join(not_found[:5])}{'...' if len(not_found) > 5 else ''}[/yellow]")
+        console.print(
+            f"[yellow]No recording found for {len(not_found)} song(s): {', '.join(not_found[:5])}{'...' if len(not_found) > 5 else ''}[/yellow]"
+        )
 
     if not recordings_to_delete:
         console.print("[yellow]No valid recordings to delete.[/yellow]")
@@ -1069,7 +1077,9 @@ def _delete_recordings_batch(
 
     if not yes:
         console.print("[red bold]Warning: This action cannot be undone![/red bold]")
-        confirmed = _prompt_confirmation(f"Delete {len(recordings_to_delete)} recording(s) and all associated files?")
+        confirmed = _prompt_confirmation(
+            f"Delete {len(recordings_to_delete)} recording(s) and all associated files?"
+        )
         if not confirmed:
             console.print("[yellow]Deletion cancelled.[/yellow]")
             raise typer.Exit(0)
@@ -1305,9 +1315,7 @@ def show_recording(
     if recording.r2_lrc_url:
         info_lines.append(f"[cyan]LRC URL:[/cyan] {recording.r2_lrc_url}")
 
-    info_lines.append(
-        f"[cyan]YouTube URL:[/cyan] {recording.youtube_url or '- none -'}"
-    )
+    info_lines.append(f"[cyan]YouTube URL:[/cyan] {recording.youtube_url or '- none -'}")
 
     # Status
     info_lines.append("")
@@ -1806,10 +1814,14 @@ def embed_songs(
     elif all_songs:
         if force:
             songs_to_embed = db_client.get_all_songs_with_lyrics()
-            console.print(f"Found {len(songs_to_embed)} songs with lyrics (force mode)")
+            console.print(
+                f"Found {len(songs_to_embed)} songs with published recordings (force mode)"
+            )
         else:
             songs_to_embed = db_client.get_songs_without_embeddings()
-            console.print(f"Found {len(songs_to_embed)} songs without embeddings")
+            console.print(
+                f"Found {len(songs_to_embed)} songs without embeddings (with published recordings)"
+            )
     else:
         songs_to_embed = []
 
@@ -1819,9 +1831,7 @@ def embed_songs(
 
     job_ids: list[str] = []
     for song in songs_to_embed:
-        jid = _submit_embedding_single(
-            song, analysis_client, db_client, console, force=force
-        )
+        jid = _submit_embedding_single(song, analysis_client, db_client, console, force=force)
         if jid:
             job_ids.append(jid)
 
@@ -2172,7 +2182,9 @@ def check_status(
                 reconcile_queue.append(rec)
 
         if not reconcile_queue:
-            console.print("[green]No recordings with incomplete LRC, analysis, or download status.[/green]")
+            console.print(
+                "[green]No recordings with incomplete LRC, analysis, or download status.[/green]"
+            )
         else:
             console.print(f"[cyan]Scanning R2 across {len(reconcile_queue)} recording(s)...[/cyan]")
             reconciled_lrc = 0
@@ -2538,7 +2550,9 @@ def check_status(
 def cancel_jobs(
     job_id: Optional[str] = typer.Argument(None, help="Job ID to cancel"),
     all: bool = typer.Option(False, "--all", "-a", help="Cancel all queued and processing jobs"),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be cancelled without cancelling"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be cancelled without cancelling"
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -2555,7 +2569,9 @@ def cancel_jobs(
     Requires SOW_ADMIN_API_KEY environment variable to be set.
     """
     if not job_id and not all:
-        console.print("[red]Error: Provide a JOB_ID argument or use --all to cancel all jobs.[/red]")
+        console.print(
+            "[red]Error: Provide a JOB_ID argument or use --all to cancel all jobs.[/red]"
+        )
         raise typer.Exit(1)
 
     if job_id and all:
@@ -2599,18 +2615,22 @@ def _cancel_single_job(
             raise typer.Exit(1)
 
         if job.status in ("completed", "failed", "cancelled"):
-            console.print(f"[yellow]Job {job_id} is already {job.status} (nothing to cancel)[/yellow]")
+            console.print(
+                f"[yellow]Job {job_id} is already {job.status} (nothing to cancel)[/yellow]"
+            )
             return
 
-        console.print(Panel.fit(
-            f"[cyan]Job ID:[/cyan] {job_id}\n"
-            f"[cyan]Type:[/cyan] {job.job_type}\n"
-            f"[cyan]Status:[/cyan] {_colorize_status(job.status)}\n"
-            f"[cyan]Progress:[/cyan] {int(job.progress * 100)}%\n"
-            f"[cyan]Stage:[/cyan] {job.stage or '-'}",
-            title="Dry Run - Would Cancel Job",
-            border_style="yellow",
-        ))
+        console.print(
+            Panel.fit(
+                f"[cyan]Job ID:[/cyan] {job_id}\n"
+                f"[cyan]Type:[/cyan] {job.job_type}\n"
+                f"[cyan]Status:[/cyan] {_colorize_status(job.status)}\n"
+                f"[cyan]Progress:[/cyan] {int(job.progress * 100)}%\n"
+                f"[cyan]Stage:[/cyan] {job.stage or '-'}",
+                title="Dry Run - Would Cancel Job",
+                border_style="yellow",
+            )
+        )
         return
 
     try:
@@ -2629,14 +2649,16 @@ def _cancel_single_job(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    console.print(Panel.fit(
-        f"[green]Job cancelled successfully![/green]\n\n"
-        f"[cyan]Job ID:[/cyan] {job.job_id}\n"
-        f"[cyan]Type:[/cyan] {job.job_type}\n"
-        f"[cyan]Status:[/cyan] {_colorize_status(job.status)}",
-        title="Job Cancelled",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[green]Job cancelled successfully![/green]\n\n"
+            f"[cyan]Job ID:[/cyan] {job.job_id}\n"
+            f"[cyan]Type:[/cyan] {job.job_type}\n"
+            f"[cyan]Status:[/cyan] {_colorize_status(job.status)}",
+            title="Job Cancelled",
+            border_style="green",
+        )
+    )
 
 
 def _cancel_all_jobs(
@@ -2706,14 +2728,16 @@ def _cancel_all_jobs(
     cancelled_count = result.get("cancelled_count", 0)
     cancelled_ids = result.get("cancelled_job_ids", [])
 
-    console.print(Panel.fit(
-        f"[green]Successfully cancelled {cancelled_count} job(s)![/green]\n\n"
-        f"[dim]Cancelled job IDs:[/dim]\n"
-        + "\n".join(f"  • {jid}" for jid in cancelled_ids[:20])
-        + (f"\n  ... and {len(cancelled_ids) - 20} more" if len(cancelled_ids) > 20 else ""),
-        title="Jobs Cancelled",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[green]Successfully cancelled {cancelled_count} job(s)![/green]\n\n"
+            f"[dim]Cancelled job IDs:[/dim]\n"
+            + "\n".join(f"  • {jid}" for jid in cancelled_ids[:20])
+            + (f"\n  ... and {len(cancelled_ids) - 20} more" if len(cancelled_ids) > 20 else ""),
+            title="Jobs Cancelled",
+            border_style="green",
+        )
+    )
 
 
 def _update_recording_status_force(
@@ -3535,7 +3559,9 @@ def batch(
         False, "--dry-run", help="Show what would be processed without executing"
     ),
     force_lrc: bool = typer.Option(
-        False, "--force-lrc", help="Force re-generate LRC from scratch (skip R2 check and existing job reuse)"
+        False,
+        "--force-lrc",
+        help="Force re-generate LRC from scratch (skip R2 check and existing job reuse)",
     ),
     format: str = typer.Option("rich", "--format", help="Output format (rich, json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
@@ -3797,10 +3823,17 @@ def _download_and_create_recording(
 
         chinese_title = _extract_chinese_title_from_youtube(video_title)
         if chinese_title and chinese_title != song.title:
-            console.print(f"  [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
-            console.print(f"  [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]")
+            console.print(
+                f"  [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+            )
+            console.print(
+                f"  [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
+            )
             audio_path.unlink(missing_ok=True)
-            return None, f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'"
+            return (
+                None,
+                f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'",
+            )
 
         file_size = audio_path.stat().st_size
         console.print(f"  [dim]Downloaded: {audio_path.name} ({_format_size_mb(file_size)})[/dim]")
@@ -3814,10 +3847,20 @@ def _download_and_create_recording(
 
         existing_recording = db_client.get_recording_by_hash(prefix)
         if existing_recording:
-            existing_song = db_client.get_song(existing_recording.song_id) if existing_recording.song_id else None
-            existing_song_title = existing_song.title if existing_song else existing_recording.song_id
-            console.print(f"  [yellow]⚠ Duplicate hash: audio matches existing recording for song '{existing_song_title}'[/yellow]")
-            console.print(f"  [yellow]  This song likely downloaded the wrong video. Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]")
+            existing_song = (
+                db_client.get_song(existing_recording.song_id)
+                if existing_recording.song_id
+                else None
+            )
+            existing_song_title = (
+                existing_song.title if existing_song else existing_recording.song_id
+            )
+            console.print(
+                f"  [yellow]⚠ Duplicate hash: audio matches existing recording for song '{existing_song_title}'[/yellow]"
+            )
+            console.print(
+                f"  [yellow]  This song likely downloaded the wrong video. Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
+            )
             audio_path.unlink(missing_ok=True)
             return None, f"duplicate hash: shares audio with song '{existing_song_title}'"
 
@@ -3902,11 +3945,18 @@ def _download_if_needed(
 
         chinese_title = _extract_chinese_title_from_youtube(video_title)
         if chinese_title and chinese_title != song.title:
-            console.print(f"[{song_id}] [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]")
-            console.print(f"[{song_id}] [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]")
+            console.print(
+                f"[{song_id}] [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+            )
+            console.print(
+                f"[{song_id}] [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
+            )
             audio_path.unlink(missing_ok=True)
             db_client.update_recording_download(hash_prefix, "failed")
-            return {"download": "failed", "error": f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'"}
+            return {
+                "download": "failed",
+                "error": f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'",
+            }
 
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
@@ -4134,11 +4184,11 @@ def _process_batch(
                 songs_needing_embedding.append(song)
 
     if songs_needing_embedding:
-        console.print(f"[cyan]Phase 3.5: Submitting {len(songs_needing_embedding)} embedding jobs[/cyan]")
+        console.print(
+            f"[cyan]Phase 3.5: Submitting {len(songs_needing_embedding)} embedding jobs[/cyan]"
+        )
         for song in songs_needing_embedding:
-            jid = _submit_embedding_single(
-                song, analysis_client, db_client, console, force=False
-            )
+            jid = _submit_embedding_single(song, analysis_client, db_client, console, force=False)
             if jid:
                 embedding_job_ids.append(jid)
 
@@ -4278,9 +4328,9 @@ def _poll_all_jobs(
                                     f"{max_resubmits} resubmits, marking as failed[/red]"
                                 )
                                 results[song_id]["lrc"] = "failed"
-                                results[song_id][
-                                    "lrc_error"
-                                ] = f"Job lost (404) and not found on R2 after {max_resubmits} resubmits"
+                                results[song_id]["lrc_error"] = (
+                                    f"Job lost (404) and not found on R2 after {max_resubmits} resubmits"
+                                )
                                 db_client.update_recording_status(
                                     hash_prefix=recording.hash_prefix,
                                     lrc_status="failed",
@@ -4296,9 +4346,9 @@ def _poll_all_jobs(
                                     song = db_client.get_song(song_id)
                                     if not song or not song.lyrics_raw:
                                         results[song_id]["lrc"] = "failed"
-                                        results[song_id][
-                                            "lrc_error"
-                                        ] = "Job lost and no lyrics available for resubmit"
+                                        results[song_id]["lrc_error"] = (
+                                            "Job lost and no lyrics available for resubmit"
+                                        )
                                         db_client.update_recording_status(
                                             hash_prefix=recording.hash_prefix,
                                             lrc_status="failed",
@@ -4523,12 +4573,8 @@ def _print_stats(
     lrc_skipped_download = sum(1 for r in results.values() if r.get("download") == "failed")
 
     # LRC source breakdown (YouTube vs ASR)
-    lrc_youtube = sum(
-        1 for r in results.values() if r.get("lrc_source") == "youtube_transcript"
-    )
-    lrc_asr = sum(
-        1 for r in results.values() if r.get("lrc_source") == "whisper_asr"
-    )
+    lrc_youtube = sum(1 for r in results.values() if r.get("lrc_source") == "youtube_transcript")
+    lrc_asr = sum(1 for r in results.values() if r.get("lrc_source") == "whisper_asr")
     lrc_unknown = lrc_completed - lrc_skipped_existing - lrc_youtube - lrc_asr
 
     # LRC timing stats (only for ASR/Whisper jobs, not YouTube or R2 pre-existing)
@@ -4617,7 +4663,9 @@ def _print_stats(
 @app.command("probe")
 def probe(
     song_id: str = typer.Argument(..., help="Song ID to probe"),
-    force: bool = typer.Option(False, "--force", "-f", help="Re-probe even if duration_seconds is already set"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-probe even if duration_seconds is already set"
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Probe audio duration via ffprobe and update the recording in the database.
@@ -4691,9 +4739,15 @@ def probe(
 def probe_batch(
     album: Optional[str] = typer.Option(None, "--album", help="Filter by album name"),
     song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
-    analysis_status: Optional[str] = typer.Option(None, "--analysis-status", help="Filter by analysis status"),
-    force: bool = typer.Option(False, "--force", "-f", help="Re-probe even if duration_seconds is already set"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be probed without executing"),
+    analysis_status: Optional[str] = typer.Option(
+        None, "--analysis-status", help="Filter by analysis status"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-probe even if duration_seconds is already set"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be probed without executing"
+    ),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -4726,15 +4780,19 @@ def probe_batch(
 
     if album:
         recordings = [
-            r for r in recordings
-            if r.song_id and db_client.get_song(r.song_id)
+            r
+            for r in recordings
+            if r.song_id
+            and db_client.get_song(r.song_id)
             and album.lower() in (db_client.get_song(r.song_id).album_name or "").lower()
         ]
 
     if song:
         recordings = [
-            r for r in recordings
-            if r.song_id and db_client.get_song(r.song_id)
+            r
+            for r in recordings
+            if r.song_id
+            and db_client.get_song(r.song_id)
             and song.lower() in (db_client.get_song(r.song_id).title or "").lower()
         ]
 
