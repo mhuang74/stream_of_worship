@@ -111,6 +111,7 @@ export default function RenderPage() {
               }
               setScreenState("submitted")
             } else if (job.status === "completed") {
+              setJobId(job.id)
               setJobData(job)
               setInitialData({
                 template: job.template as RenderFormData["template"],
