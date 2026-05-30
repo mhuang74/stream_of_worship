@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -40,6 +41,7 @@ export default function RootLayout({
           <main className="flex-1 pb-16 lg:pb-0">{children}</main>
           <BottomNav />
         </GlobalAudioPlayer>
+        <Toaster />
       </body>
     </html>
   );

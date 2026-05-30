@@ -55,6 +55,7 @@ export default function RenderPage() {
   const [error, setError] = useState<string | null>(null)
   const [estimatedMinutes, setEstimatedMinutes] = useState(5)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Load songset data
   useEffect(() => {
@@ -151,6 +152,7 @@ export default function RenderPage() {
 
   const handleSubmit = useCallback(
     async (formData: RenderFormData) => {
+      setIsSubmitting(true)
       try {
         const response = await fetch("/api/render-jobs", {
           method: "POST",
@@ -173,6 +175,23 @@ export default function RenderPage() {
             router.push("/login")
             return
           }
+          if (response.status === 409) {
+            const data = await response.json()
+            if (data.jobId) {
+              setJobId(data.jobId)
+              if (data.estimatedTotalSeconds) {
+                setEstimatedMinutes(Math.ceil(data.estimatedTotalSeconds / 60))
+              }
+              setScreenState("submitted")
+              const configSummary = []
+              if (data.config?.audioEnabled) configSummary.push("audio")
+              if (data.config?.videoEnabled) configSummary.push("video")
+              toast.info(`A render job is already in progress (${configSummary.join(" + ")})`)
+            } else {
+              toast.error(data.error || "A render job is already in progress")
+            }
+            return
+          }
           const errorData = await response.json()
           throw new Error(errorData.error || "Failed to create render job")
         }
@@ -186,6 +205,8 @@ export default function RenderPage() {
         toast.success("Render started")
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to start render")
+      } finally {
+        setIsSubmitting(false)
       }
     },
     [songsetId, router]
@@ -275,6 +296,7 @@ export default function RenderPage() {
             initialData={initialData}
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/songsets/${songsetId}`)}
+            isSubmitting={isSubmitting}
           />
         )}
 
