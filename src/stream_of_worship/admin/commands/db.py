@@ -87,7 +87,7 @@ def init_db(
     NOT NULL column on the songsets table).
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         # Create default config if it doesn't exist
         config = AdminConfig()
@@ -174,7 +174,7 @@ def show_status(
     - Table row counts
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -211,7 +211,7 @@ def show_url(
     for security. Also indicates whether SOW_DATABASE_PASSWORD is set.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         # Use default config
         config = AdminConfig()

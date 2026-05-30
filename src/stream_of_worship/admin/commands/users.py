@@ -26,7 +26,7 @@ def _get_user_client(config: AdminConfig) -> UserClient:
 
 def _load_config(config_path: Optional[Path]) -> AdminConfig:
     try:
-        return AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        return AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)

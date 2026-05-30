@@ -676,7 +676,7 @@ def download_audio(
         lrc = True
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -929,7 +929,7 @@ def delete_recording(
         raise typer.Exit(1)
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1142,7 +1142,7 @@ def list_recordings(
     filter by album name. Use ``--format ids`` for one song ID per line (pipeable).
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1267,7 +1267,7 @@ def show_recording(
     when available.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1379,7 +1379,7 @@ def set_visibility(
     """
     # Standard config/db boilerplate
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1429,7 +1429,7 @@ def analyze_recording(
     """
     # Standard config/db boilerplate
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1621,7 +1621,7 @@ def lrc_recording(
 
     # Standard config/db boilerplate
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1782,7 +1782,6 @@ def embed_songs(
     """
     from rich.console import Console
 
-    from stream_of_worship.admin.db.client import DatabaseClient
     from stream_of_worship.admin.db.models import Song
     from stream_of_worship.admin.services.analysis import AnalysisClient, AnalysisServiceError
 
@@ -1793,7 +1792,7 @@ def embed_songs(
         raise typer.Exit(1)
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -1894,7 +1893,7 @@ def vocal_clean(
     from stream_of_worship.app.services.asset_cache import AssetCache
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -2119,7 +2118,7 @@ def check_status(
     """
     # Standard config/db boilerplate
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -2579,7 +2578,7 @@ def cancel_jobs(
         raise typer.Exit(1)
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -3012,7 +3011,7 @@ def view_lrc(
 
     # Load config
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print(
             "[red]Config file not found. Please create it using 'sow-admin config init'[/red]"
@@ -3099,7 +3098,7 @@ def cache_assets(
     that need local access to audio files.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -3230,7 +3229,7 @@ def upload_lrc(
     The LRC file format will be validated before upload.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -3387,7 +3386,7 @@ def playback_audio(
     Controls: Left/Right arrows to skip -/+5s, Ctrl+C to stop.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -3605,7 +3604,7 @@ def batch(
 
     # Load config
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -4683,7 +4682,7 @@ def probe(
         raise typer.Exit(1)
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -4764,7 +4763,7 @@ def probe_batch(
         raise typer.Exit(1)
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
