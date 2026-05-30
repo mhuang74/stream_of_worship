@@ -1759,6 +1759,7 @@ def embed_songs(
     all_songs: bool = typer.Option(False, "--all", help="Embed all songs without embeddings"),
     force: bool = typer.Option(False, "--force", help="Re-embed even if content hash matches"),
     wait: bool = typer.Option(False, "--wait", help="Wait for all jobs to complete"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Generate text embeddings for songs using OpenAI text-embedding-3-small.
 
@@ -1776,7 +1777,6 @@ def embed_songs(
     from stream_of_worship.admin.db.client import DatabaseClient
     from stream_of_worship.admin.db.models import Song
     from stream_of_worship.admin.services.analysis import AnalysisClient, AnalysisServiceError
-    from stream_of_worship.db.connection import ConnectionProvider
 
     console = Console()
 
@@ -1784,13 +1784,17 @@ def embed_songs(
         console.print("[red]Error:[/red] Provide a song_id or use --all")
         raise typer.Exit(1)
 
-    db_client = DatabaseClient(ConnectionProvider.from_env())
     try:
-        analysis_client = AnalysisClient(
-            os.environ.get("SOW_ANALYSIS_SERVICE_URL", "http://localhost:8000")
-        )
+        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    try:
+        analysis_client = AnalysisClient(config.analysis_url)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
         raise typer.Exit(1)
 
     if song_id:
