@@ -358,12 +358,18 @@ class AnalysisClient:
         Raises:
             AnalysisServiceError: If submission fails
         """
+        import hashlib
+
+        content = f"{title}\0{composer}\0{lyrics_raw}\0{'|'.join(lyrics_lines or [])}"
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
         payload = {
             "song_id": song_id,
             "title": title,
             "composer": composer,
             "lyrics_raw": lyrics_raw,
             "lyrics_lines": lyrics_lines or [],
+            "content_hash": content_hash,
         }
 
         try:

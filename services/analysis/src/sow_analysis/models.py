@@ -130,7 +130,7 @@ class JobResponse(BaseModel):
     stage: str = ""
     error_message: Optional[str] = None
     warning: Optional[str] = None
-    result: Optional[JobResult] = None
+    result: Optional[Union[JobResult, "EmbeddingJobResult"]] = None
 
 
 class EmbeddingJobRequest(BaseModel):
@@ -141,6 +141,7 @@ class EmbeddingJobRequest(BaseModel):
     composer: str = ""
     lyrics_raw: str = ""
     lyrics_lines: List[str] = []
+    content_hash: str
 
 
 class LineEmbedding(BaseModel):
