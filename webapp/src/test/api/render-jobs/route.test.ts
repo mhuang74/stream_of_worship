@@ -33,6 +33,9 @@ vi.mock("@/db", () => ({
           { recording: { durationSeconds: 200 } },
         ]),
       },
+      renderJobs: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
     },
   },
 }));
@@ -42,6 +45,7 @@ import { db } from "@/db";
 
 const mockDispatchToRenderWorker = vi.mocked(dispatchToRenderWorker);
 const mockFindMany = vi.mocked(db.query.songsetItems.findMany);
+const mockFindFirst = vi.mocked(db.query.renderJobs.findFirst);
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
@@ -408,6 +412,58 @@ describe("POST /api/render-jobs", () => {
     expect(response.status).toBe(400);
     const data = await response.json();
     expect(data.error).toContain("maximum of 5 songs");
+  });
+
+  it("returns 409 when active job already exists", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    mockFindFirst.mockResolvedValueOnce({
+      id: "existing-job-1",
+      songsetId: "songset-1",
+      userId: 1,
+      status: "queued",
+      estimatedTotalSeconds: 300,
+      audioEnabled: true,
+      videoEnabled: true,
+    } as any);
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.error).toBe("A render job is already in progress for this songset");
+    expect(data.jobId).toBe("existing-job-1");
+    expect(data.estimatedTotalSeconds).toBe(300);
+    expect(data.config).toEqual({ audioEnabled: true, videoEnabled: true });
+    expect(createRenderJob).not.toHaveBeenCalled();
+    expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 on unique constraint violation (TOCTOU race)", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(createRenderJob).mockRejectedValueOnce(
+      new Error("uq_render_jobs_active_per_songset_user constraint violated")
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.error).toBe("A render job is already in progress for this songset");
+    expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
   });
 
   it("returns 400 when songset exceeds maximum duration", async () => {
