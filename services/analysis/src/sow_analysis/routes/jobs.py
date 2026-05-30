@@ -9,6 +9,7 @@ from ..config import settings
 from ..models import (
     AnalyzeJobRequest,
     EmbeddingJobRequest,
+    EmbeddingJobResult,
     JobResponse,
     JobStatus,
     JobType,
@@ -96,28 +97,37 @@ def job_to_response(job, warning: Optional[str] = None) -> JobResponse:
     Returns:
         JobResponse model
     """
-    from ..models import JobResult
+    from ..models import EmbeddingJobResult, JobResult
 
     result = None
     if job.result:
-        result = JobResult(
-            duration_seconds=job.result.duration_seconds,
-            tempo_bpm=job.result.tempo_bpm,
-            musical_key=job.result.musical_key,
-            musical_mode=job.result.musical_mode,
-            key_confidence=job.result.key_confidence,
-            loudness_db=job.result.loudness_db,
-            beats=job.result.beats,
-            downbeats=job.result.downbeats,
-            sections=job.result.sections,
-            embeddings_shape=job.result.embeddings_shape,
-            stems_url=job.result.stems_url,
-            lrc_url=job.result.lrc_url,
-            line_count=job.result.line_count,
-            vocals_dry_url=job.result.vocals_dry_url,
-            vocals_url=job.result.vocals_url,
-            instrumental_url=job.result.instrumental_url,
-        )
+        if job.type == JobType.EMBEDDING:
+            result = EmbeddingJobResult(
+                song_id=job.result.song_id,
+                embedding=job.result.embedding,
+                line_embeddings=job.result.line_embeddings,
+                model_version=job.result.model_version,
+                content_hash=job.result.content_hash,
+            )
+        else:
+            result = JobResult(
+                duration_seconds=job.result.duration_seconds,
+                tempo_bpm=job.result.tempo_bpm,
+                musical_key=job.result.musical_key,
+                musical_mode=job.result.musical_mode,
+                key_confidence=job.result.key_confidence,
+                loudness_db=job.result.loudness_db,
+                beats=job.result.beats,
+                downbeats=job.result.downbeats,
+                sections=job.result.sections,
+                embeddings_shape=job.result.embeddings_shape,
+                stems_url=job.result.stems_url,
+                lrc_url=job.result.lrc_url,
+                line_count=job.result.line_count,
+                vocals_dry_url=job.result.vocals_dry_url,
+                vocals_url=job.result.vocals_url,
+                instrumental_url=job.result.instrumental_url,
+            )
 
     return JobResponse(
         job_id=job.id,
