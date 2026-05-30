@@ -4,8 +4,8 @@ import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
 import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
 import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
 import { db } from "@/db";
-import { songsetItems } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { songsetItems, renderJobs } from "@/db/schema";
+import { eq, and, or, gte } from "drizzle-orm";
 import { z } from "zod";
 
 const createRenderJobSchema = z.object({
@@ -63,7 +63,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const job = await createRenderJob(Number(session.user.id), parsed.data);
+    const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+    const activeJob = await db.query.renderJobs.findFirst({
+      where: and(
+        eq(renderJobs.songsetId, parsed.data.songsetId),
+        eq(renderJobs.userId, Number(session.user.id)),
+        or(eq(renderJobs.status, "queued"), eq(renderJobs.status, "running")),
+        gte(renderJobs.createdAt, twentyMinutesAgo)
+      ),
+    });
+
+    if (activeJob) {
+      return NextResponse.json(
+        {
+          error: "A render job is already in progress for this songset",
+          jobId: activeJob.id,
+          estimatedTotalSeconds: activeJob.estimatedTotalSeconds,
+          config: {
+            audioEnabled: activeJob.audioEnabled,
+            videoEnabled: activeJob.videoEnabled,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    let job;
+    try {
+      job = await createRenderJob(Number(session.user.id), parsed.data);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("uq_render_jobs_active_per_songset_user")) {
+        return NextResponse.json(
+          { error: "A render job is already in progress for this songset" },
+          { status: 409 }
+        );
+      }
+      throw err;
+    }
 
     try {
       await dispatchToRenderWorker({

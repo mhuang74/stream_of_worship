@@ -64,6 +64,13 @@
       "when": 1779750000000,
       "tag": "0008_rebuild_song_embedding_add_song_line_embedding",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779836400000,
+      "tag": "0009_add_active_render_job_unique_index",
+      "breakpoints": true
     }
   ]
 }
