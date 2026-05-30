@@ -1,7 +1,6 @@
 """Embedding worker for generating text embeddings via OpenAI-compatible API."""
 
 import asyncio
-import hashlib
 import logging
 from typing import List
 
@@ -20,13 +19,6 @@ _MAX_INPUT_CHARS_HEURISTIC = 6000
 
 def _count_cjk_chars(text: str) -> int:
     return sum(1 for ch in text if _CJK_RANGE_START <= ord(ch) <= _CJK_RANGE_END)
-
-
-def _compute_content_hash(
-    title: str, composer: str, lyrics_raw: str, lyrics_lines: List[str]
-) -> str:
-    content = f"{title}\0{composer}\0{lyrics_raw}\0{'|'.join(lyrics_lines)}"
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
 class EmbeddingWorker:
@@ -83,16 +75,12 @@ class EmbeddingWorker:
             for (idx, line), emb in zip(eligible_lines, line_embeddings_raw)
         ]
 
-        content_hash = _compute_content_hash(
-            request.title, request.composer, request.lyrics_raw, request.lyrics_lines
-        )
-
         return EmbeddingJobResult(
             song_id=request.song_id,
             embedding=song_embedding[0],
             line_embeddings=line_embeddings,
             model_version="text-embedding-3-small",
-            content_hash=content_hash,
+            content_hash=request.content_hash,
         )
 
     async def _embed_texts(self, texts: List[str]) -> List[List[float]]:

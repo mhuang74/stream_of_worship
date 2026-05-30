@@ -10,9 +10,12 @@ from pytest_mock import MockerFixture
 from sow_analysis.models import (
     AnalyzeJobRequest,
     AnalyzeOptions,
+    EmbeddingJobRequest,
+    EmbeddingJobResult,
     Job,
     JobStatus,
     JobType,
+    LineEmbedding,
     LrcJobRequest,
     LrcOptions,
     Section,
@@ -423,3 +426,76 @@ async def test_purge_includes_cancelled_jobs(job_store: JobStore) -> None:
 
     # Verify recent cancelled job remains
     assert await job_store.get_job("job_recent_cancelled") is not None
+
+
+@pytest.mark.asyncio
+async def test_insert_and_get_embedding_job(job_store: JobStore) -> None:
+    """Test round-trip for embedding job."""
+    request = EmbeddingJobRequest(
+        song_id="song_001",
+        title="Test Song",
+        composer="Test Composer",
+        lyrics_raw="Verse 1\nChorus",
+        lyrics_lines=["Verse 1", "Chorus"],
+        content_hash="emb_hash_001",
+    )
+
+    job = Job(
+        id="job_emb001",
+        type=JobType.EMBEDDING,
+        status=JobStatus.QUEUED,
+        request=request,
+    )
+
+    await job_store.insert_job(job)
+
+    retrieved = await job_store.get_job("job_emb001")
+    assert retrieved is not None
+    assert retrieved.id == "job_emb001"
+    assert retrieved.type == JobType.EMBEDDING
+    assert retrieved.status == JobStatus.QUEUED
+    assert isinstance(retrieved.request, EmbeddingJobRequest)
+    assert retrieved.request.song_id == "song_001"
+    assert retrieved.request.title == "Test Song"
+    assert retrieved.request.content_hash == "emb_hash_001"
+
+
+@pytest.mark.asyncio
+async def test_embedding_job_with_result(job_store: JobStore) -> None:
+    """Test embedding job round-trip including result."""
+    request = EmbeddingJobRequest(
+        song_id="song_002",
+        title="Another Song",
+        composer="Composer",
+        lyrics_raw="Lyrics here",
+        lyrics_lines=["Lyrics here"],
+        content_hash="emb_hash_002",
+    )
+
+    job = Job(
+        id="job_emb002",
+        type=JobType.EMBEDDING,
+        status=JobStatus.COMPLETED,
+        request=request,
+        result=EmbeddingJobResult(
+            song_id="song_002",
+            embedding=[0.1, 0.2, 0.3],
+            line_embeddings=[
+                LineEmbedding(line_index=0, line_text="Lyrics here", embedding=[0.4, 0.5])
+            ],
+            model_version="text-embedding-3-small",
+            content_hash="emb_hash_002",
+        ),
+    )
+
+    await job_store.insert_job(job)
+
+    retrieved = await job_store.get_job("job_emb002")
+    assert retrieved is not None
+    assert retrieved.status == JobStatus.COMPLETED
+    assert isinstance(retrieved.result, EmbeddingJobResult)
+    assert retrieved.result.song_id == "song_002"
+    assert retrieved.result.embedding == [0.1, 0.2, 0.3]
+    assert len(retrieved.result.line_embeddings) == 1
+    assert retrieved.result.line_embeddings[0].line_text == "Lyrics here"
+    assert retrieved.result.content_hash == "emb_hash_002"

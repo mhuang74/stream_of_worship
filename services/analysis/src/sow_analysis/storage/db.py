@@ -50,6 +50,9 @@ class JobStore:
         # Check if we need to migrate from old schema (without 'cancelled')
         await self._migrate_cancelled_status()
 
+        # Check if we need to migrate from old schema (without 'embedding' job type)
+        await self._migrate_embedding_type()
+
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -69,7 +72,7 @@ class JobStore:
                 content_hash    TEXT NOT NULL,
 
                 CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
-                CHECK (type IN ('analyze', 'lrc', 'stem_separation'))
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -138,7 +141,7 @@ class JobStore:
                         content_hash    TEXT NOT NULL,
 
                         CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
-                        CHECK (type IN ('analyze', 'lrc', 'stem_separation'))
+                        CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding'))
                     );
 
                     -- Copy data from old table
@@ -158,6 +161,78 @@ class JobStore:
 
         except Exception as e:
             logger.error(f"Database migration failed: {e}")
+            raise
+
+    async def _migrate_embedding_type(self) -> None:
+        """Migrate old schema to support 'embedding' job type.
+
+        SQLite doesn't support ALTER TABLE for CHECK constraints,
+        so we need to recreate the table if it has the old schema.
+        """
+        if not self._db:
+            return
+
+        try:
+            async with self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                async with self._db.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if not row:
+                        return
+
+                    schema = row[0]
+                    if "'embedding'" in schema:
+                        return
+
+                    logger.warning(
+                        "Migrating database schema to support EMBEDDING job type"
+                    )
+
+                    await self._db.executescript(
+                        """
+                        ALTER TABLE jobs RENAME TO jobs_old;
+
+                        CREATE TABLE jobs (
+                            id              TEXT PRIMARY KEY,
+                            type            TEXT NOT NULL,
+                            status          TEXT NOT NULL DEFAULT 'queued',
+                            progress        REAL NOT NULL DEFAULT 0.0,
+                            stage           TEXT NOT NULL DEFAULT '',
+                            error_message   TEXT,
+
+                            request_json    TEXT NOT NULL,
+                            result_json     TEXT,
+
+                            created_at      TEXT NOT NULL,
+                            updated_at      TEXT NOT NULL,
+
+                            content_hash    TEXT NOT NULL,
+
+                            CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
+                            CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding'))
+                        );
+
+                        INSERT INTO jobs SELECT * FROM jobs_old;
+
+                        CREATE INDEX idx_jobs_status ON jobs(status);
+                        CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                        CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+
+                        DROP TABLE jobs_old;
+                        """
+                    )
+                    await self._db.commit()
+                    logger.info("Database migration for embedding type complete")
+
+        except Exception as e:
+            logger.error(f"Database migration for embedding type failed: {e}")
             raise
 
     async def insert_job(self, job: Job) -> None:
@@ -264,15 +339,24 @@ class JobStore:
             request = LrcJobRequest.model_validate_json(request_json)
         elif job_type == JobType.STEM_SEPARATION:
             request = StemSeparationJobRequest.model_validate_json(request_json)
+        elif job_type == JobType.EMBEDDING:
+            from ..models import EmbeddingJobRequest
+
+            request = EmbeddingJobRequest.model_validate_json(request_json)
         else:
             raise ValueError(f"Unknown job type: {job_type}")
 
         # Deserialize result if present
         result = None
         if result_json:
-            from ..models import JobResult
+            if job_type == JobType.EMBEDDING:
+                from ..models import EmbeddingJobResult
 
-            result = JobResult.model_validate_json(result_json)
+                result = EmbeddingJobResult.model_validate_json(result_json)
+            else:
+                from ..models import JobResult
+
+                result = JobResult.model_validate_json(result_json)
 
         # Parse timestamps
         created_at = datetime.fromisoformat(created_at_str)
