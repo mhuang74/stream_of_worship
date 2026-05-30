@@ -91,7 +91,7 @@ def scrape_catalog(
     Use --dry-run to preview without saving. Use --force to re-scrape existing songs.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -227,7 +227,7 @@ def list_songs(
         raise typer.Exit(1)
 
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -342,7 +342,7 @@ def search_songs(
     Results are ordered by song ID.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
@@ -397,7 +397,7 @@ def show_song(
     Display all fields for a specific song including full lyrics.
     """
     try:
-        config = AdminConfig.load(config_path) if config_path else AdminConfig.load()
+        config = AdminConfig.load(config_path)
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
