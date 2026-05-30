@@ -29,8 +29,8 @@ vi.mock("@/db", () => ({
     query: {
       songsetItems: {
         findMany: vi.fn().mockResolvedValue([
-          { recording: { durationSeconds: 180 } },
-          { recording: { durationSeconds: 200 } },
+          { durationSeconds: 180 },
+          { durationSeconds: 200 },
         ]),
       },
     },
@@ -396,7 +396,7 @@ describe("POST /api/render-jobs", () => {
     } as any);
 
     mockFindMany.mockResolvedValueOnce(
-      Array.from({ length: 6 }, () => ({ recording: { durationSeconds: 180 } }))
+      Array.from({ length: 6 }, () => ({ durationSeconds: 180 }))
     );
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs", {
@@ -416,9 +416,9 @@ describe("POST /api/render-jobs", () => {
     } as any);
 
     mockFindMany.mockResolvedValueOnce([
-      { recording: { durationSeconds: 500 } },
-      { recording: { durationSeconds: 500 } },
-      { recording: { durationSeconds: 600 } },
+      { durationSeconds: 500 },
+      { durationSeconds: 500 },
+      { durationSeconds: 600 },
     ]);
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs", {

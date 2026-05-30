@@ -63,7 +63,6 @@ export interface SongsetEditorProps {
   onUpdateTransition: (itemId: string, settings: TransitionSettings) => Promise<void>;
   onRender: () => void;
   onPlay: () => void;
-  onRetry: () => void;
   onUpdateDescription: (description: string) => Promise<void>;
   onDuplicate: () => Promise<void>;
   onDelete: () => Promise<void>;
@@ -102,13 +101,14 @@ export function SongsetEditor({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
 
-  // Calculate total marked lines across all songs
-  const totalMarkedLines = items.reduce((sum, item) => sum + (item.markedLineCount ?? 0), 0);
   const totalDurationSeconds = items.reduce(
     (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
     0
   );
-  const isDurationOverLimit = totalDurationSeconds > SONGSET_MAX_DURATION_SECONDS;
+  const isDurationOverLimit = totalDurationSeconds >= SONGSET_MAX_DURATION_SECONDS;
+
+  // Calculate total marked lines across all songs
+  const totalMarkedLines = items.reduce((sum, item) => sum + (item.markedLineCount ?? 0), 0);
 
   // Handle back navigation
   const handleBack = () => {
@@ -244,7 +244,7 @@ export function SongsetEditor({
             <p className="text-xs text-muted-foreground">
               {items.length} {items.length === 1 ? "song" : "songs"}
               {isDurationOverLimit && (
-                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500/50 text-xs">
+                <Badge variant="outline" className="ml-2 text-xs text-amber-600 border-amber-500/50">
                   Over 25 min
                 </Badge>
               )}
@@ -389,8 +389,10 @@ export function SongsetEditor({
           <Plus className="size-6" />
         </Button>
       ) : (
-        <div className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 bg-muted text-muted-foreground text-sm px-4 py-2 rounded-full">
-          Maximum {SONGSET_MAX_SONGS} songs reached
+        <div className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8">
+          <Badge variant="secondary" className="text-xs">
+            Maximum {SONGSET_MAX_SONGS} songs reached
+          </Badge>
         </div>
       )}
 

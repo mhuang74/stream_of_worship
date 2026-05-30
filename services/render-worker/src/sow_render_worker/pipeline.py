@@ -273,14 +273,13 @@ def execute_render_pipeline(
         if not items:
             raise ValueError("Songset has no items")
 
-        total_duration = sum(item.duration_seconds or 0 for item in items)
-        if len(items) > MAX_SONGSET_ITEMS or total_duration > MAX_SONGSET_DURATION_SECONDS:
+        total_duration_seconds = sum(item.duration_seconds or 0 for item in items)
+        if len(items) > MAX_SONGSET_ITEMS or total_duration_seconds > MAX_SONGSET_DURATION_SECONDS:
             raise ValueError(
-                f"Songset exceeds limit: {len(items)} songs / {total_duration:.0f}s "
+                f"Songset exceeds limit: {len(items)} songs / {total_duration_seconds:.0f}s "
                 f"(max {MAX_SONGSET_ITEMS} songs / {MAX_SONGSET_DURATION_SECONDS}s)"
             )
 
-        total_duration_seconds = sum(item.duration_seconds or 0 for item in items)
         if total_duration_seconds <= 0:
             total_duration_seconds = 180.0 * len(items)
             logger.warning(

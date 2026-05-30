@@ -111,13 +111,7 @@ export default function SongsetsPage() {
   }, []);
 
   const handlePlay = useCallback((id: string) => {
-    // Navigate to play page
     window.location.href = `/songsets/${id}/play`;
-  }, []);
-
-  const handleRetry = useCallback((id: string) => {
-    // Navigate to render page for retry
-    window.location.href = `/songsets/${id}/render`;
   }, []);
 
   const handleRename = useCallback(
@@ -232,7 +226,6 @@ export default function SongsetsPage() {
         onCreateSongset={handleCreateSongset}
         onRender={handleRender}
         onPlay={handlePlay}
-        onRetry={handleRetry}
         onRename={handleRename}
         onDuplicate={handleDuplicate}
         onShare={handleShare}

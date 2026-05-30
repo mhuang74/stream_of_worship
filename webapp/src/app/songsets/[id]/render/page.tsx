@@ -15,11 +15,8 @@ const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((
 const RenderSubmitted = dynamic(() => import("@/components/render/RenderSubmitted").then((m) => ({ default: m.RenderSubmitted })), {
   loading: () => <Skeleton className="h-32 w-full" />,
 })
-const RenderComplete = dynamic(() => import("@/components/render/RenderComplete").then((m) => ({ default: m.RenderComplete })), {
-  loading: () => <Skeleton className="h-32 w-full" />,
-})
 
-type RenderScreenState = "form" | "submitted" | "complete"
+type RenderScreenState = "form" | "submitted"
 
 type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed"
 
@@ -32,15 +29,6 @@ interface SongsetData {
   songTitles: string[]
 }
 
-interface RenderJobData {
-  id: string
-  status: string
-  mp3R2Key: string | null
-  mp4R2Key: string | null
-  chaptersR2Key: string | null
-  elapsedSeconds?: number
-}
-
 export default function RenderPage() {
   const params = useParams()
   const router = useRouter()
@@ -49,12 +37,11 @@ export default function RenderPage() {
   const [screenState, setScreenState] = useState<RenderScreenState>("form")
   const [songset, setSongset] = useState<SongsetData | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
-  const [jobData, setJobData] = useState<RenderJobData | null>(null)
+  const [estimatedMinutes, setEstimatedMinutes] = useState(0)
+  const [isCancelling, setIsCancelling] = useState(false)
   const [initialData, setInitialData] = useState<Partial<RenderFormData> | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [estimatedMinutes, setEstimatedMinutes] = useState(5)
-  const [isCancelling, setIsCancelling] = useState(false)
 
   // Load songset data
   useEffect(() => {
@@ -106,13 +93,10 @@ export default function RenderPage() {
             const job = await jobResponse.json()
             if (job.status === "running" || job.status === "queued") {
               setJobId(job.id)
-              if (job.estimatedTotalSeconds) {
-                setEstimatedMinutes(Math.ceil(job.estimatedTotalSeconds / 60))
-              }
+              const est = job.estimatedTotalSeconds ? Math.ceil(job.estimatedTotalSeconds / 60) : 5
+              setEstimatedMinutes(est)
               setScreenState("submitted")
             } else if (job.status === "completed") {
-              setJobData(job)
-              setScreenState("complete")
               setInitialData({
                 template: job.template as RenderFormData["template"],
                 resolution: job.resolution as RenderFormData["resolution"],
@@ -176,9 +160,8 @@ export default function RenderPage() {
 
         const job = await response.json()
         setJobId(job.id)
-        if (job.estimatedTotalSeconds) {
-          setEstimatedMinutes(Math.ceil(job.estimatedTotalSeconds / 60))
-        }
+        const est = job.estimatedTotalSeconds ? Math.ceil(job.estimatedTotalSeconds / 60) : 5
+        setEstimatedMinutes(est)
         setScreenState("submitted")
         toast.success("Render started")
       } catch (err) {
@@ -189,30 +172,19 @@ export default function RenderPage() {
   )
 
   const handleCancel = useCallback(async () => {
-    if (!jobId || isCancelling) return
+    if (!jobId) {
+      router.push(`/songsets/${songsetId}`)
+      return
+    }
+
     setIsCancelling(true)
     try {
-      const response = await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" })
-      if (!response.ok) {
-        throw new Error("Failed to cancel render job")
-      }
-      setScreenState("form")
-      setJobId(null)
-      toast.info("Render cancelled")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to cancel")
-    } finally {
-      setIsCancelling(false)
+      await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" })
+    } catch {
+      // silent fallback
     }
-  }, [jobId, isCancelling])
-
-  const handleDone = useCallback(() => {
     router.push(`/songsets/${songsetId}`)
-  }, [router, songsetId])
-
-  const handleShare = useCallback(() => {
-    router.push(`/songsets/${songsetId}?share=true`)
-  }, [router, songsetId])
+  }, [jobId, router, songsetId])
 
   if (isLoading) {
     return (
@@ -280,20 +252,6 @@ export default function RenderPage() {
             estimatedMinutes={estimatedMinutes}
             onCancel={handleCancel}
             isCancelling={isCancelling}
-          />
-        )}
-
-        {screenState === "complete" && jobData && (
-          <RenderComplete
-            jobId={jobId!}
-            songsetId={songsetId}
-            songsetName={songset.name}
-            hasAudio={!!jobData.mp3R2Key}
-            hasVideo={!!jobData.mp4R2Key}
-            hasChapters={!!jobData.chaptersR2Key}
-            elapsedSeconds={jobData.elapsedSeconds}
-            onDone={handleDone}
-            onShare={handleShare}
           />
         )}
       </main>
