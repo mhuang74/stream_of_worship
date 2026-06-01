@@ -7,6 +7,7 @@ from sow_render_worker.db import (
     ORPHANED_JOB_THRESHOLD_MINUTES,
     PHASE_ORDER,
     STALE_JOB_THRESHOLD_SECONDS,
+    LIKELY_DEAD_THRESHOLD_SECONDS,
     TOTAL_PHASES,
     RenderJob,
     RenderProgress,
@@ -15,6 +16,7 @@ from sow_render_worker.db import (
     get_connection,
     get_phase_index,
     get_render_job,
+    reclaim_likely_dead_job,
     reclaim_stale_job,
     recover_orphaned_jobs,
     start_render_job,
@@ -573,8 +575,8 @@ class TestReclaimStaleJob:
         result = reclaim_stale_job(conn, "job_abc123", 42, stale_threshold_seconds=300)
         assert result is not None
 
-    def test_default_threshold_5_minutes(self):
-        assert STALE_JOB_THRESHOLD_SECONDS == 300
+    def test_default_threshold_2_minutes(self):
+        assert STALE_JOB_THRESHOLD_SECONDS == 120
 
 
 class TestRenderJobDataclass:
@@ -771,3 +773,39 @@ class TestSQLInjectionSafety:
         sql = cursor.execute.call_args[0][0]
         assert "%s" in sql
         assert f'"' not in sql.split("SET")[1].split("WHERE")[0] if "SET" in sql else True
+
+
+class TestLikelyDeadThreshold:
+    def test_likely_dead_threshold_60_seconds(self):
+        assert LIKELY_DEAD_THRESHOLD_SECONDS == 60
+
+    def test_stale_threshold_120_seconds(self):
+        assert STALE_JOB_THRESHOLD_SECONDS == 120
+
+
+class TestReclaimLikelyDeadJob:
+    def test_reclaims_likely_dead_job(self):
+        dead_time = datetime.now(timezone.utc) - timedelta(seconds=90)
+        row = _make_row(status="running", updated_at=dead_time)
+        reclaimed_row = _make_row(status="queued", phase="preparing", phase_index=0, percent_complete=0.0, started_at=None)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        cursor.fetchone.return_value = reclaimed_row
+        result = reclaim_likely_dead_job(conn, "job_abc123", 42)
+        assert result is not None
+        assert result.status == "queued"
+
+    def test_skips_recent_job(self):
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)
+        row = _make_row(status="running", updated_at=recent_time)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        result = reclaim_likely_dead_job(conn, "job_abc123", 42)
+        assert result is None
+
+    def test_uses_60_second_threshold(self):
+        just_over_60 = datetime.now(timezone.utc) - timedelta(seconds=61)
+        row = _make_row(status="running", updated_at=just_over_60)
+        reclaimed_row = _make_row(status="queued")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        cursor.fetchone.return_value = reclaimed_row
+        result = reclaim_likely_dead_job(conn, "job_abc123", 42)
+        assert result is not None
