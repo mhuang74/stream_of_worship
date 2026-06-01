@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gc
 import logging
 import math
+import os
 import shutil
 import subprocess
 import threading
@@ -29,6 +31,29 @@ RESOLUTION_MAP: dict[str, tuple[int, int]] = {
     "720p": (1280, 720),
     "1080p": (1920, 1080),
 }
+
+_MEMORY_WARNING_FRACTION = 0.90
+
+
+def _check_memory_pressure() -> None:
+    try:
+        lambda_memory_mb = int(os.environ.get("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "3072"))
+        warning_mb = lambda_memory_mb * _MEMORY_WARNING_FRACTION
+
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    rss_kb = int(line.split()[1])
+                    rss_mb = rss_kb / 1024
+                    if rss_mb > warning_mb:
+                        raise MemoryError(
+                            f"Memory pressure: RSS={rss_mb:.0f}MB exceeds "
+                            f"{_MEMORY_WARNING_FRACTION:.0%} of Lambda limit "
+                            f"({lambda_memory_mb}MB)"
+                        )
+                    return
+    except (FileNotFoundError, ValueError, IndexError):
+        pass
 
 
 @dataclass(frozen=True)
@@ -280,7 +305,7 @@ class VideoEngine:
             "-s",
             f"{width}x{height}",
             "-pix_fmt",
-            "rgba",
+            "rgb24",
             "-r",
             str(self.fps),
             "-i",
@@ -328,7 +353,9 @@ class VideoEngine:
         title_card_bytes: bytes | None = None
         if title_card_config and title_card_frame_count > 0:
             title_card_img = self.frame_renderer.render_title_card(title_card_config)
+            title_card_img = title_card_img.convert("RGB")
             title_card_bytes = title_card_img.tobytes()
+            title_card_img.close()
 
         frame_count = 0
         render_total_ns = 0
@@ -338,6 +365,8 @@ class VideoEngine:
             while frame_count < total_frames:
                 if timeout_check_callback:
                     timeout_check_callback()
+
+                _check_memory_pressure()
 
                 if title_card_config and frame_count < title_card_frame_count:
                     frame_bytes = title_card_bytes
@@ -409,6 +438,7 @@ class VideoEngine:
                         write_total_ns / elapsed_so_far * 100,
                         cache_info,
                     )
+                    gc.collect()
 
             try:
                 process.stdin.close()

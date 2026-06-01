@@ -17,6 +17,7 @@ from sow_render_worker.db import (
     complete_render_job,
     fail_render_job,
     get_render_job,
+    reclaim_likely_dead_job,
     reclaim_stale_job,
     start_render_job,
     update_render_progress,
@@ -227,10 +228,10 @@ def execute_render_pipeline(
     try:
         started = start_render_job(conn, job_id, user_id)
         if not started:
-            reclaimed = reclaim_stale_job(conn, job_id, user_id)
+            reclaimed = reclaim_likely_dead_job(conn, job_id, user_id)
             if reclaimed:
                 logger.info(
-                    "Reclaimed stale job %s (was stuck in 'running' for too long), retrying",
+                    "Reclaimed likely-dead job %s (no progress for 60+s), retrying",
                     job_id,
                 )
                 started = start_render_job(conn, job_id, user_id)
@@ -512,6 +513,17 @@ def execute_render_pipeline(
             mp4_r2_key=upload_result.mp4_r2_key,
             chapters_r2_key=upload_result.chapters_r2_key,
         )
+
+    except MemoryError as mem_exc:
+        logger.critical(
+            "[%s] Render pipeline hit memory limit: %s",
+            job_id, str(mem_exc),
+        )
+        try:
+            fail_render_job(conn, job_id, user_id, str(mem_exc))
+        except Exception as fail_exc:
+            logger.error("[%s] Failed to mark job as failed: %s", job_id, fail_exc)
+        raise
 
     except PipelineCancelledError:
         logger.info("[%s] Render job was cancelled, skipping failure marking", job_id)
