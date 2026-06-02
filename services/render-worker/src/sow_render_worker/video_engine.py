@@ -52,7 +52,7 @@ def _check_memory_pressure() -> None:
                             f"({lambda_memory_mb}MB)"
                         )
                     return
-    except (FileNotFoundError, ValueError, IndexError):
+    except (OSError, ValueError, IndexError):
         pass
 
 
@@ -353,7 +353,6 @@ class VideoEngine:
         title_card_bytes: bytes | None = None
         if title_card_config and title_card_frame_count > 0:
             title_card_img = self.frame_renderer.render_title_card(title_card_config)
-            title_card_img = title_card_img.convert("RGB")
             title_card_bytes = title_card_img.tobytes()
             title_card_img.close()
 
