@@ -52,8 +52,9 @@ class CurrentLyricDisplay(Static):
         self._current_text = current
         self._next_text = next_line
         self.update(
-            f"[bold white on blue] {current} [/]\n"
-            f"[dim]{next_line}[/]" if next_line else f"[bold white on blue] {current} [/]"
+            f"[bold white on blue] {current} [/]\n[dim]{next_line}[/]"
+            if next_line
+            else f"[bold white on blue] {current} [/]"
         )
 
 
@@ -134,7 +135,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("e", "edit_text", "Edit Text"),
         Binding("t", "edit_timestamp", "Edit Time"),
         Binding("i", "insert_after", "Insert After"),
-        Binding("shift+i", "insert_before", "Insert Before"),
+        Binding("I", "insert_before", "Insert Before"),
         Binding("d", "delete_line", "Delete Line"),
         Binding("s", "save_upload", "Save/Upload"),
         Binding("escape", "quit_editor", "Quit"),
@@ -222,6 +223,10 @@ class LRCEditorScreen(Screen[None]):
 
         if 0 <= self.state.selected_index < self.state.line_count:
             table.move_cursor(row=self.state.selected_index)
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        self.state.selected_index = event.cursor_row
+        self._update_displays()
 
     def _update_displays(self) -> None:
         lyric_display = self.query_one(CurrentLyricDisplay)
@@ -449,9 +454,13 @@ class LRCEditorScreen(Screen[None]):
 
                     yield Label("")
                     if self.validation.can_upload:
-                        yield Label("[d]Press [bold]d[/bold] for local draft | [bold]u[/bold] for upload to R2 | [bold]c[/bold] to cancel[/]")
+                        yield Label(
+                            "[d]Press [bold]d[/bold] for local draft | [bold]u[/bold] for upload to R2 | [bold]c[/bold] to cancel[/]"
+                        )
                     else:
-                        yield Label("[d]Upload blocked. Press [bold]d[/bold] for local draft | [bold]c[/bold] to cancel[/]")
+                        yield Label(
+                            "[d]Upload blocked. Press [bold]d[/bold] for local draft | [bold]c[/bold] to cancel[/]"
+                        )
 
             def action_save_draft(self) -> None:
                 self.dismiss("draft")
@@ -473,9 +482,7 @@ class LRCEditorScreen(Screen[None]):
                         f" [green]Draft saved: {draft_path}[/green]"
                     )
                 except Exception as e:
-                    self.query_one(StatusIndicator).update(
-                        f" [red]Draft save failed: {e}[/red]"
-                    )
+                    self.query_one(StatusIndicator).update(f" [red]Draft save failed: {e}[/red]")
 
             elif result_str == "upload":
                 upload_result = upload_revised_lrc(
@@ -489,13 +496,11 @@ class LRCEditorScreen(Screen[None]):
 
                 if upload_result.success:
                     from stream_of_worship.admin.editor.autosave import clear_autosave
+
                     clear_autosave(self.cache_dir, self.hash_prefix)
                     self.state.dirty = False
 
-                    msg = (
-                        f" [green]Upload successful![/green]\n"
-                        f" R2 URL: {upload_result.r2_url}\n"
-                    )
+                    msg = f" [green]Upload successful![/green]\n R2 URL: {upload_result.r2_url}\n"
                     if upload_result.local_backup_path:
                         msg += f" Local backup: {upload_result.local_backup_path}\n"
                     if upload_result.r2_backup_url:
@@ -526,6 +531,14 @@ class LRCEditorScreen(Screen[None]):
         )
 
     def action_quit_editor(self) -> None:
+        if self._editing_text or self._editing_timestamp:
+            self._editing_text = False
+            self._editing_timestamp = False
+            edit_input = self.query_one("#edit-input", Input)
+            edit_input.value = ""
+            self.query_one("#line-table", DataTable).focus()
+            return
+
         if self.state.dirty:
             self._do_autosave()
             from textual.screen import ModalScreen
