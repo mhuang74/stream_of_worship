@@ -22,15 +22,13 @@ class R2ObjectIdentity:
 
     Attributes:
         exists: Whether the object existed at snapshot time
-        etag: ETag header value when available
+        etag: ETag header value when available (MD5 of object data for non-multipart uploads)
         last_modified: LastModified header value when available
-        content_hash: SHA-256 of downloaded content when present
     """
 
     exists: bool
     etag: Optional[str] = None
     last_modified: Optional[str] = None
-    content_hash: Optional[str] = None
 
 
 class R2Client:
@@ -226,7 +224,7 @@ class R2Client:
             raise
 
     def get_lrc_identity(self, hash_prefix: str) -> R2ObjectIdentity:
-        """Get identity snapshot of the canonical LRC object for stale-session detection.
+        """Get identity snapshot of the transcribed LRC object for stale-session detection.
 
         Args:
             hash_prefix: 12-character hash prefix
@@ -252,7 +250,7 @@ class R2Client:
             raise
 
     def download_lrc_content(self, hash_prefix: str) -> Optional[str]:
-        """Download canonical LRC content from R2 as a string.
+        """Download transcribed LRC content from R2 as a string.
 
         Args:
             hash_prefix: 12-character hash prefix

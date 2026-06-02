@@ -55,18 +55,18 @@ def save_local_draft(cache_dir: Path, hash_prefix: str, lrc_content: str) -> Pat
     return draft_path
 
 
-def save_local_backup(cache_dir: Path, hash_prefix: str, canonical_content: str) -> Optional[Path]:
-    """Save a local timestamped backup of the current canonical LRC content.
+def save_local_backup(cache_dir: Path, hash_prefix: str, transcribed_content: str) -> Optional[Path]:
+    """Save a local timestamped backup of the current transcribed LRC content.
 
     Args:
         cache_dir: Admin cache directory
         hash_prefix: 12-character hash prefix
-        canonical_content: Current canonical LRC content
+        transcribed_content: Current transcribed LRC content
 
     Returns:
-        Path to the backup file, or None if no canonical content
+        Path to the backup file, or None if no transcribed content
     """
-    if not canonical_content:
+    if not transcribed_content:
         return None
 
     lrc_dir = cache_dir / hash_prefix / "lrc"
@@ -77,7 +77,7 @@ def save_local_backup(cache_dir: Path, hash_prefix: str, canonical_content: str)
 
     tmp_path = backup_path.with_suffix(".tmp")
     try:
-        tmp_path.write_text(canonical_content, encoding="utf-8")
+        tmp_path.write_text(transcribed_content, encoding="utf-8")
         tmp_path.replace(backup_path)
     except BaseException:
         try:
@@ -89,55 +89,52 @@ def save_local_backup(cache_dir: Path, hash_prefix: str, canonical_content: str)
     return backup_path
 
 
-def upload_r2_backup(r2_client: R2Client, hash_prefix: str, canonical_content: str) -> Optional[str]:
-    """Upload a timestamped backup of the current canonical LRC to R2.
+def upload_r2_backup(r2_client: R2Client, hash_prefix: str, transcribed_content: str) -> Optional[str]:
+    """Upload a timestamped backup of the current transcribed LRC to R2.
 
     Args:
         r2_client: R2 client
         hash_prefix: 12-character hash prefix
-        canonical_content: Current canonical LRC content
+        transcribed_content: Current transcribed LRC content
 
     Returns:
-        S3 URL of the backup, or None if no canonical content
+        S3 URL of the backup, or None if no transcribed content
     """
-    if not canonical_content:
+    if not transcribed_content:
         return None
 
     ts = generate_timestamped_filename()
     backup_key = f"{hash_prefix}/backups/lyrics.{ts}.lrc"
 
-    return r2_client.upload_bytes(backup_key, canonical_content.encode("utf-8"), content_type="text/plain")
+    return r2_client.upload_bytes(backup_key, transcribed_content.encode("utf-8"), content_type="text/plain")
 
 
-def check_canonical_changed(
+def check_transcribed_changed(
     r2_client: R2Client,
+    hash_prefix: str,
     original_identity: R2ObjectIdentity,
-    original_content_hash: Optional[str],
 ) -> Tuple[bool, str]:
-    """Re-check canonical R2 LRC identity against session token.
+    """Re-check transcribed R2 LRC identity against session token.
 
     Args:
         r2_client: R2 client
+        hash_prefix: 12-character hash prefix
         original_identity: Session token captured at editor open
-        original_content_hash: SHA-256 of original content when present
 
     Returns:
         Tuple of (changed: bool, reason: str)
     """
-    current_identity = r2_client.get_lrc_identity(original_identity.hash_prefix if hasattr(original_identity, 'hash_prefix') else "")
+    current_identity = r2_client.get_lrc_identity(hash_prefix)
 
     if original_identity.exists and not current_identity.exists:
-        return True, "Canonical LRC disappeared from R2 since editor open"
+        return True, "Transcribed LRC disappeared from R2 since editor open"
 
     if not original_identity.exists and current_identity.exists:
-        return True, "A new canonical LRC appeared in R2 while editing a draft session"
+        return True, "A new transcribed LRC appeared in R2 while editing a draft session"
 
     if original_identity.exists and current_identity.exists:
         if original_identity.etag and current_identity.etag and original_identity.etag != current_identity.etag:
-            return True, "Canonical LRC ETag changed since editor open (stale session)"
-
-        if original_identity.last_modified and current_identity.last_modified and original_identity.last_modified != current_identity.last_modified:
-            return True, "Canonical LRC LastModified changed since editor open (stale session)"
+            return True, "Transcribed LRC ETag changed since editor open (stale session)"
 
     return False, ""
 
@@ -166,8 +163,8 @@ class UploadResult:
         success: Whether the upload fully succeeded
         partial: Whether R2 upload succeeded but DB update failed
         r2_url: S3 URL of the uploaded LRC
-        local_backup_path: Path to local canonical backup
-        r2_backup_url: S3 URL of R2 canonical backup
+        local_backup_path: Path to local transcribed backup
+        r2_backup_url: S3 URL of R2 transcribed backup
         error: Error message if upload failed
     """
 
@@ -184,7 +181,7 @@ def upload_revised_lrc(
     db_client: DatabaseClient,
     cache_dir: Path,
     state: EditorState,
-    original_canonical_content: Optional[str],
+    original_transcribed_content: Optional[str],
     hash_prefix: str,
 ) -> UploadResult:
     """Upload the revised LRC to R2 and update the database.
@@ -197,15 +194,14 @@ def upload_revised_lrc(
         db_client: Database client
         cache_dir: Admin cache directory
         state: Current editor state
-        original_canonical_content: Force-refreshed canonical LRC content
+        original_transcribed_content: Force-refreshed transcribed LRC content
         hash_prefix: 12-character hash prefix
 
     Returns:
         UploadResult with outcome details
     """
-    changed, reason = check_canonical_changed(
-        r2_client, state.canonical_identity,
-        state.canonical_identity.content_hash,
+    changed, reason = check_transcribed_changed(
+        r2_client, hash_prefix, state.transcribed_identity,
     )
     if changed:
         return UploadResult(success=False, error=f"Upload blocked: {reason}")
@@ -217,14 +213,14 @@ def upload_revised_lrc(
     local_backup_path = None
     r2_backup_url = None
 
-    if original_canonical_content:
+    if original_transcribed_content:
         try:
-            local_backup_path = save_local_backup(cache_dir, hash_prefix, original_canonical_content)
+            local_backup_path = save_local_backup(cache_dir, hash_prefix, original_transcribed_content)
         except Exception as e:
             logger.warning(f"Failed to save local backup: {e}")
 
         try:
-            r2_backup_url = upload_r2_backup(r2_client, hash_prefix, original_canonical_content)
+            r2_backup_url = upload_r2_backup(r2_client, hash_prefix, original_transcribed_content)
         except Exception as e:
             logger.warning(f"Failed to upload R2 backup: {e}")
 

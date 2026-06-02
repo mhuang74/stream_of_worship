@@ -19,7 +19,7 @@ class LRCEditorApp(App[None]):
     }
     """
 
-    def __init__(self, editor_state, playback_service, cache_dir, r2_client, db_client, hash_prefix, original_canonical_content):
+    def __init__(self, editor_state, playback_service, cache_dir, r2_client, db_client, hash_prefix, original_transcribed_content):
         super().__init__()
         self.editor_state = editor_state
         self.playback_service = playback_service
@@ -27,7 +27,7 @@ class LRCEditorApp(App[None]):
         self.r2_client = r2_client
         self.db_client = db_client
         self.hash_prefix = hash_prefix
-        self.original_canonical_content = original_canonical_content
+        self.original_transcribed_content = original_transcribed_content
 
     def on_mount(self) -> None:
         self.push_screen(LRCEditorScreen(
@@ -37,5 +37,5 @@ class LRCEditorApp(App[None]):
             r2_client=self.r2_client,
             db_client=self.db_client,
             hash_prefix=self.hash_prefix,
-            original_canonical_content=self.original_canonical_content,
+            original_transcribed_content=self.original_transcribed_content,
         ))

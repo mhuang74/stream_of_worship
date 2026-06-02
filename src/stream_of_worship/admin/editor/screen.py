@@ -130,12 +130,14 @@ class LRCEditorScreen(Screen[None]):
         Binding("right", "seek_forward", "Seek +5s"),
         Binding("up", "select_prev", "Prev Line"),
         Binding("down", "select_next", "Next Line"),
+        Binding("j", "jump_to_line", "Jump"),
         Binding("enter", "stamp_line", "Stamp Time"),
         Binding("a", "stamp_and_advance", "Stamp+Advance"),
         Binding("e", "edit_text", "Edit Text"),
         Binding("t", "edit_timestamp", "Edit Time"),
         Binding("i", "insert_after", "Insert After"),
-        Binding("I", "insert_before", "Insert Before"),
+        Binding("ctrl+c", "copy_line", "Copy"),
+        Binding("ctrl+v", "paste_after", "Paste"),
         Binding("d", "delete_line", "Delete Line"),
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
@@ -152,7 +154,7 @@ class LRCEditorScreen(Screen[None]):
         r2_client: R2Client,
         db_client: DatabaseClient,
         hash_prefix: str,
-        original_canonical_content: Optional[str],
+        original_transcribed_content: Optional[str],
     ):
         super().__init__()
         self.state = editor_state
@@ -161,11 +163,12 @@ class LRCEditorScreen(Screen[None]):
         self.r2_client = r2_client
         self.db_client = db_client
         self.hash_prefix = hash_prefix
-        self.original_canonical_content = original_canonical_content
+        self.original_transcribed_content = original_transcribed_content
         self._autosave_ok = False
         self._editing_text = False
         self._editing_timestamp = False
         self._position_update_timer: Optional[asyncio.Task] = None
+        self._clipboard: Optional[tuple] = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -271,7 +274,7 @@ class LRCEditorScreen(Screen[None]):
             autosave_state = AutosaveState(
                 timed_lines=self.state.timed_lines,
                 preserved_lines=self.state.preserved_lines,
-                canonical_identity=self.state.canonical_identity,
+                transcribed_identity=self.state.transcribed_identity,
                 dirty=self.state.dirty,
                 source_mode=self.state.source_mode,
             )
@@ -302,19 +305,18 @@ class LRCEditorScreen(Screen[None]):
 
     def action_select_prev(self) -> None:
         self.state.select_prev()
-        line = self.state.selected_line
-        if line and self.playback.is_playing:
-            self.playback.seek(line.time_seconds)
         self._refresh_table()
         self._update_displays()
 
     def action_select_next(self) -> None:
         self.state.select_next()
-        line = self.state.selected_line
-        if line and self.playback.is_playing:
-            self.playback.seek(line.time_seconds)
         self._refresh_table()
         self._update_displays()
+
+    def action_jump_to_line(self) -> None:
+        line = self.state.selected_line
+        if line:
+            self.playback.seek(line.time_seconds)
 
     def action_stamp_line(self) -> None:
         pos = self.playback.position_seconds
@@ -391,8 +393,19 @@ class LRCEditorScreen(Screen[None]):
         self._update_displays()
         self._do_autosave()
 
-    def action_insert_before(self) -> None:
-        self.state.insert_before(self.state.selected_index)
+    def action_copy_line(self) -> None:
+        line = self.state.selected_line
+        if line:
+            self._clipboard = (line.text, line.time_seconds)
+            self.notify(f"Copied line {self.state.selected_index + 1}", timeout=2)
+
+    def action_paste_after(self) -> None:
+        if self._clipboard is None:
+            self.notify("Nothing to paste", timeout=2)
+            return
+        text, time_seconds = self._clipboard
+        self.state.insert_after(self.state.selected_index, text=text, time_seconds=time_seconds)
+        self.state.select_next()
         self._refresh_table()
         self._update_displays()
         self._do_autosave()
@@ -453,6 +466,15 @@ class LRCEditorScreen(Screen[None]):
                 with Vertical(id="dialog-container"):
                     yield Label("Save / Upload", classes="dialog-title")
 
+                    if self.validation.can_upload:
+                        yield Label(
+                            "[d]Press [bold]d[/bold] for local draft | [bold]u[/bold] for upload to R2 | [bold]c[/bold] to cancel[/]"
+                        )
+                    else:
+                        yield Label(
+                            "[d]Upload blocked. Press [bold]d[/bold] for local draft | [bold]c[/bold] to cancel[/]"
+                        )
+
                     if self.validation.errors:
                         yield Label("[bold red]BLOCKING ERRORS:[/bold red]")
                         for e in self.validation.errors:
@@ -467,16 +489,6 @@ class LRCEditorScreen(Screen[None]):
                         yield Label("[bold]DIFF:[/bold]")
                         diff_display = Static(self.validation.diff[:2000])
                         yield diff_display
-
-                    yield Label("")
-                    if self.validation.can_upload:
-                        yield Label(
-                            "[d]Press [bold]d[/bold] for local draft | [bold]u[/bold] for upload to R2 | [bold]c[/bold] to cancel[/]"
-                        )
-                    else:
-                        yield Label(
-                            "[d]Upload blocked. Press [bold]d[/bold] for local draft | [bold]c[/bold] to cancel[/]"
-                        )
 
             def action_save_draft(self) -> None:
                 self.dismiss("draft")
@@ -506,7 +518,7 @@ class LRCEditorScreen(Screen[None]):
                     db_client=self.db_client,
                     cache_dir=self.cache_dir,
                     state=self.state,
-                    original_canonical_content=self.original_canonical_content,
+                    original_transcribed_content=self.original_transcribed_content,
                     hash_prefix=self.hash_prefix,
                 )
 

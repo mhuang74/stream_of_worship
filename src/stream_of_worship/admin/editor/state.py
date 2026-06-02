@@ -1,7 +1,7 @@
 """Editor state model for the admin LRC editor.
 
 Holds all mutable editing session data: lyric rows, preserved content,
-canonical session token, dirty tracking, and source mode.
+transcribed session token, dirty tracking, and source mode.
 """
 
 from dataclasses import dataclass, field
@@ -37,7 +37,7 @@ class EditorState:
         preserved_lines: Non-editable preserved content
         original_serialized: Force-refreshed original LRC for diff base
         original_preserved_lines: Preserved lines from original for drop detection
-        canonical_identity: Session token for stale-session detection
+        transcribed_identity: Session token for stale-session detection of the transcribed LRC on R2
         dirty: Whether there are unsaved changes since last save/upload
         source_mode: How the editor was initialized ("r2" or "catalog")
         selected_index: Currently selected lyric line index
@@ -51,7 +51,7 @@ class EditorState:
     preserved_lines: List[LRCPreservedLine]
     original_serialized: str
     original_preserved_lines: List[LRCPreservedLine]
-    canonical_identity: R2ObjectIdentity
+    transcribed_identity: R2ObjectIdentity
     dirty: bool = False
     source_mode: str = "catalog"
     selected_index: int = 0

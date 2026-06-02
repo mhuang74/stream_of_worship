@@ -3,7 +3,7 @@
 Maintains an autosave recovery file so dirty edits survive process
 crashes, terminal disconnects, and accidental exits. The autosave
 includes enough state to restore lyric rows, preserved content,
-canonical session token, dirty status, and source mode.
+transcribed session token, dirty status, and source mode.
 """
 
 import json
@@ -27,14 +27,14 @@ class AutosaveState:
     Attributes:
         timed_lines: Editable timed lyric rows
         preserved_lines: Non-editable preserved content
-        canonical_identity: Session token for stale-session detection
+        transcribed_identity: Session token for stale-session detection of the transcribed LRC on R2
         dirty: Whether there are unsaved changes
         source_mode: How the editor was initialized ("r2" or "catalog")
     """
 
     timed_lines: List[LRCLine]
     preserved_lines: List[LRCPreservedLine]
-    canonical_identity: R2ObjectIdentity
+    transcribed_identity: R2ObjectIdentity
     dirty: bool
     source_mode: str
 
@@ -48,11 +48,10 @@ class AutosaveState:
                 {"raw": p.raw, "tag": p.tag, "value": p.value}
                 for p in self.preserved_lines
             ],
-            "canonical_identity": {
-                "exists": self.canonical_identity.exists,
-                "etag": self.canonical_identity.etag,
-                "last_modified": self.canonical_identity.last_modified,
-                "content_hash": self.canonical_identity.content_hash,
+            "transcribed_identity": {
+                "exists": self.transcribed_identity.exists,
+                "etag": self.transcribed_identity.etag,
+                "last_modified": self.transcribed_identity.last_modified,
             },
             "dirty": self.dirty,
             "source_mode": self.source_mode,
@@ -68,17 +67,16 @@ class AutosaveState:
             LRCPreservedLine(raw=p["raw"], tag=p.get("tag"), value=p.get("value"))
             for p in data.get("preserved_lines", [])
         ]
-        ci_data = data.get("canonical_identity", {})
-        canonical_identity = R2ObjectIdentity(
-            exists=ci_data.get("exists", False),
-            etag=ci_data.get("etag"),
-            last_modified=ci_data.get("last_modified"),
-            content_hash=ci_data.get("content_hash"),
+        ti_data = data.get("transcribed_identity") or data.get("canonical_identity", {})
+        transcribed_identity = R2ObjectIdentity(
+            exists=ti_data.get("exists", False),
+            etag=ti_data.get("etag"),
+            last_modified=ti_data.get("last_modified"),
         )
         return cls(
             timed_lines=timed_lines,
             preserved_lines=preserved_lines,
-            canonical_identity=canonical_identity,
+            transcribed_identity=transcribed_identity,
             dirty=data.get("dirty", True),
             source_mode=data.get("source_mode", "catalog"),
         )

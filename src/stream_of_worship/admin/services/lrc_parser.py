@@ -6,7 +6,7 @@ canonical ``[mm:ss.xx]`` centisecond timestamps while preserving metadata
 and unknown lines in their original relative positions.
 """
 
-import hashlib
+
 import re
 from dataclasses import dataclass
 from typing import List, Optional
@@ -251,17 +251,6 @@ def serialize_lrc(timed_lines: List[LRCLine], preserved_lines: Optional[List[LRC
 
     return "\n".join(parts) + "\n"
 
-
-def compute_lrc_hash(content: str) -> str:
-    """Compute SHA-256 hash of LRC content for session identity.
-
-    Args:
-        content: Raw LRC file content
-
-    Returns:
-        Hex-encoded SHA-256 digest
-    """
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def build_draft_from_catalog(lyrics_lines: Optional[str] = None, lyrics_raw: Optional[str] = None) -> List[LRCLine]:

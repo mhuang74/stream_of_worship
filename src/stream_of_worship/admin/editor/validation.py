@@ -78,7 +78,7 @@ def validate_lrc(
         preserved_lines: Current preserved content
         original_serialized: Force-refreshed original serialized LRC for diff
         audio_duration_seconds: Recording duration for sanity check
-        original_preserved_lines: Preserved lines from the original canonical LRC
+        original_preserved_lines: Preserved lines from the original transcribed LRC
 
     Returns:
         ValidationResult with errors, warnings, and diff
@@ -169,7 +169,7 @@ def _check_preservation(
     current_preserved: Optional[List[LRCPreservedLine]],
     result: ValidationResult,
 ) -> None:
-    """Block upload if unknown/malformed canonical content would be silently dropped.
+    """Block upload if unknown/malformed transcribed content would be silently dropped.
 
     Check that all non-empty preserved lines from the original are still
     present in the current state. If any were dropped, that's a blocking
@@ -193,7 +193,7 @@ def _check_preservation(
             result.errors.append(ValidationError(
                 code="content_dropped",
                 message=(
-                    f"Unknown/malformed canonical content would be silently dropped: "
+                    f"Unknown/malformed transcribed content would be silently dropped: "
                     f"{len(non_meta_dropped)} line(s). Review the diff and explicitly "
                     f"remove lines if intended."
                 ),

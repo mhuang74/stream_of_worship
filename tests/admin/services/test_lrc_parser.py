@@ -8,7 +8,6 @@ from stream_of_worship.admin.services.lrc_parser import (
     LRCParsedContent,
     LRCPreservedLine,
     build_draft_from_catalog,
-    compute_lrc_hash,
     format_centiseconds,
     format_duration,
     parse_lrc,
@@ -194,19 +193,6 @@ class TestBuildDraftFromCatalog:
         result = build_draft_from_catalog(lyrics_lines="not json", lyrics_raw="Fallback")
         assert len(result) == 1
         assert result[0].text == "Fallback"
-
-
-class TestComputeLrcHash:
-    def test_deterministic(self):
-        content = "[00:10.00]Hello"
-        h1 = compute_lrc_hash(content)
-        h2 = compute_lrc_hash(content)
-        assert h1 == h2
-
-    def test_different_content_different_hash(self):
-        h1 = compute_lrc_hash("[00:10.00]Hello")
-        h2 = compute_lrc_hash("[00:10.00]World")
-        assert h1 != h2
 
 
 class TestFormatDuration:

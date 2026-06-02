@@ -41,7 +41,7 @@ class TestAutosave:
         state = AutosaveState(
             timed_lines=_make_lines([(10.0, "A"), (20.0, "B")]),
             preserved_lines=[LRCPreservedLine(raw="[ti:Title]", tag="ti", value="Title")],
-            canonical_identity=R2ObjectIdentity(exists=True, etag="abc123", content_hash="hash1"),
+            transcribed_identity=R2ObjectIdentity(exists=True, etag="abc123"),
             dirty=True,
             source_mode="r2",
         )
@@ -54,14 +54,14 @@ class TestAutosave:
         assert loaded.timed_lines[0].text == "A"
         assert loaded.dirty is True
         assert loaded.source_mode == "r2"
-        assert loaded.canonical_identity.etag == "abc123"
+        assert loaded.transcribed_identity.etag == "abc123"
 
     def test_autosave_exists(self, tmp_path):
         assert not autosave_exists(tmp_path, "abc123")
         state = AutosaveState(
             timed_lines=[],
             preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             dirty=False,
             source_mode="catalog",
         )
@@ -72,7 +72,7 @@ class TestAutosave:
         state = AutosaveState(
             timed_lines=[],
             preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             dirty=False,
             source_mode="catalog",
         )
@@ -95,7 +95,7 @@ class TestAutosave:
         state = AutosaveState(
             timed_lines=_make_lines([(5.0, "X")]),
             preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             dirty=True,
             source_mode="catalog",
         )
@@ -205,7 +205,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
         )
         state.set_timestamp(0, 10.5)
         assert state.timed_lines[0].time_seconds == 10.5
@@ -217,7 +217,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
         )
         state.set_timestamp(0, -5.0)
         assert state.timed_lines[0].time_seconds == 0.0
@@ -228,7 +228,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
         )
         state.set_text(0, "New")
         assert state.timed_lines[0].text == "New"
@@ -240,7 +240,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             selected_index=0,
         )
         state.insert_after(0, text="B", time_seconds=5.0)
@@ -254,7 +254,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             selected_index=1,
         )
         state.insert_before(1, text="B", time_seconds=5.0)
@@ -267,7 +267,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             selected_index=1,
         )
         deleted = state.delete_line(1)
@@ -281,7 +281,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
             selected_index=1,
         )
         state.delete_line(1)
@@ -293,7 +293,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
         )
         state.select_line(5)
         assert state.selected_index == 1
@@ -306,7 +306,7 @@ class TestEditorState:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
         )
         result = state.serialize()
         assert "[00:10.50]Hello" in result
@@ -322,7 +322,7 @@ class TestUndoRedo:
             preserved_lines=[],
             original_serialized="",
             original_preserved_lines=[],
-            canonical_identity=R2ObjectIdentity(exists=False),
+            transcribed_identity=R2ObjectIdentity(exists=False),
         )
 
     def test_undo_empty_stack_returns_false(self):
