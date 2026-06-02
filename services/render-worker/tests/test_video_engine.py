@@ -1071,7 +1071,7 @@ class TestCheckMemoryPressure:
             _check_memory_pressure()
 
     def test_noop_without_proc(self):
-        with patch("builtins.open", side_effect=FileNotFoundError):
+        with patch("builtins.open", side_effect=OSError):
             _check_memory_pressure()
 
     def test_warning_fraction_is_90_percent(self):
