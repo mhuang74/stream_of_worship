@@ -7,12 +7,30 @@ variables so they never appear in config files.
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+
+@dataclass
+class R2ObjectIdentity:
+    """Identity snapshot of an R2 object for stale-session detection.
+
+    Attributes:
+        exists: Whether the object existed at snapshot time
+        etag: ETag header value when available
+        last_modified: LastModified header value when available
+        content_hash: SHA-256 of downloaded content when present
+    """
+
+    exists: bool
+    etag: Optional[str] = None
+    last_modified: Optional[str] = None
+    content_hash: Optional[str] = None
 
 
 class R2Client:
@@ -206,6 +224,70 @@ class R2Client:
             if error_code in ("404", "NoSuchKey"):
                 return None
             raise
+
+    def get_lrc_identity(self, hash_prefix: str) -> R2ObjectIdentity:
+        """Get identity snapshot of the canonical LRC object for stale-session detection.
+
+        Args:
+            hash_prefix: 12-character hash prefix
+
+        Returns:
+            R2ObjectIdentity with exists flag, ETag, and LastModified
+        """
+        s3_key = f"{hash_prefix}/lyrics.lrc"
+        try:
+            resp = self._client.head_object(Bucket=self.bucket, Key=s3_key)
+            etag = resp.get("ETag", "").strip('"')
+            lm = resp.get("LastModified")
+            last_modified = lm.isoformat() if lm and hasattr(lm, "isoformat") else str(lm) if lm else None
+            return R2ObjectIdentity(
+                exists=True,
+                etag=etag,
+                last_modified=last_modified,
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return R2ObjectIdentity(exists=False)
+            raise
+
+    def download_lrc_content(self, hash_prefix: str) -> Optional[str]:
+        """Download canonical LRC content from R2 as a string.
+
+        Args:
+            hash_prefix: 12-character hash prefix
+
+        Returns:
+            LRC file content as UTF-8 string, or None if not found
+        """
+        s3_key = f"{hash_prefix}/lyrics.lrc"
+        try:
+            resp = self._client.get_object(Bucket=self.bucket, Key=s3_key)
+            return resp["Body"].read().decode("utf-8")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+
+    def upload_bytes(self, s3_key: str, data: bytes, content_type: str = "text/plain") -> str:
+        """Upload raw bytes to R2 under an arbitrary key.
+
+        Args:
+            s3_key: Full S3 key (path within bucket)
+            data: Raw bytes to upload
+            content_type: MIME type for the object
+
+        Returns:
+            S3-style URL of the uploaded object
+        """
+        self._client.put_object(
+            Bucket=self.bucket,
+            Key=s3_key,
+            Body=data,
+            ContentType=content_type,
+        )
+        return f"s3://{self.bucket}/{s3_key}"
 
     def analysis_exists(self, hash_prefix: str) -> Optional[str]:
         """Check whether an analysis.json file exists in R2.
