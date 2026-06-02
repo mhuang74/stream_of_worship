@@ -136,6 +136,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("e", "edit_text", "Edit Text"),
         Binding("t", "edit_timestamp", "Edit Time"),
         Binding("i", "insert_after", "Insert After"),
+        Binding("I", "insert_canonical", "Insert Canonical"),
         Binding("ctrl+c", "copy_line", "Copy"),
         Binding("ctrl+v", "paste_after", "Paste"),
         Binding("d", "delete_line", "Delete Line"),
@@ -392,6 +393,34 @@ class LRCEditorScreen(Screen[None]):
         self._refresh_table()
         self._update_displays()
         self._do_autosave()
+
+    def action_insert_canonical(self) -> None:
+        recording = self.db_client.get_recording_by_hash(self.hash_prefix)
+        if not recording or not recording.song_id:
+            self.notify("No song linked", severity="warning", timeout=3)
+            return
+
+        song = self.db_client.get_song(recording.song_id)
+        if not song:
+            self.notify("No canonical lyrics found", severity="warning", timeout=3)
+            return
+
+        lyrics = song.lyrics_list
+        non_blank = [
+            str(line).strip()
+            for line in lyrics
+            if str(line).strip() and str(line).strip() != "None"
+        ]
+        if not non_blank:
+            self.notify("No canonical lyrics found", severity="warning", timeout=3)
+            return
+
+        self.state.insert_lines_after(self.state.selected_index, non_blank)
+        self.state.select_line(self.state.selected_index + 1)
+        self._refresh_table()
+        self._update_displays()
+        self._do_autosave()
+        self.notify(f"Inserted {len(non_blank)} canonical lyrics lines", timeout=3)
 
     def action_copy_line(self) -> None:
         line = self.state.selected_line

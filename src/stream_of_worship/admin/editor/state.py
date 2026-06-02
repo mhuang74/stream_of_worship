@@ -26,6 +26,7 @@ class UndoEntry:
     old_time: float = 0.0
     new_time: float = 0.0
     line: Optional[LRCLine] = None
+    lines: Optional[List[LRCLine]] = None
 
 
 @dataclass
@@ -116,6 +117,18 @@ class EditorState:
         self.timed_lines.insert(index, new_line)
         self.dirty = True
 
+    def insert_lines_after(self, index: int, texts: List[str]) -> None:
+        """Insert multiple lines after the given index with draft timestamps."""
+        new_lines = [
+            LRCLine(time_seconds=0.0, text=text, raw_timestamp="[00:00.00]")
+            for text in texts
+        ]
+        insert_at = index + 1
+        self._push_undo(UndoEntry(action="insert_lines", index=insert_at, lines=new_lines))
+        for i, line in enumerate(new_lines):
+            self.timed_lines.insert(insert_at + i, line)
+        self.dirty = True
+
     def delete_line(self, index: int) -> Optional[LRCLine]:
         """Delete the line at the given index. Returns the deleted line."""
         if 0 <= index < len(self.timed_lines):
@@ -139,6 +152,11 @@ class EditorState:
         elif entry.action == "insert":
             if 0 <= entry.index < len(self.timed_lines):
                 self.timed_lines.pop(entry.index)
+        elif entry.action == "insert_lines":
+            if entry.lines is not None:
+                for _ in range(len(entry.lines)):
+                    if 0 <= entry.index < len(self.timed_lines):
+                        self.timed_lines.pop(entry.index)
         elif entry.action == "delete":
             if entry.line is not None:
                 self.timed_lines.insert(entry.index, entry.line)
@@ -159,6 +177,10 @@ class EditorState:
         elif entry.action == "insert":
             if entry.line is not None:
                 self.timed_lines.insert(entry.index, entry.line)
+        elif entry.action == "insert_lines":
+            if entry.lines is not None:
+                for i, line in enumerate(entry.lines):
+                    self.timed_lines.insert(entry.index + i, line)
         elif entry.action == "delete":
             if 0 <= entry.index < len(self.timed_lines):
                 self.timed_lines.pop(entry.index)

@@ -433,3 +433,118 @@ class TestUndoRedo:
         for i in range(150):
             state.set_text(0, f"v{i}")
         assert len(state._undo_stack) == 100
+
+
+class TestInsertLinesAfter:
+    def test_insert_multiple_lines(self):
+        state = EditorState(
+            timed_lines=_make_lines([(0.0, "A"), (0.0, "B")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            selected_index=0,
+        )
+        state.insert_lines_after(0, ["X", "Y", "Z"])
+        assert len(state.timed_lines) == 5
+        assert state.timed_lines[1].text == "X"
+        assert state.timed_lines[2].text == "Y"
+        assert state.timed_lines[3].text == "Z"
+        assert state.dirty is True
+
+    def test_insert_at_end(self):
+        state = EditorState(
+            timed_lines=_make_lines([(0.0, "A")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            selected_index=0,
+        )
+        state.insert_lines_after(0, ["X"])
+        assert state.timed_lines[1].text == "X"
+
+    def test_insert_empty_list_noop(self):
+        state = EditorState(
+            timed_lines=_make_lines([(0.0, "A")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+        )
+        state.insert_lines_after(0, [])
+        assert len(state.timed_lines) == 1
+
+    def test_strips_and_filters_blank_lines(self):
+        state = EditorState(
+            timed_lines=_make_lines([(0.0, "A")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            selected_index=0,
+        )
+        raw = ["  hello  ", "", "   ", "world"]
+        filtered = [str(line).strip() for line in raw if str(line).strip()]
+        state.insert_lines_after(0, filtered)
+        assert len(state.timed_lines) == 3
+        assert state.timed_lines[1].text == "hello"
+        assert state.timed_lines[2].text == "world"
+
+    def test_defends_against_non_string_json_items(self):
+        state = EditorState(
+            timed_lines=_make_lines([(0.0, "A")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            selected_index=0,
+        )
+        raw = ["hello", None, "world"]
+        filtered = [
+            str(line).strip()
+            for line in raw
+            if str(line).strip() and str(line).strip() != "None"
+        ]
+        state.insert_lines_after(0, filtered)
+        assert len(state.timed_lines) == 3
+        assert state.timed_lines[1].text == "hello"
+        assert state.timed_lines[2].text == "world"
+
+
+class TestUndoRedoInsertLines:
+    def _make_state(self):
+        return EditorState(
+            timed_lines=_make_lines([(0.0, "A"), (0.0, "B")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            selected_index=0,
+        )
+
+    def test_undo_insert_lines_removes_all(self):
+        state = self._make_state()
+        state.insert_lines_after(0, ["X", "Y"])
+        assert len(state.timed_lines) == 4
+        assert state.undo() is True
+        assert len(state.timed_lines) == 2
+        assert state.timed_lines[0].text == "A"
+        assert state.timed_lines[1].text == "B"
+
+    def test_redo_insert_lines_restores_all(self):
+        state = self._make_state()
+        state.insert_lines_after(0, ["X", "Y"])
+        state.undo()
+        assert state.redo() is True
+        assert len(state.timed_lines) == 4
+        assert state.timed_lines[1].text == "X"
+        assert state.timed_lines[2].text == "Y"
+
+    def test_new_mutation_clears_redo_stack_after_insert_lines(self):
+        state = self._make_state()
+        state.insert_lines_after(0, ["X"])
+        state.undo()
+        assert len(state._redo_stack) == 1
+        state.set_text(0, "A-edited")
+        assert len(state._redo_stack) == 0
