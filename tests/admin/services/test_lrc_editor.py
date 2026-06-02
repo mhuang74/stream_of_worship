@@ -311,3 +311,125 @@ class TestEditorState:
         result = state.serialize()
         assert "[00:10.50]Hello" in result
         assert "[00:20.75]World" in result
+
+
+class TestUndoRedo:
+    def _make_state(self, lines=None):
+        if lines is None:
+            lines = _make_lines([(0.0, "A"), (5.0, "B"), (10.0, "C")])
+        return EditorState(
+            timed_lines=lines,
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            canonical_identity=R2ObjectIdentity(exists=False),
+        )
+
+    def test_undo_empty_stack_returns_false(self):
+        state = self._make_state()
+        assert state.undo() is False
+
+    def test_redo_empty_stack_returns_false(self):
+        state = self._make_state()
+        assert state.redo() is False
+
+    def test_undo_set_text(self):
+        state = self._make_state()
+        state.set_text(1, "B-edited")
+        assert state.timed_lines[1].text == "B-edited"
+        assert state.undo() is True
+        assert state.timed_lines[1].text == "B"
+
+    def test_undo_set_timestamp(self):
+        state = self._make_state()
+        state.set_timestamp(1, 99.0)
+        assert state.timed_lines[1].time_seconds == 99.0
+        assert state.undo() is True
+        assert state.timed_lines[1].time_seconds == 5.0
+
+    def test_undo_delete_line(self):
+        state = self._make_state()
+        state.delete_line(1)
+        assert len(state.timed_lines) == 2
+        assert state.undo() is True
+        assert len(state.timed_lines) == 3
+        assert state.timed_lines[1].text == "B"
+        assert state.timed_lines[1].time_seconds == 5.0
+
+    def test_undo_insert_after(self):
+        state = self._make_state()
+        state.insert_after(0, text="X", time_seconds=2.5)
+        assert len(state.timed_lines) == 4
+        assert state.undo() is True
+        assert len(state.timed_lines) == 3
+        assert state.timed_lines[0].text == "A"
+
+    def test_undo_insert_before(self):
+        state = self._make_state()
+        state.insert_before(1, text="X", time_seconds=2.5)
+        assert len(state.timed_lines) == 4
+        assert state.undo() is True
+        assert len(state.timed_lines) == 3
+        assert state.timed_lines[1].text == "B"
+
+    def test_redo_after_undo_set_text(self):
+        state = self._make_state()
+        state.set_text(1, "B-edited")
+        state.undo()
+        assert state.redo() is True
+        assert state.timed_lines[1].text == "B-edited"
+
+    def test_redo_after_undo_delete(self):
+        state = self._make_state()
+        state.delete_line(1)
+        state.undo()
+        assert state.redo() is True
+        assert len(state.timed_lines) == 2
+
+    def test_redo_after_undo_insert(self):
+        state = self._make_state()
+        state.insert_after(0, text="X", time_seconds=2.5)
+        state.undo()
+        assert state.redo() is True
+        assert len(state.timed_lines) == 4
+        assert state.timed_lines[1].text == "X"
+
+    def test_new_mutation_clears_redo_stack(self):
+        state = self._make_state()
+        state.set_text(1, "B-edited")
+        state.undo()
+        assert len(state._redo_stack) == 1
+        state.set_text(2, "C-edited")
+        assert len(state._redo_stack) == 0
+
+    def test_undo_restores_selected_index(self):
+        state = self._make_state()
+        state.set_text(2, "C-edited")
+        state.undo()
+        assert state.selected_index == 2
+
+    def test_undo_delete_restores_selected_index(self):
+        state = self._make_state()
+        state.delete_line(1)
+        state.undo()
+        assert state.selected_index == 1
+
+    def test_multiple_undo_redo(self):
+        state = self._make_state()
+        state.set_text(0, "A1")
+        state.set_text(1, "B1")
+        state.set_text(2, "C1")
+        assert state.undo() is True
+        assert state.timed_lines[2].text == "C"
+        assert state.undo() is True
+        assert state.timed_lines[1].text == "B"
+        assert state.redo() is True
+        assert state.timed_lines[1].text == "B1"
+        assert state.redo() is True
+        assert state.timed_lines[2].text == "C1"
+
+    def test_undo_stack_capped_at_max(self):
+        state = self._make_state()
+        for i in range(150):
+            state.set_text(0, f"v{i}")
+        assert len(state._undo_stack) == 100

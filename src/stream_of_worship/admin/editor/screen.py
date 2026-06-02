@@ -137,6 +137,8 @@ class LRCEditorScreen(Screen[None]):
         Binding("i", "insert_after", "Insert After"),
         Binding("I", "insert_before", "Insert Before"),
         Binding("d", "delete_line", "Delete Line"),
+        Binding("ctrl+z", "undo", "Undo"),
+        Binding("ctrl+y", "redo", "Redo"),
         Binding("s", "save_upload", "Save/Upload"),
         Binding("escape", "quit_editor", "Quit"),
         Binding("q", "quit_editor", "Quit"),
@@ -403,6 +405,20 @@ class LRCEditorScreen(Screen[None]):
         self._refresh_table()
         self._update_displays()
         self._do_autosave()
+
+    def action_undo(self) -> None:
+        if self.state.undo():
+            self._refresh_table()
+            self._update_displays()
+            self._do_autosave()
+            self.notify("Undo", timeout=2)
+
+    def action_redo(self) -> None:
+        if self.state.redo():
+            self._refresh_table()
+            self._update_displays()
+            self._do_autosave()
+            self.notify("Redo", timeout=2)
 
     def action_save_upload(self) -> None:
         revised = self.state.serialize()
