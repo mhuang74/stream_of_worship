@@ -93,6 +93,22 @@ class PlaybackBar(Static):
             self.update(f" {state_icon} [{pos_str}/{dur_str}]")
 
 
+class PreviewBanner(Static):
+    """Prominent banner shown during preview mode with exit instructions."""
+
+    def __init__(self):
+        super().__init__("")
+        self.visible = False
+
+    def show_banner(self) -> None:
+        self.visible = True
+        self.update("[bold white on red] PREVIEW MODE — Press P or ESC to exit preview [/]")
+
+    def hide_banner(self) -> None:
+        self.visible = False
+        self.update("")
+
+
 class StatusIndicator(Static):
     """Recovery/draft/upload status indicator."""
 
@@ -102,7 +118,15 @@ class StatusIndicator(Static):
         self._autosave_ok = False
         self._source = ""
 
-    def update_status(self, dirty: bool, autosave_ok: bool, source: str, padding_offset: float = 0.0, padding_quarters: int = 0, preview_active: bool = False) -> None:
+    def update_status(
+        self,
+        dirty: bool,
+        autosave_ok: bool,
+        source: str,
+        padding_offset: float = 0.0,
+        padding_quarters: int = 0,
+        preview_active: bool = False,
+    ) -> None:
         self._dirty = dirty
         self._autosave_ok = autosave_ok
         self._source = source
@@ -163,19 +187,34 @@ class LRCEditorScreen(Screen[None]):
 
     BINDING_GROUPS: dict[str, list[str]] = {
         "Playback": [
-            "toggle_playback", "seek_backward", "seek_forward",
-            "select_prev", "select_next", "jump_to_line",
+            "toggle_playback",
+            "seek_backward",
+            "seek_forward",
+            "select_prev",
+            "select_next",
+            "jump_to_line",
         ],
         "Lyrics": [
-            "copy_line", "paste_after", "insert_after",
-            "insert_canonical", "delete_line", "edit_text",
+            "copy_line",
+            "paste_after",
+            "insert_after",
+            "insert_canonical",
+            "delete_line",
+            "edit_text",
         ],
         "Timecode": [
-            "stamp_and_advance", "show_earlier", "show_later", "edit_timestamp",
+            "stamp_and_advance",
+            "show_earlier",
+            "show_later",
+            "edit_timestamp",
         ],
         "General": [
-            "preview_single", "preview_continuous", "save_upload",
-            "undo", "redo", "quit_editor",
+            "preview_single",
+            "preview_continuous",
+            "save_upload",
+            "undo",
+            "redo",
+            "quit_editor",
         ],
     }
 
@@ -211,6 +250,7 @@ class LRCEditorScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical():
+            yield PreviewBanner()
             yield CurrentLyricDisplay()
             yield PlaybackBar()
             yield DataTable(id="line-table")
@@ -283,7 +323,9 @@ class LRCEditorScreen(Screen[None]):
 
         status = self.query_one(StatusIndicator)
         status.update_status(
-            self.state.dirty, self._autosave_ok, self.state.source_mode,
+            self.state.dirty,
+            self._autosave_ok,
+            self.state.source_mode,
             padding_offset=self.state.padding_offset_seconds,
             padding_quarters=self.state.padding_quarters,
             preview_active=self._preview_active,
@@ -344,6 +386,10 @@ class LRCEditorScreen(Screen[None]):
         self._preview_target_index = -1
         self._preview_prev_index = -1
         self._preview_end_seconds = 0.0
+        try:
+            self.query_one(PreviewBanner).hide_banner()
+        except NoMatches:
+            pass
         self._update_playback_bar()
         self._update_displays()
 
@@ -381,37 +427,58 @@ class LRCEditorScreen(Screen[None]):
         self._preview_target_index = -1
         self._preview_prev_index = -1
         self._preview_end_seconds = 0.0
+        try:
+            self.query_one(PreviewBanner).hide_banner()
+        except NoMatches:
+            pass
         self._update_displays()
+
+    def _guard_preview(self) -> bool:
+        if self._preview_active:
+            self.notify("Exit preview first (P or ESC)", severity="warning", timeout=2)
+            return True
+        return False
 
     # --- Action handlers ---
 
     def action_toggle_playback(self) -> None:
+        if self._guard_preview():
+            return
         self.playback.toggle_play_pause()
 
     def action_seek_forward(self) -> None:
+        if self._guard_preview():
+            return
         self.playback.skip_forward(5.0)
 
     def action_seek_backward(self) -> None:
+        if self._guard_preview():
+            return
         self.playback.skip_backward(5.0)
 
     def action_select_prev(self) -> None:
+        if self._guard_preview():
+            return
         self.state.select_prev()
         self._refresh_table()
         self._update_displays()
 
     def action_select_next(self) -> None:
+        if self._guard_preview():
+            return
         self.state.select_next()
         self._refresh_table()
         self._update_displays()
 
     def action_jump_to_line(self) -> None:
+        if self._guard_preview():
+            return
         line = self.state.selected_line
         if line:
             self.playback.seek(line.time_seconds)
 
     def action_stamp_and_advance(self) -> None:
-        if self._preview_active:
-            self.notify("Stamping disabled during preview", severity="warning", timeout=2)
+        if self._guard_preview():
             return
         pos = self.playback.position_seconds
         self.state.set_timestamp(self.state.selected_index, pos)
@@ -421,11 +488,14 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_show_earlier(self) -> None:
+        if self._guard_preview():
+            return
         if not self.state.adjust_padding(-1):
             self.notify(
                 f"Padding limit reached: {self.state.padding_quarters:+d}q "
                 f"({self.state.padding_offset_seconds:+.2f}s)",
-                severity="warning", timeout=2,
+                severity="warning",
+                timeout=2,
             )
             return
         self._refresh_table()
@@ -436,11 +506,14 @@ class LRCEditorScreen(Screen[None]):
         self.notify(f"Padding: {offset:+.2f}s ({quarters:+d}q)", timeout=2)
 
     def action_show_later(self) -> None:
+        if self._guard_preview():
+            return
         if not self.state.adjust_padding(1):
             self.notify(
                 f"Padding limit reached: {self.state.padding_quarters:+d}q "
                 f"({self.state.padding_offset_seconds:+.2f}s)",
-                severity="warning", timeout=2,
+                severity="warning",
+                timeout=2,
             )
             return
         self._refresh_table()
@@ -482,6 +555,7 @@ class LRCEditorScreen(Screen[None]):
             self._update_displays()
 
         self.playback.play(start_seconds=start_pos)
+        self.query_one(PreviewBanner).show_banner()
         self._update_displays()
 
     def action_preview_continuous(self) -> None:
@@ -499,9 +573,12 @@ class LRCEditorScreen(Screen[None]):
         self._preview_target_index = self.state.selected_index
         self._preview_active = True
         self.playback.play(start_seconds=start_pos)
+        self.query_one(PreviewBanner).show_banner()
         self._update_displays()
 
     def action_edit_text(self) -> None:
+        if self._guard_preview():
+            return
         self._editing_text = True
         self._editing_timestamp = False
         edit_input = self.query_one("#edit-input", Input)
@@ -511,6 +588,8 @@ class LRCEditorScreen(Screen[None]):
         edit_input.focus()
 
     def action_edit_timestamp(self) -> None:
+        if self._guard_preview():
+            return
         self._editing_text = False
         self._editing_timestamp = True
         edit_input = self.query_one("#edit-input", Input)
@@ -552,6 +631,8 @@ class LRCEditorScreen(Screen[None]):
         return max(0.0, float(value))
 
     def action_insert_after(self) -> None:
+        if self._guard_preview():
+            return
         self.state.insert_after(self.state.selected_index)
         self.state.select_next()
         self._refresh_table()
@@ -559,6 +640,8 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_insert_canonical(self) -> None:
+        if self._guard_preview():
+            return
         recording = self.db_client.get_recording_by_hash(self.hash_prefix)
         if not recording or not recording.song_id:
             self.notify("No song linked", severity="warning", timeout=3)
@@ -587,12 +670,16 @@ class LRCEditorScreen(Screen[None]):
         self.notify(f"Inserted {len(non_blank)} canonical lyrics lines", timeout=3)
 
     def action_copy_line(self) -> None:
+        if self._guard_preview():
+            return
         line = self.state.selected_line
         if line:
             self._clipboard = (line.text, line.time_seconds)
             self.notify(f"Copied line {self.state.selected_index + 1}", timeout=2)
 
     def action_paste_after(self) -> None:
+        if self._guard_preview():
+            return
         if self._clipboard is None:
             self.notify("Nothing to paste", timeout=2)
             return
@@ -604,6 +691,8 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_delete_line(self) -> None:
+        if self._guard_preview():
+            return
         if self.state.line_count <= 1:
             return
 
@@ -613,6 +702,8 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_undo(self) -> None:
+        if self._guard_preview():
+            return
         if self.state.undo():
             self._refresh_table()
             self._update_displays()
@@ -620,6 +711,8 @@ class LRCEditorScreen(Screen[None]):
             self.notify("Undo", timeout=2)
 
     def action_redo(self) -> None:
+        if self._guard_preview():
+            return
         if self.state.redo():
             self._refresh_table()
             self._update_displays()
@@ -627,6 +720,8 @@ class LRCEditorScreen(Screen[None]):
             self.notify("Redo", timeout=2)
 
     def action_save_upload(self) -> None:
+        if self._guard_preview():
+            return
         revised = self.state.serialize()
         result = validate_lrc(
             timed_lines=self.state.timed_lines,
@@ -637,13 +732,19 @@ class LRCEditorScreen(Screen[None]):
         )
 
         etag_changed, etag_reason = check_transcribed_changed(
-            self.r2_client, self.hash_prefix, self.state.transcribed_identity,
+            self.r2_client,
+            self.hash_prefix,
+            self.state.transcribed_identity,
         )
 
         self._show_save_upload_prompt(result, revised, etag_changed, etag_reason)
 
     def _show_save_upload_prompt(
-        self, validation: ValidationResult, revised: str, etag_changed: bool, etag_reason: str,
+        self,
+        validation: ValidationResult,
+        revised: str,
+        etag_changed: bool,
+        etag_reason: str,
     ) -> None:
         from textual.screen import ModalScreen
 
@@ -656,7 +757,9 @@ class LRCEditorScreen(Screen[None]):
                 Binding("escape", "cancel", "Cancel"),
             ]
 
-            def __init__(self, validation_result, revised_content, parent_screen, etag_conflict, etag_msg):
+            def __init__(
+                self, validation_result, revised_content, parent_screen, etag_conflict, etag_msg
+            ):
                 super().__init__()
                 self.validation = validation_result
                 self.revised = revised_content
@@ -669,9 +772,7 @@ class LRCEditorScreen(Screen[None]):
                     yield Label("Save / Upload", classes="dialog-title")
 
                     if self.etag_conflict:
-                        yield Label(
-                            f"[bold red]ETag conflict: {self.etag_msg}[/bold red]"
-                        )
+                        yield Label(f"[bold red]ETag conflict: {self.etag_msg}[/bold red]")
                         yield Label(
                             "[d]Press [bold]d[/bold] for local draft | "
                             "[bold]f[/bold] to force upload (overwrite) | "
@@ -747,7 +848,11 @@ class LRCEditorScreen(Screen[None]):
                     clear_autosave(self.cache_dir, self.hash_prefix)
                     self.state.dirty = False
 
-                    prefix = " [green]Force upload successful![/green]\n" if force else " [green]Upload successful![/green]\n"
+                    prefix = (
+                        " [green]Force upload successful![/green]\n"
+                        if force
+                        else " [green]Upload successful![/green]\n"
+                    )
                     msg = prefix + f" R2 URL: {upload_result.r2_url}\n"
                     if upload_result.local_backup_path:
                         msg += f" Local backup: {upload_result.local_backup_path}\n"
@@ -787,35 +892,43 @@ class LRCEditorScreen(Screen[None]):
             self.query_one("#line-table", DataTable).focus()
             return
 
-        self._preview_active = False
+        if self._preview_active:
+            self._stop_preview()
+            return
+
+        from textual.screen import ModalScreen
+
+        class QuitConfirmDialog(ModalScreen[bool]):
+            BINDINGS = [
+                Binding("y", "confirm", "Yes"),
+                Binding("n", "cancel", "No"),
+                Binding("escape", "cancel", "No"),
+            ]
+
+            def __init__(self, is_dirty: bool):
+                super().__init__()
+                self.is_dirty = is_dirty
+
+            def compose(self) -> ComposeResult:
+                with Vertical():
+                    if self.is_dirty:
+                        yield Label("[bold yellow]Unsaved changes exist![/bold yellow]")
+                        yield Label("Autosave has been updated. Quit anyway?")
+                    else:
+                        yield Label("Quit the editor?")
+                    yield Label("[d]Press [bold]y[/bold] to quit | [bold]n[/bold] to return[/]")
+
+            def action_confirm(self) -> None:
+                self.dismiss(True)
+
+            def action_cancel(self) -> None:
+                self.dismiss(False)
+
+        def _handle_quit_confirm(should_quit: bool) -> None:
+            if should_quit:
+                self.app.exit()
 
         if self.state.dirty:
             self._do_autosave()
-            from textual.screen import ModalScreen
 
-            class QuitConfirmDialog(ModalScreen[bool]):
-                BINDINGS = [
-                    Binding("y", "confirm", "Yes"),
-                    Binding("n", "cancel", "No"),
-                    Binding("escape", "cancel", "No"),
-                ]
-
-                def compose(self) -> ComposeResult:
-                    with Vertical():
-                        yield Label("[bold yellow]Unsaved changes exist![/bold yellow]")
-                        yield Label("Autosave has been updated. Quit anyway?")
-                        yield Label("[d]Press [bold]y[/bold] to quit | [bold]n[/bold] to return[/]")
-
-                def action_confirm(self) -> None:
-                    self.dismiss(True)
-
-                def action_cancel(self) -> None:
-                    self.dismiss(False)
-
-            def _handle_quit_confirm(should_quit: bool) -> None:
-                if should_quit:
-                    self.app.exit()
-
-            self.app.push_screen(QuitConfirmDialog(), _handle_quit_confirm)
-        else:
-            self.app.exit()
+        self.app.push_screen(QuitConfirmDialog(self.state.dirty), _handle_quit_confirm)
