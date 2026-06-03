@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
+import psycopg
+
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
@@ -149,9 +151,12 @@ def check_active_lrc_job(db_client: DatabaseClient, hash_prefix: str) -> Tuple[b
     Returns:
         Tuple of (active: bool, job_id: str)
     """
-    recording = db_client.get_recording_by_hash(hash_prefix)
-    if recording and recording.lrc_status == "processing" and recording.lrc_job_id:
-        return True, recording.lrc_job_id
+    try:
+        recording = db_client.get_recording_by_hash(hash_prefix)
+        if recording and recording.lrc_status == "processing" and recording.lrc_job_id:
+            return True, recording.lrc_job_id
+    except psycopg.OperationalError:
+        logger.warning("DB unreachable while checking active LRC job; skipping check")
     return False, ""
 
 
