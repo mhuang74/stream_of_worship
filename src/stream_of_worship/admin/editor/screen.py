@@ -26,6 +26,7 @@ from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.autosave import AutosaveState, save_autosave
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.editor.upload import (
+    check_transcribed_changed,
     save_local_draft,
     upload_revised_lrc,
 )
@@ -472,30 +473,48 @@ class LRCEditorScreen(Screen[None]):
             original_preserved_lines=self.state.original_preserved_lines,
         )
 
-        self._show_save_upload_prompt(result, revised)
+        etag_changed, etag_reason = check_transcribed_changed(
+            self.r2_client, self.hash_prefix, self.state.transcribed_identity,
+        )
 
-    def _show_save_upload_prompt(self, validation: ValidationResult, revised: str) -> None:
+        self._show_save_upload_prompt(result, revised, etag_changed, etag_reason)
+
+    def _show_save_upload_prompt(
+        self, validation: ValidationResult, revised: str, etag_changed: bool, etag_reason: str,
+    ) -> None:
         from textual.screen import ModalScreen
 
         class SaveUploadDialog(ModalScreen[str]):
             BINDINGS = [
                 Binding("d", "save_draft", "Local Draft"),
                 Binding("u", "upload", "Upload R2"),
+                Binding("f", "force_upload", "Force Upload"),
                 Binding("c", "cancel", "Cancel"),
                 Binding("escape", "cancel", "Cancel"),
             ]
 
-            def __init__(self, validation_result, revised_content, parent_screen):
+            def __init__(self, validation_result, revised_content, parent_screen, etag_conflict, etag_msg):
                 super().__init__()
                 self.validation = validation_result
                 self.revised = revised_content
                 self.parent_screen = parent_screen
+                self.etag_conflict = etag_conflict
+                self.etag_msg = etag_msg
 
             def compose(self) -> ComposeResult:
                 with Vertical(id="dialog-container"):
                     yield Label("Save / Upload", classes="dialog-title")
 
-                    if self.validation.can_upload:
+                    if self.etag_conflict:
+                        yield Label(
+                            f"[bold red]ETag conflict: {self.etag_msg}[/bold red]"
+                        )
+                        yield Label(
+                            "[d]Press [bold]d[/bold] for local draft | "
+                            "[bold]f[/bold] to force upload (overwrite) | "
+                            "[bold]c[/bold] to cancel[/]"
+                        )
+                    elif self.validation.can_upload:
                         yield Label(
                             "[d]Press [bold]d[/bold] for local draft | [bold]u[/bold] for upload to R2 | [bold]c[/bold] to cancel[/]"
                         )
@@ -523,8 +542,14 @@ class LRCEditorScreen(Screen[None]):
                 self.dismiss("draft")
 
             def action_upload(self) -> None:
-                if self.validation.can_upload:
+                if self.validation.can_upload and not self.etag_conflict:
                     self.dismiss("upload")
+                else:
+                    self.dismiss("draft")
+
+            def action_force_upload(self) -> None:
+                if self.validation.can_upload:
+                    self.dismiss("force_upload")
                 else:
                     self.dismiss("draft")
 
@@ -541,7 +566,8 @@ class LRCEditorScreen(Screen[None]):
                 except Exception as e:
                     self.query_one(StatusIndicator).update(f" [red]Draft save failed: {e}[/red]")
 
-            elif result_str == "upload":
+            elif result_str in ("upload", "force_upload"):
+                force = result_str == "force_upload"
                 upload_result = upload_revised_lrc(
                     r2_client=self.r2_client,
                     db_client=self.db_client,
@@ -549,6 +575,7 @@ class LRCEditorScreen(Screen[None]):
                     state=self.state,
                     original_transcribed_content=self.original_transcribed_content,
                     hash_prefix=self.hash_prefix,
+                    force=force,
                 )
 
                 if upload_result.success:
@@ -557,7 +584,8 @@ class LRCEditorScreen(Screen[None]):
                     clear_autosave(self.cache_dir, self.hash_prefix)
                     self.state.dirty = False
 
-                    msg = f" [green]Upload successful![/green]\n R2 URL: {upload_result.r2_url}\n"
+                    prefix = " [green]Force upload successful![/green]\n" if force else " [green]Upload successful![/green]\n"
+                    msg = prefix + f" R2 URL: {upload_result.r2_url}\n"
                     if upload_result.local_backup_path:
                         msg += f" Local backup: {upload_result.local_backup_path}\n"
                     if upload_result.r2_backup_url:
@@ -583,7 +611,7 @@ class LRCEditorScreen(Screen[None]):
                     )
 
         self.app.push_screen(
-            SaveUploadDialog(validation, revised, self),
+            SaveUploadDialog(validation, revised, self, etag_changed, etag_reason),
             _handle_dialog_result,
         )
 

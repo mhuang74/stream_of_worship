@@ -183,6 +183,7 @@ def upload_revised_lrc(
     state: EditorState,
     original_transcribed_content: Optional[str],
     hash_prefix: str,
+    force: bool = False,
 ) -> UploadResult:
     """Upload the revised LRC to R2 and update the database.
 
@@ -196,15 +197,19 @@ def upload_revised_lrc(
         state: Current editor state
         original_transcribed_content: Force-refreshed transcribed LRC content
         hash_prefix: 12-character hash prefix
+        force: Skip stale-session (ETag) check when True
 
     Returns:
         UploadResult with outcome details
     """
-    changed, reason = check_transcribed_changed(
-        r2_client, hash_prefix, state.transcribed_identity,
-    )
-    if changed:
-        return UploadResult(success=False, error=f"Upload blocked: {reason}")
+    if not force:
+        changed, reason = check_transcribed_changed(
+            r2_client, hash_prefix, state.transcribed_identity,
+        )
+        if changed:
+            return UploadResult(success=False, error=f"Upload blocked: {reason}")
+    else:
+        logger.warning("ETag stale-session check skipped (force=True)")
 
     active, job_id = check_active_lrc_job(db_client, hash_prefix)
     if active:
