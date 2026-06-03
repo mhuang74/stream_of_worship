@@ -15,15 +15,16 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import (
     DataTable,
-    Footer,
     Header,
     Input,
     Label,
     Static,
 )
+from textual.css.query import NoMatches
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.autosave import AutosaveState, save_autosave
+from stream_of_worship.admin.editor.footer import GroupedFooter
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.editor.upload import (
     check_transcribed_changed,
@@ -131,31 +132,52 @@ class LRCEditorScreen(Screen[None]):
     """
 
     BINDINGS = [
+        # Playback/Nav
         Binding("space", "toggle_playback", "Play/Pause"),
         Binding("left", "seek_backward", "Seek -5s"),
         Binding("right", "seek_forward", "Seek +5s"),
-        Binding("shift+left", "show_earlier", "Pad Earlier"),
-        Binding("shift+right", "show_later", "Pad Later"),
         Binding("up", "select_prev", "Prev Line"),
         Binding("down", "select_next", "Next Line"),
         Binding("j", "jump_to_line", "Jump"),
-        Binding("enter", "stamp_line", "Stamp Time"),
-        Binding("a", "stamp_and_advance", "Stamp+Advance"),
-        Binding("e", "edit_text", "Edit Text"),
-        Binding("t", "edit_timestamp", "Edit Time"),
-        Binding("i", "insert_after", "Insert After"),
-        Binding("I", "insert_canonical", "Insert Canonical"),
+        # Lyrics Edit
         Binding("ctrl+c", "copy_line", "Copy"),
         Binding("ctrl+v", "paste_after", "Paste"),
-        Binding("d", "delete_line", "Delete Line"),
-        Binding("ctrl+z", "undo", "Undo"),
-        Binding("ctrl+y", "redo", "Redo"),
-        Binding("s", "save_upload", "Save/Upload"),
+        Binding("i", "insert_after", "Insert Blank"),
+        Binding("I", "insert_canonical", "Insert Canonical"),
+        Binding("d", "delete_line", "Delete"),
+        Binding("e", "edit_text", "Edit Text"),
+        # Timecode
+        Binding("enter", "stamp_and_advance", "Stamp+Advance"),
+        Binding("shift+left", "show_earlier", "Earlier"),
+        Binding("shift+right", "show_later", "Later"),
+        Binding("t", "edit_timestamp", "Edit Time"),
+        # General
         Binding("p", "preview_single", "Preview Line"),
         Binding("P", "preview_continuous", "Preview All"),
+        Binding("s", "save_upload", "Save/Upload"),
+        Binding("ctrl+z", "undo", "Undo"),
+        Binding("ctrl+y", "redo", "Redo"),
         Binding("escape", "quit_editor", "Quit"),
         Binding("q", "quit_editor", "Quit"),
     ]
+
+    BINDING_GROUPS: dict[str, list[str]] = {
+        "Playback": [
+            "toggle_playback", "seek_backward", "seek_forward",
+            "select_prev", "select_next", "jump_to_line",
+        ],
+        "Lyrics": [
+            "copy_line", "paste_after", "insert_after",
+            "insert_canonical", "delete_line", "edit_text",
+        ],
+        "Timecode": [
+            "stamp_and_advance", "show_earlier", "show_later", "edit_timestamp",
+        ],
+        "General": [
+            "preview_single", "preview_continuous", "save_upload",
+            "undo", "redo", "quit_editor",
+        ],
+    }
 
     def __init__(
         self,
@@ -183,6 +205,8 @@ class LRCEditorScreen(Screen[None]):
         self._preview_active: bool = False
         self._preview_mode: str = "single"
         self._preview_target_index: int = -1
+        self._preview_prev_index: int = -1
+        self._preview_end_seconds: float = 0.0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -194,7 +218,7 @@ class LRCEditorScreen(Screen[None]):
                 yield Label("Selected:", id="edit-label")
                 yield Input(id="edit-input", placeholder="Edit text or timestamp here")
             yield StatusIndicator()
-        yield Footer()
+        yield GroupedFooter()
 
     def on_mount(self) -> None:
         self._setup_table()
@@ -266,7 +290,10 @@ class LRCEditorScreen(Screen[None]):
         )
 
     def _update_playback_bar(self) -> None:
-        bar = self.query_one(PlaybackBar)
+        try:
+            bar = self.query_one(PlaybackBar)
+        except NoMatches:
+            return
         pos = self.playback.position_seconds
         dur = self.playback.duration_seconds
         bar.update_playback(pos, dur, self.playback.state)
@@ -287,12 +314,17 @@ class LRCEditorScreen(Screen[None]):
 
         if self._preview_mode == "single":
             target_line = self.state.timed_lines[self._preview_target_index]
-            if current_secs >= target_line.time_seconds + 2.0:
+            if current_secs >= self._preview_end_seconds:
                 self._stop_preview()
                 return
             if current_secs >= target_line.time_seconds:
                 if self.state.selected_index != self._preview_target_index:
                     self.state.select_line(self._preview_target_index)
+                    self._refresh_table()
+                    self._update_displays()
+            elif self._preview_prev_index >= 0:
+                if self.state.selected_index != self._preview_prev_index:
+                    self.state.select_line(self._preview_prev_index)
                     self._refresh_table()
                     self._update_displays()
             return
@@ -310,6 +342,8 @@ class LRCEditorScreen(Screen[None]):
         self._preview_active = False
         self._preview_mode = "single"
         self._preview_target_index = -1
+        self._preview_prev_index = -1
+        self._preview_end_seconds = 0.0
         self._update_playback_bar()
         self._update_displays()
 
@@ -345,6 +379,8 @@ class LRCEditorScreen(Screen[None]):
         self._preview_active = False
         self._preview_mode = "single"
         self._preview_target_index = -1
+        self._preview_prev_index = -1
+        self._preview_end_seconds = 0.0
         self._update_displays()
 
     # --- Action handlers ---
@@ -372,19 +408,6 @@ class LRCEditorScreen(Screen[None]):
         line = self.state.selected_line
         if line:
             self.playback.seek(line.time_seconds)
-
-    def action_stamp_line(self) -> None:
-        if self._preview_active:
-            self.notify("Stamping disabled during preview", severity="warning", timeout=2)
-            return
-        pos = self.playback.position_seconds
-        self.state.set_timestamp(self.state.selected_index, pos)
-        line = self.state.selected_line
-        if line:
-            self.playback.seek(line.time_seconds)
-        self._refresh_table()
-        self._update_displays()
-        self._do_autosave()
 
     def action_stamp_and_advance(self) -> None:
         if self._preview_active:
@@ -432,15 +455,32 @@ class LRCEditorScreen(Screen[None]):
             self._stop_preview()
             return
 
+        target_idx = self.state.selected_index
         line = self.state.selected_line
         if not line or line.time_seconds == 0.0:
             self.notify("No timestamp on current line", severity="warning", timeout=2)
             return
 
+        prev_idx = target_idx - 1 if target_idx > 0 else -1
+
+        end_seconds = self.playback.duration_seconds
+        for i in range(target_idx + 1, self.state.line_count):
+            if self.state.timed_lines[i].time_seconds > 0.0:
+                end_seconds = self.state.timed_lines[i].time_seconds
+                break
+
         start_pos = max(0.0, line.time_seconds - 3.0)
         self._preview_mode = "single"
-        self._preview_target_index = self.state.selected_index
+        self._preview_target_index = target_idx
+        self._preview_prev_index = prev_idx
+        self._preview_end_seconds = end_seconds
         self._preview_active = True
+
+        if prev_idx >= 0:
+            self.state.select_line(prev_idx)
+            self._refresh_table()
+            self._update_displays()
+
         self.playback.play(start_seconds=start_pos)
         self._update_displays()
 
