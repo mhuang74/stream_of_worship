@@ -101,7 +101,7 @@ class StatusIndicator(Static):
         self._autosave_ok = False
         self._source = ""
 
-    def update_status(self, dirty: bool, autosave_ok: bool, source: str) -> None:
+    def update_status(self, dirty: bool, autosave_ok: bool, source: str, padding_offset: float = 0.0, padding_quarters: int = 0, preview_active: bool = False) -> None:
         self._dirty = dirty
         self._autosave_ok = autosave_ok
         self._source = source
@@ -110,7 +110,12 @@ class StatusIndicator(Static):
         autosave_mark = "[green]saved[/green]" if autosave_ok else "[dim]—[/dim]"
         source_label = {"r2": "R2", "catalog": "Catalog"}.get(source, source)
 
-        self.update(f" {dirty_mark} Dirty | Autosave: {autosave_mark} | Source: {source_label}")
+        parts = [f" {dirty_mark} Dirty | Autosave: {autosave_mark} | Source: {source_label}"]
+        if preview_active:
+            parts.append(" | PREVIEW")
+        if padding_quarters != 0:
+            parts.append(f" | Pad: {padding_offset:+.2f}s ({padding_quarters:+d}q)")
+        self.update("".join(parts))
 
 
 class LRCEditorScreen(Screen[None]):
@@ -129,6 +134,8 @@ class LRCEditorScreen(Screen[None]):
         Binding("space", "toggle_playback", "Play/Pause"),
         Binding("left", "seek_backward", "Seek -5s"),
         Binding("right", "seek_forward", "Seek +5s"),
+        Binding("shift+left", "show_earlier", "Pad Earlier"),
+        Binding("shift+right", "show_later", "Pad Later"),
         Binding("up", "select_prev", "Prev Line"),
         Binding("down", "select_next", "Next Line"),
         Binding("j", "jump_to_line", "Jump"),
@@ -144,6 +151,8 @@ class LRCEditorScreen(Screen[None]):
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
         Binding("s", "save_upload", "Save/Upload"),
+        Binding("p", "preview_single", "Preview Line"),
+        Binding("P", "preview_continuous", "Preview All"),
         Binding("escape", "quit_editor", "Quit"),
         Binding("q", "quit_editor", "Quit"),
     ]
@@ -171,6 +180,9 @@ class LRCEditorScreen(Screen[None]):
         self._editing_timestamp = False
         self._position_update_timer: Optional[asyncio.Task] = None
         self._clipboard: Optional[tuple] = None
+        self._preview_active: bool = False
+        self._preview_mode: str = "single"
+        self._preview_target_index: int = -1
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -246,7 +258,12 @@ class LRCEditorScreen(Screen[None]):
             lyric_display.update_lyrics(current.text, next_line)
 
         status = self.query_one(StatusIndicator)
-        status.update_status(self.state.dirty, self._autosave_ok, self.state.source_mode)
+        status.update_status(
+            self.state.dirty, self._autosave_ok, self.state.source_mode,
+            padding_offset=self.state.padding_offset_seconds,
+            padding_quarters=self.state.padding_quarters,
+            preview_active=self._preview_active,
+        )
 
     def _update_playback_bar(self) -> None:
         bar = self.query_one(PlaybackBar)
@@ -263,13 +280,38 @@ class LRCEditorScreen(Screen[None]):
         self._position_update_timer = asyncio.ensure_future(_update_loop())
 
     def _on_playback_position(self, position) -> None:
-        pass
+        if not self._preview_active:
+            return
+
+        current_secs = position.current_seconds
+
+        if self._preview_mode == "single":
+            target_line = self.state.timed_lines[self._preview_target_index]
+            if current_secs >= target_line.time_seconds + 2.0:
+                self._stop_preview()
+                return
+            if current_secs >= target_line.time_seconds:
+                if self.state.selected_index != self._preview_target_index:
+                    self.state.select_line(self._preview_target_index)
+                    self._refresh_table()
+                    self._update_displays()
+            return
+
+        current_line_idx = self._find_line_at_position(current_secs)
+        if current_line_idx != self.state.selected_index:
+            self.state.select_line(current_line_idx)
+            self._refresh_table()
+            self._update_displays()
 
     def _on_playback_state(self, new_state: PlaybackState) -> None:
         self._update_playback_bar()
 
     def _on_playback_finished(self) -> None:
+        self._preview_active = False
+        self._preview_mode = "single"
+        self._preview_target_index = -1
         self._update_playback_bar()
+        self._update_displays()
 
     def _do_autosave(self) -> None:
         try:
@@ -279,6 +321,8 @@ class LRCEditorScreen(Screen[None]):
                 transcribed_identity=self.state.transcribed_identity,
                 dirty=self.state.dirty,
                 source_mode=self.state.source_mode,
+                padding_quarters=self.state.padding_quarters,
+                tempo_bpm=self.state.tempo_bpm,
             )
             save_autosave(self.cache_dir, self.hash_prefix, autosave_state)
             self._autosave_ok = True
@@ -293,6 +337,15 @@ class LRCEditorScreen(Screen[None]):
             if self.state.timed_lines[i].time_seconds <= position:
                 return i
         return 0
+
+    # --- Preview helpers ---
+
+    def _stop_preview(self) -> None:
+        self.playback.pause()
+        self._preview_active = False
+        self._preview_mode = "single"
+        self._preview_target_index = -1
+        self._update_displays()
 
     # --- Action handlers ---
 
@@ -321,6 +374,9 @@ class LRCEditorScreen(Screen[None]):
             self.playback.seek(line.time_seconds)
 
     def action_stamp_line(self) -> None:
+        if self._preview_active:
+            self.notify("Stamping disabled during preview", severity="warning", timeout=2)
+            return
         pos = self.playback.position_seconds
         self.state.set_timestamp(self.state.selected_index, pos)
         line = self.state.selected_line
@@ -331,12 +387,79 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_stamp_and_advance(self) -> None:
+        if self._preview_active:
+            self.notify("Stamping disabled during preview", severity="warning", timeout=2)
+            return
         pos = self.playback.position_seconds
         self.state.set_timestamp(self.state.selected_index, pos)
         self.state.select_next()
         self._refresh_table()
         self._update_displays()
         self._do_autosave()
+
+    def action_show_earlier(self) -> None:
+        if not self.state.adjust_padding(-1):
+            self.notify(
+                f"Padding limit reached: {self.state.padding_quarters:+d}q "
+                f"({self.state.padding_offset_seconds:+.2f}s)",
+                severity="warning", timeout=2,
+            )
+            return
+        self._refresh_table()
+        self._update_displays()
+        self._do_autosave()
+        offset = self.state.padding_offset_seconds
+        quarters = self.state.padding_quarters
+        self.notify(f"Padding: {offset:+.2f}s ({quarters:+d}q)", timeout=2)
+
+    def action_show_later(self) -> None:
+        if not self.state.adjust_padding(1):
+            self.notify(
+                f"Padding limit reached: {self.state.padding_quarters:+d}q "
+                f"({self.state.padding_offset_seconds:+.2f}s)",
+                severity="warning", timeout=2,
+            )
+            return
+        self._refresh_table()
+        self._update_displays()
+        self._do_autosave()
+        offset = self.state.padding_offset_seconds
+        quarters = self.state.padding_quarters
+        self.notify(f"Padding: {offset:+.2f}s ({quarters:+d}q)", timeout=2)
+
+    def action_preview_single(self) -> None:
+        if self._preview_active:
+            self._stop_preview()
+            return
+
+        line = self.state.selected_line
+        if not line or line.time_seconds == 0.0:
+            self.notify("No timestamp on current line", severity="warning", timeout=2)
+            return
+
+        start_pos = max(0.0, line.time_seconds - 3.0)
+        self._preview_mode = "single"
+        self._preview_target_index = self.state.selected_index
+        self._preview_active = True
+        self.playback.play(start_seconds=start_pos)
+        self._update_displays()
+
+    def action_preview_continuous(self) -> None:
+        if self._preview_active:
+            self._stop_preview()
+            return
+
+        line = self.state.selected_line
+        if not line or line.time_seconds == 0.0:
+            self.notify("No timestamp on current line", severity="warning", timeout=2)
+            return
+
+        start_pos = max(0.0, line.time_seconds - 3.0)
+        self._preview_mode = "continuous"
+        self._preview_target_index = self.state.selected_index
+        self._preview_active = True
+        self.playback.play(start_seconds=start_pos)
+        self._update_displays()
 
     def action_edit_text(self) -> None:
         self._editing_text = True
@@ -623,6 +746,8 @@ class LRCEditorScreen(Screen[None]):
             edit_input.value = ""
             self.query_one("#line-table", DataTable).focus()
             return
+
+        self._preview_active = False
 
         if self.state.dirty:
             self._do_autosave()

@@ -3437,7 +3437,14 @@ def edit_lrc(
                     hash_prefix=recording.hash_prefix,
                     audio_path=str(audio_path),
                     audio_duration=recording.duration_seconds,
+                    tempo_bpm=autosave_state.tempo_bpm,
+                    padding_quarters=autosave_state.padding_quarters,
                 )
+                if editor_state.padding_quarters != 0:
+                    offset = editor_state.padding_offset_seconds
+                    for i, line in enumerate(editor_state.timed_lines):
+                        if i < len(editor_state.original_timestamps):
+                            line.time_seconds = max(0.0, editor_state.original_timestamps[i] + offset)
             else:
                 console.print("[red]Failed to load autosave. Starting fresh.[/red]")
                 editor_state = _build_fresh_editor_state(
@@ -3534,6 +3541,7 @@ def _build_fresh_editor_state(
         hash_prefix=recording.hash_prefix,
         audio_path=str(audio_path),
         audio_duration=recording.duration_seconds,
+        tempo_bpm=recording.tempo_bpm,
     )
 
 
