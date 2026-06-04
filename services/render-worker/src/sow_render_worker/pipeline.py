@@ -460,6 +460,8 @@ def execute_render_pipeline(
                 job_id=job_id,
             )
 
+            video_engine.frame_renderer.clear_cache()
+
             chapters_for_video = [
                 _segment_to_chapter_info(seg, i)
                 for i, seg in enumerate(audio_result.segments)

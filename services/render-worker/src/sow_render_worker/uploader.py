@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from sow_render_worker.chapters import ChaptersManifest
 from sow_render_worker.r2_client import R2Client, create_r2_client_from_env
@@ -63,11 +64,23 @@ class R2Uploader:
         metadata: dict[str, str] | None = None,
     ) -> str:
         file_path_obj = Path(file_path)
-        body = file_path_obj.read_bytes()
+        file_size = file_path_obj.stat().st_size
+        ct = content_type or infer_content_type(key)
         logger.info(
-            "Uploading %s (%s, %d bytes)", key, content_type or infer_content_type(key), len(body)
+            "Uploading %s (%s, %d bytes)", key, ct, file_size
         )
-        self._put_object(key, body, content_type, cache_control, metadata)
+        extra_args: dict[str, Any] = {
+            "ContentType": ct,
+            "CacheControl": cache_control or DEFAULT_CACHE_CONTROL,
+        }
+        if metadata:
+            extra_args["Metadata"] = metadata
+        self._client.upload_file(
+            str(file_path_obj),
+            self._bucket_name,
+            key,
+            ExtraArgs=extra_args,
+        )
         logger.info("Upload complete: %s", key)
         return key
 

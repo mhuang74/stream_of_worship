@@ -57,8 +57,9 @@ class AssetFetcher:
                 hash_prefix, expires_in_seconds=3600
             )
 
-            response = self._http.request("GET", signed_url)
+            response = self._http.request("GET", signed_url, preload_content=False)
             if response.status != 200:
+                response.release_conn()
                 raise RuntimeError(
                     f"Failed to download audio: HTTP {response.status}"
                 )
@@ -66,7 +67,12 @@ class AssetFetcher:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
             tmp_path = cache_path.with_suffix(".tmp")
             try:
-                tmp_path.write_bytes(response.data)
+                total_bytes = 0
+                with open(tmp_path, "wb") as f:
+                    for chunk in response.stream(8192):
+                        f.write(chunk)
+                        total_bytes += len(chunk)
+                response.release_conn()
                 os.replace(tmp_path, cache_path)
             except BaseException:
                 try:
@@ -77,7 +83,7 @@ class AssetFetcher:
 
             logger.info(
                 "Audio downloaded: %s (%d bytes, cached at %s)",
-                hash_prefix, len(response.data), cache_path,
+                hash_prefix, total_bytes, cache_path,
             )
             return str(cache_path)
         except Exception as exc:
@@ -96,20 +102,28 @@ class AssetFetcher:
                 hash_prefix, expires_in_seconds=3600
             )
 
-            response = self._http.request("GET", signed_url)
+            response = self._http.request("GET", signed_url, preload_content=False)
             if response.status != 200:
+                response.release_conn()
                 raise RuntimeError(
                     f"Failed to download LRC: HTTP {response.status}"
                 )
 
-            if len(response.data) > MAX_LRC_SIZE_BYTES:
-                raise RuntimeError(
-                    f"LRC response too large: {len(response.data)} bytes exceeds {MAX_LRC_SIZE_BYTES} limit"
-                )
+            chunks: list[bytes] = []
+            total_size = 0
+            for chunk in response.stream(8192):
+                total_size += len(chunk)
+                if total_size > MAX_LRC_SIZE_BYTES:
+                    response.release_conn()
+                    raise RuntimeError(
+                        f"LRC response too large: exceeds {MAX_LRC_SIZE_BYTES} limit"
+                    )
+                chunks.append(chunk)
+            response.release_conn()
 
-            content = response.data.decode("utf-8")
+            content = b"".join(chunks).decode("utf-8")
             self._lrc_cache[hash_prefix] = content
-            logger.info("LRC downloaded: %s (%d bytes)", hash_prefix, len(response.data))
+            logger.info("LRC downloaded: %s (%d bytes)", hash_prefix, total_size)
             return content
         except Exception as exc:
             logger.exception("Failed to download LRC for %s", hash_prefix)

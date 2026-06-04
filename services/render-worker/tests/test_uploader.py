@@ -73,7 +73,6 @@ class TestContentTypeMap:
 class TestUploadFile:
     def test_uploads_file_with_default_options(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"abc123"'}
 
         file_path = tmp_path / "output.mp3"
         file_path.write_bytes(b"fake audio data")
@@ -82,16 +81,16 @@ class TestUploadFile:
 
         assert result == "renders/job1/output.mp3"
 
-        call_kwargs = uploader._client.put_object.call_args[1]
-        assert call_kwargs["Bucket"] == "test-bucket"
-        assert call_kwargs["Key"] == "renders/job1/output.mp3"
-        assert call_kwargs["Body"] == b"fake audio data"
-        assert call_kwargs["ContentType"] == "audio/mpeg"
-        assert call_kwargs["CacheControl"] == "public, max-age=3600"
+        call_args = uploader._client.upload_file.call_args
+        assert call_args[0][0] == str(file_path)
+        assert call_args[0][1] == "test-bucket"
+        assert call_args[0][2] == "renders/job1/output.mp3"
+        extra_args = call_args[1]["ExtraArgs"]
+        assert extra_args["ContentType"] == "audio/mpeg"
+        assert extra_args["CacheControl"] == "public, max-age=3600"
 
     def test_uploads_file_with_custom_options(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"def456"'}
 
         file_path = tmp_path / "output.mp4"
         file_path.write_bytes(b"fake video data")
@@ -104,34 +103,32 @@ class TestUploadFile:
             metadata={"render-job-id": "job1"},
         )
 
-        call_kwargs = uploader._client.put_object.call_args[1]
-        assert call_kwargs["ContentType"] == "video/mp4"
-        assert call_kwargs["CacheControl"] == "no-cache"
-        assert call_kwargs["Metadata"] == {"render-job-id": "job1"}
+        extra_args = uploader._client.upload_file.call_args[1]["ExtraArgs"]
+        assert extra_args["ContentType"] == "video/mp4"
+        assert extra_args["CacheControl"] == "no-cache"
+        assert extra_args["Metadata"] == {"render-job-id": "job1"}
 
     def test_uses_inferred_content_type_when_not_specified(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"ghi789"'}
 
         file_path = tmp_path / "data.json"
         file_path.write_bytes(b'{"key": "value"}')
 
         uploader.upload_file("data.json", str(file_path))
 
-        call_kwargs = uploader._client.put_object.call_args[1]
-        assert call_kwargs["ContentType"] == "application/json"
+        extra_args = uploader._client.upload_file.call_args[1]["ExtraArgs"]
+        assert extra_args["ContentType"] == "application/json"
 
     def test_no_metadata_key_when_metadata_is_none(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"abc"'}
 
         file_path = tmp_path / "output.mp3"
         file_path.write_bytes(b"data")
 
         uploader.upload_file("output.mp3", str(file_path))
 
-        call_kwargs = uploader._client.put_object.call_args[1]
-        assert "Metadata" not in call_kwargs
+        extra_args = uploader._client.upload_file.call_args[1]["ExtraArgs"]
+        assert "Metadata" not in extra_args
 
 
 class TestUploadBuffer:
@@ -177,7 +174,6 @@ class TestUploadBuffer:
 class TestUploadRenderArtifacts:
     def test_uploads_all_artifacts(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"etag"'}
 
         mp3_path = tmp_path / "output.mp3"
         mp3_path.write_bytes(b"fake mp3 audio data here")
@@ -197,30 +193,29 @@ class TestUploadRenderArtifacts:
         assert result.chapters_r2_key == "renders/job-123/chapters.json"
         assert isinstance(result.uploaded_at, datetime)
 
-        calls = uploader._client.put_object.call_args_list
-        assert len(calls) == 3
+        upload_file_calls = uploader._client.upload_file.call_args_list
+        assert len(upload_file_calls) == 2
 
-        mp3_call = calls[0]
-        assert mp3_call[1]["Key"] == "renders/job-123/output.mp3"
-        assert mp3_call[1]["ContentType"] == "audio/mpeg"
-        assert mp3_call[1]["Metadata"]["render-job-id"] == "job-123"
-        assert mp3_call[1]["Metadata"]["content-type"] == "audio"
+        mp3_extra = upload_file_calls[0][1]["ExtraArgs"]
+        assert upload_file_calls[0][0][2] == "renders/job-123/output.mp3"
+        assert mp3_extra["ContentType"] == "audio/mpeg"
+        assert mp3_extra["Metadata"]["render-job-id"] == "job-123"
+        assert mp3_extra["Metadata"]["content-type"] == "audio"
 
-        mp4_call = calls[1]
-        assert mp4_call[1]["Key"] == "renders/job-123/output.mp4"
-        assert mp4_call[1]["ContentType"] == "video/mp4"
-        assert mp4_call[1]["Metadata"]["render-job-id"] == "job-123"
-        assert mp4_call[1]["Metadata"]["content-type"] == "video"
+        mp4_extra = upload_file_calls[1][1]["ExtraArgs"]
+        assert upload_file_calls[1][0][2] == "renders/job-123/output.mp4"
+        assert mp4_extra["ContentType"] == "video/mp4"
+        assert mp4_extra["Metadata"]["render-job-id"] == "job-123"
+        assert mp4_extra["Metadata"]["content-type"] == "video"
 
-        chapters_call = calls[2]
-        assert chapters_call[1]["Key"] == "renders/job-123/chapters.json"
-        assert chapters_call[1]["ContentType"] == "application/json"
-        assert chapters_call[1]["Metadata"]["render-job-id"] == "job-123"
-        assert chapters_call[1]["Metadata"]["content-type"] == "chapters"
+        chapters_call_kwargs = uploader._client.put_object.call_args[1]
+        assert chapters_call_kwargs["Key"] == "renders/job-123/chapters.json"
+        assert chapters_call_kwargs["ContentType"] == "application/json"
+        assert chapters_call_kwargs["Metadata"]["render-job-id"] == "job-123"
+        assert chapters_call_kwargs["Metadata"]["content-type"] == "chapters"
 
     def test_uploads_only_mp3(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"etag"'}
 
         mp3_path = tmp_path / "output.mp3"
         mp3_path.write_bytes(b"mp3 data")
@@ -232,11 +227,10 @@ class TestUploadRenderArtifacts:
         assert result.mp3_r2_key == "renders/job-456/output.mp3"
         assert result.mp4_r2_key is None
         assert result.chapters_r2_key is None
-        assert uploader._client.put_object.call_count == 1
+        assert uploader._client.upload_file.call_count == 1
 
     def test_uploads_only_mp4(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"etag"'}
 
         mp4_path = tmp_path / "output.mp4"
         mp4_path.write_bytes(b"mp4 data")
@@ -276,6 +270,7 @@ class TestUploadRenderArtifacts:
         assert result.mp3_r2_key is None
         assert result.mp4_r2_key is None
         assert result.chapters_r2_key is None
+        uploader._client.upload_file.assert_not_called()
         uploader._client.put_object.assert_not_called()
 
     def test_chapters_json_is_utf8_encoded(self):
@@ -398,7 +393,6 @@ class TestR2UploaderInit:
 class TestKeyConstruction:
     def test_mp3_key_format(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"e"'}
 
         mp3_path = tmp_path / "output.mp3"
         mp3_path.write_bytes(b"data")
@@ -410,7 +404,6 @@ class TestKeyConstruction:
 
     def test_mp4_key_format(self, tmp_path):
         uploader = _make_uploader()
-        uploader._client.put_object.return_value = {"ETag": '"e"'}
 
         mp4_path = tmp_path / "output.mp4"
         mp4_path.write_bytes(b"data")
