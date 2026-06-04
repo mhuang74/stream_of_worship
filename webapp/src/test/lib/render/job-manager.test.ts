@@ -20,21 +20,23 @@ vi.mock("@/db", () => {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockResolvedValue([]),
   };
-  return {
-    db: {
-      query: {
-        songsets: {
-          findFirst: vi.fn(),
-        },
-        renderJobs: {
-          findFirst: vi.fn(),
-        },
+  const dbMock = {
+    query: {
+      songsets: {
+        findFirst: vi.fn(),
       },
-      insert: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      select: vi.fn(() => selectChain),
+      renderJobs: {
+        findFirst: vi.fn(),
+      },
     },
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    select: vi.fn(() => selectChain),
+    transaction: vi.fn(),
+  };
+  return {
+    db: dbMock,
   };
 });
 
@@ -388,7 +390,7 @@ describe("completeRenderJob", () => {
       startedAt: new Date("2024-01-01T00:00:00Z"),
     });
     
-    const mockUpdate = vi.fn().mockReturnValue({
+    const mockTxUpdate = vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
@@ -406,9 +408,12 @@ describe("completeRenderJob", () => {
         }),
       }),
     });
-    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+    vi.mocked(db.transaction).mockImplementation(async (cb: any) => {
+      const tx = { update: mockTxUpdate };
+      return cb(tx);
+    });
 
-    const job = await completeRenderJob(1, "mock-job-id", {
+    const job = await completeRenderJob("mock-job-id", 1, {
       mp3R2Key: "audio.mp3",
       mp4R2Key: "video.mp4",
       chaptersR2Key: "chapters.json",
@@ -430,7 +435,7 @@ describe("completeRenderJob", () => {
       startedAt,
     });
     
-    const mockUpdate = vi.fn().mockImplementation((table: any) => ({
+    const mockTxUpdate = vi.fn().mockImplementation((_table: any) => ({
       set: vi.fn().mockImplementation((updates: any) => {
         if (updates.elapsedSeconds !== undefined) {
           expect(updates.elapsedSeconds).toBeGreaterThan(0);
@@ -444,9 +449,12 @@ describe("completeRenderJob", () => {
         };
       }),
     }));
-    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+    vi.mocked(db.transaction).mockImplementation(async (cb: any) => {
+      const tx = { update: mockTxUpdate };
+      return cb(tx);
+    });
 
-    const job = await completeRenderJob(1, "mock-job-id", {});
+    const job = await completeRenderJob("mock-job-id", 1, {});
     expect(job?.status).toBe("completed");
   });
 
@@ -456,7 +464,7 @@ describe("completeRenderJob", () => {
       startedAt: null,
     });
     
-    const mockUpdate = vi.fn().mockReturnValue({
+    const mockTxUpdate = vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
@@ -465,23 +473,29 @@ describe("completeRenderJob", () => {
         }),
       }),
     });
-    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+    vi.mocked(db.transaction).mockImplementation(async (cb: any) => {
+      const tx = { update: mockTxUpdate };
+      return cb(tx);
+    });
 
-    const job = await completeRenderJob(1, "mock-job-id", {});
+    const job = await completeRenderJob("mock-job-id", 1, {});
     expect(job?.status).toBe("completed");
   });
 
   it("returns null when job not found", async () => {
-    const mockUpdate = vi.fn().mockReturnValue({
+    const mockTxUpdate = vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([]),
         }),
       }),
     });
-    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+    vi.mocked(db.transaction).mockImplementation(async (cb: any) => {
+      const tx = { update: mockTxUpdate };
+      return cb(tx);
+    });
 
-    const job = await completeRenderJob(1, "nonexistent", {});
+    const job = await completeRenderJob("nonexistent", 1, {});
 
     expect(job).toBeNull();
   });
