@@ -38,8 +38,14 @@ from stream_of_worship.admin.services.analysis import (
 )
 from stream_of_worship.admin.services.ffprobe import is_ffprobe_available, probe_duration
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
-from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc
-from stream_of_worship.admin.services.r2 import R2Client
+from stream_of_worship.admin.services.lrc_parser import (
+    build_draft_from_catalog,
+    format_duration,
+    parse_lrc,
+    parse_lrc_full,
+    serialize_lrc,
+)
+from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
     OFFICIAL_LYRICS_SUFFIX,
@@ -3328,6 +3334,236 @@ def upload_lrc(
             border_style="green",
         )
     )
+
+
+@app.command("edit-lrc")
+def edit_lrc(
+    song_id: str = typer.Argument(..., help="Song ID to edit LRC for"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Interactively edit LRC timestamps for a song recording.
+
+    Downloads/caches the song recording and transcribed LRC, then launches
+    a Textual TUI editor for live timestamp alignment, text editing, and
+    upload to R2.
+    """
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    cache_dir = get_cache_dir()
+
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for song: {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]Downloading audio for: {song_title}[/cyan]")
+    audio_cache_dir = cache_dir / recording.hash_prefix / "audio"
+    audio_cache_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = audio_cache_dir / "audio.mp3"
+
+    if not audio_path.exists():
+        try:
+            r2_client.download_audio(recording.hash_prefix, audio_path)
+        except Exception as e:
+            console.print(f"[red]Failed to download audio: {e}[/red]")
+            console.print("[red]Audio is required for timestamp alignment. Cannot open editor.[/red]")
+            raise typer.Exit(1)
+    else:
+        try:
+            r2_client.audio_exists(recording.hash_prefix)
+        except ClientError:
+            console.print(f"[yellow]Warning: Could not verify audio in R2. Using cached file.[/yellow]")
+
+    transcribed_content: Optional[str] = None
+    transcribed_identity = r2_client.get_lrc_identity(recording.hash_prefix)
+    source_mode = "catalog"
+
+    if transcribed_identity.exists:
+        console.print("[cyan]Downloading transcribed LRC from R2...[/cyan]")
+        try:
+            transcribed_content = r2_client.download_lrc_content(recording.hash_prefix)
+            if transcribed_content:
+                source_mode = "r2"
+
+                lrc_cache_path = cache_dir / recording.hash_prefix / "lrc" / "lyrics.lrc"
+                lrc_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                lrc_cache_path.write_text(transcribed_content, encoding="utf-8")
+        except Exception as e:
+            console.print(f"[red]Failed to download transcribed LRC: {e}[/red]")
+            raise typer.Exit(1)
+
+    from stream_of_worship.admin.editor.autosave import autosave_exists, load_autosave, AutosaveState
+    from stream_of_worship.admin.editor.state import EditorState
+    from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
+
+    if autosave_exists(cache_dir, recording.hash_prefix):
+        console.print("[yellow]Autosave recovery file found![/yellow]")
+        console.print("[dim]Resume previous editing session, discard it, or save it aside?[/dim]")
+        choice = _prompt_choice("Choose:", ["Resume", "Discard", "Save aside and start fresh"])
+        if choice == 0:
+            autosave_state = load_autosave(cache_dir, recording.hash_prefix)
+            if autosave_state:
+                editor_state = EditorState(
+                    timed_lines=autosave_state.timed_lines,
+                    preserved_lines=autosave_state.preserved_lines,
+                    original_serialized=transcribed_content or "",
+                    original_preserved_lines=[],
+                    transcribed_identity=autosave_state.transcribed_identity,
+                    dirty=autosave_state.dirty,
+                    source_mode=autosave_state.source_mode,
+                    selected_index=0,
+                    song_title=song_title,
+                    hash_prefix=recording.hash_prefix,
+                    audio_path=str(audio_path),
+                    audio_duration=recording.duration_seconds,
+                    tempo_bpm=autosave_state.tempo_bpm,
+                    padding_quarters=autosave_state.padding_quarters,
+                    original_timestamps=autosave_state.original_timestamps,
+                )
+                if editor_state.padding_quarters != 0:
+                    offset = editor_state.padding_offset_seconds
+                    for i, line in enumerate(editor_state.timed_lines):
+                        if i < len(editor_state.original_timestamps):
+                            line.time_seconds = max(0.0, editor_state.original_timestamps[i] + offset)
+            else:
+                console.print("[red]Failed to load autosave. Starting fresh.[/red]")
+                editor_state = _build_fresh_editor_state(
+                    transcribed_content, song, recording, song_title, audio_path,
+                    transcribed_identity, source_mode,
+                )
+        elif choice == 1:
+            from stream_of_worship.admin.editor.autosave import clear_autosave
+            clear_autosave(cache_dir, recording.hash_prefix)
+            editor_state = _build_fresh_editor_state(
+                transcribed_content, song, recording, song_title, audio_path,
+                transcribed_identity, source_mode,
+            )
+        else:
+            from stream_of_worship.admin.editor.upload import save_local_draft
+            autosave_state = load_autosave(cache_dir, recording.hash_prefix)
+            if autosave_state:
+                draft_content = serialize_lrc(autosave_state.timed_lines, autosave_state.preserved_lines)
+                save_local_draft(cache_dir, recording.hash_prefix, draft_content)
+                console.print("[green]Autosave saved as local draft.[/green]")
+            from stream_of_worship.admin.editor.autosave import clear_autosave
+            clear_autosave(cache_dir, recording.hash_prefix)
+            editor_state = _build_fresh_editor_state(
+                transcribed_content, song, recording, song_title, audio_path,
+                transcribed_identity, source_mode,
+            )
+    else:
+        editor_state = _build_fresh_editor_state(
+            transcribed_content, song, recording, song_title, audio_path,
+            transcribed_identity, source_mode,
+        )
+
+    console.print(f"[cyan]Launching LRC editor for: {song_title}[/cyan]")
+    console.print("[dim]Press Ctrl+C in the editor to quit.[/dim]")
+
+    from stream_of_worship.admin.editor.app import LRCEditorApp
+    from stream_of_worship.admin.services.playback import PlaybackService
+
+    playback = PlaybackService()
+    app = LRCEditorApp(
+        editor_state=editor_state,
+        playback_service=playback,
+        cache_dir=cache_dir,
+        r2_client=r2_client,
+        db_client=db_client,
+        hash_prefix=recording.hash_prefix,
+        original_transcribed_content=transcribed_content,
+    )
+    app.run()
+
+    playback.stop()
+
+
+def _build_fresh_editor_state(
+    transcribed_content: Optional[str],
+    song: Optional[Song],
+    recording: Recording,
+    song_title: str,
+    audio_path: Path,
+    transcribed_identity: R2ObjectIdentity,
+    source_mode: str,
+) -> "EditorState":
+    """Build a fresh EditorState from transcribed content or catalog lyrics."""
+    from stream_of_worship.admin.editor.state import EditorState
+    from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
+
+    if transcribed_content:
+        parsed = parse_lrc_full(transcribed_content)
+        timed_lines = parsed.timed_lines
+        preserved_lines = parsed.preserved_lines
+        original_serialized = serialize_lrc(timed_lines, preserved_lines)
+        original_preserved_lines = list(preserved_lines)
+        dirty = False
+    else:
+        lyrics_lines = song.lyrics_lines if song else None
+        lyrics_raw = song.lyrics_raw if song else None
+        timed_lines = build_draft_from_catalog(lyrics_lines, lyrics_raw)
+        preserved_lines = []
+        original_serialized = ""
+        original_preserved_lines = []
+        dirty = True
+        source_mode = "catalog"
+
+    return EditorState(
+        timed_lines=timed_lines,
+        preserved_lines=preserved_lines,
+        original_serialized=original_serialized,
+        original_preserved_lines=original_preserved_lines,
+        transcribed_identity=transcribed_identity,
+        dirty=dirty,
+        source_mode=source_mode,
+        selected_index=0,
+        song_title=song_title,
+        hash_prefix=recording.hash_prefix,
+        audio_path=str(audio_path),
+        audio_duration=recording.duration_seconds,
+        tempo_bpm=recording.tempo_bpm,
+    )
+
+
+def _prompt_choice(prompt: str, choices: list[str]) -> int:
+    """Prompt the user to choose from a list of options.
+
+    Returns:
+        Index of the chosen option
+    """
+    console.print(f"\n[bold]{prompt}[/bold]")
+    for i, choice in enumerate(choices):
+        console.print(f"  [{i + 1}] {choice}")
+
+    while True:
+        try:
+            selection = int(input("Enter choice: ")) - 1
+            if 0 <= selection < len(choices):
+                return selection
+            console.print(f"[red]Please enter a number between 1 and {len(choices)}[/red]")
+        except (ValueError, EOFError):
+            console.print(f"[red]Please enter a number between 1 and {len(choices)}[/red]")
 
 
 def _read_key_nonblocking() -> Optional[str]:

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tooltip"
 import { AlertCircle, Info } from "lucide-react"
 import Link from "next/link"
+import { FONT_FAMILIES, type FontFamilyValue } from "@/lib/constants"
 
 export interface RenderFormData {
   audioEnabled: boolean
@@ -27,6 +28,7 @@ export interface RenderFormData {
   template: "dark" | "gradient_warm" | "gradient_blue"
   resolution: "720p" | "1080p"
   fontSizePreset: "S" | "M" | "L" | "XL"
+  fontFamily: FontFamilyValue
   includeTitleCard: boolean
   titleCardDurationSeconds: number
   titleCardLines: string[]
@@ -106,6 +108,7 @@ export function RenderForm({
     template: initialData?.template ?? "dark",
     resolution: initialData?.resolution ?? "720p",
     fontSizePreset: initialData?.fontSizePreset ?? "M",
+    fontFamily: initialData?.fontFamily ?? "noto_serif_tc",
     includeTitleCard: initialData?.includeTitleCard ?? false,
     titleCardDurationSeconds: initialData?.titleCardDurationSeconds ?? 10,
     titleCardLines: initialData?.titleCardLines ?? [],
@@ -239,6 +242,36 @@ export function RenderForm({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fontFamily">Font Family</Label>
+                <Select
+                  value={formData.fontFamily}
+                  onValueChange={(value) =>
+                    updateField("fontFamily", value as RenderFormData["fontFamily"])
+                  }
+                >
+                  <SelectTrigger id="fontFamily">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FONT_FAMILIES.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div
+                  className="rounded-md border border-muted-foreground/20 bg-muted/50 p-3 text-center"
+                  style={{
+                    fontFamily: `var(${FONT_FAMILIES.find((f) => f.value === formData.fontFamily)?.cssVariable ?? "--font-noto-serif-tc"})`,
+                  }}
+                >
+                  <p className="text-lg">耶和華是我的牧者</p>
+                  <p className="text-sm text-muted-foreground">我必不至缺乏</p>
+                </div>
               </div>
             </CardContent>
           </Card>

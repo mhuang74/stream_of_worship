@@ -71,6 +71,13 @@
       "when": 1779836400000,
       "tag": "0009_add_active_render_job_unique_index",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780541457932,
+      "tag": "0011_past_spot",
+      "breakpoints": true
     }
   ]
 }

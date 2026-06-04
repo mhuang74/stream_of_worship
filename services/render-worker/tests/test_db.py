@@ -11,6 +11,7 @@ from sow_render_worker.db import (
     TOTAL_PHASES,
     RenderJob,
     RenderProgress,
+    _normalize_font_family,
     complete_render_job,
     fail_render_job,
     get_connection,
@@ -45,6 +46,7 @@ def _make_row(**overrides) -> dict:
         "audio_enabled": True,
         "video_enabled": True,
         "font_size_preset": "M",
+        "font_family": "noto_serif_tc",
         "include_title_card": False,
         "title_card_duration_seconds": None,
         "mp3_r2_key": None,
@@ -773,6 +775,61 @@ class TestSQLInjectionSafety:
         sql = cursor.execute.call_args[0][0]
         assert "%s" in sql
         assert f'"' not in sql.split("SET")[1].split("WHERE")[0] if "SET" in sql else True
+
+
+class TestNormalizeFontFamily:
+    def test_valid_font_families_return_themselves(self):
+        assert _normalize_font_family("lxgw_wenkai_tc") == "lxgw_wenkai_tc"
+        assert _normalize_font_family("chocolate_classical_sans") == "chocolate_classical_sans"
+        assert _normalize_font_family("chiron_goround_tc") == "chiron_goround_tc"
+        assert _normalize_font_family("noto_serif_tc") == "noto_serif_tc"
+
+    def test_missing_font_family_returns_default(self):
+        assert _normalize_font_family(None) == "noto_serif_tc"
+
+    def test_unknown_font_family_returns_default_with_warning(self):
+        with patch("sow_render_worker.db.logger") as mock_logger:
+            assert _normalize_font_family("bad_value") == "noto_serif_tc"
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            log_msg = call_args[0][0] if call_args[0] else ""
+            log_args = call_args[0][1:] if len(call_args[0]) > 1 else ()
+            assert "bad_value" in log_msg or "bad_value" in str(log_args)
+
+    def test_non_string_font_family_returns_default(self):
+        assert _normalize_font_family(123) == "noto_serif_tc"
+
+    def test_empty_string_returns_default(self):
+        assert _normalize_font_family("") == "noto_serif_tc"
+
+    def test_none_does_not_log_warning(self):
+        with patch("sow_render_worker.db.logger") as mock_logger:
+            _normalize_font_family(None)
+            mock_logger.warning.assert_not_called()
+
+
+class TestRowToRenderJobFontNormalization:
+    def test_missing_font_family_in_row(self):
+        from sow_render_worker.db import _row_to_render_job
+
+        row = _make_row()
+        del row["font_family"]
+        job = _row_to_render_job(row)
+        assert job.font_family == "noto_serif_tc"
+
+    def test_valid_font_family_in_row(self):
+        from sow_render_worker.db import _row_to_render_job
+
+        row = _make_row(font_family="lxgw_wenkai_tc")
+        job = _row_to_render_job(row)
+        assert job.font_family == "lxgw_wenkai_tc"
+
+    def test_invalid_font_family_in_row(self):
+        from sow_render_worker.db import _row_to_render_job
+
+        row = _make_row(font_family="bad_value")
+        job = _row_to_render_job(row)
+        assert job.font_family == "noto_serif_tc"
 
 
 class TestLikelyDeadThreshold:

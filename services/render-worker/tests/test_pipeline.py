@@ -54,6 +54,7 @@ def _make_render_job(**overrides) -> RenderJob:
         "audio_enabled": True,
         "video_enabled": True,
         "font_size_preset": "M",
+        "font_family": "noto_serif_tc",
         "include_title_card": False,
         "title_card_duration_seconds": None,
     }
@@ -1088,3 +1089,71 @@ class TestExecuteRenderPipeline:
             )
 
             mock_fail.assert_not_called()
+
+    def test_pipeline_passes_font_family_to_video_engine(self):
+        job = _make_render_job(font_family="lxgw_wenkai_tc")
+        mock_conn = MagicMock()
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve_class.return_value = mock_ve
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_ve_class.assert_called_once()
+            call_kwargs = mock_ve_class.call_args[1]
+            assert call_kwargs["font_family"] == "lxgw_wenkai_tc"
+
+    def test_pipeline_missing_font_family_uses_default(self):
+        job = _make_render_job(font_family="noto_serif_tc")
+        mock_conn = MagicMock()
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve_class.return_value = mock_ve
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_ve_class.assert_called_once()
+            call_kwargs = mock_ve_class.call_args[1]
+            assert call_kwargs["font_family"] == "noto_serif_tc"

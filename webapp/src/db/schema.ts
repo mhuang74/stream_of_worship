@@ -234,6 +234,7 @@ export const renderJobs = pgTable("render_jobs", {
 
   // Font and title card options (plan-specified columns)
   fontSizePreset: text("font_size_preset").notNull().default("M"),
+  fontFamily: text("font_family").notNull().default("noto_serif_tc"),
   includeTitleCard: boolean("include_title_card").notNull().default(false),
   titleCardDurationSeconds: real("title_card_duration_seconds").default(10),
   titleCardLines: text("title_card_lines"),
@@ -314,6 +315,7 @@ export const userSettings = pgTable("user_settings", {
   defaultResolution: text("default_resolution").notNull().default("720p"),
   lyricsLoopWindowSeconds: real("lyrics_loop_window_seconds").notNull().default(3.0),
   defaultFontSizePreset: text("default_font_size_preset").notNull().default("M"),
+  defaultFontFamily: text("default_font_family").notNull().default("noto_serif_tc"),
   defaultKeyShiftSemitones: integer("default_key_shift_semitones").notNull().default(0),
   timingReviewFont: text("timing_review_font").notNull().default("sans"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

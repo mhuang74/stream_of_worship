@@ -112,6 +112,8 @@ admin = [
     "audio-separator>=0.30.0",
     "onnxruntime>=1.17.0",
     "miniaudio>=1.59",
+    "textual>=0.44.0",
+    "numpy>=1.24.0",
 ]
 
 # User App (TUI) dependencies

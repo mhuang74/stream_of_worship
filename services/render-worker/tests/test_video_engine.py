@@ -149,6 +149,18 @@ class TestVideoEngineInit:
         assert engine.frame_renderer is not None
         assert engine.frame_renderer.template == engine.template
 
+    def test_font_family_passed_to_frame_renderer(self):
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher, font_family="lxgw_wenkai_tc")
+        assert engine.font_family == "lxgw_wenkai_tc"
+        assert engine.frame_renderer.font_family == "lxgw_wenkai_tc"
+
+    def test_default_font_family(self):
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher)
+        assert engine.font_family == "noto_serif_tc"
+        assert engine.frame_renderer.font_family == "noto_serif_tc"
+
 
 class TestGetVideoCodecArgs:
     def test_default_bitrate(self):

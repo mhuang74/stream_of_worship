@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
+import { FONT_FAMILIES } from "@/lib/constants";
 
 export interface UserSettingsData {
   offlineAutoCache: boolean;
@@ -26,6 +27,7 @@ export interface UserSettingsData {
   defaultResolution: string;
   lyricsLoopWindowSeconds: number;
   defaultFontSizePreset: string;
+  defaultFontFamily: string;
   defaultKeyShiftSemitones: number;
   timingReviewFont: string;
 }
@@ -203,6 +205,36 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="defaultFontFamily">Default font family</Label>
+              <Select
+                value={settings.defaultFontFamily}
+                onValueChange={(v) => {
+                  if (v !== null) update("defaultFontFamily", v);
+                }}
+              >
+                <SelectTrigger id="defaultFontFamily">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FONT_FAMILIES.map((f) => (
+                    <SelectItem key={f.value} value={f.value}>
+                      {f.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div
+                className="rounded-md border border-muted-foreground/20 bg-muted/50 p-3 text-center"
+                style={{
+                  fontFamily: `var(${FONT_FAMILIES.find((f) => f.value === settings.defaultFontFamily)?.cssVariable ?? "--font-noto-serif-tc"})`,
+                }}
+              >
+                <p className="text-lg">耶和華是我的牧者</p>
+                <p className="text-sm text-muted-foreground">我必不至缺乏</p>
+              </div>
             </div>
           </CardContent>
         </Card>

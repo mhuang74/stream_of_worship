@@ -6,8 +6,10 @@ import pytest
 from PIL import Image, ImageDraw
 
 from sow_render_worker.frame_renderer import (
+    FONT_FAMILY_PATHS,
     FONT_SIZE_PRESETS,
     VIDEO_TEMPLATES,
+    FontFamily,
     FontSizePreset,
     FrameRenderer,
     SegmentInfo,
@@ -808,7 +810,7 @@ class TestComputeCacheKey:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         state = renderer._resolve_visual_state([], [], 0.0)
         key = renderer._compute_cache_key(state)
-        assert key == ("", "", -1, 0, 255, False)
+        assert key == ("noto_serif_tc", "", "", -1, 0, 255, False)
 
 
 class TestFrameCache:
@@ -937,6 +939,74 @@ class TestRenderFrameBytesBackwardCompat:
             img = renderer.render_frame(lyrics, [segment], t)
             frame_bytes = renderer.render_frame_bytes(lyrics, [segment], t)
             assert frame_bytes == img.tobytes()
+
+
+class TestFontFamily:
+    def test_font_family_paths_defined(self):
+        assert "lxgw_wenkai_tc" in FONT_FAMILY_PATHS
+        assert "chocolate_classical_sans" in FONT_FAMILY_PATHS
+        assert "chiron_goround_tc" in FONT_FAMILY_PATHS
+        assert "noto_serif_tc" in FONT_FAMILY_PATHS
+
+    def test_each_family_has_vendored_and_fallback_paths(self):
+        for family, paths in FONT_FAMILY_PATHS.items():
+            assert len(paths) >= 2, f"{family} should have vendored + fallback paths"
+            assert any("vendor" in p for p in paths), f"{family} should have vendored path"
+
+    def test_unknown_family_falls_back_to_noto_serif_tc(self):
+        font = _load_font(48, "unknown_family")
+        assert font is not None
+
+    def test_load_font_with_family(self):
+        font = _load_font(48, "noto_serif_tc")
+        assert font is not None
+
+    def test_load_font_with_each_family(self):
+        for family in FONT_FAMILY_PATHS:
+            font = _load_font(48, family)
+            assert font is not None
+
+    def test_frame_renderer_accepts_font_family(self):
+        renderer = FrameRenderer(
+            template=VIDEO_TEMPLATES["dark"],
+            font_family="lxgw_wenkai_tc",
+        )
+        assert renderer.font_family == "lxgw_wenkai_tc"
+
+    def test_frame_renderer_default_font_family(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer.font_family == "noto_serif_tc"
+
+    def test_frame_renderer_passes_family_to_load_font(self):
+        renderer = FrameRenderer(
+            template=VIDEO_TEMPLATES["dark"],
+            font_family="chiron_goround_tc",
+        )
+        font = renderer._get_font(48)
+        assert font is not None
+
+    def test_render_with_each_font_family(self):
+        lyrics = _make_lyrics([(5.0, "讚美之泉")])
+        segments = [_make_segment(start=0.0, duration=60.0)]
+        for family in FONT_FAMILY_PATHS:
+            renderer = FrameRenderer(
+                template=VIDEO_TEMPLATES["dark"],
+                font_family=family,
+            )
+            result = renderer.render_frame(lyrics, segments, 7.0)
+            assert isinstance(result, Image.Image)
+            assert result.size == (1920, 1080)
+
+    def test_cache_key_includes_font_family(self):
+        renderer_a = FrameRenderer(template=VIDEO_TEMPLATES["dark"], font_family="lxgw_wenkai_tc")
+        renderer_b = FrameRenderer(template=VIDEO_TEMPLATES["dark"], font_family="noto_serif_tc")
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        state_a = renderer_a._resolve_visual_state(lyrics, [segment], 7.0)
+        state_b = renderer_b._resolve_visual_state(lyrics, [segment], 7.0)
+        key_a = renderer_a._compute_cache_key(state_a)
+        key_b = renderer_b._compute_cache_key(state_b)
+        assert key_a != key_b
 
 
 class TestRGBMode:

@@ -377,6 +377,7 @@ def execute_render_pipeline(
                 title_card_duration_seconds=job.title_card_duration_seconds or 5.0,
                 title_card_lines=title_card_lines,
                 songset_name=songset_name,
+                font_family=job.font_family,
             )
 
             video_output_path = str(Path(temp_dir) / "output.mp4")

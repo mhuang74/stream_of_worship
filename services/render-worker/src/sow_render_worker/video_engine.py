@@ -97,6 +97,7 @@ class VideoEngine:
         title_card_duration_seconds: float = 5.0,
         title_card_lines: list[str] | None = None,
         songset_name: str = "",
+        font_family: str = "noto_serif_tc",
         ffmpeg_path: str | None = None,
         ffprobe_path: str | None = None,
     ):
@@ -109,6 +110,7 @@ class VideoEngine:
         self.title_card_duration_seconds = max(5.0, min(title_card_duration_seconds, 30.0))
         self.title_card_lines = title_card_lines
         self.songset_name = songset_name
+        self.font_family = font_family
         self.ffmpeg_path = ffmpeg_path or self._find_ffmpeg()
         self.ffprobe_path = ffprobe_path or "ffprobe"
 
@@ -116,6 +118,7 @@ class VideoEngine:
             template=self.template,
             font_size_preset=self.font_size_preset,
             resolution=self.resolution,
+            font_family=self.font_family,
         )
 
     @staticmethod

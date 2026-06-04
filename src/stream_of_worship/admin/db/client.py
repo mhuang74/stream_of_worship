@@ -47,6 +47,13 @@ class DatabaseClient:
         """Get the current psycopg connection from the provider."""
         return self.connection_provider.get_connection()
 
+    def _execute_with_retry(self, fn):
+        try:
+            return fn(self.connection)
+        except psycopg.OperationalError:
+            self.connection_provider.invalidate()
+            return fn(self.connection)
+
     def close(self) -> None:
         """Close the underlying connection via the provider."""
         self.connection_provider.close()
@@ -517,22 +524,22 @@ class DatabaseClient:
         Returns:
             ``Recording`` or ``None`` if not found.
         """
-        cursor = self.connection.cursor()
-        if include_deleted:
-            cursor.execute(
-                "SELECT * FROM recordings WHERE hash_prefix = %s",
-                (hash_prefix,),
-            )
-        else:
-            cursor.execute(
-                "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
-                (hash_prefix,),
-            )
-        row = cursor.fetchone()
+        def _query(conn):
+            cursor = conn.cursor()
+            if include_deleted:
+                cursor.execute(
+                    "SELECT * FROM recordings WHERE hash_prefix = %s",
+                    (hash_prefix,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
+                    (hash_prefix,),
+                )
+            row = cursor.fetchone()
+            return Recording.from_row(tuple(row)) if row else None
 
-        if row:
-            return Recording.from_row(tuple(row))
-        return None
+        return self._execute_with_retry(_query)
 
     def get_recording_by_song_id(self, song_id: str) -> Optional[Recording]:
         """Get a recording by its associated song ID.
@@ -880,19 +887,22 @@ class DatabaseClient:
             hash_prefix: The hash prefix of the recording.
             r2_lrc_url: R2 URL for the generated LRC file.
         """
-        with self.transaction() as conn:
-            cursor = conn.cursor()
+        def _query(conn):
+            with conn.transaction():
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE recordings SET
+                        r2_lrc_url = %s,
+                        lrc_status = 'completed',
+                        visibility_status = COALESCE(visibility_status, 'published'),
+                        updated_at = NOW()
+                    WHERE hash_prefix = %s
+                    """,
+                    (r2_lrc_url, hash_prefix),
+                )
 
-            sql = """
-                UPDATE recordings SET
-                    r2_lrc_url = %s,
-                    lrc_status = 'completed',
-                    visibility_status = COALESCE(visibility_status, 'published'),
-                    updated_at = NOW()
-                WHERE hash_prefix = %s
-            """
-
-            cursor.execute(sql, (r2_lrc_url, hash_prefix))
+        self._execute_with_retry(_query)
 
     def update_recording_download(
         self,

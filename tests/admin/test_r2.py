@@ -7,7 +7,7 @@ import pytest
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from stream_of_worship.admin.services.r2 import R2Client
+from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 
 
 @pytest.fixture
@@ -414,3 +414,95 @@ class TestDownloadAnalysisJson:
 
         with pytest.raises(ClientError):
             client.download_analysis_json("abc123def456")
+
+
+class TestGetLrcIdentity:
+    """Tests for R2Client.get_lrc_identity (stale-session detection)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_returns_identity_when_exists(self, mock_boto_client, r2_env):
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {
+            "ETag": '"abc123etag"',
+            "LastModified": "2024-01-01T00:00:00",
+        }
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        identity = client.get_lrc_identity("abc123def456")
+
+        assert identity.exists is True
+        assert identity.etag == "abc123etag"
+        assert identity.last_modified is not None
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_returns_not_exists_on_404(self, mock_boto_client, r2_env):
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        identity = client.get_lrc_identity("abc123def456")
+
+        assert identity.exists is False
+        assert identity.etag is None
+
+
+class TestDownloadLrcContent:
+    """Tests for R2Client.download_lrc_content."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_downloads_content(self, mock_boto_client, r2_env):
+        import io
+
+        mock_s3 = MagicMock()
+        lrc_content = "[00:10.00]Hello\n[00:20.00]World\n"
+        mock_response = {"Body": io.BytesIO(lrc_content.encode("utf-8"))}
+        mock_s3.get_object.return_value = mock_response
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.download_lrc_content("abc123def456")
+
+        assert result == lrc_content
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_returns_none_on_404(self, mock_boto_client, r2_env):
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "GetObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.download_lrc_content("abc123def456")
+
+        assert result is None
+
+
+class TestUploadBytes:
+    """Tests for R2Client.upload_bytes (backup upload)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_uploads_bytes_to_key(self, mock_boto_client, r2_env):
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.upload_bytes(
+            "abc123def456/backups/lyrics.20260102.lrc",
+            b"content",
+            content_type="text/plain",
+        )
+
+        assert result == "s3://sow-audio/abc123def456/backups/lyrics.20260102.lrc"
+        mock_s3.put_object.assert_called_once_with(
+            Bucket="sow-audio",
+            Key="abc123def456/backups/lyrics.20260102.lrc",
+            Body=b"content",
+            ContentType="text/plain",
+        )

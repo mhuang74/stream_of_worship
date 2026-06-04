@@ -316,6 +316,75 @@ describe("POST /api/render-jobs", () => {
     expect(data.error).toBe("Invalid input");
   });
 
+  it("accepts valid fontFamily values", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const mockJob = {
+      id: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+      status: "queued",
+      phase: "preparing",
+      phaseIndex: 0,
+      totalPhases: 5,
+      elapsedSeconds: 0,
+      errorMessage: null,
+      estimatedTotalSeconds: null,
+      totalDurationSeconds: null,
+      startedAt: null,
+      template: "dark",
+      resolution: "720p",
+      audioEnabled: true,
+      videoEnabled: true,
+      fontSizePreset: "M",
+      fontFamily: "lxgw_wenkai_tc",
+      includeTitleCard: false,
+      titleCardDurationSeconds: null,
+      mp3R2Key: null,
+      mp4R2Key: null,
+      chaptersR2Key: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      completedAt: null,
+    };
+
+    vi.mocked(createRenderJob).mockResolvedValue(mockJob);
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        songsetId: "songset-1",
+        fontFamily: "lxgw_wenkai_tc",
+      }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    const data = await response.json();
+    expect(data.fontFamily).toBe("lxgw_wenkai_tc");
+  });
+
+  it("rejects invalid fontFamily values", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        songsetId: "songset-1",
+        fontFamily: "invalid_font",
+      }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("Invalid input");
+  });
+
   it("returns 400 when titleCardDurationSeconds is too low", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

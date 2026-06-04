@@ -71,6 +71,7 @@ const mockRenderJob = {
   audioEnabled: true,
   videoEnabled: true,
   fontSizePreset: "M",
+  fontFamily: "noto_serif_tc",
   includeTitleCard: false,
   titleCardDurationSeconds: null,
   mp3R2Key: null,
@@ -671,5 +672,40 @@ describe("startRenderJob", () => {
     const job = await startRenderJob(1, "nonexistent");
 
     expect(job).toBeNull();
+  });
+});
+
+describe("fontFamily normalization in mapRowToRenderJob", () => {
+  it("normalizes unknown fontFamily to noto_serif_tc", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      fontFamily: "bad_value",
+    } as any);
+
+    const job = await getRenderJob("mock-job-id", 1);
+
+    expect(job?.fontFamily).toBe("noto_serif_tc");
+  });
+
+  it("normalizes null fontFamily to noto_serif_tc", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      fontFamily: null,
+    } as any);
+
+    const job = await getRenderJob("mock-job-id", 1);
+
+    expect(job?.fontFamily).toBe("noto_serif_tc");
+  });
+
+  it("preserves valid fontFamily values", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
+      ...mockRenderJob,
+      fontFamily: "lxgw_wenkai_tc",
+    } as any);
+
+    const job = await getRenderJob("mock-job-id", 1);
+
+    expect(job?.fontFamily).toBe("lxgw_wenkai_tc");
   });
 });
