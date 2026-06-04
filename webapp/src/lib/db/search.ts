@@ -52,7 +52,7 @@ export async function fullTextSearchSongs(
     .from(songs)
     .where(whereClause);
 
-  const total = countResult[0]?.count ?? 0;
+  const total = Number(countResult[0]?.count ?? 0);
 
   const result = await db.query.songs.findMany({
     where: whereClause,
