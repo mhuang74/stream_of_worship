@@ -339,34 +339,50 @@ def complete_render_job(
         delta = now - aware_started
         final_elapsed_seconds = delta.total_seconds()
 
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            "UPDATE render_jobs SET "
-            "  status = %s, phase = %s, phase_index = %s, percent_complete = %s, "
-            "  elapsed_seconds = %s, "
-            "  mp3_r2_key = %s, mp4_r2_key = %s, chapters_r2_key = %s, "
-            "  completed_at = %s, updated_at = %s "
-            "WHERE id = %s AND user_id = %s AND status = %s "
-            "RETURNING *",
-            (
-                "completed",
-                "completed",
-                TOTAL_PHASES,
-                100,
-                final_elapsed_seconds,
-                mp3_r2_key,
-                mp4_r2_key,
-                chapters_r2_key,
-                now,
-                now,
-                job_id,
-                user_id,
-                "running",
-            ),
-        )
-        row = cur.fetchone()
-    if not row:
-        return None
+    original_autocommit = conn.autocommit
+    try:
+        conn.autocommit = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "UPDATE render_jobs SET "
+                "  status = %s, phase = %s, phase_index = %s, percent_complete = %s, "
+                "  elapsed_seconds = %s, "
+                "  mp3_r2_key = %s, mp4_r2_key = %s, chapters_r2_key = %s, "
+                "  completed_at = %s, updated_at = %s "
+                "WHERE id = %s AND user_id = %s AND status = %s "
+                "RETURNING *",
+                (
+                    "completed",
+                    "completed",
+                    TOTAL_PHASES,
+                    100,
+                    final_elapsed_seconds,
+                    mp3_r2_key,
+                    mp4_r2_key,
+                    chapters_r2_key,
+                    now,
+                    now,
+                    job_id,
+                    user_id,
+                    "running",
+                ),
+            )
+            row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return None
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE songsets SET last_completed_render_job_id = %s, updated_at = %s "
+                "WHERE id = %s",
+                (job_id, now, row["songset_id"]),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.autocommit = original_autocommit
     return _row_to_render_job(row)
 
 

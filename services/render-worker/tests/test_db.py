@@ -364,7 +364,7 @@ class TestCompleteRenderJob:
         )):
             result = complete_render_job(conn, "job_abc123", 42)
         assert result is not None
-        sql = cursor.execute.call_args[0][0]
+        sql = cursor.execute.call_args_list[0][0][0]
         assert "elapsed_seconds = %s" in sql
 
     def test_no_started_at_sets_elapsed_null(self):
@@ -377,7 +377,7 @@ class TestCompleteRenderJob:
         )):
             result = complete_render_job(conn, "job_abc123", 42)
         assert result is not None
-        params = cursor.execute.call_args[0][1]
+        params = cursor.execute.call_args_list[0][0][1]
         assert params[4] is None
 
     def test_job_not_found(self):
@@ -405,7 +405,7 @@ class TestCompleteRenderJob:
                 mp4_r2_key="renders/job/output.mp4",
                 chapters_r2_key="renders/job/chapters.json",
             )
-        params = cursor.execute.call_args[0][1]
+        params = cursor.execute.call_args_list[0][0][1]
         assert "renders/job/output.mp3" in params
         assert "renders/job/output.mp4" in params
         assert "renders/job/chapters.json" in params
@@ -419,9 +419,35 @@ class TestCompleteRenderJob:
             started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         )):
             complete_render_job(conn, "job_abc123", 42)
-        sql = cursor.execute.call_args[0][0]
+        sql = cursor.execute.call_args_list[0][0][0]
         assert "%s" in sql
         assert "WHERE id = %s AND user_id = %s AND status = %s" in sql
+
+    def test_updates_songsets_last_completed_render_job_id(self):
+        row = _make_row(status="completed", songset_id="ss_001")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+
+        with patch("sow_render_worker.db.get_render_job", return_value=RenderJob(
+            id="job_abc123", songset_id="ss_001", user_id=42, status="running",
+            started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )):
+            complete_render_job(conn, "job_abc123", 42)
+        sql = cursor.execute.call_args_list[1][0][0]
+        assert "UPDATE songsets SET last_completed_render_job_id" in sql
+        params = cursor.execute.call_args_list[1][0][1]
+        assert params[0] == "job_abc123"
+        assert params[2] == "ss_001"
+
+    def test_uses_transaction(self):
+        row = _make_row(status="completed")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+
+        with patch("sow_render_worker.db.get_render_job", return_value=RenderJob(
+            id="job_abc123", songset_id="ss_001", user_id=42, status="running",
+            started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )):
+            complete_render_job(conn, "job_abc123", 42)
+        conn.commit.assert_called_once()
 
 
 class TestFailRenderJob:

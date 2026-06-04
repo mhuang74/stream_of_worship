@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download"
+import { formatDuration } from "@/lib/format"
 
 interface RenderCompleteProps {
   jobId: string
@@ -25,15 +26,6 @@ interface RenderCompleteProps {
   elapsedSeconds?: number
   onDone: () => void
   onShare: () => void
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`
-  }
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.round(seconds % 60)
-  return `${minutes}m ${remainingSeconds}s`
 }
 
 export function RenderComplete({

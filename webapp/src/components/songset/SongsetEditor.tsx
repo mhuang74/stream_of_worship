@@ -55,6 +55,7 @@ export interface SongsetEditorProps {
     isArtifactsStale?: boolean;
     latestRenderJobId: string | null;
     lastFailedRenderJobId: string | null;
+    lastCompletedRenderJobId: string | null;
     updatedAt: string;
   };
   items: SongListItem[];
@@ -289,14 +290,14 @@ export function SongsetEditor({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={onDownloadAudio}
-                disabled={!songset.latestRenderJobId}
+                disabled={!songset.lastCompletedRenderJobId}
               >
                 <FileAudio className="size-4 mr-2" />
                 Download Audio
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={onDownloadVideo}
-                disabled={!songset.latestRenderJobId}
+                disabled={!songset.lastCompletedRenderJobId}
               >
                 <FileVideo className="size-4 mr-2" />
                 Download Video

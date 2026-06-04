@@ -21,6 +21,7 @@ interface ApiSongset {
   itemCount: number;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
   isArtifactsStale?: boolean;
 }
 
@@ -61,6 +62,7 @@ interface ApiResponse {
   itemCount: number;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
   isArtifactsStale?: boolean;
   items: ApiSongsetItem[];
 }
@@ -112,6 +114,7 @@ export default function SongsetEditorPage() {
           itemCount: data.itemCount,
           latestRenderJobId: data.latestRenderJobId,
           lastFailedRenderJobId: data.lastFailedRenderJobId,
+          lastCompletedRenderJobId: data.lastCompletedRenderJobId,
           isArtifactsStale: data.isArtifactsStale,
         });
 
@@ -338,11 +341,11 @@ export default function SongsetEditorPage() {
 
   // Handle download audio
   const handleDownloadAudio = useCallback(async () => {
-    if (!songset?.latestRenderJobId) return;
+    if (!songset?.lastCompletedRenderJobId) return;
     const toastId = toast.loading("Preparing download...");
     try {
       await fetchSignedUrlAndDownload(
-        songset.latestRenderJobId,
+        songset.lastCompletedRenderJobId,
         "audio",
         sanitizeFilename(songset.name),
         "mp3"
@@ -355,11 +358,11 @@ export default function SongsetEditorPage() {
 
   // Handle download video
   const handleDownloadVideo = useCallback(async () => {
-    if (!songset?.latestRenderJobId) return;
+    if (!songset?.lastCompletedRenderJobId) return;
     const toastId = toast.loading("Preparing download...");
     try {
       await fetchSignedUrlAndDownload(
-        songset.latestRenderJobId,
+        songset.lastCompletedRenderJobId,
         "video",
         sanitizeFilename(songset.name),
         "mp4"

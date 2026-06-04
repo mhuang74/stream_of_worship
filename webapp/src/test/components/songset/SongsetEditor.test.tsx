@@ -39,6 +39,7 @@ describe("SongsetEditor", () => {
     isArtifactsStale: false,
     latestRenderJobId: "job-1",
     lastFailedRenderJobId: null,
+    lastCompletedRenderJobId: "job-1",
     updatedAt: "2024-01-15T10:30:00Z",
   };
 

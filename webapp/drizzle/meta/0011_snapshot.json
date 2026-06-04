@@ -1,6 +1,6 @@
 {
-  "id": "beb02469-1517-4569-b430-6901a0bcb522",
-  "prevId": "355a8db6-465b-4d00-9f4e-92c235cef65d",
+  "id": "c2822a90-81c9-4211-b9e2-b6338103a4ac",
+  "prevId": "beb02469-1517-4569-b430-6901a0bcb522",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1306,6 +1306,12 @@
         },
         "last_failed_render_job_id": {
           "name": "last_failed_render_job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_completed_render_job_id": {
+          "name": "last_completed_render_job_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false

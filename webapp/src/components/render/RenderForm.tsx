@@ -18,6 +18,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AlertCircle, Info } from "lucide-react"
 import Link from "next/link"
 import { FONT_FAMILIES, type FontFamilyValue } from "@/lib/constants"
@@ -44,6 +54,15 @@ interface RenderFormProps {
   onSubmit: (data: RenderFormData) => void
   onCancel: () => void
   isSubmitting?: boolean
+  previousRenderJob?: {
+    id: string
+    createdAt: string
+    template: string
+    fontFamily: string
+    fontSizePreset: string
+    includeTitleCard: boolean
+    titleCardDurationSeconds?: number
+  }
 }
 
 const TEMPLATES = [
@@ -101,6 +120,7 @@ export function RenderForm({
   onSubmit,
   onCancel,
   isSubmitting = false,
+  previousRenderJob,
 }: RenderFormProps) {
   const [formData, setFormData] = useState<RenderFormData>({
     audioEnabled: initialData?.audioEnabled ?? true,
@@ -115,10 +135,21 @@ export function RenderForm({
     offlineEnabled: initialData?.offlineEnabled ?? false,
   })
 
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+
   const iosSupportsOffline = isIOS174OrLater()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (previousRenderJob) {
+      setShowConfirmDialog(true)
+    } else {
+      onSubmit(formData)
+    }
+  }
+
+  const handleConfirmRender = () => {
+    setShowConfirmDialog(false)
     onSubmit(formData)
   }
 
@@ -132,6 +163,19 @@ export function RenderForm({
   return (
     <TooltipProvider>
       <form onSubmit={handleSubmit} className="space-y-6">
+        {previousRenderJob && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2.5">
+            <Info className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <span className="text-sm text-blue-900 dark:text-blue-100">
+              Previously rendered at{" "}
+              {new Intl.DateTimeFormat(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }).format(new Date(previousRenderJob.createdAt))}
+            </span>
+          </div>
+        )}
+
         {/* Output Options */}
         <Card>
           <CardHeader>
@@ -432,6 +476,42 @@ export function RenderForm({
           </button>
         </div>
       </form>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start New Render?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A previous render exists for this songset. Starting a new render will not delete the previous output.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {previousRenderJob && (
+            <div className="space-y-1.5 text-sm">
+              <p className="font-medium">Previous render parameters:</p>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
+                <span className="font-medium text-foreground">Font:</span>
+                <span>{FONT_FAMILIES.find((f) => f.value === previousRenderJob.fontFamily)?.label ?? previousRenderJob.fontFamily}</span>
+                <span className="font-medium text-foreground">Font Size:</span>
+                <span>{FONT_SIZES.find((f) => f.value === previousRenderJob.fontSizePreset)?.label ?? previousRenderJob.fontSizePreset}</span>
+                <span className="font-medium text-foreground">Background:</span>
+                <span>{TEMPLATES.find((t) => t.value === previousRenderJob.template)?.label ?? previousRenderJob.template}</span>
+                <span className="font-medium text-foreground">Title Card:</span>
+                <span>
+                  {previousRenderJob.includeTitleCard
+                    ? `On (${previousRenderJob.titleCardDurationSeconds ?? 10}s)`
+                    : "Off"}
+                </span>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRender}>
+              Start Render
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   )
 }

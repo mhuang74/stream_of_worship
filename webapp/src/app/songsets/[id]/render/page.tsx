@@ -17,11 +17,8 @@ const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((
 const RenderSubmitted = dynamic(() => import("@/components/render/RenderSubmitted").then((m) => ({ default: m.RenderSubmitted })), {
   loading: () => <Skeleton className="h-32 w-full" />,
 })
-const RenderComplete = dynamic(() => import("@/components/render/RenderComplete").then((m) => ({ default: m.RenderComplete })), {
-  loading: () => <Skeleton className="h-32 w-full" />,
-})
 
-type RenderScreenState = "form" | "submitted" | "complete"
+type RenderScreenState = "form" | "submitted"
 
 type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed"
 
@@ -32,15 +29,22 @@ interface SongsetData {
   markedLineCount: number
   renderState: RenderState
   songTitles: string[]
+  lastCompletedRenderJobId: string | null
 }
 
 interface RenderJobData {
   id: string
   status: string
+  createdAt: string
+  elapsedSeconds?: number
+  template: string
+  fontFamily: string
+  fontSizePreset: string
+  includeTitleCard: boolean
+  titleCardDurationSeconds?: number
   mp3R2Key: string | null
   mp4R2Key: string | null
   chaptersR2Key: string | null
-  elapsedSeconds?: number
 }
 
 export default function RenderPage() {
@@ -52,6 +56,7 @@ export default function RenderPage() {
   const [songset, setSongset] = useState<SongsetData | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [jobData, setJobData] = useState<RenderJobData | null>(null)
+  const [previousCompletedJob, setPreviousCompletedJob] = useState<RenderJobData | null>(null)
   const [initialData, setInitialData] = useState<Partial<RenderFormData> | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -109,6 +114,7 @@ export default function RenderPage() {
           songTitles: data.items?.map((item: { song?: { title: string } | null }) =>
             item.song?.title ?? "Unknown Song"
           ) ?? [],
+          lastCompletedRenderJobId: data.lastCompletedRenderJobId ?? null,
         })
 
         // Check if there's an active render job
@@ -128,10 +134,16 @@ export default function RenderPage() {
             } else if (job.status === "completed") {
               setJobId(job.id)
               setJobData(job)
-              if (renderState === "fresh") {
-                setScreenState("complete")
-              }
             }
+          }
+        }
+
+        // Fetch previous completed job for the info banner
+        if (data.lastCompletedRenderJobId) {
+          const completedJobResponse = await fetch(`/api/render-jobs/${data.lastCompletedRenderJobId}`)
+          if (completedJobResponse.ok) {
+            const completedJob = await completedJobResponse.json()
+            setPreviousCompletedJob(completedJob)
           }
         }
 
@@ -240,14 +252,6 @@ export default function RenderPage() {
     }
   }, [jobId, isCancelling])
 
-  const handleDone = useCallback(() => {
-    router.push(`/songsets/${songsetId}`)
-  }, [router, songsetId])
-
-  const handleShare = useCallback(() => {
-    router.push(`/songsets/${songsetId}?share=true`)
-  }, [router, songsetId])
-
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -308,6 +312,19 @@ export default function RenderPage() {
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/songsets/${songsetId}`)}
             isSubmitting={isSubmitting}
+            previousRenderJob={
+              previousCompletedJob
+                ? {
+                    id: previousCompletedJob.id,
+                    createdAt: previousCompletedJob.createdAt,
+                    template: previousCompletedJob.template,
+                    fontFamily: previousCompletedJob.fontFamily,
+                    fontSizePreset: previousCompletedJob.fontSizePreset,
+                    includeTitleCard: previousCompletedJob.includeTitleCard,
+                    titleCardDurationSeconds: previousCompletedJob.titleCardDurationSeconds,
+                  }
+                : undefined
+            }
           />
         )}
 
@@ -316,20 +333,7 @@ export default function RenderPage() {
             estimatedMinutes={estimatedMinutes}
             onCancel={handleCancel}
             isCancelling={isCancelling}
-          />
-        )}
-
-        {screenState === "complete" && jobData && (
-          <RenderComplete
-            jobId={jobId!}
-            songsetId={songsetId}
-            songsetName={songset.name}
-            hasAudio={!!jobData.mp3R2Key}
-            hasVideo={!!jobData.mp4R2Key}
-            hasChapters={!!jobData.chaptersR2Key}
-            elapsedSeconds={jobData.elapsedSeconds}
-            onDone={handleDone}
-            onShare={handleShare}
+            submittedAt={jobData?.createdAt}
           />
         )}
       </main>

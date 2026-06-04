@@ -276,6 +276,14 @@ export async function completeRenderJob(
 
   if (!updated) return null;
 
+  await db
+    .update(songsets)
+    .set({
+      lastCompletedRenderJobId: id,
+      updatedAt: now,
+    })
+    .where(eq(songsets.id, updated.songsetId));
+
   return mapRowToRenderJob(updated);
 }
 

@@ -8,12 +8,14 @@ interface RenderSubmittedProps {
   estimatedMinutes: number
   onCancel: () => void
   isCancelling?: boolean
+  submittedAt?: string
 }
 
 export function RenderSubmitted({
   estimatedMinutes,
   onCancel,
   isCancelling = false,
+  submittedAt,
 }: RenderSubmittedProps) {
   return (
     <Card className="w-full">
@@ -28,6 +30,15 @@ export function RenderSubmitted({
         <p className="text-sm text-muted-foreground">
           You can leave this page. Check your songset later for the result.
         </p>
+        {submittedAt && (
+          <p className="text-sm text-muted-foreground">
+            Submitted at{" "}
+            {new Intl.DateTimeFormat(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(new Date(submittedAt))}
+          </p>
+        )}
         <Button
           variant="outline"
           className="w-full"

@@ -16,6 +16,7 @@ interface ApiSongset {
   itemCount: number;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
 }
 
 interface ApiResponse {
@@ -59,6 +60,7 @@ export default function SongsetsPage() {
           updatedAt: new Date(songset.updatedAt),
           renderState: songset.renderState,
           latestRenderJobId: songset.latestRenderJobId,
+          lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
           isOfflineAvailable: false,
           isArtifactsStale: songset.renderState === "stale",
         }));
@@ -167,11 +169,11 @@ export default function SongsetsPage() {
 
   const handleDownloadAudio = useCallback(async (id: string) => {
     const songset = songsets.find((s) => s.id === id);
-    if (!songset?.latestRenderJobId) return;
+    if (!songset?.lastCompletedRenderJobId) return;
     const toastId = toast.loading("Preparing download...");
     try {
       await fetchSignedUrlAndDownload(
-        songset.latestRenderJobId,
+        songset.lastCompletedRenderJobId,
         "audio",
         sanitizeFilename(songset.name),
         "mp3"
@@ -184,11 +186,11 @@ export default function SongsetsPage() {
 
   const handleDownloadVideo = useCallback(async (id: string) => {
     const songset = songsets.find((s) => s.id === id);
-    if (!songset?.latestRenderJobId) return;
+    if (!songset?.lastCompletedRenderJobId) return;
     const toastId = toast.loading("Preparing download...");
     try {
       await fetchSignedUrlAndDownload(
-        songset.latestRenderJobId,
+        songset.lastCompletedRenderJobId,
         "video",
         sanitizeFilename(songset.name),
         "mp4"

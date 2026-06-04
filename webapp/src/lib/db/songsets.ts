@@ -16,6 +16,7 @@ export interface SongsetListItem {
   itemCount: number;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
 }
 
 export interface SongsetItemRecording {
@@ -163,6 +164,7 @@ export async function listSongsets(
       updatedAt: row.updatedAt,
       latestRenderJobId: row.latestRenderJobId,
       lastFailedRenderJobId: row.lastFailedRenderJobId,
+      lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       itemCount: row.items.length,
       renderState,
     };
@@ -242,6 +244,7 @@ export async function getSongset(
     updatedAt: row.updatedAt,
     latestRenderJobId: row.latestRenderJobId,
     lastFailedRenderJobId: row.lastFailedRenderJobId,
+    lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: items.length,
     renderState,
     items,
@@ -267,6 +270,7 @@ export async function createSongset(
     updatedAt: row.updatedAt,
     latestRenderJobId: row.latestRenderJobId,
     lastFailedRenderJobId: row.lastFailedRenderJobId,
+    lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: 0,
     renderState: "unrendered",
   };
@@ -305,6 +309,7 @@ export async function updateSongset(
     updatedAt: updated.updatedAt,
     latestRenderJobId: updated.latestRenderJobId,
     lastFailedRenderJobId: updated.lastFailedRenderJobId,
+    lastCompletedRenderJobId: updated.lastCompletedRenderJobId,
     itemCount: updated.items.length,
     renderState,
   };

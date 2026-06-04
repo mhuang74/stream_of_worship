@@ -27,6 +27,7 @@ describe("PrePlayCard", () => {
     renderState: "fresh" as const,
     latestRenderJobId: "job-1",
     lastFailedRenderJobId: null,
+    lastCompletedRenderJobId: "job-1",
   };
 
   const mockItems = [

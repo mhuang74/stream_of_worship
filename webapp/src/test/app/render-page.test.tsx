@@ -17,6 +17,7 @@ const mockSongsetData = {
   items: [{ markedLineCount: 2 }, { markedLineCount: 1 }],
   latestRenderJobId: null,
   lastFailedRenderJobId: null,
+  lastCompletedRenderJobId: null,
   renderState: "unrendered",
 }
 

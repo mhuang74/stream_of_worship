@@ -25,6 +25,7 @@ describe("ProjectionPage", () => {
     id: "test-songset",
     name: "Morning Worship",
     latestRenderJobId: "job-123",
+    lastCompletedRenderJobId: "job-123",
     renderState: "fresh",
   };
 
@@ -72,6 +73,7 @@ describe("ProjectionPage", () => {
         json: vi.fn().mockResolvedValue({
           ...mockSongsetData,
           latestRenderJobId: null,
+          lastCompletedRenderJobId: null,
         }),
       });
 
