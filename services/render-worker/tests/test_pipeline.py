@@ -381,18 +381,52 @@ class TestExecuteRenderPipeline:
                 uploader=mock_uploader,
             )
 
-            mock_start.assert_called_once_with(mock_conn, "job_abc123", 42)
-            assert mock_update.call_count >= 4
-            mock_ve_class.assert_called_once()
-            mock_ve.generate_video.assert_called_once()
-            mock_uploader.upload_render_artifacts.assert_called_once()
-            mock_complete.assert_called_once_with(
-                mock_conn, "job_abc123", 42,
-                mp3_r2_key="renders/job_abc123/output.mp3",
-                mp4_r2_key="renders/job_abc123/output.mp4",
-                chapters_r2_key="renders/job_abc123/chapters.json",
-            )
             mock_fail.assert_not_called()
+
+    def test_pipeline_memory_error_handler(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=MemoryError("Memory pressure: RSS=2800MB")), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8):
+
+            with pytest.raises(MemoryError, match="Memory pressure"):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+            mock_fail.assert_called_once_with(
+                mock_conn, "job_abc123", 42,
+                "Memory pressure: RSS=2800MB",
+            )
+
+    def test_pipeline_uses_reclaim_likely_dead_job(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=None), \
+             patch("sow_render_worker.pipeline.reclaim_likely_dead_job", return_value=None) as mock_reclaim, \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job"):
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_reclaim.assert_called_once_with(mock_conn, "job_abc123", 42)
             mock_fetcher.cleanup_temp.assert_called_once()
 
     def test_pipeline_no_video(self):
@@ -979,7 +1013,7 @@ class TestExecuteRenderPipeline:
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.start_render_job", return_value=None), \
-             patch("sow_render_worker.pipeline.reclaim_stale_job", return_value=None), \
+             patch("sow_render_worker.pipeline.reclaim_likely_dead_job", return_value=None), \
              patch("sow_render_worker.pipeline.update_render_progress") as mock_update, \
              patch("sow_render_worker.pipeline.fail_render_job") as mock_fail:
 

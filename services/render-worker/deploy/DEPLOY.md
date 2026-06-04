@@ -95,11 +95,11 @@ aws --profile mhuang74 lambda create-function \
   --code ImageUri=762288208920.dkr.ecr.us-west-2.amazonaws.com/sow-render-worker:latest \
   --role arn:aws:iam::762288208920:role/sow-render-worker-role \
   --timeout 900 \
-  --memory-size 2048 \
+  --memory-size 3072 \
   --ephemeral-storage Size=2048
 ```
 
-> **Important:** The default timeout of 30s is too short for render jobs. Use `--timeout 900` (15 min) to match the SQS visibility timeout. Memory should be at least 2048 MB for video encoding. Ephemeral storage (`/tmp`) must be at least 2048 MB to hold cached audio files and output video.
+> **Important:** The default timeout of 30s is too short for render jobs. Use `--timeout 900` (15 min) to match the SQS visibility timeout. Memory must be at least 3072 MB for 1080p video encoding (frame cache + FFmpeg overhead). Ephemeral storage (`/tmp`) must be at least 2048 MB to hold cached audio files and output video.
 
 ### Quick fix: update an existing Lambda's timeout, memory, and storage
 
@@ -109,7 +109,7 @@ If your Lambda was created with default settings (30s timeout, 512 MB memory), r
 aws --profile mhuang74 lambda update-function-configuration \
   --function-name sow-render-worker \
   --timeout 900 \
-  --memory-size 2048 \
+  --memory-size 3072 \
   --ephemeral-storage Size=2048
 ```
 

@@ -28,7 +28,7 @@ FontFamily = Literal[
 ]
 
 _DEFAULT_FADE_ALPHA_STEPS = 16
-_DEFAULT_MAX_CACHE_ENTRIES = 300
+_DEFAULT_MAX_CACHE_ENTRIES = 200
 _DEFAULT_CACHE_ENABLED = True
 
 
@@ -434,6 +434,7 @@ class FrameRenderer:
             self._cache_misses += 1
             img = self._render_frame_impl(state)
             frame_bytes = img.tobytes()
+            img.close()
 
             self._frame_cache[cache_key] = frame_bytes
             if len(self._frame_cache) > self._max_cache_entries:
@@ -442,11 +443,13 @@ class FrameRenderer:
             return frame_bytes
 
         img = self._render_frame_impl(state)
-        return img.tobytes()
+        frame_bytes = img.tobytes()
+        img.close()
+        return frame_bytes
 
     def _render_frame_impl(self, state: VisualState) -> Image.Image:
         width, height = self.resolution
-        img = Image.new("RGBA", (width, height), (*self.template.background_color, 255))
+        img = Image.new("RGB", (width, height), self.template.background_color)
         draw = ImageDraw.Draw(img)
 
         current_title = state.current_title
@@ -658,7 +661,7 @@ class FrameRenderer:
 
     def render_title_card(self, config: TitleCardConfig) -> Image.Image:
         width, height = self.resolution
-        img = Image.new("RGBA", (width, height), (*self.template.background_color, 255))
+        img = Image.new("RGB", (width, height), self.template.background_color)
         draw = ImageDraw.Draw(img)
 
         text_r, text_g, text_b = self.template.text_color

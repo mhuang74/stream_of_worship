@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 
@@ -26,6 +26,8 @@ from sow_render_worker.video_engine import (
     VideoEngine,
     VideoExportResult,
     RESOLUTION_MAP,
+    _check_memory_pressure,
+    _MEMORY_WARNING_FRACTION,
 )
 
 
@@ -302,7 +304,7 @@ class TestEncodeVideoWithFFmpeg:
         assert "-s" in cmd
         assert "1920x1080" in cmd
         assert "-pix_fmt" in cmd
-        assert "rgba" in cmd
+        assert "rgb24" in cmd
         assert "-r" in cmd
         assert "24" in cmd
         assert "-i" in cmd
@@ -986,7 +988,7 @@ class TestFFmpegCommandConstruction:
         assert cmd[idx_vc + 1] == "rawvideo"
         assert "-pix_fmt" in cmd
         idx_pf = cmd.index("-pix_fmt")
-        assert cmd[idx_pf + 1] == "rgba"
+        assert cmd[idx_pf + 1] == "rgb24"
 
     def test_blank_video_command_has_lavfi_format(self, tmp_path):
         output_path = str(tmp_path / "blank.mp4")
@@ -1033,3 +1035,87 @@ class TestFFmpegCommandConstruction:
         assert "-c" in cmd
         idx_c = cmd.index("-c")
         assert cmd[idx_c + 1] == "copy"
+
+
+class TestFFmpegArgsRGB24:
+    def test_encode_command_uses_rgb24(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher, ffmpeg_path="ffmpeg")
+
+        mock_process = MagicMock()
+        mock_process.stdin = MagicMock()
+        mock_process.stdin.write = MagicMock()
+        mock_process.wait.return_value = 0
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = b""
+
+        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
+            mock_popen.return_value = mock_process
+            engine.encode_video_with_ffmpeg(
+                "/tmp/audio.mp3",
+                output_path,
+                total_frames=1,
+                total_duration_seconds=0.05,
+                lyrics=[],
+                segments=[],
+            )
+
+        cmd = mock_popen.call_args[0][0]
+        pix_fmt_idx = cmd.index("-pix_fmt")
+        assert cmd[pix_fmt_idx + 1] == "rgb24"
+
+
+class TestCheckMemoryPressure:
+    def test_raises_at_90_percent(self):
+        status_content = "Name: test\nVmRSS: 2900000 kB\nVmSize: 4000000 kB\n"
+
+        with patch.dict("os.environ", {"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "3072"}), \
+             patch("builtins.open", mock_open(read_data=status_content)):
+            with pytest.raises(MemoryError, match="Memory pressure"):
+                _check_memory_pressure()
+
+    def test_passes_below_threshold(self):
+        status_content = "Name: test\nVmRSS: 1000000 kB\nVmSize: 2000000 kB\n"
+
+        with patch.dict("os.environ", {"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "3072"}), \
+             patch("builtins.open", mock_open(read_data=status_content)):
+            _check_memory_pressure()
+
+    def test_noop_without_proc(self):
+        with patch("builtins.open", side_effect=OSError):
+            _check_memory_pressure()
+
+    def test_warning_fraction_is_90_percent(self):
+        assert _MEMORY_WARNING_FRACTION == 0.90
+
+
+class TestGCCollect:
+    def test_gc_collect_called_periodically(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher, fps=24)
+
+        lyrics: list[GlobalLRCLine] = []
+        segments: list[SegmentInfo] = []
+
+        mock_process = MagicMock()
+        mock_process.stdin = MagicMock()
+        mock_process.stdin.write = MagicMock()
+        mock_process.wait.return_value = 0
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = b""
+
+        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
+             patch("sow_render_worker.video_engine.gc") as mock_gc:
+            mock_popen.return_value = mock_process
+            engine.encode_video_with_ffmpeg(
+                "/tmp/audio.mp3",
+                output_path,
+                total_frames=120 * 5,
+                total_duration_seconds=5.0,
+                lyrics=lyrics,
+                segments=segments,
+            )
+
+            mock_gc.collect.assert_called()

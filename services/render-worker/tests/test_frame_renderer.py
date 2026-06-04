@@ -17,6 +17,7 @@ from sow_render_worker.frame_renderer import (
     VideoTemplate,
     VideoTemplateName,
     VisualState,
+    _DEFAULT_MAX_CACHE_ENTRIES,
     _get_bool_env,
     _get_int_env,
     _load_font,
@@ -302,7 +303,7 @@ class TestRenderFrame:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         result = renderer.render_frame([], [], 0.0)
         pixel = result.getpixel((0, 0))
-        assert pixel == (20, 20, 30, 255)
+        assert pixel == (20, 20, 30)
 
     def test_no_matching_segment(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
@@ -548,7 +549,7 @@ class TestRenderTitleCard:
         )
         result = renderer.render_title_card(config)
         pixel = result.getpixel((0, 0))
-        assert pixel == (20, 20, 30, 255)
+        assert pixel == (20, 20, 30)
 
     def test_duration_format(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
@@ -582,7 +583,7 @@ class TestRenderTitleCard:
         )
         result = renderer.render_title_card(config)
         pixel = result.getpixel((0, 0))
-        assert pixel == (60, 30, 20, 255)
+        assert pixel == (60, 30, 20)
 
 
 class TestLoadFont:
@@ -887,7 +888,7 @@ class TestCacheDisabled:
             segment = _make_segment(start=0.0, duration=60.0)
             result = renderer.render_frame_bytes(lyrics, [segment], 7.0)
             assert isinstance(result, bytes)
-            assert len(result) == 1920 * 1080 * 4
+            assert len(result) == 1920 * 1080 * 3
 
 
 class TestFrameCachePerformance:
@@ -1006,3 +1007,45 @@ class TestFontFamily:
         key_a = renderer_a._compute_cache_key(state_a)
         key_b = renderer_b._compute_cache_key(state_b)
         assert key_a != key_b
+
+
+class TestRGBMode:
+    def test_render_frame_impl_creates_rgb_image(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segments = [_make_segment(start=0.0, duration=60.0)]
+        result = renderer.render_frame(lyrics, segments, 7.0)
+        assert result.mode == "RGB"
+
+    def test_render_title_card_creates_rgb_image(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        config = TitleCardConfig(
+            enabled=True,
+            duration_seconds=5.0,
+            lines=("Test Set", "Song 1"),
+            total_duration_seconds=300.0,
+        )
+        result = renderer.render_title_card(config)
+        assert result.mode == "RGB"
+
+    def test_img_close_after_tobytes_cache_path(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(5.0, "Hello")])
+        segment = _make_segment(start=0.0, duration=60.0)
+        with patch.object(Image.Image, "close", autospec=True) as mock_close:
+            renderer.render_frame_bytes(lyrics, [segment], 7.0)
+            mock_close.assert_called()
+
+    def test_img_close_after_tobytes_no_cache_path(self):
+        with patch.dict("os.environ", {"SOW_FRAME_CACHE_ENABLED": "false"}):
+            renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+            lyrics = _make_lyrics([(5.0, "Hello")])
+            segment = _make_segment(start=0.0, duration=60.0)
+            with patch.object(Image.Image, "close", autospec=True) as mock_close:
+                renderer.render_frame_bytes(lyrics, [segment], 7.0)
+                mock_close.assert_called()
+
+
+class TestDefaultMaxCacheEntries:
+    def test_default_max_cache_entries_200(self):
+        assert _DEFAULT_MAX_CACHE_ENTRIES == 200

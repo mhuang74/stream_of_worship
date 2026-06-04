@@ -23,7 +23,9 @@ PHASE_ORDER = [
 
 ORPHANED_JOB_THRESHOLD_MINUTES = 15
 
-STALE_JOB_THRESHOLD_SECONDS = 300
+STALE_JOB_THRESHOLD_SECONDS = 120
+
+LIKELY_DEAD_THRESHOLD_SECONDS = 60
 
 VALID_FONT_FAMILIES = {
     "lxgw_wenkai_tc",
@@ -233,6 +235,14 @@ def reclaim_stale_job(
     if not row:
         return None
     return _row_to_render_job(row)
+
+
+def reclaim_likely_dead_job(
+    conn: psycopg2.extensions.connection,
+    job_id: str,
+    user_id: int,
+) -> Optional[RenderJob]:
+    return reclaim_stale_job(conn, job_id, user_id, stale_threshold_seconds=LIKELY_DEAD_THRESHOLD_SECONDS)
 
 
 def update_render_progress(
