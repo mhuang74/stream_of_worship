@@ -4,25 +4,25 @@ export const SONGSET_MAX_DURATION_SECONDS = 1500;
 export const FONT_FAMILIES = [
   {
     value: "lxgw_wenkai_tc",
-    label: "Traditional - LXGW WenKai TC",
+    label: "Traditional",
     cssFamily: "LXGW WenKai TC",
     cssVariable: "--font-lxgw-wenkai-tc",
   },
   {
-    value: "chocolate_classical_sans",
-    label: "Elegant - Chocolate Classical Sans",
-    cssFamily: "Chocolate Classical Sans",
-    cssVariable: "--font-chocolate-classical-sans",
-  },
-  {
     value: "chiron_goround_tc",
-    label: "Modern - Chiron GoRound TC",
+    label: "Elegant",
     cssFamily: "Chiron GoRound TC",
     cssVariable: "--font-chiron-goround-tc",
   },
   {
+    value: "chocolate_classical_sans",
+    label: "Modern",
+    cssFamily: "Chocolate Classical Sans",
+    cssVariable: "--font-chocolate-classical-sans",
+  },
+  {
     value: "noto_serif_tc",
-    label: "Classic - Noto Serif TC",
+    label: "Classic",
     cssFamily: "Noto Serif TC",
     cssVariable: "--font-noto-serif-tc",
   },
