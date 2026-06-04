@@ -140,10 +140,21 @@ export default function RenderPage() {
 
         // Fetch previous completed job for the info banner
         if (data.lastCompletedRenderJobId) {
-          const completedJobResponse = await fetch(`/api/render-jobs/${data.lastCompletedRenderJobId}`)
-          if (completedJobResponse.ok) {
-            const completedJob = await completedJobResponse.json()
-            setPreviousCompletedJob(completedJob)
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000)
+          try {
+            const completedJobResponse = await fetch(
+              `/api/render-jobs/${data.lastCompletedRenderJobId}`,
+              { signal: controller.signal }
+            )
+            if (completedJobResponse.ok) {
+              const completedJob = await completedJobResponse.json()
+              setPreviousCompletedJob(completedJob)
+            }
+          } catch (err) {
+            console.error("Failed to fetch previous completed job:", err)
+          } finally {
+            clearTimeout(timeoutId)
           }
         }
 

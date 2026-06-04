@@ -258,33 +258,39 @@ export async function completeRenderJob(
     ? (now.getTime() - job.startedAt.getTime()) / 1000
     : null;
 
-  const [updated] = await db
-    .update(renderJobs)
-    .set({
-      status: "completed",
-      phase: "completed",
-      phaseIndex: TOTAL_PHASES,
-      elapsedSeconds: finalElapsedSeconds,
-      mp3R2Key: output.mp3R2Key ?? null,
-      mp4R2Key: output.mp4R2Key ?? null,
-      chaptersR2Key: output.chaptersR2Key ?? null,
-      completedAt: now,
-      updatedAt: now,
-    })
-    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId)))
-    .returning();
+  const result = await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(renderJobs)
+      .set({
+        status: "completed",
+        phase: "completed",
+        phaseIndex: TOTAL_PHASES,
+        elapsedSeconds: finalElapsedSeconds,
+        mp3R2Key: output.mp3R2Key ?? null,
+        mp4R2Key: output.mp4R2Key ?? null,
+        chaptersR2Key: output.chaptersR2Key ?? null,
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId)))
+      .returning();
 
-  if (!updated) return null;
+    if (!updated) return null;
 
-  await db
-    .update(songsets)
-    .set({
-      lastCompletedRenderJobId: id,
-      updatedAt: now,
-    })
-    .where(eq(songsets.id, updated.songsetId));
+    await tx
+      .update(songsets)
+      .set({
+        lastCompletedRenderJobId: id,
+        updatedAt: now,
+      })
+      .where(eq(songsets.id, updated.songsetId));
 
-  return mapRowToRenderJob(updated);
+    return updated;
+  });
+
+  if (!result) return null;
+
+  return mapRowToRenderJob(result);
 }
 
 export async function failRenderJob(
