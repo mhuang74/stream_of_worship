@@ -3439,6 +3439,7 @@ def edit_lrc(
                     audio_duration=recording.duration_seconds,
                     tempo_bpm=autosave_state.tempo_bpm,
                     padding_quarters=autosave_state.padding_quarters,
+                    original_timestamps=autosave_state.original_timestamps,
                 )
                 if editor_state.padding_quarters != 0:
                     offset = editor_state.padding_offset_seconds

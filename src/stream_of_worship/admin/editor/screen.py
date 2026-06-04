@@ -403,6 +403,7 @@ class LRCEditorScreen(Screen[None]):
                 source_mode=self.state.source_mode,
                 padding_quarters=self.state.padding_quarters,
                 tempo_bpm=self.state.tempo_bpm,
+                original_timestamps=self.state.original_timestamps,
             )
             save_autosave(self.cache_dir, self.hash_prefix, autosave_state)
             self._autosave_ok = True

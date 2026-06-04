@@ -8,7 +8,7 @@ transcribed session token, dirty status, and source mode.
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
@@ -39,6 +39,7 @@ class AutosaveState:
     source_mode: str
     padding_quarters: int = 0
     tempo_bpm: Optional[float] = None
+    original_timestamps: List[float] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +60,7 @@ class AutosaveState:
             "source_mode": self.source_mode,
             "padding_quarters": self.padding_quarters,
             "tempo_bpm": self.tempo_bpm,
+            "original_timestamps": self.original_timestamps,
         }
 
     @classmethod
@@ -85,6 +87,7 @@ class AutosaveState:
             source_mode=data.get("source_mode", "catalog"),
             padding_quarters=data.get("padding_quarters", 0),
             tempo_bpm=data.get("tempo_bpm"),
+            original_timestamps=data.get("original_timestamps", []),
         )
 
 
@@ -119,7 +122,7 @@ def load_autosave(cache_dir: Path, hash_prefix: str) -> Optional[AutosaveState]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return AutosaveState.from_dict(data)
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
         logger.warning(f"Failed to load autosave from {path}: {e}")
         return None
 

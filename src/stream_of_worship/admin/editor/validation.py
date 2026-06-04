@@ -178,8 +178,8 @@ def _check_preservation(
     if original_preserved is None:
         return
 
-    current_raw = {p.raw for p in (current_preserved or []) if p.raw.strip()}
-    original_raw = {p.raw for p in original_preserved if p.raw.strip()}
+    current_raw = {p.raw.strip() for p in (current_preserved or []) if p.raw.strip()}
+    original_raw = {p.raw.strip() for p in original_preserved if p.raw.strip()}
 
     dropped = original_raw - current_raw
     if dropped:
