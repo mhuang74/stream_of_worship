@@ -58,28 +58,29 @@ class AssetFetcher:
             )
 
             response = self._http.request("GET", signed_url, preload_content=False)
-            if response.status != 200:
-                response.release_conn()
-                raise RuntimeError(
-                    f"Failed to download audio: HTTP {response.status}"
-                )
-
-            self._cache_dir.mkdir(parents=True, exist_ok=True)
-            tmp_path = cache_path.with_suffix(".tmp")
             try:
-                total_bytes = 0
-                with open(tmp_path, "wb") as f:
-                    for chunk in response.stream(8192):
-                        f.write(chunk)
-                        total_bytes += len(chunk)
-                response.release_conn()
-                os.replace(tmp_path, cache_path)
-            except BaseException:
+                if response.status != 200:
+                    raise RuntimeError(
+                        f"Failed to download audio: HTTP {response.status}"
+                    )
+
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
+                tmp_path = cache_path.with_suffix(".tmp")
                 try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
-                raise
+                    total_bytes = 0
+                    with open(tmp_path, "wb") as f:
+                        for chunk in response.stream(8192):
+                            f.write(chunk)
+                            total_bytes += len(chunk)
+                    os.replace(tmp_path, cache_path)
+                except BaseException:
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                response.release_conn()
 
             logger.info(
                 "Audio downloaded: %s (%d bytes, cached at %s)",
@@ -103,23 +104,23 @@ class AssetFetcher:
             )
 
             response = self._http.request("GET", signed_url, preload_content=False)
-            if response.status != 200:
-                response.release_conn()
-                raise RuntimeError(
-                    f"Failed to download LRC: HTTP {response.status}"
-                )
-
             chunks: list[bytes] = []
             total_size = 0
-            for chunk in response.stream(8192):
-                total_size += len(chunk)
-                if total_size > MAX_LRC_SIZE_BYTES:
-                    response.release_conn()
+            try:
+                if response.status != 200:
                     raise RuntimeError(
-                        f"LRC response too large: exceeds {MAX_LRC_SIZE_BYTES} limit"
+                        f"Failed to download LRC: HTTP {response.status}"
                     )
-                chunks.append(chunk)
-            response.release_conn()
+
+                for chunk in response.stream(8192):
+                    total_size += len(chunk)
+                    if total_size > MAX_LRC_SIZE_BYTES:
+                        raise RuntimeError(
+                            f"LRC response too large: exceeds {MAX_LRC_SIZE_BYTES} limit"
+                        )
+                    chunks.append(chunk)
+            finally:
+                response.release_conn()
 
             content = b"".join(chunks).decode("utf-8")
             self._lrc_cache[hash_prefix] = content
