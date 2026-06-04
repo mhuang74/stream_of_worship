@@ -25,6 +25,21 @@ ORPHANED_JOB_THRESHOLD_MINUTES = 15
 
 STALE_JOB_THRESHOLD_SECONDS = 300
 
+VALID_FONT_FAMILIES = {
+    "lxgw_wenkai_tc",
+    "chocolate_classical_sans",
+    "chiron_goround_tc",
+    "noto_serif_tc",
+}
+
+
+def _normalize_font_family(value: object) -> str:
+    if isinstance(value, str) and value in VALID_FONT_FAMILIES:
+        return value
+    if value is not None:
+        logger.warning("Unknown font_family=%r; falling back to noto_serif_tc", value)
+    return "noto_serif_tc"
+
 
 @dataclass
 class RenderJob:
@@ -112,7 +127,7 @@ def _row_to_render_job(row: dict[str, Any]) -> RenderJob:
         audio_enabled=row.get("audio_enabled", True),
         video_enabled=row.get("video_enabled", True),
         font_size_preset=row.get("font_size_preset") or "M",
-        font_family=row.get("font_family") or "noto_serif_tc",
+        font_family=_normalize_font_family(row.get("font_family")),
         include_title_card=row.get("include_title_card", False),
         title_card_duration_seconds=row.get("title_card_duration_seconds"),
         title_card_lines=title_card_lines,

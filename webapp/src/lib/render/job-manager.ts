@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { renderJobs, songsets } from "@/db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { normalizeFontFamily } from "@/lib/constants";
 
 export type RenderPhase =
   | "preparing"
@@ -108,7 +109,7 @@ function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
     audioEnabled: row.audioEnabled ?? true,
     videoEnabled: row.videoEnabled ?? true,
     fontSizePreset: row.fontSizePreset,
-    fontFamily: row.fontFamily ?? "noto_serif_tc",
+    fontFamily: normalizeFontFamily(row.fontFamily),
     includeTitleCard: row.includeTitleCard ?? false,
     titleCardDurationSeconds: row.titleCardDurationSeconds,
     titleCardLines,

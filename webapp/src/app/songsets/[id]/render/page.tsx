@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
+import { buildInitialRenderData, type UserSettingsData } from "@/lib/render/render-defaults"
 import type { RenderFormData } from "@/components/render/RenderForm"
 
 const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((m) => ({ default: m.RenderForm })), {
@@ -67,20 +68,29 @@ export default function RenderPage() {
         setIsLoading(true)
         setError(null)
 
-        const response = await fetch(`/api/songsets/${songsetId}`)
+        const [songsetResponse, settingsResponse] = await Promise.all([
+          fetch(`/api/songsets/${songsetId}`),
+          fetch(`/api/settings`),
+        ])
 
-        if (!response.ok) {
-          if (response.status === 401) {
+        if (!songsetResponse.ok) {
+          if (songsetResponse.status === 401) {
             router.push("/login")
             return
           }
-          if (response.status === 404) {
+          if (songsetResponse.status === 404) {
             throw new Error("Songset not found")
           }
           throw new Error("Failed to load songset")
         }
 
-        const data = await response.json()
+        const data = await songsetResponse.json()
+
+        let userSettings: UserSettingsData | null = null
+        if (settingsResponse.ok) {
+          const settingsData = await settingsResponse.json()
+          userSettings = settingsData.settings ?? null
+        }
 
         if (cancelled) return
 
@@ -102,10 +112,13 @@ export default function RenderPage() {
         })
 
         // Check if there's an active render job
+        let latestJob: Record<string, unknown> | null = null
         if (data.latestRenderJobId) {
           const jobResponse = await fetch(`/api/render-jobs/${data.latestRenderJobId}`)
           if (jobResponse.ok) {
             const job = await jobResponse.json()
+            latestJob = job
+
             if (job.status === "running" || job.status === "queued") {
               setJobId(job.id)
               if (job.estimatedTotalSeconds) {
@@ -115,23 +128,17 @@ export default function RenderPage() {
             } else if (job.status === "completed") {
               setJobId(job.id)
               setJobData(job)
-              setInitialData({
-                template: job.template as RenderFormData["template"],
-                resolution: job.resolution as RenderFormData["resolution"],
-                audioEnabled: job.audioEnabled,
-                videoEnabled: job.videoEnabled,
-                fontSizePreset: job.fontSizePreset as RenderFormData["fontSizePreset"],
-                fontFamily: (job.fontFamily ?? "noto_serif_tc") as RenderFormData["fontFamily"],
-                includeTitleCard: job.includeTitleCard,
-                titleCardDurationSeconds: job.titleCardDurationSeconds,
-                titleCardLines: job.titleCardLines ?? [],
-              })
               if (renderState === "fresh") {
                 setScreenState("complete")
               }
             }
           }
         }
+
+        if (cancelled) return
+
+        const initial = buildInitialRenderData(latestJob, userSettings)
+        setInitialData(initial)
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load songset")

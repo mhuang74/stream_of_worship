@@ -30,3 +30,9 @@ export const FONT_FAMILIES = [
 
 export const VALID_FONT_FAMILIES = FONT_FAMILIES.map((font) => font.value);
 export type FontFamilyValue = (typeof FONT_FAMILIES)[number]["value"];
+
+export function normalizeFontFamily(value: unknown): FontFamilyValue {
+  return VALID_FONT_FAMILIES.includes(value as FontFamilyValue)
+    ? (value as FontFamilyValue)
+    : "noto_serif_tc";
+}
