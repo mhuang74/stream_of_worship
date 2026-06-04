@@ -4,9 +4,11 @@
 **Spec:** `specs/allow-rerender-from-render-page-v3.md`
 **Branch:** `allow_rerender`
 
-## Status: Implementation Complete, Not Yet Pushed
+## Status: Implementation Complete, Committed & Pushed
 
-All code changes are done and verified locally. The branch needs `git push`.
+- **Commit:** `7a32853` on branch `allow_rerender`
+- **Remote:** `origin/allow_rerender` (up to date)
+- All tests passing, working tree clean
 
 ## What Was Implemented
 
@@ -68,6 +70,7 @@ Per the spec, the render page now **always shows the parameter form** when a pre
 - `pnpm lint` — 0 errors (1 pre-existing warning about custom fonts)
 - `pnpm test` — 82 test files, 1329 tests passed
 - `pnpm build` — TypeScript compilation succeeds; build fails at "Collecting page data" due to missing `SOW_DATABASE_URL` env var (pre-existing, unrelated)
+- Render-worker full suite — 584 passed
 - Render-worker DB tests — 89 passed
 
 ## Deferred Items (per spec)
@@ -78,10 +81,10 @@ These are explicitly deferred to a follow-up PR:
 
 ## Remaining Work Before Merge
 
-1. **Push the branch:** `git pull --rebase && git push`
+1. ~~**Push the branch:**~~ Done — `7a32853` pushed to `origin/allow_rerender`
 2. **Manual testing:** Navigate to `/songsets/[id]/render` after a completed render; verify form shows with blue info banner; verify confirmation dialog appears on submit; verify download links still work after a failed re-render
 3. **Run migration on staging/production:** `npx drizzle-kit push` or `npx drizzle-kit migrate`
-4. **Create/update PR** with the implementation summary
+4. **Create PR** at https://github.com/mhuang74/stream_of_worship/pull/new/allow_rerender
 
 ## Key Design Decisions
 
