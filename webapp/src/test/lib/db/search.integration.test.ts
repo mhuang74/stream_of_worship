@@ -6,7 +6,7 @@ import { and, ilike, isNull, sql } from "drizzle-orm";
 import { songs } from "@/db/schema";
 
 const SOW_ENV_PATH = "/opt/sow/.env";
-const PREFERRED_SEARCH_QUERY = "恩典";
+const PREFERRED_SEARCH_QUERY = "耶穌";
 const RUN_NEON_INTEGRATION = process.env.SOW_RUN_NEON_INTEGRATION === "1";
 
 interface SearchFixture {
