@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SettingsForm, UserSettingsData } from "@/components/settings/SettingsForm";
 import { SettingsSkeleton } from "@/components/settings/SettingsSkeleton";
+import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets";
 import { toast } from "sonner";
 
 const DEFAULT_SETTINGS: UserSettingsData = {
@@ -13,6 +14,7 @@ const DEFAULT_SETTINGS: UserSettingsData = {
   defaultResolution: "720p",
   lyricsLoopWindowSeconds: 3.0,
   defaultFontSizePreset: "M",
+  defaultFontFamily: "noto_serif_tc",
   defaultKeyShiftSemitones: 0,
   timingReviewFont: "sans",
 };
@@ -91,6 +93,7 @@ export default function SettingsPage() {
 
   return (
     <div className="px-4 py-6 max-w-2xl mx-auto">
+      <FontPreviewStylesheets />
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
 
       {isLoading && <SettingsSkeleton />}

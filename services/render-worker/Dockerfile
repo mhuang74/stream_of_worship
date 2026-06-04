@@ -4,6 +4,8 @@ RUN yum install -y google-noto-sans-cjk-fonts tar xz \
     && yum clean all \
     && rm -rf /var/cache/yum
 
+COPY fonts/ /usr/share/fonts/truetype/vendor/
+
 RUN curl -fsSL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
     | tar -xJ --strip-components=1 -C /usr/local/bin \
     --wildcards 'ffmpeg-*-amd64-static/ffmpeg' 'ffmpeg-*-amd64-static/ffprobe' \

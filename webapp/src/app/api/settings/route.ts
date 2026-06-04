@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { userSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { VALID_FONT_FAMILIES } from "@/lib/constants";
 
 const DEFAULTS = {
   offlineAutoCache: true,
@@ -11,6 +12,7 @@ const DEFAULTS = {
   defaultResolution: "720p",
   lyricsLoopWindowSeconds: 3.0,
   defaultFontSizePreset: "M",
+  defaultFontFamily: "noto_serif_tc",
   defaultKeyShiftSemitones: 0,
   timingReviewFont: "sans",
 } as const;
@@ -52,6 +54,7 @@ export async function GET(request: NextRequest) {
         defaultResolution: row.defaultResolution,
         lyricsLoopWindowSeconds: row.lyricsLoopWindowSeconds,
         defaultFontSizePreset: row.defaultFontSizePreset,
+        defaultFontFamily: row.defaultFontFamily,
         defaultKeyShiftSemitones: row.defaultKeyShiftSemitones,
         timingReviewFont: row.timingReviewFont,
       },
@@ -130,6 +133,16 @@ export async function PUT(request: NextRequest) {
     }
 
     if (
+      b.defaultFontFamily !== undefined &&
+      !VALID_FONT_FAMILIES.includes(b.defaultFontFamily as (typeof VALID_FONT_FAMILIES)[number])
+    ) {
+      return NextResponse.json(
+        { error: `defaultFontFamily must be one of: ${VALID_FONT_FAMILIES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    if (
       b.defaultGapBeats !== undefined &&
       (typeof b.defaultGapBeats !== "number" || b.defaultGapBeats < 0 || b.defaultGapBeats > 16)
     ) {
@@ -186,6 +199,10 @@ export async function PUT(request: NextRequest) {
         typeof b.defaultFontSizePreset === "string"
           ? b.defaultFontSizePreset
           : DEFAULTS.defaultFontSizePreset,
+      defaultFontFamily:
+        typeof b.defaultFontFamily === "string"
+          ? b.defaultFontFamily
+          : DEFAULTS.defaultFontFamily,
       defaultKeyShiftSemitones:
         typeof b.defaultKeyShiftSemitones === "number"
           ? b.defaultKeyShiftSemitones

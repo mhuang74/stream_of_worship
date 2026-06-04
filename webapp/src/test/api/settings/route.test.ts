@@ -29,6 +29,7 @@ const storedSettings = {
   defaultResolution: "1080p",
   lyricsLoopWindowSeconds: 5.0,
   defaultFontSizePreset: "L",
+  defaultFontFamily: "lxgw_wenkai_tc",
   defaultKeyShiftSemitones: 2,
   timingReviewFont: "mono",
 };
@@ -79,6 +80,7 @@ describe("GET /api/settings", () => {
     expect(data.settings.defaultResolution).toBe("720p");
     expect(data.settings.lyricsLoopWindowSeconds).toBe(3.0);
     expect(data.settings.defaultFontSizePreset).toBe("M");
+    expect(data.settings.defaultFontFamily).toBe("noto_serif_tc");
     expect(data.settings.offlineAutoCache).toBe(true);
     expect(data.settings.defaultKeyShiftSemitones).toBe(0);
     expect(data.settings.timingReviewFont).toBe("sans");
@@ -98,6 +100,7 @@ describe("GET /api/settings", () => {
     expect(data.settings.defaultVideoTemplate).toBe("gradient_warm");
     expect(data.settings.defaultResolution).toBe("1080p");
     expect(data.settings.defaultFontSizePreset).toBe("L");
+    expect(data.settings.defaultFontFamily).toBe("lxgw_wenkai_tc");
     expect(data.settings.timingReviewFont).toBe("mono");
   });
 
@@ -205,6 +208,28 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toMatch(/timingReviewFont/);
+  });
+
+  it("returns 400 for invalid defaultFontFamily", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    const res = await PUT(makeRequest("PUT", { defaultFontFamily: "invalid_font" }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/defaultFontFamily/);
+  });
+
+  it("accepts valid defaultFontFamily", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockUpsert();
+
+    const res = await PUT(
+      makeRequest("PUT", {
+        defaultFontFamily: "lxgw_wenkai_tc",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.settings.defaultFontFamily).toBe("lxgw_wenkai_tc");
   });
 
   it("returns 400 for out-of-range defaultGapBeats", async () => {

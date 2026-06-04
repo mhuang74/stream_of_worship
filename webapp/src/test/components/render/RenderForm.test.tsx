@@ -42,6 +42,7 @@ describe("RenderForm", () => {
       expect(screen.getByText("Template")).toBeInTheDocument()
       expect(screen.getByText("Resolution")).toBeInTheDocument()
       expect(screen.getByText("Font Size")).toBeInTheDocument()
+      expect(screen.getByText("Font Family")).toBeInTheDocument()
     })
 
     it("renders title card section", () => {
@@ -149,6 +150,7 @@ describe("RenderForm", () => {
             template: "dark",
             resolution: "720p",
             fontSizePreset: "M",
+            fontFamily: "noto_serif_tc",
             includeTitleCard: false,
             titleCardDurationSeconds: 10,
             offlineEnabled: false,
@@ -188,6 +190,7 @@ describe("RenderForm", () => {
         template: "gradient_warm",
         resolution: "1080p",
         fontSizePreset: "L",
+        fontFamily: "lxgw_wenkai_tc",
         includeTitleCard: true,
         titleCardDurationSeconds: 15,
         offlineEnabled: true,
@@ -206,12 +209,19 @@ describe("RenderForm", () => {
             template: "gradient_warm",
             resolution: "1080p",
             fontSizePreset: "L",
+            fontFamily: "lxgw_wenkai_tc",
             includeTitleCard: true,
             titleCardDurationSeconds: 15,
             offlineEnabled: true,
           })
         )
       })
+    })
+
+    it("renders font preview text", () => {
+      render(<RenderForm {...defaultProps} />)
+      expect(screen.getByText("耶和華是我的牧者")).toBeInTheDocument()
+      expect(screen.getByText("我必不至缺乏")).toBeInTheDocument()
     })
   })
 })

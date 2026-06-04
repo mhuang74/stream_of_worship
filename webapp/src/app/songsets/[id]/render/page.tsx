@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
+import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
 import type { RenderFormData } from "@/components/render/RenderForm"
 
 const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((m) => ({ default: m.RenderForm })), {
@@ -120,6 +121,7 @@ export default function RenderPage() {
                 audioEnabled: job.audioEnabled,
                 videoEnabled: job.videoEnabled,
                 fontSizePreset: job.fontSizePreset as RenderFormData["fontSizePreset"],
+                fontFamily: (job.fontFamily ?? "noto_serif_tc") as RenderFormData["fontFamily"],
                 includeTitleCard: job.includeTitleCard,
                 titleCardDurationSeconds: job.titleCardDurationSeconds,
                 titleCardLines: job.titleCardLines ?? [],
@@ -164,6 +166,7 @@ export default function RenderPage() {
             audioEnabled: formData.audioEnabled,
             videoEnabled: formData.videoEnabled,
             fontSizePreset: formData.fontSizePreset,
+            fontFamily: formData.fontFamily,
             includeTitleCard: formData.includeTitleCard,
             titleCardDurationSeconds: formData.titleCardDurationSeconds,
             titleCardLines: formData.titleCardLines.length > 0 ? formData.titleCardLines : undefined,
@@ -265,6 +268,7 @@ export default function RenderPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <FontPreviewStylesheets />
       {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-14 items-center gap-4 px-4">

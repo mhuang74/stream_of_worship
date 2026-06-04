@@ -28,6 +28,7 @@ export interface CreateRenderJobInput {
   audioEnabled?: boolean;
   videoEnabled?: boolean;
   fontSizePreset?: string;
+  fontFamily?: string;
   includeTitleCard?: boolean;
   titleCardDurationSeconds?: number;
   titleCardLines?: string[];
@@ -51,6 +52,7 @@ export interface RenderJob {
   audioEnabled: boolean;
   videoEnabled: boolean;
   fontSizePreset: string;
+  fontFamily: string;
   includeTitleCard: boolean;
   titleCardDurationSeconds: number | null;
   titleCardLines: string[] | null;
@@ -106,6 +108,7 @@ function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
     audioEnabled: row.audioEnabled ?? true,
     videoEnabled: row.videoEnabled ?? true,
     fontSizePreset: row.fontSizePreset,
+    fontFamily: row.fontFamily ?? "noto_serif_tc",
     includeTitleCard: row.includeTitleCard ?? false,
     titleCardDurationSeconds: row.titleCardDurationSeconds,
     titleCardLines,
@@ -154,6 +157,7 @@ export async function createRenderJob(
       audioEnabled: input.audioEnabled ?? true,
       videoEnabled: input.videoEnabled ?? true,
       fontSizePreset: input.fontSizePreset ?? "M",
+      fontFamily: input.fontFamily ?? "noto_serif_tc",
       includeTitleCard: input.includeTitleCard ?? false,
       titleCardDurationSeconds: input.titleCardDurationSeconds ?? null,
       titleCardLines:

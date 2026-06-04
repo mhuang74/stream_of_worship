@@ -47,6 +47,7 @@ class RenderJob:
     audio_enabled: bool = True
     video_enabled: bool = True
     font_size_preset: str = "M"
+    font_family: str = "noto_serif_tc"
     include_title_card: bool = False
     title_card_duration_seconds: Optional[float] = None
     title_card_lines: Optional[list[str]] = None
@@ -111,6 +112,7 @@ def _row_to_render_job(row: dict[str, Any]) -> RenderJob:
         audio_enabled=row.get("audio_enabled", True),
         video_enabled=row.get("video_enabled", True),
         font_size_preset=row.get("font_size_preset") or "M",
+        font_family=row.get("font_family") or "noto_serif_tc",
         include_title_card=row.get("include_title_card", False),
         title_card_duration_seconds=row.get("title_card_duration_seconds"),
         title_card_lines=title_card_lines,

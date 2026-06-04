@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
 import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
-import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
+import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS, VALID_FONT_FAMILIES } from "@/lib/constants";
 import { db } from "@/db";
 import { songsetItems, renderJobs } from "@/db/schema";
 import { eq, and, or, gte } from "drizzle-orm";
@@ -15,6 +15,7 @@ const createRenderJobSchema = z.object({
   audioEnabled: z.boolean().optional(),
   videoEnabled: z.boolean().optional(),
   fontSizePreset: z.enum(["S", "M", "L", "XL"]).optional(),
+  fontFamily: z.enum(VALID_FONT_FAMILIES as [string, ...string[]]).optional(),
   includeTitleCard: z.boolean().optional(),
   titleCardDurationSeconds: z.number().min(5).max(30).optional(),
   titleCardLines: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
           config: {
             audioEnabled: activeJob.audioEnabled,
             videoEnabled: activeJob.videoEnabled,
+            fontFamily: activeJob.fontFamily,
           },
         },
         { status: 409 }

@@ -9,6 +9,7 @@ const defaultSettings: UserSettingsData = {
   defaultResolution: "720p",
   lyricsLoopWindowSeconds: 3.0,
   defaultFontSizePreset: "M",
+  defaultFontFamily: "noto_serif_tc",
   defaultKeyShiftSemitones: 0,
   timingReviewFont: "sans",
 };
@@ -55,6 +56,17 @@ describe("SettingsForm rendering", () => {
   it("renders default font size label", () => {
     renderForm();
     expect(screen.getByLabelText("Default font size")).toBeInTheDocument();
+  });
+
+  it("renders default font family label", () => {
+    renderForm();
+    expect(screen.getByLabelText("Default font family")).toBeInTheDocument();
+  });
+
+  it("renders font preview text", () => {
+    renderForm();
+    expect(screen.getByText("耶和華是我的牧者")).toBeInTheDocument();
+    expect(screen.getByText("我必不至缺乏")).toBeInTheDocument();
   });
 
   it("renders lyrics loop window label", () => {

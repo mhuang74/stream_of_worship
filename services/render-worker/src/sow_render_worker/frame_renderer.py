@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 VideoTemplateName = Literal["dark", "gradient_warm", "gradient_blue"]
 FontSizePreset = Literal["S", "M", "L", "XL"]
+FontFamily = Literal[
+    "lxgw_wenkai_tc",
+    "chocolate_classical_sans",
+    "chiron_goround_tc",
+    "noto_serif_tc",
+]
 
 _DEFAULT_FADE_ALPHA_STEPS = 16
 _DEFAULT_MAX_CACHE_ENTRIES = 300
@@ -132,27 +138,61 @@ _SANS_SERIF_FONT_PATHS = [
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
 ]
 
+FONT_FAMILY_PATHS: dict[str, list[str]] = {
+    "lxgw_wenkai_tc": [
+        "/usr/share/fonts/truetype/vendor/LXGWWenKaiTC-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    ],
+    "chocolate_classical_sans": [
+        "/usr/share/fonts/truetype/vendor/ChocolateClassicalSans-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    ],
+    "chiron_goround_tc": [
+        "/usr/share/fonts/truetype/vendor/ChironGoRoundTC-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    ],
+    "noto_serif_tc": [
+        "/usr/share/fonts/truetype/vendor/NotoSerifTC-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    ],
+}
 
-@lru_cache(maxsize=32)
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+
+@lru_cache(maxsize=128)
+def _load_font(
+    size: int,
+    font_family: str = "noto_serif_tc",
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    paths = FONT_FAMILY_PATHS.get(font_family, FONT_FAMILY_PATHS["noto_serif_tc"])
+    for path in paths:
+        try:
+            font = ImageFont.truetype(path, size)
+            logger.debug("Loaded font: %s (size=%d, family=%s)", path, size, font_family)
+            return font
+        except (OSError, IOError):
+            continue
     for path in _SANS_SERIF_FONT_PATHS:
         try:
             font = ImageFont.truetype(path, size)
-            logger.debug("Loaded font: %s (size=%d)", path, size)
+            logger.debug("Loaded fallback font: %s (size=%d, family=%s)", path, size, font_family)
             return font
         except (OSError, IOError):
             continue
     try:
         font = ImageFont.truetype("sans-serif", size)
-        logger.debug("Loaded font: sans-serif (size=%d)", size)
+        logger.debug("Loaded font: sans-serif (size=%d, family=%s)", size, font_family)
         return font
     except (OSError, IOError):
         font = ImageFont.load_default(size=size)
-        logger.warning("No TrueType font found, using default font (size=%d)", size)
+        logger.warning("No TrueType font found, using default font (size=%d, family=%s)", size, font_family)
         return font
     except TypeError:
         font = ImageFont.load_default()
-        logger.warning("No TrueType font found, using default font (size=%d)", size)
+        logger.warning("No TrueType font found, using default font (size=%d, family=%s)", size, font_family)
         return font
 
 
@@ -162,11 +202,13 @@ class FrameRenderer:
         template: VideoTemplate,
         font_size_preset: FontSizePreset = "M",
         resolution: tuple[int, int] | None = None,
+        font_family: str = "noto_serif_tc",
     ):
         self.template = template
         self.font_size_preset = font_size_preset
         self.resolution = resolution or template.resolution
         self.base_font_size = FONT_SIZE_PRESETS[font_size_preset]
+        self.font_family = font_family
 
         self._cache_enabled = _get_bool_env("SOW_FRAME_CACHE_ENABLED", _DEFAULT_CACHE_ENABLED)
         self._fade_alpha_steps = min(256, max(2, _get_int_env("SOW_FADE_ALPHA_STEPS", _DEFAULT_FADE_ALPHA_STEPS)))
@@ -177,17 +219,17 @@ class FrameRenderer:
         self._alpha_step_size = 256 // self._fade_alpha_steps
 
         logger.info(
-            "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d, "
+            "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d, font_family=%s, "
             "cache_enabled=%s, fade_alpha_steps=%d, max_entries=%d",
             self.template.name, self.font_size_preset, self.resolution[0], self.resolution[1],
-            self._cache_enabled, self._fade_alpha_steps, self._max_cache_entries,
+            self.font_family, self._cache_enabled, self._fade_alpha_steps, self._max_cache_entries,
         )
 
     def get_base_font_size(self) -> int:
         return self.base_font_size
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        return _load_font(size)
+        return _load_font(size, self.font_family)
 
     def fit_text(
         self,
@@ -355,6 +397,7 @@ class FrameRenderer:
         quantized_fade = self._quantize_alpha(state.fade_alpha) if state.fade_alpha < 255 else 255
 
         return (
+            self.font_family,
             state.segment_id,
             state.current_title,
             state.current_lyric_index,
