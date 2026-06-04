@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { songs } from "@/db/schema";
-import { sql, and, isNull } from "drizzle-orm";
+import { sql, and, isNull, or, ilike } from "drizzle-orm";
 import type { SongWithRecordings } from "./songs";
 
 export async function fullTextSearchSongs(
@@ -10,9 +10,17 @@ export async function fullTextSearchSongs(
   visibilityStatus?: string
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const tsQuery = sql`plainto_tsquery('simple', ${query})`;
+  const searchTerm = `%${query}%`;
 
   const whereConditions = [
-    sql`${songs.searchVector} @@ ${tsQuery}`,
+    or(
+      sql`${songs.searchVector} @@ ${tsQuery}`,
+      ilike(songs.title, searchTerm),
+      ilike(songs.titlePinyin, searchTerm),
+      ilike(songs.composer, searchTerm),
+      ilike(songs.lyricist, searchTerm),
+      ilike(songs.albumName, searchTerm)
+    ),
     isNull(songs.deletedAt),
   ];
 
@@ -48,7 +56,9 @@ export async function fullTextSearchSongs(
 
   const result = await db.query.songs.findMany({
     where: whereClause,
-    orderBy: [sql`ts_rank_cd(${songs.searchVector}, ${tsQuery}) DESC`],
+    orderBy: [
+      sql`CASE WHEN ${songs.searchVector} @@ ${tsQuery} THEN ts_rank_cd(${songs.searchVector}, ${tsQuery}) ELSE 0 END DESC`,
+    ],
     limit,
     offset,
     with: {
