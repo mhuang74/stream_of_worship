@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -120,17 +120,15 @@ class TestDownloadAudio:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(cache_dir=cache_dir, r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 200
-            mock_response.data = b"downloaded audio data"
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.stream.return_value = [b"downloaded audio data"]
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            result = fetcher.download_audio("abc123")
+        result = fetcher.download_audio("abc123")
 
         assert result is not None
         assert Path(result).exists()
@@ -139,6 +137,7 @@ class TestDownloadAudio:
         mock_r2.get_audio_signed_url.assert_called_once_with(
             "abc123", expires_in_seconds=3600
         )
+        mock_response.release_conn.assert_called()
 
     def test_raises_on_download_failure(self, tmp_path):
         cache_dir = str(tmp_path / "cache")
@@ -147,17 +146,16 @@ class TestDownloadAudio:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(cache_dir=cache_dir, r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 403
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            with pytest.raises(RuntimeError, match="Failed to download audio"):
-                fetcher.download_audio("abc123")
+        with pytest.raises(RuntimeError, match="Failed to download audio"):
+            fetcher.download_audio("abc123")
+        mock_response.release_conn.assert_called()
 
     def test_raises_on_exception(self, tmp_path):
         cache_dir = str(tmp_path / "cache")
@@ -166,15 +164,13 @@ class TestDownloadAudio:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(cache_dir=cache_dir, r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_http = MagicMock()
-            mock_http.request.side_effect = Exception("network error")
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_http = MagicMock()
+        mock_http.request.side_effect = Exception("network error")
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            with pytest.raises(RuntimeError, match="Failed to download audio"):
-                fetcher.download_audio("abc123")
+        with pytest.raises(RuntimeError, match="Failed to download audio"):
+            fetcher.download_audio("abc123")
 
     def test_creates_cache_dir_if_missing(self, tmp_path):
         cache_dir = str(tmp_path / "new_cache")
@@ -182,17 +178,15 @@ class TestDownloadAudio:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(cache_dir=cache_dir, r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 200
-            mock_response.data = b"audio data"
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.stream.return_value = [b"audio data"]
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            result = fetcher.download_audio("abc123")
+        result = fetcher.download_audio("abc123")
 
         assert result is not None
         assert Path(cache_dir).exists()
@@ -203,69 +197,63 @@ class TestDownloadLrc:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 200
-            mock_response.data = "[00:01.00]第一行\n[00:05.00]第二行".encode("utf-8")
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.stream.return_value = ["[00:01.00]第一行\n[00:05.00]第二行".encode("utf-8")]
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            result = fetcher.download_lrc("abc123")
+        result = fetcher.download_lrc("abc123")
 
         assert result == "[00:01.00]第一行\n[00:05.00]第二行"
         mock_r2.get_lrc_signed_url.assert_called_once_with(
             "abc123", expires_in_seconds=3600
         )
+        mock_response.release_conn.assert_called()
 
     def test_raises_on_download_failure(self, tmp_path):
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 404
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 404
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            with pytest.raises(RuntimeError, match="Failed to download LRC"):
-                fetcher.download_lrc("abc123")
+        with pytest.raises(RuntimeError, match="Failed to download LRC"):
+            fetcher.download_lrc("abc123")
+        mock_response.release_conn.assert_called()
 
     def test_raises_on_exception(self, tmp_path):
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_http = MagicMock()
-            mock_http.request.side_effect = Exception("network error")
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_http = MagicMock()
+        mock_http.request.side_effect = Exception("network error")
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            with pytest.raises(RuntimeError, match="Failed to download LRC"):
-                fetcher.download_lrc("abc123")
+        with pytest.raises(RuntimeError, match="Failed to download LRC"):
+            fetcher.download_lrc("abc123")
 
     def test_caches_lrc_content(self, tmp_path):
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 200
-            mock_response.data = b"cached lrc"
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.stream.return_value = [b"cached lrc"]
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            result1 = fetcher.download_lrc("abc123")
-            result2 = fetcher.download_lrc("abc123")
+        result1 = fetcher.download_lrc("abc123")
+        result2 = fetcher.download_lrc("abc123")
 
         assert result1 == "cached lrc"
         assert result2 == "cached lrc"
@@ -313,17 +301,15 @@ class TestCachingWorkflow:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(cache_dir=cache_dir, r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_response = MagicMock()
-            mock_response.status = 200
-            mock_response.data = b"audio data"
-            mock_http = MagicMock()
-            mock_http.request.return_value = mock_response
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.stream.return_value = [b"audio data"]
+        mock_http = MagicMock()
+        mock_http.request.return_value = mock_response
 
-            fetcher._http = mock_http
+        fetcher._http = mock_http
 
-            result1 = fetcher.download_audio("abc123")
+        result1 = fetcher.download_audio("abc123")
 
         assert result1 is not None
         assert mock_r2.get_audio_signed_url.call_count == 1
@@ -340,24 +326,21 @@ class TestCachingWorkflow:
         mock_r2 = _make_mock_r2_client()
         fetcher = _make_fetcher(cache_dir=cache_dir, r2_client=mock_r2)
 
-        with patch("sow_render_worker.asset_fetcher.urllib3") as mock_urllib3:
-            mock_http = MagicMock()
-            mock_urllib3.PoolManager.return_value = mock_http
+        mock_response1 = MagicMock()
+        mock_response1.status = 200
+        mock_response1.stream.return_value = [b"audio1"]
 
-            fetcher._http = mock_http
+        mock_response2 = MagicMock()
+        mock_response2.status = 200
+        mock_response2.stream.return_value = [b"audio2"]
 
-            mock_response1 = MagicMock()
-            mock_response1.status = 200
-            mock_response1.data = b"audio1"
+        mock_http = MagicMock()
+        mock_http.request.side_effect = [mock_response1, mock_response2]
 
-            mock_response2 = MagicMock()
-            mock_response2.status = 200
-            mock_response2.data = b"audio2"
+        fetcher._http = mock_http
 
-            mock_http.request.side_effect = [mock_response1, mock_response2]
-
-            result1 = fetcher.download_audio("song1")
-            result2 = fetcher.download_audio("song2")
+        result1 = fetcher.download_audio("song1")
+        result2 = fetcher.download_audio("song2")
 
         assert result1 is not None
         assert result2 is not None
