@@ -51,6 +51,7 @@ const mockSongset = {
   updatedAt: new Date(),
   latestRenderJobId: null,
   lastFailedRenderJobId: null,
+  lastCompletedRenderJobId: null,
 };
 
 const mockRenderJob = {
@@ -429,18 +430,20 @@ describe("completeRenderJob", () => {
       startedAt,
     });
     
-    const mockUpdate = vi.fn().mockReturnValue({
+    const mockUpdate = vi.fn().mockImplementation((table: any) => ({
       set: vi.fn().mockImplementation((updates: any) => {
-        expect(updates.elapsedSeconds).toBeGreaterThan(0);
+        if (updates.elapsedSeconds !== undefined) {
+          expect(updates.elapsedSeconds).toBeGreaterThan(0);
+        }
         return {
           where: vi.fn().mockReturnValue({
             returning: vi.fn().mockResolvedValue([
-              { ...mockRenderJob, status: "completed", elapsedSeconds: updates.elapsedSeconds },
+              { ...mockRenderJob, status: "completed", elapsedSeconds: updates.elapsedSeconds, songsetId: "songset-1" },
             ]),
           }),
         };
       }),
-    });
+    }));
     vi.mocked(db.update).mockImplementation(mockUpdate as any);
 
     const job = await completeRenderJob(1, "mock-job-id", {});

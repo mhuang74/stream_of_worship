@@ -176,6 +176,7 @@ export const songsets = pgTable("songsets", {
   // Render tracking
   latestRenderJobId: text("latest_render_job_id"),
   lastFailedRenderJobId: text("last_failed_render_job_id"),
+  lastCompletedRenderJobId: text("last_completed_render_job_id"),
 });
 
 export const songsetItems = pgTable("songset_items", {

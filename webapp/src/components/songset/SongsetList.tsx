@@ -29,6 +29,7 @@ export interface Songset {
   isOfflineAvailable?: boolean;
   isArtifactsStale?: boolean;
   latestRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
 }
 
 interface SongsetListProps {

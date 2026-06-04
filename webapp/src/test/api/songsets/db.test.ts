@@ -58,6 +58,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     } as any);
 
     const state = await computeRenderState("songset-1");
@@ -69,6 +70,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: "job-1",
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: "job-1",
     } as any);
 
     vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
@@ -85,6 +87,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: "job-1",
       lastFailedRenderJobId: "job-1",
+      lastCompletedRenderJobId: null,
     } as any);
 
     vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
@@ -101,6 +104,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: "job-1",
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     } as any);
 
     vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
@@ -117,6 +121,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: "job-1",
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     } as any);
 
     vi.mocked(db.query.renderJobs.findFirst).mockResolvedValue({
@@ -142,6 +147,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: "job-1",
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: "job-1",
       updatedAt: completedAt,
     } as any);
 
@@ -166,6 +172,7 @@ describe("computeRenderState", () => {
       id: "songset-1",
       latestRenderJobId: "job-1",
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: "job-1",
       updatedAt: new Date("2024-01-02"),
     } as any);
 
@@ -197,6 +204,7 @@ describe("listSongsets", () => {
         updatedAt: new Date("2024-01-02"),
         latestRenderJobId: null,
         lastFailedRenderJobId: null,
+        lastCompletedRenderJobId: null,
         items: [],
         renderJobs: [],
       },
@@ -253,6 +261,7 @@ describe("getSongset", () => {
       updatedAt: new Date("2024-01-02"),
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
       items: [
         {
           id: "item-1",
@@ -317,6 +326,7 @@ describe("createSongset", () => {
       updatedAt: new Date(),
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     vi.mocked(db.insert).mockReturnValue({
@@ -347,6 +357,7 @@ describe("createSongset", () => {
       updatedAt: new Date(),
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     vi.mocked(db.insert).mockReturnValue({
@@ -381,6 +392,7 @@ describe("updateSongset", () => {
       updatedAt: new Date(),
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     // First call: ownership check; second call: post-update re-fetch with items

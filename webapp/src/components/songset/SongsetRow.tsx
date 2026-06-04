@@ -43,6 +43,7 @@ export interface SongsetRowProps {
   isOfflineAvailable?: boolean;
   isArtifactsStale?: boolean;
   latestRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
   onRender?: () => void;
   onPlay?: () => void;
   onRetry?: () => void;
@@ -65,7 +66,7 @@ export function SongsetRow({
   renderState,
   isOfflineAvailable = false,
   isArtifactsStale = false,
-  latestRenderJobId,
+  lastCompletedRenderJobId,
   onRender,
   onPlay,
   onRename,
@@ -159,14 +160,14 @@ export function SongsetRow({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={onDownloadAudio}
-                    disabled={!latestRenderJobId}
+                    disabled={!lastCompletedRenderJobId}
                   >
                     <FileAudio className="size-4 mr-2" />
                     Download Audio
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={onDownloadVideo}
-                    disabled={!latestRenderJobId}
+                    disabled={!lastCompletedRenderJobId}
                   >
                     <FileVideo className="size-4 mr-2" />
                     Download Video

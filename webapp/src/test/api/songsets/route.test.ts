@@ -62,6 +62,7 @@ describe("GET /api/songsets", () => {
           itemCount: 0,
           latestRenderJobId: null,
           lastFailedRenderJobId: null,
+          lastCompletedRenderJobId: null,
         },
       ],
       total: 1,
@@ -162,6 +163,7 @@ describe("POST /api/songsets", () => {
       itemCount: 0,
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     vi.mocked(createSongset).mockResolvedValue(mockSongset);
@@ -192,6 +194,7 @@ describe("POST /api/songsets", () => {
       itemCount: 0,
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     vi.mocked(createSongset).mockResolvedValue(mockSongset);

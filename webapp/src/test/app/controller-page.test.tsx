@@ -76,9 +76,10 @@ describe("ControllerPage", () => {
             id: "test-songset",
             name: "Test Songset",
             renderState: "unrendered",
-            latestRenderJobId: null,
-            lastFailedRenderJobId: null,
-          }),
+              latestRenderJobId: null,
+              lastFailedRenderJobId: null,
+              lastCompletedRenderJobId: null,
+            }),
       });
 
       render(<ControllerPage />);
@@ -102,6 +103,7 @@ describe("ControllerPage", () => {
               renderState: "fresh",
               latestRenderJobId: "job-1",
               lastFailedRenderJobId: null,
+              lastCompletedRenderJobId: "job-1",
             }),
         })
         .mockResolvedValueOnce({
@@ -151,6 +153,7 @@ describe("ControllerPage", () => {
               renderState: "fresh",
               latestRenderJobId: "job-1",
               lastFailedRenderJobId: null,
+              lastCompletedRenderJobId: "job-1",
             }),
         })
         .mockResolvedValueOnce({
@@ -190,6 +193,7 @@ describe("ControllerPage", () => {
               renderState: "fresh",
               latestRenderJobId: "job-1",
               lastFailedRenderJobId: null,
+              lastCompletedRenderJobId: "job-1",
             }),
         })
         .mockResolvedValueOnce({
@@ -231,6 +235,7 @@ describe("ControllerPage", () => {
               renderState: "fresh",
               latestRenderJobId: "job-1",
               lastFailedRenderJobId: null,
+              lastCompletedRenderJobId: "job-1",
             }),
         })
         .mockResolvedValueOnce({
@@ -302,6 +307,7 @@ describe("ControllerPage", () => {
               renderState: "fresh",
               latestRenderJobId: "job-1",
               lastFailedRenderJobId: null,
+              lastCompletedRenderJobId: "job-1",
             }),
         })
         .mockResolvedValueOnce({

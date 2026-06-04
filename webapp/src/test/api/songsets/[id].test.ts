@@ -61,6 +61,7 @@ describe("GET /api/songsets/[id]", () => {
       itemCount: 1,
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
       items: [
         {
           id: "item-1",
@@ -161,6 +162,7 @@ describe("PATCH /api/songsets/[id]", () => {
       itemCount: 0,
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     vi.mocked(updateSongset).mockResolvedValue(mockSongset);
@@ -191,6 +193,7 @@ describe("PATCH /api/songsets/[id]", () => {
       itemCount: 0,
       latestRenderJobId: null,
       lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
     };
 
     vi.mocked(updateSongset).mockResolvedValue(mockSongset);
