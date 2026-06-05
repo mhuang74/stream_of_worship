@@ -77,6 +77,7 @@ export default function SongsetEditorPage() {
   const [isBrowseSheetOpen, setIsBrowseSheetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   // Load songset data
   useEffect(() => {
@@ -198,18 +199,12 @@ export default function SongsetEditorPage() {
   // Handle item removal
   const handleRemoveItem = useCallback(
     async (itemId: string) => {
-      const response = await fetch(
-        `/api/songsets/${songsetId}/items?itemId=${itemId}`,
-        {
-          method: "DELETE",
-        }
-      );
+      if (isRemoving) return;
+      setIsRemoving(true);
 
-      if (!response.ok) {
-        throw new Error("Failed to remove item");
-      }
+      const removedItem = items.find((item) => item.id === itemId);
+      const removedIndex = items.findIndex((item) => item.id === itemId);
 
-      // Update local state
       setItems((prev) => prev.filter((item) => item.id !== itemId));
       setSongset((prev) =>
         prev
@@ -221,8 +216,40 @@ export default function SongsetEditorPage() {
             }
           : prev
       );
+
+      try {
+        const response = await fetch(
+          `/api/songsets/${songsetId}/items?itemId=${itemId}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to remove item");
+        }
+      } catch {
+        if (removedItem && removedIndex >= 0) {
+          setItems((prev) => {
+            const next = [...prev];
+            next.splice(removedIndex, 0, removedItem);
+            return next;
+          });
+          setSongset((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  itemCount: prev.itemCount + 1,
+                }
+              : prev
+          );
+        }
+        throw new Error("Failed to remove item");
+      } finally {
+        setIsRemoving(false);
+      }
     },
-    [songsetId]
+    [songsetId, items, isRemoving]
   );
 
   // Handle transition update
@@ -475,6 +502,7 @@ export default function SongsetEditorPage() {
         onDownloadAudio={handleDownloadAudio}
         onDownloadVideo={handleDownloadVideo}
         onAddSongs={handleAddSongs}
+        isRemoving={isRemoving}
       />
       <BrowseSheet
         isOpen={isBrowseSheetOpen}

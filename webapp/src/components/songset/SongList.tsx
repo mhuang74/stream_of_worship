@@ -61,6 +61,7 @@ interface SongListProps {
   onSelectSong?: (itemId: string) => void;
   readOnly?: boolean;
   className?: string;
+  isRemoving?: boolean;
 }
 
 interface SortableSongItemProps {
@@ -73,6 +74,10 @@ interface SortableSongItemProps {
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
   onPlaySong?: (songId: string) => void;
+  isConfirming: boolean;
+  onRequestConfirm: () => void;
+  onCancelConfirm: () => void;
+  isRemoving?: boolean;
 }
 
 function SortableSongItem({
@@ -85,6 +90,10 @@ function SortableSongItem({
   isPlaying = false,
   isPreviewLoading = false,
   onPlaySong,
+  isConfirming,
+  onRequestConfirm,
+  onCancelConfirm,
+  isRemoving = false,
 }: SortableSongItemProps) {
   const {
     attributes,
@@ -94,6 +103,12 @@ function SortableSongItem({
     transition,
     isDragging,
   } = useSortable({ id: item.id, disabled: readOnly });
+
+  const confirmRemove = isConfirming;
+
+  useEffect(() => {
+    if (isDragging) onCancelConfirm();
+  }, [isDragging, onCancelConfirm]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -121,7 +136,8 @@ function SortableSongItem({
     >
       <Card className={cn(
         "border-border/50 hover:border-border transition-colors",
-        isPlaying && "border-primary/30 bg-primary/5"
+        isPlaying && "border-primary/30 bg-primary/5",
+        confirmRemove && "border-destructive/40 bg-destructive/5"
       )}>
         <CardContent className="p-3">
           <div className="flex items-center gap-3">
@@ -217,15 +233,30 @@ function SortableSongItem({
 
             {/* Remove button */}
             {!readOnly && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                onClick={() => onRemove(item.id)}
-                aria-label={`Remove ${item.song?.title || "song"}`}
-              >
-                <Trash2 className="size-4 text-destructive" />
-              </Button>
+              <div className="shrink-0 min-w-[32px] flex justify-end">
+                {!confirmRemove ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                    onClick={onRequestConfirm}
+                    aria-label={`Remove ${item.song?.title || "song"}`}
+                  >
+                    <Trash2 className="size-4 text-destructive" />
+                  </Button>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => onRemove(item.id)}
+                    disabled={isRemoving}
+                    aria-label={`Confirm delete ${item.song?.title || "song"}`}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </CardContent>
@@ -242,9 +273,17 @@ export function SongList({
   onSelectSong,
   readOnly = false,
   className,
+  isRemoving = false,
 }: SongListProps) {
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
+  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmingItemId) return;
+    const timer = setTimeout(() => setConfirmingItemId(null), 5000);
+    return () => clearTimeout(timer);
+  }, [confirmingItemId]);
 
   const { currentTrack, state: playerState, play, pause } = useAudioPlayerContext();
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
@@ -402,6 +441,10 @@ export function SongList({
               isPlaying={playingSongId === item.songId}
               isPreviewLoading={previewLoadingSongId === item.songId}
               onPlaySong={handlePlaySong}
+              isConfirming={confirmingItemId === item.id}
+              onRequestConfirm={() => setConfirmingItemId(item.id)}
+              onCancelConfirm={() => setConfirmingItemId(null)}
+              isRemoving={isRemoving}
             />
           ))}
         </div>
