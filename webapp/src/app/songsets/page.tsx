@@ -14,6 +14,7 @@ interface ApiSongset {
   updatedAt: string;
   renderState: RenderState;
   itemCount: number;
+  durationSeconds: number | null;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
@@ -57,6 +58,7 @@ export default function SongsetsPage() {
           name: songset.name,
           description: songset.description,
           itemCount: songset.itemCount,
+          durationSeconds: songset.durationSeconds,
           updatedAt: new Date(songset.updatedAt),
           renderState: songset.renderState,
           latestRenderJobId: songset.latestRenderJobId,
