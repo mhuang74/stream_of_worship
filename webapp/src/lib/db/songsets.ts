@@ -112,7 +112,7 @@ export async function listSongsets(
       items: {
         columns: { id: true, createdAt: true },
         with: {
-          recording: { columns: { durationSeconds: true } },
+          recording: { columns: { durationSeconds: true, deletedAt: true } },
         },
       },
       renderJobs: {
@@ -171,11 +171,13 @@ export async function listSongsets(
       latestRenderJobId: row.latestRenderJobId,
       lastFailedRenderJobId: row.lastFailedRenderJobId,
       lastCompletedRenderJobId: row.lastCompletedRenderJobId,
-      itemCount: row.items.length,
-      durationSeconds: row.items.reduce(
-        (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
-        0
-      ) || null,
+      itemCount: row.items.filter((item) => !item.recording?.deletedAt).length,
+      durationSeconds: row.items
+        .filter((item) => !item.recording?.deletedAt)
+        .reduce(
+          (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+          0
+        ) || null,
       renderState,
     };
   });
@@ -313,7 +315,7 @@ export async function updateSongset(
       items: {
         columns: { id: true },
         with: {
-          recording: { columns: { durationSeconds: true } },
+          recording: { columns: { durationSeconds: true, deletedAt: true } },
         },
       },
     },
@@ -332,11 +334,13 @@ export async function updateSongset(
     latestRenderJobId: updated.latestRenderJobId,
     lastFailedRenderJobId: updated.lastFailedRenderJobId,
     lastCompletedRenderJobId: updated.lastCompletedRenderJobId,
-    itemCount: updated.items.length,
-    durationSeconds: updated.items.reduce(
-      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
-      0
-    ) || null,
+    itemCount: updated.items.filter((item) => !item.recording?.deletedAt).length,
+    durationSeconds: updated.items
+      .filter((item) => !item.recording?.deletedAt)
+      .reduce(
+        (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+        0
+      ) || null,
     renderState,
   };
 }
