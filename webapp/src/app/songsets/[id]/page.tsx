@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
 import { SongCardData } from "@/components/songset/SongCard";
@@ -70,7 +70,9 @@ interface ApiResponse {
 export default function SongsetEditorPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const songsetId = params.id as string;
+  const isNew = searchParams.get("new") === "true";
 
   const [songset, setSongset] = useState<ApiSongset | null>(null);
   const [items, setItems] = useState<SongListItem[]>([]);
@@ -159,6 +161,13 @@ export default function SongsetEditorPage() {
       cancelled = true;
     };
   }, [songsetId, router]);
+
+  useEffect(() => {
+    if (!isLoading && isNew && items.length === 0) {
+      setIsBrowseSheetOpen(true);
+      router.replace(`/songsets/${songsetId}`);
+    }
+  }, [isLoading, isNew, items.length, songsetId, router]);
 
   const markStale = useCallback(() => {
     setSongset((prev) =>
