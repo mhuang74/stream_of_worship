@@ -72,6 +72,7 @@ export interface SongsetEditorProps {
   onDownloadAudio?: () => void;
   onDownloadVideo?: () => void;
   onAddSongs: () => void;
+  isRemoving?: boolean;
   className?: string;
 }
 
@@ -90,6 +91,7 @@ export function SongsetEditor({
   onDownloadAudio,
   onDownloadVideo,
   onAddSongs,
+  isRemoving = false,
   className,
 }: SongsetEditorProps) {
   const router = useRouter();
@@ -376,6 +378,7 @@ export function SongsetEditor({
           onRemove={handleRemove}
           onEditTransition={handleEditTransition}
           onSelectSong={() => {}}
+          isRemoving={isRemoving}
         />
       </main>
 
