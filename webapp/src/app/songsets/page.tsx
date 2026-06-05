@@ -58,7 +58,7 @@ export default function SongsetsPage() {
           name: songset.name,
           description: songset.description,
           itemCount: songset.itemCount,
-          durationSeconds: songset.durationSeconds,
+          durationSeconds: songset.durationSeconds ?? undefined,
           updatedAt: new Date(songset.updatedAt),
           renderState: songset.renderState,
           latestRenderJobId: songset.latestRenderJobId,
