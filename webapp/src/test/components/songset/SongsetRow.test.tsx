@@ -12,6 +12,7 @@ describe("SongsetRow", () => {
     durationSeconds: 180,
     updatedAt: new Date("2024-01-15T10:30:00Z"),
     renderState: "fresh" as RenderState,
+    lastCompletedRenderJobId: "render-job-1",
     onRender: vi.fn(),
     onPlay: vi.fn(),
     onRetry: vi.fn(),
@@ -175,6 +176,79 @@ describe("SongsetRow", () => {
     it("has data-songset-id attribute", () => {
       const { container } = renderRow();
       expect(container.querySelector('[data-songset-id="songset-1"]')).toBeInTheDocument();
+    });
+  });
+
+  describe("prominent Play button", () => {
+    it("shows prominent Play button when renderState is fresh and lastCompletedRenderJobId exists", () => {
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1" });
+      const playButtons = screen.getAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(1);
+    });
+
+    it("does not show prominent Play button when lastCompletedRenderJobId is null", () => {
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: null });
+      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(0);
+    });
+
+    it("does not show prominent Play button when renderState is stale", () => {
+      renderRow({ renderState: "stale" as RenderState, lastCompletedRenderJobId: "render-job-1" });
+      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(0);
+    });
+
+    it("does not show prominent Play button when renderState is unrendered", () => {
+      renderRow({ renderState: "unrendered" as RenderState, lastCompletedRenderJobId: null });
+      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(0);
+    });
+
+    it("does not show prominent Play button when renderState is rendering", () => {
+      renderRow({ renderState: "rendering" as RenderState, lastCompletedRenderJobId: null });
+      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(0);
+    });
+
+    it("does not show prominent Play button when renderState is failed", () => {
+      renderRow({ renderState: "failed" as RenderState, lastCompletedRenderJobId: null });
+      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(0);
+    });
+
+    it("does not show prominent Play button when onPlay is undefined", () => {
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1", onPlay: undefined });
+      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
+      expect(playButtons.length).toBe(0);
+    });
+
+    it("calls onPlay when prominent Play button is clicked", () => {
+      const onPlay = vi.fn();
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1", onPlay });
+      const playButtons = screen.getAllByRole("button", { name: /^play$/i });
+      fireEvent.click(playButtons[0]);
+      expect(onPlay).toHaveBeenCalled();
+    });
+
+    it("kebab dropdown still contains Play menu item when prominent Play button is shown", async () => {
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1" });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /play/i })).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("kebab trigger visibility", () => {
+    it("has touch-visible and hover-capability-aware classes", () => {
+      renderRow();
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      expect(menuButton.className).toContain("opacity-100");
+      expect(menuButton.className).toContain("[@media(hover:hover)]:opacity-0");
+      expect(menuButton.className).toContain("[@media(hover:hover)]:group-hover:opacity-100");
+      expect(menuButton.className).toContain("data-[state=open]:opacity-100");
     });
   });
 });

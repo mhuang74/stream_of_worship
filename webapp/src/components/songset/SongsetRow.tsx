@@ -79,6 +79,9 @@ export function SongsetRow({
 }: SongsetRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  const canPlayFreshRender =
+    renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onPlay);
+
   const formatDuration = (seconds?: number) => {
     if (!seconds) return "--:--";
     const mins = Math.floor(seconds / 60);
@@ -106,9 +109,7 @@ export function SongsetRow({
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
-          {/* Main content */}
           <div className="flex-1 min-w-0">
-            {/* Header row */}
             <div className="flex items-start justify-between gap-2">
               <Link
                 href={`/songsets/${id}`}
@@ -124,67 +125,79 @@ export function SongsetRow({
                 )}
               </Link>
 
-              {/* Context menu */}
-              <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-                <DropdownMenuTrigger asChild>
+              <div className="shrink-0 flex items-center gap-1.5">
+                {canPlayFreshRender && (
                   <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                    aria-label="Open menu"
+                    variant="default"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={onPlay}
                   >
-                    <MoreVertical className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={onRename}>
-                    <Edit className="size-4 mr-2" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onDuplicate}>
-                    <Copy className="size-4 mr-2" />
-                    Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={onRender}>
-                    <RefreshCw className="size-4 mr-2" />
-                    Render
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onPlay}>
-                    <Play className="size-4 mr-2" />
+                    <Play className="size-4" />
                     Play
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onShare}>
-                    <Share2 className="size-4 mr-2" />
-                    Share
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={onDownloadAudio}
-                    disabled={!lastCompletedRenderJobId}
-                  >
-                    <FileAudio className="size-4 mr-2" />
-                    Download Audio
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={onDownloadVideo}
-                    disabled={!lastCompletedRenderJobId}
-                  >
-                    <FileVideo className="size-4 mr-2" />
-                    Download Video
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={onDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="size-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </Button>
+                )}
+
+                <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                      aria-label="Open menu"
+                    >
+                      <MoreVertical className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={onRename}>
+                      <Edit className="size-4 mr-2" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onDuplicate}>
+                      <Copy className="size-4 mr-2" />
+                      Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onRender}>
+                      <RefreshCw className="size-4 mr-2" />
+                      Render
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onPlay}>
+                      <Play className="size-4 mr-2" />
+                      Play
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onShare}>
+                      <Share2 className="size-4 mr-2" />
+                      Share
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={onDownloadAudio}
+                      disabled={!lastCompletedRenderJobId}
+                    >
+                      <FileAudio className="size-4 mr-2" />
+                      Download Audio
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={onDownloadVideo}
+                      disabled={!lastCompletedRenderJobId}
+                    >
+                      <FileVideo className="size-4 mr-2" />
+                      Download Video
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={onDelete}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="size-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
-            {/* Metadata row */}
             <Link
               href={`/songsets/${id}`}
               className="block rounded-md p-1 -m-1 hover:bg-accent/50 transition-colors"
@@ -203,7 +216,6 @@ export function SongsetRow({
                 </span>
               </div>
 
-              {/* Status indicators */}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <RenderStatusBadge state={renderState} />
                 {isOfflineAvailable && (
