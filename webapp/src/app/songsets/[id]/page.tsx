@@ -204,6 +204,8 @@ export default function SongsetEditorPage() {
 
       const removedItem = items.find((item) => item.id === itemId);
       const removedIndex = items.findIndex((item) => item.id === itemId);
+      const prevRenderState = songset?.renderState;
+      const prevIsArtifactsStale = songset?.isArtifactsStale;
 
       setItems((prev) => prev.filter((item) => item.id !== itemId));
       setSongset((prev) =>
@@ -240,6 +242,8 @@ export default function SongsetEditorPage() {
               ? {
                   ...prev,
                   itemCount: prev.itemCount + 1,
+                  renderState: prevRenderState ?? prev.renderState,
+                  isArtifactsStale: prevIsArtifactsStale ?? prev.isArtifactsStale,
                 }
               : prev
           );

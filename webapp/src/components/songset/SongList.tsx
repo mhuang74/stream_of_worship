@@ -240,6 +240,7 @@ function SortableSongItem({
                     size="icon-sm"
                     className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                     onClick={onRequestConfirm}
+                    disabled={isRemoving}
                     aria-label={`Remove ${item.song?.title || "song"}`}
                   >
                     <Trash2 className="size-4 text-destructive" />
@@ -280,10 +281,10 @@ export function SongList({
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!confirmingItemId) return;
+    if (!confirmingItemId || isRemoving) return;
     const timer = setTimeout(() => setConfirmingItemId(null), 5000);
     return () => clearTimeout(timer);
-  }, [confirmingItemId]);
+  }, [confirmingItemId, isRemoving]);
 
   const { currentTrack, state: playerState, play, pause } = useAudioPlayerContext();
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
