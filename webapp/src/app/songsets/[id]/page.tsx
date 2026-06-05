@@ -163,11 +163,11 @@ export default function SongsetEditorPage() {
   }, [songsetId, router]);
 
   useEffect(() => {
-    if (!isLoading && isNew && items.length === 0) {
+    if (!isLoading && !error && songset && isNew && items.length === 0) {
       setIsBrowseSheetOpen(true);
       router.replace(`/songsets/${songsetId}`);
     }
-  }, [isLoading, isNew, items.length, songsetId, router]);
+  }, [isLoading, error, songset, isNew, items.length, songsetId, router]);
 
   const markStale = useCallback(() => {
     setSongset((prev) =>
