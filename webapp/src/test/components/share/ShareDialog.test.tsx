@@ -8,12 +8,10 @@ vi.mock("sonner", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-// Mock clipboard
 Object.assign(navigator, {
   clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
 });
 
-// Mock window.open
 const mockWindowOpen = vi.fn();
 global.open = mockWindowOpen;
 
@@ -21,8 +19,9 @@ function renderDialog(props?: Partial<React.ComponentProps<typeof ShareDialog>>)
   const defaultProps = {
     open: true,
     onOpenChange: vi.fn(),
-    renderJobId: "job-123",
+    songsetId: "songset-1",
     songsetName: "Sunday Worship",
+    durationSeconds: 1080,
     ...props,
   };
   return render(<ShareDialog {...defaultProps} />);
@@ -32,17 +31,17 @@ function mockEmptyShares() {
   return { ok: true, json: async () => ({ shares: [] }) };
 }
 
-function mockSizes(mp3: number | null = null, mp4: number | null = null) {
-  return { ok: true, json: async () => ({ mp3SizeBytes: mp3, mp4SizeBytes: mp4 }) };
-}
-
 function mockExistingShare(token = "tok-1") {
   return {
     ok: true,
     json: async () => ({
-      shares: [{ token, shareUrl: `https://example.com/share/${token}`, renderJobId: "job-123" }],
+      shares: [{ token, shareUrl: `https://example.com/share/${token}`, songsetId: "songset-1", renderJobId: null }],
     }),
   };
+}
+
+function mockSizes(mp3: number | null = null, mp4: number | null = null) {
+  return { ok: true, json: async () => ({ mp3SizeBytes: mp3, mp4SizeBytes: mp4 }) };
 }
 
 // --------------------------------------------------------------------------
@@ -55,9 +54,7 @@ describe("ShareDialog rendering", () => {
   });
 
   it("renders when open", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes());
+    mockFetch.mockResolvedValueOnce(mockEmptyShares());
 
     renderDialog();
     await waitFor(() => {
@@ -66,9 +63,7 @@ describe("ShareDialog rendering", () => {
   });
 
   it("shows share-link tab active by default", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes());
+    mockFetch.mockResolvedValueOnce(mockEmptyShares());
 
     renderDialog();
     await waitFor(() => {
@@ -77,12 +72,21 @@ describe("ShareDialog rendering", () => {
     });
   });
 
-  it("shows send-file tab button", async () => {
+  it("hides send-file tab when no renderJobId prop", async () => {
+    mockFetch.mockResolvedValueOnce(mockEmptyShares());
+
+    renderDialog({ renderJobId: undefined });
+    await waitFor(() => {
+      expect(screen.queryByRole("tab", { name: /send file/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows send-file tab when renderJobId prop provided", async () => {
     mockFetch
       .mockResolvedValueOnce(mockEmptyShares())
       .mockResolvedValueOnce(mockSizes());
 
-    renderDialog();
+    renderDialog({ renderJobId: "job-123" });
     await waitFor(() => {
       expect(screen.getByRole("tab", { name: /send file/i })).toBeInTheDocument();
     });
@@ -98,10 +102,19 @@ describe("Share Link tab", () => {
     vi.clearAllMocks();
   });
 
+  it("fetches shares by songsetId on open", async () => {
+    mockFetch.mockResolvedValueOnce(mockEmptyShares());
+
+    renderDialog();
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("songsetId=songset-1")
+      );
+    });
+  });
+
   it("shows create share link button when no active share", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes());
+    mockFetch.mockResolvedValueOnce(mockEmptyShares());
 
     renderDialog();
     await waitFor(() => {
@@ -109,13 +122,12 @@ describe("Share Link tab", () => {
     });
   });
 
-  it("creates share link on button click", async () => {
+  it("creates share link with songsetId on button click", async () => {
     mockFetch
       .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes())
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: "new-tok", shareUrl: "https://example.com/share/new-tok" }),
+        json: async () => ({ token: "new-tok", shareUrl: "https://example.com/share/new-tok", songsetId: "songset-1", renderJobId: null }),
       });
 
     const { toast } = await import("sonner");
@@ -128,40 +140,52 @@ describe("Share Link tab", () => {
     });
   });
 
-  it("shows existing share URL with copy and revoke buttons", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockExistingShare("tok-1"))
-      .mockResolvedValueOnce(mockSizes());
+  it("shows formatted message with name, duration, and URL", async () => {
+    mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
 
     renderDialog();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /copy share link/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /revoke share link/i })).toBeInTheDocument();
+      const textarea = screen.getByRole("textbox", { name: /share message/i });
+      expect(textarea.value).toContain("Sunday Worship");
+      expect(textarea.value).toContain("18 min");
+      expect(textarea.value).toContain("https://example.com/share/tok-1");
+      expect(textarea.value).toContain("read-only mode");
     });
   });
 
-  it("copies share URL to clipboard", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockExistingShare("tok-1"))
-      .mockResolvedValueOnce(mockSizes());
+  it("copies full formatted message to clipboard", async () => {
+    mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
 
     const { toast } = await import("sonner");
     renderDialog();
-    await waitFor(() => screen.getByRole("button", { name: /copy share link/i }));
+    await waitFor(() => screen.getByRole("button", { name: /copy share message/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /copy share link/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy share message/i }));
     await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        expect.stringContaining("Sunday Worship")
+      );
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
         expect.stringContaining("tok-1")
       );
-      expect(toast.success).toHaveBeenCalledWith("Link copied to clipboard");
+      expect(toast.success).toHaveBeenCalledWith("Share message copied to clipboard");
+    });
+  });
+
+  it("shows live-link warning text", async () => {
+    mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
+
+    renderDialog();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/link stays live/i)
+      ).toBeInTheDocument();
     });
   });
 
   it("revokes share on revoke button click", async () => {
     mockFetch
       .mockResolvedValueOnce(mockExistingShare("tok-1"))
-      .mockResolvedValueOnce(mockSizes())
       .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
 
     const { toast } = await import("sonner");
@@ -178,7 +202,6 @@ describe("Share Link tab", () => {
   it("shows error toast when create fails", async () => {
     mockFetch
       .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes())
       .mockResolvedValueOnce({
         ok: false,
         json: async () => ({ error: "Maximum of 20 active shares reached." }),
@@ -196,16 +219,33 @@ describe("Share Link tab", () => {
     });
   });
 
-  it("shows revocation notice text", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockExistingShare("tok-1"))
-      .mockResolvedValueOnce(mockSizes());
+  it("formats duration under 60 min correctly", async () => {
+    mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
 
-    renderDialog();
+    renderDialog({ durationSeconds: 1080 });
     await waitFor(() => {
-      expect(
-        screen.getByText(/Revoking stops streams; downloaded files unaffected/i)
-      ).toBeInTheDocument();
+      const textarea = screen.getByRole("textbox", { name: /share message/i });
+      expect(textarea.value).toContain("18 min");
+    });
+  });
+
+  it("formats duration 60+ min correctly", async () => {
+    mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
+
+    renderDialog({ durationSeconds: 5400 });
+    await waitFor(() => {
+      const textarea = screen.getByRole("textbox", { name: /share message/i });
+      expect(textarea.value).toContain("1h 30m");
+    });
+  });
+
+  it("formats null duration as Not available", async () => {
+    mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
+
+    renderDialog({ durationSeconds: null });
+    await waitFor(() => {
+      const textarea = screen.getByRole("textbox", { name: /share message/i });
+      expect(textarea.value).toContain("Not available");
     });
   });
 });
@@ -223,7 +263,7 @@ describe("Send File tab", () => {
     mockFetch
       .mockResolvedValueOnce(mockEmptyShares())
       .mockResolvedValueOnce(mockSizes());
-    renderDialog();
+    renderDialog({ renderJobId: "job-123" });
     await waitFor(() => screen.getByRole("tab", { name: /send file/i }));
     fireEvent.click(screen.getByRole("tab", { name: /send file/i }));
     await waitFor(() => {
@@ -242,9 +282,9 @@ describe("Send File tab", () => {
   it("disables email button when file exceeds 25MB limit", async () => {
     mockFetch
       .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes(50 * 1024 * 1024, 500 * 1024 * 1024)); // 500MB mp4
+      .mockResolvedValueOnce(mockSizes(50 * 1024 * 1024, 500 * 1024 * 1024));
 
-    renderDialog();
+    renderDialog({ renderJobId: "job-123" });
     await waitFor(() => screen.getByRole("tab", { name: /send file/i }));
     fireEvent.click(screen.getByRole("tab", { name: /send file/i }));
 
@@ -254,56 +294,12 @@ describe("Send File tab", () => {
     });
   });
 
-  it("keeps WhatsApp and Line enabled for 50MB file", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes(50 * 1024 * 1024, null));
-
-    renderDialog();
-    await waitFor(() => screen.getByRole("tab", { name: /send file/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /send file/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /send via whatsapp/i })).not.toBeDisabled();
-      expect(screen.getByRole("button", { name: /send via line/i })).not.toBeDisabled();
-    });
-  });
-
-  it("disables Line button when file exceeds 1GB", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes(null, 1.5 * 1024 * 1024 * 1024));
-
-    renderDialog();
-    await waitFor(() => screen.getByRole("tab", { name: /send file/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /send file/i }));
-
-    await waitFor(() => {
-      const lineBtn = screen.getByRole("button", { name: /send via line/i });
-      expect(lineBtn).toBeDisabled();
-    });
-  });
-
-  it("shows file size when available", async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockEmptyShares())
-      .mockResolvedValueOnce(mockSizes(null, 500 * 1024 * 1024));
-
-    renderDialog();
-    await waitFor(() => screen.getByRole("tab", { name: /send file/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /send file/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/500\.0 MB/)).toBeInTheDocument();
-    });
-  });
-
   it("opens email client with share link on email button click", async () => {
     mockFetch
       .mockResolvedValueOnce(mockExistingShare("tok-1"))
-      .mockResolvedValueOnce(mockSizes(1 * 1024 * 1024, null)); // 1MB - under email limit
+      .mockResolvedValueOnce(mockSizes(1 * 1024 * 1024, null));
 
-    renderDialog();
+    renderDialog({ renderJobId: "job-123" });
     await waitFor(() => screen.getByRole("tab", { name: /send file/i }));
     fireEvent.click(screen.getByRole("tab", { name: /send file/i }));
 

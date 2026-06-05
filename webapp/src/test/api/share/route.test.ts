@@ -9,14 +9,18 @@ vi.mock("@/lib/auth", () => ({
   auth: { api: { getSession: vi.fn() } },
 }));
 
-const mockFindFirst = vi.fn();
+const mockFindFirstJob = vi.fn();
+const mockFindFirstSongset = vi.fn();
+const mockFindFirstShare = vi.fn();
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
 
 vi.mock("@/db", () => ({
   db: {
     query: {
-      renderJobs: { findFirst: (...args: unknown[]) => mockFindFirst(...args) },
+      renderJobs: { findFirst: (...args: unknown[]) => mockFindFirstJob(...args) },
+      songsets: { findFirst: (...args: unknown[]) => mockFindFirstSongset(...args) },
+      songsetShares: { findFirst: (...args: unknown[]) => mockFindFirstShare(...args) },
     },
     insert: () => ({ values: mockInsert }),
     select: () => ({ from: () => ({ where: mockSelect }) }),
@@ -34,6 +38,12 @@ const completedJob = {
   status: "completed",
   mp3R2Key: "renders/job-123/output.mp3",
   mp4R2Key: "renders/job-123/output.mp4",
+};
+
+const ownedSongset = {
+  id: "songset-abc",
+  userId: 1,
+  name: "Sunday Worship",
 };
 
 function makePostRequest(body: unknown): NextRequest {
@@ -66,7 +76,7 @@ describe("POST /api/share", () => {
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
-    const res = await POST(makePostRequest({ renderJobId: "job-123" }));
+    const res = await POST(makePostRequest({ songsetId: "songset-abc" }));
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe("Unauthorized");
@@ -82,43 +92,77 @@ describe("POST /api/share", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when renderJobId is missing", async () => {
+  it("returns 400 when both songsetId and renderJobId provided", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    const res = await POST(makePostRequest({ songsetId: "songset-abc", renderJobId: "job-123" }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/both/i);
+  });
+
+  it("returns 400 when neither target provided", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     const res = await POST(makePostRequest({}));
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toMatch(/renderJobId/);
+    expect(data.error).toMatch(/either/i);
   });
 
-  it("returns 404 when render job not found", async () => {
+  it("returns 404 when songset not found or not owned", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockResolvedValue(null);
-    const res = await POST(makePostRequest({ renderJobId: "missing-job" }));
+    mockFindFirstSongset.mockResolvedValue(null);
+    const res = await POST(makePostRequest({ songsetId: "missing-songset" }));
     expect(res.status).toBe(404);
   });
 
-  it("returns 409 when render job is not completed", async () => {
+  it("creates songset-level share and returns 201", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockResolvedValue({ ...completedJob, status: "running" });
-    const res = await POST(makePostRequest({ renderJobId: "job-123" }));
-    expect(res.status).toBe(409);
+    mockFindFirstSongset.mockResolvedValue(ownedSongset);
+    mockFindFirstShare.mockResolvedValue(null);
+    mockSelect.mockResolvedValue([{ value: 5 }]);
+
+    const res = await POST(makePostRequest({ songsetId: "songset-abc", allowDownload: false }));
+    expect(res.status).toBe(201);
+
     const data = await res.json();
-    expect(data.error).toMatch(/not completed/);
+    expect(data.token).toBe("test-token-abc123456789012");
+    expect(data.songsetId).toBe("songset-abc");
+    expect(data.renderJobId).toBeNull();
+    expect(data.allowDownload).toBe(false);
+    expect(mockInsert).toHaveBeenCalledOnce();
+  });
+
+  it("reuses existing active share for same songset", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirstSongset.mockResolvedValue(ownedSongset);
+    mockFindFirstShare.mockResolvedValue({
+      token: "existing-tok",
+      songsetId: "songset-abc",
+      renderJobId: null,
+      allowDownload: false,
+    });
+
+    const res = await POST(makePostRequest({ songsetId: "songset-abc" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.token).toBe("existing-tok");
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 
   it("returns 422 when user has 20 active shares", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockResolvedValue(completedJob);
+    mockFindFirstSongset.mockResolvedValue(ownedSongset);
+    mockFindFirstShare.mockResolvedValue(null);
     mockSelect.mockResolvedValue([{ value: 20 }]);
-    const res = await POST(makePostRequest({ renderJobId: "job-123" }));
+    const res = await POST(makePostRequest({ songsetId: "songset-abc" }));
     expect(res.status).toBe(422);
     const data = await res.json();
     expect(data.error).toMatch(/20/);
   });
 
-  it("creates share token and returns 201", async () => {
+  it("renderJobId path still works", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockResolvedValue(completedJob);
+    mockFindFirstJob.mockResolvedValue(completedJob);
     mockSelect.mockResolvedValue([{ value: 5 }]);
 
     const res = await POST(makePostRequest({ renderJobId: "job-123", allowDownload: false }));
@@ -131,9 +175,25 @@ describe("POST /api/share", () => {
     expect(mockInsert).toHaveBeenCalledOnce();
   });
 
+  it("returns 404 when render job not found", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirstJob.mockResolvedValue(null);
+    const res = await POST(makePostRequest({ renderJobId: "missing-job" }));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when render job is not completed", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirstJob.mockResolvedValue({ ...completedJob, status: "running" });
+    const res = await POST(makePostRequest({ renderJobId: "job-123" }));
+    expect(res.status).toBe(409);
+    const data = await res.json();
+    expect(data.error).toMatch(/not completed/);
+  });
+
   it("normalizes allowDownload to boolean", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockResolvedValue(completedJob);
+    mockFindFirstJob.mockResolvedValue(completedJob);
     mockSelect.mockResolvedValue([{ value: 0 }]);
 
     const res = await POST(makePostRequest({ renderJobId: "job-123", allowDownload: true }));
@@ -144,7 +204,7 @@ describe("POST /api/share", () => {
 
   it("returns 500 on unexpected error", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
-    mockFindFirst.mockRejectedValue(new Error("DB error"));
+    mockFindFirstJob.mockRejectedValue(new Error("DB error"));
     const res = await POST(makePostRequest({ renderJobId: "job-123" }));
     expect(res.status).toBe(500);
   });
@@ -198,9 +258,25 @@ describe("GET /api/share", () => {
 
   it("filters by renderJobId when provided", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirstJob.mockResolvedValue(completedJob);
     mockSelect.mockResolvedValue([]);
     const res = await GET(makeGetRequest("?renderJobId=job-123"));
     expect(res.status).toBe(200);
+  });
+
+  it("filters by songsetId when provided", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirstSongset.mockResolvedValue(ownedSongset);
+    mockSelect.mockResolvedValue([]);
+    const res = await GET(makeGetRequest("?songsetId=songset-abc"));
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 when songsetId not owned", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirstSongset.mockResolvedValue(null);
+    const res = await GET(makeGetRequest("?songsetId=missing"));
+    expect(res.status).toBe(404);
   });
 
   it("returns 500 on unexpected error", async () => {

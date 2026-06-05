@@ -1,0 +1,1 @@
+ALTER TABLE "songset_share" ALTER COLUMN "render_job_id" DROP NOT NULL;

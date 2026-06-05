@@ -8,21 +8,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { Copy, Trash2, Link, MessageCircle, Mail, Loader2 } from "lucide-react";
+import { Copy, Trash2, Link, MessageCircle, Mail, Loader2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// File size limits per platform (in bytes)
 const SIZE_LIMITS = {
-  whatsapp: 2 * 1024 * 1024 * 1024, // 2 GB
-  line: 1 * 1024 * 1024 * 1024, // 1 GB
-  email: 25 * 1024 * 1024, // 25 MB
+  whatsapp: 2 * 1024 * 1024 * 1024,
+  line: 1 * 1024 * 1024 * 1024,
+  email: 25 * 1024 * 1024,
 };
 
 function formatBytes(bytes: number): string {
@@ -42,11 +41,22 @@ function formatLimit(bytes: number): string {
   return `${bytes / (1024 * 1024)} MB`;
 }
 
+function formatShareDuration(seconds: number | null): string {
+  if (!seconds) return "Not available";
+  const totalMinutes = Math.round(seconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return `${hours}h ${String(mins).padStart(2, "0")}m`;
+}
+
 export interface ShareDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  renderJobId: string;
+  songsetId: string;
   songsetName: string;
+  durationSeconds: number | null;
+  renderJobId?: string;
 }
 
 type Tab = "send-file" | "share-link";
@@ -64,8 +74,10 @@ interface ArtifactSizes {
 export function ShareDialog({
   open,
   onOpenChange,
-  renderJobId,
+  songsetId,
   songsetName,
+  durationSeconds,
+  renderJobId,
 }: ShareDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>("share-link");
   const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null);
@@ -74,15 +86,13 @@ export function ShareDialog({
   const [isLoadingSizes, setIsLoadingSizes] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
 
-  // Load existing share info and artifact sizes when dialog opens
   useEffect(() => {
     if (!open) return;
 
     async function loadData() {
-      // Load existing share tokens for this render job
       setIsLoadingShare(true);
       try {
-        const res = await fetch(`/api/share?renderJobId=${encodeURIComponent(renderJobId)}`);
+        const res = await fetch(`/api/share?songsetId=${encodeURIComponent(songsetId)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.shares?.length > 0) {
@@ -96,26 +106,31 @@ export function ShareDialog({
         setIsLoadingShare(false);
       }
 
-      // Load artifact sizes for Send File tab
-      setIsLoadingSizes(true);
-      try {
-        const res = await fetch(`/api/render-jobs/${renderJobId}/artifact-sizes`);
-        if (res.ok) {
-          const data = await res.json();
-          setArtifactSizes({
-            mp3SizeBytes: data.mp3SizeBytes ?? null,
-            mp4SizeBytes: data.mp4SizeBytes ?? null,
-          });
+      if (renderJobId) {
+        setIsLoadingSizes(true);
+        try {
+          const res = await fetch(`/api/render-jobs/${renderJobId}/artifact-sizes`);
+          if (res.ok) {
+            const data = await res.json();
+            setArtifactSizes({
+              mp3SizeBytes: data.mp3SizeBytes ?? null,
+              mp4SizeBytes: data.mp4SizeBytes ?? null,
+            });
+          }
+        } catch {
+          // Ignore errors loading sizes
+        } finally {
+          setIsLoadingSizes(false);
         }
-      } catch {
-        // Ignore errors loading sizes
-      } finally {
-        setIsLoadingSizes(false);
       }
     }
 
     loadData();
-  }, [open, renderJobId]);
+  }, [open, songsetId, renderJobId]);
+
+  const formattedMessage = shareInfo
+    ? `I shared a Stream of Worship songset with you:\n\n${songsetName}\nDuration: ${formatShareDuration(durationSeconds)}\n\nOpen this link to view the song list in read-only mode and start Worship Playback:\n${shareInfo.shareUrl}`
+    : "";
 
   const handleCreateShareLink = useCallback(async () => {
     setIsLoadingShare(true);
@@ -123,7 +138,7 @@ export function ShareDialog({
       const res = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ renderJobId, allowDownload: false }),
+        body: JSON.stringify({ songsetId, allowDownload: false }),
       });
 
       if (!res.ok) {
@@ -139,14 +154,14 @@ export function ShareDialog({
     } finally {
       setIsLoadingShare(false);
     }
-  }, [renderJobId]);
+  }, [songsetId]);
 
-  const handleCopyLink = useCallback(() => {
-    if (!shareInfo?.shareUrl) return;
-    navigator.clipboard.writeText(shareInfo.shareUrl).then(() => {
-      toast.success("Link copied to clipboard");
+  const handleCopyMessage = useCallback(() => {
+    if (!formattedMessage) return;
+    navigator.clipboard.writeText(formattedMessage).then(() => {
+      toast.success("Share message copied to clipboard");
     });
-  }, [shareInfo]);
+  }, [formattedMessage]);
 
   const handleRevoke = useCallback(async () => {
     if (!shareInfo?.token) return;
@@ -218,7 +233,6 @@ export function ShareDialog({
           <DialogTitle>Share</DialogTitle>
         </DialogHeader>
 
-        {/* Tab switcher */}
         <div className="flex border-b" role="tablist">
           <button
             role="tab"
@@ -234,22 +248,23 @@ export function ShareDialog({
             <Link className="size-4 inline mr-1.5 mb-0.5" />
             Share link
           </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === "send-file"}
-            className={cn(
-              "flex-1 py-2 text-sm font-medium transition-colors border-b-2 -mb-px",
-              activeTab === "send-file"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-            onClick={() => setActiveTab("send-file")}
-          >
-            Send file
-          </button>
+          {renderJobId && (
+            <button
+              role="tab"
+              aria-selected={activeTab === "send-file"}
+              className={cn(
+                "flex-1 py-2 text-sm font-medium transition-colors border-b-2 -mb-px",
+                activeTab === "send-file"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setActiveTab("send-file")}
+            >
+              Send file
+            </button>
+          )}
         </div>
 
-        {/* Share Link tab */}
         {activeTab === "share-link" && (
           <div className="space-y-4 pt-2">
             {isLoadingShare ? (
@@ -258,26 +273,29 @@ export function ShareDialog({
               </div>
             ) : shareInfo ? (
               <>
-                <div className="flex gap-2">
-                  <Input
-                    value={shareInfo.shareUrl}
-                    readOnly
-                    className="text-sm font-mono"
-                    aria-label="Share link URL"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleCopyLink}
-                    aria-label="Copy share link"
-                  >
-                    <Copy className="size-4" />
-                  </Button>
-                </div>
+                <Textarea
+                  value={formattedMessage}
+                  readOnly
+                  className="text-sm min-h-[120px] resize-none"
+                  aria-label="Share message"
+                />
 
-                <p className="text-xs text-muted-foreground">
-                  Anyone with this link can stream the worship video. Revoking stops streams; downloaded files unaffected.
-                </p>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={handleCopyMessage}
+                  aria-label="Copy share message"
+                >
+                  <Copy className="size-4" />
+                  Copy message
+                </Button>
+
+                <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                  <span>
+                    This link stays live. Future edits to this songset will be visible to anyone with the link until you revoke it.
+                  </span>
+                </div>
 
                 <Button
                   variant="destructive"
@@ -298,7 +316,7 @@ export function ShareDialog({
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Create a link to share this worship video publicly. Anyone with the link can stream it.
+                  Create a link to share this songset. Anyone with the link can view the song list and start Worship Playback.
                 </p>
                 <Button
                   className="w-full gap-2"
@@ -318,8 +336,7 @@ export function ShareDialog({
           </div>
         )}
 
-        {/* Send File tab */}
-        {activeTab === "send-file" && (
+        {activeTab === "send-file" && renderJobId && (
           <div className="space-y-4 pt-2">
             {isLoadingSizes ? (
               <div className="flex items-center justify-center py-6">
@@ -334,7 +351,6 @@ export function ShareDialog({
                 )}
 
                 <div className="space-y-2">
-                  {/* WhatsApp */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="block">
@@ -361,7 +377,6 @@ export function ShareDialog({
                     )}
                   </Tooltip>
 
-                  {/* Line */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="block">
@@ -388,7 +403,6 @@ export function ShareDialog({
                     )}
                   </Tooltip>
 
-                  {/* Email */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="block">

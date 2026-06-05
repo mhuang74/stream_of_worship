@@ -3,18 +3,63 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Play, Loader2, Monitor, AlertTriangle } from "lucide-react";
+import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
+
+interface PublicSongsetItem {
+  id: string;
+  position: number;
+  songTitle: string | null;
+  composer: string | null;
+  lyricist: string | null;
+  albumName: string | null;
+  songMusicalKey: string | null;
+  durationSeconds: number | null;
+  tempoBpm: number | null;
+  recordingMusicalKey: string | null;
+}
 
 interface ShareData {
   token: string;
-  songsetId: string;
-  songsetName: string | null;
-  renderJobId: string;
+  shareType: "songset" | "renderJob";
+  songset: {
+    id: string;
+    name: string;
+    description: string | null;
+    totalDurationSeconds: number | null;
+    renderState: "unrendered" | "rendering" | "fresh" | "stale" | "failed";
+    latestRenderJobId: string | null;
+    lastCompletedRenderJobId: string | null;
+  };
+  items: PublicSongsetItem[];
+  playback: {
+    selectedRenderJobId: string | null;
+    isStale: boolean;
+    staleStatus: string | null;
+    mp3Url: string | null;
+    mp4Url: string | null;
+    chaptersUrl: string | null;
+    mp3SizeBytes: number | null;
+    mp4SizeBytes: number | null;
+  };
   allowDownload: boolean;
-  mp3Url: string | null;
-  mp4Url: string | null;
-  chaptersUrl: string | null;
   createdAt: string;
+  expiresAt: string | null;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return "--:--";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function formatTotalDuration(seconds: number | null): string {
+  if (!seconds) return "N/A";
+  const totalMinutes = Math.round(seconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return `${hours}h ${String(mins).padStart(2, "0")}m`;
 }
 
 export default function SharePage() {
@@ -24,6 +69,7 @@ export default function SharePage() {
 
   const [shareData, setShareData] = useState<ShareData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
 
@@ -39,6 +85,7 @@ export default function SharePage() {
 
         if (!res.ok) {
           const data = await res.json();
+          setErrorStatus(res.status);
           throw new Error(data.error ?? "This link is no longer available");
         }
 
@@ -66,10 +113,10 @@ export default function SharePage() {
   }, [token]);
 
   const handlePlay = () => {
-    if (!shareData?.mp4Url && !shareData?.mp3Url) return;
+    if (!shareData?.playback.mp4Url && !shareData?.playback.mp3Url) return;
     setIsStarting(true);
     router.push(
-      shareData.mp4Url
+      shareData.playback.mp4Url
         ? `/share/${token}/play/projection`
         : `/share/${token}/play/audio`
     );
@@ -84,11 +131,18 @@ export default function SharePage() {
   }
 
   if (error) {
+    const isRevoked = errorStatus === 410 && error?.toLowerCase().includes("revoked");
+    const isExpired = errorStatus === 410 && error?.toLowerCase().includes("expired");
+
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-4">
         <AlertTriangle className="size-12 text-muted-foreground" />
         <p className="text-center text-muted-foreground max-w-sm" role="alert">
-          {error}
+          {isRevoked
+            ? "This share link has been revoked."
+            : isExpired
+              ? "This share link has expired."
+              : error}
         </p>
       </div>
     );
@@ -96,31 +150,108 @@ export default function SharePage() {
 
   if (!shareData) return null;
 
-  const hasVideo = !!shareData.mp4Url;
-  const hasAudio = !!shareData.mp3Url;
+  const { songset, items, playback } = shareData;
+  const hasVideo = !!playback.mp4Url;
+  const hasAudio = !!playback.mp3Url;
   const hasArtifacts = hasVideo || hasAudio;
+
+  const renderUnavailableMessage = () => {
+    if (songset.renderState === "unrendered") {
+      return "This songset hasn't been rendered yet. Worship Playback is not available.";
+    }
+    if (songset.renderState === "rendering") {
+      return "This songset is currently being rendered. Check back soon.";
+    }
+    if (songset.renderState === "failed") {
+      return "Rendering failed. Worship Playback is not available.";
+    }
+    if (!hasArtifacts) {
+      return "No playback artifacts available yet.";
+    }
+    return null;
+  };
+
+  const unavailableMessage = renderUnavailableMessage();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <header className="border-b px-4 py-3">
         <p className="text-sm text-muted-foreground font-medium">Stream of Worship</p>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6 gap-8">
-        <div className="text-center space-y-2 max-w-sm">
+      <main className="flex-1 p-6 max-w-2xl mx-auto w-full space-y-6">
+        <div className="space-y-2">
           <h1 className="text-2xl font-bold" data-testid="songset-name">
-            {shareData.songsetName ?? "Worship Set"}
+            {songset.name}
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Shared worship video
-          </p>
+          {songset.description && (
+            <p className="text-muted-foreground text-sm">
+              {songset.description}
+            </p>
+          )}
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            <Clock className="size-3.5" />
+            Total: {formatTotalDuration(songset.totalDurationSeconds)}
+          </div>
         </div>
 
-        {hasArtifacts ? (
-          <div className="flex flex-col gap-3 w-full max-w-xs">
-            {/* Play full-screen projection */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span className="font-medium">Song List</span>
+            <span className="flex items-center gap-1">
+              <Music className="size-3" />
+              {items.length} {items.length === 1 ? "song" : "songs"}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {items.map((item, index) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+              >
+                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-medium shrink-0">
+                  {index + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">
+                    {item.songTitle || "Unknown Song"}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {[item.composer, item.lyricist].filter(Boolean).join(" • ") || item.albumName || ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 text-sm text-muted-foreground">
+                  {item.songMusicalKey && (
+                    <span className="text-xs">{item.songMusicalKey}</span>
+                  )}
+                  {item.durationSeconds != null && (
+                    <span>{formatDuration(item.durationSeconds)}</span>
+                  )}
+                  {item.tempoBpm != null && (
+                    <span className="text-xs">{Math.round(item.tempoBpm)} BPM</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {playback.isStale && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
+            <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              The song list above is current, but the playback may reflect an earlier render.
+            </p>
+          </div>
+        )}
+
+        {unavailableMessage ? (
+          <p className="text-sm text-muted-foreground text-center">
+            {unavailableMessage}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
             {hasVideo && (
               <Button
                 size="lg"
@@ -135,11 +266,10 @@ export default function SharePage() {
                 ) : (
                   <Monitor className="size-5" />
                 )}
-                Play Full Screen
+                Start Worship
               </Button>
             )}
 
-            {/* Audio-only play */}
             {hasAudio && !hasVideo && (
               <Button
                 size="lg"
@@ -153,14 +283,10 @@ export default function SharePage() {
                 ) : (
                   <Play className="size-5" />
                 )}
-                Play Audio
+                Start Worship
               </Button>
             )}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center">
-            No media available for this share
-          </p>
         )}
       </main>
     </div>

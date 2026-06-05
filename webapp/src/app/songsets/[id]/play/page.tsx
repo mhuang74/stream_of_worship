@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PrePlayCard } from "@/components/play/PrePlayCard";
+import { ShareDialog } from "@/components/share/ShareDialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
@@ -52,6 +53,7 @@ export default function PlayPage() {
   const [renderJob, setRenderJob] = useState<RenderJobData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   // Load songset data
   useEffect(() => {
@@ -128,9 +130,8 @@ export default function PlayPage() {
   }, [router, songsetId]);
 
   const handleShare = useCallback(() => {
-    // Navigate to share dialog (or open share modal)
-    router.push(`/songsets/${songsetId}?share=true`);
-  }, [router, songsetId]);
+    setShareDialogOpen(true);
+  }, []);
 
   if (isLoading) {
     return (
@@ -156,6 +157,10 @@ export default function PlayPage() {
       </div>
     );
   }
+
+  const totalDurationSeconds = items.reduce(
+    (sum, item) => sum + (item.recording?.durationSeconds || 0), 0
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -190,6 +195,15 @@ export default function PlayPage() {
           onShare={handleShare}
         />
       </main>
+
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        songsetId={songset.id}
+        songsetName={songset.name}
+        durationSeconds={totalDurationSeconds || null}
+        renderJobId={renderJob?.id}
+      />
     </div>
   );
 }

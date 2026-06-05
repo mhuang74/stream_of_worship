@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { SongsetList, Songset } from "@/components/songset/SongsetList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
+import { ShareDialog } from "@/components/share/ShareDialog";
 import { toast } from "sonner";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 
@@ -32,6 +33,10 @@ export default function SongsetsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<{
+    id: string; name: string; durationSeconds: number | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,8 +191,12 @@ export default function SongsetsPage() {
   );
 
   const handleShare = useCallback((id: string) => {
-    window.location.href = `/songsets/${id}?share=true`;
-  }, []);
+    const songset = songsets.find(s => s.id === id);
+    if (songset) {
+      setShareTarget({ id, name: songset.name, durationSeconds: songset.durationSeconds ?? null });
+      setShareDialogOpen(true);
+    }
+  }, [songsets]);
 
   const handleDownloadAudio = useCallback(async (id: string) => {
     const songset = songsets.find((s) => s.id === id);
@@ -264,6 +273,16 @@ export default function SongsetsPage() {
         onDownloadVideo={handleDownloadVideo}
         onDelete={handleDelete}
       />
+
+      {shareTarget && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          songsetId={shareTarget.id}
+          songsetName={shareTarget.name}
+          durationSeconds={shareTarget.durationSeconds}
+        />
+      )}
     </div>
   );
 }

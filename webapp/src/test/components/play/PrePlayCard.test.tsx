@@ -95,13 +95,6 @@ describe("PrePlayCard", () => {
       writable: true,
       configurable: true,
     });
-
-    // Mock navigator.share
-    Object.defineProperty(navigator, "share", {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    });
   });
 
   describe("rendering", () => {
@@ -232,29 +225,6 @@ describe("PrePlayCard", () => {
 
       await waitFor(() => {
         expect(mockShare).toHaveBeenCalled();
-      });
-    });
-
-    it("uses Web Share API when available", async () => {
-      const mockNavigatorShare = vi.fn().mockResolvedValue(undefined);
-      Object.defineProperty(navigator, "share", {
-        value: mockNavigatorShare,
-        writable: true,
-        configurable: true,
-      });
-
-      render(<PrePlayCard {...defaultProps} />);
-
-      const shareButton = screen.getByRole("button", { name: /share/i });
-      fireEvent.click(shareButton);
-
-      await waitFor(() => {
-        expect(mockNavigatorShare).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: "Sunday Worship",
-            text: expect.stringContaining("Sunday Worship"),
-          })
-        );
       });
     });
   });

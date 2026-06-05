@@ -165,26 +165,8 @@ export function PrePlayCard({
   }, [isPresentationAvailable, songset.id]);
 
   const handleShare = useCallback(async () => {
-    // Try Web Share API first
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: songset.name,
-          text: `Check out "${songset.name}" on Stream of Worship`,
-          url: `${window.location.origin}/songsets/${songset.id}`,
-        });
-        return;
-      } catch (error) {
-        // User cancelled or share failed, fall through to custom handler
-        if ((error as Error).name !== "AbortError") {
-          console.error("Share failed:", error);
-        }
-      }
-    }
-
-    // Fall back to custom share handler
     onShare();
-  }, [songset.name, songset.id, onShare]);
+  }, [onShare]);
 
   return (
     <Card className={cn("w-full", className)}>
