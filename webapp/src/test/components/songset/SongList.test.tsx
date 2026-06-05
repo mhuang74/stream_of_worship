@@ -169,13 +169,15 @@ describe("SongList", () => {
   });
 
   describe("interactions", () => {
-    it("calls onRemove when remove button clicked", async () => {
+    it("calls onRemove when remove button clicked then delete confirmed", async () => {
       const onRemove = vi.fn();
       renderList({ onRemove });
 
-      // Find and click the remove button for the first song
       const removeButtons = screen.getAllByRole("button", { name: /remove/i });
       fireEvent.click(removeButtons[0]);
+
+      const confirmButton = await screen.findByRole("button", { name: /confirm delete/i });
+      fireEvent.click(confirmButton);
 
       await waitFor(() => {
         expect(onRemove).toHaveBeenCalledWith("item-1");
