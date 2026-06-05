@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { SongsetList, Songset } from "@/components/songset/SongsetList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ interface ApiResponse {
 }
 
 export default function SongsetsPage() {
+  const router = useRouter();
   const [songsets, setSongsets] = useState<Songset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,10 +105,28 @@ export default function SongsetsPage() {
         throw new Error(data.error || "Failed to create songset");
       }
 
+      let songset: { id?: string };
+      try {
+        songset = await response.json();
+      } catch {
+        refreshSongsets();
+        toast.error("Songset created but could not open editor");
+        router.push("/songsets");
+        return;
+      }
+
+      if (!songset?.id) {
+        refreshSongsets();
+        toast.error("Songset created but could not open editor");
+        router.push("/songsets");
+        return;
+      }
+
       refreshSongsets();
       toast.success("Songset created successfully");
+      router.push(`/songsets/${songset.id}?new=true`);
     },
-    [refreshSongsets]
+    [refreshSongsets, router]
   );
 
   const handleRender = useCallback((id: string) => {
