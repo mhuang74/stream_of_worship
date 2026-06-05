@@ -34,13 +34,13 @@ export default function ShareAudioPage() {
         const data = await res.json();
         if (cancelled) return;
 
-        if (!data.mp3Url) {
+        if (!data.playback?.mp3Url) {
           throw new Error("No audio available for this share");
         }
 
         setShareData({
-          songsetName: data.songsetName ?? "Worship Set",
-          mp3Url: data.mp3Url,
+          songsetName: data.songset?.name ?? "Worship Set",
+          mp3Url: data.playback.mp3Url,
         });
       } catch (err) {
         if (!cancelled) {

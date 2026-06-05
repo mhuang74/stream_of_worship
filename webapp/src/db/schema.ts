@@ -364,7 +364,7 @@ export const songsetShares = pgTable("songset_share", {
   songsetId: text("songset_id")
     .notNull()
     .references(() => songsets.id, { onDelete: "cascade" }),
-  renderJobId: text("render_job_id").notNull(),
+  renderJobId: text("render_job_id"),
   createdByUserId: bigint("created_by_user_id", { mode: "number" })
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),

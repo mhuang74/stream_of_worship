@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
+import { ShareDialog } from "@/components/share/ShareDialog";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
@@ -19,6 +20,7 @@ interface ApiSongset {
   updatedAt: string;
   renderState: RenderState;
   itemCount: number;
+  durationSeconds: number | null;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
@@ -80,7 +82,10 @@ export default function SongsetEditorPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const autoOpenDoneRef = useRef(false);
+  const isNew = searchParams.get("new") === "true";
+  const isShare = searchParams.get("share") === "true";
 
   // Load songset data
   useEffect(() => {
@@ -116,6 +121,7 @@ export default function SongsetEditorPage() {
           updatedAt: data.updatedAt,
           renderState: data.renderState,
           itemCount: data.itemCount,
+          durationSeconds: data.durationSeconds ?? null,
           latestRenderJobId: data.latestRenderJobId,
           lastFailedRenderJobId: data.lastFailedRenderJobId,
           lastCompletedRenderJobId: data.lastCompletedRenderJobId,
@@ -375,8 +381,16 @@ export default function SongsetEditorPage() {
 
   // Handle share
   const handleShare = useCallback(() => {
-    router.push(`/songsets/${songsetId}?share=true`);
-  }, [songsetId, router]);
+    setShareDialogOpen(true);
+  }, []);
+
+  // Backward compat: ?share=true opens dialog then cleans URL
+  useEffect(() => {
+    if (isShare) {
+      setShareDialogOpen(true);
+      router.replace(`/songsets/${songsetId}`);
+    }
+  }, [isShare, songsetId, router]);
 
   // Handle download audio
   const handleDownloadAudio = useCallback(async () => {
@@ -522,6 +536,14 @@ export default function SongsetEditorPage() {
         onAddSong={handleAddSong}
         existingSongIds={items.map((item) => item.songId)}
         itemCount={items.length}
+      />
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        songsetId={songsetId}
+        songsetName={songset.name}
+        durationSeconds={songset.durationSeconds ?? null}
+        renderJobId={songset.lastCompletedRenderJobId ?? undefined}
       />
     </>
   );

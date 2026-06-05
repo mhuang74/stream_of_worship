@@ -1,10 +1,98 @@
 import { db } from "@/db";
-import { lyricMarks, songsets, songsetItems, renderJobs } from "@/db/schema";
-import { eq, and, desc, gt, sql } from "drizzle-orm";
+import { lyricMarks, songsets, songsetItems, renderJobs, songs, recordings } from "@/db/schema";
+import { eq, and, desc, gt, sql, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
+
+export interface PublicSongsetItem {
+  id: string;
+  position: number;
+  songTitle: string | null;
+  composer: string | null;
+  lyricist: string | null;
+  albumName: string | null;
+  songMusicalKey: string | null;
+  durationSeconds: number | null;
+  tempoBpm: number | null;
+  recordingMusicalKey: string | null;
+}
+
+export interface SongsetPublicView {
+  id: string;
+  name: string;
+  description: string | null;
+  updatedAt: Date;
+  totalDurationSeconds: number | null;
+  renderState: RenderState;
+  latestRenderJobId: string | null;
+  lastCompletedRenderJobId: string | null;
+  items: PublicSongsetItem[];
+}
+
+export async function getSongsetPublicView(songsetId: string): Promise<SongsetPublicView | null> {
+  const songset = await db.query.songsets.findFirst({
+    where: eq(songsets.id, songsetId),
+  });
+
+  if (!songset) return null;
+
+  const items = await db
+    .select({
+      id: songsetItems.id,
+      position: songsetItems.position,
+      songTitle: songs.title,
+      composer: songs.composer,
+      lyricist: songs.lyricist,
+      albumName: songs.albumName,
+      songMusicalKey: songs.musicalKey,
+      durationSeconds: recordings.durationSeconds,
+      tempoBpm: recordings.tempoBpm,
+      recordingMusicalKey: recordings.musicalKey,
+      recordingDeletedAt: recordings.deletedAt,
+    })
+    .from(songsetItems)
+    .leftJoin(songs, eq(songsetItems.songId, songs.id))
+    .leftJoin(recordings, and(
+      eq(songsetItems.recordingHashPrefix, recordings.hashPrefix),
+      isNull(recordings.deletedAt)
+    ))
+    .where(eq(songsetItems.songsetId, songsetId))
+    .orderBy(songsetItems.position);
+
+  const publicItems: PublicSongsetItem[] = items.map((item) => ({
+    id: item.id,
+    position: item.position,
+    songTitle: item.songTitle,
+    composer: item.composer,
+    lyricist: item.lyricist,
+    albumName: item.albumName,
+    songMusicalKey: item.songMusicalKey,
+    durationSeconds: item.durationSeconds,
+    tempoBpm: item.tempoBpm,
+    recordingMusicalKey: item.recordingMusicalKey,
+  }));
+
+  const totalDurationSeconds = items.reduce(
+    (sum, item) => sum + (item.durationSeconds ?? 0),
+    0
+  ) || null;
+
+  const renderState = await computeRenderState(songsetId);
+
+  return {
+    id: songset.id,
+    name: songset.name,
+    description: songset.description,
+    updatedAt: songset.updatedAt,
+    totalDurationSeconds,
+    renderState,
+    latestRenderJobId: songset.latestRenderJobId,
+    lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
+    items: publicItems,
+  };
+}
 
 export interface SongsetListItem {
   id: string;

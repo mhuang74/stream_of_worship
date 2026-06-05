@@ -21,7 +21,6 @@ export default function ShareProjectionPage() {
         setIsLoading(true);
         setError(null);
 
-        // Re-validate token server-side and mint fresh signed URLs — no URLs in query params
         const res = await fetch(`/api/share/${token}`);
 
         if (!res.ok) {
@@ -32,12 +31,12 @@ export default function ShareProjectionPage() {
         const data = await res.json();
         if (cancelled) return;
 
-        if (!data.mp4Url) {
+        if (!data.playback?.mp4Url) {
           throw new Error("No video available for this share");
         }
 
-        setSongTitle(data.songsetName ?? undefined);
-        setVideoUrl(data.mp4Url);
+        setSongTitle(data.songset?.name ?? undefined);
+        setVideoUrl(data.playback.mp4Url);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load projection");
