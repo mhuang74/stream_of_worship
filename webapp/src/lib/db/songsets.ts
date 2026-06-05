@@ -14,6 +14,7 @@ export interface SongsetListItem {
   updatedAt: Date;
   renderState: RenderState;
   itemCount: number;
+  durationSeconds: number | null;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
@@ -108,7 +109,12 @@ export async function listSongsets(
     limit,
     offset,
     with: {
-      items: { columns: { id: true, createdAt: true } },
+      items: {
+        columns: { id: true, createdAt: true },
+        with: {
+          recording: { columns: { durationSeconds: true } },
+        },
+      },
       renderJobs: {
         columns: {
           id: true,
@@ -166,6 +172,10 @@ export async function listSongsets(
       lastFailedRenderJobId: row.lastFailedRenderJobId,
       lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       itemCount: row.items.length,
+      durationSeconds: row.items.reduce(
+        (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+        0
+      ) || null,
       renderState,
     };
   });
@@ -246,6 +256,10 @@ export async function getSongset(
     lastFailedRenderJobId: row.lastFailedRenderJobId,
     lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: items.length,
+    durationSeconds: items.reduce(
+      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+      0
+    ) || null,
     renderState,
     items,
   };
@@ -272,6 +286,7 @@ export async function createSongset(
     lastFailedRenderJobId: row.lastFailedRenderJobId,
     lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: 0,
+    durationSeconds: null,
     renderState: "unrendered",
   };
 }
@@ -294,7 +309,14 @@ export async function updateSongset(
 
   const updated = await db.query.songsets.findFirst({
     where: and(eq(songsets.id, id), eq(songsets.userId, userId)),
-    with: { items: { columns: { id: true } } },
+    with: {
+      items: {
+        columns: { id: true },
+        with: {
+          recording: { columns: { durationSeconds: true } },
+        },
+      },
+    },
   });
 
   if (!updated) return null;
@@ -311,6 +333,10 @@ export async function updateSongset(
     lastFailedRenderJobId: updated.lastFailedRenderJobId,
     lastCompletedRenderJobId: updated.lastCompletedRenderJobId,
     itemCount: updated.items.length,
+    durationSeconds: updated.items.reduce(
+      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+      0
+    ) || null,
     renderState,
   };
 }
