@@ -10,7 +10,8 @@ export async function fullTextSearchSongs(
   visibilityStatus?: string
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const tsQuery = sql`plainto_tsquery('simple', ${query})`;
-  const searchTerm = `%${query}%`;
+  const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
+  const searchTerm = `%${escapedQuery}%`;
 
   const whereConditions = [
     or(
@@ -57,7 +58,7 @@ export async function fullTextSearchSongs(
   const result = await db.query.songs.findMany({
     where: whereClause,
     orderBy: [
-      sql`CASE WHEN ${songs.searchVector} @@ ${tsQuery} THEN ts_rank_cd(${songs.searchVector}, ${tsQuery}) ELSE 0 END DESC`,
+      sql`ts_rank_cd(${songs.searchVector}, ${tsQuery}) DESC`,
     ],
     limit,
     offset,
