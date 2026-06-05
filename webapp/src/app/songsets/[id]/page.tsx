@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
@@ -80,6 +80,7 @@ export default function SongsetEditorPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const autoOpenDoneRef = useRef(false);
 
   // Load songset data
   useEffect(() => {
@@ -121,27 +122,32 @@ export default function SongsetEditorPage() {
           isArtifactsStale: data.isArtifactsStale,
         });
 
-        // Transform API items to SongListItem format
-        setItems(
-          data.items.map((item) => ({
-            id: item.id,
-            songId: item.songId,
-            position: item.position,
-            song: item.song,
-            recording: item.recording
-              ? {
-                  ...item.recording,
-                  hashPrefix: item.recordingHashPrefix ?? "",
-                }
-              : null,
-            gapBeats: item.gapBeats,
-            crossfadeEnabled: item.crossfadeEnabled,
-            crossfadeDurationSeconds: item.crossfadeDurationSeconds,
-            keyShiftSemitones: item.keyShiftSemitones,
-            tempoRatio: item.tempoRatio,
-            markedLineCount: item.markedLineCount,
-          }))
-        );
+        const transformedItems = data.items.map((item) => ({
+          id: item.id,
+          songId: item.songId,
+          position: item.position,
+          song: item.song,
+          recording: item.recording
+            ? {
+                ...item.recording,
+                hashPrefix: item.recordingHashPrefix ?? "",
+              }
+            : null,
+          gapBeats: item.gapBeats,
+          crossfadeEnabled: item.crossfadeEnabled,
+          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+          keyShiftSemitones: item.keyShiftSemitones,
+          tempoRatio: item.tempoRatio,
+          markedLineCount: item.markedLineCount,
+        }));
+
+        setItems(transformedItems);
+
+        if (isNew && !autoOpenDoneRef.current && transformedItems.length === 0) {
+          autoOpenDoneRef.current = true;
+          setIsBrowseSheetOpen(true);
+          router.replace(`/songsets/${songsetId}`);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load songset");
@@ -160,14 +166,7 @@ export default function SongsetEditorPage() {
     return () => {
       cancelled = true;
     };
-  }, [songsetId, router]);
-
-  useEffect(() => {
-    if (!isLoading && !error && songset && isNew && items.length === 0) {
-      setIsBrowseSheetOpen(true);
-      router.replace(`/songsets/${songsetId}`);
-    }
-  }, [isLoading, error, songset, isNew, items.length, songsetId, router]);
+  }, [songsetId, router, isNew]);
 
   const markStale = useCallback(() => {
     setSongset((prev) =>
@@ -262,7 +261,7 @@ export default function SongsetEditorPage() {
         setIsRemoving(false);
       }
     },
-    [songsetId, items, isRemoving]
+    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState]
   );
 
   // Handle transition update

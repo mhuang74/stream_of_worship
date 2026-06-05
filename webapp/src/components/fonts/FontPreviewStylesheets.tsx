@@ -3,6 +3,7 @@
 export function FontPreviewStylesheets() {
   return (
     <>
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <link
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC&family=Noto+Serif+TC&family=Chiron+GoRound+TC&family=Chocolate+Classical+Sans&display=swap"

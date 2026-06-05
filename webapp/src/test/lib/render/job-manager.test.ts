@@ -435,7 +435,7 @@ describe("completeRenderJob", () => {
       startedAt,
     });
     
-    const mockTxUpdate = vi.fn().mockImplementation((_table: any) => ({
+    const mockTxUpdate = vi.fn().mockImplementation(() => ({
       set: vi.fn().mockImplementation((updates: any) => {
         if (updates.elapsedSeconds !== undefined) {
           expect(updates.elapsedSeconds).toBeGreaterThan(0);
