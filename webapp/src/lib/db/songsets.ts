@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { lyricMarks, songsets, songsetItems, renderJobs, songs, recordings } from "@/db/schema";
-import { eq, and, desc, gt, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 
