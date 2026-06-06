@@ -160,18 +160,26 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         position: index,
       }));
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       fetch(`/api/songsets/${songsetId}/items/reorder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ updates }),
+        signal: controller.signal,
       }).then((response) => {
+        clearTimeout(timeoutId);
         if (!response.ok) {
           setItems(previousItems);
-          throw new Error("Failed to reorder items");
+          toast.error("Failed to reorder items");
+          return;
         }
         markStale();
       }).catch(() => {
+        clearTimeout(timeoutId);
         setItems(previousItems);
+        toast.error("Failed to reorder items");
       });
     },
     [songsetId, items, markStale]
