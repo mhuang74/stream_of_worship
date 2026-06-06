@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "SOW_RUN_NEON_INTEGRATION=1 vitest run src/test/lib/db/search.integration.test.ts",
     "test:watch": "vitest"

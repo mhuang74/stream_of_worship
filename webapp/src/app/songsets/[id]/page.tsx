@@ -62,6 +62,7 @@ interface ApiResponse {
   updatedAt: string;
   renderState: RenderState;
   itemCount: number;
+  durationSeconds: number | null;
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
