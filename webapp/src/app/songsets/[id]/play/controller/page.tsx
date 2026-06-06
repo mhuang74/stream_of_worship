@@ -189,7 +189,7 @@ export default function ControllerPage() {
 
   return (
     <ControllerPlayer
-      songsetId={songsetId}
+      playerId={songsetId}
       videoSrc={videoUrl}
       chapters={chapters}
       isPresentationActive={isPresentationActive}

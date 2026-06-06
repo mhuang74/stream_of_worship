@@ -117,7 +117,7 @@ export default function SharePage() {
     setIsStarting(true);
     router.push(
       shareData.playback.mp4Url
-        ? `/share/${token}/play/projection`
+        ? `/share/${token}/play/controller`
         : `/share/${token}/play/audio`
     );
   };

@@ -14,22 +14,26 @@ import { toast } from "sonner";
 import { ArrowLeft, X, Info, Maximize } from "lucide-react";
 
 export interface ControllerPlayerProps {
-  songsetId: string;
+  playerId: string;
   videoSrc: string;
   chapters: Chapter[];
   isPresentationActive?: boolean;
   onPresentationConnect?: () => void;
   onPresentationDisconnect?: () => void;
+  exitRoute?: string;
+  autoFullscreen?: boolean;
   className?: string;
 }
 
 const IOS_INFO_KEY = "sow-ios-info-shown";
 
 export function ControllerPlayer({
-  songsetId,
+  playerId,
   videoSrc,
   chapters,
   isPresentationActive = false,
+  exitRoute,
+  autoFullscreen = true,
   className,
 }: ControllerPlayerProps) {
   const router = useRouter();
@@ -266,8 +270,8 @@ export function ControllerPlayer({
         // Ignore errors
       });
     }
-    router.push(`/songsets/${songsetId}/play`);
-  }, [router, songsetId]);
+    router.push(exitRoute ?? `/songsets/${playerId}/play`);
+  }, [router, playerId, exitRoute]);
 
   const handleReenterFullscreen = useCallback(() => {
     document.documentElement.requestFullscreen().catch(() => {});
@@ -337,6 +341,8 @@ export function ControllerPlayer({
   }, []);
 
   useEffect(() => {
+    if (!autoFullscreen) return;
+
     const requestFullscreen = async () => {
       try {
         if (document.documentElement.requestFullscreen) {
@@ -363,7 +369,7 @@ export function ControllerPlayer({
         document.exitFullscreen().catch(() => {});
       }
     };
-  }, []);
+  }, [autoFullscreen]);
 
   // Mute video when presentation is active (audio plays on receiver)
   useEffect(() => {
