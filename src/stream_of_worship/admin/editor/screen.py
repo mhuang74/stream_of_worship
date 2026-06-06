@@ -246,6 +246,7 @@ class LRCEditorScreen(Screen[None]):
         self._preview_target_index: int = -1
         self._preview_prev_index: int = -1
         self._preview_end_seconds: float = 0.0
+        self._programmatic_highlight_rows: list[int] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -305,10 +306,37 @@ class LRCEditorScreen(Screen[None]):
             table.add_row(row_label, ts, line.text, status, key=str(i))
 
         if 0 <= self.state.selected_index < self.state.line_count:
+            if table.cursor_row != self.state.selected_index:
+                self._programmatic_highlight_rows.append(self.state.selected_index)
             table.move_cursor(row=self.state.selected_index)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        self.state.selected_index = event.cursor_row
+        if event.data_table.id != "line-table":
+            return
+        if event.cursor_row in self._programmatic_highlight_rows:
+            self._programmatic_highlight_rows.remove(event.cursor_row)
+            return
+        if event.cursor_row == self.state.selected_index:
+            self._update_displays()
+            return
+        self.state.select_line(event.cursor_row)
+        self._refresh_table()
+        self._update_displays()
+
+    def _sync_selection_from_table_cursor(self) -> None:
+        try:
+            table = self.query_one("#line-table", DataTable)
+        except NoMatches:
+            return
+
+        cursor_row = table.cursor_row
+        if cursor_row is None or not 0 <= cursor_row < self.state.line_count:
+            return
+        if cursor_row == self.state.selected_index:
+            return
+
+        self.state.select_line(cursor_row)
+        self._refresh_table()
         self._update_displays()
 
     def _update_displays(self) -> None:
@@ -529,6 +557,7 @@ class LRCEditorScreen(Screen[None]):
             self._stop_preview()
             return
 
+        self._sync_selection_from_table_cursor()
         target_idx = self.state.selected_index
         line = self.state.selected_line
         if not line or line.time_seconds == 0.0:
@@ -564,6 +593,7 @@ class LRCEditorScreen(Screen[None]):
             self._stop_preview()
             return
 
+        self._sync_selection_from_table_cursor()
         line = self.state.selected_line
         if not line or line.time_seconds == 0.0:
             self.notify("No timestamp on current line", severity="warning", timeout=2)

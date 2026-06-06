@@ -1,6 +1,6 @@
 # Stream of Worship - Current Implementation Status Report
 
-**Generated:** 2026-05-17 (updated 2026-05-19)
+**Generated:** 2026-05-17 (updated 2026-06-07)
 **Project:** Stream of Worship - Admin CLI, Analysis Service, Web App & Render Worker
 **Repository:** sow_deployment_preps
 
@@ -12,7 +12,9 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Lambda Render Worker architecture deployed — render pipeline migrated from in-process Vercel execution to AWS Lambda container processing SQS messages
+**Latest Milestone:** Admin LRC editor cursor/preview tracking fixed — continuous preview now starts from the current table cursor after preview exit or autosave resume
+
+**Maintenance Update (2026-06-07):** Fixed stale row highlight events in the admin LRC editor by suppressing programmatic DataTable highlight messages during table rebuilds, syncing preview start from the active table cursor, and resetting resumed editor sessions to row 1 at launch.
 
 ---
 
