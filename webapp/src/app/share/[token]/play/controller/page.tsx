@@ -28,20 +28,28 @@ export default function ShareControllerPage() {
 
         const res = await fetch(`/api/share/${token}`);
         if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error ?? "This link is no longer available");
+          let errorMessage = "This link is no longer available";
+          try {
+            const data = await res.json();
+            if (data?.error) {
+              errorMessage = data.error;
+            }
+          } catch {
+            // Fallback to default message if response is not valid JSON
+          }
+          throw new Error(errorMessage);
         }
 
         const data = await res.json();
         if (cancelled) return;
 
-        if (!data.playback?.mp4Url) {
+        if (!data?.playback?.mp4Url) {
           throw new Error("No video available for this share");
         }
 
         setVideoUrl(data.playback.mp4Url);
 
-        if (data.playback.chaptersUrl) {
+        if (data.playback?.chaptersUrl) {
           try {
             const chaptersRes = await fetch(data.playback.chaptersUrl);
             if (chaptersRes.ok) {
