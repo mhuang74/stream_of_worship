@@ -1,549 +1,65 @@
-"use client";
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { getSongsetEditorData } from "@/lib/db/songsets";
+import { SongsetEditorClient } from "./SongsetEditorClient";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { SongsetEditor } from "@/components/songset/SongsetEditor";
-import { BrowseSheet } from "@/components/songset/BrowseSheet";
-import { ShareDialog } from "@/components/share/ShareDialog";
-import { SongCardData } from "@/components/songset/SongCard";
-import { SongListItem } from "@/components/songset/SongList";
-import { RenderState } from "@/components/songset/RenderStatusBadge";
-import { TransitionSettings } from "@/components/songset/TransitionPanel";
-import { toast } from "sonner";
-import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
+export default async function SongsetEditorPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await auth.api.getSession({ headers: await headers() });
 
-interface ApiSongset {
-  id: string;
-  name: string;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  renderState: RenderState;
-  itemCount: number;
-  durationSeconds: number | null;
-  latestRenderJobId: string | null;
-  lastFailedRenderJobId: string | null;
-  lastCompletedRenderJobId: string | null;
-  isArtifactsStale?: boolean;
-}
-
-interface ApiSongsetItem {
-  id: string;
-  songId: string;
-  recordingHashPrefix: string | null;
-  position: number;
-  gapBeats: number;
-  crossfadeEnabled: number;
-  crossfadeDurationSeconds: number | null;
-  keyShiftSemitones: number;
-  tempoRatio: number;
-  song: {
-    id: string;
-    title: string;
-    composer: string | null;
-    lyricist: string | null;
-    albumName: string | null;
-    musicalKey: string | null;
-  } | null;
-  recording: {
-    contentHash: string;
-    durationSeconds: number | null;
-    tempoBpm: number | null;
-    musicalKey: string | null;
-  } | null;
-  markedLineCount?: number;
-}
-
-interface ApiResponse {
-  id: string;
-  name: string;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  renderState: RenderState;
-  itemCount: number;
-  durationSeconds: number | null;
-  latestRenderJobId: string | null;
-  lastFailedRenderJobId: string | null;
-  lastCompletedRenderJobId: string | null;
-  isArtifactsStale?: boolean;
-  items: ApiSongsetItem[];
-}
-
-export default function SongsetEditorPage() {
-  const params = useParams();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const songsetId = params.id as string;
-  const isNew = searchParams.get("new") === "true";
-
-  const [songset, setSongset] = useState<ApiSongset | null>(null);
-  const [items, setItems] = useState<SongListItem[]>([]);
-  const [isBrowseSheetOpen, setIsBrowseSheetOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [shareDialogOpen, setShareDialogOpen] = useState(searchParams.get("share") === "true");
-  const autoOpenDoneRef = useRef(false);
-  const isShare = searchParams.get("share") === "true";
-
-  // Load songset data
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSongset() {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const response = await fetch(`/api/songsets/${songsetId}`);
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            router.push("/login");
-            return;
-          }
-          if (response.status === 404) {
-            throw new Error("Songset not found");
-          }
-          throw new Error("Failed to load songset");
-        }
-
-        const data: ApiResponse = await response.json();
-
-        if (cancelled) return;
-
-        setSongset({
-          id: data.id,
-          name: data.name,
-          description: data.description,
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-          renderState: data.renderState,
-          itemCount: data.itemCount,
-          durationSeconds: data.durationSeconds ?? null,
-          latestRenderJobId: data.latestRenderJobId,
-          lastFailedRenderJobId: data.lastFailedRenderJobId,
-          lastCompletedRenderJobId: data.lastCompletedRenderJobId,
-          isArtifactsStale: data.isArtifactsStale,
-        });
-
-        const transformedItems = data.items.map((item) => ({
-          id: item.id,
-          songId: item.songId,
-          position: item.position,
-          song: item.song,
-          recording: item.recording
-            ? {
-                ...item.recording,
-                hashPrefix: item.recordingHashPrefix ?? "",
-              }
-            : null,
-          gapBeats: item.gapBeats,
-          crossfadeEnabled: item.crossfadeEnabled,
-          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
-          keyShiftSemitones: item.keyShiftSemitones,
-          tempoRatio: item.tempoRatio,
-          markedLineCount: item.markedLineCount,
-        }));
-
-        setItems(transformedItems);
-
-        if (isNew && !autoOpenDoneRef.current && transformedItems.length === 0) {
-          autoOpenDoneRef.current = true;
-          setIsBrowseSheetOpen(true);
-          router.replace(`/songsets/${songsetId}`);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load songset");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    if (songsetId) {
-      loadSongset();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [songsetId, router, isNew]);
-
-  const markStale = useCallback(() => {
-    setSongset((prev) =>
-      prev
-        ? { ...prev, renderState: "stale" as RenderState, isArtifactsStale: true }
-        : prev
-    );
-  }, []);
-
-  // Handle item reorder (optimistic)
-  const handleUpdateItems = useCallback(
-    (newItems: SongListItem[]) => {
-      const previousItems = items;
-      setItems(newItems);
-
-      const updates = newItems.map((item, index) => ({
-        itemId: item.id,
-        position: index,
-      }));
-
-      fetch(`/api/songsets/${songsetId}/items/reorder`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates }),
-      }).then((response) => {
-        if (!response.ok) {
-          setItems(previousItems);
-          throw new Error("Failed to reorder items");
-        }
-        markStale();
-      }).catch(() => {
-        setItems(previousItems);
-      });
-    },
-    [songsetId, items, markStale]
-  );
-
-  // Handle item removal
-  const handleRemoveItem = useCallback(
-    async (itemId: string) => {
-      if (isRemoving) return;
-      setIsRemoving(true);
-
-      const removedItem = items.find((item) => item.id === itemId);
-      const removedIndex = items.findIndex((item) => item.id === itemId);
-      const prevRenderState = songset?.renderState;
-      const prevIsArtifactsStale = songset?.isArtifactsStale;
-
-      setItems((prev) => prev.filter((item) => item.id !== itemId));
-      setSongset((prev) =>
-        prev
-          ? {
-              ...prev,
-              itemCount: Math.max(0, prev.itemCount - 1),
-              renderState: "stale" as RenderState,
-              isArtifactsStale: true,
-            }
-          : prev
-      );
-
-      try {
-        const response = await fetch(
-          `/api/songsets/${songsetId}/items?itemId=${itemId}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to remove item");
-        }
-      } catch {
-        if (removedItem && removedIndex >= 0) {
-          setItems((prev) => {
-            const next = [...prev];
-            next.splice(removedIndex, 0, removedItem);
-            return next;
-          });
-          setSongset((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  itemCount: prev.itemCount + 1,
-                  renderState: prevRenderState ?? prev.renderState,
-                  isArtifactsStale: prevIsArtifactsStale ?? prev.isArtifactsStale,
-                }
-              : prev
-          );
-        }
-        throw new Error("Failed to remove item");
-      } finally {
-        setIsRemoving(false);
-      }
-    },
-    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState]
-  );
-
-  // Handle transition update
-  const handleUpdateTransition = useCallback(
-    async (itemId: string, settings: TransitionSettings) => {
-      const response = await fetch(`/api/songsets/${songsetId}/items`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          itemId,
-          gapBeats: settings.gapBeats,
-          crossfadeEnabled: settings.crossfadeEnabled ? 1 : 0,
-          crossfadeDurationSeconds: settings.crossfadeDurationSeconds,
-          keyShiftSemitones: settings.keyShiftSemitones,
-          tempoRatio: settings.tempoRatio,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update transition");
-      }
-
-      // Update local state
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                gapBeats: settings.gapBeats,
-                crossfadeEnabled: settings.crossfadeEnabled ? 1 : 0,
-                crossfadeDurationSeconds: settings.crossfadeDurationSeconds,
-                keyShiftSemitones: settings.keyShiftSemitones,
-                tempoRatio: settings.tempoRatio,
-              }
-            : item
-        )
-      );
-      markStale();
-    },
-    [songsetId, markStale]
-  );
-
-  // Handle render
-  const handleRender = useCallback(() => {
-    router.push(`/songsets/${songsetId}/render`);
-  }, [songsetId, router]);
-
-  // Handle play
-  const handlePlay = useCallback(() => {
-    router.push(`/songsets/${songsetId}/play`);
-  }, [songsetId, router]);
-
-  // Handle retry
-  const handleRetry = useCallback(() => {
-    router.push(`/songsets/${songsetId}/render`);
-  }, [songsetId, router]);
-
-  // Handle description update
-  const handleUpdateDescription = useCallback(
-    async (description: string) => {
-      const response = await fetch(`/api/songsets/${songsetId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update description");
-      }
-
-      // Update local state
-      setSongset((prev) =>
-        prev ? { ...prev, description } : null
-      );
-    },
-    [songsetId]
-  );
-
-  // Handle duplicate
-  const handleDuplicate = useCallback(async () => {
-    const response = await fetch(`/api/songsets/${songsetId}/duplicate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `Copy of ${songset?.name ?? ""}`,
-        description: songset?.description,
-      }),
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || "Failed to duplicate songset");
-    }
-
-    const newSongset = await response.json();
-
-    // Navigate to the new songset
-    router.push(`/songsets/${newSongset.id}`);
-  }, [songsetId, router, songset]);
-
-  // Handle delete
-  const handleDelete = useCallback(async () => {
-    const response = await fetch(`/api/songsets/${songsetId}`, {
-      method: "DELETE",
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to delete songset");
-    }
-  }, [songsetId]);
-
-  // Handle share
-  const handleShare = useCallback(() => {
-    setShareDialogOpen(true);
-  }, []);
-
-  // Backward compat: ?share=true opens dialog then cleans URL
-  useEffect(() => {
-    if (isShare) {
-      router.replace(`/songsets/${songsetId}`);
-    }
-  }, [isShare, songsetId, router]);
-
-  // Handle download audio
-  const handleDownloadAudio = useCallback(async () => {
-    if (!songset?.lastCompletedRenderJobId) return;
-    const toastId = toast.loading("Preparing download...");
-    try {
-      await fetchSignedUrlAndDownload(
-        songset.lastCompletedRenderJobId,
-        "audio",
-        sanitizeFilename(songset.name),
-        "mp3"
-      );
-      toast.success("Download started", { id: toastId });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to download audio", { id: toastId });
-    }
-  }, [songset]);
-
-  // Handle download video
-  const handleDownloadVideo = useCallback(async () => {
-    if (!songset?.lastCompletedRenderJobId) return;
-    const toastId = toast.loading("Preparing download...");
-    try {
-      await fetchSignedUrlAndDownload(
-        songset.lastCompletedRenderJobId,
-        "video",
-        sanitizeFilename(songset.name),
-        "mp4"
-      );
-      toast.success("Download started", { id: toastId });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to download video", { id: toastId });
-    }
-  }, [songset]);
-
-  // Handle add songs
-  const handleAddSongs = useCallback(() => {
-    setIsBrowseSheetOpen(true);
-  }, []);
-
-  const handleAddSong = useCallback(
-    async (song: SongCardData) => {
-      const nextPosition = items.length;
-      const primaryRecording = song.recordings[0];
-
-      const response = await fetch(`/api/songsets/${songsetId}/items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          songId: song.id,
-          recordingHashPrefix: primaryRecording?.hashPrefix ?? null,
-          position: nextPosition,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to add song to songset");
-      }
-
-      const item: ApiSongsetItem = await response.json();
-
-      setItems((prev) => [
-        ...prev,
-        {
-          id: item.id,
-          songId: item.songId,
-          position: item.position,
-          song: item.song,
-          recording: item.recording
-            ? {
-                ...item.recording,
-                hashPrefix: item.recordingHashPrefix ?? "",
-              }
-            : null,
-          gapBeats: item.gapBeats,
-          crossfadeEnabled: item.crossfadeEnabled,
-          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
-          keyShiftSemitones: item.keyShiftSemitones,
-          tempoRatio: item.tempoRatio,
-          markedLineCount: item.markedLineCount,
-        },
-      ]);
-
-      setSongset((prev) =>
-        prev
-          ? {
-              ...prev,
-              itemCount: prev.itemCount + 1,
-              renderState: "stale" as RenderState,
-              isArtifactsStale: true,
-            }
-          : prev
-      );
-    },
-    [items.length, songsetId]
-  );
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+  if (!session?.user) {
+    redirect("/login");
   }
 
-  if (error || !songset) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <p className="text-destructive text-center">{error || "Songset not found"}</p>
-        <button
-          onClick={() => router.push("/songsets")}
-          className="mt-4 text-primary hover:underline"
-        >
-          Back to songsets
-        </button>
-      </div>
-    );
+  const { id } = await params;
+  const songset = await getSongsetEditorData(id, Number(session.user.id));
+
+  if (!songset) {
+    notFound();
   }
 
   return (
-    <>
-      <SongsetEditor
-        songset={songset}
-        items={items}
-        onUpdateItems={handleUpdateItems}
-        onRemoveItem={handleRemoveItem}
-        onUpdateTransition={handleUpdateTransition}
-        onRender={handleRender}
-        onPlay={handlePlay}
-        onRetry={handleRetry}
-        onUpdateDescription={handleUpdateDescription}
-        onDuplicate={handleDuplicate}
-        onDelete={handleDelete}
-        onShare={handleShare}
-        onDownloadAudio={handleDownloadAudio}
-        onDownloadVideo={handleDownloadVideo}
-        onAddSongs={handleAddSongs}
-        isRemoving={isRemoving}
-      />
-      <BrowseSheet
-        isOpen={isBrowseSheetOpen}
-        onOpenChange={setIsBrowseSheetOpen}
-        onAddSong={handleAddSong}
-        existingSongIds={items.map((item) => item.songId)}
-        itemCount={items.length}
-      />
-      <ShareDialog
-        open={shareDialogOpen}
-        onOpenChange={setShareDialogOpen}
-        songsetId={songsetId}
-        songsetName={songset.name}
-        durationSeconds={songset.durationSeconds ?? null}
-        renderJobId={songset.lastCompletedRenderJobId ?? undefined}
-      />
-    </>
+    <SongsetEditorClient
+      songsetId={id}
+      initialData={{
+        id: songset.id,
+        name: songset.name,
+        description: songset.description,
+        createdAt: songset.createdAt.toISOString(),
+        updatedAt: songset.updatedAt.toISOString(),
+        renderState: songset.renderState,
+        itemCount: songset.itemCount,
+        durationSeconds: songset.durationSeconds,
+        latestRenderJobId: songset.latestRenderJobId,
+        lastFailedRenderJobId: songset.lastFailedRenderJobId,
+        lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
+        isArtifactsStale: songset.renderState === "stale",
+        items: songset.items.map((item) => ({
+          id: item.id,
+          songId: item.songId,
+          recordingHashPrefix: item.recordingHashPrefix,
+          position: item.position,
+          gapBeats: item.gapBeats ?? 2,
+          crossfadeEnabled: item.crossfadeEnabled ?? 0,
+          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+          keyShiftSemitones: item.keyShiftSemitones ?? 0,
+          tempoRatio: item.tempoRatio ?? 1,
+          markedLineCount: item.markedLineCount,
+          song: item.song,
+          recording: item.recording
+            ? {
+                contentHash: item.recording.contentHash,
+                durationSeconds: item.recording.durationSeconds,
+                tempoBpm: item.recording.tempoBpm,
+                musicalKey: item.recording.musicalKey,
+              }
+            : null,
+        })),
+      }}
+    />
   );
 }

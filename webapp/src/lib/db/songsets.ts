@@ -1,6 +1,14 @@
 import { db } from "@/db";
-import { lyricMarks, songsets, songsetItems, renderJobs, songs, recordings } from "@/db/schema";
-import { eq, and, desc, gt, sql } from "drizzle-orm";
+import {
+  lyricMarks,
+  songsets,
+  songsetItems,
+  renderJobs,
+  songs,
+  recordings,
+  userSettings,
+} from "@/db/schema";
+import { eq, and, desc, gt, sql, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 
@@ -139,6 +147,394 @@ export interface SongsetItemDetail {
 
 export interface SongsetDetail extends SongsetListItem {
   items: SongsetItemDetail[];
+}
+
+export interface RenderJobSummary {
+  id: string;
+  status: string;
+  createdAt: Date | null;
+  elapsedSeconds: number | null;
+  estimatedTotalSeconds: number | null;
+  template: string;
+  resolution: string;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+  fontFamily: string;
+  fontSizePreset: string;
+  includeTitleCard: boolean;
+  titleCardDurationSeconds: number | null;
+  titleCardLines: string[] | null;
+  mp3R2Key: string | null;
+  mp4R2Key: string | null;
+  chaptersR2Key: string | null;
+}
+
+export interface RenderPageData {
+  songset: {
+    id: string;
+    name: string;
+    description: string | null;
+    markedLineCount: number;
+    renderState: RenderState;
+    songTitles: string[];
+    lastCompletedRenderJobId: string | null;
+  };
+  userSettings: {
+    defaultVideoTemplate: string;
+    defaultResolution: string;
+    defaultFontSizePreset: string;
+    defaultFontFamily: string;
+  } | null;
+  latestJob: RenderJobSummary | null;
+  previousCompletedJob: RenderJobSummary | null;
+}
+
+async function timePageLoad<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  if (process.env.SOW_WEBAPP_TIMING !== "1") return fn();
+  const startedAt = performance.now();
+  try {
+    return await fn();
+  } finally {
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    console.info(`[page-load] ${label} ${elapsedMs}ms`);
+  }
+}
+
+function mapRenderStateFromSnapshot(input: {
+  latestRenderJobId: string | null;
+  lastFailedRenderJobId: string | null;
+  latestJobStatus: string | null;
+  latestJobCompletedAt: Date | null;
+  latestItemUpdatedAt?: Date | null;
+}): RenderState {
+  if (!input.latestRenderJobId || !input.latestJobStatus) return "unrendered";
+  if (input.latestJobStatus === "queued" || input.latestJobStatus === "running") return "rendering";
+  if (
+    input.latestJobStatus === "failed" ||
+    input.lastFailedRenderJobId === input.latestRenderJobId
+  ) {
+    return "failed";
+  }
+  if (input.latestJobStatus === "completed") {
+    if (
+      input.latestJobCompletedAt &&
+      input.latestItemUpdatedAt &&
+      input.latestItemUpdatedAt > input.latestJobCompletedAt
+    ) {
+      return "stale";
+    }
+    return "fresh";
+  }
+  return "unrendered";
+}
+
+function parseTitleCardLines(value: string | null): string[] | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function mapRenderJobSummary(row: typeof renderJobs.$inferSelect | null | undefined): RenderJobSummary | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    status: row.status,
+    createdAt: row.createdAt,
+    elapsedSeconds: row.elapsedSeconds,
+    estimatedTotalSeconds: row.estimatedTotalSeconds,
+    template: row.template,
+    resolution: row.resolution,
+    audioEnabled: row.audioEnabled ?? true,
+    videoEnabled: row.videoEnabled ?? true,
+    fontFamily: row.fontFamily,
+    fontSizePreset: row.fontSizePreset,
+    includeTitleCard: row.includeTitleCard ?? false,
+    titleCardDurationSeconds: row.titleCardDurationSeconds,
+    titleCardLines: parseTitleCardLines(row.titleCardLines),
+    mp3R2Key: row.mp3R2Key,
+    mp4R2Key: row.mp4R2Key,
+    chaptersR2Key: row.chaptersR2Key,
+  };
+}
+
+export async function listSongsetSummaries(
+  userId: number,
+  limit = 50,
+  offset = 0
+): Promise<{ songsets: SongsetListItem[]; total: number }> {
+  return timePageLoad("listSongsetSummaries", async () => {
+    const rows = await db
+      .select({
+        id: songsets.id,
+        name: songsets.name,
+        description: songsets.description,
+        createdAt: songsets.createdAt,
+        updatedAt: songsets.updatedAt,
+        latestRenderJobId: songsets.latestRenderJobId,
+        lastFailedRenderJobId: songsets.lastFailedRenderJobId,
+        lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
+        itemCount: sql<number>`count(${songsetItems.id}) filter (where ${recordings.deletedAt} is null)::int`,
+        durationSeconds: sql<number | null>`nullif(sum(coalesce(${recordings.durationSeconds}, 0)) filter (where ${recordings.deletedAt} is null), 0)`,
+        latestItemUpdatedAt: sql<Date | null>`max(${songsetItems.updatedAt}) filter (where ${recordings.deletedAt} is null)`,
+        latestJobStatus: renderJobs.status,
+        latestJobCompletedAt: renderJobs.completedAt,
+      })
+      .from(songsets)
+      .leftJoin(songsetItems, eq(songsetItems.songsetId, songsets.id))
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .leftJoin(renderJobs, eq(renderJobs.id, songsets.latestRenderJobId))
+      .where(eq(songsets.userId, userId))
+      .groupBy(
+        songsets.id,
+        songsets.name,
+        songsets.description,
+        songsets.createdAt,
+        songsets.updatedAt,
+        songsets.latestRenderJobId,
+        songsets.lastFailedRenderJobId,
+        songsets.lastCompletedRenderJobId,
+        renderJobs.status,
+        renderJobs.completedAt
+      )
+      .orderBy(desc(songsets.updatedAt))
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(songsets)
+      .where(eq(songsets.userId, userId));
+
+    return {
+      total: Number(countResult[0]?.count ?? 0),
+      songsets: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        latestRenderJobId: row.latestRenderJobId,
+        lastFailedRenderJobId: row.lastFailedRenderJobId,
+        lastCompletedRenderJobId: row.lastCompletedRenderJobId,
+        itemCount: Number(row.itemCount ?? 0),
+        durationSeconds: row.durationSeconds == null ? null : Number(row.durationSeconds),
+        renderState: mapRenderStateFromSnapshot({
+          latestRenderJobId: row.latestRenderJobId,
+          lastFailedRenderJobId: row.lastFailedRenderJobId,
+          latestJobStatus: row.latestJobStatus,
+          latestJobCompletedAt: row.latestJobCompletedAt,
+          latestItemUpdatedAt: row.latestItemUpdatedAt,
+        }),
+      })),
+    };
+  });
+}
+
+export async function getSongsetEditorData(
+  id: string,
+  userId: number
+): Promise<SongsetDetail | null> {
+  return timePageLoad("getSongsetEditorData", async () => {
+    const [row] = await db
+      .select({
+        id: songsets.id,
+        name: songsets.name,
+        description: songsets.description,
+        createdAt: songsets.createdAt,
+        updatedAt: songsets.updatedAt,
+        latestRenderJobId: songsets.latestRenderJobId,
+        lastFailedRenderJobId: songsets.lastFailedRenderJobId,
+        lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
+        latestJobStatus: renderJobs.status,
+        latestJobCompletedAt: renderJobs.completedAt,
+      })
+      .from(songsets)
+      .leftJoin(renderJobs, eq(renderJobs.id, songsets.latestRenderJobId))
+      .where(and(eq(songsets.id, id), eq(songsets.userId, userId)))
+      .limit(1);
+
+    if (!row) return null;
+
+    const itemRows = await db
+      .select({
+        id: songsetItems.id,
+        songId: songsetItems.songId,
+        recordingHashPrefix: songsetItems.recordingHashPrefix,
+        position: songsetItems.position,
+        gapBeats: songsetItems.gapBeats,
+        crossfadeEnabled: songsetItems.crossfadeEnabled,
+        crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
+        keyShiftSemitones: songsetItems.keyShiftSemitones,
+        tempoRatio: songsetItems.tempoRatio,
+        updatedAt: songsetItems.updatedAt,
+        songTitle: songs.title,
+        composer: songs.composer,
+        lyricist: songs.lyricist,
+        albumName: songs.albumName,
+        songMusicalKey: songs.musicalKey,
+        recordingContentHash: recordings.contentHash,
+        durationSeconds: recordings.durationSeconds,
+        tempoBpm: recordings.tempoBpm,
+        recordingMusicalKey: recordings.musicalKey,
+        r2AudioUrl: recordings.r2AudioUrl,
+        recordingDeletedAt: recordings.deletedAt,
+        markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
+      })
+      .from(songsetItems)
+      .leftJoin(songs, eq(songsetItems.songId, songs.id))
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .leftJoin(
+        lyricMarks,
+        and(
+          eq(lyricMarks.userId, userId),
+          eq(lyricMarks.recordingContentHash, recordings.contentHash)
+        )
+      )
+      .where(eq(songsetItems.songsetId, id))
+      .groupBy(
+        songsetItems.id,
+        songsetItems.songId,
+        songsetItems.recordingHashPrefix,
+        songsetItems.position,
+        songsetItems.gapBeats,
+        songsetItems.crossfadeEnabled,
+        songsetItems.crossfadeDurationSeconds,
+        songsetItems.keyShiftSemitones,
+        songsetItems.tempoRatio,
+        songsetItems.updatedAt,
+        songs.id,
+        songs.title,
+        songs.composer,
+        songs.lyricist,
+        songs.albumName,
+        songs.musicalKey,
+        recordings.contentHash,
+        recordings.durationSeconds,
+        recordings.tempoBpm,
+        recordings.musicalKey,
+        recordings.r2AudioUrl,
+        recordings.deletedAt
+      )
+      .orderBy(asc(songsetItems.position));
+
+    const visibleItemRows = itemRows.filter((item) => !item.recordingDeletedAt);
+    const latestItemUpdatedAt = visibleItemRows.reduce<Date | null>((latest, item) => {
+      if (!latest || item.updatedAt > latest) return item.updatedAt;
+      return latest;
+    }, null);
+
+    const items: SongsetItemDetail[] = visibleItemRows.map((item) => ({
+      id: item.id,
+      songId: item.songId,
+      recordingHashPrefix: item.recordingHashPrefix,
+      position: item.position,
+      gapBeats: item.gapBeats ?? null,
+      crossfadeEnabled: item.crossfadeEnabled ?? null,
+      crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
+      keyShiftSemitones: item.keyShiftSemitones ?? null,
+      tempoRatio: item.tempoRatio ?? null,
+      markedLineCount: Number(item.markedLineCount ?? 0),
+      song: item.songTitle
+        ? {
+            id: item.songId,
+            title: item.songTitle,
+            composer: item.composer,
+            lyricist: item.lyricist,
+            albumName: item.albumName,
+            musicalKey: item.songMusicalKey,
+          }
+        : null,
+      recording: item.recordingContentHash
+        ? {
+            contentHash: item.recordingContentHash,
+            durationSeconds: item.durationSeconds,
+            tempoBpm: item.tempoBpm,
+            musicalKey: item.recordingMusicalKey,
+            r2AudioUrl: item.r2AudioUrl,
+          }
+        : null,
+    }));
+
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      latestRenderJobId: row.latestRenderJobId,
+      lastFailedRenderJobId: row.lastFailedRenderJobId,
+      lastCompletedRenderJobId: row.lastCompletedRenderJobId,
+      itemCount: items.length,
+      durationSeconds:
+        items.reduce((sum, item) => sum + (item.recording?.durationSeconds ?? 0), 0) || null,
+      renderState: mapRenderStateFromSnapshot({
+        latestRenderJobId: row.latestRenderJobId,
+        lastFailedRenderJobId: row.lastFailedRenderJobId,
+        latestJobStatus: row.latestJobStatus,
+        latestJobCompletedAt: row.latestJobCompletedAt,
+        latestItemUpdatedAt,
+      }),
+      items,
+    };
+  });
+}
+
+export async function getRenderPageData(
+  id: string,
+  userId: number
+): Promise<RenderPageData | null> {
+  return timePageLoad("getRenderPageData", async () => {
+    const detail = await getSongsetEditorData(id, userId);
+    if (!detail) return null;
+
+    const [settingsRow, latestJobRow, previousCompletedJobRow] = await Promise.all([
+      db.query.userSettings.findFirst({
+        where: eq(userSettings.userId, userId),
+      }),
+      detail.latestRenderJobId
+        ? db.query.renderJobs.findFirst({
+            where: and(eq(renderJobs.id, detail.latestRenderJobId), eq(renderJobs.userId, userId)),
+          })
+        : Promise.resolve(null),
+      detail.lastCompletedRenderJobId
+        ? db.query.renderJobs.findFirst({
+            where: and(
+              eq(renderJobs.id, detail.lastCompletedRenderJobId),
+              eq(renderJobs.userId, userId)
+            ),
+          })
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      songset: {
+        id: detail.id,
+        name: detail.name,
+        description: detail.description,
+        markedLineCount: detail.items.reduce(
+          (sum, item) => sum + (item.markedLineCount ?? 0),
+          0
+        ),
+        renderState: detail.renderState,
+        songTitles: detail.items.map((item) => item.song?.title ?? "Unknown Song"),
+        lastCompletedRenderJobId: detail.lastCompletedRenderJobId,
+      },
+      userSettings: settingsRow
+        ? {
+            defaultVideoTemplate: settingsRow.defaultVideoTemplate,
+            defaultResolution: settingsRow.defaultResolution,
+            defaultFontSizePreset: settingsRow.defaultFontSizePreset,
+            defaultFontFamily: settingsRow.defaultFontFamily,
+          }
+        : null,
+      latestJob: mapRenderJobSummary(latestJobRow),
+      previousCompletedJob: mapRenderJobSummary(previousCompletedJobRow),
+    };
+  });
 }
 
 export async function computeRenderState(songsetId: string): Promise<RenderState> {
