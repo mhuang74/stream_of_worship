@@ -33,14 +33,18 @@ export default async function RenderPage({
   }
 
   const latestJob = serializeJob(data.latestJob);
+  const previousCompletedJob = serializeJob(data.previousCompletedJob);
 
   return (
     <RenderPageClient
       songsetId={id}
       initialSongset={data.songset}
       initialLatestJob={latestJob}
-      initialPreviousCompletedJob={serializeJob(data.previousCompletedJob)}
-      initialRenderData={buildInitialRenderData(data.latestJob as unknown as Record<string, unknown> | null, data.userSettings)}
+      initialPreviousCompletedJob={previousCompletedJob}
+      initialRenderData={buildInitialRenderData(
+        latestJob as unknown as Record<string, unknown> | null,
+        data.userSettings
+      )}
     />
   );
 }

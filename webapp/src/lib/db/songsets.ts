@@ -200,7 +200,17 @@ async function timePageLoad<T>(label: string, fn: () => Promise<T>): Promise<T> 
   }
 }
 
-function mapRenderStateFromSnapshot(input: {
+/**
+ * Derives the render state from snapshot fields already present on the songsets row
+ * and the joined latest render job.
+ *
+ * Note: The "newer render job" staleness check from `computeRenderState` is intentionally
+ * omitted here. That check looked for render jobs created after the latest job's completion,
+ * but `latestRenderJobId` on the songsets row is updated whenever a new job is created, so
+ * any newer job would already be the latest and caught by the "rendering" status check.
+ * Do not re-add this check.
+ */
+export function mapRenderStateFromSnapshot(input: {
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   latestJobStatus: string | null;
@@ -488,22 +498,73 @@ export async function getRenderPageData(
   userId: number
 ): Promise<RenderPageData | null> {
   return timePageLoad("getRenderPageData", async () => {
-    const detail = await getSongsetEditorData(id, userId);
-    if (!detail) return null;
+    const [row] = await db
+      .select({
+        id: songsets.id,
+        name: songsets.name,
+        description: songsets.description,
+        latestRenderJobId: songsets.latestRenderJobId,
+        lastFailedRenderJobId: songsets.lastFailedRenderJobId,
+        lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
+        latestJobStatus: renderJobs.status,
+        latestJobCompletedAt: renderJobs.completedAt,
+      })
+      .from(songsets)
+      .leftJoin(renderJobs, eq(renderJobs.id, songsets.latestRenderJobId))
+      .where(and(eq(songsets.id, id), eq(songsets.userId, userId)))
+      .limit(1);
+
+    if (!row) return null;
+
+    const itemRows = await db
+      .select({
+        id: songsetItems.id,
+        songTitle: songs.title,
+        markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
+        recordingDeletedAt: recordings.deletedAt,
+        updatedAt: songsetItems.updatedAt,
+      })
+      .from(songsetItems)
+      .leftJoin(songs, eq(songsetItems.songId, songs.id))
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .leftJoin(
+        lyricMarks,
+        and(
+          eq(lyricMarks.userId, userId),
+          eq(lyricMarks.recordingContentHash, recordings.contentHash)
+        )
+      )
+      .where(eq(songsetItems.songsetId, id))
+      .groupBy(songsetItems.id, songs.title, recordings.deletedAt, songsetItems.updatedAt)
+      .orderBy(asc(songsetItems.position));
+
+    const visibleItems = itemRows.filter((item) => !item.recordingDeletedAt);
+    const latestItemUpdatedAt = visibleItems.reduce<Date | null>((latest, item) => {
+      if (!latest || item.updatedAt > latest) return item.updatedAt;
+      return latest;
+    }, null);
+
+    const renderState = mapRenderStateFromSnapshot({
+      latestRenderJobId: row.latestRenderJobId,
+      lastFailedRenderJobId: row.lastFailedRenderJobId,
+      latestJobStatus: row.latestJobStatus,
+      latestJobCompletedAt: row.latestJobCompletedAt,
+      latestItemUpdatedAt,
+    });
 
     const [settingsRow, latestJobRow, previousCompletedJobRow] = await Promise.all([
       db.query.userSettings.findFirst({
         where: eq(userSettings.userId, userId),
       }),
-      detail.latestRenderJobId
+      row.latestRenderJobId
         ? db.query.renderJobs.findFirst({
-            where: and(eq(renderJobs.id, detail.latestRenderJobId), eq(renderJobs.userId, userId)),
+            where: and(eq(renderJobs.id, row.latestRenderJobId), eq(renderJobs.userId, userId)),
           })
         : Promise.resolve(null),
-      detail.lastCompletedRenderJobId
+      row.lastCompletedRenderJobId
         ? db.query.renderJobs.findFirst({
             where: and(
-              eq(renderJobs.id, detail.lastCompletedRenderJobId),
+              eq(renderJobs.id, row.lastCompletedRenderJobId),
               eq(renderJobs.userId, userId)
             ),
           })
@@ -512,16 +573,16 @@ export async function getRenderPageData(
 
     return {
       songset: {
-        id: detail.id,
-        name: detail.name,
-        description: detail.description,
-        markedLineCount: detail.items.reduce(
-          (sum, item) => sum + (item.markedLineCount ?? 0),
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        markedLineCount: visibleItems.reduce(
+          (sum, item) => sum + Number(item.markedLineCount ?? 0),
           0
         ),
-        renderState: detail.renderState,
-        songTitles: detail.items.map((item) => item.song?.title ?? "Unknown Song"),
-        lastCompletedRenderJobId: detail.lastCompletedRenderJobId,
+        renderState,
+        songTitles: visibleItems.map((item) => item.songTitle ?? "Unknown Song"),
+        lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       },
       userSettings: settingsRow
         ? {
@@ -537,6 +598,7 @@ export async function getRenderPageData(
   });
 }
 
+/** @deprecated Use `mapRenderStateFromSnapshot` with snapshot fields instead to avoid extra DB queries. */
 export async function computeRenderState(songsetId: string): Promise<RenderState> {
   const songset = await db.query.songsets.findFirst({
     where: eq(songsets.id, songsetId),
@@ -581,93 +643,9 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
   return "unrendered";
 }
 
-export async function listSongsets(
-  userId: number,
-  limit = 50,
-  offset = 0
-): Promise<{ songsets: SongsetListItem[]; total: number }> {
-  const rows = await db.query.songsets.findMany({
-    where: eq(songsets.userId, userId),
-    orderBy: [desc(songsets.updatedAt)],
-    limit,
-    offset,
-    with: {
-      items: {
-        columns: { id: true, createdAt: true },
-        with: {
-          recording: { columns: { durationSeconds: true, deletedAt: true } },
-        },
-      },
-      renderJobs: {
-        columns: {
-          id: true,
-          status: true,
-          completedAt: true,
-        },
-        orderBy: [desc(renderJobs.createdAt)],
-        limit: 1,
-      },
-    },
-  });
 
-  const countResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(songsets)
-    .where(eq(songsets.userId, userId));
 
-  const total = countResult[0]?.count ?? 0;
-
-  const mapped = rows.map((row) => {
-    const latestJob = row.renderJobs[0];
-    let renderState: RenderState = "unrendered";
-
-    if (row.latestRenderJobId && latestJob) {
-      if (latestJob.status === "queued" || latestJob.status === "running") {
-        renderState = "rendering";
-      } else if (
-        latestJob.status === "failed" ||
-        row.lastFailedRenderJobId === row.latestRenderJobId
-      ) {
-        renderState = "failed";
-      } else if (latestJob.status === "completed") {
-          if (latestJob.completedAt) {
-            const hasNewerItem = row.items.some(
-              (item) => (item as { createdAt: Date }).createdAt > latestJob.completedAt!
-            );
-            if (hasNewerItem) {
-              renderState = "stale";
-            } else {
-              renderState = "fresh";
-            }
-          } else {
-            renderState = "fresh";
-          }
-        }
-    }
-
-    return {
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      latestRenderJobId: row.latestRenderJobId,
-      lastFailedRenderJobId: row.lastFailedRenderJobId,
-      lastCompletedRenderJobId: row.lastCompletedRenderJobId,
-      itemCount: row.items.filter((item) => !item.recording?.deletedAt).length,
-      durationSeconds: row.items
-        .filter((item) => !item.recording?.deletedAt)
-        .reduce(
-          (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
-          0
-        ) || null,
-      renderState,
-    };
-  });
-
-  return { songsets: mapped, total };
-}
-
+/** @deprecated Use `getSongsetEditorData` for the editor page, or targeted queries for other use cases. */
 export async function getSongset(
   id: string,
   userId: number
@@ -873,7 +851,17 @@ export async function addSongsetItem(
 
   const item = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, id),
-    with: { song: true, recording: true },
+    with: {
+      song: true,
+      recording: {
+        with: {
+          lyricMarks: {
+            columns: { id: true },
+            where: eq(lyricMarks.userId, userId),
+          },
+        },
+      },
+    },
   });
 
   if (!item) return null;
@@ -888,7 +876,7 @@ export async function addSongsetItem(
     crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
     keyShiftSemitones: item.keyShiftSemitones ?? null,
     tempoRatio: item.tempoRatio ?? null,
-    markedLineCount: 0,
+    markedLineCount: item.recording?.lyricMarks.length ?? 0,
     song: item.song
       ? {
           id: item.song.id,
@@ -938,7 +926,17 @@ export async function updateSongsetItem(
 
   const updated = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, itemId),
-    with: { song: true, recording: true },
+    with: {
+      song: true,
+      recording: {
+        with: {
+          lyricMarks: {
+            columns: { id: true },
+            where: eq(lyricMarks.userId, userId),
+          },
+        },
+      },
+    },
   });
 
   if (!updated) return null;
@@ -953,7 +951,7 @@ export async function updateSongsetItem(
     crossfadeDurationSeconds: updated.crossfadeDurationSeconds ?? null,
     keyShiftSemitones: updated.keyShiftSemitones ?? null,
     tempoRatio: updated.tempoRatio ?? null,
-    markedLineCount: 0,
+    markedLineCount: updated.recording?.lyricMarks.length ?? 0,
     song: updated.song
       ? {
           id: updated.song.id,
