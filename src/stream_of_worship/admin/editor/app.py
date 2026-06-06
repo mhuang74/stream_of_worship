@@ -30,6 +30,7 @@ class LRCEditorApp(App[None]):
         self.original_transcribed_content = original_transcribed_content
 
     def on_mount(self) -> None:
+        self.editor_state.select_line(0)
         self.push_screen(LRCEditorScreen(
             editor_state=self.editor_state,
             playback_service=self.playback_service,
