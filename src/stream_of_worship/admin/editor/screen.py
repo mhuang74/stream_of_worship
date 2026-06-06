@@ -171,7 +171,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("d", "delete_line", "Delete"),
         Binding("e", "edit_text", "Edit Text"),
         # Timecode
-        Binding("enter", "stamp_and_advance", "Stamp+Advance"),
+        Binding("tab", "stamp_and_advance", "Stamp+Advance"),
         Binding("shift+left", "show_earlier", "Earlier"),
         Binding("shift+right", "show_later", "Later"),
         Binding("t", "edit_timestamp", "Edit Time"),
@@ -647,6 +647,7 @@ class LRCEditorScreen(Screen[None]):
             self._refresh_table()
             self._update_displays()
             self._do_autosave()
+            self.query_one("#line-table", DataTable).focus()
 
     def _parse_timestamp_input(self, value: str) -> float:
         """Parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds."""
