@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import type { Chapter } from "@/lib/render/chapters";
@@ -17,6 +17,7 @@ export default function ShareControllerPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPresentationActive, setIsPresentationActive] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +86,35 @@ export default function ShareControllerPage() {
     };
   }, [token]);
 
+  // Listen for Presentation API messages
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "presentation") {
+        switch (event.data.action) {
+          case "connected":
+            setIsPresentationActive(true);
+            toast.success("Connected to projection screen");
+            break;
+          case "disconnected":
+            setIsPresentationActive(false);
+            toast.info("Disconnected from projection screen");
+            break;
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const handlePresentationConnect = useCallback(() => {
+    setIsPresentationActive(true);
+  }, []);
+
+  const handlePresentationDisconnect = useCallback(() => {
+    setIsPresentationActive(false);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
@@ -121,6 +151,9 @@ export default function ShareControllerPage() {
       chapters={chapters}
       exitRoute={`/share/${token}`}
       autoFullscreen={false}
+      isPresentationActive={isPresentationActive}
+      onPresentationConnect={handlePresentationConnect}
+      onPresentationDisconnect={handlePresentationDisconnect}
     />
   );
 }
