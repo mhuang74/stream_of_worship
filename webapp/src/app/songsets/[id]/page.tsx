@@ -84,7 +84,6 @@ export default function SongsetEditorPage() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const autoOpenDoneRef = useRef(false);
-  const isNew = searchParams.get("new") === "true";
   const isShare = searchParams.get("share") === "true";
 
   // Load songset data

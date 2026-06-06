@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       const existingShare = await db.query.songsetShares.findFirst({
         where: and(
           eq(songsetShares.songsetId, songsetId as string),
+          isNull(songsetShares.renderJobId),
           isNull(songsetShares.revokedAt),
           or(isNull(songsetShares.expiresAt), gt(songsetShares.expiresAt, new Date()))
         ),
@@ -197,7 +198,7 @@ export async function GET(request: NextRequest) {
       if (!songset) {
         return NextResponse.json({ error: "Songset not found" }, { status: 404 });
       }
-      conditions.push(eq(songsetShares.songsetId, songsetId));
+      conditions.push(eq(songsetShares.songsetId, songsetId), isNull(songsetShares.renderJobId));
     }
 
     if (renderJobId) {
