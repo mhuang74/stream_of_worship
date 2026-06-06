@@ -11,7 +11,7 @@ const navItems = [
 export function BottomNav() {
   const pathname = usePathname();
 
-  if (pathname.includes("/play/controller") || pathname.startsWith("/share/")) {
+  if (pathname?.includes("/play/controller") || pathname?.startsWith("/share/")) {
     return null;
   }
 
@@ -22,7 +22,7 @@ export function BottomNav() {
     >
       <div className="flex h-16">
         {navItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
+          const isActive = pathname?.startsWith(item.href);
           return (
             <Link
               key={item.href}

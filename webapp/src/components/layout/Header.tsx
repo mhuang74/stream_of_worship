@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 export function Header() {
   const pathname = usePathname();
 
-  if (pathname.startsWith("/share/")) {
+  if (pathname?.startsWith("/share/")) {
     return null;
   }
 
