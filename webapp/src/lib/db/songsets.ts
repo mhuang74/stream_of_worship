@@ -54,14 +54,13 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
     })
     .from(songsetItems)
     .leftJoin(songs, eq(songsetItems.songId, songs.id))
-    .leftJoin(recordings, and(
-      eq(songsetItems.recordingHashPrefix, recordings.hashPrefix),
-      isNull(recordings.deletedAt)
-    ))
+    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
     .where(eq(songsetItems.songsetId, songsetId))
     .orderBy(songsetItems.position);
 
-  const publicItems: PublicSongsetItem[] = items.map((item) => ({
+  const publicItems: PublicSongsetItem[] = items
+    .filter((item) => !item.recordingDeletedAt)
+    .map((item) => ({
     id: item.id,
     position: item.position,
     songTitle: item.songTitle,

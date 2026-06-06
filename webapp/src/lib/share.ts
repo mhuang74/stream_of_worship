@@ -5,7 +5,9 @@ export function resolvePublicOrigin(request: NextRequest): string | null {
   if (envUrl) {
     try {
       const u = new URL(envUrl);
-      if (u.origin) return u.origin;
+      if (u.origin) {
+        return envUrl.replace(/\/$/, "");
+      }
     } catch {}
   }
   if (request.nextUrl?.origin) return request.nextUrl.origin;
