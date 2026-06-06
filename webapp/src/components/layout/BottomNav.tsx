@@ -11,7 +11,7 @@ const navItems = [
 export function BottomNav() {
   const pathname = usePathname();
 
-  if (pathname.includes("/play/controller")) {
+  if (pathname.includes("/play/controller") || pathname.startsWith("/share/")) {
     return null;
   }
 
