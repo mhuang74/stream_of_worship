@@ -82,7 +82,7 @@ export default function SongsetEditorPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(searchParams.get("share") === "true");
   const autoOpenDoneRef = useRef(false);
   const isShare = searchParams.get("share") === "true";
 
@@ -386,7 +386,6 @@ export default function SongsetEditorPage() {
   // Backward compat: ?share=true opens dialog then cleans URL
   useEffect(() => {
     if (isShare) {
-      setShareDialogOpen(true);
       router.replace(`/songsets/${songsetId}`);
     }
   }, [isShare, songsetId, router]);
