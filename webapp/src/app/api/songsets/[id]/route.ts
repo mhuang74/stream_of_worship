@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getSongset, updateSongset, deleteSongset } from "@/lib/db/songsets";
+import { getSongsetEditorData, updateSongset, deleteSongset } from "@/lib/db/songsets";
 import { z } from "zod";
 
 const updateSongsetSchema = z.object({
@@ -22,7 +22,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const songset = await getSongset(id, Number(session.user.id));
+    const songset = await getSongsetEditorData(id, Number(session.user.id));
 
     if (!songset) {
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });

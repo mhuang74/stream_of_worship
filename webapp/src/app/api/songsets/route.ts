@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { listSongsets, createSongset } from "@/lib/db/songsets";
+import { listSongsetSummaries, createSongset } from "@/lib/db/songsets";
 import { z } from "zod";
 
 const createSongsetSchema = z.object({
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const rawOffset = parseInt(searchParams.get("offset") ?? "0");
     const offset = isNaN(rawOffset) ? 0 : rawOffset;
 
-    const result = await listSongsets(Number(session.user.id), limit, offset);
+    const result = await listSongsetSummaries(Number(session.user.id), limit, offset);
 
     return NextResponse.json(result);
   } catch (error) {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "@/app/api/songsets/route";
 import { auth } from "@/lib/auth";
-import { listSongsets, createSongset } from "@/lib/db/songsets";
+import { listSongsetSummaries, createSongset } from "@/lib/db/songsets";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -15,7 +15,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/db/songsets", () => ({
-  listSongsets: vi.fn(),
+  listSongsetSummaries: vi.fn(),
   createSongset: vi.fn(),
 }));
 
@@ -50,7 +50,7 @@ describe("GET /api/songsets", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(listSongsets).mockResolvedValue({
+    vi.mocked(listSongsetSummaries).mockResolvedValue({
       songsets: [
         {
           id: "songset-1",
@@ -82,7 +82,7 @@ describe("GET /api/songsets", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(listSongsets).mockResolvedValue({
+    vi.mocked(listSongsetSummaries).mockResolvedValue({
       songsets: [],
       total: 0,
     });
@@ -92,7 +92,7 @@ describe("GET /api/songsets", () => {
     );
     await GET(request);
 
-    expect(listSongsets).toHaveBeenCalledWith(1, 10, 5);
+    expect(listSongsetSummaries).toHaveBeenCalledWith(1, 10, 5);
   });
 
   it("caps limit at 100", async () => {
@@ -100,7 +100,7 @@ describe("GET /api/songsets", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(listSongsets).mockResolvedValue({
+    vi.mocked(listSongsetSummaries).mockResolvedValue({
       songsets: [],
       total: 0,
     });
@@ -110,7 +110,7 @@ describe("GET /api/songsets", () => {
     );
     await GET(request);
 
-    expect(listSongsets).toHaveBeenCalledWith(1, 100, 0);
+    expect(listSongsetSummaries).toHaveBeenCalledWith(1, 100, 0);
   });
 
   it("returns 500 on error", async () => {
@@ -118,7 +118,7 @@ describe("GET /api/songsets", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(listSongsets).mockRejectedValue(new Error("Database error"));
+    vi.mocked(listSongsetSummaries).mockRejectedValue(new Error("Database error"));
 
     const request = createMockRequest("http://localhost:3000/api/songsets");
     const response = await GET(request);
