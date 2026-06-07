@@ -12,6 +12,7 @@ from typing import Optional
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import (
     DataTable,
@@ -246,7 +247,6 @@ class LRCEditorScreen(Screen[None]):
         self._preview_target_index: int = -1
         self._preview_prev_index: int = -1
         self._preview_end_seconds: float = 0.0
-        self._programmatic_highlight_rows: list[int] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -300,28 +300,66 @@ class LRCEditorScreen(Screen[None]):
             if i > 0 and line.time_seconds < self.state.timed_lines[i - 1].time_seconds:
                 status = "[red]!non-mono[/red]"
 
-            is_selected = i == self.state.selected_index
-            row_label = f">{i + 1}" if is_selected else str(i + 1)
-
-            table.add_row(row_label, ts, line.text, status, key=str(i))
+            table.add_row(self._row_label(i), ts, line.text, status, key=str(i))
 
         if 0 <= self.state.selected_index < self.state.line_count:
-            if table.cursor_row != self.state.selected_index:
-                self._programmatic_highlight_rows.append(self.state.selected_index)
             table.move_cursor(row=self.state.selected_index)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id != "line-table":
             return
-        if event.cursor_row in self._programmatic_highlight_rows:
-            self._programmatic_highlight_rows.remove(event.cursor_row)
-            return
+        old_index = self.state.selected_index
         if event.cursor_row == self.state.selected_index:
             self._update_displays()
             return
         self.state.select_line(event.cursor_row)
-        self._refresh_table()
+        self._update_selection_marker(old_index)
         self._update_displays()
+
+    def _row_label(self, index: int) -> str:
+        return f">{index + 1}" if index == self.state.selected_index else str(index + 1)
+
+    def _row_status(self, index: int) -> str:
+        line = self.state.timed_lines[index]
+        if line.time_seconds == 0.0 and line.text.strip():
+            return "[dim]draft[/dim]"
+        if index > 0 and line.time_seconds < self.state.timed_lines[index - 1].time_seconds:
+            return "[red]!non-mono[/red]"
+        return ""
+
+    def _update_table_row(self, index: int) -> None:
+        if not 0 <= index < self.state.line_count:
+            return
+        try:
+            table = self.query_one("#line-table", DataTable)
+        except NoMatches:
+            return
+        if not 0 <= index < table.row_count:
+            return
+
+        line = self.state.timed_lines[index]
+        values = (
+            self._row_label(index),
+            format_centiseconds(line.time_seconds),
+            line.text,
+            self._row_status(index),
+        )
+        for column, value in enumerate(values):
+            table.update_cell_at(Coordinate(index, column), value, update_width=True)
+
+    def _update_selection_marker(self, old_index: int | None = None) -> None:
+        self._update_table_row(self.state.selected_index)
+        if old_index is not None and old_index != self.state.selected_index:
+            self._update_table_row(old_index)
+
+    def _move_table_cursor_to_selection(self, old_index: int | None = None) -> None:
+        self._update_selection_marker(old_index)
+        try:
+            table = self.query_one("#line-table", DataTable)
+        except NoMatches:
+            return
+        if 0 <= self.state.selected_index < self.state.line_count:
+            table.move_cursor(row=self.state.selected_index)
 
     def _sync_selection_from_table_cursor(self) -> None:
         try:
@@ -335,8 +373,9 @@ class LRCEditorScreen(Screen[None]):
         if cursor_row == self.state.selected_index:
             return
 
+        old_index = self.state.selected_index
         self.state.select_line(cursor_row)
-        self._refresh_table()
+        self._update_selection_marker(old_index)
         self._update_displays()
 
     def _update_displays(self) -> None:
@@ -488,15 +527,17 @@ class LRCEditorScreen(Screen[None]):
     def action_select_prev(self) -> None:
         if self._guard_preview():
             return
+        old_index = self.state.selected_index
         self.state.select_prev()
-        self._refresh_table()
+        self._move_table_cursor_to_selection(old_index)
         self._update_displays()
 
     def action_select_next(self) -> None:
         if self._guard_preview():
             return
+        old_index = self.state.selected_index
         self.state.select_next()
-        self._refresh_table()
+        self._move_table_cursor_to_selection(old_index)
         self._update_displays()
 
     def action_jump_to_line(self) -> None:
@@ -509,10 +550,13 @@ class LRCEditorScreen(Screen[None]):
     def action_stamp_and_advance(self) -> None:
         if self._guard_preview():
             return
+        old_index = self.state.selected_index
         pos = self.playback.position_seconds
-        self.state.set_timestamp(self.state.selected_index, pos)
+        self.state.set_timestamp(old_index, pos)
         self.state.select_next()
-        self._refresh_table()
+        self._update_table_row(old_index)
+        self._update_table_row(old_index + 1)
+        self._move_table_cursor_to_selection(old_index)
         self._update_displays()
         self._do_autosave()
 
