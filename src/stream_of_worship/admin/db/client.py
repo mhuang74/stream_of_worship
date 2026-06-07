@@ -22,6 +22,8 @@ from stream_of_worship.db.connection import ConnectionProvider
 
 logger = logging.getLogger("sow_admin.db")
 
+_VALID_VISIBILITY_STATUSES = {"published", "review", "hold"}
+
 
 class DatabaseClient:
     """Client for PostgreSQL database operations.
@@ -878,29 +880,54 @@ class DatabaseClient:
         self,
         hash_prefix: str,
         r2_lrc_url: str,
+        visibility_status: Optional[str] = None,
     ) -> None:
         """Update recording with LRC results.
 
-        Auto-publishes the recording when ``visibility_status`` is ``NULL``.
+        Auto-publishes the recording when ``visibility_status`` is ``NULL`` unless
+        an explicit visibility status override is provided.
 
         Args:
             hash_prefix: The hash prefix of the recording.
             r2_lrc_url: R2 URL for the generated LRC file.
+            visibility_status: Optional visibility status to force on the recording.
+
+        Raises:
+            ValueError: If ``visibility_status`` is not valid.
         """
+        if visibility_status is not None and visibility_status not in _VALID_VISIBILITY_STATUSES:
+            raise ValueError(
+                f"Invalid visibility_status: {visibility_status}. "
+                f"Must be one of: {', '.join(sorted(_VALID_VISIBILITY_STATUSES))}"
+            )
+
         def _query(conn):
             with conn.transaction():
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    UPDATE recordings SET
-                        r2_lrc_url = %s,
-                        lrc_status = 'completed',
-                        visibility_status = COALESCE(visibility_status, 'published'),
-                        updated_at = NOW()
-                    WHERE hash_prefix = %s
-                    """,
-                    (r2_lrc_url, hash_prefix),
-                )
+                if visibility_status is None:
+                    cursor.execute(
+                        """
+                        UPDATE recordings SET
+                            r2_lrc_url = %s,
+                            lrc_status = 'completed',
+                            visibility_status = COALESCE(visibility_status, 'published'),
+                            updated_at = NOW()
+                        WHERE hash_prefix = %s
+                        """,
+                        (r2_lrc_url, hash_prefix),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE recordings SET
+                            r2_lrc_url = %s,
+                            lrc_status = 'completed',
+                            visibility_status = %s,
+                            updated_at = NOW()
+                        WHERE hash_prefix = %s
+                        """,
+                        (r2_lrc_url, visibility_status, hash_prefix),
+                    )
 
         self._execute_with_retry(_query)
 
@@ -1023,11 +1050,10 @@ class DatabaseClient:
         Raises:
             ValueError: If ``visibility_status`` is not valid.
         """
-        valid_statuses = {"published", "review", "hold"}
-        if visibility_status not in valid_statuses:
+        if visibility_status not in _VALID_VISIBILITY_STATUSES:
             raise ValueError(
                 f"Invalid visibility_status: {visibility_status}. "
-                f"Must be one of: {', '.join(valid_statuses)}"
+                f"Must be one of: {', '.join(sorted(_VALID_VISIBILITY_STATUSES))}"
             )
 
         with self.transaction() as conn:

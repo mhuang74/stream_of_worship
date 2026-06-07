@@ -38,6 +38,31 @@ def admin_client(postgres_url):
         pass
 
 
+def _insert_lrc_test_recording(
+    admin_client: DatabaseClient,
+    hash_prefix: str = "abc123",
+    visibility_status: str | None = None,
+) -> None:
+    song = Song(
+        id=f"song_{hash_prefix}",
+        title="Test Song",
+        source_url="http://test",
+        scraped_at="2024-01-01T00:00:00",
+    )
+    admin_client.insert_song(song)
+
+    recording = Recording(
+        content_hash="a" * 64,
+        hash_prefix=hash_prefix,
+        song_id=song.id,
+        original_filename="test.mp3",
+        file_size_bytes=1000,
+        imported_at="2024-01-01T00:00:00",
+        visibility_status=visibility_status,
+    )
+    admin_client.insert_recording(recording)
+
+
 @pytest.mark.integration
 class TestDatabaseClientIntegration:
     """Integration tests for admin DatabaseClient."""
@@ -298,31 +323,50 @@ class TestDatabaseClientIntegration:
         updated = admin_client.get_recording_by_hash("abc123")
         assert updated.visibility_status == "published"
 
-    def test_update_recording_lrc(self, admin_client):
-        """Test updating recording LRC status."""
-        song = Song(
-            id="song_1",
-            title="Test Song",
-            source_url="http://test",
-            scraped_at="2024-01-01T00:00:00",
-        )
-        admin_client.insert_song(song)
-
-        recording = Recording(
-            content_hash="a" * 64,
-            hash_prefix="abc123",
-            song_id="song_1",
-            original_filename="test.mp3",
-            file_size_bytes=1000,
-            imported_at="2024-01-01T00:00:00",
-        )
-        admin_client.insert_recording(recording)
-
+    def test_update_recording_lrc_auto_publishes_null_visibility(self, admin_client):
+        """Default LRC update completes LRC and auto-publishes null visibility."""
+        _insert_lrc_test_recording(admin_client)
         admin_client.update_recording_lrc("abc123", "https://r2.example.com/lrc")
 
         result = admin_client.get_recording_by_hash("abc123")
         assert result.lrc_status == "completed"
         assert result.r2_lrc_url == "https://r2.example.com/lrc"
+        assert result.visibility_status == "published"
+
+    def test_update_recording_lrc_forces_review_visibility(self, admin_client):
+        """Generated/reconciled LRC updates can force review visibility."""
+        _insert_lrc_test_recording(admin_client)
+        admin_client.update_recording_lrc(
+            "abc123",
+            "https://r2.example.com/lrc",
+            visibility_status="review",
+        )
+
+        result = admin_client.get_recording_by_hash("abc123")
+        assert result.lrc_status == "completed"
+        assert result.r2_lrc_url == "https://r2.example.com/lrc"
+        assert result.visibility_status == "review"
+
+    def test_update_recording_lrc_review_replaces_published_visibility(self, admin_client):
+        """Review override replaces an existing published visibility."""
+        _insert_lrc_test_recording(admin_client, visibility_status="published")
+        admin_client.update_recording_lrc(
+            "abc123",
+            "https://r2.example.com/lrc",
+            visibility_status="review",
+        )
+
+        result = admin_client.get_recording_by_hash("abc123")
+        assert result.visibility_status == "review"
+
+    def test_update_recording_lrc_rejects_invalid_visibility(self, admin_client):
+        """Invalid LRC visibility overrides are rejected."""
+        with pytest.raises(ValueError, match="Invalid visibility_status"):
+            admin_client.update_recording_lrc(
+                "abc123",
+                "https://r2.example.com/lrc",
+                visibility_status="hidden",
+            )
 
     def test_update_recording_youtube_url(self, admin_client):
         """Test updating recording YouTube URL."""

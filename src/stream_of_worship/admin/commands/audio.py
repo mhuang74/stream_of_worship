@@ -422,6 +422,7 @@ def _submit_lrc_single(
             db_client.update_recording_lrc(
                 hash_prefix=recording.hash_prefix,
                 r2_lrc_url=final_job.result.lrc_url,
+                visibility_status="review",
             )
 
         console.print(f"[green]LRC generation completed for {song_id}[/green]")
@@ -2206,6 +2207,7 @@ def check_status(
                             db_client.update_recording_lrc(
                                 hash_prefix=rec.hash_prefix,
                                 r2_lrc_url=lrc_url,
+                                visibility_status="review",
                             )
                             reconciled_lrc += 1
                             console.print(
@@ -2485,6 +2487,7 @@ def check_status(
                                 db_client.update_recording_lrc(
                                     hash_prefix=rec.hash_prefix,
                                     r2_lrc_url=job.result.lrc_url,
+                                    visibility_status="review",
                                 )
                                 synced_count += 1
                         elif job.status == "failed":
@@ -4332,7 +4335,11 @@ def _process_batch(
             if not force_lrc:
                 lrc_url = r2_client.lrc_exists(recording.hash_prefix)
                 if lrc_url:
-                    db_client.update_recording_lrc(recording.hash_prefix, lrc_url)
+                    db_client.update_recording_lrc(
+                        recording.hash_prefix,
+                        lrc_url,
+                        visibility_status="review",
+                    )
                     results[song_id] = results.get(song_id, {})
                     results[song_id]["lrc"] = "completed"
                     results[song_id]["lrc_source"] = "r2_preexisting"
@@ -4488,6 +4495,7 @@ def _poll_all_jobs(
                             db_client.update_recording_lrc(
                                 recording.hash_prefix,
                                 lrc_url,
+                                visibility_status="review",
                             )
                             results[song_id]["lrc"] = "completed"
 
@@ -4545,6 +4553,7 @@ def _poll_all_jobs(
                             db_client.update_recording_lrc(
                                 recording.hash_prefix,
                                 lrc_url,
+                                visibility_status="review",
                             )
                             results[song_id]["lrc"] = "completed"
                             del active_jobs[song_id]
@@ -4717,7 +4726,11 @@ def _reconcile_on_interrupt(
         # Check R2 for LRC
         lrc_url = r2_client.lrc_exists(hash_prefix)
         if lrc_url:
-            db_client.update_recording_lrc(hash_prefix, lrc_url)
+            db_client.update_recording_lrc(
+                hash_prefix,
+                lrc_url,
+                visibility_status="review",
+            )
             results[song_id]["lrc"] = "completed"
 
             song = db_client.get_song(song_id)
