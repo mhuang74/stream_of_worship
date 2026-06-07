@@ -1,6 +1,7 @@
 """Textual screen tests for the admin LRC editor."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,7 +9,7 @@ from textual.widgets import DataTable, Input
 
 from stream_of_worship.admin.editor.app import LRCEditorApp
 from stream_of_worship.admin.editor.footer import GroupedFooter
-from stream_of_worship.admin.editor.screen import StatusIndicator
+from stream_of_worship.admin.editor.screen import CurrentLyricDisplay, StatusIndicator
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.services.lrc_parser import LRCLine
 from stream_of_worship.admin.services.playback import PlaybackState
@@ -53,6 +54,10 @@ def _make_app(line_count: int) -> tuple[LRCEditorApp, EditorState]:
         LRCLine(time_seconds=float(index), text=f"Line {index + 1}", raw_timestamp="[00:00.00]")
         for index in range(line_count)
     ]
+    return _make_app_with_lines(lines)
+
+
+def _make_app_with_lines(lines: list[LRCLine]) -> tuple[LRCEditorApp, EditorState]:
     state = EditorState(
         timed_lines=lines,
         preserved_lines=[],
@@ -175,3 +180,56 @@ async def test_page_keys_scroll_without_changing_selected_line():
         assert state.selected_index == 0
         assert table.cursor_row == 0
         assert str(table.get_cell_at((0, 0))) == ">1"
+
+
+@pytest.mark.asyncio
+async def test_continuous_preview_shows_blank_before_first_line():
+    app, state = _make_app_with_lines(
+        [
+            LRCLine(time_seconds=10.0, text="Line 1", raw_timestamp="[00:10.00]"),
+            LRCLine(time_seconds=20.0, text="Line 2", raw_timestamp="[00:20.00]"),
+        ]
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        app.screen.action_preview_continuous()
+        await pilot.pause()
+
+        lyric_display = app.screen.query_one(CurrentLyricDisplay)
+        assert lyric_display._current_text == ""
+        assert lyric_display._next_text == "Line 1"
+        assert state.selected_index == 0
+
+        app.screen._on_playback_position(SimpleNamespace(current_seconds=10.0))
+        await pilot.pause()
+
+        assert lyric_display._current_text == "Line 1"
+        assert lyric_display._next_text == "Line 2"
+
+
+@pytest.mark.asyncio
+async def test_single_preview_shows_blank_before_first_line():
+    app, _ = _make_app_with_lines(
+        [
+            LRCLine(time_seconds=10.0, text="Line 1", raw_timestamp="[00:10.00]"),
+            LRCLine(time_seconds=20.0, text="Line 2", raw_timestamp="[00:20.00]"),
+        ]
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        app.screen.action_preview_single()
+        await pilot.pause()
+
+        lyric_display = app.screen.query_one(CurrentLyricDisplay)
+        assert lyric_display._current_text == ""
+        assert lyric_display._next_text == "Line 1"
+
+        app.screen._on_playback_position(SimpleNamespace(current_seconds=10.0))
+        await pilot.pause()
+
+        assert lyric_display._current_text == "Line 1"
+        assert lyric_display._next_text == "Line 2"
