@@ -144,6 +144,22 @@ class StatusIndicator(Static):
         self.update("".join(parts))
 
 
+class LyricLineTable(DataTable):
+    """Lyrics table with preview-aware row navigation."""
+
+    def action_cursor_up(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        super().action_cursor_up()
+
+    def action_cursor_down(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        super().action_cursor_down()
+
+
 class LRCEditorScreen(Screen[None]):
     """Main interactive LRC editor screen.
 
@@ -161,8 +177,6 @@ class LRCEditorScreen(Screen[None]):
         Binding("space", "toggle_playback", "Play/Pause"),
         Binding("left", "seek_backward", "Seek -5s"),
         Binding("right", "seek_forward", "Seek +5s"),
-        Binding("up", "select_prev", "Prev Line"),
-        Binding("down", "select_next", "Next Line"),
         Binding("j", "jump_to_line", "Jump"),
         # Lyrics Edit
         Binding("ctrl+c", "copy_line", "Copy"),
@@ -191,8 +205,6 @@ class LRCEditorScreen(Screen[None]):
             "toggle_playback",
             "seek_backward",
             "seek_forward",
-            "select_prev",
-            "select_next",
             "jump_to_line",
         ],
         "Lyrics": [
@@ -254,7 +266,7 @@ class LRCEditorScreen(Screen[None]):
             yield PreviewBanner()
             yield CurrentLyricDisplay()
             yield PlaybackBar()
-            yield DataTable(id="line-table")
+            yield LyricLineTable(id="line-table")
             with Horizontal(id="edit-panel"):
                 yield Label("Selected:", id="edit-label")
                 yield Input(id="edit-input", placeholder="Edit text or timestamp here")
@@ -264,6 +276,7 @@ class LRCEditorScreen(Screen[None]):
     def on_mount(self) -> None:
         self._setup_table()
         self._refresh_table()
+        self.query_one("#line-table", DataTable).focus()
         self._update_displays()
         self._start_position_updates()
 
@@ -353,13 +366,13 @@ class LRCEditorScreen(Screen[None]):
             self._update_table_row(old_index)
 
     def _move_table_cursor_to_selection(self, old_index: int | None = None) -> None:
-        self._update_selection_marker(old_index)
         try:
             table = self.query_one("#line-table", DataTable)
         except NoMatches:
             return
         if 0 <= self.state.selected_index < self.state.line_count:
             table.move_cursor(row=self.state.selected_index)
+        self._update_selection_marker(old_index)
 
     def _sync_selection_from_table_cursor(self) -> None:
         try:

@@ -18,6 +18,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Follow-up Fix (2026-06-07):** Restored LRC editor keyboard navigation after cursor tracking changes by avoiding table rebuilds for up/down movement and `TAB` stamp-and-advance, updating only affected row cells and the selection marker.
 
+**Follow-up Fix (2026-06-07):** Fixed LRC editor final-line navigation by letting the lyrics table own UP/DOWN row movement, returning focus to the table on mount, and adding a 50-line regression that verifies line 50 remains highlighted and marked.
+
 ---
 
 ## Phase-by-Phase Implementation Status
