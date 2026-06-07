@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, PATCH, DELETE } from "@/app/api/songsets/[id]/route";
 import { auth } from "@/lib/auth";
-import { getSongset, updateSongset, deleteSongset } from "@/lib/db/songsets";
+import { getSongsetEditorData, updateSongset, deleteSongset } from "@/lib/db/songsets";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -15,7 +15,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/db/songsets", () => ({
-  getSongset: vi.fn(),
+  getSongsetEditorData: vi.fn(),
   updateSongset: vi.fn(),
   deleteSongset: vi.fn(),
 }));
@@ -86,7 +86,7 @@ describe("GET /api/songsets/[id]", () => {
       ],
     };
 
-    vi.mocked(getSongset).mockResolvedValue(mockSongset);
+    vi.mocked(getSongsetEditorData).mockResolvedValue(mockSongset);
 
     const request = createMockRequest("http://localhost:3000/api/songsets/songset-1");
     const response = await GET(request, { params: { id: "songset-1" } });
@@ -102,7 +102,7 @@ describe("GET /api/songsets/[id]", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(getSongset).mockResolvedValue(null);
+    vi.mocked(getSongsetEditorData).mockResolvedValue(null);
 
     const request = createMockRequest("http://localhost:3000/api/songsets/songset-1");
     const response = await GET(request, { params: { id: "songset-1" } });
@@ -117,7 +117,7 @@ describe("GET /api/songsets/[id]", () => {
       user: { id: 1 },
     } as any);
 
-    vi.mocked(getSongset).mockRejectedValue(new Error("Database error"));
+    vi.mocked(getSongsetEditorData).mockRejectedValue(new Error("Database error"));
 
     const request = createMockRequest("http://localhost:3000/api/songsets/songset-1");
     const response = await GET(request, { params: { id: "songset-1" } });

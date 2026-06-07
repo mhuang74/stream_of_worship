@@ -177,7 +177,9 @@ export const songsets = pgTable("songsets", {
   latestRenderJobId: text("latest_render_job_id"),
   lastFailedRenderJobId: text("last_failed_render_job_id"),
   lastCompletedRenderJobId: text("last_completed_render_job_id"),
-});
+}, (t) => [
+  index("idx_songsets_user_updated").on(t.userId, t.updatedAt),
+]);
 
 export const songsetItems = pgTable("songset_items", {
   id: text("id").primaryKey(),
@@ -197,7 +199,10 @@ export const songsetItems = pgTable("songset_items", {
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [
+  index("idx_songset_items_songset_position").on(t.songsetId, t.position),
+  index("idx_songset_items_songset_updated").on(t.songsetId, t.updatedAt),
+]);
 
 // ---------------------------------------------------------------------------
 // New webapp table: render_jobs
@@ -252,7 +257,10 @@ export const renderJobs = pgTable("render_jobs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
-});
+}, (t) => [
+  index("idx_render_jobs_songset_created").on(t.songsetId, t.createdAt),
+  index("idx_render_jobs_status_updated").on(t.status, t.updatedAt),
+]);
 
 // ---------------------------------------------------------------------------
 // New webapp table: song_embedding (pgvector for semantic search)

@@ -196,6 +196,10 @@ function findFkByColumnName(table: Parameters<typeof getTableConfig>[0], colName
   return foreignKeys.find((fk) => fk.reference().columns.some((c) => c.name === colName));
 }
 
+function indexNames(table: Parameters<typeof getTableConfig>[0]): string[] {
+  return getTableConfig(table).indexes.map((idx) => idx.config.name);
+}
+
 describe("schema: foreign key references are defined", () => {
   it("accounts.userId references users.id", () => {
     const fk = findFkByColumnName(accounts, "userId");
@@ -243,6 +247,22 @@ describe("schema: foreign key references are defined", () => {
     const fk = findFkByColumnName(songEmbeddings, "song_id");
     expect(fk).toBeDefined();
     expect(getTableName(fk!.reference().foreignTable)).toBe("songs");
+  });
+});
+
+describe("schema: page-load hot path indexes", () => {
+  it("songsets has user updated index", () => {
+    expect(indexNames(songsets)).toContain("idx_songsets_user_updated");
+  });
+
+  it("songsetItems has ordering and staleness indexes", () => {
+    expect(indexNames(songsetItems)).toContain("idx_songset_items_songset_position");
+    expect(indexNames(songsetItems)).toContain("idx_songset_items_songset_updated");
+  });
+
+  it("renderJobs has songset and status indexes", () => {
+    expect(indexNames(renderJobs)).toContain("idx_render_jobs_songset_created");
+    expect(indexNames(renderJobs)).toContain("idx_render_jobs_status_updated");
   });
 });
 
