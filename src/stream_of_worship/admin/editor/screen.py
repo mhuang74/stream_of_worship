@@ -285,6 +285,7 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode: str = "single"
         self._preview_target_index: int = -1
         self._preview_prev_index: int = -1
+        self._preview_display_index: Optional[int] = None
         self._preview_end_seconds: float = 0.0
 
     def compose(self) -> ComposeResult:
@@ -430,13 +431,17 @@ class LRCEditorScreen(Screen[None]):
 
     def _update_displays(self) -> None:
         lyric_display = self.query_one(CurrentLyricDisplay)
-        current = self.state.selected_line
-        if current:
-            next_idx = self.state.selected_index + 1
-            next_line = ""
-            if next_idx < self.state.line_count:
-                next_line = self.state.timed_lines[next_idx].text
-            lyric_display.update_lyrics(current.text, next_line)
+        if self._preview_active and self._preview_display_index == -1:
+            next_line = self.state.timed_lines[0].text if self.state.line_count > 0 else ""
+            lyric_display.update_lyrics("", next_line)
+        else:
+            current = self.state.selected_line
+            if current:
+                next_idx = self.state.selected_index + 1
+                next_line = ""
+                if next_idx < self.state.line_count:
+                    next_line = self.state.timed_lines[next_idx].text
+                lyric_display.update_lyrics(current.text, next_line)
 
         status = self.query_one(StatusIndicator)
         status.update_status(
@@ -447,6 +452,20 @@ class LRCEditorScreen(Screen[None]):
             padding_quarters=self.state.padding_quarters,
             preview_active=self._preview_active,
         )
+
+    def _set_preview_display_index(self, index: int) -> None:
+        """Update the lyric banner for preview, where -1 means blank before line 1."""
+        if index == self._preview_display_index:
+            return
+
+        self._preview_display_index = index
+        if index >= 0:
+            if self.state.selected_index != index:
+                self.state.select_line(index)
+                self._rebuild_table()
+        else:
+            self._rebuild_table()
+        self._update_displays()
 
     def _update_playback_bar(self) -> None:
         try:
@@ -477,22 +496,15 @@ class LRCEditorScreen(Screen[None]):
                 self._stop_preview()
                 return
             if current_secs >= target_line.time_seconds:
-                if self.state.selected_index != self._preview_target_index:
-                    self.state.select_line(self._preview_target_index)
-                    self._rebuild_table()
-                    self._update_displays()
+                self._set_preview_display_index(self._preview_target_index)
             elif self._preview_prev_index >= 0:
-                if self.state.selected_index != self._preview_prev_index:
-                    self.state.select_line(self._preview_prev_index)
-                    self._rebuild_table()
-                    self._update_displays()
+                self._set_preview_display_index(self._preview_prev_index)
+            else:
+                self._set_preview_display_index(-1)
             return
 
         current_line_idx = self._find_line_at_position(current_secs)
-        if current_line_idx != self.state.selected_index:
-            self.state.select_line(current_line_idx)
-            self._rebuild_table()
-            self._update_displays()
+        self._set_preview_display_index(current_line_idx)
 
     def _on_playback_state(self, new_state: PlaybackState) -> None:
         self._update_playback_bar()
@@ -502,6 +514,7 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode = "single"
         self._preview_target_index = -1
         self._preview_prev_index = -1
+        self._preview_display_index = None
         self._preview_end_seconds = 0.0
         try:
             self.query_one(PreviewBanner).hide_banner()
@@ -535,7 +548,7 @@ class LRCEditorScreen(Screen[None]):
         for i in range(len(self.state.timed_lines) - 1, -1, -1):
             if self.state.timed_lines[i].time_seconds <= position:
                 return i
-        return 0
+        return -1
 
     # --- Preview helpers ---
 
@@ -545,6 +558,7 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode = "single"
         self._preview_target_index = -1
         self._preview_prev_index = -1
+        self._preview_display_index = None
         self._preview_end_seconds = 0.0
         try:
             self.query_one(PreviewBanner).hide_banner()
@@ -671,13 +685,11 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode = "single"
         self._preview_target_index = target_idx
         self._preview_prev_index = prev_idx
+        self._preview_display_index = None
         self._preview_end_seconds = end_seconds
         self._preview_active = True
 
-        if prev_idx >= 0:
-            self.state.select_line(prev_idx)
-            self._rebuild_table()
-            self._update_displays()
+        self._set_preview_display_index(prev_idx if prev_idx >= 0 else -1)
 
         self.playback.play(start_seconds=start_pos)
         self.query_one(PreviewBanner).show_banner()
@@ -697,7 +709,10 @@ class LRCEditorScreen(Screen[None]):
         start_pos = max(0.0, line.time_seconds - 3.0)
         self._preview_mode = "continuous"
         self._preview_target_index = self.state.selected_index
+        self._preview_prev_index = self._preview_target_index - 1
+        self._preview_display_index = None
         self._preview_active = True
+        self._set_preview_display_index(self._find_line_at_position(start_pos))
         self.playback.play(start_seconds=start_pos)
         self.query_one(PreviewBanner).show_banner()
         self._update_displays()

@@ -12,7 +12,7 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Admin LRC editor small-terminal navigation fixed — the compact footer no longer covers the final lyric rows, and PgUp/PgDn scroll the lyric viewport without changing the selected action row
+**Latest Milestone:** Admin LRC editor preview transition display improved — preview now shows the previous lyric before transitioning to the current lyric, with a blank lead-in before line 1.
 
 **Maintenance Update (2026-06-07):** Fixed stale row highlight events in the admin LRC editor by suppressing programmatic DataTable highlight messages during table rebuilds, syncing preview start from the active table cursor, and resetting resumed editor sessions to row 1 at launch.
 
@@ -25,6 +25,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 **Follow-up Fix (2026-06-07):** Generated and reconciled LRC completions now force recording visibility to `review`, while manual LRC upload and editor save paths preserve the existing publish-on-null behavior.
 
 **Follow-up Fix (2026-06-08):** Fixed a Web App render-page PostgreSQL error by grouping `recordings.duration_seconds` in the aggregated songset item query used for render confirmation duration comparison.
+
+**Follow-up Fix (2026-06-08):** Improved the admin LRC editor preview banner so single-line and continuous preview show a blank current lyric before transitioning into the first line, then continue showing previous-to-current lyric transitions.
 
 ---
 
