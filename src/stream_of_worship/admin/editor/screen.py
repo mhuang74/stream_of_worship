@@ -302,7 +302,7 @@ class LRCEditorScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self._setup_table()
-        self._refresh_table()
+        self._rebuild_table()
         self.query_one("#line-table", DataTable).focus()
         self._update_displays()
         self._start_position_updates()
@@ -328,22 +328,32 @@ class LRCEditorScreen(Screen[None]):
         table.cursor_type = "row"
         table.show_cursor = True
 
-    def _refresh_table(self) -> None:
+    def _rebuild_table(self) -> None:
         table = self.query_one("#line-table", DataTable)
-        table.clear()
+        current_count = table.row_count
+        target_count = self.state.line_count
 
-        for i, line in enumerate(self.state.timed_lines):
+        for i in range(min(current_count, target_count)):
+            line = self.state.timed_lines[i]
             ts = format_centiseconds(line.time_seconds)
-            status = ""
-            if line.time_seconds == 0.0 and line.text.strip():
-                status = "[dim]draft[/dim]"
-            if i > 0 and line.time_seconds < self.state.timed_lines[i - 1].time_seconds:
-                status = "[red]!non-mono[/red]"
+            status = self._row_status(i)
+            row_label = self._row_label(i)
+            for column, value in enumerate((row_label, ts, line.text, status)):
+                table.update_cell_at(Coordinate(i, column), value, update_width=True)
 
-            table.add_row(self._row_label(i), ts, line.text, status, key=str(i))
+        if target_count > current_count:
+            for i in range(current_count, target_count):
+                line = self.state.timed_lines[i]
+                ts = format_centiseconds(line.time_seconds)
+                status = self._row_status(i)
+                row_label = self._row_label(i)
+                table.add_row(row_label, ts, line.text, status, key=str(i))
+        elif current_count > target_count:
+            for i in range(current_count - 1, target_count - 1, -1):
+                table.remove_row(str(i))
 
-        if 0 <= self.state.selected_index < self.state.line_count:
-            table.move_cursor(row=self.state.selected_index)
+        if 0 <= self.state.selected_index < target_count:
+            table.move_cursor(row=self.state.selected_index, scroll=True)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id != "line-table":
@@ -398,7 +408,7 @@ class LRCEditorScreen(Screen[None]):
         except NoMatches:
             return
         if 0 <= self.state.selected_index < self.state.line_count:
-            table.move_cursor(row=self.state.selected_index)
+            table.move_cursor(row=self.state.selected_index, scroll=True)
         self._update_selection_marker(old_index)
 
     def _sync_selection_from_table_cursor(self) -> None:
@@ -469,19 +479,19 @@ class LRCEditorScreen(Screen[None]):
             if current_secs >= target_line.time_seconds:
                 if self.state.selected_index != self._preview_target_index:
                     self.state.select_line(self._preview_target_index)
-                    self._refresh_table()
+                    self._rebuild_table()
                     self._update_displays()
             elif self._preview_prev_index >= 0:
                 if self.state.selected_index != self._preview_prev_index:
                     self.state.select_line(self._preview_prev_index)
-                    self._refresh_table()
+                    self._rebuild_table()
                     self._update_displays()
             return
 
         current_line_idx = self._find_line_at_position(current_secs)
         if current_line_idx != self.state.selected_index:
             self.state.select_line(current_line_idx)
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
 
     def _on_playback_state(self, new_state: PlaybackState) -> None:
@@ -511,6 +521,7 @@ class LRCEditorScreen(Screen[None]):
                 padding_quarters=self.state.padding_quarters,
                 tempo_bpm=self.state.tempo_bpm,
                 original_timestamps=self.state.original_timestamps,
+                selected_index=self.state.selected_index,
             )
             save_autosave(self.cache_dir, self.hash_prefix, autosave_state)
             self._autosave_ok = True
@@ -611,7 +622,7 @@ class LRCEditorScreen(Screen[None]):
                 timeout=2,
             )
             return
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         offset = self.state.padding_offset_seconds
@@ -629,7 +640,7 @@ class LRCEditorScreen(Screen[None]):
                 timeout=2,
             )
             return
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         offset = self.state.padding_offset_seconds
@@ -665,7 +676,7 @@ class LRCEditorScreen(Screen[None]):
 
         if prev_idx >= 0:
             self.state.select_line(prev_idx)
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
 
         self.playback.play(start_seconds=start_pos)
@@ -728,7 +739,7 @@ class LRCEditorScreen(Screen[None]):
             self._editing_text = False
             self._editing_timestamp = False
             event.input.value = ""
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
             self._do_autosave()
             self.query_one("#line-table", DataTable).focus()
@@ -751,7 +762,7 @@ class LRCEditorScreen(Screen[None]):
             return
         self.state.insert_after(self.state.selected_index)
         self.state.select_next()
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
@@ -780,7 +791,7 @@ class LRCEditorScreen(Screen[None]):
 
         self.state.insert_lines_after(self.state.selected_index, non_blank)
         self.state.select_line(self.state.selected_index + 1)
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         self.notify(f"Inserted {len(non_blank)} canonical lyrics lines", timeout=3)
@@ -802,7 +813,7 @@ class LRCEditorScreen(Screen[None]):
         text, time_seconds = self._clipboard
         self.state.insert_after(self.state.selected_index, text=text, time_seconds=time_seconds)
         self.state.select_next()
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
@@ -813,7 +824,7 @@ class LRCEditorScreen(Screen[None]):
             return
 
         self.state.delete_line(self.state.selected_index)
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
@@ -821,7 +832,7 @@ class LRCEditorScreen(Screen[None]):
         if self._guard_preview():
             return
         if self.state.undo():
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
             self._do_autosave()
             self.notify("Undo", timeout=2)
@@ -830,7 +841,7 @@ class LRCEditorScreen(Screen[None]):
         if self._guard_preview():
             return
         if self.state.redo():
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
             self._do_autosave()
             self.notify("Redo", timeout=2)

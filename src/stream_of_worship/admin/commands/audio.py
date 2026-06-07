@@ -3432,7 +3432,7 @@ def edit_lrc(
                     transcribed_identity=autosave_state.transcribed_identity,
                     dirty=autosave_state.dirty,
                     source_mode=autosave_state.source_mode,
-                    selected_index=0,
+                    selected_index=autosave_state.selected_index,
                     song_title=song_title,
                     hash_prefix=recording.hash_prefix,
                     audio_path=str(audio_path),

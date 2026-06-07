@@ -105,6 +105,20 @@ class TestAutosave:
         assert restored.timed_lines[0].text == "X"
         assert restored.dirty is True
 
+    def test_selected_index_round_trip(self, tmp_path):
+        state = AutosaveState(
+            timed_lines=_make_lines([(10.0, "A"), (20.0, "B"), (30.0, "C")]),
+            preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            dirty=True,
+            source_mode="catalog",
+            selected_index=2,
+        )
+        path = save_autosave(tmp_path, "abc123", state)
+        loaded = load_autosave(tmp_path, "abc123")
+        assert loaded is not None
+        assert loaded.selected_index == 2
+
 
 class TestSaveLocalDraft:
     def test_creates_timestamped_file(self, tmp_path):
