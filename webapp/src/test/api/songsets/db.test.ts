@@ -14,6 +14,7 @@ import {
   mapRenderStateFromSnapshot,
 } from "@/lib/db/songsets";
 import { db } from "@/db";
+import { recordings } from "@/db/schema";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -670,6 +671,10 @@ describe("getRenderPageData", () => {
     expect(result!.latestJob!.id).toBe("job-1");
     expect(result!.previousCompletedJob).not.toBeNull();
     expect(result!.previousCompletedJob!.id).toBe("job-2");
+    expect(result!.songset.durationSeconds).toBe(180);
+
+    const itemQueryChain = itemChain.from.mock.results[0]?.value;
+    expect(itemQueryChain.groupBy.mock.calls[0]).toContain(recordings.durationSeconds);
   });
 
   it("returns null when songset not found", async () => {

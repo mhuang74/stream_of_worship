@@ -1,6 +1,6 @@
 # Stream of Worship - Current Implementation Status Report
 
-**Generated:** 2026-05-17 (updated 2026-06-07)
+**Generated:** 2026-05-17 (updated 2026-06-08)
 **Project:** Stream of Worship - Admin CLI, Analysis Service, Web App & Render Worker
 **Repository:** sow_deployment_preps
 
@@ -23,6 +23,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 **Follow-up Fix (2026-06-07):** Fixed LRC editor final-line visibility on small terminals by bounding the editor body and grouped footer, clipping footer shortcut groups to one line, and adding regressions for footer overlap plus scroll-only PgUp/PgDn behavior.
 
 **Follow-up Fix (2026-06-07):** Generated and reconciled LRC completions now force recording visibility to `review`, while manual LRC upload and editor save paths preserve the existing publish-on-null behavior.
+
+**Follow-up Fix (2026-06-08):** Fixed a Web App render-page PostgreSQL error by grouping `recordings.duration_seconds` in the aggregated songset item query used for render confirmation duration comparison.
 
 ---
 
