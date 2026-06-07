@@ -529,10 +529,10 @@ export function RenderForm({
                       { label: "Font Size", prev: prevFontSize, curr: currFontSize, diff: isDifferent(previousRenderJob.fontSizePreset, formData.fontSizePreset) },
                       { label: "Background", prev: prevTemplate, curr: currTemplate, diff: isDifferent(previousRenderJob.template, formData.template) },
                       { label: "Resolution", prev: prevResolution, curr: currResolution, diff: isDifferent(previousRenderJob.resolution, formData.resolution) },
-                      { label: "Title Card", prev: prevTitleCard, curr: currTitleCard, diff: isDifferent(previousRenderJob.includeTitleCard, formData.includeTitleCard) || isDifferent(previousRenderJob.titleCardDurationSeconds, formData.titleCardDurationSeconds) },
+                      { label: "Title Card", prev: prevTitleCard, curr: currTitleCard, diff: isDifferent(previousRenderJob.includeTitleCard, formData.includeTitleCard) || (formData.includeTitleCard && isDifferent(previousRenderJob.titleCardDurationSeconds ?? 10, formData.titleCardDurationSeconds)) },
                       { label: "Songs", prev: prevSongCount, curr: currSongCount, diff: isDifferent(previousRenderJob.songCount, currentSongCount) },
-                      { label: "Songset Duration", prev: prevSongsetDuration, curr: currSongsetDuration, diff: isDifferent(previousRenderJob.songsetDurationSeconds, currentSongsetDurationSeconds) },
-                      { label: "Total Duration", prev: prevTotalDuration, curr: currTotalDuration, diff: isDifferent(previousRenderJob.totalDurationSeconds, estimatedTotalDuration) },
+                      { label: "Songset Duration", prev: prevSongsetDuration, curr: currSongsetDuration, diff: isDifferent(previousRenderJob.songsetDurationSeconds || null, currentSongsetDurationSeconds || null) },
+                      { label: "Total Duration", prev: prevTotalDuration, curr: currTotalDuration, diff: isDifferent(previousRenderJob.totalDurationSeconds || null, estimatedTotalDuration || null) },
                     ]
 
                     return rows.map((row) => (
