@@ -74,6 +74,50 @@ describe("CI workflow", () => {
       expect.arrayContaining(["webapp/**", "services/render-worker/**"]),
     );
   });
+
+  it("webapp job defines a Postgres service", () => {
+    const workflow = loadWorkflow(CI_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const services = jobs["webapp-lint-and-test"].services as Record<string, unknown>;
+    expect(services["postgres"]).toBeDefined();
+  });
+
+  it("webapp job uses a pgvector-capable image", () => {
+    const workflow = loadWorkflow(CI_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const services = jobs["webapp-lint-and-test"].services as Record<string, Record<string, unknown>>;
+    const postgres = services["postgres"] as Record<string, unknown>;
+    expect(postgres.image).toContain("pgvector");
+  });
+
+  it("webapp job Postgres service has expected environment variables", () => {
+    const workflow = loadWorkflow(CI_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const services = jobs["webapp-lint-and-test"].services as Record<string, Record<string, unknown>>;
+    const postgres = services["postgres"] as Record<string, unknown>;
+    const env = postgres.env as Record<string, string>;
+    expect(env.POSTGRES_USER).toBe("sow");
+    expect(env.POSTGRES_PASSWORD).toBe("sow");
+    expect(env.POSTGRES_DB).toBe("sow_test");
+  });
+
+  it("webapp job runs drizzle-kit migrate with SOW_DATABASE_URL", () => {
+    const workflow = loadWorkflow(CI_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const steps = jobs["webapp-lint-and-test"].steps as Array<{ run?: string }>;
+    const migrateStep = steps.find((s) => s.run?.includes("drizzle-kit migrate"));
+    expect(migrateStep).toBeDefined();
+    expect(migrateStep!.run).toContain("SOW_DATABASE_URL");
+  });
+
+  it("webapp job runs pnpm test:postgres-smoke with SOW_DATABASE_URL", () => {
+    const workflow = loadWorkflow(CI_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const steps = jobs["webapp-lint-and-test"].steps as Array<{ run?: string }>;
+    const smokeStep = steps.find((s) => s.run?.includes("test:postgres-smoke"));
+    expect(smokeStep).toBeDefined();
+    expect(smokeStep!.run).toContain("SOW_DATABASE_URL");
+  });
 });
 
 describe("Deploy workflow", () => {

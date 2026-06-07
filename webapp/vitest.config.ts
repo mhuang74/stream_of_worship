@@ -8,6 +8,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    exclude: ["src/test/integration/postgres-hot-pages.smoke.test.ts"],
   },
   resolve: {
     alias: {

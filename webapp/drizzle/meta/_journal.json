@@ -99,6 +99,13 @@
       "when": 1780826037379,
       "tag": "0013_plain_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780827000000,
+      "tag": "0014_page_load_hot_path_indexes",
+      "breakpoints": true
     }
   ]
 }
