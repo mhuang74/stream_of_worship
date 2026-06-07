@@ -178,6 +178,7 @@ export interface RenderPageData {
     renderState: RenderState;
     songTitles: string[];
     lastCompletedRenderJobId: string | null;
+    durationSeconds: number | null;
   };
   userSettings: {
     defaultVideoTemplate: string;
@@ -522,6 +523,7 @@ export async function getRenderPageData(
         songTitle: songs.title,
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
         recordingDeletedAt: recordings.deletedAt,
+        recordingDurationSeconds: recordings.durationSeconds,
         updatedAt: songsetItems.updatedAt,
       })
       .from(songsetItems)
@@ -583,6 +585,11 @@ export async function getRenderPageData(
         renderState,
         songTitles: visibleItems.map((item) => item.songTitle ?? "Unknown Song"),
         lastCompletedRenderJobId: row.lastCompletedRenderJobId,
+        durationSeconds:
+          visibleItems.reduce(
+            (sum, item) => sum + (item.recordingDurationSeconds ?? 0),
+            0
+          ) || null,
       },
       userSettings: settingsRow
         ? {
