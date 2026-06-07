@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { renderJobs, songsets } from "@/db/schema";
+import { renderJobs, songsets, songsetItems, recordings } from "@/db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { normalizeFontFamily } from "@/lib/constants";
@@ -60,6 +60,8 @@ export interface RenderJob {
   mp3R2Key: string | null;
   mp4R2Key: string | null;
   chaptersR2Key: string | null;
+  songCount: number | null;
+  songsetDurationSeconds: number | null;
   createdAt: Date | null;
   updatedAt: Date | null;
   completedAt: Date | null;
@@ -116,6 +118,8 @@ function mapRowToRenderJob(row: typeof renderJobs.$inferSelect): RenderJob {
     mp3R2Key: row.mp3R2Key,
     mp4R2Key: row.mp4R2Key,
     chaptersR2Key: row.chaptersR2Key,
+    songCount: row.songCount ?? null,
+    songsetDurationSeconds: row.songsetDurationSeconds ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     completedAt: row.completedAt,
@@ -135,6 +139,19 @@ export async function createRenderJob(
   if (!songset) {
     throw new Error("Songset not found or access denied");
   }
+
+  const items = await db
+    .select({
+      durationSeconds: recordings.durationSeconds,
+    })
+    .from(songsetItems)
+    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+    .where(eq(songsetItems.songsetId, input.songsetId));
+
+  const songCount = items.length;
+  const songsetDurationSeconds = Math.round(
+    items.reduce((sum, item) => sum + (item.durationSeconds ?? 0), 0)
+  ) || null;
 
   const id = nanoid();
   const now = new Date();
@@ -165,6 +182,8 @@ export async function createRenderJob(
         input.titleCardLines && input.titleCardLines.length > 0
           ? JSON.stringify(input.titleCardLines)
           : null,
+      songCount,
+      songsetDurationSeconds,
       createdAt: now,
       updatedAt: now,
     })

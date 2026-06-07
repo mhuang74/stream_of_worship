@@ -30,6 +30,7 @@ interface SongsetData {
   renderState: RenderState
   songTitles: string[]
   lastCompletedRenderJobId: string | null
+  durationSeconds: number | null
 }
 
 interface RenderJobData {
@@ -42,6 +43,10 @@ interface RenderJobData {
   fontSizePreset: string
   includeTitleCard: boolean
   titleCardDurationSeconds?: number
+  resolution?: string
+  totalDurationSeconds?: number | null
+  songCount?: number | null
+  songsetDurationSeconds?: number | null
   mp3R2Key: string | null
   mp4R2Key: string | null
   chaptersR2Key: string | null
@@ -115,6 +120,7 @@ export default function RenderPage() {
             item.song?.title ?? "Unknown Song"
           ) ?? [],
           lastCompletedRenderJobId: data.lastCompletedRenderJobId ?? null,
+          durationSeconds: data.durationSeconds ?? null,
         })
 
         // Check if there's an active render job
@@ -333,9 +339,15 @@ export default function RenderPage() {
                     fontSizePreset: previousCompletedJob.fontSizePreset,
                     includeTitleCard: previousCompletedJob.includeTitleCard,
                     titleCardDurationSeconds: previousCompletedJob.titleCardDurationSeconds,
+                    resolution: previousCompletedJob.resolution,
+                    totalDurationSeconds: previousCompletedJob.totalDurationSeconds,
+                    songCount: previousCompletedJob.songCount,
+                    songsetDurationSeconds: previousCompletedJob.songsetDurationSeconds,
                   }
                 : undefined
             }
+            currentSongCount={songset.songTitles.length}
+            currentSongsetDurationSeconds={songset.durationSeconds}
           />
         )}
 

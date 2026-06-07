@@ -240,6 +240,10 @@ export const renderJobs = pgTable("render_jobs", {
   titleCardDurationSeconds: real("title_card_duration_seconds").default(10),
   titleCardLines: text("title_card_lines"),
 
+  // Snapshot columns (populated at render creation time)
+  songCount: integer("song_count"),
+  songsetDurationSeconds: integer("songset_duration_seconds"),
+
   // Output R2 keys (set when render completes)
   mp3R2Key: text("mp3_r2_key"),
   mp4R2Key: text("mp4_r2_key"),

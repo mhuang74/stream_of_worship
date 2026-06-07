@@ -30,7 +30,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { AlertCircle, Info } from "lucide-react"
 import Link from "next/link"
-import { FONT_FAMILIES, type FontFamilyValue } from "@/lib/constants"
+import { FONT_FAMILIES, FONT_SIZES, TEMPLATES, RESOLUTIONS, type FontFamilyValue } from "@/lib/constants"
+import { formatDuration } from "@/lib/format"
 
 export interface RenderFormData {
   audioEnabled: boolean
@@ -54,34 +55,24 @@ interface RenderFormProps {
   onSubmit: (data: RenderFormData) => void
   onCancel: () => void
   isSubmitting?: boolean
-  previousRenderJob?: {
-    id: string
-    createdAt: string
-    template: string
-    fontFamily: string
-    fontSizePreset: string
-    includeTitleCard: boolean
-    titleCardDurationSeconds?: number
-  }
+  previousRenderJob?: PreviousRenderJobData
+  currentSongCount?: number
+  currentSongsetDurationSeconds?: number | null
 }
 
-const TEMPLATES = [
-  { value: "dark", label: "Dark" },
-  { value: "gradient_warm", label: "Gradient Warm" },
-  { value: "gradient_blue", label: "Gradient Blue" },
-] as const
-
-const RESOLUTIONS = [
-  { value: "720p", label: "720p (HD)" },
-  { value: "1080p", label: "1080p (Full HD)" },
-] as const
-
-const FONT_SIZES = [
-  { value: "S", label: "Small (32px)", px: 32 },
-  { value: "M", label: "Medium (48px)", px: 48 },
-  { value: "L", label: "Large (64px)", px: 64 },
-  { value: "XL", label: "Extra Large (80px)", px: 80 },
-] as const
+export interface PreviousRenderJobData {
+  id: string
+  createdAt: string
+  template: string
+  fontFamily: string
+  fontSizePreset: string
+  includeTitleCard: boolean
+  titleCardDurationSeconds?: number
+  resolution?: string
+  totalDurationSeconds?: number | null
+  songCount?: number | null
+  songsetDurationSeconds?: number | null
+}
 
 const TITLE_CARD_DURATIONS = [
   { value: 5, label: "5 seconds" },
@@ -111,6 +102,22 @@ function isIOS174OrLater(): boolean {
   return major > 17 || (major === 17 && minor >= 4)
 }
 
+function formatDurationSafe(seconds: number | null | undefined): string {
+  if (seconds == null || seconds <= 0) return "—"
+  return formatDuration(seconds)
+}
+
+function isDifferent(prev: unknown, curr: unknown): boolean {
+  const p = prev ?? null
+  const c = curr ?? null
+  if (p === null && c === null) return false
+  if (p === null || c === null) return true
+  if (typeof p === "number" && typeof c === "number") {
+    return Math.round(p) !== Math.round(c)
+  }
+  return String(p) !== String(c)
+}
+
 export function RenderForm({
   songsetId,
   initialData,
@@ -121,6 +128,8 @@ export function RenderForm({
   onCancel,
   isSubmitting = false,
   previousRenderJob,
+  currentSongCount,
+  currentSongsetDurationSeconds,
 }: RenderFormProps) {
   const [formData, setFormData] = useState<RenderFormData>({
     audioEnabled: initialData?.audioEnabled ?? true,
@@ -482,26 +491,63 @@ export function RenderForm({
           <AlertDialogHeader>
             <AlertDialogTitle>Start New Render?</AlertDialogTitle>
             <AlertDialogDescription>
-              A previous render exists for this songset. Starting a new render will not delete the previous output.
+              A previous render exists for this songset. Compare the parameters below before starting a new render.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {previousRenderJob && (
-            <div className="space-y-1.5 text-sm">
-              <p className="font-medium">Previous render parameters:</p>
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
-                <span className="font-medium text-foreground">Font:</span>
-                <span>{FONT_FAMILIES.find((f) => f.value === previousRenderJob.fontFamily)?.label ?? previousRenderJob.fontFamily}</span>
-                <span className="font-medium text-foreground">Font Size:</span>
-                <span>{FONT_SIZES.find((f) => f.value === previousRenderJob.fontSizePreset)?.label ?? previousRenderJob.fontSizePreset}</span>
-                <span className="font-medium text-foreground">Background:</span>
-                <span>{TEMPLATES.find((t) => t.value === previousRenderJob.template)?.label ?? previousRenderJob.template}</span>
-                <span className="font-medium text-foreground">Title Card:</span>
-                <span>
-                  {previousRenderJob.includeTitleCard
-                    ? `On (${previousRenderJob.titleCardDurationSeconds ?? 10}s)`
-                    : "Off"}
-                </span>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-1.5 pr-3 text-left font-medium text-muted-foreground">Parameter</th>
+                    <th className="py-1.5 px-3 text-left font-medium text-muted-foreground">Previous Render</th>
+                    <th className="py-1.5 pl-3 text-left font-medium text-muted-foreground">Current Request</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const prevFont = FONT_FAMILIES.find((f) => f.value === previousRenderJob.fontFamily)?.label ?? previousRenderJob.fontFamily
+                    const currFont = FONT_FAMILIES.find((f) => f.value === formData.fontFamily)?.label ?? formData.fontFamily
+                    const prevFontSize = FONT_SIZES.find((f) => f.value === previousRenderJob.fontSizePreset)?.label ?? previousRenderJob.fontSizePreset
+                    const currFontSize = FONT_SIZES.find((f) => f.value === formData.fontSizePreset)?.label ?? formData.fontSizePreset
+                    const prevTemplate = TEMPLATES.find((t) => t.value === previousRenderJob.template)?.label ?? previousRenderJob.template
+                    const currTemplate = TEMPLATES.find((t) => t.value === formData.template)?.label ?? formData.template
+                    const prevResolution = RESOLUTIONS.find((r) => r.value === previousRenderJob.resolution)?.label ?? previousRenderJob.resolution ?? "—"
+                    const currResolution = RESOLUTIONS.find((r) => r.value === formData.resolution)?.label ?? formData.resolution
+                    const prevTitleCard = previousRenderJob.includeTitleCard ? `On (${previousRenderJob.titleCardDurationSeconds ?? 10}s)` : "Off"
+                    const currTitleCard = formData.includeTitleCard ? `On (${formData.titleCardDurationSeconds ?? 10}s)` : "Off"
+                    const prevSongCount = previousRenderJob.songCount != null ? String(previousRenderJob.songCount) : "—"
+                    const currSongCount = currentSongCount != null ? String(currentSongCount) : "—"
+                    const prevSongsetDuration = formatDurationSafe(previousRenderJob.songsetDurationSeconds)
+                    const currSongsetDuration = formatDurationSafe(currentSongsetDurationSeconds)
+                    const prevTotalDuration = formatDurationSafe(previousRenderJob.totalDurationSeconds)
+                    const estimatedTotalDuration = (currentSongsetDurationSeconds ?? 0) + (formData.includeTitleCard ? (formData.titleCardDurationSeconds ?? 0) : 0)
+                    const currTotalDuration = estimatedTotalDuration > 0 ? `~${formatDuration(estimatedTotalDuration)}` : "—"
+
+                    const rows: { label: string; prev: string; curr: string; diff: boolean }[] = [
+                      { label: "Font", prev: prevFont, curr: currFont, diff: isDifferent(previousRenderJob.fontFamily, formData.fontFamily) },
+                      { label: "Font Size", prev: prevFontSize, curr: currFontSize, diff: isDifferent(previousRenderJob.fontSizePreset, formData.fontSizePreset) },
+                      { label: "Background", prev: prevTemplate, curr: currTemplate, diff: isDifferent(previousRenderJob.template, formData.template) },
+                      { label: "Resolution", prev: prevResolution, curr: currResolution, diff: isDifferent(previousRenderJob.resolution, formData.resolution) },
+                      { label: "Title Card", prev: prevTitleCard, curr: currTitleCard, diff: isDifferent(previousRenderJob.includeTitleCard, formData.includeTitleCard) || isDifferent(previousRenderJob.titleCardDurationSeconds, formData.titleCardDurationSeconds) },
+                      { label: "Songs", prev: prevSongCount, curr: currSongCount, diff: isDifferent(previousRenderJob.songCount, currentSongCount) },
+                      { label: "Songset Duration", prev: prevSongsetDuration, curr: currSongsetDuration, diff: isDifferent(previousRenderJob.songsetDurationSeconds, currentSongsetDurationSeconds) },
+                      { label: "Total Duration", prev: prevTotalDuration, curr: currTotalDuration, diff: isDifferent(previousRenderJob.totalDurationSeconds, estimatedTotalDuration) },
+                    ]
+
+                    return rows.map((row) => (
+                      <tr key={row.label} className="border-b last:border-0">
+                        <td className="py-1.5 pr-3 font-medium">{row.label}</td>
+                        <td className="py-1.5 px-3">{row.prev}</td>
+                        <td className={`py-1.5 pl-3${row.diff ? " text-amber-600 dark:text-amber-400" : ""}`}>
+                          {row.diff && <span className="mr-1 inline-block size-1.5 rounded-full bg-amber-500 align-middle" />}
+                          {row.curr}
+                        </td>
+                      </tr>
+                    ))
+                  })()}
+                </tbody>
+              </table>
             </div>
           )}
           <AlertDialogFooter>

@@ -18,6 +18,7 @@ import { songsets } from "@/db/schema";
 vi.mock("@/db", () => {
   const selectChain = {
     from: vi.fn().mockReturnThis(),
+    leftJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockResolvedValue([]),
   };
   const dbMock = {
@@ -80,6 +81,8 @@ const mockRenderJob = {
   mp3R2Key: null,
   mp4R2Key: null,
   chaptersR2Key: null,
+  songCount: null,
+  songsetDurationSeconds: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   completedAt: null,
