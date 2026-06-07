@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
-import { FONT_FAMILIES } from "@/lib/constants";
+import { FONT_FAMILIES, TEMPLATES, RESOLUTIONS } from "@/lib/constants";
 
 export interface UserSettingsData {
   offlineAutoCache: boolean;
@@ -37,17 +37,6 @@ interface SettingsFormProps {
   onSave: (settings: UserSettingsData) => Promise<void>;
   isSaving?: boolean;
 }
-
-const TEMPLATES = [
-  { value: "dark", label: "Dark" },
-  { value: "gradient_warm", label: "Gradient Warm" },
-  { value: "gradient_blue", label: "Gradient Blue" },
-] as const;
-
-const RESOLUTIONS = [
-  { value: "720p", label: "720p (HD)" },
-  { value: "1080p", label: "1080p (Full HD)" },
-] as const;
 
 const FONT_PRESETS = [
   { value: "S", label: "Small (32px)" },

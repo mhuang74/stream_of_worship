@@ -29,6 +29,7 @@ interface SongsetData {
   renderState: RenderState
   songTitles: string[]
   lastCompletedRenderJobId: string | null
+  durationSeconds: number | null
 }
 
 interface RenderJobData {
@@ -42,6 +43,10 @@ interface RenderJobData {
   fontSizePreset: string
   includeTitleCard: boolean
   titleCardDurationSeconds?: number | null
+  resolution?: string
+  totalDurationSeconds?: number | null
+  songCount?: number | null
+  songsetDurationSeconds?: number | null
   mp3R2Key: string | null
   mp4R2Key: string | null
   chaptersR2Key: string | null
@@ -53,6 +58,8 @@ interface RenderPageClientProps {
   initialLatestJob: RenderJobData | null
   initialPreviousCompletedJob: RenderJobData | null
   initialRenderData: Partial<RenderFormData>
+  currentSongCount?: number
+  currentSongsetDurationSeconds?: number | null
 }
 
 export function RenderPageClient({
@@ -61,6 +68,8 @@ export function RenderPageClient({
   initialLatestJob,
   initialPreviousCompletedJob,
   initialRenderData,
+  currentSongCount,
+  currentSongsetDurationSeconds,
 }: RenderPageClientProps) {
   const router = useRouter()
 
@@ -238,9 +247,15 @@ export function RenderPageClient({
                           includeTitleCard: previousCompletedJob.includeTitleCard,
                           titleCardDurationSeconds:
                             previousCompletedJob.titleCardDurationSeconds ?? undefined,
+                          resolution: previousCompletedJob.resolution,
+                          totalDurationSeconds: previousCompletedJob.totalDurationSeconds,
+                          songCount: previousCompletedJob.songCount,
+                          songsetDurationSeconds: previousCompletedJob.songsetDurationSeconds,
                         }
                       : undefined
                   }
+                  currentSongCount={currentSongCount ?? songset.songTitles.length}
+                  currentSongsetDurationSeconds={currentSongsetDurationSeconds ?? songset.durationSeconds}
           />
         )}
 

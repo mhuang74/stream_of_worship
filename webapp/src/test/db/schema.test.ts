@@ -125,6 +125,12 @@ describe("schema: render_jobs table structure", () => {
     expect(cols).toContain("audio_enabled");
     expect(cols).toContain("video_enabled");
   });
+
+  it("has snapshot columns for comparison dialog", () => {
+    const cols = columnNames(renderJobs);
+    expect(cols).toContain("song_count");
+    expect(cols).toContain("songset_duration_seconds");
+  });
 });
 
 describe("schema: song_embedding table structure", () => {

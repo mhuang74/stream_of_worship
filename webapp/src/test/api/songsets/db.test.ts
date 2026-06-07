@@ -599,6 +599,7 @@ describe("getRenderPageData", () => {
         songTitle: "Song A",
         markedLineCount: 3,
         recordingDeletedAt: null,
+        recordingDurationSeconds: 180,
         updatedAt: new Date("2024-01-01"),
       },
     ];
@@ -750,8 +751,8 @@ describe("getRenderPageData", () => {
     };
 
     const itemRows = [
-      { id: "item-1", songTitle: "A", markedLineCount: 3, recordingDeletedAt: null, updatedAt: new Date() },
-      { id: "item-2", songTitle: "B", markedLineCount: 5, recordingDeletedAt: null, updatedAt: new Date() },
+      { id: "item-1", songTitle: "A", markedLineCount: 3, recordingDeletedAt: null, recordingDurationSeconds: 200, updatedAt: new Date() },
+      { id: "item-2", songTitle: "B", markedLineCount: 5, recordingDeletedAt: null, recordingDurationSeconds: 300, updatedAt: new Date() },
     ];
 
     const songsetChain = createSelectChain([songsetRow]);
@@ -780,8 +781,8 @@ describe("getRenderPageData", () => {
     };
 
     const itemRows = [
-      { id: "item-1", songTitle: "Song A", markedLineCount: 0, recordingDeletedAt: null, updatedAt: new Date() },
-      { id: "item-2", songTitle: null, markedLineCount: 0, recordingDeletedAt: null, updatedAt: new Date() },
+      { id: "item-1", songTitle: "Song A", markedLineCount: 0, recordingDeletedAt: null, recordingDurationSeconds: 250, updatedAt: new Date() },
+      { id: "item-2", songTitle: null, markedLineCount: 0, recordingDeletedAt: null, recordingDurationSeconds: null, updatedAt: new Date() },
     ];
 
     const songsetChain = createSelectChain([songsetRow]);

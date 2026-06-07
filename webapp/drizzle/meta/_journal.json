@@ -92,6 +92,13 @@
       "when": 1780702460653,
       "tag": "0012_flimsy_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780826037379,
+      "tag": "0013_plain_starfox",
+      "breakpoints": true
     }
   ]
 }

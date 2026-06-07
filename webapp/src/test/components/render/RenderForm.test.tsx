@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { RenderForm, RenderFormData } from "@/components/render/RenderForm"
+import type { PreviousRenderJobData } from "@/components/render/RenderForm"
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -222,6 +223,201 @@ describe("RenderForm", () => {
       render(<RenderForm {...defaultProps} />)
       expect(screen.getByText("耶和華是我的牧者")).toBeInTheDocument()
       expect(screen.getByText("我必不至缺乏")).toBeInTheDocument()
+    })
+  })
+
+  describe("confirmation dialog with comparison table", () => {
+    const previousJob: PreviousRenderJobData = {
+      id: "prev-job-1",
+      createdAt: new Date("2025-01-01T00:00:00Z").toISOString(),
+      template: "dark",
+      fontFamily: "noto_serif_tc",
+      fontSizePreset: "M",
+      includeTitleCard: false,
+      titleCardDurationSeconds: 10,
+      resolution: "720p",
+      totalDurationSeconds: 785,
+      songCount: 4,
+      songsetDurationSeconds: 750,
+    }
+
+    it("shows comparison dialog when previousRenderJob is provided and form is submitted", async () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={previousJob}
+          currentSongCount={4}
+          currentSongsetDurationSeconds={750}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        expect(screen.getByText("Start New Render?")).toBeInTheDocument()
+      })
+      expect(screen.getByText("Parameter")).toBeInTheDocument()
+      expect(screen.getByText("Previous Render")).toBeInTheDocument()
+      expect(screen.getByText("Current Request")).toBeInTheDocument()
+    })
+
+    it("shows diff highlighting for changed values", async () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={previousJob}
+          currentSongCount={4}
+          currentSongsetDurationSeconds={750}
+          initialData={{ resolution: "1080p" }}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        expect(screen.getByText("1080p (Full HD)")).toBeInTheDocument()
+      })
+
+      const resolutionRow = screen.getByText("1080p (Full HD)").closest("td")
+      expect(resolutionRow?.className).toContain("amber")
+    })
+
+    it("does not show diff highlighting for same values", async () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={previousJob}
+          currentSongCount={4}
+          currentSongsetDurationSeconds={750}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        const classicElements = screen.getAllByText("Classic")
+        expect(classicElements.length).toBe(2)
+      })
+
+      const classicElements = screen.getAllByText("Classic")
+      const currentCol = classicElements.find((el) => el.className.includes("pl-3"))
+      expect(currentCol?.className).not.toContain("amber")
+    })
+
+    it("shows dash for null previous fields", async () => {
+      const jobWithNulls: PreviousRenderJobData = {
+        id: "prev-job-2",
+        createdAt: new Date("2025-01-01T00:00:00Z").toISOString(),
+        template: "dark",
+        fontFamily: "noto_serif_tc",
+        fontSizePreset: "M",
+        includeTitleCard: false,
+        songCount: null,
+        songsetDurationSeconds: null,
+        totalDurationSeconds: null,
+        resolution: undefined,
+      }
+
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={jobWithNulls}
+          currentSongCount={3}
+          currentSongsetDurationSeconds={500}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        const dashElements = screen.getAllByText("—")
+        expect(dashElements.length).toBeGreaterThanOrEqual(2)
+      })
+    })
+
+    it("submits directly without confirmation dialog when no previous render", async () => {
+      render(<RenderForm {...defaultProps} />)
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        expect(mockSubmit).toHaveBeenCalled()
+      })
+      expect(screen.queryByText("Start New Render?")).not.toBeInTheDocument()
+    })
+
+    it("displays current song count and duration correctly", async () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={previousJob}
+          currentSongCount={5}
+          currentSongsetDurationSeconds={900}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        expect(screen.getByText("5")).toBeInTheDocument()
+      })
+      expect(screen.getByText("15m 0s")).toBeInTheDocument()
+    })
+
+    it("shows estimated total duration with tilde prefix", async () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={previousJob}
+          currentSongCount={4}
+          currentSongsetDurationSeconds={750}
+          initialData={{ includeTitleCard: true, titleCardDurationSeconds: 10 }}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        expect(screen.getByText("~12m 40s")).toBeInTheDocument()
+      })
+    })
+
+    it("formatDurationSafe returns dash for null/undefined/zero values", async () => {
+      const jobWithNullDuration: PreviousRenderJobData = {
+        id: "prev-job-3",
+        createdAt: new Date("2025-01-01T00:00:00Z").toISOString(),
+        template: "dark",
+        fontFamily: "noto_serif_tc",
+        fontSizePreset: "M",
+        includeTitleCard: false,
+        totalDurationSeconds: null,
+        songsetDurationSeconds: null,
+        songCount: null,
+      }
+
+      render(
+        <RenderForm
+          {...defaultProps}
+          previousRenderJob={jobWithNullDuration}
+          currentSongCount={0}
+          currentSongsetDurationSeconds={null}
+        />
+      )
+
+      const submitButton = screen.getByRole("button", { name: /start render/i })
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        const dashElements = screen.getAllByText("—")
+        expect(dashElements.length).toBeGreaterThanOrEqual(2)
+      })
     })
   })
 })

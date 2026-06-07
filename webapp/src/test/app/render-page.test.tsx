@@ -22,6 +22,7 @@ describe("RenderPageClient", () => {
           renderState: "unrendered",
           songTitles: [],
           lastCompletedRenderJobId: null,
+          durationSeconds: null,
         }}
         initialLatestJob={null}
         initialPreviousCompletedJob={null}
