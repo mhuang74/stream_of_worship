@@ -159,6 +159,18 @@ class LyricLineTable(DataTable):
             return
         super().action_cursor_down()
 
+    def action_page_up(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        self.scroll_page_up(animate=False, force=True)
+
+    def action_page_down(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        self.scroll_page_down(animate=False, force=True)
+
 
 class LRCEditorScreen(Screen[None]):
     """Main interactive LRC editor screen.
@@ -170,6 +182,21 @@ class LRCEditorScreen(Screen[None]):
     - Selected-line editing panel
     - Recovery/draft/upload status indicator
     - Footer with keyboard shortcuts
+    """
+
+    DEFAULT_CSS = """
+    #editor-body {
+        height: 1fr;
+        overflow: hidden;
+    }
+
+    #line-table {
+        height: 1fr;
+    }
+
+    #edit-panel {
+        height: 1;
+    }
     """
 
     BINDINGS = [
@@ -262,7 +289,7 @@ class LRCEditorScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical():
+        with Vertical(id="editor-body"):
             yield PreviewBanner()
             yield CurrentLyricDisplay()
             yield PlaybackBar()

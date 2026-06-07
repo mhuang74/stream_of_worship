@@ -12,13 +12,15 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Admin LRC editor cursor/preview tracking fixed — continuous preview now starts from the current table cursor after preview exit or autosave resume
+**Latest Milestone:** Admin LRC editor small-terminal navigation fixed — the compact footer no longer covers the final lyric rows, and PgUp/PgDn scroll the lyric viewport without changing the selected action row
 
 **Maintenance Update (2026-06-07):** Fixed stale row highlight events in the admin LRC editor by suppressing programmatic DataTable highlight messages during table rebuilds, syncing preview start from the active table cursor, and resetting resumed editor sessions to row 1 at launch.
 
 **Follow-up Fix (2026-06-07):** Restored LRC editor keyboard navigation after cursor tracking changes by avoiding table rebuilds for up/down movement and `TAB` stamp-and-advance, updating only affected row cells and the selection marker.
 
 **Follow-up Fix (2026-06-07):** Fixed LRC editor final-line navigation by letting the lyrics table own UP/DOWN row movement, returning focus to the table on mount, and adding a 50-line regression that verifies line 50 remains highlighted and marked.
+
+**Follow-up Fix (2026-06-07):** Fixed LRC editor final-line visibility on small terminals by bounding the editor body and grouped footer, clipping footer shortcut groups to one line, and adding regressions for footer overlap plus scroll-only PgUp/PgDn behavior.
 
 ---
 
