@@ -7,6 +7,8 @@ import pytest
 from textual.widgets import DataTable, Input
 
 from stream_of_worship.admin.editor.app import LRCEditorApp
+from stream_of_worship.admin.editor.footer import GroupedFooter
+from stream_of_worship.admin.editor.screen import StatusIndicator
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.services.lrc_parser import LRCLine
 from stream_of_worship.admin.services.playback import PlaybackState
@@ -70,6 +72,10 @@ def _make_app(line_count: int) -> tuple[LRCEditorApp, EditorState]:
     return app, state
 
 
+def _bottom(widget) -> int:
+    return widget.region.y + widget.region.height
+
+
 @pytest.mark.asyncio
 async def test_down_navigation_keeps_fiftieth_line_selected():
     app, state = _make_app(line_count=50)
@@ -86,6 +92,7 @@ async def test_down_navigation_keeps_fiftieth_line_selected():
 
         assert state.selected_index == 49
         assert table.cursor_row == 49
+        assert table.scroll_y <= 50 < table.scroll_y + table.region.height
         assert str(table.get_cell_at((48, 0))) == "49"
         assert str(table.get_cell_at((49, 0))) == ">50"
 
@@ -95,6 +102,7 @@ async def test_down_navigation_keeps_fiftieth_line_selected():
 
         assert state.selected_index == 49
         assert table.cursor_row == 49
+        assert table.scroll_y <= 50 < table.scroll_y + table.region.height
         assert str(table.get_cell_at((48, 0))) == "49"
         assert str(table.get_cell_at((49, 0))) == ">50"
 
@@ -114,3 +122,56 @@ async def test_down_navigation_does_not_change_line_while_editing_text():
         await pilot.pause()
 
         assert state.selected_index == 0
+
+
+@pytest.mark.asyncio
+async def test_small_terminal_layout_keeps_footer_out_of_lyrics_viewport():
+    app, _ = _make_app(line_count=50)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        editor_body = app.screen.query_one("#editor-body")
+        table = app.screen.query_one("#line-table", DataTable)
+        edit_panel = app.screen.query_one("#edit-panel")
+        status = app.screen.query_one(StatusIndicator)
+        footer = app.screen.query_one(GroupedFooter)
+
+        assert _bottom(editor_body) <= footer.region.y
+        assert _bottom(table) <= edit_panel.region.y
+        assert _bottom(edit_panel) <= status.region.y
+        assert _bottom(status) <= footer.region.y
+
+        footer_bottom = _bottom(footer)
+        for child in footer.query("*"):
+            assert child.region.y >= footer.region.y
+            assert _bottom(child) <= footer_bottom
+
+
+@pytest.mark.asyncio
+async def test_page_keys_scroll_without_changing_selected_line():
+    app, state = _make_app(line_count=50)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one("#line-table", DataTable)
+
+        assert state.selected_index == 0
+        assert table.cursor_row == 0
+        assert table.scroll_y == 0
+
+        await pilot.press("pagedown")
+        await pilot.pause()
+
+        assert table.scroll_y > 0
+        assert state.selected_index == 0
+        assert table.cursor_row == 0
+        assert str(table.get_cell_at((0, 0))) == ">1"
+
+        await pilot.press("pageup")
+        await pilot.pause()
+
+        assert table.scroll_y == 0
+        assert state.selected_index == 0
+        assert table.cursor_row == 0
+        assert str(table.get_cell_at((0, 0))) == ">1"
