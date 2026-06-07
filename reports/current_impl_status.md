@@ -16,6 +16,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Maintenance Update (2026-06-07):** Fixed stale row highlight events in the admin LRC editor by suppressing programmatic DataTable highlight messages during table rebuilds, syncing preview start from the active table cursor, and resetting resumed editor sessions to row 1 at launch.
 
+**Follow-up Fix (2026-06-07):** Restored LRC editor keyboard navigation after cursor tracking changes by avoiding table rebuilds for up/down movement and `TAB` stamp-and-advance, updating only affected row cells and the selection marker.
+
 ---
 
 ## Phase-by-Phase Implementation Status
