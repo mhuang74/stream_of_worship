@@ -537,7 +537,13 @@ export async function getRenderPageData(
         )
       )
       .where(eq(songsetItems.songsetId, id))
-      .groupBy(songsetItems.id, songs.title, recordings.deletedAt, songsetItems.updatedAt)
+      .groupBy(
+        songsetItems.id,
+        songs.title,
+        recordings.deletedAt,
+        recordings.durationSeconds,
+        songsetItems.updatedAt
+      )
       .orderBy(asc(songsetItems.position));
 
     const visibleItems = itemRows.filter((item) => !item.recordingDeletedAt);

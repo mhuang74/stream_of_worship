@@ -12,9 +12,9 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Web App CI test discovery fixed — Vitest now preserves default dependency exclusions while skipping the dedicated PostgreSQL smoke test in the unit suite
+**Latest Milestone:** Web App Drizzle migration path fixed — fresh Postgres/pgvector migrations now apply through the PR #97 migration chain
 
-**Latest Maintenance:** PR #97 CI failure resolved by restoring Vitest's default `node_modules` and `.git` exclusions in `webapp/vitest.config.ts`; `pnpm test`, `pnpm lint`, and `pnpm typecheck` pass locally.
+**Latest Maintenance:** PR #97 CI migration failure resolved by removing duplicate `songs.search_vector` DDL from migration `0007`, aligning `idx_songs_search_vector` metadata with its GIN index, making the manual active render-job index transaction-safe, and fixing the render page smoke-test Postgres grouping query; `pnpm lint`, `pnpm typecheck`, `pnpm test`, `drizzle-kit migrate`, and `pnpm test:postgres-smoke` pass locally.
 
 ---
 
