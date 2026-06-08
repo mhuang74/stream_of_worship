@@ -1,6 +1,6 @@
 # Stream of Worship - Current Implementation Status Report
 
-**Generated:** 2026-05-17 (updated 2026-05-19)
+**Generated:** 2026-05-17 (updated 2026-06-08)
 **Project:** Stream of Worship - Admin CLI, Analysis Service, Web App & Render Worker
 **Repository:** sow_deployment_preps
 
@@ -12,7 +12,9 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Lambda Render Worker architecture deployed — render pipeline migrated from in-process Vercel execution to AWS Lambda container processing SQS messages
+**Latest Milestone:** Web App CI test discovery fixed — Vitest now preserves default dependency exclusions while skipping the dedicated PostgreSQL smoke test in the unit suite
+
+**Latest Maintenance:** PR #97 CI failure resolved by restoring Vitest's default `node_modules` and `.git` exclusions in `webapp/vitest.config.ts`; `pnpm test`, `pnpm lint`, and `pnpm typecheck` pass locally.
 
 ---
 
