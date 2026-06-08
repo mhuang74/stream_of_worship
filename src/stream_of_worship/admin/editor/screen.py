@@ -12,6 +12,7 @@ from typing import Optional
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import (
     DataTable,
@@ -143,6 +144,34 @@ class StatusIndicator(Static):
         self.update("".join(parts))
 
 
+class LyricLineTable(DataTable):
+    """Lyrics table with preview-aware row navigation."""
+
+    def action_cursor_up(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        super().action_cursor_up()
+
+    def action_cursor_down(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        super().action_cursor_down()
+
+    def action_page_up(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        self.scroll_page_up(animate=False, force=True)
+
+    def action_page_down(self) -> None:
+        guard_preview = getattr(self.screen, "_guard_preview", None)
+        if guard_preview is not None and guard_preview():
+            return
+        self.scroll_page_down(animate=False, force=True)
+
+
 class LRCEditorScreen(Screen[None]):
     """Main interactive LRC editor screen.
 
@@ -155,13 +184,26 @@ class LRCEditorScreen(Screen[None]):
     - Footer with keyboard shortcuts
     """
 
+    DEFAULT_CSS = """
+    #editor-body {
+        height: 1fr;
+        overflow: hidden;
+    }
+
+    #line-table {
+        height: 1fr;
+    }
+
+    #edit-panel {
+        height: 1;
+    }
+    """
+
     BINDINGS = [
         # Playback/Nav
         Binding("space", "toggle_playback", "Play/Pause"),
         Binding("left", "seek_backward", "Seek -5s"),
         Binding("right", "seek_forward", "Seek +5s"),
-        Binding("up", "select_prev", "Prev Line"),
-        Binding("down", "select_next", "Next Line"),
         Binding("j", "jump_to_line", "Jump"),
         # Lyrics Edit
         Binding("ctrl+c", "copy_line", "Copy"),
@@ -171,7 +213,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("d", "delete_line", "Delete"),
         Binding("e", "edit_text", "Edit Text"),
         # Timecode
-        Binding("enter", "stamp_and_advance", "Stamp+Advance"),
+        Binding("tab", "stamp_and_advance", "Stamp+Advance"),
         Binding("shift+left", "show_earlier", "Earlier"),
         Binding("shift+right", "show_later", "Later"),
         Binding("t", "edit_timestamp", "Edit Time"),
@@ -190,8 +232,6 @@ class LRCEditorScreen(Screen[None]):
             "toggle_playback",
             "seek_backward",
             "seek_forward",
-            "select_prev",
-            "select_next",
             "jump_to_line",
         ],
         "Lyrics": [
@@ -245,15 +285,16 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode: str = "single"
         self._preview_target_index: int = -1
         self._preview_prev_index: int = -1
+        self._preview_display_index: Optional[int] = None
         self._preview_end_seconds: float = 0.0
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical():
+        with Vertical(id="editor-body"):
             yield PreviewBanner()
             yield CurrentLyricDisplay()
             yield PlaybackBar()
-            yield DataTable(id="line-table")
+            yield LyricLineTable(id="line-table")
             with Horizontal(id="edit-panel"):
                 yield Label("Selected:", id="edit-label")
                 yield Input(id="edit-input", placeholder="Edit text or timestamp here")
@@ -262,7 +303,8 @@ class LRCEditorScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self._setup_table()
-        self._refresh_table()
+        self._rebuild_table()
+        self.query_one("#line-table", DataTable).focus()
         self._update_displays()
         self._start_position_updates()
 
@@ -287,39 +329,119 @@ class LRCEditorScreen(Screen[None]):
         table.cursor_type = "row"
         table.show_cursor = True
 
-    def _refresh_table(self) -> None:
+    def _rebuild_table(self) -> None:
         table = self.query_one("#line-table", DataTable)
-        table.clear()
+        current_count = table.row_count
+        target_count = self.state.line_count
 
-        for i, line in enumerate(self.state.timed_lines):
+        for i in range(min(current_count, target_count)):
+            line = self.state.timed_lines[i]
             ts = format_centiseconds(line.time_seconds)
-            status = ""
-            if line.time_seconds == 0.0 and line.text.strip():
-                status = "[dim]draft[/dim]"
-            if i > 0 and line.time_seconds < self.state.timed_lines[i - 1].time_seconds:
-                status = "[red]!non-mono[/red]"
+            status = self._row_status(i)
+            row_label = self._row_label(i)
+            for column, value in enumerate((row_label, ts, line.text, status)):
+                table.update_cell_at(Coordinate(i, column), value, update_width=True)
 
-            is_selected = i == self.state.selected_index
-            row_label = f">{i + 1}" if is_selected else str(i + 1)
+        if target_count > current_count:
+            for i in range(current_count, target_count):
+                line = self.state.timed_lines[i]
+                ts = format_centiseconds(line.time_seconds)
+                status = self._row_status(i)
+                row_label = self._row_label(i)
+                table.add_row(row_label, ts, line.text, status, key=str(i))
+        elif current_count > target_count:
+            for i in range(current_count - 1, target_count - 1, -1):
+                table.remove_row(str(i))
 
-            table.add_row(row_label, ts, line.text, status, key=str(i))
-
-        if 0 <= self.state.selected_index < self.state.line_count:
-            table.move_cursor(row=self.state.selected_index)
+        if 0 <= self.state.selected_index < target_count:
+            table.move_cursor(row=self.state.selected_index, scroll=True)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        self.state.selected_index = event.cursor_row
+        if event.data_table.id != "line-table":
+            return
+        old_index = self.state.selected_index
+        if event.cursor_row == self.state.selected_index:
+            self._update_displays()
+            return
+        self.state.select_line(event.cursor_row)
+        self._update_selection_marker(old_index)
+        self._update_displays()
+
+    def _row_label(self, index: int) -> str:
+        return f">{index + 1}" if index == self.state.selected_index else str(index + 1)
+
+    def _row_status(self, index: int) -> str:
+        line = self.state.timed_lines[index]
+        if line.time_seconds == 0.0 and line.text.strip():
+            return "[dim]draft[/dim]"
+        if index > 0 and line.time_seconds < self.state.timed_lines[index - 1].time_seconds:
+            return "[red]!non-mono[/red]"
+        return ""
+
+    def _update_table_row(self, index: int) -> None:
+        if not 0 <= index < self.state.line_count:
+            return
+        try:
+            table = self.query_one("#line-table", DataTable)
+        except NoMatches:
+            return
+        if not 0 <= index < table.row_count:
+            return
+
+        line = self.state.timed_lines[index]
+        values = (
+            self._row_label(index),
+            format_centiseconds(line.time_seconds),
+            line.text,
+            self._row_status(index),
+        )
+        for column, value in enumerate(values):
+            table.update_cell_at(Coordinate(index, column), value, update_width=True)
+
+    def _update_selection_marker(self, old_index: int | None = None) -> None:
+        self._update_table_row(self.state.selected_index)
+        if old_index is not None and old_index != self.state.selected_index:
+            self._update_table_row(old_index)
+
+    def _move_table_cursor_to_selection(self, old_index: int | None = None) -> None:
+        try:
+            table = self.query_one("#line-table", DataTable)
+        except NoMatches:
+            return
+        if 0 <= self.state.selected_index < self.state.line_count:
+            table.move_cursor(row=self.state.selected_index, scroll=True)
+        self._update_selection_marker(old_index)
+
+    def _sync_selection_from_table_cursor(self) -> None:
+        try:
+            table = self.query_one("#line-table", DataTable)
+        except NoMatches:
+            return
+
+        cursor_row = table.cursor_row
+        if cursor_row is None or not 0 <= cursor_row < self.state.line_count:
+            return
+        if cursor_row == self.state.selected_index:
+            return
+
+        old_index = self.state.selected_index
+        self.state.select_line(cursor_row)
+        self._update_selection_marker(old_index)
         self._update_displays()
 
     def _update_displays(self) -> None:
         lyric_display = self.query_one(CurrentLyricDisplay)
-        current = self.state.selected_line
-        if current:
-            next_idx = self.state.selected_index + 1
-            next_line = ""
-            if next_idx < self.state.line_count:
-                next_line = self.state.timed_lines[next_idx].text
-            lyric_display.update_lyrics(current.text, next_line)
+        if self._preview_active and self._preview_display_index == -1:
+            next_line = self.state.timed_lines[0].text if self.state.line_count > 0 else ""
+            lyric_display.update_lyrics("", next_line)
+        else:
+            current = self.state.selected_line
+            if current:
+                next_idx = self.state.selected_index + 1
+                next_line = ""
+                if next_idx < self.state.line_count:
+                    next_line = self.state.timed_lines[next_idx].text
+                lyric_display.update_lyrics(current.text, next_line)
 
         status = self.query_one(StatusIndicator)
         status.update_status(
@@ -330,6 +452,20 @@ class LRCEditorScreen(Screen[None]):
             padding_quarters=self.state.padding_quarters,
             preview_active=self._preview_active,
         )
+
+    def _set_preview_display_index(self, index: int) -> None:
+        """Update the lyric banner for preview, where -1 means blank before line 1."""
+        if index == self._preview_display_index:
+            return
+
+        self._preview_display_index = index
+        if index >= 0:
+            if self.state.selected_index != index:
+                self.state.select_line(index)
+                self._rebuild_table()
+        else:
+            self._rebuild_table()
+        self._update_displays()
 
     def _update_playback_bar(self) -> None:
         try:
@@ -360,22 +496,15 @@ class LRCEditorScreen(Screen[None]):
                 self._stop_preview()
                 return
             if current_secs >= target_line.time_seconds:
-                if self.state.selected_index != self._preview_target_index:
-                    self.state.select_line(self._preview_target_index)
-                    self._refresh_table()
-                    self._update_displays()
+                self._set_preview_display_index(self._preview_target_index)
             elif self._preview_prev_index >= 0:
-                if self.state.selected_index != self._preview_prev_index:
-                    self.state.select_line(self._preview_prev_index)
-                    self._refresh_table()
-                    self._update_displays()
+                self._set_preview_display_index(self._preview_prev_index)
+            else:
+                self._set_preview_display_index(-1)
             return
 
         current_line_idx = self._find_line_at_position(current_secs)
-        if current_line_idx != self.state.selected_index:
-            self.state.select_line(current_line_idx)
-            self._refresh_table()
-            self._update_displays()
+        self._set_preview_display_index(current_line_idx)
 
     def _on_playback_state(self, new_state: PlaybackState) -> None:
         self._update_playback_bar()
@@ -385,6 +514,7 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode = "single"
         self._preview_target_index = -1
         self._preview_prev_index = -1
+        self._preview_display_index = None
         self._preview_end_seconds = 0.0
         try:
             self.query_one(PreviewBanner).hide_banner()
@@ -404,6 +534,7 @@ class LRCEditorScreen(Screen[None]):
                 padding_quarters=self.state.padding_quarters,
                 tempo_bpm=self.state.tempo_bpm,
                 original_timestamps=self.state.original_timestamps,
+                selected_index=self.state.selected_index,
             )
             save_autosave(self.cache_dir, self.hash_prefix, autosave_state)
             self._autosave_ok = True
@@ -417,7 +548,7 @@ class LRCEditorScreen(Screen[None]):
         for i in range(len(self.state.timed_lines) - 1, -1, -1):
             if self.state.timed_lines[i].time_seconds <= position:
                 return i
-        return 0
+        return -1
 
     # --- Preview helpers ---
 
@@ -427,6 +558,7 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode = "single"
         self._preview_target_index = -1
         self._preview_prev_index = -1
+        self._preview_display_index = None
         self._preview_end_seconds = 0.0
         try:
             self.query_one(PreviewBanner).hide_banner()
@@ -460,15 +592,17 @@ class LRCEditorScreen(Screen[None]):
     def action_select_prev(self) -> None:
         if self._guard_preview():
             return
+        old_index = self.state.selected_index
         self.state.select_prev()
-        self._refresh_table()
+        self._move_table_cursor_to_selection(old_index)
         self._update_displays()
 
     def action_select_next(self) -> None:
         if self._guard_preview():
             return
+        old_index = self.state.selected_index
         self.state.select_next()
-        self._refresh_table()
+        self._move_table_cursor_to_selection(old_index)
         self._update_displays()
 
     def action_jump_to_line(self) -> None:
@@ -481,10 +615,13 @@ class LRCEditorScreen(Screen[None]):
     def action_stamp_and_advance(self) -> None:
         if self._guard_preview():
             return
+        old_index = self.state.selected_index
         pos = self.playback.position_seconds
-        self.state.set_timestamp(self.state.selected_index, pos)
+        self.state.set_timestamp(old_index, pos)
         self.state.select_next()
-        self._refresh_table()
+        self._update_table_row(old_index)
+        self._update_table_row(old_index + 1)
+        self._move_table_cursor_to_selection(old_index)
         self._update_displays()
         self._do_autosave()
 
@@ -499,7 +636,7 @@ class LRCEditorScreen(Screen[None]):
                 timeout=2,
             )
             return
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         offset = self.state.padding_offset_seconds
@@ -517,7 +654,7 @@ class LRCEditorScreen(Screen[None]):
                 timeout=2,
             )
             return
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         offset = self.state.padding_offset_seconds
@@ -529,6 +666,7 @@ class LRCEditorScreen(Screen[None]):
             self._stop_preview()
             return
 
+        self._sync_selection_from_table_cursor()
         target_idx = self.state.selected_index
         line = self.state.selected_line
         if not line or line.time_seconds == 0.0:
@@ -547,13 +685,11 @@ class LRCEditorScreen(Screen[None]):
         self._preview_mode = "single"
         self._preview_target_index = target_idx
         self._preview_prev_index = prev_idx
+        self._preview_display_index = None
         self._preview_end_seconds = end_seconds
         self._preview_active = True
 
-        if prev_idx >= 0:
-            self.state.select_line(prev_idx)
-            self._refresh_table()
-            self._update_displays()
+        self._set_preview_display_index(prev_idx if prev_idx >= 0 else -1)
 
         self.playback.play(start_seconds=start_pos)
         self.query_one(PreviewBanner).show_banner()
@@ -564,6 +700,7 @@ class LRCEditorScreen(Screen[None]):
             self._stop_preview()
             return
 
+        self._sync_selection_from_table_cursor()
         line = self.state.selected_line
         if not line or line.time_seconds == 0.0:
             self.notify("No timestamp on current line", severity="warning", timeout=2)
@@ -572,7 +709,10 @@ class LRCEditorScreen(Screen[None]):
         start_pos = max(0.0, line.time_seconds - 3.0)
         self._preview_mode = "continuous"
         self._preview_target_index = self.state.selected_index
+        self._preview_prev_index = self._preview_target_index - 1
+        self._preview_display_index = None
         self._preview_active = True
+        self._set_preview_display_index(self._find_line_at_position(start_pos))
         self.playback.play(start_seconds=start_pos)
         self.query_one(PreviewBanner).show_banner()
         self._update_displays()
@@ -614,9 +754,10 @@ class LRCEditorScreen(Screen[None]):
             self._editing_text = False
             self._editing_timestamp = False
             event.input.value = ""
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
             self._do_autosave()
+            self.query_one("#line-table", DataTable).focus()
 
     def _parse_timestamp_input(self, value: str) -> float:
         """Parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds."""
@@ -636,7 +777,7 @@ class LRCEditorScreen(Screen[None]):
             return
         self.state.insert_after(self.state.selected_index)
         self.state.select_next()
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
@@ -665,7 +806,7 @@ class LRCEditorScreen(Screen[None]):
 
         self.state.insert_lines_after(self.state.selected_index, non_blank)
         self.state.select_line(self.state.selected_index + 1)
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         self.notify(f"Inserted {len(non_blank)} canonical lyrics lines", timeout=3)
@@ -687,7 +828,7 @@ class LRCEditorScreen(Screen[None]):
         text, time_seconds = self._clipboard
         self.state.insert_after(self.state.selected_index, text=text, time_seconds=time_seconds)
         self.state.select_next()
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
@@ -698,7 +839,7 @@ class LRCEditorScreen(Screen[None]):
             return
 
         self.state.delete_line(self.state.selected_index)
-        self._refresh_table()
+        self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
@@ -706,7 +847,7 @@ class LRCEditorScreen(Screen[None]):
         if self._guard_preview():
             return
         if self.state.undo():
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
             self._do_autosave()
             self.notify("Undo", timeout=2)
@@ -715,7 +856,7 @@ class LRCEditorScreen(Screen[None]):
         if self._guard_preview():
             return
         if self.state.redo():
-            self._refresh_table()
+            self._rebuild_table()
             self._update_displays()
             self._do_autosave()
             self.notify("Redo", timeout=2)

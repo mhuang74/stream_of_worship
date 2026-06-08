@@ -24,6 +24,7 @@ from stream_of_worship.admin.editor.upload import (
     save_local_draft,
     save_local_backup,
     upload_r2_backup,
+    upload_revised_lrc,
 )
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.db.models import Recording
@@ -104,6 +105,20 @@ class TestAutosave:
         assert len(restored.timed_lines) == 1
         assert restored.timed_lines[0].text == "X"
         assert restored.dirty is True
+
+    def test_selected_index_round_trip(self, tmp_path):
+        state = AutosaveState(
+            timed_lines=_make_lines([(10.0, "A"), (20.0, "B"), (30.0, "C")]),
+            preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+            dirty=True,
+            source_mode="catalog",
+            selected_index=2,
+        )
+        path = save_autosave(tmp_path, "abc123", state)
+        loaded = load_autosave(tmp_path, "abc123")
+        assert loaded is not None
+        assert loaded.selected_index == 2
 
 
 class TestSaveLocalDraft:
@@ -196,6 +211,47 @@ class TestCheckActiveLrcJob:
         db_client.get_recording_by_hash.return_value = None
         active, job_id = check_active_lrc_job(db_client, "abc123def456")
         assert active is False
+
+
+class TestUploadRevisedLrc:
+    def test_manual_editor_upload_does_not_force_review_visibility(self, tmp_path):
+        r2_client = MagicMock()
+        r2_client.upload_lrc.return_value = "s3://bucket/abc123def456/lyrics.lrc"
+
+        db_client = MagicMock()
+        db_client.get_recording_by_hash.return_value = Recording(
+            content_hash="a" * 64,
+            hash_prefix="abc123def456",
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at="2024-01-01",
+            lrc_status="completed",
+            lrc_job_id=None,
+        )
+
+        state = EditorState(
+            timed_lines=_make_lines([(10.0, "Manual edit")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=True, etag="etag-1"),
+        )
+
+        result = upload_revised_lrc(
+            r2_client=r2_client,
+            db_client=db_client,
+            cache_dir=tmp_path,
+            state=state,
+            original_transcribed_content=None,
+            hash_prefix="abc123def456",
+            force=True,
+        )
+
+        assert result.success is True
+        db_client.update_recording_lrc.assert_called_once_with(
+            hash_prefix="abc123def456",
+            r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
+        )
 
 
 class TestEditorState:

@@ -40,6 +40,7 @@ class AutosaveState:
     padding_quarters: int = 0
     tempo_bpm: Optional[float] = None
     original_timestamps: List[float] = field(default_factory=list)
+    selected_index: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -61,6 +62,7 @@ class AutosaveState:
             "padding_quarters": self.padding_quarters,
             "tempo_bpm": self.tempo_bpm,
             "original_timestamps": self.original_timestamps,
+            "selected_index": self.selected_index,
         }
 
     @classmethod
@@ -88,6 +90,7 @@ class AutosaveState:
             padding_quarters=data.get("padding_quarters", 0),
             tempo_bpm=data.get("tempo_bpm"),
             original_timestamps=data.get("original_timestamps", []),
+            selected_index=data.get("selected_index", 0),
         )
 
 

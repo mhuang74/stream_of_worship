@@ -12,9 +12,23 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Web App Drizzle migration path fixed — fresh Postgres/pgvector migrations now apply through the PR #97 migration chain
+**Latest Milestone:** Admin LRC editor preview transition display improved — preview now shows the previous lyric before transitioning to the current lyric, with a blank lead-in before line 1.
 
-**Latest Maintenance:** PR #97 CI migration failure resolved by removing duplicate `songs.search_vector` DDL from migration `0007`, aligning `idx_songs_search_vector` metadata with its GIN index, making the manual active render-job index transaction-safe, and fixing the render page smoke-test Postgres grouping query; `pnpm lint`, `pnpm typecheck`, `pnpm test`, `drizzle-kit migrate`, and `pnpm test:postgres-smoke` pass locally.
+**Maintenance Update (2026-06-07):** Fixed stale row highlight events in the admin LRC editor by suppressing programmatic DataTable highlight messages during table rebuilds, syncing preview start from the active table cursor, and resetting resumed editor sessions to row 1 at launch.
+
+**Follow-up Fix (2026-06-07):** Restored LRC editor keyboard navigation after cursor tracking changes by avoiding table rebuilds for up/down movement and `TAB` stamp-and-advance, updating only affected row cells and the selection marker.
+
+**Follow-up Fix (2026-06-07):** Fixed LRC editor final-line navigation by letting the lyrics table own UP/DOWN row movement, returning focus to the table on mount, and adding a 50-line regression that verifies line 50 remains highlighted and marked.
+
+**Follow-up Fix (2026-06-07):** Fixed LRC editor final-line visibility on small terminals by bounding the editor body and grouped footer, clipping footer shortcut groups to one line, and adding regressions for footer overlap plus scroll-only PgUp/PgDn behavior.
+
+**Follow-up Fix (2026-06-07):** Generated and reconciled LRC completions now force recording visibility to `review`, while manual LRC upload and editor save paths preserve the existing publish-on-null behavior.
+
+**Follow-up Fix (2026-06-08):** Fixed a Web App render-page PostgreSQL error by grouping `recordings.duration_seconds` in the aggregated songset item query used for render confirmation duration comparison.
+
+**Follow-up Fix (2026-06-08):** Improved the admin LRC editor preview banner so single-line and continuous preview show a blank current lyric before transitioning into the first line, then continue showing previous-to-current lyric transitions.
+
+**Merge Resolution (2026-06-08):** Resolved PR #97 conflicts with `main`, regenerated graphify metadata, and verified the Postgres hot-page smoke coverage plus affected admin/webapp tests.
 
 ---
 

@@ -4,6 +4,7 @@ Displays key bindings organized into labeled clusters
 (Playback, Lyrics Edit, Timecode, General) instead of a flat list.
 """
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -14,9 +15,9 @@ class _BindingGroup(Static):
     def __init__(self, label: str, bindings: list[Binding]) -> None:
         self._group_label = label
         self._bindings = bindings
-        super().__init__(self._format_content())
+        super().__init__(self._format_content(), shrink=True)
 
-    def _format_content(self) -> str:
+    def _format_content(self) -> Text:
         parts: list[str] = [f"[bold]{self._group_label}[/bold] "]
         for i, b in enumerate(self._bindings):
             key_display = b.key
@@ -41,7 +42,10 @@ class _BindingGroup(Static):
             parts.append(f"[dim]{key_display}[/dim]={b.description}")
             if i < len(self._bindings) - 1:
                 parts.append("[dim] │ [/dim]")
-        return "".join(parts)
+
+        content = Text.from_markup("".join(parts), overflow="ellipsis", end="")
+        content.no_wrap = True
+        return content
 
 
 class GroupedFooter(Horizontal):
@@ -53,11 +57,13 @@ class GroupedFooter(Horizontal):
         color: $text;
         padding: 0 1;
         border-top: solid $primary;
+        overflow: hidden;
     }
     GroupedFooter > _BindingGroup {
         width: 1fr;
-        height: auto;
+        height: 1;
         padding: 0 1;
+        overflow: hidden;
     }
     """
 
