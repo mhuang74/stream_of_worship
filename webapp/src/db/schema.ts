@@ -60,7 +60,7 @@ export const songs = pgTable(
           setweight(to_tsvector('simple', coalesce("album_name", '')), 'B')`
     ),
   },
-  (t) => [index("idx_songs_search_vector").on(t.searchVector)]
+  (t) => [index("idx_songs_search_vector").using("gin", t.searchVector)]
 );
 
 export const recordings = pgTable("recordings", {

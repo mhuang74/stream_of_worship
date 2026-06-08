@@ -28,6 +28,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Follow-up Fix (2026-06-08):** Improved the admin LRC editor preview banner so single-line and continuous preview show a blank current lyric before transitioning into the first line, then continue showing previous-to-current lyric transitions.
 
+**Merge Resolution (2026-06-08):** Resolved PR #97 conflicts with `main`, regenerated graphify metadata, and verified the Postgres hot-page smoke coverage plus affected admin/webapp tests.
+
 ---
 
 ## Phase-by-Phase Implementation Status

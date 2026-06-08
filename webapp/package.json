@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "SOW_RUN_NEON_INTEGRATION=1 vitest run src/test/lib/db/search.integration.test.ts",
+    "test:postgres-smoke": "vitest run --config vitest.postgres-smoke.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -56,6 +57,7 @@
     "eslint-config-next": "16.2.6",
     "js-yaml": "^4.1.1",
     "jsdom": "^29.1.1",
+    "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
     "typescript": "^5",

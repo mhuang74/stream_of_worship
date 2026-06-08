@@ -82,7 +82,7 @@ When only the selection moved (no lines added/deleted/timestamps changed), avoid
 ```python
 def _update_selection_marker(self) -> None:
     """Update only the # column markers without full table rebuild.
-    
+
     Use this when only the selection changed (no data mutations).
     Avoids the clear() -> cursor reset -> RowHighlighted race condition.
     """
