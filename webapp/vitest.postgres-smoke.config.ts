@@ -9,12 +9,18 @@ export default defineConfig({
     fileParallelism: false,
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    alias: [
       // Regex alias: matches "@/db" exactly, NOT "@/db/schema".
       // This lets the test client intercept `import { db } from "@/db"`
       // while `import { songs } from "@/db/schema"` still resolves normally.
-      "/^@\\/db$/": path.resolve(__dirname, "./src/test/db/postgres-client.ts"),
-    },
+      {
+        find: /^@\/db$/,
+        replacement: path.resolve(__dirname, "./src/test/db/postgres-client.ts"),
+      },
+      {
+        find: "@",
+        replacement: path.resolve(__dirname, "./src"),
+      },
+    ],
   },
 });

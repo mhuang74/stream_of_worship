@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db, closePostgresSmokeDb, schema } from "@/db";
 import { getRenderPageData, getSongsetEditorData, listSongsetSummaries } from "@/lib/db/songsets";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 let owningUserId: number;
 let otherUserId: number;
@@ -162,11 +162,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   try {
-    await db.delete(schema.users).where(eq(schema.users.email, "smoke-owner@test.com"));
-    await db.delete(schema.users).where(eq(schema.users.email, "smoke-other@test.com"));
-    await db.delete(schema.songs).where(eq(schema.songs.id, "smoke-song-1"));
-    await db.delete(schema.songs).where(eq(schema.songs.id, "smoke-song-2"));
-    await db.delete(schema.songs).where(eq(schema.songs.id, "smoke-song-3"));
+    const smokeSongIds = ["smoke-song-1", "smoke-song-2", "smoke-song-3"];
+
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.users).where(eq(schema.users.email, "smoke-owner@test.com"));
+      await tx.delete(schema.users).where(eq(schema.users.email, "smoke-other@test.com"));
+      await tx.delete(schema.recordings).where(inArray(schema.recordings.songId, smokeSongIds));
+      await tx.delete(schema.songs).where(inArray(schema.songs.id, smokeSongIds));
+    });
   } catch (e) {
     console.error("Smoke test cleanup failed:", e);
   } finally {
