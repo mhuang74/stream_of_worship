@@ -6,13 +6,16 @@ line table, editing panel, and save/upload flow.
 
 import asyncio
 import logging
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual import events
+from textual.containers import Vertical
 from textual.coordinate import Coordinate
+from textual.geometry import Offset
 from textual.screen import Screen
 from textual.widgets import (
     DataTable,
@@ -148,24 +151,36 @@ class LyricLineTable(DataTable):
     """Lyrics table with preview-aware row navigation."""
 
     def action_cursor_up(self) -> None:
+        guard_edit = getattr(self.screen, "_guard_active_edit", None)
+        if guard_edit is not None and guard_edit():
+            return
         guard_preview = getattr(self.screen, "_guard_preview", None)
         if guard_preview is not None and guard_preview():
             return
         super().action_cursor_up()
 
     def action_cursor_down(self) -> None:
+        guard_edit = getattr(self.screen, "_guard_active_edit", None)
+        if guard_edit is not None and guard_edit():
+            return
         guard_preview = getattr(self.screen, "_guard_preview", None)
         if guard_preview is not None and guard_preview():
             return
         super().action_cursor_down()
 
     def action_page_up(self) -> None:
+        guard_edit = getattr(self.screen, "_guard_active_edit", None)
+        if guard_edit is not None and guard_edit():
+            return
         guard_preview = getattr(self.screen, "_guard_preview", None)
         if guard_preview is not None and guard_preview():
             return
         self.scroll_page_up(animate=False, force=True)
 
     def action_page_down(self) -> None:
+        guard_edit = getattr(self.screen, "_guard_active_edit", None)
+        if guard_edit is not None and guard_edit():
+            return
         guard_preview = getattr(self.screen, "_guard_preview", None)
         if guard_preview is not None and guard_preview():
             return
@@ -194,8 +209,10 @@ class LRCEditorScreen(Screen[None]):
         height: 1fr;
     }
 
-    #edit-panel {
+    #row-edit-input {
+        display: none;
         height: 1;
+        layer: overlay;
     }
     """
 
@@ -208,6 +225,8 @@ class LRCEditorScreen(Screen[None]):
         # Lyrics Edit
         Binding("ctrl+c", "copy_line", "Copy"),
         Binding("ctrl+v", "paste_after", "Paste"),
+        Binding("shift+up", "extend_selection_up", "Select Up"),
+        Binding("shift+down", "extend_selection_down", "Select Down"),
         Binding("i", "insert_after", "Insert Blank"),
         Binding("I", "insert_canonical", "Insert Canonical"),
         Binding("d", "delete_line", "Delete"),
@@ -237,6 +256,8 @@ class LRCEditorScreen(Screen[None]):
         "Lyrics": [
             "copy_line",
             "paste_after",
+            "extend_selection_up",
+            "extend_selection_down",
             "insert_after",
             "insert_canonical",
             "delete_line",
@@ -277,10 +298,15 @@ class LRCEditorScreen(Screen[None]):
         self.hash_prefix = hash_prefix
         self.original_transcribed_content = original_transcribed_content
         self._autosave_ok = False
-        self._editing_text = False
-        self._editing_timestamp = False
+        self._edit_mode: Literal["text", "timestamp"] | None = None
+        self._edit_target_row: int | None = None
+        self._edit_target_column: int | None = None
         self._position_update_timer: Optional[asyncio.Task] = None
-        self._clipboard: Optional[tuple] = None
+        self._selection_anchor: int | None = None
+        self._selection_end: int | None = None
+        self._suppress_range_clear = False
+        self._last_paste_payload: str | None = None
+        self._last_paste_time: float = 0.0
         self._preview_active: bool = False
         self._preview_mode: str = "single"
         self._preview_target_index: int = -1
@@ -295,9 +321,7 @@ class LRCEditorScreen(Screen[None]):
             yield CurrentLyricDisplay()
             yield PlaybackBar()
             yield LyricLineTable(id="line-table")
-            with Horizontal(id="edit-panel"):
-                yield Label("Selected:", id="edit-label")
-                yield Input(id="edit-input", placeholder="Edit text or timestamp here")
+            yield Input(id="row-edit-input", placeholder="Edit selected cell")
             yield StatusIndicator()
         yield GroupedFooter()
 
@@ -361,14 +385,25 @@ class LRCEditorScreen(Screen[None]):
             return
         old_index = self.state.selected_index
         if event.cursor_row == self.state.selected_index:
+            if self._suppress_range_clear:
+                self._suppress_range_clear = False
             self._update_displays()
             return
+        if self._suppress_range_clear:
+            self._suppress_range_clear = False
+        else:
+            self._clear_selection_range(refresh=True)
         self.state.select_line(event.cursor_row)
         self._update_selection_marker(old_index)
         self._update_displays()
 
     def _row_label(self, index: int) -> str:
-        return f">{index + 1}" if index == self.state.selected_index else str(index + 1)
+        if index == self.state.selected_index:
+            return f">{index + 1}"
+        active_range = self._active_selection_range()
+        if active_range is not None and active_range[0] <= index <= active_range[1]:
+            return f"*{index + 1}"
+        return str(index + 1)
 
     def _row_status(self, index: int) -> str:
         line = self.state.timed_lines[index]
@@ -377,6 +412,55 @@ class LRCEditorScreen(Screen[None]):
         if index > 0 and line.time_seconds < self.state.timed_lines[index - 1].time_seconds:
             return "[red]!non-mono[/red]"
         return ""
+
+    def _active_selection_range(self) -> tuple[int, int] | None:
+        if self._selection_anchor is None or self._selection_end is None:
+            return None
+        if self._selection_anchor == self._selection_end:
+            return None
+        start = max(0, min(self._selection_anchor, self._selection_end))
+        end = min(self.state.line_count - 1, max(self._selection_anchor, self._selection_end))
+        if start > end:
+            return None
+        return start, end
+
+    def _copy_selection_range(self) -> tuple[int, int]:
+        active_range = self._active_selection_range()
+        if active_range is not None:
+            return active_range
+        index = self.state.selected_index
+        return index, index
+
+    def _refresh_range_rows(self, old_range: tuple[int, int] | None) -> None:
+        rows: set[int] = {self.state.selected_index}
+        new_range = self._active_selection_range()
+        for row_range in (old_range, new_range):
+            if row_range is None:
+                continue
+            rows.update(range(row_range[0], row_range[1] + 1))
+        for index in rows:
+            self._update_table_row(index)
+
+    def _clear_selection_range(self, refresh: bool = True) -> None:
+        old_range = self._active_selection_range()
+        self._selection_anchor = None
+        self._selection_end = None
+        if refresh:
+            self._refresh_range_rows(old_range)
+
+    def _parse_pasted_text(self, text: str) -> tuple[list[str], int]:
+        rows: list[str] = []
+        dropped_blank_count = 0
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped:
+                rows.append(stripped)
+            else:
+                dropped_blank_count += 1
+        return rows, dropped_blank_count
+
+    def _format_copied_rows(self, start: int, end: int) -> str:
+        return "\n".join(line.text for line in self.state.timed_lines[start : end + 1])
 
     def _update_table_row(self, index: int) -> None:
         if not 0 <= index < self.state.line_count:
@@ -572,40 +656,224 @@ class LRCEditorScreen(Screen[None]):
             return True
         return False
 
+    def _is_edit_active(self) -> bool:
+        return self._edit_mode is not None
+
+    def _guard_active_edit(self) -> bool:
+        if self._is_edit_active():
+            self.notify("Finish editing first", severity="warning", timeout=2)
+            return True
+        return False
+
+    def _hide_row_edit_input(self) -> None:
+        try:
+            edit_input = self.query_one("#row-edit-input", Input)
+        except NoMatches:
+            return
+        edit_input.value = ""
+        edit_input.display = False
+        self._edit_mode = None
+        self._edit_target_row = None
+        self._edit_target_column = None
+
+    def _cancel_row_edit(self) -> None:
+        self._hide_row_edit_input()
+        self.query_one("#line-table", DataTable).focus()
+
+    def _cell_screen_region(self, table: DataTable, row: int, column: int):
+        cell_region = table._get_cell_region(Coordinate(row, column))
+        if cell_region.width <= 0 or cell_region.height <= 0:
+            return None
+        x = table.region.x + cell_region.x - table.scroll_x
+        y = table.region.y + cell_region.y - table.scroll_y
+        if y < table.region.y or y >= table.region.y + table.region.height:
+            return None
+        visible_left = max(x, table.region.x)
+        visible_right = min(x + cell_region.width, table.region.x + table.region.width)
+        width = visible_right - visible_left
+        if width <= 0:
+            return None
+        return visible_left, y, width
+
+    def _show_row_edit_input(self, mode: Literal["text", "timestamp"], column: int) -> None:
+        if self._guard_preview():
+            return
+        table = self.query_one("#line-table", DataTable)
+        row = self.state.selected_index
+        if not 0 <= row < self.state.line_count:
+            self.notify("No row selected", severity="warning", timeout=2)
+            return
+
+        table.move_cursor(row=row, column=column, scroll=True)
+        table.refresh(layout=True)
+
+        resolved = self._cell_screen_region(table, row, column)
+        if resolved is None:
+            self.notify("Cannot start editing this cell", severity="warning", timeout=2)
+            table.focus()
+            return
+
+        x, y, width = resolved
+        edit_input = self.query_one("#row-edit-input", Input)
+        line = self.state.timed_lines[row]
+        edit_input.value = line.text if mode == "text" else format_centiseconds(line.time_seconds)
+        edit_input.placeholder = "Edit text" if mode == "text" else "Edit timestamp"
+        edit_input.styles.offset = Offset(x, y)
+        edit_input.styles.width = max(1, width)
+        edit_input.display = True
+        self._edit_mode = mode
+        self._edit_target_row = row
+        self._edit_target_column = column
+        edit_input.focus()
+
+    def _refresh_row_edit_input_position(self) -> None:
+        if (
+            self._edit_mode is None
+            or self._edit_target_row is None
+            or self._edit_target_column is None
+        ):
+            return
+        table = self.query_one("#line-table", DataTable)
+        resolved = self._cell_screen_region(table, self._edit_target_row, self._edit_target_column)
+        if resolved is None:
+            self._cancel_row_edit()
+            self.notify("Editing canceled after layout change", severity="warning", timeout=2)
+            return
+        x, y, width = resolved
+        edit_input = self.query_one("#row-edit-input", Input)
+        edit_input.styles.offset = Offset(x, y)
+        edit_input.styles.width = max(1, width)
+
+    def _insert_pasted_text(self, payload: str) -> None:
+        texts, dropped_blank_count = self._parse_pasted_text(payload)
+        if not texts:
+            self.notify("Nothing to paste", timeout=2)
+            return
+        active_range = self._active_selection_range()
+        insert_after = active_range[1] if active_range is not None else self.state.selected_index
+        self.state.insert_lines_after(insert_after, texts)
+        self.state.select_line(insert_after + 1)
+        self._clear_selection_range(refresh=False)
+        self._rebuild_table()
+        self._update_displays()
+        self._do_autosave()
+        message = f"Inserted {len(texts)} lyric lines"
+        if dropped_blank_count:
+            message += f" ({dropped_blank_count} blank lines ignored)"
+        self.notify(message, timeout=3)
+
+    def _is_duplicate_paste(self, payload: str) -> bool:
+        now = time.monotonic()
+        duplicate = payload == self._last_paste_payload and now - self._last_paste_time < 0.25
+        self._last_paste_payload = payload
+        self._last_paste_time = now
+        return duplicate
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._refresh_row_edit_input_position()
+
+    def on_paste(self, event: events.Paste) -> None:
+        if self._guard_active_edit():
+            event.stop()
+            return
+        if self._guard_preview():
+            event.stop()
+            return
+        if self.app.focused is not self.query_one("#line-table", DataTable):
+            return
+        payload = event.text
+        if not payload or self._is_duplicate_paste(payload):
+            event.stop()
+            return
+        self._insert_pasted_text(payload)
+        event.stop()
+
     # --- Action handlers ---
 
     def action_toggle_playback(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         self.playback.toggle_play_pause()
 
     def action_seek_forward(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         self.playback.skip_forward(5.0)
 
     def action_seek_backward(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         self.playback.skip_backward(5.0)
 
     def action_select_prev(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
+        self._clear_selection_range()
         old_index = self.state.selected_index
         self.state.select_prev()
         self._move_table_cursor_to_selection(old_index)
         self._update_displays()
 
     def action_select_next(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
+        self._clear_selection_range()
         old_index = self.state.selected_index
         self.state.select_next()
         self._move_table_cursor_to_selection(old_index)
         self._update_displays()
 
+    def action_extend_selection_down(self) -> None:
+        if self._guard_active_edit():
+            return
+        if self._guard_preview():
+            return
+        if self.state.selected_index >= self.state.line_count - 1:
+            return
+        old_range = self._active_selection_range()
+        old_index = self.state.selected_index
+        if self._selection_anchor is None:
+            self._selection_anchor = old_index
+        self.state.select_next()
+        self._selection_end = self.state.selected_index
+        self._suppress_range_clear = True
+        self._move_table_cursor_to_selection(old_index)
+        self._suppress_range_clear = False
+        self._refresh_range_rows(old_range)
+        self._update_displays()
+
+    def action_extend_selection_up(self) -> None:
+        if self._guard_active_edit():
+            return
+        if self._guard_preview():
+            return
+        if self.state.selected_index <= 0:
+            return
+        old_range = self._active_selection_range()
+        old_index = self.state.selected_index
+        if self._selection_anchor is None:
+            self._selection_anchor = old_index
+        self.state.select_prev()
+        self._selection_end = self.state.selected_index
+        self._suppress_range_clear = True
+        self._move_table_cursor_to_selection(old_index)
+        self._suppress_range_clear = False
+        self._refresh_range_rows(old_range)
+        self._update_displays()
+
     def action_jump_to_line(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         line = self.state.selected_line
@@ -613,6 +881,8 @@ class LRCEditorScreen(Screen[None]):
             self.playback.seek(line.time_seconds)
 
     def action_stamp_and_advance(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         old_index = self.state.selected_index
@@ -626,6 +896,8 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_show_earlier(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         if not self.state.adjust_padding(-1):
@@ -644,6 +916,8 @@ class LRCEditorScreen(Screen[None]):
         self.notify(f"Padding: {offset:+.2f}s ({quarters:+d}q)", timeout=2)
 
     def action_show_later(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         if not self.state.adjust_padding(1):
@@ -662,6 +936,8 @@ class LRCEditorScreen(Screen[None]):
         self.notify(f"Padding: {offset:+.2f}s ({quarters:+d}q)", timeout=2)
 
     def action_preview_single(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._preview_active:
             self._stop_preview()
             return
@@ -696,6 +972,8 @@ class LRCEditorScreen(Screen[None]):
         self._update_displays()
 
     def action_preview_continuous(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._preview_active:
             self._stop_preview()
             return
@@ -718,46 +996,40 @@ class LRCEditorScreen(Screen[None]):
         self._update_displays()
 
     def action_edit_text(self) -> None:
-        if self._guard_preview():
+        if self._guard_active_edit():
             return
-        self._editing_text = True
-        self._editing_timestamp = False
-        edit_input = self.query_one("#edit-input", Input)
-        line = self.state.selected_line
-        if line:
-            edit_input.value = line.text
-        edit_input.focus()
+        self._show_row_edit_input("text", 2)
 
     def action_edit_timestamp(self) -> None:
-        if self._guard_preview():
+        if self._guard_active_edit():
             return
-        self._editing_text = False
-        self._editing_timestamp = True
-        edit_input = self.query_one("#edit-input", Input)
-        line = self.state.selected_line
-        if line:
-            edit_input.value = format_centiseconds(line.time_seconds)
-        edit_input.focus()
+        self._show_row_edit_input("timestamp", 1)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "edit-input":
-            value = event.value.strip()
-            if self._editing_text:
-                self.state.set_text(self.state.selected_index, value)
-            elif self._editing_timestamp:
-                try:
-                    ts = self._parse_timestamp_input(value)
-                    self.state.set_timestamp(self.state.selected_index, ts)
-                except ValueError:
-                    pass
+        if event.input.id != "row-edit-input":
+            return
 
-            self._editing_text = False
-            self._editing_timestamp = False
-            event.input.value = ""
-            self._rebuild_table()
-            self._update_displays()
-            self._do_autosave()
-            self.query_one("#line-table", DataTable).focus()
+        value = event.value.strip()
+        if self._edit_target_row is None or self._edit_mode is None:
+            self._cancel_row_edit()
+            return
+
+        target_row = self._edit_target_row
+        if self._edit_mode == "text":
+            self.state.set_text(target_row, value)
+        elif self._edit_mode == "timestamp":
+            try:
+                ts = self._parse_timestamp_input(value)
+            except (ValueError, TypeError):
+                self.notify("Invalid timestamp", severity="warning", timeout=2)
+                return
+            self.state.set_timestamp(target_row, ts)
+
+        self._hide_row_edit_input()
+        self._rebuild_table()
+        self._update_displays()
+        self._do_autosave()
+        self.query_one("#line-table", DataTable).focus()
 
     def _parse_timestamp_input(self, value: str) -> float:
         """Parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds."""
@@ -773,8 +1045,11 @@ class LRCEditorScreen(Screen[None]):
         return max(0.0, float(value))
 
     def action_insert_after(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
+        self._clear_selection_range()
         self.state.insert_after(self.state.selected_index)
         self.state.select_next()
         self._rebuild_table()
@@ -782,6 +1057,8 @@ class LRCEditorScreen(Screen[None]):
         self._do_autosave()
 
     def action_insert_canonical(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         recording = self.db_client.get_recording_by_hash(self.hash_prefix)
@@ -804,46 +1081,58 @@ class LRCEditorScreen(Screen[None]):
             self.notify("No canonical lyrics found", severity="warning", timeout=3)
             return
 
-        self.state.insert_lines_after(self.state.selected_index, non_blank)
-        self.state.select_line(self.state.selected_index + 1)
+        active_range = self._active_selection_range()
+        insert_after = active_range[1] if active_range is not None else self.state.selected_index
+        self.state.insert_lines_after(insert_after, non_blank)
+        self.state.select_line(insert_after + 1)
+        self._clear_selection_range(refresh=False)
         self._rebuild_table()
         self._update_displays()
         self._do_autosave()
         self.notify(f"Inserted {len(non_blank)} canonical lyrics lines", timeout=3)
 
     def action_copy_line(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
-        line = self.state.selected_line
-        if line:
-            self._clipboard = (line.text, line.time_seconds)
-            self.notify(f"Copied line {self.state.selected_index + 1}", timeout=2)
+        if self.state.line_count <= 0:
+            return
+        start, end = self._copy_selection_range()
+        self.app.copy_to_clipboard(self._format_copied_rows(start, end))
+        count = end - start + 1
+        self.notify(f"Copied {count} lyric line{'s' if count != 1 else ''}", timeout=2)
 
     def action_paste_after(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
-        if self._clipboard is None:
+        payload = self.app.clipboard
+        if not payload:
             self.notify("Nothing to paste", timeout=2)
             return
-        text, time_seconds = self._clipboard
-        self.state.insert_after(self.state.selected_index, text=text, time_seconds=time_seconds)
-        self.state.select_next()
-        self._rebuild_table()
-        self._update_displays()
-        self._do_autosave()
+        if self._is_duplicate_paste(payload):
+            return
+        self._insert_pasted_text(payload)
 
     def action_delete_line(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         if self.state.line_count <= 1:
             return
 
+        self._clear_selection_range()
         self.state.delete_line(self.state.selected_index)
         self._rebuild_table()
         self._update_displays()
         self._do_autosave()
 
     def action_undo(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         if self.state.undo():
@@ -853,6 +1142,8 @@ class LRCEditorScreen(Screen[None]):
             self.notify("Undo", timeout=2)
 
     def action_redo(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         if self.state.redo():
@@ -862,6 +1153,8 @@ class LRCEditorScreen(Screen[None]):
             self.notify("Redo", timeout=2)
 
     def action_save_upload(self) -> None:
+        if self._guard_active_edit():
+            return
         if self._guard_preview():
             return
         revised = self.state.serialize()
@@ -1026,12 +1319,8 @@ class LRCEditorScreen(Screen[None]):
         )
 
     def action_quit_editor(self) -> None:
-        if self._editing_text or self._editing_timestamp:
-            self._editing_text = False
-            self._editing_timestamp = False
-            edit_input = self.query_one("#edit-input", Input)
-            edit_input.value = ""
-            self.query_one("#line-table", DataTable).focus()
+        if self._is_edit_active():
+            self._cancel_row_edit()
             return
 
         if self._preview_active:
