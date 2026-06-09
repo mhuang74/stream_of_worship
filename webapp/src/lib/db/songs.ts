@@ -56,6 +56,7 @@ function buildPublishedRecordingExistsClause(visibilityStatus?: string) {
     from recordings
     where recordings.song_id = ${songs.id}
       and recordings.visibility_status = ${visibilityStatus}
+      and recordings.deleted_at IS NULL
   )`;
 }
 
