@@ -1,16 +1,16 @@
-# Graph Report - stream_of_worship  (2026-06-09)
+# Graph Report - stream_of_worship  (2026-06-10)
 
 ## Corpus Check
-- 434 files · ~289,453 words
+- 434 files · ~289,458 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 10214 nodes · 24041 edges · 936 communities (757 shown, 179 thin omitted)
+- 10214 nodes · 24041 edges · 934 communities (755 shown, 179 thin omitted)
 - Extraction: 55% EXTRACTED · 45% INFERRED · 0% AMBIGUOUS · INFERRED: 10900 edges (avg confidence: 0.54)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `82804a50`
+- Built from commit: `96d62cab`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -824,7 +824,6 @@
 - [[_COMMUNITY_Community 895|Community 895]]
 - [[_COMMUNITY_Community 896|Community 896]]
 - [[_COMMUNITY_Community 897|Community 897]]
-- [[_COMMUNITY_Community 898|Community 898]]
 - [[_COMMUNITY_Community 900|Community 900]]
 - [[_COMMUNITY_Community 901|Community 901]]
 - [[_COMMUNITY_Community 902|Community 902]]
@@ -845,7 +844,6 @@
 - [[_COMMUNITY_Community 928|Community 928]]
 - [[_COMMUNITY_Community 929|Community 929]]
 - [[_COMMUNITY_Community 930|Community 930]]
-- [[_COMMUNITY_Community 931|Community 931]]
 - [[_COMMUNITY_Community 932|Community 932]]
 - [[_COMMUNITY_Community 933|Community 933]]
 
@@ -886,7 +884,7 @@
 - **ML Analysis Pipeline** — analysis_service, allin1, demucs, whisper, bs_roformer, uvr_deecho, audio_separator [EXTRACTED 1.00]
 - **Data Flow Architecture** — admin_cli, sop_org, sqlite, turso, cloudflare_r2, analysis_service, user_app [INFERRED 0.85]
 
-## Communities (936 total, 179 thin omitted)
+## Communities (934 total, 179 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.04
@@ -1093,8 +1091,8 @@ Cohesion: 0.07
 Nodes (43): Any, LRCLine, LRCLine, A timestamped lyric line., build_correction_prompt(), _build_proxy_config(), extract_video_id(), fetch_youtube_transcript() (+35 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.08
-Nodes (18): TUI models for Stream of Worship., Represents a section within a song., Section, Initialize default values., Return unique identifier for song., Return formatted display name with BPM and key., Format duration as MM:SS., Create Song instance from dictionary.          Args:             data: Dictionar (+10 more)
+Cohesion: 0.07
+Nodes (20): TUI models for Stream of Worship., Format seconds as MM:SS., Format section for display: 'Chorus (1:23-2:10, 47s)'., Represents a section within a song., Section, Initialize default values., Return unique identifier for song., Return formatted display name with BPM and key. (+12 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.07
@@ -1118,7 +1116,7 @@ Nodes (26): elapsed_seconds, mp3_r2_key, phase, songset_id, total_phases, name, 
 
 ### Community 69 - "Community 69"
 Cohesion: 0.04
-Nodes (49): completed_at, estimated_seconds_left, mp3_r2_key, mp4_r2_key, percent_complete, phase, template, total_phases (+41 more)
+Nodes (49): completed_at, error_message, estimated_seconds_left, mp3_r2_key, mp4_r2_key, phase_index, status, template (+41 more)
 
 ### Community 70 - "Community 70"
 Cohesion: 0.24
@@ -1133,16 +1131,16 @@ Cohesion: 0.33
 Nodes (6): default, name, notNull, primaryKey, type, analysis_status
 
 ### Community 73 - "Community 73"
-Cohesion: 0.05
-Nodes (43): default, name, notNull, primaryKey, type, analysis_status, content_hash, embeddings_shape (+35 more)
+Cohesion: 0.04
+Nodes (47): default, name, notNull, primaryKey, type, analysis_status, embeddings_shape, file_size_bytes (+39 more)
 
 ### Community 74 - "Community 74"
 Cohesion: 0.04
-Nodes (49): completed_at, elapsed_seconds, error_message, estimated_seconds_left, mp3_r2_key, resolution, songset_id, template (+41 more)
+Nodes (48): completed_at, elapsed_seconds, error_message, estimated_seconds_left, mp4_r2_key, phase_index, template, total_phases (+40 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.04
-Nodes (47): default, name, notNull, primaryKey, type, analysis_status, downbeats, key_confidence (+39 more)
+Nodes (47): default, name, notNull, primaryKey, type, analysis_status, content_hash, downbeats (+39 more)
 
 ### Community 76 - "Community 76"
 Cohesion: 0.05
@@ -1157,12 +1155,12 @@ Cohesion: 0.05
 Nodes (37): 1. Build and Start the Service, 2. Verify Health, API Endpoints, Architecture, ARM64 (Apple Silicon) - Standard PyTorch, Check Job Status, Configure Environment, Configure Environment (+29 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.40
-Nodes (5): name, notNull, primaryKey, type, accessToken
+Cohesion: 0.33
+Nodes (6): lrc_status, default, name, notNull, primaryKey, type
 
 ### Community 90 - "Community 90"
-Cohesion: 0.05
-Nodes (37): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+29 more)
+Cohesion: 0.06
+Nodes (36): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+28 more)
 
 ### Community 91 - "Community 91"
 Cohesion: 0.11
@@ -1189,8 +1187,8 @@ Cohesion: 0.06
 Nodes (33): 1. Prerequisites, 2. Start the Development Server, 3. Verify It's Running, Adding a New Job Type, Analysis Service - Developer Guide, Architecture Overview, Audio-Separator Models (Required for Stem Separation), Check Model Loading (+25 more)
 
 ### Community 97 - "Community 97"
-Cohesion: 0.08
-Nodes (26): estimated_total_seconds, phase_index, songset_id, started_at, total_duration_seconds, name, notNull, primaryKey (+18 more)
+Cohesion: 0.07
+Nodes (27): completed_at, estimated_total_seconds, phase, phase_index, video_enabled, name, notNull, primaryKey (+19 more)
 
 ### Community 98 - "Community 98"
 Cohesion: 0.06
@@ -1242,7 +1240,7 @@ Nodes (28): Auth cookies not working, Authentication, AWS SQS, Build fails: pnpm
 
 ### Community 116 - "Community 116"
 Cohesion: 0.07
-Nodes (28): name, notNull, primaryKey, type, chapters_r2_key, estimated_total_seconds, status, total_duration_seconds (+20 more)
+Nodes (28): name, notNull, primaryKey, type, chapters_r2_key, font_family, status, title_card_lines (+20 more)
 
 ### Community 118 - "Community 118"
 Cohesion: 0.14
@@ -1266,7 +1264,7 @@ Nodes (6): updated_at, default, name, notNull, primaryKey, type
 
 ### Community 124 - "Community 124"
 Cohesion: 0.07
-Nodes (27): estimated_total_seconds, phase, phase_index, started_at, video_enabled, name, notNull, primaryKey (+19 more)
+Nodes (27): estimated_seconds_left, estimated_total_seconds, phase_index, started_at, video_enabled, name, notNull, primaryKey (+19 more)
 
 ### Community 125 - "Community 125"
 Cohesion: 0.08
@@ -1409,8 +1407,8 @@ Cohesion: 0.09
 Nodes (22): recordings_song_id_songs_id_fk, checkConstraints, compositePrimaryKeys, foreignKeys, indexes, isRLSEnabled, name, policies (+14 more)
 
 ### Community 231 - "Community 231"
-Cohesion: 0.05
-Nodes (42): from_dict(), load(), PlaylistItem, PlaylistMetadata, Playlist data models for multi-song support., Create from dictionary., A single item in a playlist (song + transition to next)., Initialize default values. (+34 more)
+Cohesion: 0.04
+Nodes (44): from_dict(), load(), PlaylistItem, PlaylistMetadata, Playlist data models for multi-song support., Create from dictionary., A single item in a playlist (song + transition to next)., Initialize default values. (+36 more)
 
 ### Community 232 - "Community 232"
 Cohesion: 0.09
@@ -1449,8 +1447,8 @@ Cohesion: 0.10
 Nodes (34): CatalogIndex, CatalogIndex, Song catalog management for Stream of Worship.  This module handles loading, ind, Add a song to the catalog.          Args:             song: Song to add, Remove a song from the catalog.          Args:             song_id: ID of song t, Song metadata from the catalog., Get a song by ID.          Args:             song_id: Song ID to look up, Find songs matching a theme.          Args:             theme: Theme to search f (+26 more)
 
 ### Community 242 - "Community 242"
-Cohesion: 0.17
-Nodes (4): Clear all items from playlist., Format seconds as MM:SS., Format section for display: 'Chorus (1:23-2:10, 47s)'., Clear all items from playlist.
+Cohesion: 0.33
+Nodes (6): percent_complete, default, name, notNull, primaryKey, type
 
 ### Community 243 - "Community 243"
 Cohesion: 0.09
@@ -1846,7 +1844,7 @@ Nodes (6): title_card_duration_seconds, default, name, notNull, primaryKey, type
 
 ### Community 480 - "Community 480"
 Cohesion: 0.33
-Nodes (6): status, default, name, notNull, primaryKey, type
+Nodes (6): resolution, default, name, notNull, primaryKey, type
 
 ### Community 481 - "Community 481"
 Cohesion: 0.33
@@ -1857,8 +1855,8 @@ Cohesion: 0.33
 Nodes (6): updated_at, default, name, notNull, primaryKey, type
 
 ### Community 483 - "Community 483"
-Cohesion: 0.05
-Nodes (37): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+29 more)
+Cohesion: 0.06
+Nodes (36): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+28 more)
 
 ### Community 484 - "Community 484"
 Cohesion: 0.33
@@ -1906,11 +1904,11 @@ Nodes (6): resolution, default, name, notNull, primaryKey, type
 
 ### Community 495 - "Community 495"
 Cohesion: 0.07
-Nodes (28): estimated_seconds_left, percent_complete, started_at, total_duration_seconds, video_enabled, name, notNull, primaryKey (+20 more)
+Nodes (27): estimated_seconds_left, estimated_total_seconds, phase_index, started_at, video_enabled, name, notNull, primaryKey (+19 more)
 
 ### Community 496 - "Community 496"
 Cohesion: 0.33
-Nodes (6): title_card_duration_seconds, default, name, notNull, primaryKey, type
+Nodes (6): updated_at, default, name, notNull, primaryKey, type
 
 ### Community 497 - "Community 497"
 Cohesion: 0.33
@@ -1990,7 +1988,7 @@ Nodes (6): percent_complete, default, name, notNull, primaryKey, type
 
 ### Community 516 - "Community 516"
 Cohesion: 0.33
-Nodes (6): video_enabled, default, name, notNull, primaryKey, type
+Nodes (6): percent_complete, default, name, notNull, primaryKey, type
 
 ### Community 517 - "Community 517"
 Cohesion: 0.33
@@ -2202,7 +2200,7 @@ Nodes (6): download_status, default, name, notNull, primaryKey, type
 
 ### Community 571 - "Community 571"
 Cohesion: 0.33
-Nodes (6): font_family, default, name, notNull, primaryKey, type
+Nodes (6): updatedAt, default, name, notNull, primaryKey, type
 
 ### Community 572 - "Community 572"
 Cohesion: 0.33
@@ -2241,8 +2239,8 @@ Cohesion: 0.47
 Nodes (4): config, isPublicPath(), proxy(), PUBLIC_PATHS
 
 ### Community 581 - "Community 581"
-Cohesion: 0.40
-Nodes (5): phase_index, name, notNull, primaryKey, type
+Cohesion: 0.33
+Nodes (6): updatedAt, default, name, notNull, primaryKey, type
 
 ### Community 582 - "Community 582"
 Cohesion: 0.40
@@ -2485,12 +2483,12 @@ Cohesion: 0.40
 Nodes (5): imported_at, name, notNull, primaryKey, type
 
 ### Community 642 - "Community 642"
-Cohesion: 0.40
-Nodes (5): loudness_db, name, notNull, primaryKey, type
+Cohesion: 0.33
+Nodes (6): video_enabled, default, name, notNull, primaryKey, type
 
 ### Community 643 - "Community 643"
 Cohesion: 0.40
-Nodes (5): mp4_r2_key, name, notNull, primaryKey, type
+Nodes (5): content_hash, name, notNull, primaryKey, type
 
 ### Community 644 - "Community 644"
 Cohesion: 0.40
@@ -2530,7 +2528,7 @@ Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 
 ### Community 653 - "Community 653"
 Cohesion: 0.40
-Nodes (5): error_message, name, notNull, primaryKey, type
+Nodes (5): phase, name, notNull, primaryKey, type
 
 ### Community 654 - "Community 654"
 Cohesion: 0.40
@@ -2558,7 +2556,7 @@ Nodes (5): youtube_url, name, notNull, primaryKey, type
 
 ### Community 660 - "Community 660"
 Cohesion: 0.40
-Nodes (5): key_confidence, name, notNull, primaryKey, type
+Nodes (5): total_phases, name, notNull, primaryKey, type
 
 ### Community 661 - "Community 661"
 Cohesion: 0.40
@@ -2574,7 +2572,7 @@ Nodes (5): name, notNull, primaryKey, type, chapters_r2_key
 
 ### Community 664 - "Community 664"
 Cohesion: 0.40
-Nodes (5): content_hash, name, notNull, primaryKey, type
+Nodes (5): name, notNull, primaryKey, type, accountId
 
 ### Community 665 - "Community 665"
 Cohesion: 0.40
@@ -2582,7 +2580,7 @@ Nodes (5): deleted_at, name, notNull, primaryKey, type
 
 ### Community 666 - "Community 666"
 Cohesion: 0.40
-Nodes (5): original_filename, name, notNull, primaryKey, type
+Nodes (5): lrc_job_id, name, notNull, primaryKey, type
 
 ### Community 667 - "Community 667"
 Cohesion: 0.40
@@ -2594,11 +2592,11 @@ Nodes (5): hash_prefix, name, notNull, primaryKey, type
 
 ### Community 669 - "Community 669"
 Cohesion: 0.40
-Nodes (5): r2_audio_url, name, notNull, primaryKey, type
+Nodes (5): mp3_r2_key, name, notNull, primaryKey, type
 
 ### Community 670 - "Community 670"
 Cohesion: 0.40
-Nodes (5): visibility_status, name, notNull, primaryKey, type
+Nodes (5): musical_mode, name, notNull, primaryKey, type
 
 ### Community 671 - "Community 671"
 Cohesion: 0.40
@@ -2634,7 +2632,7 @@ Nodes (5): imported_at, name, notNull, primaryKey, type
 
 ### Community 679 - "Community 679"
 Cohesion: 0.40
-Nodes (5): phase_index, name, notNull, primaryKey, type
+Nodes (5): sections, name, notNull, primaryKey, type
 
 ### Community 680 - "Community 680"
 Cohesion: 0.40
@@ -2914,7 +2912,7 @@ Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 
 ### Community 749 - "Community 749"
 Cohesion: 0.40
-Nodes (5): phase_index, name, notNull, primaryKey, type
+Nodes (5): songset_id, name, notNull, primaryKey, type
 
 ### Community 750 - "Community 750"
 Cohesion: 0.40
@@ -2930,11 +2928,11 @@ Nodes (5): sections, name, notNull, primaryKey, type
 
 ### Community 753 - "Community 753"
 Cohesion: 0.40
-Nodes (5): refreshToken, name, notNull, primaryKey, type
+Nodes (5): providerId, name, notNull, primaryKey, type
 
 ### Community 754 - "Community 754"
 Cohesion: 0.40
-Nodes (5): total_phases, name, notNull, primaryKey, type
+Nodes (5): songset_id, name, notNull, primaryKey, type
 
 ### Community 755 - "Community 755"
 Cohesion: 0.40
@@ -3078,7 +3076,7 @@ Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 
 ### Community 790 - "Community 790"
 Cohesion: 0.40
-Nodes (5): scope, name, notNull, primaryKey, type
+Nodes (5): started_at, name, notNull, primaryKey, type
 
 ### Community 791 - "Community 791"
 Cohesion: 0.40
@@ -3098,15 +3096,15 @@ Nodes (5): tempo_bpm, name, notNull, primaryKey, type
 
 ### Community 795 - "Community 795"
 Cohesion: 0.40
-Nodes (5): completed_at, name, notNull, primaryKey, type
+Nodes (5): total_duration_seconds, name, notNull, primaryKey, type
 
 ### Community 796 - "Community 796"
 Cohesion: 0.40
-Nodes (5): phase, name, notNull, primaryKey, type
+Nodes (5): password, name, notNull, primaryKey, type
 
 ### Community 797 - "Community 797"
 Cohesion: 0.40
-Nodes (5): scope, name, notNull, primaryKey, type
+Nodes (5): total_duration_seconds, name, notNull, primaryKey, type
 
 ### Community 798 - "Community 798"
 Cohesion: 0.40
@@ -3218,7 +3216,7 @@ Nodes (5): error_message, name, notNull, primaryKey, type
 
 ### Community 825 - "Community 825"
 Cohesion: 0.40
-Nodes (5): estimated_total_seconds, name, notNull, primaryKey, type
+Nodes (5): phase, name, notNull, primaryKey, type
 
 ### Community 826 - "Community 826"
 Cohesion: 0.40
@@ -3366,7 +3364,7 @@ Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 
 ### Community 863 - "Community 863"
 Cohesion: 0.40
-Nodes (5): refreshTokenExpiresAt, name, notNull, primaryKey, type
+Nodes (5): estimated_total_seconds, name, notNull, primaryKey, type
 
 ### Community 864 - "Community 864"
 Cohesion: 0.40
@@ -3394,11 +3392,11 @@ Nodes (5): tempo_bpm, name, notNull, primaryKey, type
 
 ### Community 872 - "Community 872"
 Cohesion: 0.40
-Nodes (5): title_card_lines, name, notNull, primaryKey, type
+Nodes (5): providerId, name, notNull, primaryKey, type
 
 ### Community 873 - "Community 873"
 Cohesion: 0.40
-Nodes (5): total_phases, name, notNull, primaryKey, type
+Nodes (5): total_duration_seconds, name, notNull, primaryKey, type
 
 ### Community 874 - "Community 874"
 Cohesion: 0.40
@@ -3468,10 +3466,6 @@ Nodes (5): title_card_lines, name, notNull, primaryKey, type
 Cohesion: 0.40
 Nodes (5): total_phases, name, notNull, primaryKey, type
 
-### Community 898 - "Community 898"
-Cohesion: 0.40
-Nodes (5): estimated_seconds_left, name, notNull, primaryKey, type
-
 ### Community 900 - "Community 900"
 Cohesion: 0.40
 Nodes (5): providerId, name, notNull, primaryKey, type
@@ -3499,10 +3493,6 @@ Nodes (5): song_count, name, notNull, primaryKey, type
 ### Community 930 - "Community 930"
 Cohesion: 0.40
 Nodes (5): songset_duration_seconds, name, notNull, primaryKey, type
-
-### Community 931 - "Community 931"
-Cohesion: 0.40
-Nodes (5): userId, name, notNull, primaryKey, type
 
 ## Knowledge Gaps
 - **4086 isolated node(s):** `projectId`, `orgId`, `projectName`, `LogRecord`, `AnalyzeJobRequest` (+4081 more)

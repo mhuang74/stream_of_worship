@@ -242,6 +242,64 @@ async def test_edit_text_uses_overlay_and_updates_captured_row():
 
 
 @pytest.mark.asyncio
+async def test_edit_text_defers_overlay_until_after_refresh(monkeypatch):
+    app, _ = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        callbacks = []
+
+        def fake_call_after_refresh(callback, *args, **kwargs):
+            callbacks.append((callback, args, kwargs))
+
+        monkeypatch.setattr(app.screen, "call_after_refresh", fake_call_after_refresh)
+
+        app.screen.action_edit_text()
+
+        edit_input = app.screen.query_one("#row-edit-input", Input)
+        assert edit_input.display is False
+        assert len(callbacks) == 1
+
+        callback, args, kwargs = callbacks[0]
+        callback(*args, **kwargs)
+        await pilot.pause()
+
+        assert app.focused is edit_input
+        assert edit_input.display is True
+        assert edit_input.value == "Line 1"
+
+
+@pytest.mark.asyncio
+async def test_resize_defers_overlay_reposition_until_after_refresh(monkeypatch):
+    app, _ = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        callbacks = []
+        reposition_count = 0
+
+        def fake_call_after_refresh(callback, *args, **kwargs):
+            callbacks.append((callback, args, kwargs))
+
+        def fake_refresh_position():
+            nonlocal reposition_count
+            reposition_count += 1
+
+        monkeypatch.setattr(app.screen, "call_after_refresh", fake_call_after_refresh)
+        monkeypatch.setattr(app.screen, "_refresh_row_edit_input_position", fake_refresh_position)
+
+        app.screen.on_resize(events.Resize(size=(100, 20), virtual_size=(100, 20)))
+
+        assert reposition_count == 0
+        assert len(callbacks) == 1
+
+        callback, args, kwargs = callbacks[0]
+        callback(*args, **kwargs)
+
+        assert reposition_count == 1
+
+
+@pytest.mark.asyncio
 async def test_edit_timestamp_invalid_keeps_overlay_open_without_autosave():
     app, state = _make_app(line_count=2)
 
