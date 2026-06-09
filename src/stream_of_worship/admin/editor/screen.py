@@ -707,24 +707,27 @@ class LRCEditorScreen(Screen[None]):
         table.move_cursor(row=row, column=column, scroll=True)
         table.refresh(layout=True)
 
-        resolved = self._cell_screen_region(table, row, column)
-        if resolved is None:
-            self.notify("Cannot start editing this cell", severity="warning", timeout=2)
-            table.focus()
-            return
+        def do_show() -> None:
+            resolved = self._cell_screen_region(table, row, column)
+            if resolved is None:
+                self.notify("Cannot start editing this cell", severity="warning", timeout=2)
+                table.focus()
+                return
 
-        x, y, width = resolved
-        edit_input = self.query_one("#row-edit-input", Input)
-        line = self.state.timed_lines[row]
-        edit_input.value = line.text if mode == "text" else format_centiseconds(line.time_seconds)
-        edit_input.placeholder = "Edit text" if mode == "text" else "Edit timestamp"
-        edit_input.styles.offset = Offset(x, y)
-        edit_input.styles.width = max(1, width)
-        edit_input.display = True
-        self._edit_mode = mode
-        self._edit_target_row = row
-        self._edit_target_column = column
-        edit_input.focus()
+            x, y, width = resolved
+            edit_input = self.query_one("#row-edit-input", Input)
+            line = self.state.timed_lines[row]
+            edit_input.value = line.text if mode == "text" else format_centiseconds(line.time_seconds)
+            edit_input.placeholder = "Edit text" if mode == "text" else "Edit timestamp"
+            edit_input.styles.offset = Offset(x, y)
+            edit_input.styles.width = max(1, width)
+            edit_input.display = True
+            self._edit_mode = mode
+            self._edit_target_row = row
+            self._edit_target_column = column
+            edit_input.focus()
+
+        self.call_after_refresh(do_show)
 
     def _refresh_row_edit_input_position(self) -> None:
         if (
@@ -770,7 +773,7 @@ class LRCEditorScreen(Screen[None]):
         return duplicate
 
     def on_resize(self, event: events.Resize) -> None:
-        self._refresh_row_edit_input_position()
+        self.call_after_refresh(self._refresh_row_edit_input_position)
 
     def on_paste(self, event: events.Paste) -> None:
         if self._guard_active_edit():
