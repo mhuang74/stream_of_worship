@@ -109,6 +109,7 @@ export function BrowseSheet({
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to search songs");
         setResults([]);
+        setTotalCount(0);
       } finally {
         setIsLoading(false);
       }
