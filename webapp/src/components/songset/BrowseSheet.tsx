@@ -48,6 +48,7 @@ export function BrowseSheet({
   const [initialSearchQuery, setInitialSearchQuery] = useState<string | undefined>();
   const [albumFilter, setAlbumFilter] = useState<string | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [albums, setAlbums] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
@@ -104,6 +105,7 @@ export function BrowseSheet({
 
         const data: SearchResult = await response.json();
         setResults(data.songs || []);
+        setTotalCount(data.total ?? 0);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to search songs");
         setResults([]);
@@ -128,6 +130,7 @@ export function BrowseSheet({
         setQuery("");
         setAlbumFilter(undefined);
         setResults([]);
+        setTotalCount(0);
         setError(null);
         setAddingSongIds(new Set());
         setAddedSongIds(new Set());
@@ -415,7 +418,7 @@ export function BrowseSheet({
               <p className="text-sm text-muted-foreground">
                 {isSongsetFull
                   ? "Songset full"
-                  : mode === "browse" && results.length > 0 && `${results.length} songs found`}
+                  : mode === "browse" && totalCount > 0 && `${totalCount} songs`}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Done
