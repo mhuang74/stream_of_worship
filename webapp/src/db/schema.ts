@@ -98,7 +98,9 @@ export const recordings = pgTable("recordings", {
   visibilityStatus: text("visibility_status"),
   downloadStatus: text("download_status").default("pending"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+}, (t) => [
+  index("idx_recordings_song_visibility_deleted").on(t.songId, t.visibilityStatus, t.deletedAt),
+]);
 
 // ---------------------------------------------------------------------------
 // Better Auth tables (camelCase SQL column names to match Better Auth schema)
