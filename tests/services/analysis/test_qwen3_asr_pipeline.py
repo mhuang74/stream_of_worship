@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -90,6 +91,89 @@ def test_qwen_client_parses_direct_segments_and_words():
     assert result.segments[0].text == "我要看見"
     assert result.segments[0].start == 1.0
     assert [w.text for w in result.words] == ["我要", "看見"]
+
+
+def test_qwen_client_always_converts_dashscope_milliseconds_to_seconds():
+    client = Qwen3AsrClient(api_key="test")
+
+    assert client._ms_to_seconds(500) == 0.5
+    assert client._ms_to_seconds(1000) == 1.0
+    assert client._ms_to_seconds(1050000) == 1050.0
+
+
+def test_qwen_client_flattens_filetrans_transcript_sentences():
+    client = Qwen3AsrClient(api_key="test")
+    result = client._parse_result(
+        {
+            "transcripts": [
+                {
+                    "channel_id": 0,
+                    "sentences": [
+                        {
+                            "text": "我要看見",
+                            "begin_time": 500,
+                            "end_time": 1500,
+                            "words": [
+                                {"text": "我要", "begin_time": 500, "end_time": 900},
+                                {"text": "看見", "begin_time": 900, "end_time": 1500},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+        model="qwen3-asr-flash-filetrans",
+        mode="filetrans",
+    )
+
+    assert result.segments[0].text == "我要看見"
+    assert result.segments[0].start == 0.5
+    assert [word.text for word in result.words] == ["我要", "看見"]
+
+
+def test_qwen_client_routes_to_filetrans_over_direct_size_limit(tmp_path: Path):
+    audio_path = tmp_path / "large.mp3"
+    with audio_path.open("wb") as file:
+        file.truncate((10 * 1024 * 1024) + 1)
+
+    assert Qwen3AsrClient(api_key="test")._choose_mode(audio_path) == "filetrans"
+
+
+def test_qwen_client_routes_to_filetrans_over_direct_duration_limit(tmp_path: Path):
+    audio_path = tmp_path / "long.mp3"
+    audio_path.write_bytes(b"small")
+    fake_librosa = SimpleNamespace(get_duration=lambda path: 301.0)
+
+    with patch.dict("sys.modules", {"librosa": fake_librosa}):
+        assert Qwen3AsrClient(api_key="test")._choose_mode(audio_path) == "filetrans"
+
+
+def test_qwen_client_routes_to_direct_for_small_short_audio(tmp_path: Path):
+    audio_path = tmp_path / "short.mp3"
+    audio_path.write_bytes(b"small")
+    fake_librosa = SimpleNamespace(get_duration=lambda path: 300.0)
+
+    with patch.dict("sys.modules", {"librosa": fake_librosa}):
+        assert Qwen3AsrClient(api_key="test")._choose_mode(audio_path) == "direct"
+
+
+def test_canonical_snap_does_not_bias_ordered_search_to_final_line():
+    result = Qwen3AsrResult(
+        segments=[
+            Qwen3AsrSegment("final", 0.0, 1.0),
+            Qwen3AsrSegment("fina", 1.0, 2.0),
+        ],
+        words=[],
+        text="finalfina",
+        raw_response={"ok": True},
+        model="qwen3-asr-flash",
+        region="intl",
+        mode="direct",
+    )
+
+    snapped = snap_qwen3_asr_to_canonical(result, "fina\nfinal", threshold=0.8)
+
+    assert [phrase.text for phrase in snapped] == ["final", "fina"]
 
 
 @pytest.mark.asyncio
