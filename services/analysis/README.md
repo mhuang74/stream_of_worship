@@ -75,6 +75,10 @@ SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
 # Qwen3 Model Configuration (Required for LRC refinement with forced alignment)
 SOW_QWEN3_MODEL_ROOT="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
 SOW_QWEN3_MODEL_SNAPSHOT="c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+
+# DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
+SOW_DASHSCOPE_API_KEY=""  # DashScope API key; leave empty to skip Qwen3 ASR (uses Whisper only)
+SOW_DASHSCOPE_ASR_REGION="intl"  # Region: intl, cn, or us
 ```
 
 ## Quick Start
@@ -311,6 +315,39 @@ SOW_QWEN3_MODEL_SNAPSHOT="c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
 ```
 
 **Note:** The snapshot hash changes when the model is updated. If LRC jobs fail with model loading errors, check for a new snapshot hash after re-downloading.
+
+## DashScope Qwen3 ASR Setup (Optional)
+
+The LRC generation pipeline uses DashScope Qwen3 ASR for transcription before Whisper fallback. When `SOW_DASHSCOPE_API_KEY` is set, Qwen3 ASR is called first; if it fails, Whisper is used as a fallback.
+
+### Get an API Key
+
+1. Visit [DashScope Console](https://dashscope.console.aliyun.com/)
+2. Create an API key for your account
+3. Add to `/opt/sow/.env`:
+
+```bash
+SOW_DASHSCOPE_API_KEY="your-dashscope-api-key"
+```
+
+### How It Works
+
+The LRC worker's transcription pipeline:
+
+1. **Qwen3 ASR** — Direct transcription via `qwen3-asr-flash` model (for audio < ~10MB or short duration)
+2. **Qwen3 Filetrans** — File upload transcription via `qwen3-asr-flash-filetrans` model (for larger audio)
+3. **Whisper** — Local fallback if both Qwen3 methods fail
+
+Results are cached locally to avoid redundant API calls. Cache version (`SOW_DASHSCOPE_ASR_CACHE_VERSION`) can be bumped to invalidate old cache entries.
+
+### Tuning
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS` | `300` | Timeout for direct ASR calls |
+| `SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS` | `1800` | Timeout for filetrans ASR calls |
+| `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | `2` | Max concurrent ASR requests |
+| `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | `10000` | Max context chars for LLM alignment |
 
 ## Platform-Specific Builds
 

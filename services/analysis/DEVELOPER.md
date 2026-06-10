@@ -347,5 +347,11 @@ docker compose down -v
 | `SOW_LLM_MODEL` | For LRC | - | LLM model name |
 | `SOW_QWEN3_MODEL_ROOT` | For Qwen3 | - | HuggingFace cache path |
 | `SOW_QWEN3_MODEL_SNAPSHOT` | For Qwen3 | - | Model snapshot hash |
+| `SOW_DASHSCOPE_API_KEY` | Optional | - | DashScope API key for Qwen3 ASR |
+| `SOW_DASHSCOPE_ASR_REGION` | Optional | intl | DashScope region (intl, cn, us) |
+| `SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS` | Optional | 300 | Direct ASR call timeout |
+| `SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS` | Optional | 1800 | Filetrans ASR call timeout |
+| `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | Optional | 2 | Max concurrent ASR requests |
+| `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | Optional | 10000 | Max context chars for LLM alignment |
 | `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | For stems | - | Audio-separator models path |
 | `TARGETPLATFORM` | No | linux/amd64 | Docker build platform |
