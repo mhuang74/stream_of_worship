@@ -327,11 +327,7 @@ function validateEmbedding(embedding: number[], expectedDims: number = 1536): st
       throw new Error("Invalid embedding value: values must be in range [-100, 100]");
     }
   }
-  const vectorStr = `[${embedding.map((v) => v.toFixed(10)).join(",")}]`;
-  if (!/^\[-?\d+\.\d+(,-?\d+\.\d+)*\]$/.test(vectorStr)) {
-    throw new Error("Invalid embedding: vector string contains unexpected characters");
-  }
-  return vectorStr;
+  return "[" + embedding.join(",") + "]";
 }
 
 export async function semanticSearchSongs(
