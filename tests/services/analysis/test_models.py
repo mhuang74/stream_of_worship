@@ -37,9 +37,7 @@ class TestAnalyzeJobRequest:
 
     def test_required_fields(self):
         """Test required fields."""
-        req = AnalyzeJobRequest(
-            audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123"
-        )
+        req = AnalyzeJobRequest(audio_url="s3://bucket/hash/audio.mp3", content_hash="abc123")
         assert req.audio_url == "s3://bucket/hash/audio.mp3"
         assert req.content_hash == "abc123"
         assert req.options.generate_stems is True
@@ -61,6 +59,9 @@ class TestLrcOptions:
         """Test default option values."""
         opts = LrcOptions()
         assert opts.whisper_model == "large-v3"
+        assert opts.use_qwen3_asr is True
+        assert opts.force_qwen3_asr is False
+        assert opts.qwen3_asr_context_max_chars == 10000
 
 
 class TestLrcJobRequest:
@@ -153,7 +154,10 @@ class TestJobResponse:
         )
         assert response.job_id == "job_abc123"
         assert response.status == JobStatus.CANCELLED
-        assert response.warning == "Job was PROCESSING. The running task continues until service restart."
+        assert (
+            response.warning
+            == "Job was PROCESSING. The running task continues until service restart."
+        )
 
 
 class TestJobStatus:

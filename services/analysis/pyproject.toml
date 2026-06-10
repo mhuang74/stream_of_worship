@@ -19,6 +19,9 @@ dependencies = [
     "openai>=1.10.0",
     "aiosqlite>=0.19.0",
     "youtube-transcript-api>=1.0.0",
+    "dashscope>=1.23.0",
+    "rapidfuzz>=3.9.0",
+    "zhconv>=1.4.3",
 ]
 
 [project.optional-dependencies]

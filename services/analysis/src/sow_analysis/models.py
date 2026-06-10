@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobStatus(str, Enum):
@@ -46,6 +46,8 @@ class AnalyzeJobRequest(BaseModel):
 class LrcOptions(BaseModel):
     """Options for LRC generation jobs."""
 
+    model_config = ConfigDict(extra="allow")
+
     whisper_model: str = "large-v3"
     llm_model: str = (
         ""  # LLM model (e.g., "openai/gpt-4o-mini"), falls back to SOW_LLM_MODEL env var
@@ -54,8 +56,14 @@ class LrcOptions(BaseModel):
     language: str = "zh"  # Whisper language hint
     force: bool = False  # Re-generate even if cached
     force_whisper: bool = False  # Bypass Whisper transcription cache
-    use_qwen3: bool = True  # Use Qwen3 service for timestamp refinement
-    max_qwen3_duration: int = 300  # 5 minutes in seconds (Qwen3 service limit)
+    use_qwen3_asr: bool = True  # Use DashScope Qwen3 ASR before Whisper fallback
+    force_qwen3_asr: bool = False  # Bypass Qwen3 ASR cache only
+    qwen3_asr_context_max_chars: int = 10000
+    qwen3_asr_snap_threshold: float = 0.60
+    qwen3_asr_min_usable_segments: int = 3
+    # Deprecated: accepted only when reconstructing old persisted job JSON.
+    use_qwen3: Optional[bool] = None
+    max_qwen3_duration: Optional[int] = None
 
 
 class LrcJobRequest(BaseModel):
@@ -110,7 +118,7 @@ class JobResult(BaseModel):
     # LRC results
     lrc_url: Optional[str] = None
     line_count: Optional[int] = None
-    lrc_source: Optional[str] = None  # "youtube_transcript" or "whisper_asr"
+    lrc_source: Optional[str] = None  # youtube_transcript, qwen3_asr, or whisper_asr
 
     # Stem separation results
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)

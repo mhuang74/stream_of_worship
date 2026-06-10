@@ -124,6 +124,7 @@ def job_to_response(job, warning: Optional[str] = None) -> JobResponse:
                 stems_url=job.result.stems_url,
                 lrc_url=job.result.lrc_url,
                 line_count=job.result.line_count,
+                lrc_source=job.result.lrc_source,
                 vocals_dry_url=job.result.vocals_dry_url,
                 vocals_url=job.result.vocals_url,
                 instrumental_url=job.result.instrumental_url,
@@ -166,7 +167,7 @@ async def submit_analysis_job(
 
 @router.post("/jobs/lrc", response_model=JobResponse)
 async def submit_lrc_job(
-    request: LrcJobRequest,
+    request_payload: dict,
     api_key: str = Depends(verify_api_key),
 ) -> JobResponse:
     """Submit LRC generation job.
@@ -181,6 +182,16 @@ async def submit_lrc_job(
     if job_queue is None:
         raise HTTPException(500, "Job queue not initialized")
 
+    options = request_payload.get("options") or {}
+    legacy = {"use_qwen3", "max_qwen3_duration"} & set(options)
+    if legacy:
+        raise HTTPException(
+            422,
+            "Qwen3 ForcedAligner options are no longer part of automatic LRC generation. "
+            "Use use_qwen3_asr/force_qwen3_asr or --no-qwen3-asr instead.",
+        )
+
+    request = LrcJobRequest.model_validate(request_payload)
     job = await job_queue.submit(JobType.LRC, request)
     return job_to_response(job)
 

@@ -37,7 +37,7 @@ class AnalysisResult:
         embeddings_shape: Embedding dimensions
         stems_url: R2 URL for stems directory
         lrc_url: R2 URL for LRC file
-        lrc_source: Source of LRC generation ("youtube_transcript" or "whisper_asr")
+        lrc_source: Source of LRC generation ("youtube_transcript", "qwen3_asr", or "whisper_asr")
     """
 
     duration_seconds: Optional[float] = None
@@ -268,7 +268,8 @@ class AnalysisClient:
         force: bool = False,
         force_whisper: bool = False,
         youtube_url: str = "",
-        use_qwen3: bool = True,
+        use_qwen3_asr: bool = True,
+        force_qwen3_asr: bool = False,
     ) -> JobInfo:
         """Submit an audio file for LRC generation.
 
@@ -282,7 +283,8 @@ class AnalysisClient:
             force: Whether to force re-generation
             force_whisper: Bypass Whisper transcription cache
             youtube_url: YouTube URL for transcript-based LRC (primary path)
-            use_qwen3: Whether to use Qwen3 for timestamp refinement (Whisper path only)
+            use_qwen3_asr: Whether to use DashScope Qwen3 ASR before Whisper fallback
+            force_qwen3_asr: Bypass only the Qwen3 ASR cache
 
         Returns:
             JobInfo for the submitted job
@@ -301,7 +303,8 @@ class AnalysisClient:
                 "use_vocals_stem": use_vocals_stem,
                 "force": force,
                 "force_whisper": force_whisper,
-                "use_qwen3": use_qwen3,
+                "use_qwen3_asr": use_qwen3_asr,
+                "force_qwen3_asr": force_qwen3_asr,
             },
         }
 
@@ -422,9 +425,7 @@ class AnalysisClient:
             )
 
             if response.status_code == 404:
-                raise AnalysisServiceError(
-                    f"Job not found: {job_id}", status_code=404
-                )
+                raise AnalysisServiceError(f"Job not found: {job_id}", status_code=404)
 
             if response.status_code == 401:
                 raise AnalysisServiceError(
@@ -482,9 +483,7 @@ class AnalysisClient:
 
             elapsed = time.time() - start_time
             if elapsed >= timeout:
-                raise AnalysisServiceError(
-                    f"Timed out waiting for job {job_id} after {timeout}s"
-                )
+                raise AnalysisServiceError(f"Timed out waiting for job {job_id} after {timeout}s")
 
             time.sleep(poll_interval)
 
@@ -562,9 +561,7 @@ class AnalysisClient:
             )
 
             if response.status_code == 404:
-                raise AnalysisServiceError(
-                    f"Job not found: {job_id}", status_code=404
-                )
+                raise AnalysisServiceError(f"Job not found: {job_id}", status_code=404)
 
             if response.status_code == 401:
                 raise AnalysisServiceError(
@@ -664,9 +661,7 @@ class AnalysisClient:
                     song_id=result_data.get("song_id", ""),
                     embedding=result_data.get("embedding", []),
                     line_embeddings=line_embeddings,
-                    model_version=result_data.get(
-                        "model_version", "text-embedding-3-small"
-                    ),
+                    model_version=result_data.get("model_version", "text-embedding-3-small"),
                     content_hash=result_data.get("content_hash", ""),
                 )
             else:

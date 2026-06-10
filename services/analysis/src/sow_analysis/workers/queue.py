@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Optional, Union
@@ -14,6 +15,14 @@ from ..config import settings
 from ..logging_config import set_job_id
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ResolvedTranscriptionAudio:
+    path: Path
+    r2_url: Optional[str]
+    stem_kind: str
+    is_dry_or_clean_vocals: bool
 
 
 @asynccontextmanager
@@ -75,10 +84,19 @@ except ImportError:
 
 # Optional LRC imports - require whisper and openai
 try:
-    from .lrc import LRCWorkerError, generate_lrc
+    from .lrc import (
+        LRCWorkerError,
+        build_qwen3_asr_cache_key,
+        generate_lrc,
+        generate_lrc_from_qwen3_asr,
+    )
+    from ..services.qwen3_asr_client import Qwen3AsrError
 except ImportError:
     LRCWorkerError = Exception
+    Qwen3AsrError = Exception
+    build_qwen3_asr_cache_key = None
     generate_lrc = None
+    generate_lrc_from_qwen3_asr = None
 
 # Optional embedding imports - require openai
 try:
@@ -122,6 +140,7 @@ class JobQueue:
         # Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
         # Cloud operations (YouTube transcript, MVSEP, LLM alignment) don't acquire this.
         self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
+        self._dashscope_asr_semaphore = asyncio.Semaphore(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)
         # Separate semaphore for embedding jobs (external API, no GPU needed)
         self._embedding_semaphore = asyncio.Semaphore(5)
         self._running = False
@@ -532,6 +551,87 @@ class JobQueue:
         finally:
             job.updated_at = datetime.now(timezone.utc)
 
+    async def _update_stage(
+        self,
+        job: Job,
+        stage: str,
+        progress: Optional[float] = None,
+    ) -> None:
+        job.stage = stage
+        if progress is not None:
+            job.progress = progress
+        job.updated_at = datetime.now(timezone.utc)
+        fields: dict[str, Any] = {"stage": stage}
+        if progress is not None:
+            fields["progress"] = progress
+        try:
+            await self.job_store.update_job(job.id, **fields)
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+    async def _resolve_lrc_transcription_audio(
+        self,
+        job: Job,
+        request: LrcJobRequest,
+        temp_path: Path,
+        audio_path: Path,
+    ) -> ResolvedTranscriptionAudio:
+        """Resolve the best shared audio input for Qwen ASR and Whisper."""
+        await self._update_stage(job, "resolving_transcription_audio", 0.3)
+        if not request.options.use_vocals_stem or not self.r2_client:
+            return ResolvedTranscriptionAudio(audio_path, None, "full_mix", False)
+
+        from .stem_separation import get_vocals_dry_url
+
+        vocals_url = await get_vocals_dry_url(request.content_hash, self.r2_client)
+        if vocals_url:
+            ext = ".flac" if vocals_url.endswith(".flac") else ".wav"
+            stem_path = temp_path / f"vocals_stem{ext}"
+            await self.r2_client.download_audio(vocals_url, stem_path)
+            return ResolvedTranscriptionAudio(stem_path, vocals_url, "vocals_dry", True)
+
+        logger.info("No clean vocals found, auto-triggering stem separation")
+        await self._update_stage(job, "submitting_stem_separation_child")
+        child_request = StemSeparationJobRequest(
+            audio_url=request.audio_url,
+            content_hash=request.content_hash,
+            options={"force": False},
+        )
+        child_job = await self.submit(JobType.STEM_SEPARATION, child_request)
+        child_id = child_job.id
+        await self._update_stage(job, f"awaiting_stem_separation:{child_id}")
+
+        wait_start = time.time()
+        while True:
+            await asyncio.sleep(3.0)
+            child_job = await self.get_job(child_id)
+            if not child_job:
+                logger.error("Child stem separation job %s not found", child_id)
+                break
+            if child_job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+                break
+            if time.time() - wait_start > 7200.0:
+                logger.warning("Timeout waiting for child stem separation job %s", child_id)
+                break
+
+        child_job = await self.get_job(child_id)
+        if child_job and child_job.status == JobStatus.COMPLETED and child_job.result:
+            candidates = [
+                (child_job.result.vocals_dry_url, "vocals_dry", True),
+                (child_job.result.vocals_url, "vocals", False),
+            ]
+            for url, stem_kind, is_clean in candidates:
+                if not url:
+                    continue
+                ext = ".flac" if url.endswith(".flac") else ".wav"
+                stem_path = temp_path / f"{stem_kind}{ext}"
+                await self.r2_client.download_audio(url, stem_path)
+                logger.info("Using %s for transcription: %s", stem_kind, url)
+                return ResolvedTranscriptionAudio(stem_path, url, stem_kind, is_clean)
+
+        logger.warning("Stem resolution failed or incomplete; using full mix")
+        return ResolvedTranscriptionAudio(audio_path, None, "full_mix", False)
+
     async def _process_lrc_job(self, job: Job) -> None:
         """Process an LRC generation job.
 
@@ -599,9 +699,7 @@ class JobQueue:
 
         # Compute composite cache key based on audio hash + lyrics hash
         lrc_cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
-        logger.info(
-            f"LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)"
-        )
+        logger.info(f"LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
 
         try:
             # Check LRC result cache first (unless force=True - allows prompt improvements)
@@ -612,6 +710,7 @@ class JobQueue:
                     job.result = JobResult(
                         lrc_url=cached.get("lrc_url"),
                         line_count=cached.get("line_count"),
+                        lrc_source=cached.get("lrc_source"),
                     )
                     job.status = JobStatus.COMPLETED
                     job.progress = 1.0
@@ -668,187 +767,118 @@ class JobQueue:
                             "YouTube transcript succeeded — skipping audio download and stem separation"
                         )
 
-                # Stage 2: Whisper path — only when YouTube is unavailable or failed
+                # Stage 2: Qwen ASR then Whisper fallback — only when YouTube failed
                 if youtube_lrc_result is None:
-                    # Download audio from R2
-                    job.stage = "downloading"
-                    job.progress = 0.2
-                    job.updated_at = datetime.now(timezone.utc)
-
+                    await self._update_stage(job, "downloading", 0.2)
                     audio_path = temp_path / "audio.mp3"
                     if self.r2_client:
                         logger.info("Downloading audio from R2...")
                         download_start = time.time()
                         await self.r2_client.download_audio(request.audio_url, audio_path)
                         download_elapsed = time.time() - download_start
-                        logger.info(
-                            f"Audio download completed in {download_elapsed:.2f}s"
-                        )
+                        logger.info(f"Audio download completed in {download_elapsed:.2f}s")
 
-                    # Check if dry vocals stem exists and should be used for Whisper
-                    # Only vocals_dry.flac is preferred; if missing, trigger stem separation
-                    transcription_path = audio_path
-                    vocals_stem_url: Optional[str] = None
+                    resolved_audio = await self._resolve_lrc_transcription_audio(
+                        job, request, temp_path, audio_path
+                    )
 
-                    if request.options.use_vocals_stem and self.r2_client:
-                        # Check for dry vocals in priority order (with fallback to legacy)
-                        from .stem_separation import get_vocals_dry_url
+                    if (
+                        request.options.use_qwen3_asr
+                        and settings.SOW_DASHSCOPE_API_KEY
+                        and generate_lrc_from_qwen3_asr is not None
+                        and build_qwen3_asr_cache_key is not None
+                    ):
+                        try:
+                            from .lrc import _build_qwen3_context
 
-                        vocals_stem_url = await get_vocals_dry_url(
-                            request.content_hash, self.r2_client
-                        )
-
-                        if vocals_stem_url:
-                            ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
-                            stem_path = temp_path / f"vocals_stem{ext}"
-                            await self.r2_client.download_audio(vocals_stem_url, stem_path)
-                            transcription_path = stem_path
-                            logger.info(
-                                f"Using vocals stem for transcription: {vocals_stem_url}"
+                            context_limit = min(
+                                request.options.qwen3_asr_context_max_chars,
+                                settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
                             )
-                            job.stage = "using_vocals_stem"
-                        else:
-                            # No clean vocals cached — auto-trigger stem separation
-                            logger.info(
-                                "No clean vocals found, auto-triggering stem separation"
+                            context = _build_qwen3_context(request.lyrics_text, context_limit)
+                            qwen_cache_key = build_qwen3_asr_cache_key(
+                                request.content_hash,
+                                request.lyrics_text,
+                                resolved_audio.stem_kind,
+                                settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
+                                settings.SOW_DASHSCOPE_ASR_REGION,
+                                request.options.language,
+                                context_limit,
+                                context,
                             )
-                            job.stage = "submitting_stem_separation_child"
-                            job.updated_at = datetime.now(timezone.utc)
-
-                            try:
-                                await self.job_store.update_job(
-                                    job.id, stage="submitting_stem_separation_child"
-                                )
-                            except Exception as e:
-                                logger.error(f"Failed to update job {job.id} in database: {e}")
-
-                            child_request = StemSeparationJobRequest(
-                                audio_url=request.audio_url,
-                                content_hash=request.content_hash,
-                                options={"force": False},
-                            )
-                            child_job = await self.submit(JobType.STEM_SEPARATION, child_request)
-                            child_id = child_job.id
-                            logger.info(
-                                f"Submitted child stem separation job: {child_id}"
-                            )
-
-                            job.stage = f"awaiting_stem_separation:{child_id}"
-                            try:
-                                await self.job_store.update_job(
-                                    job.id, stage=f"awaiting_stem_separation:{child_id}"
-                                )
-                            except Exception as e:
-                                logger.error(f"Failed to update job {job.id} in database: {e}")
-
-                            logger.info(f"Waiting for child stem separation job {child_id}")
-
-                            poll_interval = 3.0
-                            max_wait = 7200.0  # 2 hour timeout
-                            wait_start = time.time()
-
-                            while True:
-                                await asyncio.sleep(poll_interval)
-
-                                child_job = await self.get_job(child_id)
-                                if not child_job:
-                                    logger.error(f"Child job {child_id} not found")
-                                    raise LRCWorkerError(
-                                        f"Child stem separation job {child_id} not found"
-                                    )
-
-                                if child_job.status == JobStatus.COMPLETED:
-                                    logger.info(
-                                        f"Child stem separation job {child_id} completed"
-                                    )
-                                    break
-                                elif child_job.status == JobStatus.FAILED:
-                                    logger.error(
-                                        f"Child stem separation job {child_id} failed: {child_job.error_message}"
-                                    )
-                                    break
-
-                                # Timeout — fall back to full audio rather than failing the LRC job
-                                if time.time() - wait_start > max_wait:
-                                    logger.warning(
-                                        f"Timeout waiting for child stem separation job {child_id} "
-                                        f"after {max_wait:.0f}s — falling back to full audio for transcription"
-                                    )
-                                    break
-
-                            child_job = await self.get_job(child_id)
                             if (
-                                child_job
-                                and child_job.status == JobStatus.COMPLETED
-                                and child_job.result
+                                not request.options.force_qwen3_asr
+                                and self.cache_manager.get_qwen3_asr_transcription(qwen_cache_key)
                             ):
-                                # Prefer dry vocals for transcription; fall back to raw vocals
-                                vocals_stem_url = child_job.result.vocals_dry_url or child_job.result.vocals_url
-                                if vocals_stem_url:
-                                    ext = ".flac" if vocals_stem_url.endswith(".flac") else ".wav"
-                                    stem_path = temp_path / f"vocals_dry{ext}"
-                                    await self.r2_client.download_audio(vocals_stem_url, stem_path)
-                                    transcription_path = stem_path
-                                    logger.info(
-                                        f"Downloaded vocals from child job: {vocals_stem_url}"
-                                    )
-                                    job.stage = "using_vocals_dry_stem"
-                                else:
-                                    logger.error(
-                                        f"Child job completed but no vocals URL in result"
-                                    )
+                                await self._update_stage(job, "qwen3_asr_cached", 0.4)
                             else:
-                                logger.warning(
-                                    f"Child stem separation failed or incomplete, using full audio"
-                                )
+                                await self._update_stage(job, "qwen3_asr_transcribing", 0.4)
+                            lrc_path, line_count, _qwen_phrases = await generate_lrc_from_qwen3_asr(
+                                resolved_audio.path,
+                                request.lyrics_text,
+                                request.options,
+                                output_path=lrc_path,
+                                cache_key=qwen_cache_key,
+                                cache_manager=self.cache_manager,
+                                dashscope_semaphore=self._dashscope_asr_semaphore,
+                            )
+                            lrc_source = "qwen3_asr"
+                            await self._update_stage(job, "qwen3_asr_done", 0.7)
+                        except Qwen3AsrError as e:
+                            logger.warning("Qwen3 ASR failed; falling back to Whisper: %s", e)
+                            await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                        except Exception as e:
+                            logger.warning(
+                                "Qwen3 ASR unexpected failure; falling back to Whisper: %s", e
+                            )
+                            await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                    else:
+                        logger.info("Qwen3 ASR disabled or DashScope not configured; using Whisper")
+                        await self._update_stage(job, "falling_back_to_whisper", 0.35)
 
                     # Check for cached Whisper transcription (audio hash only, not lyrics)
-                    cached_phrases = None
-                    if request.options.force_whisper:
-                        logger.info(f"Whisper cache bypassed (force_whisper=True)")
-                    else:
-                        cached_data = self.cache_manager.get_whisper_transcription(
-                            request.content_hash
-                        )
-                        if cached_data:
-                            from .lrc import WhisperPhrase
-
-                            cached_phrases = [WhisperPhrase(**p) for p in cached_data]
-                            logger.info(
-                                f"Whisper cache hit - using {len(cached_phrases)} cached phrases"
-                            )
-                            job.stage = "transcription_cached"
+                    if lrc_source != "qwen3_asr":
+                        cached_phrases = None
+                        if request.options.force_whisper:
+                            logger.info("Whisper cache bypassed (force_whisper=True)")
                         else:
-                            logger.info(f"Whisper cache miss - will run transcription")
+                            cached_data = self.cache_manager.get_whisper_transcription(
+                                request.content_hash
+                            )
+                            if cached_data:
+                                from .lrc import WhisperPhrase
 
-                    # Run Whisper transcription (or use cached); youtube_url=None since we already tried it
-                    job.stage = "transcribing"
-                    job.progress = 0.4
-                    job.updated_at = datetime.now(timezone.utc)
+                                cached_phrases = [WhisperPhrase(**p) for p in cached_data]
+                                logger.info(
+                                    f"Whisper cache hit - using {len(cached_phrases)} cached phrases"
+                                )
+                                await self._update_stage(job, "transcription_cached")
+                            else:
+                                logger.info("Whisper cache miss - will run transcription")
 
-                    lrc_path, line_count, whisper_phrases = await generate_lrc(
-                        transcription_path,
-                        request.lyrics_text,
-                        request.options,
-                        output_path=lrc_path,
-                        cached_phrases=cached_phrases,
-                        youtube_url=None,
-                        content_hash=request.content_hash,
-                        vocals_stem_url=vocals_stem_url,
-                        local_model_semaphore=self._local_model_semaphore,
-                    )
-                    lrc_source = "whisper_asr"
-
-                    # Cache the Whisper transcription for future use (if not using cache)
-                    if cached_phrases is None and whisper_phrases:
-                        phrases_data = [
-                            {"text": p.text, "start": p.start, "end": p.end}
-                            for p in whisper_phrases
-                        ]
-                        self.cache_manager.save_whisper_transcription(
-                            request.content_hash, phrases_data
+                        await self._update_stage(job, "transcribing", 0.5)
+                        lrc_path, line_count, whisper_phrases = await generate_lrc(
+                            resolved_audio.path,
+                            request.lyrics_text,
+                            request.options,
+                            output_path=lrc_path,
+                            cached_phrases=cached_phrases,
+                            youtube_url=None,
+                            content_hash=request.content_hash,
+                            vocals_stem_url=resolved_audio.r2_url,
+                            local_model_semaphore=self._local_model_semaphore,
                         )
-                        logger.info(f"Whisper transcription cached for future use")
+                        lrc_source = "whisper_asr"
+
+                        if cached_phrases is None and whisper_phrases:
+                            phrases_data = [
+                                {"text": p.text, "start": p.start, "end": p.end}
+                                for p in whisper_phrases
+                            ]
+                            self.cache_manager.save_whisper_transcription(
+                                request.content_hash, phrases_data
+                            )
+                            logger.info("Whisper transcription cached for future use")
 
                 job.stage = "uploading"
                 job.progress = 0.8
@@ -860,12 +890,18 @@ class JobQueue:
                     lrc_url = await self.r2_client.upload_lrc(hash_prefix, lrc_path)
 
                 # Save to cache using composite key (audio hash + lyrics hash)
-                cache_result = {"lrc_url": lrc_url, "line_count": line_count}
+                cache_result = {
+                    "lrc_url": lrc_url,
+                    "line_count": line_count,
+                    "lrc_source": lrc_source,
+                }
                 self.cache_manager.save_lrc_result(lrc_cache_key, cache_result)
                 logger.info(f"LRC result cached with key: {lrc_cache_key}")
 
                 # Set job result
-                job.result = JobResult(lrc_url=lrc_url, line_count=line_count, lrc_source=lrc_source)
+                job.result = JobResult(
+                    lrc_url=lrc_url, line_count=line_count, lrc_source=lrc_source
+                )
                 job.status = JobStatus.COMPLETED
                 job.progress = 1.0
                 job.stage = "complete"

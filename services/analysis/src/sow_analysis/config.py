@@ -24,7 +24,9 @@ class Settings(BaseSettings):
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
-    SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = 1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
+    SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = (
+        1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
+    )
 
     @field_validator("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS")
     @classmethod
@@ -52,6 +54,18 @@ class Settings(BaseSettings):
     # Whisper Configuration
     SOW_WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
     SOW_WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
+
+    # DashScope Qwen3 ASR Configuration
+    SOW_DASHSCOPE_API_KEY: str = ""
+    SOW_DASHSCOPE_ASR_REGION: str = "intl"  # intl, cn, us
+    SOW_DASHSCOPE_ASR_FLASH_MODEL: str = "qwen3-asr-flash"
+    SOW_DASHSCOPE_ASR_FILETRANS_MODEL: str = "qwen3-asr-flash-filetrans"
+    SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS: int = 10000
+    SOW_DASHSCOPE_ASR_SNAP_THRESHOLD: float = 0.60
+    SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS: int = 300
+    SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS: int = 1800
+    SOW_DASHSCOPE_ASR_MAX_CONCURRENT: int = 2
+    SOW_DASHSCOPE_ASR_CACHE_VERSION: int = 1
 
     # Stem Separation Configuration
     SOW_AUDIO_SEPARATOR_MODEL_DIR: Path = Path("/models/audio-separator")
@@ -107,7 +121,9 @@ class Settings(BaseSettings):
     SOW_QWEN3_API_KEY: str = ""  # Optional API key for Qwen3 service authentication
 
     # YouTube Proxy Configuration
-    SOW_YOUTUBE_PROXY: str = ""  # HTTP/HTTPS/SOCKS proxy URL for YouTube transcript requests (e.g., "http://proxy:8080", "socks5://proxy:1080")
+    SOW_YOUTUBE_PROXY: str = (
+        ""  # HTTP/HTTPS/SOCKS proxy URL for YouTube transcript requests (e.g., "http://proxy:8080", "socks5://proxy:1080")
+    )
     SOW_YOUTUBE_PROXY_RETRIES: int = 3  # Number of retries on HTTP 429 when using rotating proxies
 
 

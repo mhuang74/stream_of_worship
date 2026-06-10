@@ -175,6 +175,22 @@ class TestJobsEndpoints:
         assert data["job_id"] == "job_def456"
         assert data["job_type"] == "lrc"
 
+    def test_submit_lrc_rejects_legacy_qwen3_options(self, client, mock_job_queue):
+        """Legacy ForcedAligner options are rejected for new submissions."""
+        response = client.post(
+            "/api/v1/jobs/lrc",
+            json={
+                "audio_url": "s3://bucket/hash/audio.mp3",
+                "content_hash": "abc123",
+                "lyrics_text": "Line 1\nLine 2",
+                "options": {"use_qwen3": False},
+            },
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 422
+        assert "ForcedAligner" in response.json()["detail"]
+
     def test_get_job_status(self, client, mock_job_queue):
         """Test getting job status."""
 
@@ -255,18 +271,22 @@ class TestAdminEndpoints:
 
     def test_cancel_job_queued(self, client, mock_job_queue):
         """Test cancelling a queued job."""
+
         async def mock_cancel_job(job_id):
             now = datetime.now(timezone.utc)
-            return Job(
-                id=job_id,
-                type=JobType.ANALYZE,
-                status=JobStatus.CANCELLED,
-                request=MagicMock(),
-                created_at=now,
-                updated_at=now,
-                progress=0.0,
-                stage="cancelled",
-            ), None
+            return (
+                Job(
+                    id=job_id,
+                    type=JobType.ANALYZE,
+                    status=JobStatus.CANCELLED,
+                    request=MagicMock(),
+                    created_at=now,
+                    updated_at=now,
+                    progress=0.0,
+                    stage="cancelled",
+                ),
+                None,
+            )
 
         mock_job_queue.cancel_job = mock_cancel_job
 
@@ -282,18 +302,22 @@ class TestAdminEndpoints:
 
     def test_cancel_job_processing(self, client, mock_job_queue):
         """Test cancelling a processing job returns warning."""
+
         async def mock_cancel_job_processing(job_id):
             now = datetime.now(timezone.utc)
-            return Job(
-                id=job_id,
-                type=JobType.ANALYZE,
-                status=JobStatus.CANCELLED,
-                request=MagicMock(),
-                created_at=now,
-                updated_at=now,
-                progress=0.5,
-                stage="cancelled",
-            ), "Job was PROCESSING. The running task continues until service restart."
+            return (
+                Job(
+                    id=job_id,
+                    type=JobType.ANALYZE,
+                    status=JobStatus.CANCELLED,
+                    request=MagicMock(),
+                    created_at=now,
+                    updated_at=now,
+                    progress=0.5,
+                    stage="cancelled",
+                ),
+                "Job was PROCESSING. The running task continues until service restart.",
+            )
 
         mock_job_queue.cancel_job = mock_cancel_job_processing
 
@@ -306,10 +330,14 @@ class TestAdminEndpoints:
         data = response.json()
         assert data["job_id"] == "job_processing"
         assert data["status"] == "cancelled"
-        assert data["warning"] == "Job was PROCESSING. The running task continues until service restart."
+        assert (
+            data["warning"]
+            == "Job was PROCESSING. The running task continues until service restart."
+        )
 
     def test_cancel_job_not_found(self, client, mock_job_queue):
         """Test cancelling non-existent job returns 404."""
+
         async def mock_cancel_job_not_found(job_id):
             return None, None
 
@@ -341,6 +369,7 @@ class TestAdminEndpoints:
 
     def test_clear_queue(self, client, mock_job_queue):
         """Test clearing the queue."""
+
         async def mock_clear_queue():
             now = datetime.now(timezone.utc)
             return [

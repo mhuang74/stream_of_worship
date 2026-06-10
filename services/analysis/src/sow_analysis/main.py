@@ -91,12 +91,21 @@ async def lifespan(app: FastAPI):
     # Log startup configuration (non-sensitive values only)
     headers = ("Category", "Setting", "Value")
     config_rows = [
-        ("Processing", "max_concurrent_local_model", str(settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS)),
+        (
+            "Processing",
+            "max_concurrent_local_model",
+            str(settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS),
+        ),
         ("Processing", "cache_dir", str(settings.CACHE_DIR)),
         ("Processing", "queue_start_delay", f"{settings.SOW_QUEUE_START_DELAY_SECONDS}s"),
         ("LLM", "model", settings.SOW_LLM_MODEL or "(not set)"),
         ("LLM", "provider", settings.SOW_LLM_BASE_URL or "(not set)"),
-        ("Qwen3", "base_url", settings.SOW_QWEN3_BASE_URL),
+        ("DashScope Qwen3 ASR", "configured", str(bool(settings.SOW_DASHSCOPE_API_KEY))),
+        ("DashScope Qwen3 ASR", "region", settings.SOW_DASHSCOPE_ASR_REGION),
+        ("DashScope Qwen3 ASR", "flash_model", settings.SOW_DASHSCOPE_ASR_FLASH_MODEL),
+        ("DashScope Qwen3 ASR", "filetrans_model", settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL),
+        ("DashScope Qwen3 ASR", "max_concurrent", str(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)),
+        ("Qwen3 ForcedAligner", "base_url", settings.SOW_QWEN3_BASE_URL),
         ("Whisper", "device", settings.SOW_WHISPER_DEVICE),
         ("Whisper", "cache_dir", str(settings.SOW_WHISPER_CACHE_DIR)),
         ("Demucs", "model", settings.SOW_DEMUCS_MODEL),
@@ -115,9 +124,15 @@ async def lifespan(app: FastAPI):
     ]
     col_widths = [max(len(r[i]) for r in config_rows + [headers]) for i in range(3)]
     separator = f"+-{'-' * col_widths[0]}-+-{'-' * col_widths[1]}-+-{'-' * col_widths[2]}-+"
-    table_lines = [separator, f"| {headers[0]:<{col_widths[0]}} | {headers[1]:<{col_widths[1]}} | {headers[2]:<{col_widths[2]}} |", separator]
+    table_lines = [
+        separator,
+        f"| {headers[0]:<{col_widths[0]}} | {headers[1]:<{col_widths[1]}} | {headers[2]:<{col_widths[2]}} |",
+        separator,
+    ]
     for row in config_rows:
-        table_lines.append(f"| {row[0]:<{col_widths[0]}} | {row[1]:<{col_widths[1]}} | {row[2]:<{col_widths[2]}} |")
+        table_lines.append(
+            f"| {row[0]:<{col_widths[0]}} | {row[1]:<{col_widths[1]}} | {row[2]:<{col_widths[2]}} |"
+        )
     table_lines.append(separator)
     logger.info("Startup configuration:\n%s", "\n".join(table_lines))
 
