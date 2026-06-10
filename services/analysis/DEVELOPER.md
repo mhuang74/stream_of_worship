@@ -23,6 +23,9 @@ cd services/analysis
 # Run in detached mode
 ./start-dev.sh -d
 
+# Rebuild the Docker image after dependency changes
+./start-dev.sh --build
+
 # Or manually with docker compose (requires models to be pre-downloaded)
 docker compose up analysis-dev
 ```
@@ -32,6 +35,8 @@ The development service will:
 - Mount your local `src/` directory into the container for hot-reload
 - Automatically restart on code changes
 - Expose the API on `http://localhost:8000`
+
+Source changes in `src/` hot-reload because the directory is bind-mounted into the container. Python dependency changes do not hot-reload: packages are installed when the Docker image is built. After changing `pyproject.toml` or `uv.lock`, run `./start-dev.sh --build` (or `./start-dev.sh --rebuild`) once so the `analysis-dev` image includes the new packages.
 
 ### 3. Verify It's Running
 
@@ -83,12 +88,14 @@ docker compose logs --tail=100 analysis-dev
 
 #### Restart the Service
 ```bash
-# If you need to restart (e.g., after adding new dependencies)
+# Restart the existing container image
 docker compose restart analysis-dev
 
-# Or fully rebuild if Dockerfile changed
-docker compose up -d --build analysis-dev
+# Rebuild after changing pyproject.toml, uv.lock, or Dockerfile
+./start-dev.sh --build -d
 ```
+
+`docker compose restart analysis-dev` is not enough after dependency changes. It restarts the existing container from the existing image, so newly added packages such as `dashscope` will still be missing until the image is rebuilt.
 
 #### Run a Shell in the Container
 ```bash
@@ -310,6 +317,9 @@ docker compose up analysis-dev
 
 # Start in background
 docker compose up -d analysis-dev
+
+# Rebuild after dependency or Dockerfile changes
+./start-dev.sh --build -d
 
 # Stop
 docker compose down
