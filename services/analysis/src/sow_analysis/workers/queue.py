@@ -604,6 +604,9 @@ class JobQueue:
         wait_start = time.time()
         while True:
             await asyncio.sleep(3.0)
+            if job.status == JobStatus.CANCELLED:
+                logger.info("Parent job %s cancelled; aborting wait for child job", job.id)
+                break
             child_job = await self.get_job(child_id)
             if not child_job:
                 logger.error("Child stem separation job %s not found", child_id)
@@ -781,6 +784,9 @@ class JobQueue:
                     resolved_audio = await self._resolve_lrc_transcription_audio(
                         job, request, temp_path, audio_path
                     )
+                    if job.status == JobStatus.CANCELLED:
+                        logger.info("LRC job %s cancelled; skipping transcription", job.id)
+                        return
 
                     if (
                         request.options.use_qwen3_asr

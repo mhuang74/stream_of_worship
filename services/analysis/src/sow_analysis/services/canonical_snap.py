@@ -90,7 +90,7 @@ def snap_qwen3_asr_to_canonical(
             snapped.append(
                 SnappedPhrase(best_line, phrase.start, phrase.end, best_score, True, phrase.text)
             )
-            search_start = min(best_index + 1, len(canonical) - 1)
+            search_start = best_index + 1
         else:
             snapped.append(
                 SnappedPhrase(phrase.text, phrase.start, phrase.end, best_score, False, phrase.text)

@@ -20,6 +20,8 @@ REGION_URLS = {
     "cn": "https://dashscope.aliyuncs.com/api/v1",
     "us": "https://dashscope-us.aliyuncs.com/api/v1",
 }
+DIRECT_FLASH_MAX_SIZE_MB = 10.0
+DIRECT_FLASH_MAX_DURATION_SECONDS = 300.0
 
 
 class Qwen3AsrError(Exception):
@@ -123,11 +125,32 @@ class Qwen3AsrClient:
 
     def _choose_mode(self, audio_path: Path) -> str:
         size_mb = audio_path.stat().st_size / (1024 * 1024)
-        if size_mb > 95:
+        if size_mb > DIRECT_FLASH_MAX_SIZE_MB:
             logger.info("Routing Qwen3 ASR to filetrans: audio size %.1fMB", size_mb)
             return "filetrans"
-        logger.info("Routing Qwen3 ASR to direct flash: audio size %.1fMB", size_mb)
+
+        duration_seconds = self._probe_duration_seconds(audio_path)
+        if duration_seconds is not None and duration_seconds > DIRECT_FLASH_MAX_DURATION_SECONDS:
+            logger.info(
+                "Routing Qwen3 ASR to filetrans: audio duration %.1fs", duration_seconds
+            )
+            return "filetrans"
+
+        logger.info(
+            "Routing Qwen3 ASR to direct flash: audio size %.1fMB duration %s",
+            size_mb,
+            f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown",
+        )
         return "direct"
+
+    def _probe_duration_seconds(self, audio_path: Path) -> Optional[float]:
+        try:
+            import librosa
+
+            return float(librosa.get_duration(path=audio_path))
+        except Exception as exc:
+            logger.warning("Could not probe audio duration for Qwen3 ASR routing: %s", exc)
+            return None
 
     async def _with_retries(self, call):
         last_error: Optional[Exception] = None
@@ -265,7 +288,18 @@ class Qwen3AsrClient:
         for item in direct:
             if item.get("type") == "audio_transcription":
                 return item.get("audio_transcription_results", {}).get("sentences", [])
-        return raw.get("sentences") or raw.get("transcripts") or raw.get("results", [])
+        if raw.get("sentences"):
+            return raw["sentences"]
+        if raw.get("transcripts"):
+            sentences: list[dict[str, Any]] = []
+            for transcript in raw["transcripts"]:
+                transcript_sentences = (
+                    transcript.get("sentences") if isinstance(transcript, dict) else None
+                )
+                if transcript_sentences:
+                    sentences.extend(transcript_sentences)
+            return sentences
+        return raw.get("results", [])
 
     def _extract_words(self, raw: dict[str, Any]) -> list[Qwen3AsrWord]:
         candidates: list[dict[str, Any]] = []
@@ -286,5 +320,4 @@ class Qwen3AsrClient:
         return words
 
     def _ms_to_seconds(self, value: Any) -> float:
-        seconds = float(value or 0)
-        return seconds / 1000.0 if seconds >= 1000 else seconds
+        return float(value or 0) / 1000.0

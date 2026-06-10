@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sow_analysis.models import AnalyzeJobRequest, JobStatus, JobType, LrcJobRequest
+from sow_analysis.models import AnalyzeJobRequest, JobStatus, JobType, LrcJobRequest, LrcOptions
 from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
 
 
@@ -117,6 +117,50 @@ class TestLRCJobProcessing:
         # LRC job should fail with invalid request type error
         assert job.status == JobStatus.FAILED
         assert "Invalid request type" in job.error_message
+
+    @pytest.mark.asyncio
+    async def test_lrc_child_stem_wait_stops_when_parent_cancelled(self, queue):
+        """LRC cancellation during child stem wait does not continue into transcription."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="Line 1\nLine 2",
+            options=LrcOptions(force=True, use_qwen3_asr=False),
+        )
+        job = Job(
+            id="job_cancel_parent",
+            type=JobType.LRC,
+            status=JobStatus.PROCESSING,
+            request=request,
+        )
+        queue._jobs[job.id] = job
+
+        async def download_audio(_url, path):
+            path.write_bytes(b"audio")
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.download_audio = AsyncMock(side_effect=download_audio)
+        generate_lrc = AsyncMock()
+
+        async def cancel_parent(_delay):
+            job.status = JobStatus.CANCELLED
+            job.stage = "cancelled"
+
+        with (
+            patch(
+                "sow_analysis.workers.stem_separation.get_vocals_dry_url",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("sow_analysis.workers.queue.generate_lrc", new=generate_lrc),
+            patch(
+                "sow_analysis.workers.queue.asyncio.sleep",
+                new=AsyncMock(side_effect=cancel_parent),
+            ),
+        ):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.CANCELLED
+        generate_lrc.assert_not_awaited()
 
 
 class TestJobQueueConcurrency:
