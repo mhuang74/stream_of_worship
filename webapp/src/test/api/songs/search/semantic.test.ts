@@ -26,6 +26,7 @@ vi.mock("@/lib/embedding", () => ({
 vi.mock("@/lib/db/songs", () => ({
   semanticSearchSongs: vi.fn(),
   findTopMatchingLines: vi.fn(),
+  rrfRerank: vi.fn((songs: any[]) => songs),
 }));
 
 function makeRequest(body: unknown): NextRequest {
@@ -147,7 +148,7 @@ describe("POST /api/songs/search/semantic", () => {
 
     await POST(makeRequest({ query: "grace" }));
     expect(embedQuery).toHaveBeenCalledWith("grace");
-    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, "text-embedding-3-small", 20);
+    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, "text-embedding-3-small", 40);
   });
 
   it("respects custom limit", async () => {
@@ -157,7 +158,7 @@ describe("POST /api/songs/search/semantic", () => {
     vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
 
     await POST(makeRequest({ query: "test", limit: 5 }));
-    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, "text-embedding-3-small", 5);
+    expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, "text-embedding-3-small", 10);
   });
 
   it("returns 400 when limit > 50", async () => {
@@ -201,7 +202,7 @@ describe("POST /api/songs/search/semantic", () => {
     expect(semanticSearchSongs).toHaveBeenCalledWith(
       mockEmbedding,
       "text-embedding-3-small",
-      20
+      40
     );
   });
 });

@@ -35,4 +35,4 @@ export async function embedQuery(text: string): Promise<number[]> {
   return response.data[0].embedding;
 }
 
-export const QUERY_MODEL = "text-embedding-3-small";
+export const QUERY_MODEL = EMBEDDING_MODEL;
