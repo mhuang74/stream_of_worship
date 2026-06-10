@@ -301,7 +301,8 @@ def _submit_lrc_single(
     no_vocals: bool,
     no_youtube: bool,
     no_whisper_cache: bool,
-    no_qwen3: bool,
+    no_qwen3_asr: bool,
+    force_qwen3_asr: bool,
     wait: bool,
     console: Console,
 ) -> None:
@@ -358,7 +359,8 @@ def _submit_lrc_single(
                 force=force,
                 force_whisper=no_whisper_cache,
                 youtube_url=youtube_url,
-                use_qwen3=not no_qwen3,
+                use_qwen3_asr=not no_qwen3_asr,
+                force_qwen3_asr=force_qwen3_asr,
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")
@@ -440,7 +442,8 @@ def _submit_lrc_batch(
     no_vocals: bool,
     no_youtube: bool,
     no_whisper_cache: bool,
-    no_qwen3: bool,
+    no_qwen3_asr: bool,
+    force_qwen3_asr: bool,
     console: Console,
 ) -> None:
     """Submit LRC for multiple recordings (batch mode, no wait)."""
@@ -496,7 +499,8 @@ def _submit_lrc_batch(
                 force=force,
                 force_whisper=no_whisper_cache,
                 youtube_url=youtube_url,
-                use_qwen3=not no_qwen3,
+                use_qwen3_asr=not no_qwen3_asr,
+                force_qwen3_asr=force_qwen3_asr,
             )
 
             # Update DB
@@ -587,7 +591,8 @@ def _submit_lrc_job(
     no_vocals: bool = False,
     no_youtube: bool = False,
     no_whisper_cache: bool = False,
-    use_qwen3: bool = True,
+    use_qwen3_asr: bool = True,
+    force_qwen3_asr: bool = False,
 ) -> Optional[str]:
     """Submit LRC generation job for a recording.
 
@@ -603,7 +608,8 @@ def _submit_lrc_job(
         no_vocals: Don't use vocals stem
         no_youtube: Skip YouTube transcript, use Whisper directly
         no_whisper_cache: Bypass Whisper transcription cache
-        use_qwen3: Use Qwen3 for timestamp refinement (Whisper path only)
+        use_qwen3_asr: Use DashScope Qwen3 ASR before Whisper fallback
+        force_qwen3_asr: Bypass only the Qwen3 ASR cache
 
     Returns:
         Job ID if submission succeeded, None otherwise
@@ -630,7 +636,8 @@ def _submit_lrc_job(
             force=force,
             force_whisper=no_whisper_cache,
             youtube_url=youtube_url,
-            use_qwen3=use_qwen3,
+            use_qwen3_asr=use_qwen3_asr,
+            force_qwen3_asr=force_qwen3_asr,
         )
 
         # Update DB
@@ -906,7 +913,8 @@ def download_audio(
             whisper_model="large-v3",
             language="zh",
             no_vocals=False,
-            use_qwen3=True,
+            use_qwen3_asr=True,
+            force_qwen3_asr=False,
         )
 
 
@@ -1599,8 +1607,17 @@ def lrc_recording(
     no_whisper_cache: bool = typer.Option(
         False, "--no-whisper-cache", help="Bypass cached Whisper transcription, re-run Whisper"
     ),
-    no_qwen3: bool = typer.Option(
-        False, "--no-qwen3", help="Skip Qwen3 timestamp refinement (use LLM alignment only)"
+    no_qwen3_asr: bool = typer.Option(
+        False, "--no-qwen3-asr", help="Skip DashScope Qwen3 ASR and use Whisper fallback"
+    ),
+    force_qwen3_asr: bool = typer.Option(
+        False, "--force-qwen3-asr", help="Bypass cached Qwen3 ASR transcription only"
+    ),
+    no_qwen3_legacy: bool = typer.Option(
+        False,
+        "--no-qwen3",
+        help="Deprecated; Qwen3 ForcedAligner is no longer part of automatic LRC generation",
+        hidden=True,
     ),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for LRC generation to complete"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
@@ -1608,9 +1625,9 @@ def lrc_recording(
     """Submit a recording for lyrics alignment (LRC generation).
 
     By default, tries YouTube transcript first (if a YouTube URL is stored),
-    then falls back to Whisper transcription with Qwen3 timestamp refinement.
+    then falls back to DashScope Qwen3 ASR and finally Whisper transcription.
     Use --no-youtube to skip the YouTube path and use Whisper directly.
-    Use --no-qwen3 to skip Qwen3 refinement and use LLM alignment only.
+    Use --no-qwen3-asr to skip Qwen3 ASR and use Whisper.
 
     For batch processing, pipe song IDs via stdin:
         sow-admin audio list --lrc incomplete --format ids | sow-admin audio lrc --stdin
@@ -1624,6 +1641,12 @@ def lrc_recording(
         raise typer.Exit(1)
     if stdin and wait:
         console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
+        raise typer.Exit(1)
+    if no_qwen3_legacy:
+        console.print(
+            "[red]Error: --no-qwen3 is deprecated. Qwen3 ForcedAligner is no longer "
+            "part of automatic LRC generation; use --no-qwen3-asr instead.[/red]"
+        )
         raise typer.Exit(1)
 
     # Standard config/db boilerplate
@@ -1664,7 +1687,8 @@ def lrc_recording(
             no_vocals=no_vocals,
             no_youtube=no_youtube,
             no_whisper_cache=no_whisper_cache,
-            no_qwen3=no_qwen3,
+            no_qwen3_asr=no_qwen3_asr,
+            force_qwen3_asr=force_qwen3_asr,
             wait=wait,
             console=console,
         )
@@ -1680,7 +1704,8 @@ def lrc_recording(
             no_vocals=no_vocals,
             no_youtube=no_youtube,
             no_whisper_cache=no_whisper_cache,
-            no_qwen3=no_qwen3,
+            no_qwen3_asr=no_qwen3_asr,
+            force_qwen3_asr=force_qwen3_asr,
             console=console,
         )
 
@@ -3390,13 +3415,17 @@ def edit_lrc(
             r2_client.download_audio(recording.hash_prefix, audio_path)
         except Exception as e:
             console.print(f"[red]Failed to download audio: {e}[/red]")
-            console.print("[red]Audio is required for timestamp alignment. Cannot open editor.[/red]")
+            console.print(
+                "[red]Audio is required for timestamp alignment. Cannot open editor.[/red]"
+            )
             raise typer.Exit(1)
     else:
         try:
             r2_client.audio_exists(recording.hash_prefix)
         except ClientError:
-            console.print(f"[yellow]Warning: Could not verify audio in R2. Using cached file.[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not verify audio in R2. Using cached file.[/yellow]"
+            )
 
     transcribed_content: Optional[str] = None
     transcribed_identity = r2_client.get_lrc_identity(recording.hash_prefix)
@@ -3416,7 +3445,11 @@ def edit_lrc(
             console.print(f"[red]Failed to download transcribed LRC: {e}[/red]")
             raise typer.Exit(1)
 
-    from stream_of_worship.admin.editor.autosave import autosave_exists, load_autosave, AutosaveState
+    from stream_of_worship.admin.editor.autosave import (
+        autosave_exists,
+        load_autosave,
+        AutosaveState,
+    )
     from stream_of_worship.admin.editor.state import EditorState
     from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
 
@@ -3448,37 +3481,64 @@ def edit_lrc(
                     offset = editor_state.padding_offset_seconds
                     for i, line in enumerate(editor_state.timed_lines):
                         if i < len(editor_state.original_timestamps):
-                            line.time_seconds = max(0.0, editor_state.original_timestamps[i] + offset)
+                            line.time_seconds = max(
+                                0.0, editor_state.original_timestamps[i] + offset
+                            )
             else:
                 console.print("[red]Failed to load autosave. Starting fresh.[/red]")
                 editor_state = _build_fresh_editor_state(
-                    transcribed_content, song, recording, song_title, audio_path,
-                    transcribed_identity, source_mode,
+                    transcribed_content,
+                    song,
+                    recording,
+                    song_title,
+                    audio_path,
+                    transcribed_identity,
+                    source_mode,
                 )
         elif choice == 1:
             from stream_of_worship.admin.editor.autosave import clear_autosave
+
             clear_autosave(cache_dir, recording.hash_prefix)
             editor_state = _build_fresh_editor_state(
-                transcribed_content, song, recording, song_title, audio_path,
-                transcribed_identity, source_mode,
+                transcribed_content,
+                song,
+                recording,
+                song_title,
+                audio_path,
+                transcribed_identity,
+                source_mode,
             )
         else:
             from stream_of_worship.admin.editor.upload import save_local_draft
+
             autosave_state = load_autosave(cache_dir, recording.hash_prefix)
             if autosave_state:
-                draft_content = serialize_lrc(autosave_state.timed_lines, autosave_state.preserved_lines)
+                draft_content = serialize_lrc(
+                    autosave_state.timed_lines, autosave_state.preserved_lines
+                )
                 save_local_draft(cache_dir, recording.hash_prefix, draft_content)
                 console.print("[green]Autosave saved as local draft.[/green]")
             from stream_of_worship.admin.editor.autosave import clear_autosave
+
             clear_autosave(cache_dir, recording.hash_prefix)
             editor_state = _build_fresh_editor_state(
-                transcribed_content, song, recording, song_title, audio_path,
-                transcribed_identity, source_mode,
+                transcribed_content,
+                song,
+                recording,
+                song_title,
+                audio_path,
+                transcribed_identity,
+                source_mode,
             )
     else:
         editor_state = _build_fresh_editor_state(
-            transcribed_content, song, recording, song_title, audio_path,
-            transcribed_identity, source_mode,
+            transcribed_content,
+            song,
+            recording,
+            song_title,
+            audio_path,
+            transcribed_identity,
+            source_mode,
         )
 
     console.print(f"[cyan]Launching LRC editor for: {song_title}[/cyan]")
@@ -4378,7 +4438,8 @@ def _process_batch(
                     force=force_lrc,
                     force_whisper=False,
                     youtube_url=youtube_url,
-                    use_qwen3=True,
+                    use_qwen3_asr=True,
+                    force_qwen3_asr=False,
                 )
 
                 db_client.update_recording_status(
@@ -4572,9 +4633,9 @@ def _poll_all_jobs(
                                     f"{max_resubmits} resubmits, marking as failed[/red]"
                                 )
                                 results[song_id]["lrc"] = "failed"
-                                results[song_id]["lrc_error"] = (
-                                    f"Job lost (404) and not found on R2 after {max_resubmits} resubmits"
-                                )
+                                results[song_id][
+                                    "lrc_error"
+                                ] = f"Job lost (404) and not found on R2 after {max_resubmits} resubmits"
                                 db_client.update_recording_status(
                                     hash_prefix=recording.hash_prefix,
                                     lrc_status="failed",
@@ -4590,9 +4651,9 @@ def _poll_all_jobs(
                                     song = db_client.get_song(song_id)
                                     if not song or not song.lyrics_raw:
                                         results[song_id]["lrc"] = "failed"
-                                        results[song_id]["lrc_error"] = (
-                                            "Job lost and no lyrics available for resubmit"
-                                        )
+                                        results[song_id][
+                                            "lrc_error"
+                                        ] = "Job lost and no lyrics available for resubmit"
                                         db_client.update_recording_status(
                                             hash_prefix=recording.hash_prefix,
                                             lrc_status="failed",
@@ -4611,7 +4672,8 @@ def _poll_all_jobs(
                                         force=force_lrc,
                                         force_whisper=False,
                                         youtube_url=recording.youtube_url or "",
-                                        use_qwen3=True,
+                                        use_qwen3_asr=True,
+                                        force_qwen3_asr=False,
                                     )
                                     db_client.update_recording_status(
                                         hash_prefix=recording.hash_prefix,
@@ -4820,16 +4882,19 @@ def _print_stats(
     )
     lrc_skipped_download = sum(1 for r in results.values() if r.get("download") == "failed")
 
-    # LRC source breakdown (YouTube vs ASR)
+    # LRC source breakdown
     lrc_youtube = sum(1 for r in results.values() if r.get("lrc_source") == "youtube_transcript")
-    lrc_asr = sum(1 for r in results.values() if r.get("lrc_source") == "whisper_asr")
-    lrc_unknown = lrc_completed - lrc_skipped_existing - lrc_youtube - lrc_asr
+    lrc_qwen_asr = sum(1 for r in results.values() if r.get("lrc_source") == "qwen3_asr")
+    lrc_whisper_asr = sum(1 for r in results.values() if r.get("lrc_source") == "whisper_asr")
+    lrc_unknown = (
+        lrc_completed - lrc_skipped_existing - lrc_youtube - lrc_qwen_asr - lrc_whisper_asr
+    )
 
     # LRC timing stats (only for ASR/Whisper jobs, not YouTube or R2 pre-existing)
     lrc_timings = []
     for song_id, t in results.items():
-        # Only track timings for jobs that were generated by ASR/Whisper
-        if "elapsed" in t and t.get("lrc_source") == "whisper_asr":
+        # Only track timings for jobs that were generated by ASR, not YouTube or R2 pre-existing
+        if "elapsed" in t and t.get("lrc_source") in {"qwen3_asr", "whisper_asr"}:
             lrc_timings.append(t["elapsed"])
 
     if lrc_timings:
@@ -4864,7 +4929,8 @@ def _print_stats(
                 f"│ {'LRC source:':<30} {'':>18} │",
                 f"│ {'  R2 pre-existing:':<30} {lrc_skipped_existing:>18} │",
                 f"│ {'  YouTube Transcription:':<30} {lrc_youtube:>18} │",
-                f"│ {'  ASR (Whisper):':<30} {lrc_asr:>18} │",
+                f"│ {'  ASR (Qwen3):':<30} {lrc_qwen_asr:>18} │",
+                f"│ {'  ASR (Whisper):':<30} {lrc_whisper_asr:>18} │",
             ]
         )
         if lrc_unknown > 0:

@@ -174,6 +174,32 @@ class CacheManager:
         cache_file.write_text(json.dumps(cache_data, indent=2))
         return cache_file
 
+    def get_qwen3_asr_transcription(self, cache_key: str) -> Optional[dict]:
+        """Check if Qwen3 ASR transcription exists in cache."""
+        hash_prefix = self._get_hash_prefix(cache_key)
+        cache_dir = self.cache_dir / "qwen3_asr"
+        cache_file = cache_dir / f"{hash_prefix}.json"
+
+        if cache_file.exists():
+            try:
+                return json.loads(cache_file.read_text())
+            except (json.JSONDecodeError, IOError):
+                return None
+        return None
+
+    def save_qwen3_asr_transcription(self, cache_key: str, payload: dict) -> Path:
+        """Save Qwen3 ASR transcription payload to cache."""
+        hash_prefix = self._get_hash_prefix(cache_key)
+        cache_dir = self.cache_dir / "qwen3_asr"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{hash_prefix}.json"
+        cache_data = {
+            **payload,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+        }
+        cache_file.write_text(json.dumps(cache_data, indent=2, ensure_ascii=False))
+        return cache_file
+
     def clear(self) -> None:
         """Clear all cached data."""
         if self.cache_dir.exists():

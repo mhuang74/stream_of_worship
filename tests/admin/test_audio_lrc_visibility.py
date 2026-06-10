@@ -80,7 +80,8 @@ def test_submit_lrc_wait_completion_forces_review_visibility():
         no_vocals=False,
         no_youtube=False,
         no_whisper_cache=False,
-        no_qwen3=False,
+        no_qwen3_asr=False,
+        force_qwen3_asr=False,
         wait=True,
         console=_console(),
     )
