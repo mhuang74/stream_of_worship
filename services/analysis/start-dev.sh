@@ -13,6 +13,23 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODEL_DIR="${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-$HOME/.cache/audio-separator}"
+NO_START=false
+REBUILD=false
+COMPOSE_UP_ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --no-start)
+            NO_START=true
+            ;;
+        --build|--rebuild)
+            REBUILD=true
+            ;;
+        *)
+            COMPOSE_UP_ARGS+=("$arg")
+            ;;
+    esac
+done
 
 echo -e "${GREEN}=== Analysis Service Development Startup ===${NC}"
 echo ""
@@ -104,7 +121,7 @@ if [[ ! -f "/opt/sow/.env" ]]; then
 fi
 
 # Handle --no-start flag (download only)
-if [[ "$1" == "--no-start" ]]; then
+if [[ "$NO_START" == true ]]; then
     echo -e "${GREEN}Models are ready. Skipping docker compose startup.${NC}"
     exit 0
 fi
@@ -113,11 +130,15 @@ echo ""
 echo -e "${GREEN}Starting Analysis Service in development mode...${NC}"
 echo "  Model directory: $MODEL_DIR"
 echo "  API will be available at: http://localhost:8000"
+if [[ "$REBUILD" == true ]]; then
+    echo "  Rebuilding Docker image before start"
+    COMPOSE_UP_ARGS=(--build "${COMPOSE_UP_ARGS[@]}")
+fi
 echo ""
 
 cd "$SCRIPT_DIR"
 if [[ -f "/opt/sow/.env" ]]; then
-    docker compose --env-file /opt/sow/.env up analysis-dev "$@"
+    docker compose --env-file /opt/sow/.env up "${COMPOSE_UP_ARGS[@]}" analysis-dev
 else
-    docker compose up analysis-dev "$@"
+    docker compose up "${COMPOSE_UP_ARGS[@]}" analysis-dev
 fi
