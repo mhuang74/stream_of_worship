@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { findTopMatchingLines } from "@/lib/db/songs";
+import { findTopMatchingLines, rrfRerank, SemanticSearchResult } from "@/lib/db/songs";
 import { db } from "@/db";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -12,6 +12,26 @@ vi.mock("@/db", () => ({
 const dialect = new PgDialect();
 
 const NON_ZERO_EMBEDDING = Array.from({ length: 1536 }, () => 0.01);
+
+function makeSong(id: string, similarity: number): SemanticSearchResult {
+  return {
+    id,
+    title: `Song ${id}`,
+    titlePinyin: null,
+    composer: null,
+    lyricist: null,
+    albumName: null,
+    albumSeries: null,
+    musicalKey: null,
+    createdAt: null,
+    updatedAt: null,
+    similarity,
+    modelVersion: "text-embedding-3-small",
+    matchingSnippet: null,
+    whyThisMatch: [],
+    recordings: [],
+  };
+}
 
 describe("findTopMatchingLines", () => {
   beforeEach(() => {
@@ -47,5 +67,200 @@ describe("findTopMatchingLines", () => {
     await expect(
       findTopMatchingLines(nanEmbedding, ["song-1"])
     ).rejects.toThrow("Invalid embedding");
+  });
+});
+
+describe("rrfRerank", () => {
+  it("song with strong line match overtakes song with weak line match", () => {
+    const songs = [
+      makeSong("A", 0.80),
+      makeSong("C", 0.50),
+      makeSong("B", 0.45),
+      makeSong("D", 0.35),
+    ];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+    snippets.set("B", [{ lineText: "line B", lineSimilarity: 0.65 }]);
+    snippets.set("C", [{ lineText: "line C", lineSimilarity: 0.40 }]);
+    snippets.set("D", [{ lineText: "line D", lineSimilarity: 0.60 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    expect(result[0].id).toBe("B");
+    expect(result[1].id).toBe("A");
+    expect(result[2].id).toBe("C");
+    expect(result[3].id).toBe("D");
+  });
+
+  it("song with no line embeddings gets last-place line rank", () => {
+    const songs = [
+      makeSong("A", 0.80),
+      makeSong("B", 0.45),
+    ];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    expect(result[0].id).toBe("A");
+    expect(result[1].id).toBe("B");
+  });
+
+  it("results are sorted by rrfScore DESC", () => {
+    const songs = [
+      makeSong("A", 0.80),
+      makeSong("B", 0.45),
+      makeSong("C", 0.50),
+    ];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+    snippets.set("B", [{ lineText: "line B", lineSimilarity: 0.65 }]);
+    snippets.set("C", [{ lineText: "line C", lineSimilarity: 0.40 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i - 1].rrfScore!).toBeGreaterThanOrEqual(result[i].rrfScore!);
+    }
+  });
+
+  it("similarity field is preserved (not overwritten)", () => {
+    const songs = [makeSong("A", 0.80), makeSong("B", 0.45)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+    snippets.set("B", [{ lineText: "line B", lineSimilarity: 0.65 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    const songA = result.find((s) => s.id === "A")!;
+    const songB = result.find((s) => s.id === "B")!;
+    expect(songA.similarity).toBe(0.80);
+    expect(songB.similarity).toBe(0.45);
+  });
+
+  it("rrfScore is present on returned results", () => {
+    const songs = [makeSong("A", 0.80), makeSong("B", 0.45)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+    snippets.set("B", [{ lineText: "line B", lineSimilarity: 0.65 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    for (const song of result) {
+      expect(song.rrfScore).toBeDefined();
+      expect(typeof song.rrfScore).toBe("number");
+    }
+  });
+
+  it("single song: rrfScore = 2/(k+1)", () => {
+    const songs = [makeSong("A", 0.80)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.50 }]);
+
+    const result = rrfRerank(songs, snippets, 60);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].rrfScore).toBeCloseTo(2 / 61, 10);
+  });
+
+  it("all songs have equal line similarity: ordering matches song-level rank", () => {
+    const songs = [
+      makeSong("A", 0.90),
+      makeSong("B", 0.70),
+      makeSong("C", 0.50),
+    ];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.50 }]);
+    snippets.set("B", [{ lineText: "line B", lineSimilarity: 0.50 }]);
+    snippets.set("C", [{ lineText: "line C", lineSimilarity: 0.50 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    expect(result.map((s) => s.id)).toEqual(["A", "B", "C"]);
+  });
+
+  it("all songs have equal song similarity: ordering matches line-level rank", () => {
+    const songs = [
+      makeSong("A", 0.50),
+      makeSong("B", 0.50),
+      makeSong("C", 0.50),
+    ];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+    snippets.set("B", [{ lineText: "line B", lineSimilarity: 0.65 }]);
+    snippets.set("C", [{ lineText: "line C", lineSimilarity: 0.40 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    expect(result.map((s) => s.id)).toEqual(["B", "A", "C"]);
+  });
+
+  it("low line coverage (< 50%): returns songs unchanged, no rrfScore added", () => {
+    const songs = [
+      makeSong("A", 0.80),
+      makeSong("B", 0.45),
+      makeSong("C", 0.50),
+    ];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.30 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    expect(result.map((s) => s.id)).toEqual(["A", "B", "C"]);
+    for (const song of result) {
+      expect(song.rrfScore).toBeUndefined();
+    }
+  });
+
+  it("empty songs array: returns empty array", () => {
+    const result = rrfRerank([], new Map());
+    expect(result).toEqual([]);
+  });
+
+  it("all songs have no line embeddings: returns songs unchanged (0% coverage)", () => {
+    const songs = [makeSong("A", 0.80), makeSong("B", 0.45)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+
+    const result = rrfRerank(songs, snippets);
+
+    expect(result.map((s) => s.id)).toEqual(["A", "B"]);
+    for (const song of result) {
+      expect(song.rrfScore).toBeUndefined();
+    }
+  });
+
+  it("exactly 50% line coverage: RRF is applied", () => {
+    const songs = [makeSong("A", 0.80), makeSong("B", 0.45)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.90 }]);
+
+    const result = rrfRerank(songs, snippets);
+
+    for (const song of result) {
+      expect(song.rrfScore).toBeDefined();
+    }
+  });
+
+  it("uses first line similarity (lines sorted DESC by DB)", () => {
+    const songs = [makeSong("A", 0.80)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [
+      { lineText: "best line", lineSimilarity: 0.90 },
+      { lineText: "second line", lineSimilarity: 0.50 },
+    ]);
+
+    const result = rrfRerank(songs, snippets, 60);
+
+    expect(result[0].rrfScore).toBeCloseTo(2 / 61, 10);
+  });
+
+  it("custom k parameter is respected", () => {
+    const songs = [makeSong("A", 0.80)];
+    const snippets = new Map<string, { lineText: string; lineSimilarity: number }[]>();
+    snippets.set("A", [{ lineText: "line A", lineSimilarity: 0.50 }]);
+
+    const result = rrfRerank(songs, snippets, 10);
+
+    expect(result[0].rrfScore).toBeCloseTo(2 / 11, 10);
   });
 });

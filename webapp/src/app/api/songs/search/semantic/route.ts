@@ -4,6 +4,7 @@ import { embedQuery, QUERY_MODEL } from "@/lib/embedding";
 import {
   semanticSearchSongs,
   findTopMatchingLines,
+  rrfRerank,
 } from "@/lib/db/songs";
 import { z } from "zod";
 
@@ -46,18 +47,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const songs = await semanticSearchSongs(queryEmbedding, QUERY_MODEL, limit);
+    const overfetchLimit = limit * 2;
+    const songs = await semanticSearchSongs(queryEmbedding, QUERY_MODEL, overfetchLimit);
 
     const snippets = await findTopMatchingLines(
       queryEmbedding,
       songs.map((s) => s.id)
     );
 
-    const songsWithSnippets = songs.map((s) => ({
-      ...s,
-      matchingSnippet: snippets.get(s.id)?.[0]?.lineText ?? null,
-      whyThisMatch: snippets.get(s.id)?.map((l) => l.lineText) ?? [],
-    }));
+    const rerankedSongs = rrfRerank(songs, snippets);
+
+    const trimmed = rerankedSongs.slice(0, limit);
+
+    const songsWithSnippets = trimmed.map((s) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { rrfScore, ...rest } = s;
+      return {
+        ...rest,
+        matchingSnippet: snippets.get(s.id)?.[0]?.lineText ?? null,
+        whyThisMatch: snippets.get(s.id)?.map((l) => l.lineText) ?? [],
+      };
+    });
 
     return NextResponse.json({
       songs: songsWithSnippets,

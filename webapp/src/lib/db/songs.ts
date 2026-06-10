@@ -312,6 +312,7 @@ export interface SemanticSearchResult extends SongWithRecordings {
   modelVersion: string;
   matchingSnippet: string | null;
   whyThisMatch: string[];
+  rrfScore?: number;
 }
 
 function validateEmbedding(embedding: number[], expectedDims: number = 1536): string {
@@ -326,8 +327,8 @@ function validateEmbedding(embedding: number[], expectedDims: number = 1536): st
       throw new Error("Invalid embedding value: values must be in range [-100, 100]");
     }
   }
-  const vectorStr = `[${embedding.join(",")}]`;
-  if (!/^\[-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*\]$/.test(vectorStr)) {
+  const vectorStr = `[${embedding.map((v) => v.toFixed(10)).join(",")}]`;
+  if (!/^\[-?\d+\.\d+(,-?\d+\.\d+)*\]$/.test(vectorStr)) {
     throw new Error("Invalid embedding: vector string contains unexpected characters");
   }
   return vectorStr;
@@ -455,4 +456,50 @@ export async function findTopMatchingLines(
     result.set(songId, lines);
   }
   return result;
+}
+
+const RRF_K = 60;
+const MIN_LINE_COVERAGE = 0.5;
+
+export function rrfRerank(
+  songs: SemanticSearchResult[],
+  snippets: Map<string, { lineText: string; lineSimilarity: number }[]>,
+  k: number = RRF_K,
+): SemanticSearchResult[] {
+  if (songs.length === 0) return songs;
+
+  const maxLineSimBySong = new Map<string, number>();
+  let songsWithLines = 0;
+  for (const song of songs) {
+    const lines = snippets.get(song.id);
+    if (lines && lines.length > 0) {
+      maxLineSimBySong.set(song.id, lines[0].lineSimilarity);
+      songsWithLines++;
+    } else {
+      maxLineSimBySong.set(song.id, 0);
+    }
+  }
+
+  if (songsWithLines / songs.length < MIN_LINE_COVERAGE) {
+    return songs;
+  }
+
+  const rankSong = new Map<string, number>();
+  songs.forEach((song, i) => rankSong.set(song.id, i + 1));
+
+  const rankLine = new Map<string, number>();
+  const songsByLineSim = [...songs].sort((a, b) =>
+    (maxLineSimBySong.get(b.id) ?? 0) - (maxLineSimBySong.get(a.id) ?? 0),
+  );
+  songsByLineSim.forEach((song, i) => rankLine.set(song.id, i + 1));
+
+  const lastRank = songs.length + 1;
+  const reranked = songs.map((song) => ({
+    ...song,
+    rrfScore: 1 / (k + (rankSong.get(song.id) ?? lastRank))
+            + 1 / (k + (rankLine.get(song.id) ?? lastRank)),
+  }));
+
+  reranked.sort((a, b) => b.rrfScore - a.rrfScore);
+  return reranked;
 }
