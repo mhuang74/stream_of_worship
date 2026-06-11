@@ -695,7 +695,7 @@ class JobQueue:
         if request.youtube_url:
             logger.info(
                 f"YouTube URL provided: {request.youtube_url} "
-                f"— will try YouTube transcript first, Whisper as fallback"
+                f"— will try YouTube transcript first, LLM-based ASR as fallback"
             )
         else:
             logger.info("No YouTube URL — will use Whisper transcription directly")
@@ -831,11 +831,14 @@ class JobQueue:
                             lrc_source = "qwen3_asr"
                             await self._update_stage(job, "qwen3_asr_done", 0.7)
                         except Qwen3AsrError as e:
-                            logger.warning("Qwen3 ASR failed; falling back to Whisper: %s", e)
+                            logger.warning(
+                                "Qwen3 ASR failed; falling back to LLM-based ASR: %s", e
+                            )
                             await self._update_stage(job, "falling_back_to_whisper", 0.45)
                         except Exception as e:
                             logger.warning(
-                                "Qwen3 ASR unexpected failure; falling back to Whisper: %s", e
+                                "Qwen3 ASR unexpected failure; falling back to LLM-based ASR: %s",
+                                e,
                             )
                             await self._update_stage(job, "falling_back_to_whisper", 0.45)
                     else:

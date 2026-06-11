@@ -686,7 +686,7 @@ async def try_youtube_transcript_lrc(
         logger.warning("=" * 80)
         logger.warning("LRC GENERATION: YouTube transcript path FAILED")
         logger.warning(f"Reason: {e}")
-        logger.warning("Falling back to Whisper transcription + LLM alignment...")
+        logger.warning("Falling back to LLM-based ASR...")
         logger.warning("=" * 80)
         return None
 
