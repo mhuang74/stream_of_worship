@@ -348,6 +348,7 @@ Results are cached locally to avoid redundant API calls. Cache version (`SOW_DAS
 | `SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS` | `1800` | Timeout for filetrans ASR calls |
 | `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | `2` | Max concurrent ASR requests |
 | `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | `10000` | Max context chars for LLM alignment |
+| `SOW_DASHSCOPE_ASR_SNAP_THRESHOLD` | `0.60` | Threshold for snapping Qwen3 ASR segments |
 
 ## Platform-Specific Builds
 

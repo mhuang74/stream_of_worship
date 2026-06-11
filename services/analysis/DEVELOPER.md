@@ -363,5 +363,8 @@ docker compose down -v
 | `SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS` | Optional | 1800 | Filetrans ASR call timeout |
 | `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | Optional | 2 | Max concurrent ASR requests |
 | `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | Optional | 10000 | Max context chars for LLM alignment |
+| `SOW_DASHSCOPE_ASR_SNAP_THRESHOLD` | Optional | 0.60 | Threshold for snapping Qwen3 ASR segments |
+| `SOW_QWEN3_BASE_URL` | Optional | http://qwen3:8000 | Base URL for Qwen3 Alignment Service |
+| `SOW_QWEN3_API_KEY` | Optional | - | Optional API key for Qwen3 service |
 | `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | For stems | - | Audio-separator models path |
 | `TARGETPLATFORM` | No | linux/amd64 | Docker build platform |
