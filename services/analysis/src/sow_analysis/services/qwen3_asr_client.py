@@ -107,7 +107,8 @@ class Qwen3AsrClient:
         if self._circuit_open:
             raise Qwen3AsrNonRetriableError("DashScope Qwen3 ASR circuit breaker is open")
 
-        mode = self._choose_mode(audio_path)
+        size_mb, duration_seconds = self._audio_diagnostics(audio_path)
+        mode = self._choose_mode_from_metadata(size_mb, duration_seconds)
         try:
             if mode == "direct":
                 return await self._with_retries(
@@ -117,19 +118,50 @@ class Qwen3AsrClient:
         except Qwen3AsrNonRetriableError:
             self.__class__._circuit_open = True
             raise
-        except Qwen3AsrError:
+        except Qwen3AsrError as direct_error:
             if mode == "direct":
-                logger.info("Qwen3 ASR direct call failed; trying filetrans fallback once")
-                return await self._with_retries(lambda: self._transcribe_filetrans(audio_path))
+                self._log_flash_failure(
+                    "Qwen3 ASR direct flash failed; attempting filetrans fallback",
+                    direct_error,
+                    mode,
+                    size_mb,
+                    duration_seconds,
+                )
+                logger.info("Attempting Qwen3 ASR filetrans fallback after direct flash failure")
+                try:
+                    return await self._with_retries(lambda: self._transcribe_filetrans(audio_path))
+                except Qwen3AsrNonRetriableError:
+                    self.__class__._circuit_open = True
+                    raise
+                except Qwen3AsrError as filetrans_error:
+                    self._log_flash_failure(
+                        "Qwen3 ASR filetrans fallback failed after direct flash failure",
+                        filetrans_error,
+                        mode,
+                        size_mb,
+                        duration_seconds,
+                    )
+                    raise
             raise
 
     def _choose_mode(self, audio_path: Path) -> str:
+        size_mb, duration_seconds = self._audio_diagnostics(audio_path)
+        return self._choose_mode_from_metadata(size_mb, duration_seconds)
+
+    def _audio_diagnostics(self, audio_path: Path) -> tuple[float, Optional[float]]:
         size_mb = audio_path.stat().st_size / (1024 * 1024)
+        duration_seconds = None
+        if size_mb <= DIRECT_FLASH_MAX_SIZE_MB:
+            duration_seconds = self._probe_duration_seconds(audio_path)
+        return size_mb, duration_seconds
+
+    def _choose_mode_from_metadata(
+        self, size_mb: float, duration_seconds: Optional[float]
+    ) -> str:
         if size_mb > DIRECT_FLASH_MAX_SIZE_MB:
             logger.info("Routing Qwen3 ASR to filetrans: audio size %.1fMB", size_mb)
             return "filetrans"
 
-        duration_seconds = self._probe_duration_seconds(audio_path)
         if duration_seconds is not None and duration_seconds > DIRECT_FLASH_MAX_DURATION_SECONDS:
             logger.info(
                 "Routing Qwen3 ASR to filetrans: audio duration %.1fs", duration_seconds
@@ -142,6 +174,30 @@ class Qwen3AsrClient:
             f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown",
         )
         return "direct"
+
+    def _log_flash_failure(
+        self,
+        message: str,
+        exc: Exception,
+        selected_mode: str,
+        size_mb: float,
+        duration_seconds: Optional[float],
+    ) -> None:
+        logger.warning(
+            "%s: reason=%s model=%s filetrans_model=%s region=%s selected_mode=%s "
+            "audio_size=%.1fMB duration=%s",
+            message,
+            self._format_exception(exc),
+            self.flash_model,
+            self.filetrans_model,
+            self.region,
+            selected_mode,
+            size_mb,
+            f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown",
+        )
+
+    def _format_exception(self, exc: Exception) -> str:
+        return f"{exc.__class__.__name__}: {exc}"
 
     def _probe_duration_seconds(self, audio_path: Path) -> Optional[float]:
         try:
@@ -253,12 +309,31 @@ class Qwen3AsrClient:
         status = int(getattr(resp, "status_code", 0) or 0)
         if status == 200:
             return
-        message = str(getattr(resp, "message", "") or getattr(resp, "output", ""))
+        message = self._response_error_summary(resp)
         if status in {401, 403}:
             raise Qwen3AsrNonRetriableError(f"DashScope auth error {status}: {message}")
         if status == 429 or status >= 500:
             raise Qwen3AsrError(f"DashScope transient error {status}: {message}")
         raise Qwen3AsrError(f"DashScope API error {status}: {message}")
+
+    def _response_error_summary(self, resp: Any) -> str:
+        parts = [f"status_code={int(getattr(resp, 'status_code', 0) or 0)}"]
+        output = getattr(resp, "output", None)
+        for attr in ("request_id", "code", "message"):
+            value = getattr(resp, attr, None)
+            if not value and isinstance(output, dict):
+                value = output.get(attr)
+            if value:
+                parts.append(f"{attr}={value}")
+        if output:
+            parts.append(f"output={self._safe_response_value(output)}")
+        return "; ".join(parts)
+
+    def _safe_response_value(self, value: Any) -> str:
+        text = str(value)
+        if len(text) > 500:
+            return f"{text[:500]}..."
+        return text
 
     def _parse_result(self, raw: dict[str, Any], model: str, mode: str) -> Qwen3AsrResult:
         sentences = self._extract_sentences(raw)

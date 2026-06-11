@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -8,6 +9,7 @@ from sow_analysis.models import LrcOptions
 from sow_analysis.services.canonical_snap import snap_qwen3_asr_to_canonical
 from sow_analysis.services.qwen3_asr_client import (
     Qwen3AsrClient,
+    Qwen3AsrError,
     Qwen3AsrResult,
     Qwen3AsrSegment,
     Qwen3AsrWord,
@@ -155,6 +157,68 @@ def test_qwen_client_routes_to_direct_for_small_short_audio(tmp_path: Path):
 
     with patch.dict("sys.modules", {"librosa": fake_librosa}):
         assert Qwen3AsrClient(api_key="test")._choose_mode(audio_path) == "direct"
+
+
+@pytest.mark.asyncio
+async def test_qwen_client_logs_direct_flash_failure_before_filetrans_fallback(
+    tmp_path: Path,
+    caplog,
+):
+    audio_path = tmp_path / "short.mp3"
+    audio_path.write_bytes(b"small")
+    client = Qwen3AsrClient(api_key="test", region="intl")
+    filetrans_result = Qwen3AsrResult(
+        segments=[Qwen3AsrSegment("filetrans ok", 0.0, 1.0)],
+        words=[],
+        text="filetrans ok",
+        raw_response={"ok": True},
+        model="qwen3-asr-flash-filetrans",
+        region="intl",
+        mode="filetrans",
+    )
+
+    client._audio_diagnostics = lambda path: (1.25, 12.5)
+    client._transcribe_direct = AsyncMock(side_effect=Qwen3AsrError("flash exploded"))
+    client._transcribe_filetrans = AsyncMock(return_value=filetrans_result)
+
+    caplog.set_level(logging.INFO, logger="sow_analysis.services.qwen3_asr_client")
+    with patch("sow_analysis.services.qwen3_asr_client.asyncio.sleep", new=AsyncMock()):
+        result = await client.transcribe(audio_path)
+
+    assert result is filetrans_result
+    assert "Qwen3 ASR direct flash failed; attempting filetrans fallback" in caplog.text
+    assert "Qwen3AsrError: Qwen3 ASR failed after retries: flash exploded" in caplog.text
+    assert "model=qwen3-asr-flash" in caplog.text
+    assert "region=intl" in caplog.text
+    assert "selected_mode=direct" in caplog.text
+    assert "audio_size=1.2MB" in caplog.text
+    assert "duration=12.5s" in caplog.text
+    assert "Attempting Qwen3 ASR filetrans fallback after direct flash failure" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_qwen_client_logs_filetrans_fallback_failure_reason(tmp_path: Path, caplog):
+    audio_path = tmp_path / "short.mp3"
+    audio_path.write_bytes(b"small")
+    client = Qwen3AsrClient(api_key="test", region="us")
+
+    client._audio_diagnostics = lambda path: (2.0, None)
+    client._transcribe_direct = AsyncMock(side_effect=Qwen3AsrError("flash broken"))
+    client._transcribe_filetrans = AsyncMock(side_effect=Qwen3AsrError("filetrans broken"))
+
+    caplog.set_level(logging.INFO, logger="sow_analysis.services.qwen3_asr_client")
+    with patch("sow_analysis.services.qwen3_asr_client.asyncio.sleep", new=AsyncMock()):
+        with pytest.raises(Qwen3AsrError):
+            await client.transcribe(audio_path)
+
+    assert "Qwen3 ASR direct flash failed; attempting filetrans fallback" in caplog.text
+    assert "Qwen3AsrError: Qwen3 ASR failed after retries: flash broken" in caplog.text
+    assert "Qwen3 ASR filetrans fallback failed after direct flash failure" in caplog.text
+    assert "Qwen3AsrError: Qwen3 ASR failed after retries: filetrans broken" in caplog.text
+    assert "region=us" in caplog.text
+    assert "selected_mode=direct" in caplog.text
+    assert "audio_size=2.0MB" in caplog.text
+    assert "duration=unknown" in caplog.text
 
 
 def test_canonical_snap_does_not_bias_ordered_search_to_final_line():
