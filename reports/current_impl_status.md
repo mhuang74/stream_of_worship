@@ -1,6 +1,6 @@
 # Stream of Worship - Current Implementation Status Report
 
-**Generated:** 2026-05-17 (updated 2026-06-11)
+**Generated:** 2026-05-17 (updated 2026-06-15)
 **Project:** Stream of Worship - Admin CLI, Analysis Service, Web App & Render Worker
 **Repository:** sow_deployment_preps
 
@@ -12,7 +12,9 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Overall Progress:** All phases complete (100%)
 
-**Latest Milestone:** Qwen3 ASR Flash failure diagnostics added — direct Flash failures now log the safe failure reason and routing metadata before Filetrans fallback, Filetrans fallback failures log their own reason, and user-facing fallback log wording now says LLM-based ASR.
+**Latest Milestone:** Analysis queue state logging now suppresses empty periodic traces, still reports active queued/processing work, and reports failed jobs only while they remain within the existing 5-minute in-memory retention window.
+
+**Maintenance Update (2026-06-15):** Added queue logging regression coverage for empty, completed-only, queued, processing, recent failed, and stale failed states. Also fixed async queue test cleanup calls that were leaving un-awaited coroutine warnings.
 
 **Maintenance Update (2026-06-15):** Added the curated non-SOP catalog intake flow for `sow-admin catalog insert`, including reviewed YouTube metadata/caption drafts, duplicate-safe song insertion, nominal `catalog edit`, `catalog list --deleted`, and quarantine/restore recovery commands with shared YouTube audio import reuse.
 
