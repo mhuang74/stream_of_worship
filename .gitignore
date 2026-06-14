@@ -201,6 +201,8 @@ cython_debug/
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 #  refer to https://docs.cursor.com/context/ignore-files
 
+.codex/
+
 # Local outputs
 vocal_extraction_output/
 .cursorignore
