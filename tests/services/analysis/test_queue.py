@@ -1,13 +1,33 @@
 """Tests for job queue."""
 
 import asyncio
+import logging
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sow_analysis.models import AnalyzeJobRequest, JobStatus, JobType, LrcJobRequest, LrcOptions
-from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
+from sow_analysis.workers.queue import (
+    FINISHED_JOB_MEMORY_RETENTION_SECONDS,
+    Job,
+    JobQueue,
+    _compute_lrc_cache_key,
+)
+
+
+def _queue_state_messages(caplog):
+    return [record.message for record in caplog.records if "Queue state:" in record.message]
+
+
+def _make_analysis_job(job_id: str, status: JobStatus) -> Job:
+    return Job(
+        id=job_id,
+        type=JobType.ANALYZE,
+        status=status,
+        request=AnalyzeJobRequest(audio_url=f"s3://bucket/{job_id}.mp3", content_hash=job_id),
+    )
 
 
 class TestJobQueue:
@@ -19,7 +39,7 @@ class TestJobQueue:
         with tempfile.TemporaryDirectory() as tmp:
             q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
             yield q
-            q.stop()
+            await q.stop()
 
     @pytest.mark.asyncio
     async def test_submit_job(self, queue):
@@ -65,6 +85,79 @@ class TestJobQueue:
         assert job.status == JobStatus.QUEUED
 
 
+class TestJobQueueStateLogging:
+    """Test queue state logging suppression and emission rules."""
+
+    def test_log_queue_state_skips_empty_queue(self, tmp_path, caplog):
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        assert _queue_state_messages(caplog) == []
+
+    def test_log_queue_state_skips_completed_only_queue(self, tmp_path, caplog):
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_analysis_job("job_completed", JobStatus.COMPLETED)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        assert _queue_state_messages(caplog) == []
+
+    def test_log_queue_state_emits_for_queued_job(self, tmp_path, caplog):
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_analysis_job("job_queued", JobStatus.QUEUED)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        messages = _queue_state_messages(caplog)
+        assert len(messages) == 1
+        assert "ANALYZE[queued:1,processing:0,completed:0,failed:0]" in messages[0]
+        assert "ANALYZE queued=[" in messages[0]
+
+    def test_log_queue_state_emits_for_processing_job(self, tmp_path, caplog):
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_analysis_job("job_processing", JobStatus.PROCESSING)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        messages = _queue_state_messages(caplog)
+        assert len(messages) == 1
+        assert "ANALYZE[queued:0,processing:1,completed:0,failed:0]" in messages[0]
+        assert "ANALYZE processing=" in messages[0]
+
+    def test_log_queue_state_emits_for_recent_failed_job(self, tmp_path, caplog):
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_analysis_job("job_failed", JobStatus.FAILED)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        messages = _queue_state_messages(caplog)
+        assert len(messages) == 1
+        assert "ANALYZE[queued:0,processing:0,completed:0,failed:1]" in messages[0]
+
+    def test_log_queue_state_skips_stale_failed_job(self, tmp_path, caplog):
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_analysis_job("job_stale_failed", JobStatus.FAILED)
+        job.updated_at = datetime.now(timezone.utc) - timedelta(
+            seconds=FINISHED_JOB_MEMORY_RETENTION_SECONDS + 1
+        )
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        assert _queue_state_messages(caplog) == []
+
+
 class TestLRCJobProcessing:
     """Test LRC job processing."""
 
@@ -74,7 +167,7 @@ class TestLRCJobProcessing:
         with tempfile.TemporaryDirectory() as tmp:
             q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
             yield q
-            q.stop()
+            await q.stop()
 
     @pytest.mark.asyncio
     async def test_lrc_job_uses_cache(self, queue):
@@ -174,7 +267,7 @@ class TestJobQueueConcurrency:
 
             assert queue.max_concurrent_local_model == 2
 
-            queue.stop()
+            await queue.stop()
 
 
 class TestJobQueueR2:
@@ -195,4 +288,4 @@ class TestJobQueueR2:
                 assert queue.r2_client is not None
                 mock_r2.assert_called_once_with("my-bucket", "https://r2.example.com")
 
-            queue.stop()
+            await queue.stop()

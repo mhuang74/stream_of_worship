@@ -16,6 +16,8 @@ from ..logging_config import set_job_id
 
 logger = logging.getLogger(__name__)
 
+FINISHED_JOB_MEMORY_RETENTION_SECONDS = 300.0
+
 
 @dataclass
 class ResolvedTranscriptionAudio:
@@ -369,7 +371,11 @@ class JobQueue:
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
             asyncio.create_task(self._cleanup_finished_job(job.id))
 
-    async def _cleanup_finished_job(self, job_id: str, delay: float = 300.0):
+    async def _cleanup_finished_job(
+        self,
+        job_id: str,
+        delay: float = FINISHED_JOB_MEMORY_RETENTION_SECONDS,
+    ):
         """Remove finished job from in-memory cache after delay.
 
         Args:
@@ -1345,15 +1351,27 @@ class JobQueue:
             JobType.STEM_SEPARATION: [],
         }
 
+        has_reportable_jobs = False
         for job in self._jobs.values():
             stats[job.type][job.status] += 1
 
             if job.status == JobStatus.QUEUED:
                 wait_time = (now - job.created_at).total_seconds()
                 queued_wait_times[job.type].append(wait_time)
+                has_reportable_jobs = True
             elif job.status == JobStatus.PROCESSING:
                 duration = (now - job.updated_at).total_seconds()
                 processing_durations[job.type].append(duration)
+                has_reportable_jobs = True
+            elif (
+                job.status == JobStatus.FAILED
+                and (now - job.updated_at).total_seconds()
+                <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
+            ):
+                has_reportable_jobs = True
+
+        if not has_reportable_jobs:
+            return
 
         # Build summary line
         analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]}"
