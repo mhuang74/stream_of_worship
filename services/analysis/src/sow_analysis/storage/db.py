@@ -124,10 +124,10 @@ class JobStore:
                 # Need to recreate the table
                 await self._db.executescript(
                     """
-                    -- Rename old table
+                    DROP TABLE IF EXISTS jobs_old;
+
                     ALTER TABLE jobs RENAME TO jobs_old;
 
-                    -- Create new table with updated schema
                     CREATE TABLE jobs (
                         id              TEXT PRIMARY KEY,
                         type            TEXT NOT NULL,
@@ -148,15 +148,12 @@ class JobStore:
                         CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding'))
                     );
 
-                    -- Copy data from old table
                     INSERT INTO jobs SELECT * FROM jobs_old;
 
-                    -- Recreate indexes
                     CREATE INDEX idx_jobs_status ON jobs(status);
                     CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
                     CREATE INDEX idx_jobs_created_at ON jobs(created_at);
 
-                    -- Drop old table
                     DROP TABLE jobs_old;
                     """
                 )
@@ -201,6 +198,8 @@ class JobStore:
 
                     await self._db.executescript(
                         """
+                        DROP TABLE IF EXISTS jobs_old;
+
                         ALTER TABLE jobs RENAME TO jobs_old;
 
                         CREATE TABLE jobs (
@@ -269,6 +268,8 @@ class JobStore:
 
                     await self._db.executescript(
                         """
+                        DROP TABLE IF EXISTS jobs_old;
+
                         ALTER TABLE jobs RENAME TO jobs_old;
 
                         CREATE TABLE jobs (
