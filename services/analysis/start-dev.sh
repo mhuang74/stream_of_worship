@@ -125,7 +125,7 @@ if [[ "$QWEN3_MODEL_FOUND" == false ]]; then
     echo ""
 
     cd "$PROJECT_ROOT"
-    uv run --python 3.11 --extra dev python << EOF
+    uv run --python 3.11 --extra poc_qwen3_asr python << EOF
 from huggingface_hub import snapshot_download
 import os
 

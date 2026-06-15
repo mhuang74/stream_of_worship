@@ -31,16 +31,15 @@ def map_segments_to_lines(
     maps those fine-grained segments back to the original lyric lines by tracking
     text position and computing min/max timestamps for each line.
     """
-    aligned_text = ""
+    aligned_normalized = ""
     segment_positions = []
 
     for seg_start, seg_end, seg_text in segments:
-        start_char = len(aligned_text)
-        aligned_text += seg_text
-        end_char = len(aligned_text)
+        normalized_seg = normalize_text(seg_text)
+        start_char = len(aligned_normalized)
+        aligned_normalized += normalized_seg
+        end_char = len(aligned_normalized)
         segment_positions.append((start_char, end_char, seg_start, seg_end, seg_text))
-
-    aligned_normalized = normalize_text(aligned_text)
 
     line_alignments = []
     current_pos = 0
@@ -112,7 +111,7 @@ def validate_audio_duration(audio_path: Path, max_seconds: float = 300.0) -> flo
     except Exception:
         import librosa
 
-        duration = librosa.get_duration(filename=str(audio_path))
+        duration = librosa.get_duration(path=str(audio_path))
     if duration > max_seconds:
         raise ValueError(
             f"Audio duration ({duration:.1f}s) exceeds {max_seconds / 60:.0f} minute limit"
