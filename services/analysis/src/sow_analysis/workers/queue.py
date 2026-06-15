@@ -1135,8 +1135,40 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        language_map = {"zh": "Chinese", "en": "English"}
-        language_mapped = language_map.get(request.options.language, "Chinese")
+        if request.options.language == "auto":
+            if resolve_lrc_language is None:
+                job.status = JobStatus.FAILED
+                job.error_message = "Language resolver not available for auto-detection"
+                job.stage = "missing_dependencies"
+                job.updated_at = datetime.now(timezone.utc)
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="failed",
+                        stage="missing_dependencies",
+                        error_message="Language resolver not available for auto-detection",
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+                return
+            resolution = resolve_lrc_language(
+                "auto", request.song_title, request.lyrics_text
+            )
+            detected_lang = resolution.resolved
+            logger.info(
+                "Auto-detected forced alignment language: %s (reason: %s)",
+                detected_lang,
+                resolution.reason,
+            )
+            if warn_if_lrc_language_script_mismatch is not None:
+                warn_if_lrc_language_script_mismatch(detected_lang, request.lyrics_text)
+            language_map = {"zh": "Chinese", "en": "English"}
+            language_mapped = language_map[detected_lang]
+            resolved_lang_code = detected_lang
+        else:
+            language_map = {"zh": "Chinese", "en": "English"}
+            language_mapped = language_map.get(request.options.language, "Chinese")
+            resolved_lang_code = request.options.language
 
         try:
             if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
@@ -1198,7 +1230,7 @@ class JobQueue:
 
                 lrc_url = None
                 if self.r2_client:
-                    lrc_object_name = f"lyrics.{request.options.language}.forced.lrc"
+                    lrc_object_name = f"lyrics.{resolved_lang_code}.forced.lrc"
                     target_key = f"{hash_prefix}/{lrc_object_name}"
                     try:
                         existing_lrc_url = f"s3://{self.r2_client.bucket}/{target_key}"
@@ -1206,7 +1238,7 @@ class JobQueue:
                             import time as _time
 
                             backup_key = (
-                                f"{hash_prefix}/lyrics.{request.options.language}"
+                                f"{hash_prefix}/lyrics.{resolved_lang_code}"
                                 f".backup.{int(_time.time())}.lrc"
                             )
                             await self.r2_client.copy_object(

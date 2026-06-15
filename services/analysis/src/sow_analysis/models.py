@@ -104,7 +104,7 @@ class ForcedAlignmentOptions(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    language: Literal["zh", "en"] = "zh"
+    language: Literal["auto", "zh", "en"] = "auto"
     force: bool = False
     use_vocals_stem: bool = True
 

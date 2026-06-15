@@ -414,7 +414,7 @@ class AnalysisClient:
         content_hash: str,
         lyrics_text: str,
         song_title: str = "",
-        language: str = "zh",
+        language: str = "auto",
         force: bool = False,
         use_vocals_stem: bool = True,
     ) -> JobInfo:
@@ -425,7 +425,7 @@ class AnalysisClient:
             content_hash: SHA-256 hash of the audio content
             lyrics_text: Raw lyrics text to align
             song_title: Song title
-            language: Language mode ("zh" or "en")
+            language: Language mode ("auto", "zh", or "en")
             force: Whether to force re-alignment
             use_vocals_stem: Whether to use vocals stem for better accuracy
 

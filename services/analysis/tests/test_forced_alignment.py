@@ -30,7 +30,7 @@ class TestForcedAlignmentJobRequest:
             content_hash="abc123",
             lyrics_text="test lyrics",
         )
-        assert req.options.language == "zh"
+        assert req.options.language == "auto"
         assert req.options.force is False
         assert req.options.use_vocals_stem is True
 
@@ -139,7 +139,7 @@ class TestForcedAlignmentWorker:
             content_hash="abc123def456",
             lyrics_text="hello\nworld",
             song_title="Test Song",
-            options=ForcedAlignmentOptions(language="zh"),
+            options=ForcedAlignmentOptions(language="auto"),
         )
         return Job(
             id="job_test123",
@@ -251,6 +251,105 @@ class TestForcedAlignmentWorker:
         ):
             await queue._process_forced_alignment_job(fa_job)
         assert fa_job.status == JobStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_english(self, mock_queue, fa_job):
+        """When language='auto' and lyrics are English, resolve to 'English'."""
+        fa_job.request.options.language = "auto"
+        fa_job.request.lyrics_text = "Hello world\nThis is English"
+        fa_job.request.song_title = "English Song"
+
+        with patch(
+            "sow_analysis.workers.queue.resolve_lrc_language"
+        ) as mock_resolve, patch(
+            "sow_analysis.workers.queue.warn_if_lrc_language_script_mismatch"
+        ), patch(
+            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        ):
+            from sow_analysis.workers.lrc import LrcLanguageResolution
+
+            mock_resolve.return_value = LrcLanguageResolution(
+                requested="auto", resolved="en", reason="title_latin"
+            )
+            await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.COMPLETED
+        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        assert call_args[0][2] == "English"
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_chinese(self, mock_queue, fa_job):
+        """When language='auto' and lyrics are Chinese, resolve to 'Chinese'."""
+        fa_job.request.options.language = "auto"
+        fa_job.request.lyrics_text = "我要看見\n如同摩西看見祢的榮耀"
+        fa_job.request.song_title = "中文歌曲"
+
+        with patch(
+            "sow_analysis.workers.queue.resolve_lrc_language"
+        ) as mock_resolve, patch(
+            "sow_analysis.workers.queue.warn_if_lrc_language_script_mismatch"
+        ), patch(
+            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        ):
+            from sow_analysis.workers.lrc import LrcLanguageResolution
+
+            mock_resolve.return_value = LrcLanguageResolution(
+                requested="auto", resolved="zh", reason="title_cjk"
+            )
+            await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.COMPLETED
+        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        assert call_args[0][2] == "Chinese"
+
+    @pytest.mark.asyncio
+    async def test_explicit_zh_bypasses_auto(self, mock_queue, fa_job):
+        """When language='zh' explicitly, auto-detection is skipped."""
+        fa_job.request.options.language = "zh"
+
+        with patch(
+            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        ):
+            await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.COMPLETED
+        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        assert call_args[0][2] == "Chinese"
+
+    @pytest.mark.asyncio
+    async def test_explicit_en_bypasses_auto(self, mock_queue, fa_job):
+        """When language='en' explicitly, auto-detection is skipped."""
+        fa_job.request.options.language = "en"
+
+        with patch(
+            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        ):
+            await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.COMPLETED
+        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        assert call_args[0][2] == "English"
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_no_resolver_fails(self, fa_job):
+        """When language='auto' but resolver is not available, job fails."""
+        from sow_analysis.workers.queue import JobQueue
+
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
+        queue._forced_aligner_wrapper = AsyncMock()
+        queue.r2_client = AsyncMock()
+        queue.job_store = AsyncMock()
+        queue.job_store.update_job = AsyncMock()
+
+        fa_job.request.options.language = "auto"
+
+        with patch(
+            "sow_analysis.workers.queue.resolve_lrc_language", None
+        ):
+            await queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.FAILED
+        assert "auto-detection" in fa_job.error_message or "Language resolver" in fa_job.error_message
 
 
 class TestForcedAlignerWrapper:
