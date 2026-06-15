@@ -13,6 +13,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODEL_DIR="${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-$HOME/.cache/audio-separator}"
+HF_CACHE_DIR="${SOW_FORCED_ALIGNER_MODEL_ROOT:-$HOME/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B}"
 NO_START=false
 REBUILD=false
 COMPOSE_UP_ARGS=()
@@ -104,8 +105,53 @@ EOF
     echo ""
 fi
 
-# Export the model root for docker compose
+# Check for Qwen3 Forced Aligner model
+echo -e "${YELLOW}Checking for Qwen3 Forced Aligner model...${NC}"
+
+QWEN3_MODEL_FOUND=false
+if [[ -d "$HF_CACHE_DIR" ]] && [[ -n "$(ls -A "$HF_CACHE_DIR/snapshots/" 2>/dev/null)" ]]; then
+    QWEN3_SNAPSHOT=$(ls "$HF_CACHE_DIR/snapshots/" | head -1)
+    if [[ -n "$QWEN3_SNAPSHOT" ]]; then
+        echo -e "  ${GREEN}Found: Qwen3-ForcedAligner-0.6B (snapshot: $QWEN3_SNAPSHOT)${NC}"
+        QWEN3_MODEL_FOUND=true
+    fi
+fi
+
+if [[ "$QWEN3_MODEL_FOUND" == false ]]; then
+    echo -e "  ${YELLOW}Missing: Qwen3-ForcedAligner-0.6B${NC}"
+    echo ""
+    echo -e "${YELLOW}Downloading Qwen3 Forced Aligner model from Hugging Face...${NC}"
+    echo "This may take several minutes (~1.2GB)..."
+    echo ""
+
+    cd "$PROJECT_ROOT"
+    uv run --python 3.11 --extra dev python << EOF
+from huggingface_hub import snapshot_download
+import os
+
+try:
+    path = snapshot_download("Qwen/Qwen3-ForcedAligner-0.6B")
+    print(f"  ✓ Qwen3-ForcedAligner-0.6B downloaded to: {path}")
+except Exception as e:
+    print(f"  ✗ Failed to download Qwen3-ForcedAligner-0.6B: {e}")
+    exit(1)
+EOF
+
+    # Re-check for snapshot after download
+    if [[ -d "$HF_CACHE_DIR" ]]; then
+        QWEN3_SNAPSHOT=$(ls "$HF_CACHE_DIR/snapshots/" | head -1)
+    fi
+    echo ""
+fi
+
+# Export the model roots for docker compose
 export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$MODEL_DIR"
+export SOW_FORCED_ALIGNER_MODEL_ROOT="$HF_CACHE_DIR"
+
+# If we found a snapshot, set the model path to use the local mount
+if [[ -n "${QWEN3_SNAPSHOT:-}" ]]; then
+    export SOW_FORCED_ALIGNER_MODEL_PATH="/models/hf-model/snapshots/$QWEN3_SNAPSHOT"
+fi
 
 # Check if .env file exists
 if [[ ! -f "/opt/sow/.env" ]]; then
@@ -128,7 +174,8 @@ fi
 
 echo ""
 echo -e "${GREEN}Starting Analysis Service in development mode...${NC}"
-echo "  Model directory: $MODEL_DIR"
+echo "  Audio-separator model directory: $MODEL_DIR"
+echo "  Forced aligner model directory: $HF_CACHE_DIR"
 echo "  API will be available at: http://localhost:8000"
 if [[ "$REBUILD" == true ]]; then
     echo "  Rebuilding Docker image before start"
