@@ -14,6 +14,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Latest Milestone:** Qwen3 ASR Flash failure diagnostics added — direct Flash failures now log the safe failure reason and routing metadata before Filetrans fallback, Filetrans fallback failures log their own reason, and user-facing fallback log wording now says LLM-based ASR.
 
+**Maintenance Update (2026-06-15):** Added the curated non-SOP catalog intake flow for `sow-admin catalog insert`, including reviewed YouTube metadata/caption drafts, duplicate-safe song insertion, nominal `catalog edit`, `catalog list --deleted`, and quarantine/restore recovery commands with shared YouTube audio import reuse.
+
 **Follow-up Fix (2026-06-11):** Improved DashScope Qwen3 ASR error summaries with safe response metadata (status code, request id/code/message, and bounded output summary), while preserving existing fallback order and internal job stage identifiers.
 
 **PR #101 Review Fixes (2026-06-10):** Tightened Qwen3 ASR Flash routing to the documented 10 MB / 5 minute limits with best-effort duration probing, fixed DashScope millisecond timestamp conversion, flattened FileTrans transcript sentences, removed canonical lyric final-line search bias, and made cancelled LRC parent jobs stop waiting on stem-child jobs before transcription.

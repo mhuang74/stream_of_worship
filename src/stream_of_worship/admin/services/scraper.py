@@ -3,12 +3,9 @@
 Refactored from poc/lyrics_scraper.py to integrate with the admin CLI database.
 """
 
-import hashlib
 import json
 import logging
-import re
 import time
-import unicodedata
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -18,6 +15,7 @@ from pypinyin import lazy_pinyin
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Song
+from stream_of_worship.admin.services.catalog_edit import compute_song_id
 
 logger = logging.getLogger(__name__)
 
@@ -353,15 +351,7 @@ class CatalogScraper:
         Returns:
             Stable song ID (e.g., "jiang_tian_chang_kai_a1b2c3d4")
         """
-        norm = lambda s: unicodedata.normalize("NFKC", (s or "").strip())
-        pinyin_parts = lazy_pinyin(norm(title))
-        slug = re.sub(r"[^a-z0-9_]", "", "_".join(pinyin_parts).lower())
-        payload = f"{norm(title)}|{norm(composer)}|{norm(lyricist)}"
-        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
-        song_id = f"{slug}_{digest}"
-        if len(song_id) > 100:
-            song_id = f"{slug[:91]}_{digest}"
-        return song_id
+        return compute_song_id(title, composer, lyricist)
 
     def validate_test_song(self) -> Song:
         """Validate the test song '將天敞開' against expected structure.

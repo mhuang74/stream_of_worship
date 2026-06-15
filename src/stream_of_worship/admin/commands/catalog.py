@@ -16,7 +16,22 @@ from rich.text import Text
 
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
+from stream_of_worship.admin.db.models import Song
+from stream_of_worship.admin.services.catalog_edit import (
+    build_song_diff,
+    build_song_from_review,
+    compute_song_id,
+    normalize_reviewed_data,
+    parse_review_document,
+    render_review_document,
+    review_document_in_editor,
+)
 from stream_of_worship.admin.services.scraper import CatalogScraper
+from stream_of_worship.admin.services.youtube import (
+    _fetch_transcript_draft,
+    derive_song_defaults,
+    extract_video_metadata,
+)
 from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
@@ -56,6 +71,73 @@ def get_db_client(config: AdminConfig) -> DatabaseClient:
     """
     provider = ConnectionProvider(config.get_connection_url())
     return DatabaseClient(provider)
+
+
+def _prompt_confirmation(message: str) -> bool:
+    try:
+        return input(f"{message} [y/n]: ").strip().lower() in {"y", "yes"}
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def _render_song_summary(song: Song, *, title: str) -> Panel:
+    lines = [
+        f"[cyan]ID:[/cyan] {song.id}",
+        f"[cyan]Title:[/cyan] {song.title}",
+        f"[cyan]Source URL:[/cyan] {song.source_url}",
+    ]
+    if song.composer:
+        lines.append(f"[cyan]Composer:[/cyan] {song.composer}")
+    if song.lyricist:
+        lines.append(f"[cyan]Lyricist:[/cyan] {song.lyricist}")
+    if song.album_name:
+        lines.append(f"[cyan]Album:[/cyan] {song.album_name}")
+    if song.album_series:
+        lines.append(f"[cyan]Album Series:[/cyan] {song.album_series}")
+    if song.musical_key:
+        lines.append(f"[cyan]Key:[/cyan] {song.musical_key}")
+    if song.deleted_at:
+        lines.append(f"[cyan]Deleted At:[/cyan] {song.deleted_at}")
+    lyrics_count = len(song.lyrics_list)
+    lines.append(f"[cyan]Lyrics Lines:[/cyan] {lyrics_count}")
+    return Panel.fit("\n".join(lines), title=title, border_style="green")
+
+
+def _review_song_fields(
+    initial_fields: dict[str, str | None],
+    *,
+    comments: list[str] | None = None,
+):
+    document = render_review_document(initial_fields, comments=comments)
+    reviewed_text = review_document_in_editor(document)
+    reviewed_data = parse_review_document(reviewed_text)
+    return normalize_reviewed_data(reviewed_data)
+
+
+def _show_proposed_song(song: Song, *, heading: str) -> None:
+    console.print(_render_song_summary(song, title=heading))
+    lyrics = song.lyrics_list
+    if lyrics:
+        preview = "\n".join(lyrics[:12])
+        if len(lyrics) > 12:
+            preview += "\n..."
+        console.print(Panel(preview, title=f"Lyrics Preview ({len(lyrics)} lines)", border_style="cyan"))
+    else:
+        console.print(Panel("[dim]No lyrics[/dim]", title="Lyrics Preview", border_style="dim"))
+
+
+def _print_duplicate_guidance(song: Song) -> None:
+    status = "deleted" if song.deleted_at else "active"
+    console.print(
+        f"[yellow]Found matching {status} song: {song.id} — {song.title} ({song.source_url})[/yellow]"
+    )
+    if song.deleted_at:
+        console.print(f"[cyan]Suggested next step:[/cyan] sow-admin catalog restore {song.id}")
+    else:
+        console.print(f"[cyan]Suggested next step:[/cyan] sow-admin catalog edit {song.id}")
+    console.print(
+        f"[cyan]Audio replacement:[/cyan] sow-admin audio download {song.id} --url <youtube-url> --force"
+    )
 
 
 @app.command("scrape")
@@ -164,6 +246,277 @@ def scrape_catalog(
         console.print("[yellow]Dry run - no songs saved[/yellow]")
 
 
+@app.command("insert")
+def insert_song(
+    youtube: Optional[str] = typer.Option(
+        None,
+        "--youtube",
+        help="Direct YouTube URL to prefill metadata, captions, and audio import",
+    ),
+    song_id: Optional[str] = typer.Option(
+        None,
+        "--id",
+        help="Override generated song ID",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-n",
+        help="Show reviewed data and planned actions without writing",
+    ),
+    config_path: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to config file",
+    ),
+) -> None:
+    """Insert a manually curated catalog song."""
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    initial_fields = {
+        "title": "",
+        "composer": "",
+        "lyricist": "",
+        "album_name": "",
+        "album_series": "",
+        "musical_key": "",
+        "source_url": youtube or "",
+        "lyrics_raw": "",
+    }
+    comments = ["Review and curate every field before saving."]
+    transcript_source = None
+
+    if youtube:
+        try:
+            metadata = extract_video_metadata(youtube)
+        except RuntimeError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+
+        initial_fields.update(derive_song_defaults(metadata))
+        initial_fields["source_url"] = metadata.webpage_url
+        comments.append(
+            f"youtube_title = {metadata.title!r}, duration = {metadata.duration or 'unknown'} seconds"
+        )
+
+        try:
+            transcript_draft = _fetch_transcript_draft(metadata.webpage_url)
+            transcript_source = transcript_draft.source
+            if transcript_draft.lines:
+                initial_fields["lyrics_raw"] = "\n".join(transcript_draft.lines)
+            comments.append(
+                f'lyrics_source = "{transcript_draft.source}, {len(transcript_draft.lines)} draft lines"'
+            )
+        except RuntimeError as e:
+            comments.append("lyrics_source = unavailable")
+            console.print(f"[yellow]Transcript draft unavailable: {e}[/yellow]")
+
+    reviewed = _review_song_fields(initial_fields, comments=comments)
+    final_song_id = song_id or compute_song_id(reviewed.title, reviewed.composer, reviewed.lyricist)
+    proposed_song = build_song_from_review(reviewed, song_id=final_song_id)
+
+    duplicate_song = db_client.get_song(final_song_id, include_deleted=True)
+    if duplicate_song:
+        console.print(f"[red]Song ID already exists: {final_song_id}[/red]")
+        _print_duplicate_guidance(duplicate_song)
+        raise typer.Exit(1)
+
+    duplicate_source = db_client.find_song_by_source_url(reviewed.source_url, include_deleted=True)
+    if duplicate_source:
+        console.print(f"[red]Source URL already exists: {reviewed.source_url}[/red]")
+        _print_duplicate_guidance(duplicate_source)
+        raise typer.Exit(1)
+
+    _show_proposed_song(proposed_song, heading="Proposed Song")
+
+    if dry_run:
+        console.print(f"[cyan]Generated song ID:[/cyan] {final_song_id}")
+        if youtube:
+            console.print(f"[cyan]Planned audio download URL:[/cyan] {reviewed.source_url}")
+        if transcript_source:
+            console.print(
+                f"[cyan]Caption draft:[/cyan] {transcript_source}, {len(proposed_song.lyrics_list)} lines"
+            )
+        return
+
+    if not _prompt_confirmation("Insert this catalog song?"):
+        console.print("[yellow]Insert cancelled.[/yellow]")
+        raise typer.Exit(0)
+
+    try:
+        db_client.insert_song(proposed_song)
+    except Exception as e:
+        console.print(f"[red]Failed to insert song: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Inserted song {proposed_song.id}[/green]")
+
+    if youtube:
+        try:
+            from stream_of_worship.admin.commands.audio import import_youtube_audio_for_song
+
+            import_youtube_audio_for_song(
+                song_id=proposed_song.id,
+                youtube_url=reviewed.source_url,
+                config=config,
+                db_client=db_client,
+                console=console,
+                force=False,
+                skip_video_confirm=True,
+                analyze=False,
+                lrc=False,
+            )
+        except typer.Exit:
+            console.print(
+                f"[yellow]Song inserted without audio. Retry with:[/yellow] "
+                f"sow-admin audio download {proposed_song.id} --url {reviewed.source_url}"
+            )
+            raise
+        except Exception as e:
+            console.print(
+                f"[yellow]Song inserted, but audio import failed: {e}[/yellow]\n"
+                f"[cyan]Retry:[/cyan] sow-admin audio download {proposed_song.id} --url {reviewed.source_url}"
+            )
+
+
+@app.command("edit")
+def edit_song(
+    song_id: str = typer.Argument(..., help="Song ID to edit"),
+    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Review and update nominal catalog metadata for an active song."""
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    existing = db_client.get_song(song_id)
+    if not existing:
+        console.print(f"[red]Song not found: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    reviewed = _review_song_fields(
+        {
+            "title": existing.title,
+            "composer": existing.composer or "",
+            "lyricist": existing.lyricist or "",
+            "album_name": existing.album_name or "",
+            "album_series": existing.album_series or "",
+            "musical_key": existing.musical_key or "",
+            "source_url": existing.source_url,
+            "lyrics_raw": existing.lyrics_raw or "",
+        },
+        comments=[f"Editing existing song_id = {existing.id!r}"],
+    )
+    updated_song = build_song_from_review(
+        reviewed,
+        existing_song_id=existing.id,
+        created_at=existing.created_at,
+        scraped_at=existing.scraped_at,
+    )
+
+    diff_text = build_song_diff(existing, updated_song)
+    console.print(_render_song_summary(updated_song, title="Reviewed Song"))
+    if diff_text:
+        console.print(Panel(diff_text, title="Proposed Diff", border_style="yellow"))
+
+    if not _prompt_confirmation("Save these catalog changes?"):
+        console.print("[yellow]Edit cancelled.[/yellow]")
+        raise typer.Exit(0)
+
+    if not db_client.update_song(updated_song):
+        console.print(f"[red]Failed to update song: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Updated song {song_id}[/green]")
+    if (existing.lyrics_raw or "") != (updated_song.lyrics_raw or ""):
+        console.print(f"[cyan]Follow-up:[/cyan] sow-admin audio lrc {song_id} --force")
+        console.print(f"[cyan]Follow-up:[/cyan] sow-admin audio embed {song_id}")
+
+
+@app.command("quarantine")
+def quarantine_song(
+    song_id: str = typer.Argument(..., help="Song ID to quarantine"),
+    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Hide a bad catalog row without deleting its assets."""
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    song = db_client.get_song(song_id)
+    if not song:
+        console.print(f"[red]Song not found: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    recordings = db_client.list_recordings_by_song_id(song_id)
+    references = db_client.count_songset_references(song_id)
+    console.print(_render_song_summary(song, title="Song To Quarantine"))
+    console.print(f"[cyan]Active recordings:[/cyan] {len(recordings)}")
+    console.print(f"[cyan]Songset references:[/cyan] {references}")
+
+    if not _prompt_confirmation("Quarantine this song?"):
+        console.print("[yellow]Quarantine cancelled.[/yellow]")
+        raise typer.Exit(0)
+
+    db_client.soft_delete_song(song_id)
+    held_count = db_client.hold_recordings_for_song(song_id)
+    console.print(f"[green]Quarantined {song_id}[/green]")
+    console.print(f"[cyan]Recordings placed on hold:[/cyan] {held_count}")
+    console.print("[dim]R2 audio, stems, and LRC files were preserved.[/dim]")
+
+
+@app.command("restore")
+def restore_song(
+    song_id: str = typer.Argument(..., help="Song ID to restore"),
+    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Restore a quarantined song row."""
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    song = db_client.get_song(song_id, include_deleted=True)
+    if not song:
+        console.print(f"[red]Song not found: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    if not db_client.restore_song(song_id):
+        console.print(f"[red]Failed to restore song: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Restored song {song_id}[/green]")
+    held_recordings = [
+        recording
+        for recording in db_client.list_recordings_by_song_id(song_id, include_deleted=True)
+        if recording.visibility_status == "hold" and recording.deleted_at is None
+    ]
+    if held_recordings:
+        table = Table(title="Held Recordings")
+        table.add_column("Hash Prefix", style="cyan")
+        table.add_column("Visibility", style="yellow")
+        for recording in held_recordings:
+            table.add_row(recording.hash_prefix, recording.visibility_status or "-")
+        console.print(table)
+    console.print(f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status review")
+    console.print(f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status published")
+
+
 @app.command("list")
 def list_songs(
     album: Optional[str] = typer.Option(
@@ -207,6 +560,11 @@ def list_songs(
         "-f",
         help="Output format (table|ids)",
     ),
+    deleted: bool = typer.Option(
+        False,
+        "--deleted",
+        help="Show quarantined/soft-deleted songs instead of active songs",
+    ),
     config_path: Path = typer.Option(
         None,
         "--config",
@@ -236,7 +594,7 @@ def list_songs(
 
     if albums:
         try:
-            album_list = db_client.list_albums()
+            album_list = db_client.list_albums(include_deleted=deleted)
         except Exception as e:
             console.print(f"[red]Error listing albums: {e}[/red]")
             raise typer.Exit(1)
@@ -264,7 +622,23 @@ def list_songs(
         return
 
     try:
-        songs = db_client.list_songs(album=album, key=key, limit=limit, sort_by=sort)
+        if deleted:
+            songs = db_client.list_deleted_songs()
+            if album:
+                songs = [song for song in songs if song.album_name == album]
+            if key:
+                songs = [song for song in songs if song.musical_key == key]
+            order_map = {
+                "album": lambda s: (s.album_name or "", s.title, s.id),
+                "series": lambda s: (_extract_series_sort_key(s.album_series), s.album_name or "", s.title, s.id),
+                "title": lambda s: (s.title, s.id),
+                "id": lambda s: (s.id,),
+            }
+            songs.sort(key=order_map.get(sort, order_map["album"]))
+            if limit is not None:
+                songs = songs[:limit]
+        else:
+            songs = db_client.list_songs(album=album, key=key, limit=limit, sort_by=sort)
     except Exception as e:
         console.print(f"[red]Error listing songs: {e}[/red]")
         raise typer.Exit(1)
