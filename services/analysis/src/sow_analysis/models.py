@@ -25,6 +25,7 @@ class JobType(str, Enum):
     LRC = "lrc"
     STEM_SEPARATION = "stem_separation"
     EMBEDDING = "embedding"
+    FORCED_ALIGNMENT = "forced_alignment"
 
 
 class AnalyzeOptions(BaseModel):
@@ -61,9 +62,6 @@ class LrcOptions(BaseModel):
     qwen3_asr_context_max_chars: int = 10000
     qwen3_asr_snap_threshold: float = 0.60
     qwen3_asr_min_usable_segments: int = 3
-    # Deprecated: accepted only when reconstructing old persisted job JSON.
-    use_qwen3: Optional[bool] = None
-    max_qwen3_duration: Optional[int] = None
 
     @field_validator("language", mode="before")
     @classmethod
@@ -101,6 +99,26 @@ class StemSeparationJobRequest(BaseModel):
     options: StemSeparationOptions = Field(default_factory=StemSeparationOptions)
 
 
+class ForcedAlignmentOptions(BaseModel):
+    """Options for forced alignment jobs."""
+
+    model_config = ConfigDict(extra="allow")
+
+    language: Literal["zh", "en"] = "zh"
+    force: bool = False
+    use_vocals_stem: bool = True
+
+
+class ForcedAlignmentJobRequest(BaseModel):
+    """Request to submit a forced alignment job."""
+
+    audio_url: str
+    content_hash: str
+    lyrics_text: str
+    song_title: str = ""
+    options: ForcedAlignmentOptions = Field(default_factory=ForcedAlignmentOptions)
+
+
 class Section(BaseModel):
     """Music section (verse, chorus, etc.)."""
 
@@ -128,7 +146,7 @@ class JobResult(BaseModel):
     # LRC results
     lrc_url: Optional[str] = None
     line_count: Optional[int] = None
-    lrc_source: Optional[str] = None  # youtube_transcript, qwen3_asr, or whisper_asr
+    lrc_source: Optional[str] = None  # youtube_transcript, qwen3_asr, whisper_asr, or forced_alignment
 
     # Stem separation results
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)
@@ -192,6 +210,7 @@ class Job:
         LrcJobRequest,
         StemSeparationJobRequest,
         EmbeddingJobRequest,
+        ForcedAlignmentJobRequest,
     ]
     result: Optional[Union[JobResult, EmbeddingJobResult]] = None
     error_message: Optional[str] = None

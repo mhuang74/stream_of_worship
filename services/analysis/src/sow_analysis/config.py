@@ -116,9 +116,9 @@ class Settings(BaseSettings):
         30  # Delay before processing starts (window to cancel/clear jobs)
     )
 
-    # Qwen3 Alignment Service Configuration
-    SOW_QWEN3_BASE_URL: str = "http://qwen3:8000"  # Base URL for Qwen3 Alignment Service
-    SOW_QWEN3_API_KEY: str = ""  # Optional API key for Qwen3 service authentication
+    # Forced Aligner Configuration (Qwen3ForcedAligner-0.6B, runs in-process)
+    SOW_FORCED_ALIGNER_MODEL_PATH: str = "Qwen/Qwen3-ForcedAligner-0.6B"  # HF model ID or local path
+    SOW_FORCED_ALIGNER_DEVICE: str = "auto"  # auto/mps/cuda/cpu
 
     # YouTube Proxy Configuration
     SOW_YOUTUBE_PROXY: str = (

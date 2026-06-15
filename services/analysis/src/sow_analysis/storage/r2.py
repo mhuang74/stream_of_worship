@@ -264,3 +264,22 @@ class R2Client:
             instrumental_url = f"s3://{self.bucket}/{instrumental_key}"
 
         return vocals_dry_url, vocals_url, instrumental_url
+
+    async def copy_object(self, source_s3_url: str, dest_s3_url: str) -> None:
+        """Copy an object within R2.
+
+        Args:
+            source_s3_url: Source s3://bucket/key URL
+            dest_s3_url: Destination s3://bucket/key URL
+        """
+        src_bucket, src_key = parse_s3_url(source_s3_url)
+        dest_bucket, dest_key = parse_s3_url(dest_s3_url)
+        loop = asyncio.get_event_loop()
+
+        copy_source = {"Bucket": src_bucket, "Key": src_key}
+        await loop.run_in_executor(
+            None,
+            lambda: self.s3.copy_object(
+                CopySource=copy_source, Bucket=dest_bucket, Key=dest_key
+            ),
+        )

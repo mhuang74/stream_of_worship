@@ -10,13 +10,13 @@ The LRC (Lyric) job generates timestamped lyric files (`.lrc`) for songs in the 
 
 2. **Whisper ASR** (fallback) — When no YouTube URL is provided or the YouTube path fails, the system downloads audio from R2, optionally extracts vocals stems for cleaner transcription, runs local Whisper (`faster_whisper`) to produce phrase-level transcriptions with timestamps, then uses an LLM to align the official lyrics with Whisper's output.
 
-3. **Qwen3 Refinement** (optional post-processing) — After either path produces timestamps, an optional Qwen3 ForcedAligner service can refine the timestamps for higher precision. This is a local Docker service, not a cloud API. It never replaces the primary transcription method.
+3. **Qwen3 Refinement** (optional post-processing) — After either path produces timestamps, an optional Qwen3 ForcedAligner can refine the timestamps for higher precision. This runs in-process within the analysis service, not as a separate Docker container. It never replaces the primary transcription method.
 
 **Key characteristics:**
 
 - **Two independent caches**: LRC results are cached by `(audio_hash, lyrics_hash)`; Whisper transcriptions are cached by `audio_hash` alone (so the same audio can get different LRCs if lyrics change).
 - **Auto stem separation**: If `use_vocals_stem=true` and clean vocals aren't available, the LRC job auto-submits a child `STEM_SEPARATION` job and blocks (up to 2 hours) while waiting for it.
-- **Cloud vs local models**: YouTube transcript fetching and LLM alignment use cloud APIs (OpenRouter, etc.). Whisper transcription and Qwen3 refinement use local models (GPU/CPU). A global semaphore limits concurrent local model execution to 1.
+- **Cloud vs local models**: YouTube transcript fetching and LLM alignment use cloud APIs (OpenRouter, etc.). Whisper transcription and Qwen3 forced alignment use local models (GPU/CPU). A global semaphore limits concurrent local model execution to 1.
 - **Persistence**: Job state is stored in local SQLite (`jobs.db`), results are uploaded to Cloudflare R2, and both LRC results and Whisper transcriptions are cached on disk.
 
 ## Mermaid Diagram
@@ -68,7 +68,7 @@ flowchart TD
     subgraph Path3["Path 3: Qwen3 Refinement (Optional)"]
         L --> AA{"use_qwen3?<br/>duration <= 300s?"}
         Z --> AA
-        AA -->|Yes| AB["Call Qwen3 ForcedAligner<br/>local Docker service"]
+        AA -->|Yes| AB["Call Qwen3 ForcedAligner<br/>in-process"]
         AA -->|No| AC["Skip refinement"]
         AB --> AD{"Qwen3 succeeded?"}
         AD -->|Yes| AE["Replace timestamps<br/>with Qwen3-aligned"]
@@ -112,10 +112,10 @@ The Admin CLI submits an LRC job via `POST /api/v1/jobs/lrc` with:
 | `options.whisper_model` | Whisper model size (default: `large-v3`) |
 | `options.language` | Whisper language hint (default: `zh`) |
 | `options.use_vocals_stem` | Prefer vocals stem for transcription (default: `true`) |
-| `options.use_qwen3` | Use Qwen3 for timestamp refinement (default: `true`) |
+| `options.use_qwen3` | Use Qwen3 for timestamp refinement (deprecated — use forced alignment job instead) |
 | `options.force` | Re-generate even if cached (default: `false`) |
 | `options.force_whisper` | Bypass Whisper transcription cache (default: `false`) |
-| `options.max_qwen3_duration` | Max audio duration for Qwen3 in seconds (default: `300`) |
+| `options.max_qwen3_duration` | Max audio duration for Qwen3 in seconds (deprecated — use forced alignment job instead) |
 
 ### Phase 2: Cache Check
 
@@ -188,7 +188,7 @@ If `use_vocals_stem=true`:
 
 If `use_qwen3=true` and `content_hash` is provided and audio duration <= `max_qwen3_duration` (default 300s):
 
-1. Call local Qwen3 ForcedAligner service at `SOW_QWEN3_BASE_URL` (default: `http://qwen3:8000`)
+1. Call in-process Qwen3 ForcedAligner (configured via `SOW_FORCED_ALIGNER_MODEL_PATH`)
 2. Uses clean vocals stem if available, otherwise full mix
 3. Semaphore-controlled: acquires `_local_model_semaphore`
 4. **Graceful fallback**: any exception (connection error, timeout, general) keeps the LLM-aligned timestamps
@@ -292,8 +292,8 @@ The `stage` field tracks progress through the pipeline:
 | `SOW_LLM_MODEL` | For LLM steps | — | e.g., `openai/gpt-4o-mini` |
 | `SOW_WHISPER_DEVICE` | No | `cpu` | Whisper device (`cpu` or `cuda`) |
 | `SOW_WHISPER_CACHE_DIR` | No | `/cache/whisper` | Whisper model cache directory |
-| `SOW_QWEN3_BASE_URL` | No | `http://qwen3:8000` | Qwen3 ForcedAligner service URL |
-| `SOW_QWEN3_API_KEY` | No | — | Optional Qwen3 service auth |
+| `SOW_FORCED_ALIGNER_MODEL_PATH` | No | `Qwen/Qwen3-ForcedAligner-0.6B` | Forced aligner model path (HF ID or local) |
+| `SOW_FORCED_ALIGNER_DEVICE` | No | `auto` | Device for forced alignment (auto/mps/cuda/cpu) |
 | `SOW_YOUTUBE_PROXY` | No | — | Proxy for YouTube transcript requests |
 | `SOW_YOUTUBE_PROXY_RETRIES` | No | `3` | Retries on HTTP 429 for proxy |
 | `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS` | No | `1` | Max concurrent local model executions |
@@ -305,4 +305,4 @@ The `stage` field tracks progress through the pipeline:
 | YouTube captions | Human-curated subtitles | External (YouTube) | `youtube-transcript-api` |
 | Whisper (`faster_whisper`) | ASR transcription | Local (GPU/CPU) | Local model |
 | LLM (GPT-4o-mini, etc.) | Text correction (YouTube) / Timestamp alignment (Whisper) | Cloud API (OpenRouter, etc.) | OpenAI-compatible |
-| Qwen3 ForcedAligner | Timestamp precision refinement | Local Docker service | HTTP API to local service |
+| Qwen3 ForcedAligner | Timestamp precision refinement | In-process model | Direct model call |

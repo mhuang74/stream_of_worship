@@ -64,6 +64,7 @@ from ..models import (
     AnalyzeJobRequest,
     EmbeddingJobRequest,
     EmbeddingJobResult,
+    ForcedAlignmentJobRequest,
     Job,
     JobResult,
     JobStatus,
@@ -119,6 +120,18 @@ except ImportError:
     StemSeparationWorkerError = Exception
     process_stem_separation = None
 
+# Optional forced alignment imports - require qwen-asr
+try:
+    from .forced_alignment import (
+        format_timestamp,
+        map_segments_to_lines,
+        validate_audio_duration,
+    )
+except ImportError:
+    format_timestamp = None
+    map_segments_to_lines = None
+    validate_audio_duration = None
+
 
 class JobQueue:
     """In-memory job queue with concurrent execution control."""
@@ -143,6 +156,7 @@ class JobQueue:
         self.r2_client: Optional[R2Client] = None
         self._separator_wrapper: Optional[Any] = None
         self._mvsep_client: Optional[Any] = None
+        self._forced_aligner_wrapper: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         # Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
@@ -185,6 +199,14 @@ class JobQueue:
             mvsep_client: MvsepClient instance
         """
         self._mvsep_client = mvsep_client
+
+    def set_forced_aligner_wrapper(self, wrapper: Any) -> None:
+        """Set the forced aligner wrapper for forced alignment jobs.
+
+        Args:
+            wrapper: ForcedAlignerWrapper instance
+        """
+        self._forced_aligner_wrapper = wrapper
 
     async def initialize(self) -> None:
         """Initialize persistent store and recover interrupted jobs."""
@@ -242,6 +264,7 @@ class JobQueue:
             LrcJobRequest,
             StemSeparationJobRequest,
             EmbeddingJobRequest,
+            ForcedAlignmentJobRequest,
         ],
     ) -> Job:
         """Submit a new job to the queue.
@@ -372,6 +395,10 @@ class JobQueue:
             # Embedding uses external OpenAI API - separate semaphore
             async with self._embedding_semaphore:
                 await self._process_embedding_job(job)
+        elif job.type == JobType.FORCED_ALIGNMENT:
+            # Forced alignment: semaphore acquired inside _process_forced_alignment_job()
+            # only around the align() call, not the entire job (prevents deadlock with stem separation)
+            await self._process_forced_alignment_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -589,13 +616,32 @@ class JobQueue:
         audio_path: Path,
     ) -> ResolvedTranscriptionAudio:
         """Resolve the best shared audio input for Qwen ASR and Whisper."""
+        return await self._resolve_transcription_audio(
+            job,
+            request.audio_url,
+            request.content_hash,
+            request.options.use_vocals_stem,
+            temp_path,
+            audio_path,
+        )
+
+    async def _resolve_transcription_audio(
+        self,
+        job: Job,
+        audio_url: str,
+        content_hash: str,
+        use_vocals_stem: bool,
+        temp_path: Path,
+        audio_path: Path,
+    ) -> ResolvedTranscriptionAudio:
+        """Resolve the best shared audio input for transcription/alignment."""
         await self._update_stage(job, "resolving_transcription_audio", 0.3)
-        if not request.options.use_vocals_stem or not self.r2_client:
+        if not use_vocals_stem or not self.r2_client:
             return ResolvedTranscriptionAudio(audio_path, None, "full_mix", False)
 
         from .stem_separation import get_vocals_dry_url
 
-        vocals_url = await get_vocals_dry_url(request.content_hash, self.r2_client)
+        vocals_url = await get_vocals_dry_url(content_hash, self.r2_client)
         if vocals_url:
             ext = ".flac" if vocals_url.endswith(".flac") else ".wav"
             stem_path = temp_path / f"vocals_stem{ext}"
@@ -605,8 +651,8 @@ class JobQueue:
         logger.info("No clean vocals found, auto-triggering stem separation")
         await self._update_stage(job, "submitting_stem_separation_child")
         child_request = StemSeparationJobRequest(
-            audio_url=request.audio_url,
-            content_hash=request.content_hash,
+            audio_url=audio_url,
+            content_hash=content_hash,
             options={"force": False},
         )
         child_job = await self.submit(JobType.STEM_SEPARATION, child_request)
@@ -1026,6 +1072,196 @@ class JobQueue:
 
         job.updated_at = datetime.now(timezone.utc)
 
+    async def _process_forced_alignment_job(self, job: Job) -> None:
+        """Process a forced alignment job."""
+        set_job_id(job.id)
+        job_start_time = time.time()
+        logger.info(f"Starting forced alignment job for audio: {job.request.audio_url}")
+
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "starting"
+        job.progress = 0.1
+
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="starting", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        request = job.request
+        if not isinstance(request, ForcedAlignmentJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for forced alignment job"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        if map_segments_to_lines is None or validate_audio_duration is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "Forced alignment dependencies not available (qwen-asr, soundfile)"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="Forced alignment dependencies not available (qwen-asr, soundfile)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        if not self._forced_aligner_wrapper:
+            job.status = JobStatus.FAILED
+            job.error_message = "Forced aligner wrapper not available"
+            job.stage = "missing_aligner"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_aligner",
+                    error_message="Forced aligner wrapper not available",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        language_map = {"zh": "Chinese", "en": "English"}
+        language_mapped = language_map.get(request.options.language, "Chinese")
+
+        try:
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                hash_prefix = request.content_hash[:12]
+
+                await self._update_stage(job, "downloading", 0.2)
+                audio_path = temp_path / "audio.mp3"
+                if self.r2_client:
+                    logger.info("Downloading audio from R2...")
+                    download_start = time.time()
+                    await self.r2_client.download_audio(request.audio_url, audio_path)
+                    download_elapsed = time.time() - download_start
+                    logger.info(f"Audio download completed in {download_elapsed:.2f}s")
+
+                resolved_audio = await self._resolve_transcription_audio(
+                    job,
+                    request.audio_url,
+                    request.content_hash,
+                    request.options.use_vocals_stem,
+                    temp_path,
+                    audio_path,
+                )
+                if job.status == JobStatus.CANCELLED:
+                    logger.info("Forced alignment job %s cancelled; skipping alignment", job.id)
+                    return
+
+                await self._update_stage(job, "validating_duration", 0.3)
+                validate_audio_duration(resolved_audio.path, max_seconds=300.0)
+
+                await self._update_stage(job, "aligning", 0.4)
+                async with optional_semaphore(self._local_model_semaphore):
+                    raw_segments = await self._forced_aligner_wrapper.align(
+                        resolved_audio.path, request.lyrics_text, language_mapped
+                    )
+
+                await self._update_stage(job, "mapping_segments", 0.6)
+                lyrics_lines = [line.rstrip() for line in request.lyrics_text.splitlines()]
+                while lyrics_lines and not lyrics_lines[-1]:
+                    lyrics_lines.pop()
+
+                line_alignments = map_segments_to_lines(raw_segments, lyrics_lines)
+
+                lrc_lines = []
+                for start, _end, text in line_alignments:
+                    timestamp = format_timestamp(start)
+                    lrc_lines.append(f"{timestamp} {text}")
+                lrc_content = "\n".join(lrc_lines)
+
+                lrc_path = temp_path / "lyrics.lrc"
+                lrc_path.write_text(lrc_content, encoding="utf-8")
+
+                await self._update_stage(job, "uploading", 0.8)
+
+                lrc_url = None
+                if self.r2_client:
+                    lrc_object_name = f"lyrics.{request.options.language}.forced.lrc"
+                    target_key = f"{hash_prefix}/{lrc_object_name}"
+                    try:
+                        existing_lrc_url = f"s3://{self.r2_client.bucket}/{target_key}"
+                        if await self.r2_client.check_exists(existing_lrc_url):
+                            import time as _time
+
+                            backup_key = (
+                                f"{hash_prefix}/lyrics.{request.options.language}"
+                                f".backup.{int(_time.time())}.lrc"
+                            )
+                            await self.r2_client.copy_object(
+                                existing_lrc_url, f"s3://{self.r2_client.bucket}/{backup_key}"
+                            )
+                            logger.info(f"Backed up existing LRC to {backup_key}")
+                    except Exception as e:
+                        logger.warning(f"Failed to backup existing LRC: {e}")
+
+                    lrc_url = await self.r2_client.upload_lrc(
+                        hash_prefix, lrc_path, object_name=lrc_object_name
+                    )
+
+                job.result = JobResult(
+                    lrc_url=lrc_url,
+                    line_count=len(line_alignments),
+                    lrc_source="forced_alignment",
+                )
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+
+                total_elapsed = time.time() - job_start_time
+                logger.info(f"Forced alignment job completed in {total_elapsed:.2f}s")
+
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="completed",
+                        progress=1.0,
+                        stage="complete",
+                        result_json=job.result.model_dump_json(),
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = f"Forced alignment failed: {e}"
+            job.stage = "error"
+            logger.error(f"Forced alignment job failed: {e}")
+
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="error",
+                    error_message=f"Forced alignment failed: {e}",
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+
+        finally:
+            job.updated_at = datetime.now(timezone.utc)
+
     async def _process_stem_separation_job(self, job: Job) -> None:
         """Process a stem separation job.
 
@@ -1383,6 +1619,8 @@ class JobQueue:
         """Stop processing jobs."""
         self._running = False
         await self.stop_periodic_logging()
+        if self._forced_aligner_wrapper is not None:
+            await self._forced_aligner_wrapper.cleanup()
         await self.job_store.close()
 
     def _log_queue_state(self) -> None:
@@ -1395,6 +1633,7 @@ class JobQueue:
             JobType.LRC: {status: 0 for status in JobStatus},
             JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
             JobType.EMBEDDING: {status: 0 for status in JobStatus},
+            JobType.FORCED_ALIGNMENT: {status: 0 for status in JobStatus},
         }
 
         # Track wait times for queued and processing jobs
@@ -1402,11 +1641,13 @@ class JobQueue:
             JobType.ANALYZE: [],
             JobType.LRC: [],
             JobType.STEM_SEPARATION: [],
+            JobType.FORCED_ALIGNMENT: [],
         }
         processing_durations: Dict[JobType, list] = {
             JobType.ANALYZE: [],
             JobType.LRC: [],
             JobType.STEM_SEPARATION: [],
+            JobType.FORCED_ALIGNMENT: [],
         }
 
         has_reportable_jobs = False
@@ -1435,6 +1676,7 @@ class JobQueue:
         analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]}"
         lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]}"
         stem_stats = f"queued:{stats[JobType.STEM_SEPARATION][JobStatus.QUEUED]},processing:{stats[JobType.STEM_SEPARATION][JobStatus.PROCESSING]},completed:{stats[JobType.STEM_SEPARATION][JobStatus.COMPLETED]},failed:{stats[JobType.STEM_SEPARATION][JobStatus.FAILED]}"
+        fa_stats = f"queued:{stats[JobType.FORCED_ALIGNMENT][JobStatus.QUEUED]},processing:{stats[JobType.FORCED_ALIGNMENT][JobStatus.PROCESSING]},completed:{stats[JobType.FORCED_ALIGNMENT][JobStatus.COMPLETED]},failed:{stats[JobType.FORCED_ALIGNMENT][JobStatus.FAILED]}"
 
         wait_time_str = ""
         if queued_wait_times[JobType.ANALYZE]:
@@ -1452,6 +1694,11 @@ class JobQueue:
             if len(queued_wait_times[JobType.STEM_SEPARATION]) > 3:
                 waits += f",...+{len(queued_wait_times[JobType.STEM_SEPARATION]) - 3}more"
             wait_time_str += f" STEM queued=[{waits}]"
+        if queued_wait_times[JobType.FORCED_ALIGNMENT]:
+            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.FORCED_ALIGNMENT][:3])
+            if len(queued_wait_times[JobType.FORCED_ALIGNMENT]) > 3:
+                waits += f",...+{len(queued_wait_times[JobType.FORCED_ALIGNMENT]) - 3}more"
+            wait_time_str += f" FA queued=[{waits}]"
         if processing_durations[JobType.ANALYZE]:
             avg_dur = sum(processing_durations[JobType.ANALYZE]) / len(
                 processing_durations[JobType.ANALYZE]
@@ -1467,9 +1714,14 @@ class JobQueue:
                 processing_durations[JobType.STEM_SEPARATION]
             )
             wait_time_str += f" STEM processing={avg_dur:.0f}s"
+        if processing_durations[JobType.FORCED_ALIGNMENT]:
+            avg_dur = sum(processing_durations[JobType.FORCED_ALIGNMENT]) / len(
+                processing_durations[JobType.FORCED_ALIGNMENT]
+            )
+            wait_time_str += f" FA processing={avg_dur:.0f}s"
 
         logger.info(
-            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] STEM[{stem_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
+            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] STEM[{stem_stats}] FA[{fa_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
         )
 
     async def _periodic_logging_loop(self) -> None:

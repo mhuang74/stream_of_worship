@@ -155,16 +155,16 @@ get_model_paths() {
     # Audio-Separator
     export AUDIO_SEPARATOR_ROOT="$MODEL_CACHE_DIR/audio-separator"
     
-    # Qwen3
-    export QWEN3_ROOT="$MODEL_CACHE_DIR/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
+    # Qwen3 Forced Aligner
+    export FORCED_ALIGNER_ROOT="$MODEL_CACHE_DIR/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
     
-    if [ ! -d "$QWEN3_ROOT" ]; then
-        log_error "Qwen3 model not found. Please run model download first."
+    if [ ! -d "$FORCED_ALIGNER_ROOT" ]; then
+        log_error "Qwen3 Forced Aligner model not found. Please run model download first."
         exit 1
     fi
     
     # Get snapshot hash
-    export QWEN3_SNAPSHOT=$(ls "$QWEN3_ROOT/snapshots/" | head -1)
+    export QWEN3_SNAPSHOT=$(ls "$FORCED_ALIGNER_ROOT/snapshots/" | head -1)
     
     if [ -z "$QWEN3_SNAPSHOT" ]; then
         log_error "Could not find Qwen3 snapshot hash"
@@ -172,8 +172,8 @@ get_model_paths() {
     fi
     
     log_info "Audio-Separator: $AUDIO_SEPARATOR_ROOT"
-    log_info "Qwen3 Root: $QWEN3_ROOT"
-    log_info "Qwen3 Snapshot: $QWEN3_SNAPSHOT"
+    log_info "Forced Aligner Root: $FORCED_ALIGNER_ROOT"
+    log_info "Forced Aligner Snapshot: $QWEN3_SNAPSHOT"
 }
 
 # ============================================================================
@@ -225,10 +225,11 @@ SOW_LLM_BASE_URL=""
 SOW_LLM_MODEL=""
 
 # =============================================================================
-# QWEN3 MODEL CONFIGURATION (Auto-detected)
+# FORCED ALIGNER MODEL CONFIGURATION (Auto-detected)
 # =============================================================================
-SOW_QWEN3_MODEL_ROOT="$QWEN3_ROOT"
-SOW_QWEN3_MODEL_SNAPSHOT="$QWEN3_SNAPSHOT"
+SOW_FORCED_ALIGNER_MODEL_ROOT="$FORCED_ALIGNER_ROOT"
+SOW_FORCED_ALIGNER_MODEL_PATH="/models/hf-model/snapshots/$QWEN3_SNAPSHOT"
+SOW_FORCED_ALIGNER_DEVICE=auto
 
 # =============================================================================
 # AUDIO-SEPARATOR MODEL CONFIGURATION (Auto-detected)
@@ -253,7 +254,6 @@ SOW_MVSEP_ENABLED=true
 # DOCKER IMAGE CONFIGURATION
 # =============================================================================
 SOW_ANALYSIS_IMAGE="ghcr.io/your-org/sow-analysis:latest"
-SOW_QWEN3_IMAGE="ghcr.io/your-org/sow-qwen3:latest"
 EOF
     
     chmod 600 "$ENV_FILE"
@@ -272,8 +272,6 @@ create_docker_compose() {
         return 0
     fi
     
-    # Download the production docker-compose.yml
-    # In production, this would be fetched from the repository or documentation
     cat > "$COMPOSE_FILE" << 'EOF'
 version: "3.8"
 
@@ -290,12 +288,10 @@ services:
       CACHE_DIR: /cache
       SOW_AUDIO_SEPARATOR_MODEL_DIR: /models/audio-separator
       NATTEN_LOG_LEVEL: error
-      SOW_QWEN3_BASE_URL: http://qwen3:8000
     volumes:
       - analysis-cache:/cache
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
-    networks:
-      - sow-network
+      - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
@@ -303,44 +299,8 @@ services:
       retries: 3
       start_period: 60s
 
-  qwen3:
-    image: ${SOW_QWEN3_IMAGE:-ghcr.io/your-org/sow-qwen3:latest}
-    container_name: sow-qwen3
-    restart: unless-stopped
-    ports:
-      - "8001:8000"
-    env_file:
-      - .env
-    environment:
-      SOW_QWEN3_CACHE_DIR: /cache
-      SOW_QWEN3_MODEL_PATH: /models/hf-model/snapshots/${SOW_QWEN3_MODEL_SNAPSHOT}
-      SOW_QWEN3_R2_BUCKET: ${SOW_R2_BUCKET}
-      SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
-      SOW_QWEN3_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
-      SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
-    volumes:
-      - qwen3-cache:/cache
-      - ${SOW_QWEN3_MODEL_ROOT}:/models/hf-model:ro
-    networks:
-      - sow-network
-    deploy:
-      resources:
-        limits:
-          memory: 8g
-          cpus: '4'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-
 volumes:
   analysis-cache:
-  qwen3-cache:
-
-networks:
-  sow-network:
 EOF
     
     log_success "docker-compose.yml created: $COMPOSE_FILE"
@@ -378,20 +338,12 @@ deploy_services() {
     log_info "Performing health checks..."
     
     local ANALYSIS_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/health || echo "000")
-    local QWEN3_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health || echo "000")
     
     if [ "$ANALYSIS_HEALTH" = "200" ]; then
         log_success "Analysis Service is healthy (http://localhost:8000)"
     else
         log_error "Analysis Service health check failed (HTTP $ANALYSIS_HEALTH)"
         log_info "Check logs: docker compose logs analysis"
-    fi
-    
-    if [ "$QWEN3_HEALTH" = "200" ]; then
-        log_success "Qwen3 Service is healthy (http://localhost:8001)"
-    else
-        log_warning "Qwen3 Service still initializing (this is normal, can take 1-2 minutes)"
-        log_info "Check logs: docker compose logs qwen3"
     fi
     
     log_success "Deployment complete!"
@@ -411,7 +363,6 @@ print_summary() {
     echo ""
     echo "Services:"
     echo "  - Analysis Service:  http://localhost:8000"
-    echo "  - Qwen3 Service:     http://localhost:8001"
     echo ""
     echo "Configuration:"
     echo "  - Environment File:  $DEPLOYMENT_DIR/.env"
@@ -419,7 +370,7 @@ print_summary() {
     echo ""
     echo "Models:"
     echo "  - Audio-Separator:   $AUDIO_SEPARATOR_ROOT"
-    echo "  - Qwen3:             $QWEN3_ROOT"
+    echo "  - Forced Aligner:    $FORCED_ALIGNER_ROOT"
     echo ""
     echo "Useful Commands:"
     echo "  cd $DEPLOYMENT_DIR && docker compose logs -f"

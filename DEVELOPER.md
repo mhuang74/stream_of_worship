@@ -176,20 +176,6 @@ FastAPI-based audio analysis service with job queue management.
 
 **Documentation:** [services/analysis/README.md](services/analysis/README.md)
 
-### 2. Qwen3 Alignment Service (`services/qwen3/`)
-
-FastAPI service for forced alignment of lyrics to audio timestamps using Qwen3-ForcedAligner-0.6B.
-
-- **Port:** Configurable (default 8001)
-- **Purpose:** LRC generation via forced alignment (not transcription)
-- **Technologies:** FastAPI, Qwen3-ForcedAligner, PyTorch
-- **Features:**
-  - Aligns known lyrics to audio timestamps
-  - Line-level timestamps preserved
-  - 5-minute audio limit
-
-**Documentation:** [services/qwen3/README.md](services/qwen3/README.md)
-
 ---
 
 ## POC Analysis Setup
@@ -304,13 +290,6 @@ sow_cli_admin/                           # Repository root
 │   │   └── workers/                     #    Background workers
 │   └── README.md                        #    Service documentation
 │
-├── services/qwen3/                      # 🎯 Qwen3 Alignment Service
-│   ├── src/sow_qwen3/                   #    Service package
-│   │   ├── main.py                      #    FastAPI app
-│   │   ├── routes/                      #    API endpoints
-│   │   └── workers/                     #    Alignment workers
-│   └── README.md                        #    Service documentation
-│
 ├── poc/                                 # 🧪 POC Scripts (archived)
 │   ├── docker/                          #    POC Docker environments
 │   ├── poc_analysis.py                  #    Librosa analysis script
@@ -336,7 +315,6 @@ sow_cli_admin/                           # Repository root
 | `src/stream_of_worship/admin/` | `stream-of-worship-admin` | Backend management CLI | Admins / DevOps | `pip install` (admin) |
 | `src/stream_of_worship/app/` | `stream-of-worship-app` | End-user transition/video tool | Worship leaders | Desktop app / pip install |
 | `services/analysis/` | `sow-analysis` | Audio analysis microservice | Internal service | Docker image |
-| `services/qwen3/` | `sow-qwen3` | Lyrics alignment microservice | Internal service | Docker image |
 | `poc/` | N/A (scripts) | Experimental validation | Developers | Local scripts only |
 
 ---
@@ -499,9 +477,9 @@ peaks = librosa.util.peak_pick(
 - Verify port 8000 is not in use
 - Check Docker logs: `docker compose logs -f`
 
-**Problem:** Qwen3 service model not loading
+**Problem:** Forced aligner model not loading
 - Verify model is downloaded: `huggingface-cli download Qwen/Qwen3-ForcedAligner-0.6B`
-- Check `SOW_QWEN3_MODEL_PATH` environment variable
+- Check `SOW_FORCED_ALIGNER_MODEL_PATH` environment variable
 - Check memory allocation (8GB minimum)
 
 ---
@@ -510,7 +488,6 @@ peaks = librosa.util.peak_pick(
 
 - **Design Document:** [specs/worship-music-transition-system-design.md](specs/worship-music-transition-system-design.md)
 - **Analysis Service:** [services/analysis/README.md](services/analysis/README.md)
-- **Qwen3 Service:** [services/qwen3/README.md](services/qwen3/README.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
 
 ---

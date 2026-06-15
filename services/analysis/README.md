@@ -72,9 +72,9 @@ SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to
 SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"  # Vocal separation model filename
 SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
 
-# Qwen3 Model Configuration (Required for LRC refinement with forced alignment)
-SOW_QWEN3_MODEL_ROOT="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
-SOW_QWEN3_MODEL_SNAPSHOT="c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+# Forced Aligner Model Configuration (Required for LRC refinement with forced alignment)
+SOW_FORCED_ALIGNER_MODEL_PATH="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+SOW_FORCED_ALIGNER_DEVICE="auto"
 
 # DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
 SOW_DASHSCOPE_API_KEY=""  # DashScope API key; leave empty to skip Qwen3 ASR (uses Whisper only)
@@ -207,7 +207,7 @@ curl -X POST http://localhost:8000/api/v1/jobs/stem-separation \
 2. If not found, submits a child stem-separation job
 3. Releases its concurrency slot while waiting
 4. Re-acquires slot when child completes
-5. Uses the dry vocals for Whisper transcription and passes URL to Qwen3
+5. Uses the dry vocals for Whisper transcription and passes URL to the forced aligner
 
 ### Check Job Status
 
@@ -275,9 +275,9 @@ export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator"
 
 The docker-compose.yml automatically mounts this directory to `/models/audio-separator:ro` in the container.
 
-## Qwen3 Model Setup (for LRC Refinement)
+## Forced Aligner Model Setup (for LRC Refinement)
 
-The LRC generation feature uses Qwen3 Forced Aligner for precise lyric-to-audio alignment. The model must be pre-downloaded on the host machine and bind-mounted into the container.
+The LRC generation feature uses Qwen3 Forced Aligner for precise lyric-to-audio alignment. The model is loaded in-process by the analysis service (no separate service needed).
 
 ### One-Time Model Download
 
@@ -289,32 +289,32 @@ pip install huggingface-hub
 huggingface-cli download Qwen/Qwen3-ForcedAligner-0.6B
 ```
 
-### Find Model Paths
-
-After downloading, locate the model root and snapshot hash:
-
-```bash
-# Find the model root directory
-ls ~/.cache/huggingface/hub/ | grep Qwen
-
-# Output example: models--Qwen--Qwen3-ForcedAligner-0.6B
-
-# Find the snapshot hash
-ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
-
-# Output example: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
-```
-
 ### Configure Environment
 
 Add to `/opt/sow/.env`:
 
 ```bash
-SOW_QWEN3_MODEL_ROOT="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
-SOW_QWEN3_MODEL_SNAPSHOT="c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+SOW_FORCED_ALIGNER_MODEL_PATH="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+SOW_FORCED_ALIGNER_DEVICE="auto"
+```
+
+The model path should point to the snapshot directory (e.g., `.../snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7`). Find your snapshot hash:
+
+```bash
+ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
+# Output example: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
 ```
 
 **Note:** The snapshot hash changes when the model is updated. If LRC jobs fail with model loading errors, check for a new snapshot hash after re-downloading.
+
+## Audio LRC Alignment CLI
+
+You can also run forced alignment directly from the CLI without submitting an API job:
+
+```bash
+# Align lyrics to audio using the forced aligner
+uv run --extra app sow-admin audio align-lrc --audio <audio-file> --lyrics <lyrics-text> --output <output.lrc>
+```
 
 ## DashScope Qwen3 ASR Setup (Optional)
 
