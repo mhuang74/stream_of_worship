@@ -132,17 +132,23 @@ class R2Client:
 
         return f"s3://{self.bucket}/{key}"
 
-    async def upload_lrc(self, hash_prefix: str, lrc_path: Path) -> str:
+    async def upload_lrc(
+        self,
+        hash_prefix: str,
+        lrc_path: Path,
+        object_name: str = "lyrics.lrc",
+    ) -> str:
         """Upload lyrics.lrc to R2.
 
         Args:
             hash_prefix: Content hash prefix for the path
             lrc_path: Path to the LRC file
+            object_name: Filename to store under the hash prefix
 
         Returns:
-            s3://bucket/{hash}/lyrics.lrc URL
+            s3://bucket/{hash}/{object_name} URL
         """
-        key = f"{hash_prefix}/lyrics.lrc"
+        key = f"{hash_prefix}/{object_name}"
         loop = asyncio.get_event_loop()
 
         await loop.run_in_executor(None, self.s3.upload_file, str(lrc_path), self.bucket, key)

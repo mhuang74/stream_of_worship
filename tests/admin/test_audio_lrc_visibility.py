@@ -91,6 +91,10 @@ def test_submit_lrc_wait_completion_forces_review_visibility():
         r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
         visibility_status="review",
     )
+    analysis_client.submit_lrc.assert_called_once()
+    submit_kwargs = analysis_client.submit_lrc.call_args.kwargs
+    assert submit_kwargs["song_title"] == "Test Song"
+    assert submit_kwargs["language"] == "zh"
 
 
 def test_status_sync_lrc_completion_forces_review_visibility():

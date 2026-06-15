@@ -104,6 +104,7 @@ def _format_transcript_text(transcript: list) -> str:
 def build_correction_prompt(
     transcript_text: str,
     official_lyrics: list[str],
+    language: str = "zh",
 ) -> str:
     """Build LLM prompt for lyrics correction.
 
@@ -115,6 +116,35 @@ def build_correction_prompt(
         Correction prompt string
     """
     lyrics_str = "\n".join(official_lyrics)
+
+    if language == "en":
+        return f"""You are a lyrics correction assistant for English worship songs.
+
+## Task
+Compare the subtitle transcription against the official English lyrics. Correct each transcribed line to the matching official lyric while preserving the original timecodes.
+
+## Rules
+1. Each transcribed line corresponds to a sung phrase in the official lyrics. Replace the transcribed text with the matching official English lyric text.
+2. Songs often repeat sections (verse, chorus, bridge, tag). Keep all repeated phrases with their timecodes.
+3. Preserve the number of matching sung lyric lines and their timecodes. Only correct text content.
+4. Preserve casing, punctuation, contractions, and line text from the official lyrics.
+5. If a transcribed line clearly does not match sung lyrics (instrumental, audience noise, speech), remove that line entirely.
+
+## Transcribed Subtitle
+```
+{transcript_text}
+```
+
+## Official Lyrics
+```
+{lyrics_str}
+```
+
+## Output Format
+Output ONLY corrected lines in LRC format, one per line:
+[mm:ss.xx] English lyric
+
+No blank lines, no commentary, no markdown."""
 
     return f"""You are a lyrics correction assistant for Chinese worship songs.
 
@@ -183,6 +213,12 @@ EN_LANG_CODES = ["en-US", "en"]
 DEFAULT_LANGUAGES = ZH_LANG_CODES + EN_LANG_CODES
 
 
+def language_preference_codes(language: str) -> list[str]:
+    if language == "en":
+        return EN_LANG_CODES + ZH_LANG_CODES
+    return ZH_LANG_CODES + EN_LANG_CODES
+
+
 def _build_proxy_config() -> Optional[RotatingProxyConfig]:
     """Build proxy config from settings if proxy is configured.
 
@@ -198,14 +234,11 @@ def _build_proxy_config() -> Optional[RotatingProxyConfig]:
     )
 
 
-def _find_best_transcript(transcript_list: Any) -> Optional[Any]:
+def _find_best_transcript(transcript_list: Any, language: str = "zh") -> Optional[Any]:
     """Find the best available transcript from a TranscriptList.
 
-    Priority order:
-    1. Manually created Chinese transcript (most accurate for lyrics)
-    2. Generated Chinese transcript
-    3. Manually created English transcript
-    4. Generated English transcript
+    Priority order follows the resolved LRC language. Manual captions are preferred
+    within each language before generated captions.
 
     Args:
         transcript_list: Iterable of Transcript objects from YouTubeTranscriptApi.list()
@@ -233,12 +266,15 @@ def _find_best_transcript(transcript_list: Any) -> Optional[Any]:
             elif is_generated and best_en_generated is None:
                 best_en_generated = transcript
 
+    if language == "en":
+        return best_en_manual or best_en_generated or best_zh_manual or best_zh_generated
     return best_zh_manual or best_zh_generated or best_en_manual or best_en_generated
 
 
 async def fetch_youtube_transcript(
     video_id: str,
     languages: Optional[List[str]] = None,
+    language: str = "zh",
 ) -> list:
     """Download captions from YouTube via youtube-transcript-api.
 
@@ -260,7 +296,7 @@ async def fetch_youtube_transcript(
         YouTubeTranscriptError: If transcript cannot be fetched
     """
     if languages is None:
-        languages = DEFAULT_LANGUAGES
+        languages = language_preference_codes(language)
 
     proxy_config = _build_proxy_config()
     if proxy_config:
@@ -281,7 +317,7 @@ async def fetch_youtube_transcript(
 
         ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
         transcript_list = ytt_api.list(video_id)
-        best = _find_best_transcript(transcript_list)
+        best = _find_best_transcript(transcript_list, language=language)
         if best is None:
             return None
         logger.info(
@@ -386,6 +422,7 @@ async def youtube_transcript_to_lrc(
     youtube_url: str,
     lyrics_text: str,
     llm_model: str,
+    language: str = "zh",
 ) -> List[LRCLine]:
     """End-to-end: YouTube transcript -> LLM correction -> LRC lines.
 
@@ -409,12 +446,12 @@ async def youtube_transcript_to_lrc(
     logger.info(f"Extracted video ID: {video_id}")
 
     # Step 2: Fetch transcript
-    transcript = await fetch_youtube_transcript(video_id)
+    transcript = await fetch_youtube_transcript(video_id, language=language)
 
     # Step 3: Format transcript and build prompt
     transcript_text = _format_transcript_text(transcript)
     lyrics_lines = [line for line in lyrics_text.split("\n") if line.strip()]
-    prompt = build_correction_prompt(transcript_text, lyrics_lines)
+    prompt = build_correction_prompt(transcript_text, lyrics_lines, language=language)
 
     # Log the prompt
     logger.info("=" * 80)

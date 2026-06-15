@@ -353,6 +353,7 @@ def _submit_lrc_single(
                 audio_url=recording.r2_audio_url,
                 content_hash=recording.content_hash,
                 lyrics_text=song.lyrics_raw,
+                song_title=song.title,
                 whisper_model=whisper_model,
                 language=language,
                 use_vocals_stem=not no_vocals,
@@ -493,6 +494,7 @@ def _submit_lrc_batch(
                 audio_url=recording.r2_audio_url,
                 content_hash=recording.content_hash,
                 lyrics_text=song.lyrics_raw,
+                song_title=song.title,
                 whisper_model=whisper_model,
                 language=language,
                 use_vocals_stem=not no_vocals,
@@ -587,7 +589,7 @@ def _submit_lrc_job(
     console: Console,
     force: bool = False,
     whisper_model: str = "large-v3",
-    language: str = "zh",
+    language: str = "auto",
     no_vocals: bool = False,
     no_youtube: bool = False,
     no_whisper_cache: bool = False,
@@ -630,6 +632,7 @@ def _submit_lrc_job(
             audio_url=recording.r2_audio_url,
             content_hash=recording.content_hash,
             lyrics_text=song.lyrics_raw,
+            song_title=song.title,
             whisper_model=whisper_model,
             language=language,
             use_vocals_stem=not no_vocals,
@@ -852,7 +855,7 @@ def import_youtube_audio_for_song(
             console=console,
             force=False,
             whisper_model="large-v3",
-            language="zh",
+            language="auto",
             no_vocals=False,
             use_qwen3_asr=True,
             force_qwen3_asr=False,
@@ -1608,7 +1611,7 @@ def lrc_recording(
     force: bool = typer.Option(False, "--force", "-f", help="Force re-generation"),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
-    language: str = typer.Option("zh", "--lang", help="Language hint"),
+    language: str = typer.Option("auto", "--lang", help="Language mode: auto, zh, or en"),
     no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
     no_youtube: bool = typer.Option(
         False, "--no-youtube", help="Skip YouTube transcript, use Whisper directly"
@@ -1656,6 +1659,9 @@ def lrc_recording(
             "[red]Error: --no-qwen3 is deprecated. Qwen3 ForcedAligner is no longer "
             "part of automatic LRC generation; use --no-qwen3-asr instead.[/red]"
         )
+        raise typer.Exit(1)
+    if language not in {"auto", "zh", "en"}:
+        console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
         raise typer.Exit(1)
 
     # Standard config/db boilerplate
@@ -4441,8 +4447,9 @@ def _process_batch(
                     audio_url=recording.r2_audio_url,
                     content_hash=recording.content_hash,
                     lyrics_text=song.lyrics_raw,
+                    song_title=song.title,
                     whisper_model="large-v3",
-                    language="zh",
+                    language="auto",
                     use_vocals_stem=True,
                     force=force_lrc,
                     force_whisper=False,
@@ -4675,8 +4682,9 @@ def _poll_all_jobs(
                                         audio_url=recording.r2_audio_url,
                                         content_hash=recording.content_hash,
                                         lyrics_text=song.lyrics_raw,
+                                        song_title=song.title,
                                         whisper_model="large-v3",
-                                        language="zh",
+                                        language="auto",
                                         use_vocals_stem=True,
                                         force=force_lrc,
                                         force_whisper=False,

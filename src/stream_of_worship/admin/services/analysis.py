@@ -262,8 +262,9 @@ class AnalysisClient:
         audio_url: str,
         content_hash: str,
         lyrics_text: str,
+        song_title: str = "",
         whisper_model: str = "large-v3",
-        language: str = "zh",
+        language: str = "auto",
         use_vocals_stem: bool = True,
         force: bool = False,
         force_whisper: bool = False,
@@ -277,8 +278,9 @@ class AnalysisClient:
             audio_url: R2 URL of the audio file
             content_hash: SHA-256 hash of the audio content
             lyrics_text: Raw lyrics text to align
+            song_title: Song title used for auto language detection
             whisper_model: Whisper model to use
-            language: Language hint for transcription
+            language: Language mode for transcription ("auto", "zh", or "en")
             use_vocals_stem: Whether to use vocals stem for better alignment
             force: Whether to force re-generation
             force_whisper: Bypass Whisper transcription cache
@@ -296,6 +298,7 @@ class AnalysisClient:
             "audio_url": audio_url,
             "content_hash": content_hash,
             "lyrics_text": lyrics_text,
+            "song_title": song_title,
             "youtube_url": youtube_url,
             "options": {
                 "whisper_model": whisper_model,

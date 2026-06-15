@@ -62,6 +62,14 @@ class TestLrcOptions:
         assert opts.use_qwen3_asr is True
         assert opts.force_qwen3_asr is False
         assert opts.qwen3_asr_context_max_chars == 10000
+        assert opts.language == "auto"
+
+    def test_rejects_invalid_lrc_language(self):
+        """Test invalid LRC language values are rejected."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            LrcOptions(language="ja")
 
 
 class TestLrcJobRequest:
@@ -77,6 +85,7 @@ class TestLrcJobRequest:
         assert req.audio_url == "s3://bucket/hash/audio.mp3"
         assert req.content_hash == "abc123"
         assert req.lyrics_text == "Line 1\nLine 2"
+        assert req.song_title == ""
 
 
 class TestSection:
