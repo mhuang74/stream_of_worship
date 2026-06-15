@@ -1173,6 +1173,8 @@ class JobQueue:
         try:
             if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
                 self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+            if not self.r2_client:
+                raise RuntimeError("R2 client is not initialized. Forced alignment requires R2 storage.")
 
             import tempfile
 
@@ -1235,11 +1237,9 @@ class JobQueue:
                     try:
                         existing_lrc_url = f"s3://{self.r2_client.bucket}/{target_key}"
                         if await self.r2_client.check_exists(existing_lrc_url):
-                            import time as _time
-
                             backup_key = (
                                 f"{hash_prefix}/lyrics.{resolved_lang_code}"
-                                f".backup.{int(_time.time())}.lrc"
+                                f".backup.{int(time.time())}.lrc"
                             )
                             await self.r2_client.copy_object(
                                 existing_lrc_url, f"s3://{self.r2_client.bucket}/{backup_key}"

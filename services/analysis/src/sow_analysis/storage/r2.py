@@ -274,7 +274,7 @@ class R2Client:
         """
         src_bucket, src_key = parse_s3_url(source_s3_url)
         dest_bucket, dest_key = parse_s3_url(dest_s3_url)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         copy_source = {"Bucket": src_bucket, "Key": src_key}
         await loop.run_in_executor(
