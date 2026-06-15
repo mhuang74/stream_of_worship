@@ -657,6 +657,210 @@ def _submit_lrc_job(
         return None
 
 
+def import_youtube_audio_for_song(
+    *,
+    song_id: str,
+    youtube_url: str | None,
+    config: AdminConfig,
+    db_client: DatabaseClient,
+    console: Console,
+    force: bool = False,
+    skip_video_confirm: bool = False,
+    analyze: bool = False,
+    lrc: bool = False,
+) -> Recording | None:
+    """Import a YouTube-backed recording for an existing song."""
+    song = db_client.get_song(song_id)
+    if not song:
+        console.print(f"[red]Song not found: {song_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]Song:[/cyan] {song.title}")
+    if song.composer:
+        console.print(f"[cyan]Composer:[/cyan] {song.composer}")
+    if song.album_name:
+        console.print(f"[cyan]Album:[/cyan] {song.album_name}")
+
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    existing = db_client.get_recording_by_song_id(song_id)
+    if existing:
+        if not force:
+            console.print(
+                f"[yellow]Recording already exists for this song "
+                f"(hash: {existing.hash_prefix}). Use --force to replace.[/yellow]"
+            )
+            raise typer.Exit(0)
+
+        console.print(f"[cyan]Deleting existing recording {existing.hash_prefix}...[/cyan]")
+        _delete_recording_and_files(db_client, r2_client, existing, console)
+        console.print("[green]Existing recording deleted. Proceeding with download...[/green]")
+
+    downloader = YouTubeDownloader()
+    if youtube_url:
+        search_or_url = youtube_url
+        console.print(f"[dim]Using provided URL: {youtube_url}[/dim]")
+    else:
+        album_for_query = song.album_name
+        if song.title == song.album_name:
+            album_for_query = None
+        query = downloader.build_search_query(
+            title=song.title,
+            composer=song.composer,
+            album=album_for_query,
+            suffix=OFFICIAL_LYRICS_SUFFIX,
+        )
+        console.print(f"[dim]Search query: {query}[/dim]")
+        search_or_url = query
+
+    console.print("[cyan]Previewing video...[/cyan]")
+    try:
+        video_info = downloader.preview_video(search_or_url)
+    except RuntimeError as e:
+        console.print(f"[red]Failed to preview video: {e}[/red]")
+        raise typer.Exit(1)
+
+    if video_info is None:
+        console.print("[red]No results found.[/red]")
+        console.print("[dim]Try using --url to provide a direct YouTube URL.[/dim]")
+        raise typer.Exit(1)
+
+    _display_video_preview(video_info, console)
+
+    video_title = video_info.get("title") if video_info else None
+    chinese_title = _extract_chinese_title_from_youtube(video_title)
+    if chinese_title and chinese_title != song.title:
+        console.print(
+            f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+        )
+        console.print(
+            "[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]"
+        )
+
+    download_confirmed = skip_video_confirm
+    if not skip_video_confirm:
+        download_confirmed = _prompt_confirmation("Download this video?")
+
+    if not download_confirmed:
+        console.print("[yellow]Auto-selected video rejected.[/yellow]")
+        manual_url = _prompt_manual_url()
+        if not manual_url:
+            console.print("[yellow]Download cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        console.print("[cyan]Previewing manual URL...[/cyan]")
+        try:
+            video_info = downloader.preview_video(manual_url)
+        except RuntimeError as e:
+            console.print(f"[red]Failed to preview video: {e}[/red]")
+            raise typer.Exit(1)
+
+        if video_info is None:
+            console.print("[red]No results found for manual URL.[/red]")
+            raise typer.Exit(1)
+
+        _display_video_preview(video_info, console)
+        video_title = video_info.get("title") if video_info else None
+        chinese_title = _extract_chinese_title_from_youtube(video_title)
+        if chinese_title and chinese_title != song.title:
+            console.print(
+                f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+            )
+            console.print("[yellow]  This may be the wrong video.[/yellow]")
+
+        if not _prompt_confirmation("Download this video?"):
+            console.print("[yellow]Download cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        search_or_url = manual_url
+
+    console.print("[cyan]Downloading audio from YouTube...[/cyan]")
+    try:
+        if search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
+            audio_path = downloader.download_by_url(search_or_url)
+        else:
+            audio_path = downloader.download(search_or_url)
+    except RuntimeError as e:
+        console.print(f"[red]Download failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    file_size = audio_path.stat().st_size
+    console.print(f"[green]Downloaded: {audio_path.name}[/green]")
+    console.print(f"[dim]File size: {_format_size_mb(file_size)}[/dim]")
+
+    content_hash = compute_file_hash(audio_path)
+    prefix = get_hash_prefix(content_hash)
+    console.print(f"[dim]Hash prefix: {prefix}[/dim]")
+
+    duration = probe_duration(audio_path)
+    if duration:
+        console.print(f"[dim]Duration: {duration:.1f}s[/dim]")
+    else:
+        console.print("[yellow]Could not probe audio duration[/yellow]")
+
+    console.print("[cyan]Uploading to R2...[/cyan]")
+    try:
+        r2_url = r2_client.upload_audio(audio_path, prefix)
+        console.print(f"[green]Uploaded: {r2_url}[/green]")
+    except Exception as e:
+        console.print(f"[red]Upload failed: {e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        audio_path.unlink(missing_ok=True)
+
+    recording = Recording(
+        content_hash=content_hash,
+        hash_prefix=prefix,
+        song_id=song_id,
+        original_filename=audio_path.name,
+        file_size_bytes=file_size,
+        imported_at=datetime.now().isoformat(),
+        r2_audio_url=r2_url,
+        download_status="completed",
+        youtube_url=video_info.get("webpage_url"),
+        duration_seconds=duration,
+    )
+    db_client.insert_recording(recording)
+    console.print(f"[green]Recording saved (hash_prefix: {prefix})[/green]")
+
+    if analyze:
+        console.print("[cyan]Submitting for analysis...[/cyan]")
+        _submit_analysis_job(
+            recording=recording,
+            analysis_url=config.analysis_url,
+            db_client=db_client,
+            console=console,
+            force=False,
+            no_stems=False,
+        )
+
+    if lrc:
+        console.print("[cyan]Submitting for LRC generation...[/cyan]")
+        _submit_lrc_job(
+            song_id=song_id,
+            recording=recording,
+            analysis_url=config.analysis_url,
+            db_client=db_client,
+            console=console,
+            force=False,
+            whisper_model="large-v3",
+            language="zh",
+            no_vocals=False,
+            use_qwen3_asr=True,
+            force_qwen3_asr=False,
+        )
+
+    return recording
+
+
 @app.command("download")
 def download_audio(
     song_id: str = typer.Argument(..., help="Song ID to download audio for"),
@@ -697,225 +901,30 @@ def download_audio(
 
     db_client = get_db_client(config)
 
-    # Look up the song
-    song = db_client.get_song(song_id)
-    if not song:
-        console.print(f"[red]Song not found: {song_id}[/red]")
-        raise typer.Exit(1)
-
-    console.print(f"[cyan]Song:[/cyan] {song.title}")
-    if song.composer:
-        console.print(f"[cyan]Composer:[/cyan] {song.composer}")
-    if song.album_name:
-        console.print(f"[cyan]Album:[/cyan] {song.album_name}")
-
-    # Initialize R2 client early (needed for --force and upload)
-    try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
-    except ValueError as e:
-        console.print(f"[red]R2 configuration error: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Check for existing recording
-    existing = db_client.get_recording_by_song_id(song_id)
-    if existing:
-        if not force:
-            console.print(
-                f"[yellow]Recording already exists for this song "
-                f"(hash: {existing.hash_prefix}). Use --force to replace.[/yellow]"
-            )
-            raise typer.Exit(0)
-        else:
-            # Delete existing recording
-            console.print(f"[cyan]Deleting existing recording {existing.hash_prefix}...[/cyan]")
-            _delete_recording_and_files(db_client, r2_client, existing, console)
-            console.print("[green]Existing recording deleted. Proceeding with download...[/green]")
-
     if dry_run:
+        song = db_client.get_song(song_id)
+        if not song:
+            console.print(f"[red]Song not found: {song_id}[/red]")
+            raise typer.Exit(1)
+        console.print(f"[cyan]Song:[/cyan] {song.title}")
+        if song.composer:
+            console.print(f"[cyan]Composer:[/cyan] {song.composer}")
+        if song.album_name:
+            console.print(f"[cyan]Album:[/cyan] {song.album_name}")
         console.print("[yellow]Dry run - no download will occur[/yellow]")
         return
 
-    # Initialize downloader
-    downloader = YouTubeDownloader()
-
-    # Step 1: Determine URL or search query
-    if url:
-        # Use provided URL directly
-        search_or_url = url
-        console.print(f"[dim]Using provided URL: {url}[/dim]")
-    else:
-        # Build search query with official lyrics suffix
-        # Omit album when title equals album name to avoid album MV winning search
-        album_for_query = song.album_name
-        if song.title == song.album_name:
-            album_for_query = None
-        query = downloader.build_search_query(
-            title=song.title,
-            composer=song.composer,
-            album=album_for_query,
-            suffix=OFFICIAL_LYRICS_SUFFIX,
-        )
-        console.print(f"[dim]Search query: {query}[/dim]")
-        search_or_url = query
-
-    # Step 2: Preview video
-    console.print("[cyan]Previewing video...[/cyan]")
-    try:
-        video_info = downloader.preview_video(search_or_url)
-    except RuntimeError as e:
-        console.print(f"[red]Failed to preview video: {e}[/red]")
-        raise typer.Exit(1)
-
-    if video_info is None:
-        console.print("[red]No results found.[/red]")
-        console.print("[dim]Try using --url to provide a direct YouTube URL.[/dim]")
-        raise typer.Exit(1)
-
-    # Step 3: Display video preview
-    _display_video_preview(video_info, console)
-
-    # Step 3.5: Validate video title matches song title
-    video_title = video_info.get("title") if video_info else None
-    chinese_title = _extract_chinese_title_from_youtube(video_title)
-    if chinese_title and chinese_title != song.title:
-        console.print(
-            f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
-        )
-        console.print(
-            f"[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]"
-        )
-
-    # Step 4: Confirmation prompt
-    download_confirmed = skip_confirm
-    if not skip_confirm:
-        download_confirmed = _prompt_confirmation("Download this video?")
-
-    if not download_confirmed:
-        # Step 5: Manual URL fallback
-        console.print("[yellow]Auto-selected video rejected.[/yellow]")
-        manual_url = _prompt_manual_url()
-
-        if not manual_url:
-            console.print("[yellow]Download cancelled.[/yellow]")
-            raise typer.Exit(0)
-
-        # Re-preview the manual URL
-        console.print("[cyan]Previewing manual URL...[/cyan]")
-        try:
-            video_info = downloader.preview_video(manual_url)
-        except RuntimeError as e:
-            console.print(f"[red]Failed to preview video: {e}[/red]")
-            raise typer.Exit(1)
-
-        if video_info is None:
-            console.print("[red]No results found for manual URL.[/red]")
-            raise typer.Exit(1)
-
-        _display_video_preview(video_info, console)
-
-        # Validate video title matches song title
-        video_title = video_info.get("title") if video_info else None
-        chinese_title = _extract_chinese_title_from_youtube(video_title)
-        if chinese_title and chinese_title != song.title:
-            console.print(
-                f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
-            )
-            console.print(f"[yellow]  This may be the wrong video.[/yellow]")
-
-        # Confirm the manual URL
-        if not _prompt_confirmation("Download this video?"):
-            console.print("[yellow]Download cancelled.[/yellow]")
-            raise typer.Exit(0)
-
-        # Use the manual URL for download
-        search_or_url = manual_url
-
-    # Step 6: Download
-    console.print("[cyan]Downloading audio from YouTube...[/cyan]")
-    try:
-        if search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
-            audio_path = downloader.download_by_url(search_or_url)
-        else:
-            audio_path = downloader.download(search_or_url)
-    except RuntimeError as e:
-        console.print(f"[red]Download failed: {e}[/red]")
-        raise typer.Exit(1)
-
-    file_size = audio_path.stat().st_size
-    console.print(f"[green]Downloaded: {audio_path.name}[/green]")
-    console.print(f"[dim]File size: {_format_size_mb(file_size)}[/dim]")
-
-    # Compute content hash
-    content_hash = compute_file_hash(audio_path)
-    prefix = get_hash_prefix(content_hash)
-    console.print(f"[dim]Hash prefix: {prefix}[/dim]")
-
-    duration = probe_duration(audio_path)
-    if duration:
-        console.print(f"[dim]Duration: {duration:.1f}s[/dim]")
-    else:
-        console.print("[yellow]Could not probe audio duration[/yellow]")
-
-    # Upload to R2
-    console.print("[cyan]Uploading to R2...[/cyan]")
-    try:
-        r2_url = r2_client.upload_audio(audio_path, prefix)
-        console.print(f"[green]Uploaded: {r2_url}[/green]")
-    except Exception as e:
-        console.print(f"[red]Upload failed: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Persist recording
-    recording = Recording(
-        content_hash=content_hash,
-        hash_prefix=prefix,
+    import_youtube_audio_for_song(
         song_id=song_id,
-        original_filename=audio_path.name,
-        file_size_bytes=file_size,
-        imported_at=datetime.now().isoformat(),
-        r2_audio_url=r2_url,
-        download_status="completed",
-        youtube_url=video_info.get("webpage_url"),
-        duration_seconds=duration,
+        youtube_url=url,
+        config=config,
+        db_client=db_client,
+        console=console,
+        force=force,
+        skip_video_confirm=skip_confirm,
+        analyze=analyze,
+        lrc=lrc,
     )
-    db_client.insert_recording(recording)
-    console.print(f"[green]Recording saved (hash_prefix: {prefix})[/green]")
-
-    # Clean up temp file
-    audio_path.unlink(missing_ok=True)
-
-    # Submit for analysis if requested
-    if analyze:
-        console.print("[cyan]Submitting for analysis...[/cyan]")
-        _submit_analysis_job(
-            recording=recording,
-            analysis_url=config.analysis_url,
-            db_client=db_client,
-            console=console,
-            force=False,
-            no_stems=False,
-        )
-
-    # Submit for LRC if requested
-    if lrc:
-        console.print("[cyan]Submitting for LRC generation...[/cyan]")
-        _submit_lrc_job(
-            song_id=song_id,
-            recording=recording,
-            analysis_url=config.analysis_url,
-            db_client=db_client,
-            console=console,
-            force=False,
-            whisper_model="large-v3",
-            language="zh",
-            no_vocals=False,
-            use_qwen3_asr=True,
-            force_qwen3_asr=False,
-        )
 
 
 @app.command("delete")

@@ -230,6 +230,105 @@ class TestDatabaseClientIntegration:
         assert result is not None
         assert result.deleted_at is None
 
+    def test_find_song_by_source_url_including_deleted(self, admin_client):
+        song = Song(
+            id="song_1",
+            title="Test Song",
+            source_url="https://example.com/source",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+        admin_client.soft_delete_song("song_1")
+
+        assert admin_client.find_song_by_source_url("https://example.com/source") is None
+        deleted = admin_client.find_song_by_source_url(
+            "https://example.com/source", include_deleted=True
+        )
+        assert deleted is not None
+        assert deleted.id == "song_1"
+        assert deleted.deleted_at is not None
+
+    def test_update_song_and_list_recordings_helpers(self, admin_client):
+        song = Song(
+            id="song_1",
+            title="Before",
+            source_url="https://example.com/source",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+        admin_client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="abc123",
+                song_id="song_1",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                visibility_status="review",
+            )
+        )
+
+        updated = Song(
+            id="song_1",
+            title="After",
+            title_pinyin="after",
+            composer="Composer",
+            source_url="https://example.com/source",
+            scraped_at="2024-01-01T00:00:00",
+            updated_at="2024-01-02T00:00:00",
+        )
+        assert admin_client.update_song(updated) is True
+
+        refreshed = admin_client.get_song("song_1")
+        assert refreshed is not None
+        assert refreshed.title == "After"
+        recordings = admin_client.list_recordings_by_song_id("song_1")
+        assert [recording.hash_prefix for recording in recordings] == ["abc123"]
+
+    def test_hold_recordings_for_song_and_count_songset_references(self, admin_client):
+        song = Song(
+            id="song_1",
+            title="Test Song",
+            source_url="https://example.com/source",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+        admin_client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="abc123",
+                song_id="song_1",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                visibility_status="review",
+            )
+        )
+
+        with admin_client.connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (id, email, password_hash, created_at, updated_at) "
+                "VALUES (%s, %s, %s, NOW(), NOW())",
+                ("user_1", "test@example.com", "hash"),
+            )
+            cur.execute(
+                "INSERT INTO songsets (id, user_id, name, created_at, updated_at) "
+                "VALUES (%s, %s, %s, NOW(), NOW())",
+                ("songset_1", "user_1", "Set 1"),
+            )
+            cur.execute(
+                "INSERT INTO songset_items (id, songset_id, song_id, position, created_at, updated_at) "
+                "VALUES (%s, %s, %s, %s, NOW(), NOW())",
+                ("item_1", "songset_1", "song_1", 1),
+            )
+            admin_client.connection.commit()
+
+        assert admin_client.count_songset_references("song_1") == 1
+        assert admin_client.hold_recordings_for_song("song_1") == 1
+        recording = admin_client.get_recording_by_hash("abc123")
+        assert recording is not None
+        assert recording.visibility_status == "hold"
+
     def test_delete_and_restore_recording(self, admin_client):
         """Test soft-deleting and restoring a recording."""
         from stream_of_worship.app.db.read_client import ReadOnlyClient
