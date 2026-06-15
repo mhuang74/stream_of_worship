@@ -292,6 +292,64 @@ class DatabaseClient:
             return Song.from_row(tuple(row))
         return None
 
+    def find_song_by_source_url(
+        self,
+        source_url: str,
+        include_deleted: bool = False,
+    ) -> Optional[Song]:
+        """Find a song by source URL."""
+        cursor = self.connection.cursor()
+        if include_deleted:
+            cursor.execute("SELECT * FROM songs WHERE source_url = %s ORDER BY updated_at DESC", (source_url,))
+        else:
+            cursor.execute(
+                "SELECT * FROM songs WHERE source_url = %s AND deleted_at IS NULL ORDER BY updated_at DESC",
+                (source_url,),
+            )
+        row = cursor.fetchone()
+        return Song.from_row(tuple(row)) if row else None
+
+    def update_song(self, song: Song) -> bool:
+        """Update an existing song row."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE songs SET
+                    title = %s,
+                    title_pinyin = %s,
+                    composer = %s,
+                    lyricist = %s,
+                    album_name = %s,
+                    album_series = %s,
+                    musical_key = %s,
+                    lyrics_raw = %s,
+                    lyrics_lines = %s,
+                    sections = %s,
+                    source_url = %s,
+                    scraped_at = %s,
+                    updated_at = %s
+                WHERE id = %s AND deleted_at IS NULL
+                """,
+                (
+                    song.title,
+                    song.title_pinyin,
+                    song.composer,
+                    song.lyricist,
+                    song.album_name,
+                    song.album_series,
+                    song.musical_key,
+                    song.lyrics_raw,
+                    song.lyrics_lines,
+                    song.sections,
+                    song.source_url,
+                    song.scraped_at,
+                    song.updated_at or datetime.now().isoformat(),
+                    song.id,
+                ),
+            )
+            return cursor.rowcount > 0
+
     def list_songs(
         self,
         album: Optional[str] = None,
@@ -562,6 +620,25 @@ class DatabaseClient:
         if row:
             return Recording.from_row(tuple(row))
         return None
+
+    def list_recordings_by_song_id(
+        self,
+        song_id: str,
+        include_deleted: bool = False,
+    ) -> list[Recording]:
+        """List all recordings for a song."""
+        cursor = self.connection.cursor()
+        if include_deleted:
+            cursor.execute(
+                "SELECT * FROM recordings WHERE song_id = %s ORDER BY imported_at DESC",
+                (song_id,),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM recordings WHERE song_id = %s AND deleted_at IS NULL ORDER BY imported_at DESC",
+                (song_id,),
+            )
+        return [Recording.from_row(tuple(row)) for row in cursor.fetchall()]
 
     def get_recordings_without_duration(self) -> list[Recording]:
         """Get all recordings where duration_seconds is NULL.
@@ -1096,6 +1173,20 @@ class DatabaseClient:
             cursor.execute("UPDATE songs SET deleted_at = NOW() WHERE id = %s", (song_id,))
             return cursor.rowcount > 0
 
+    def hold_recordings_for_song(self, song_id: str) -> int:
+        """Set active recordings for a song to hold visibility."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings
+                SET visibility_status = 'hold', updated_at = NOW()
+                WHERE song_id = %s AND deleted_at IS NULL
+                """,
+                (song_id,),
+            )
+            return cursor.rowcount
+
     def list_deleted_songs(self) -> list[Song]:
         """List all soft-deleted songs.
 
@@ -1137,6 +1228,13 @@ class DatabaseClient:
             cursor = conn.cursor()
             cursor.execute("UPDATE songs SET deleted_at = NULL WHERE id = %s", (song_id,))
             return cursor.rowcount > 0
+
+    def count_songset_references(self, song_id: str) -> int:
+        """Count songset item references to a song."""
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM songset_items WHERE song_id = %s", (song_id,))
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
 
     def restore_recording(self, hash_prefix: str) -> bool:
         """Restore a soft-deleted recording.

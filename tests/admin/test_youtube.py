@@ -1,11 +1,19 @@
 """Tests for YouTube download service."""
 
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yt_dlp
 
-from stream_of_worship.admin.services.youtube import YouTubeDownloader
+from stream_of_worship.admin.services.youtube import (
+    YouTubeDownloader,
+    derive_song_defaults,
+    extract_video_id,
+    extract_video_metadata,
+    fetch_transcript_lines,
+)
 
 
 class TestYouTubeDownloaderInit:
@@ -398,3 +406,49 @@ class TestDownloadWithInfo:
         downloader = YouTubeDownloader(output_dir=tmp_path)
         with pytest.raises(RuntimeError, match="Download failed"):
             downloader.download_with_info("bad query")
+
+
+class TestMetadataHelpers:
+    def test_extract_video_id_supports_watch_and_short_urls(self):
+        assert extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+        assert extract_video_id("https://youtu.be/dQw4w9WgXcQ?t=12") == "dQw4w9WgXcQ"
+
+    def test_derive_song_defaults_parses_sample_title(self):
+        metadata = types.SimpleNamespace(
+            title="Here I Bow - Brian & Jenn Johnson | After All These Years",
+            webpage_url="https://youtube.com/watch?v=test123",
+        )
+        defaults = derive_song_defaults(metadata)
+        assert defaults["title"] == "Here I Bow"
+        assert defaults["composer"] == "Brian & Jenn Johnson"
+        assert defaults["album_name"] == "After All These Years"
+        assert defaults["source_url"] == "https://youtube.com/watch?v=test123"
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_extract_video_metadata_wraps_download_error(self, mock_ydl_class):
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.side_effect = yt_dlp.utils.DownloadError("network error")
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="Failed to extract video metadata"):
+            extract_video_metadata("https://youtube.com/watch?v=bad")
+
+
+class TestTranscriptDrafts:
+    def test_fetch_transcript_lines_cleans_cues_and_whitespace(self, monkeypatch):
+        class FakeApi:
+            def fetch(self, video_id, languages):
+                return [
+                    types.SimpleNamespace(text="[Music]"),
+                    types.SimpleNamespace(text="  Here   I  bow "),
+                    types.SimpleNamespace(text="[Laughter]"),
+                    types.SimpleNamespace(text="Here I bow"),
+                ]
+
+        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=lambda: FakeApi())
+        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
+
+        lines = fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
+
+        assert lines == ["Here I bow", "Here I bow"]
