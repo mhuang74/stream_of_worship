@@ -106,8 +106,8 @@ def resolve_lrc_language(
     return LrcLanguageResolution(language, "zh", "default_zh")
 
 
-def warn_if_lrc_language_script_mismatch(language: ResolvedLrcLanguage, lyrics_text: str) -> None:
-    stripped = lyrics_text.strip()
+def warn_if_lrc_language_script_mismatch(language: ResolvedLrcLanguage, lyrics_text: object) -> None:
+    stripped = lyrics_text.strip() if isinstance(lyrics_text, str) else ""
     if not stripped:
         return
     cjk_count = len(_CJK_RE.findall(stripped))
