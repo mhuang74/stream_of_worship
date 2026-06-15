@@ -470,7 +470,7 @@ class TestLRCJobQueueProcessing:
         with tempfile.TemporaryDirectory() as tmp:
             q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
             yield q
-            q.stop()
+            await q.stop()
 
     @pytest.mark.asyncio
     async def test_lrc_job_with_valid_request(self, queue):
