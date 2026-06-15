@@ -34,6 +34,7 @@ from sow_analysis.workers.lrc import (
     build_whisper_transcription_cache_key,
     generate_lrc,
     resolve_lrc_language,
+    warn_if_lrc_language_script_mismatch,
 )
 from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
 
@@ -137,6 +138,14 @@ class TestResolveLrcLanguage:
     def test_invalid_language_raises(self):
         with pytest.raises(ValueError):
             resolve_lrc_language("ja", "Title", "Lyrics")
+
+
+class TestWarnIfLrcLanguageScriptMismatch:
+    """Test warning guard for language/script mismatches."""
+
+    @pytest.mark.parametrize("lyrics_text", [None, 123])
+    def test_ignores_missing_or_non_string_lyrics(self, lyrics_text):
+        warn_if_lrc_language_script_mismatch("zh", lyrics_text)
 
 
 class TestLanguageAwareCacheKeys:

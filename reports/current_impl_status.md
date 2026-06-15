@@ -14,6 +14,8 @@ The Stream of Worship project consists of an Admin CLI for backend management, a
 
 **Latest Milestone:** LRC generation now resolves `auto`/`zh`/`en` language per job from song title and lyrics, uses language-aware Whisper/Qwen3/YouTube prompts and transcript preferences, and versions LRC/ASR cache keys plus generated R2 LRC object names by resolved language.
 
+**PR #104 Review Fix (2026-06-15):** Hardened LRC language/script mismatch warnings so missing or non-string lyric payloads are treated as empty text instead of raising before warning checks, with regression coverage.
+
 **Maintenance Update (2026-06-15):** Added English/Chinese title-based LRC language detection, `song_title` request propagation from the admin CLI, language-specific YouTube transcript selection, prompt branching, and cache-key/R2 object isolation for language-aware reruns.
 
 **Maintenance Update (2026-06-15):** Added queue logging regression coverage for empty, completed-only, queued, processing, recent failed, and stale failed states. Also fixed async queue test cleanup calls that were leaving un-awaited coroutine warnings.
