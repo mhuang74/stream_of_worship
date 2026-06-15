@@ -255,7 +255,14 @@ async def test_qwen_lrc_alignment_uses_snapped_phrases(tmp_path: Path):
         {"time_seconds": 5.0, "text": "我要看見"},
     ]
 
-    async def fake_llm_align(lyrics_text, phrases, llm_model, max_retries=3, prompt_builder=None):
+    async def fake_llm_align(
+        lyrics_text,
+        phrases,
+        llm_model,
+        max_retries=3,
+        prompt_builder=None,
+        language="zh",
+    ):
         assert [p.text for p in phrases] == [
             "我要看見",
             "如同摩西看見祢的榮耀",

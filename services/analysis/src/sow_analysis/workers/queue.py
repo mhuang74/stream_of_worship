@@ -40,7 +40,7 @@ async def optional_semaphore(sem: Optional[asyncio.Semaphore]) -> AsyncIterator[
         yield
 
 
-def _compute_lrc_cache_key(content_hash: str, lyrics_text: str) -> str:
+def _compute_lrc_cache_key(content_hash: str, lyrics_text: str, language: str = "zh") -> str:
     """Compute cache key for LRC generation based on audio hash and lyrics.
 
     The cache key is a hash of both the audio content hash and the lyrics text.
@@ -55,7 +55,7 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str) -> str:
     """
     # Create a composite string of both inputs
     lyrics_hash = hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest()[:16]
-    composite = f"{content_hash}:{lyrics_hash}"
+    composite = f"{content_hash}:{lyrics_hash}:{language}:lrc-lang-v2"
     # Return a shorter hash of the composite
     return hashlib.sha256(composite.encode("utf-8")).hexdigest()[:32]
 
@@ -88,17 +88,23 @@ except ImportError:
 try:
     from .lrc import (
         LRCWorkerError,
+        build_whisper_transcription_cache_key,
         build_qwen3_asr_cache_key,
         generate_lrc,
         generate_lrc_from_qwen3_asr,
+        resolve_lrc_language,
+        warn_if_lrc_language_script_mismatch,
     )
     from ..services.qwen3_asr_client import Qwen3AsrError
 except ImportError:
     LRCWorkerError = Exception
     Qwen3AsrError = Exception
     build_qwen3_asr_cache_key = None
+    build_whisper_transcription_cache_key = None
     generate_lrc = None
     generate_lrc_from_qwen3_asr = None
+    resolve_lrc_language = None
+    warn_if_lrc_language_script_mismatch = None
 
 # Optional embedding imports - require openai
 try:
@@ -706,8 +712,41 @@ class JobQueue:
         else:
             logger.info("No YouTube URL — will use Whisper transcription directly")
 
+        if resolve_lrc_language is None or warn_if_lrc_language_script_mismatch is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "LRC language resolver is not available"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="LRC language resolver is not available",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        language_resolution = resolve_lrc_language(
+            request.options.language,
+            request.song_title,
+            request.lyrics_text,
+        )
+        resolved_language = language_resolution.resolved
+        logger.info(
+            "Resolved LRC language: requested=%s resolved=%s reason=%s title=%r",
+            language_resolution.requested,
+            resolved_language,
+            language_resolution.reason,
+            request.song_title,
+        )
+        warn_if_lrc_language_script_mismatch(resolved_language, request.lyrics_text)
+
         # Compute composite cache key based on audio hash + lyrics hash
-        lrc_cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
+        lrc_cache_key = _compute_lrc_cache_key(
+            request.content_hash, request.lyrics_text, resolved_language
+        )
         logger.info(f"LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
 
         try:
@@ -767,6 +806,7 @@ class JobQueue:
                         request.lyrics_text,
                         request.options,
                         lrc_path,
+                        resolved_language,
                     )
                     if youtube_lrc_result:
                         lrc_path, line_count, whisper_phrases = youtube_lrc_result
@@ -807,14 +847,16 @@ class JobQueue:
                                 request.options.qwen3_asr_context_max_chars,
                                 settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
                             )
-                            context = _build_qwen3_context(request.lyrics_text, context_limit)
+                            context = _build_qwen3_context(
+                                request.lyrics_text, context_limit, resolved_language
+                            )
                             qwen_cache_key = build_qwen3_asr_cache_key(
                                 request.content_hash,
                                 request.lyrics_text,
                                 resolved_audio.stem_kind,
                                 settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
                                 settings.SOW_DASHSCOPE_ASR_REGION,
-                                request.options.language,
+                                resolved_language,
                                 context_limit,
                                 context,
                             )
@@ -833,6 +875,7 @@ class JobQueue:
                                 cache_key=qwen_cache_key,
                                 cache_manager=self.cache_manager,
                                 dashscope_semaphore=self._dashscope_asr_semaphore,
+                                resolved_language=resolved_language,
                             )
                             lrc_source = "qwen3_asr"
                             await self._update_stage(job, "qwen3_asr_done", 0.7)
@@ -851,14 +894,23 @@ class JobQueue:
                         logger.info("Qwen3 ASR disabled or DashScope not configured; using Whisper")
                         await self._update_stage(job, "falling_back_to_whisper", 0.35)
 
-                    # Check for cached Whisper transcription (audio hash only, not lyrics)
+                    # Check for cached Whisper transcription with language/prompt-aware key.
                     if lrc_source != "qwen3_asr":
                         cached_phrases = None
+                        if build_whisper_transcription_cache_key is None:
+                            raise LRCWorkerError("Whisper cache key builder is not available")
+                        whisper_cache_key = build_whisper_transcription_cache_key(
+                            request.content_hash,
+                            request.lyrics_text,
+                            resolved_audio.stem_kind,
+                            request.options.whisper_model,
+                            resolved_language,
+                        )
                         if request.options.force_whisper:
                             logger.info("Whisper cache bypassed (force_whisper=True)")
                         else:
                             cached_data = self.cache_manager.get_whisper_transcription(
-                                request.content_hash
+                                whisper_cache_key
                             )
                             if cached_data:
                                 from .lrc import WhisperPhrase
@@ -882,6 +934,7 @@ class JobQueue:
                             content_hash=request.content_hash,
                             vocals_stem_url=resolved_audio.r2_url,
                             local_model_semaphore=self._local_model_semaphore,
+                            resolved_language=resolved_language,
                         )
                         lrc_source = "whisper_asr"
 
@@ -891,7 +944,7 @@ class JobQueue:
                                 for p in whisper_phrases
                             ]
                             self.cache_manager.save_whisper_transcription(
-                                request.content_hash, phrases_data
+                                whisper_cache_key, phrases_data
                             )
                             logger.info("Whisper transcription cached for future use")
 
@@ -902,7 +955,11 @@ class JobQueue:
                 # Upload LRC to R2
                 lrc_url = None
                 if self.r2_client:
-                    lrc_url = await self.r2_client.upload_lrc(hash_prefix, lrc_path)
+                    lrc_url = await self.r2_client.upload_lrc(
+                        hash_prefix,
+                        lrc_path,
+                        object_name=f"lyrics.{resolved_language}.v2.lrc",
+                    )
 
                 # Save to cache using composite key (audio hash + lyrics hash)
                 cache_result = {

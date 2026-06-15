@@ -3,9 +3,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class JobStatus(str, Enum):
@@ -53,7 +53,7 @@ class LrcOptions(BaseModel):
         ""  # LLM model (e.g., "openai/gpt-4o-mini"), falls back to SOW_LLM_MODEL env var
     )
     use_vocals_stem: bool = True  # Prefer vocals stem for cleaner transcription
-    language: str = "zh"  # Whisper language hint
+    language: Literal["auto", "zh", "en"] = "auto"  # LRC language mode
     force: bool = False  # Re-generate even if cached
     force_whisper: bool = False  # Bypass Whisper transcription cache
     use_qwen3_asr: bool = True  # Use DashScope Qwen3 ASR before Whisper fallback
@@ -65,6 +65,15 @@ class LrcOptions(BaseModel):
     use_qwen3: Optional[bool] = None
     max_qwen3_duration: Optional[int] = None
 
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        if value is None:
+            return "auto"
+        if value not in {"auto", "zh", "en"}:
+            raise ValueError("language must be one of: auto, zh, en")
+        return value
+
 
 class LrcJobRequest(BaseModel):
     """Request to submit an LRC generation job."""
@@ -72,6 +81,7 @@ class LrcJobRequest(BaseModel):
     audio_url: str
     content_hash: str
     lyrics_text: str
+    song_title: str = ""
     youtube_url: str = ""  # YouTube URL for transcript-based LRC (primary path)
     options: LrcOptions = Field(default_factory=LrcOptions)
 

@@ -14,7 +14,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Literal, Optional
 
 from ..config import settings
 from ..models import LrcOptions
@@ -24,6 +24,10 @@ from ..storage.cache import CacheManager
 from .exceptions import LLMConfigError, WorkerError
 
 logger = logging.getLogger(__name__)
+
+ResolvedLrcLanguage = Literal["zh", "en"]
+LRC_PROMPT_CACHE_VERSION = "lang-v2"
+WHISPER_INITIAL_PROMPT_VERSION = "lang-v2"
 
 
 class LRCWorkerError(WorkerError):
@@ -48,6 +52,80 @@ class Qwen3RefinementError(LRCWorkerError):
     """Raised when Qwen3 refinement fails (non-blocking, falls back to LLM)."""
 
     pass
+
+
+@dataclass(frozen=True)
+class LrcLanguageResolution:
+    requested: str
+    resolved: ResolvedLrcLanguage
+    reason: str
+
+
+_CJK_RE = re.compile(
+    "["
+    "\u3400-\u4dbf"
+    "\u4e00-\u9fff"
+    "\uf900-\ufaff"
+    "\U00020000-\U0002a6df"
+    "\U0002a700-\U0002b73f"
+    "\U0002b740-\U0002b81f"
+    "\U0002b820-\U0002ceaf"
+    "\U0002ceb0-\U0002ebef"
+    "]"
+)
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
+
+def _contains_cjk(text: str) -> bool:
+    return bool(_CJK_RE.search(text or ""))
+
+
+def _contains_latin(text: str) -> bool:
+    return bool(_LATIN_RE.search(text or ""))
+
+
+def resolve_lrc_language(
+    language: str,
+    song_title: str,
+    lyrics_text: str,
+) -> LrcLanguageResolution:
+    """Resolve raw LRC language option to a concrete downstream language."""
+    if language in {"zh", "en"}:
+        return LrcLanguageResolution(language, language, "explicit")
+    if language != "auto":
+        raise ValueError("language must be one of: auto, zh, en")
+
+    if _contains_cjk(song_title):
+        return LrcLanguageResolution(language, "zh", "title_cjk")
+    if _contains_latin(song_title):
+        return LrcLanguageResolution(language, "en", "title_latin")
+    if _contains_cjk(lyrics_text):
+        return LrcLanguageResolution(language, "zh", "lyrics_cjk")
+    if _contains_latin(lyrics_text):
+        return LrcLanguageResolution(language, "en", "lyrics_latin")
+    return LrcLanguageResolution(language, "zh", "default_zh")
+
+
+def warn_if_lrc_language_script_mismatch(language: ResolvedLrcLanguage, lyrics_text: str) -> None:
+    stripped = lyrics_text.strip()
+    if not stripped:
+        return
+    cjk_count = len(_CJK_RE.findall(stripped))
+    latin_count = len(_LATIN_RE.findall(stripped))
+    if language == "en" and cjk_count > latin_count:
+        logger.warning(
+            "Resolved LRC language is en but lyrics contain more CJK than Latin characters "
+            "(cjk=%s latin=%s)",
+            cjk_count,
+            latin_count,
+        )
+    elif language == "zh" and latin_count > cjk_count:
+        logger.warning(
+            "Resolved LRC language is zh but lyrics contain more Latin than CJK characters "
+            "(latin=%s cjk=%s)",
+            latin_count,
+            cjk_count,
+        )
 
 
 @dataclass
@@ -83,7 +161,7 @@ def _format_timestamp(seconds: float) -> str:
 async def _run_whisper_transcription(
     audio_path: Path,
     model_name: str,
-    language: str,
+    language: ResolvedLrcLanguage,
     device: str,
     lyrics_text: Optional[str] = None,
 ) -> List[WhisperPhrase]:
@@ -126,7 +204,7 @@ async def _run_whisper_transcription(
         model_load_elapsed = time.time() - model_load_start
         logger.info(f"Whisper model loaded in {model_load_elapsed:.2f}s")
 
-        # Transcribe with Chinese worship song optimizations
+        # Transcribe with language-specific worship song context.
         logger.info(f"Running Whisper transcription: {audio_path}")
         transcribe_start = time.time()
 
@@ -136,10 +214,23 @@ async def _run_whisper_transcription(
             lyrics_truncated = "\n".join(lyrics_text.split("\n")[:50])
             if len(lyrics_truncated) > 2000:
                 lyrics_truncated = lyrics_truncated[:2000]
-            initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
+            if language == "en":
+                initial_prompt = (
+                    "This is an English worship song. Preserve the English words, "
+                    "phrasing, contractions, casing, and punctuation from these official lyrics:\n"
+                    f"{lyrics_truncated}"
+                )
+            else:
+                initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
             logger.info(f"Using lyrics-enhanced initial prompt ({len(lyrics_truncated)} chars)")
         else:
-            initial_prompt = "这是一首中文敬拜歌的歌詞"
+            if language == "en":
+                initial_prompt = (
+                    "This is an English worship song. Preserve English worship lyrics, "
+                    "phrasing, contractions, casing, and punctuation."
+                )
+            else:
+                initial_prompt = "这是一首中文敬拜歌的歌詞"
             logger.info("Using default initial prompt (no lyrics provided)")
 
         segments, info = model.transcribe(
@@ -195,7 +286,11 @@ async def _run_whisper_transcription(
     return phrases
 
 
-def _build_alignment_prompt(lyrics_text: str, whisper_phrases: List[WhisperPhrase]) -> str:
+def _build_alignment_prompt(
+    lyrics_text: str,
+    whisper_phrases: List[WhisperPhrase],
+    language: ResolvedLrcLanguage = "zh",
+) -> str:
     """Build the LLM prompt for lyrics alignment.
 
     Args:
@@ -217,6 +312,40 @@ def _build_alignment_prompt(lyrics_text: str, whisper_phrases: List[WhisperPhras
 
     # Calculate total duration from whisper phrases
     last_timestamp = max(p.end for p in whisper_phrases) if whisper_phrases else 0.0
+
+    if language == "en":
+        return f"""You are a lyrics alignment assistant for English worship songs. Your task is to assign accurate timestamps to every sung lyric line.
+
+## Official Lyrics (Gold Standard Text - Use exactly as written)
+```
+{lyrics_text}
+```
+
+## ASR Transcription (Phrases with Timestamps)
+```json
+{phrases_json}
+```
+
+## Song Structure Information
+- Total audio duration: {last_timestamp:.2f} seconds
+- The ASR transcription contains {len(whisper_phrases)} phrases
+
+## Critical Instructions
+
+1. Worship songs often repeat verses, choruses, bridges, and tags. Preserve repeated sung sections as separate output entries with their own timestamps.
+2. Process each ASR phrase in order. For each phrase, find the best matching line from the official lyrics.
+3. The same official lyric line can appear multiple times with different timestamps.
+4. Output approximately {len(whisper_phrases)} entries. Do not collapse repeated sections.
+5. Use the exact text from "Official Lyrics". Preserve English casing, punctuation, contractions, and line text exactly.
+6. Use the start time of each ASR phrase as the timestamp for the matched lyric line.
+7. Keep timestamps in ascending order.
+
+## Output Format
+Return a JSON array where each object has:
+- "time_seconds": float (start time from the corresponding ASR phrase)
+- "text": string (matched official lyric line, exactly as provided)
+
+Return ONLY the JSON array, no explanation or markdown code blocks."""
 
     return f"""You are a lyrics alignment assistant. Your task is to assign accurate timestamps to every line sung in the song.
 
@@ -273,7 +402,9 @@ Return ONLY the JSON array, no explanation or markdown code blocks."""
 
 
 def _build_qwen3_asr_alignment_prompt(
-    lyrics_text: str, whisper_phrases: List[WhisperPhrase]
+    lyrics_text: str,
+    whisper_phrases: List[WhisperPhrase],
+    language: ResolvedLrcLanguage = "zh",
 ) -> str:
     phrases_json = json.dumps(
         [
@@ -283,6 +414,29 @@ def _build_qwen3_asr_alignment_prompt(
         ensure_ascii=False,
         indent=2,
     )
+    if language == "en":
+        return f"""You are a lyrics alignment assistant for English worship songs.
+
+## Canonical English Lyrics
+```
+{lyrics_text}
+```
+
+## Qwen3 ASR Phrases
+These phrases may already be snapped to canonical lyric lines. Preserve each timestamp.
+Only fix text, assign or reorder canonical English lyric lines, preserve repeated sung
+sections, and preserve official casing, punctuation, and contractions.
+```json
+{phrases_json}
+```
+
+Return the same JSON shape:
+[
+  {{"time_seconds": 12.34, "text": "canonical lyric line"}}
+]
+
+Return ONLY the JSON array, no explanation or markdown code blocks."""
+
     return f"""You are a lyrics alignment assistant for Chinese worship songs.
 
 ## Canonical Lyrics
@@ -404,7 +558,10 @@ async def _llm_align(
     whisper_phrases: List[WhisperPhrase],
     llm_model: str,
     max_retries: int = 3,
-    prompt_builder: Callable[[str, List[WhisperPhrase]], str] = _build_alignment_prompt,
+    prompt_builder: Callable[
+        [str, List[WhisperPhrase], ResolvedLrcLanguage], str
+    ] = _build_alignment_prompt,
+    language: ResolvedLrcLanguage = "zh",
 ) -> List[LRCLine]:
     """Use LLM to align lyrics with Whisper timestamps.
 
@@ -443,7 +600,7 @@ async def _llm_align(
         )
 
     loop = asyncio.get_event_loop()
-    prompt = prompt_builder(lyrics_text, whisper_phrases)
+    prompt = prompt_builder(lyrics_text, whisper_phrases, language)
 
     # Log the full LLM prompt
     logger.info("=" * 80)
@@ -562,8 +719,35 @@ def build_qwen3_asr_cache_key(
     return hashlib.sha256(json.dumps(parts, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def _build_qwen3_context(lyrics_text: str, max_chars: int) -> str:
-    header = "這是一首中文敬拜詩歌。請優先辨識下列正式歌詞中的詞句，保留演唱重複。"
+def build_whisper_transcription_cache_key(
+    content_hash: str,
+    lyrics_text: str,
+    stem_kind: str,
+    model: str,
+    language: ResolvedLrcLanguage,
+) -> str:
+    """Build language-aware Whisper transcription cache key."""
+    parts = {
+        "content_hash": content_hash,
+        "lyrics_hash": hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest(),
+        "stem_kind": stem_kind,
+        "model": model,
+        "language": language,
+        "prompt_version": WHISPER_INITIAL_PROMPT_VERSION,
+    }
+    return hashlib.sha256(json.dumps(parts, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _build_qwen3_context(
+    lyrics_text: str, max_chars: int, language: ResolvedLrcLanguage = "zh"
+) -> str:
+    if language == "en":
+        header = (
+            "This is an English worship song. Prioritize these official lyric words and "
+            "phrases, preserve repeated sung sections, and preserve English casing and punctuation."
+        )
+    else:
+        header = "這是一首中文敬拜詩歌。請優先辨識下列正式歌詞中的詞句，保留演唱重複。"
     lines = []
     total = len(header) + 2
     for line in lyrics_text.splitlines():
@@ -585,13 +769,14 @@ async def generate_lrc_from_qwen3_asr(
     cache_key: str,
     cache_manager: CacheManager,
     dashscope_semaphore: asyncio.Semaphore,
+    resolved_language: ResolvedLrcLanguage = "zh",
 ) -> tuple[Path, int, list[WhisperPhrase]]:
     """Generate LRC from DashScope Qwen3 ASR, snap, then LLM alignment."""
     context_limit = min(
         options.qwen3_asr_context_max_chars,
         settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
     )
-    context = _build_qwen3_context(lyrics_text, context_limit)
+    context = _build_qwen3_context(lyrics_text, context_limit, resolved_language)
 
     cached_payload = (
         None if options.force_qwen3_asr else cache_manager.get_qwen3_asr_transcription(cache_key)
@@ -630,6 +815,7 @@ async def generate_lrc_from_qwen3_asr(
         qwen_phrases,
         llm_model=options.llm_model,
         prompt_builder=_build_qwen3_asr_alignment_prompt,
+        language=resolved_language,
     )
     line_count = _write_lrc(lrc_lines, output_path)
     logger.info("Qwen3 ASR LRC generation wrote %s lines", line_count)
@@ -641,6 +827,7 @@ async def try_youtube_transcript_lrc(
     lyrics_text: str,
     options: LrcOptions,
     output_path: Path,
+    resolved_language: ResolvedLrcLanguage = "zh",
 ) -> Optional[tuple[Path, int, List[WhisperPhrase]]]:
     """Attempt LRC generation via YouTube transcript (primary path).
 
@@ -667,6 +854,7 @@ async def try_youtube_transcript_lrc(
             youtube_url=youtube_url,
             lyrics_text=lyrics_text,
             llm_model=options.llm_model,
+            language=resolved_language,
         )
         line_count = _write_lrc(lrc_lines, output_path)
         total_elapsed = time.time() - lrc_start
@@ -701,6 +889,7 @@ async def generate_lrc(
     content_hash: Optional[str] = None,
     vocals_stem_url: Optional[str] = None,
     local_model_semaphore: Optional[asyncio.Semaphore] = None,
+    resolved_language: ResolvedLrcLanguage = "zh",
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
 
@@ -736,7 +925,9 @@ async def generate_lrc(
 
     # Primary path: YouTube transcript + LLM correction
     if youtube_url:
-        result = await try_youtube_transcript_lrc(youtube_url, lyrics_text, options, output_path)
+        result = await try_youtube_transcript_lrc(
+            youtube_url, lyrics_text, options, output_path, resolved_language
+        )
         if result is not None:
             return result
 
@@ -764,7 +955,7 @@ async def generate_lrc(
             whisper_phrases = await _run_whisper_transcription(
                 audio_path,
                 model_name=options.whisper_model,
-                language=options.language,
+                language=resolved_language,
                 device=settings.SOW_WHISPER_DEVICE,
                 lyrics_text=lyrics_text,
             )
@@ -774,6 +965,7 @@ async def generate_lrc(
         lyrics_text,
         whisper_phrases,
         llm_model=options.llm_model,
+        language=resolved_language,
     )
 
     # Step 3: Write LRC file

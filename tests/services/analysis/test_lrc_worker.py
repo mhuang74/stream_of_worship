@@ -26,10 +26,14 @@ from sow_analysis.workers.lrc import (
     WhisperTranscriptionError,
     WhisperPhrase,
     _build_alignment_prompt,
+    _build_qwen3_asr_alignment_prompt,
     _parse_llm_response,
     _run_whisper_transcription,
     _write_lrc,
+    build_qwen3_asr_cache_key,
+    build_whisper_transcription_cache_key,
     generate_lrc,
+    resolve_lrc_language,
 )
 from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
 
@@ -93,6 +97,73 @@ class TestBuildAlignmentPrompt:
         prompt = _build_alignment_prompt("Hello world", phrases)
         assert '"start": 0.0' in prompt
         assert '"end": 0.5' in prompt
+
+    def test_english_prompt_preserves_english_text_rules(self):
+        phrases = [WhisperPhrase("Amazing grace", 0.0, 1.0)]
+        prompt = _build_alignment_prompt("Amazing Grace\nI'll sing", phrases, language="en")
+        assert "English worship songs" in prompt
+        assert "Preserve English casing" in prompt
+        assert "我要看見" not in prompt
+
+    def test_qwen_english_alignment_prompt_preserves_casing(self):
+        phrases = [WhisperPhrase("I'll sing", 0.0, 1.0)]
+        prompt = _build_qwen3_asr_alignment_prompt("I'll sing", phrases, language="en")
+        assert "English worship songs" in prompt
+        assert "official casing" in prompt
+
+
+class TestResolveLrcLanguage:
+    """Test title/lyrics based LRC language resolution."""
+
+    @pytest.mark.parametrize(
+        ("language", "title", "lyrics", "expected", "reason"),
+        [
+            ("zh", "Amazing Grace", "Amazing grace", "zh", "explicit"),
+            ("en", "奇異恩典", "奇異恩典", "en", "explicit"),
+            ("auto", "奇異恩典", "", "zh", "title_cjk"),
+            ("auto", "Amazing Grace", "", "en", "title_latin"),
+            ("auto", "Amazing Grace 奇異恩典", "", "zh", "title_cjk"),
+            ("auto", "", "祢真偉大", "zh", "lyrics_cjk"),
+            ("auto", "", "Amazing grace", "en", "lyrics_latin"),
+            ("auto", "2026!!!", "Amazing grace", "en", "lyrics_latin"),
+            ("auto", "2026!!!", "", "zh", "default_zh"),
+        ],
+    )
+    def test_resolves_expected_language(self, language, title, lyrics, expected, reason):
+        result = resolve_lrc_language(language, title, lyrics)
+        assert result.resolved == expected
+        assert result.reason == reason
+
+    def test_invalid_language_raises(self):
+        with pytest.raises(ValueError):
+            resolve_lrc_language("ja", "Title", "Lyrics")
+
+
+class TestLanguageAwareCacheKeys:
+    """Test language-aware cache key builders."""
+
+    def test_lrc_cache_key_differs_by_language(self):
+        zh_key = _compute_lrc_cache_key("hash", "Amazing grace", "zh")
+        en_key = _compute_lrc_cache_key("hash", "Amazing grace", "en")
+        assert zh_key != en_key
+
+    def test_whisper_cache_key_differs_by_language(self):
+        zh_key = build_whisper_transcription_cache_key(
+            "hash", "Amazing grace", "full_mix", "large-v3", "zh"
+        )
+        en_key = build_whisper_transcription_cache_key(
+            "hash", "Amazing grace", "full_mix", "large-v3", "en"
+        )
+        assert zh_key != en_key
+
+    def test_qwen_cache_key_differs_by_language(self):
+        zh_key = build_qwen3_asr_cache_key(
+            "hash", "Amazing grace", "full_mix", "flash", "intl", "zh", 1000, "zh context"
+        )
+        en_key = build_qwen3_asr_cache_key(
+            "hash", "Amazing grace", "full_mix", "flash", "intl", "en", 1000, "en context"
+        )
+        assert zh_key != en_key
 
 
 class TestParseLLMResponse:
@@ -411,6 +482,7 @@ class TestLRCJobQueueProcessing:
             audio_url="s3://bucket/hash/audio.mp3",
             content_hash="abc123def456",
             lyrics_text="測試歌詞",
+            options=LrcOptions(use_vocals_stem=False),
         )
 
         # Pre-populate cache with correct composite key
@@ -491,6 +563,7 @@ class TestLRCJobQueueProcessing:
             audio_url="s3://bucket/hash/audio.mp3",
             content_hash="abc123def456",
             lyrics_text="測試歌詞",
+            options=LrcOptions(use_vocals_stem=False),
         )
 
         # Mock R2 download
@@ -544,7 +617,7 @@ class TestLRCOptions:
         assert options.whisper_model == "large-v3"
         assert options.llm_model == ""  # Empty by default, falls back to SOW_LLM_MODEL env var
         assert options.use_vocals_stem is True
-        assert options.language == "zh"
+        assert options.language == "auto"
         assert options.force is False
 
     def test_custom_values(self):

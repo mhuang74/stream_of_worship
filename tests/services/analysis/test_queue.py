@@ -179,7 +179,7 @@ class TestLRCJobProcessing:
         )
 
         # Pre-populate cache with correct composite key
-        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
+        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text, "en")
         queue.cache_manager.save_lrc_result(
             cache_key,
             {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 2},

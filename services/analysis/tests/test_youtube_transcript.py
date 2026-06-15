@@ -4,12 +4,14 @@ import pytest
 
 from sow_analysis.workers.youtube_transcript import (
     DEFAULT_LANGUAGES,
+    EN_LANG_CODES,
     ZH_LANG_CODES,
     _build_proxy_config,
     _find_best_transcript,
     build_correction_prompt,
     extract_video_id,
     fetch_youtube_transcript,
+    language_preference_codes,
     parse_lrc_response,
     RotatingProxyConfig,
 )
@@ -68,6 +70,12 @@ class TestBuildCorrectionPrompt:
         prompt = build_correction_prompt("00:00.00\ntest\n", ["測試"])
         assert "Rules" in prompt
         assert "timecodes" in prompt
+
+    def test_english_prompt_preserves_official_casing(self):
+        prompt = build_correction_prompt("00:00.00\nill sing\n", ["I'll Sing"], language="en")
+        assert "English worship songs" in prompt
+        assert "Preserve casing" in prompt
+        assert "I'll Sing" in prompt
 
 
 class TestParseLrcResponse:
@@ -238,6 +246,16 @@ class TestDefaultLanguages:
         en_indices = [DEFAULT_LANGUAGES.index(c) for c in DEFAULT_LANGUAGES if c.startswith("en")]
         assert max(zh_indices) < min(en_indices)
 
+    def test_en_preference_codes_put_en_first(self):
+        languages = language_preference_codes("en")
+        assert languages[: len(EN_LANG_CODES)] == EN_LANG_CODES
+        assert languages[-len(ZH_LANG_CODES) :] == ZH_LANG_CODES
+
+    def test_zh_preference_codes_put_zh_first(self):
+        languages = language_preference_codes("zh")
+        assert languages[: len(ZH_LANG_CODES)] == ZH_LANG_CODES
+        assert languages[-len(EN_LANG_CODES) :] == EN_LANG_CODES
+
 
 class TestFindBestTranscript:
     """Tests for _find_best_transcript()."""
@@ -259,6 +277,17 @@ class TestFindBestTranscript:
         generated = self._make_transcript("zh-TW", "Chinese (Taiwan)", is_generated=True)
         result = _find_best_transcript([generated, manual])
         assert result is manual
+
+    def test_english_language_prefers_english_over_chinese(self):
+        zh_manual = self._make_transcript("zh-TW", "Chinese (Taiwan)", is_generated=False)
+        en_manual = self._make_transcript("en", "English", is_generated=False)
+        result = _find_best_transcript([zh_manual, en_manual], language="en")
+        assert result is en_manual
+
+    def test_english_language_falls_back_to_chinese(self):
+        zh_manual = self._make_transcript("zh-TW", "Chinese (Taiwan)", is_generated=False)
+        result = _find_best_transcript([zh_manual], language="en")
+        assert result is zh_manual
 
     def test_prefers_zh_over_en(self):
         zh_gen = self._make_transcript("zh-CN", "Chinese (China)", is_generated=True)
