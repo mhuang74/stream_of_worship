@@ -438,17 +438,52 @@ class TestMetadataHelpers:
 class TestTranscriptDrafts:
     def test_fetch_transcript_lines_cleans_cues_and_whitespace(self, monkeypatch):
         class FakeApi:
-            def fetch(self, video_id, languages):
+            @staticmethod
+            def get_transcript(video_id, languages):
                 return [
-                    types.SimpleNamespace(text="[Music]"),
-                    types.SimpleNamespace(text="  Here   I  bow "),
-                    types.SimpleNamespace(text="[Laughter]"),
-                    types.SimpleNamespace(text="Here I bow"),
+                    {"text": "[Music]"},
+                    {"text": "  Here   I  bow "},
+                    {"text": "[Laughter]"},
+                    {"text": "Here I bow"},
                 ]
 
-        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=lambda: FakeApi())
+        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
         monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
 
         lines = fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
 
         assert lines == ["Here I bow", "Here I bow"]
+
+    def test_fetch_transcript_lines_falls_back_to_best_available_transcript(self, monkeypatch):
+        class FakeTranscript:
+            def __init__(self, language_code, language, is_generated, snippets):
+                self.language_code = language_code
+                self.language = language
+                self.is_generated = is_generated
+                self._snippets = snippets
+
+            def fetch(self):
+                return self._snippets
+
+        fallback_transcript = FakeTranscript(
+            "en",
+            "English",
+            True,
+            [{"text": " Grace upon grace "}],
+        )
+
+        class FakeApi:
+            @staticmethod
+            def get_transcript(video_id, languages):
+                raise RuntimeError("preferred transcript unavailable")
+
+            @staticmethod
+            def list_transcripts(video_id):
+                return [fallback_transcript]
+
+        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
+        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
+
+        lines = fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
+
+        assert lines == ["Grace upon grace"]
