@@ -1929,7 +1929,7 @@ def _submit_forced_alignment_batch(
 @app.command("align-lrc")
 def align_lrc_recording(
     song_id: Optional[str] = typer.Argument(None, help="Song ID to force-align LRC for"),
-    language: str = typer.Option("zh", "--lang", help="Language: zh, en"),
+    language: str = typer.Option("auto", "--lang", help="Language: auto, zh, en"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-alignment"),
     use_vocals_stem: bool = typer.Option(
         True, "--use-vocals-stem/--no-vocals-stem",
@@ -1956,8 +1956,8 @@ def align_lrc_recording(
     if stdin and wait:
         console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
         raise typer.Exit(1)
-    if language not in {"zh", "en"}:
-        console.print("[red]Error: --lang must be one of: zh, en[/red]")
+    if language not in {"auto", "zh", "en"}:
+        console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
         raise typer.Exit(1)
 
     try:
