@@ -1,6 +1,8 @@
 """Tests for curated catalog edit helpers."""
 
+from stream_of_worship.admin.db.models import Song
 from stream_of_worship.admin.services.catalog_edit import (
+    build_song_diff,
     build_song_from_review,
     compute_song_id,
     normalize_reviewed_data,
@@ -57,3 +59,27 @@ def test_build_song_from_review_stores_empty_lyrics_consistently():
     assert song.lyrics_raw is None
     assert song.lyrics_lines is None
     assert song.sections is None
+
+
+def test_build_song_diff_serializes_admin_song_dataclass():
+    before = Song(
+        id="song_1",
+        title="Before",
+        source_url="https://example.com/before",
+        scraped_at="2026-06-15T00:00:00",
+        composer="Composer A",
+    )
+    after = Song(
+        id="song_1",
+        title="After",
+        source_url="https://example.com/after",
+        scraped_at="2026-06-15T00:00:00",
+        composer="Composer B",
+    )
+
+    diff_text = build_song_diff(before, after)
+
+    assert '"title": "Before"' in diff_text
+    assert '"title": "After"' in diff_text
+    assert '"composer": "Composer A"' in diff_text
+    assert '"composer": "Composer B"' in diff_text
