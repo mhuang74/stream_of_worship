@@ -4,9 +4,7 @@ This guide covers deploying the Analysis Service to a production environment usi
 
 ## Overview
 
-The Analysis Service consists of two microservices:
-- **Analysis Service** (port 8000): Audio analysis, stem separation, LRC generation
-- **Qwen3 Alignment Service** (port 8001): Lyric-to-audio forced alignment
+The Analysis Service is a single microservice (port 8000) that handles audio analysis, stem separation, LRC generation, and forced alignment in-process.
 
 ## Prerequisites
 
@@ -163,18 +161,14 @@ ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
 # Example output: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
 ```
 
-**Get model paths for configuration:**
+**Get model path for configuration:**
 ```bash
-# Get the full model root path
-export QWEN3_MODEL_ROOT="$HOME/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
-echo "Model Root: $QWEN3_MODEL_ROOT"
-
-# Get the snapshot hash
-export QWEN3_SNAPSHOT=$(ls "$QWEN3_MODEL_ROOT/snapshots/" | head -1)
-echo "Snapshot: $QWEN3_SNAPSHOT"
+# Get the full model snapshot path
+export FORCED_ALIGNER_MODEL_PATH="$HOME/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/$(ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/ | head -1)"
+echo "Model Path: $FORCED_ALIGNER_MODEL_PATH"
 
 # Verify model files exist
-ls "$QWEN3_MODEL_ROOT/snapshots/$QWEN3_SNAPSHOT/"
+ls "$FORCED_ALIGNER_MODEL_PATH/"
 ```
 
 ### 2.3 Model Storage Summary
@@ -239,12 +233,12 @@ SOW_LLM_BASE_URL=""     # e.g., https://openrouter.ai/api/v1
 SOW_LLM_MODEL=""        # e.g., openai/gpt-4o-mini
 
 # =============================================================================
-# QWEN3 MODEL CONFIGURATION (REQUIRED for LRC refinement)
+# FORCED ALIGNER MODEL CONFIGURATION (REQUIRED for LRC refinement)
 # =============================================================================
-# These paths must match where you downloaded the models in Step 2
+# Path to the Qwen3 Forced Aligner model snapshot (downloaded in Step 2)
 
-SOW_QWEN3_MODEL_ROOT=""
-SOW_QWEN3_MODEL_SNAPSHOT=""
+SOW_FORCED_ALIGNER_MODEL_PATH=""
+SOW_FORCED_ALIGNER_DEVICE="auto"
 
 # =============================================================================
 # AUDIO-SEPARATOR MODEL CONFIGURATION (REQUIRED for stem separation)
@@ -263,7 +257,7 @@ SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 # Device selection (cpu or cuda - requires GPU setup)
 SOW_DEMUCS_DEVICE=cpu
 SOW_WHISPER_DEVICE=cpu
-SOW_QWEN3_DEVICE=auto
+SOW_FORCED_ALIGNER_DEVICE=auto
 
 # Whisper configuration
 SOW_WHISPER_MODEL=large-v3
@@ -283,19 +277,11 @@ SOW_MVSEP_STAGE2_ADD_OPT1=0
 SOW_MVSEP_STAGE2_ADD_OPT2=1
 
 # =============================================================================
-# OPTIONAL: QWEN3 INTERNAL API KEY
-# =============================================================================
-# Only needed if you set SOW_QWEN3_API_KEY in the Qwen3 service
-
-SOW_QWEN3_API_KEY=""
-
-# =============================================================================
 # DOCKER IMAGE CONFIGURATION
 # =============================================================================
 # Update these when deploying new versions
 
 SOW_ANALYSIS_IMAGE="ghcr.io/your-org/sow-analysis:latest"
-SOW_QWEN3_IMAGE="ghcr.io/your-org/sow-qwen3:latest"
 
 ENVFILE
 ```
@@ -324,8 +310,8 @@ vim ~/sow-deployment/.env
 | `SOW_LLM_API_KEY` | LLM API key | OpenRouter, OpenAI, etc. |
 | `SOW_LLM_BASE_URL` | LLM endpoint | e.g., `https://openrouter.ai/api/v1` |
 | `SOW_LLM_MODEL` | LLM model | e.g., `openai/gpt-4o-mini` |
-| `SOW_QWEN3_MODEL_ROOT` | Model path | Output from Step 2.2 |
-| `SOW_QWEN3_MODEL_SNAPSHOT` | Snapshot hash | Output from Step 2.2 |
+| `SOW_FORCED_ALIGNER_MODEL_PATH` | Model path | Output from Step 2.2 |
+| `SOW_FORCED_ALIGNER_DEVICE` | Device | `auto`, `cpu`, or `cuda` |
 | `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | Model path | Output from Step 2.1 |
 
 ### 3.3 Secure the .env File
@@ -380,9 +366,9 @@ services:
       SOW_LLM_BASE_URL: ${SOW_LLM_BASE_URL}
       SOW_LLM_MODEL: ${SOW_LLM_MODEL}
       
-      # Qwen3 Service Connection
-      SOW_QWEN3_BASE_URL: http://qwen3:8000
-      SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
+      # Forced Aligner Configuration (in-process, no separate service)
+      SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH}
+      SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
       
       # Whisper Configuration
       SOW_WHISPER_DEVICE: ${SOW_WHISPER_DEVICE:-cpu}
@@ -438,52 +424,11 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
-  # ==========================================================================
-  # Qwen3 Alignment Service - LRC Refinement (Port 8001 externally)
-  # ==========================================================================
-  qwen3:
-    image: ${SOW_QWEN3_IMAGE:-ghcr.io/your-org/sow-qwen3:latest}
-    container_name: sow-qwen3
-    restart: unless-stopped
-    ports:
-      - "8001:8000"  # Map host 8001 to container 8000
-    environment:
-      SOW_QWEN3_DEVICE: ${SOW_QWEN3_DEVICE:-auto}
-      SOW_QWEN3_DTYPE: ${SOW_QWEN3_DTYPE:-float32}
-      SOW_QWEN3_MAX_CONCURRENT: ${SOW_QWEN3_MAX_CONCURRENT:-1}
-      SOW_QWEN3_CACHE_DIR: /cache
-      SOW_QWEN3_API_KEY: ${SOW_QWEN3_API_KEY:-}
-      SOW_QWEN3_MODEL_PATH: /models/hf-model/snapshots/${SOW_QWEN3_MODEL_SNAPSHOT}
-      # R2 credentials (for audio download)
-      SOW_QWEN3_R2_BUCKET: ${SOW_R2_BUCKET}
-      SOW_QWEN3_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
-      SOW_QWEN3_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
-      SOW_QWEN3_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
-    volumes:
-      - qwen3-cache:/cache
-      # Mount entire HuggingFace model directory to preserve symlink structure
-      - ${SOW_QWEN3_MODEL_ROOT}:/models/hf-model:ro
-    networks:
-      - sow-network
-    deploy:
-      resources:
-        limits:
-          memory: 8g
-          cpus: '4'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s  # Qwen3 takes longer to load
-
 # ============================================================================
 # Persistent Volumes
 # ============================================================================
 volumes:
   analysis-cache:
-    driver: local
-  qwen3-cache:
     driver: local
 
 # ============================================================================
@@ -546,22 +491,6 @@ Expected response:
 }
 ```
 
-**Health check - Qwen3 Service:**
-```bash
-curl -s http://localhost:8001/health | jq .
-```
-
-Expected response:
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0",
-  "model": "ready",
-  "device": "cpu",
-  "max_concurrent": 1
-}
-```
-
 ### 5.4 Test Job Submission
 
 ```bash
@@ -599,9 +528,6 @@ sudo ufw allow 22/tcp
 
 # Allow Analysis Service (if needed externally)
 sudo ufw allow 8000/tcp
-
-# Allow Qwen3 Service (internal only, usually not needed externally)
-# sudo ufw allow 8001/tcp
 
 # Allow Docker bridge traffic
 sudo ufw allow in on docker0
@@ -653,9 +579,8 @@ cd ~/sow-deployment
 # View all service logs
 docker compose logs -f
 
-# View specific service
+# View service logs
 docker compose logs -f analysis
-docker compose logs -f qwen3
 
 # View last N lines
 docker compose logs --tail=100 analysis
@@ -683,13 +608,11 @@ curl http://localhost:8000/api/v1/health
 ### Backup and Restore Cache
 
 ```bash
-# Backup cache volumes
+# Backup cache volume
 docker run --rm -v sow-deployment_analysis-cache:/cache -v $(pwd):/backup alpine tar czf /backup/analysis-cache.tar.gz -C /cache .
-docker run --rm -v sow-deployment_qwen3-cache:/cache -v $(pwd):/backup alpine tar czf /backup/qwen3-cache.tar.gz -C /cache .
 
-# Restore cache volumes
+# Restore cache volume
 docker run --rm -v sow-deployment_analysis-cache:/cache -v $(pwd):/backup alpine sh -c "cd /cache && tar xzf /backup/analysis-cache.tar.gz"
-docker run --rm -v sow-deployment_qwen3-cache:/cache -v $(pwd):/backup alpine sh -c "cd /cache && tar xzf /backup/qwen3-cache.tar.gz"
 ```
 
 ### Clearing Cache
@@ -765,7 +688,6 @@ print(s3.list_buckets())
 ```bash
 # Verify model paths are mounted correctly
 docker compose exec analysis ls -la /models/audio-separator/
-docker compose exec qwen3 ls -la /models/hf-model/snapshots/
 
 # Check model files exist on host
 ls -la ~/.cache/audio-separator/

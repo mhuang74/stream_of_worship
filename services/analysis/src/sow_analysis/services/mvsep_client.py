@@ -2,7 +2,7 @@
 
 Async client using httpx.AsyncClient for cloud-based vocal stem separation.
 Provides configurable two-stage separation: Stage 1 (vocal/instrumental separation)
-+ optional Stage 2 (reverb removal). Follows the Qwen3Client pattern from services/qwen3_client.py.
++ optional Stage 2 (reverb removal).
 """
 
 import asyncio

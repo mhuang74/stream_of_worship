@@ -1625,12 +1625,6 @@ def lrc_recording(
     force_qwen3_asr: bool = typer.Option(
         False, "--force-qwen3-asr", help="Bypass cached Qwen3 ASR transcription only"
     ),
-    no_qwen3_legacy: bool = typer.Option(
-        False,
-        "--no-qwen3",
-        help="Deprecated; Qwen3 ForcedAligner is no longer part of automatic LRC generation",
-        hidden=True,
-    ),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for LRC generation to complete"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -1653,12 +1647,6 @@ def lrc_recording(
         raise typer.Exit(1)
     if stdin and wait:
         console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
-        raise typer.Exit(1)
-    if no_qwen3_legacy:
-        console.print(
-            "[red]Error: --no-qwen3 is deprecated. Qwen3 ForcedAligner is no longer "
-            "part of automatic LRC generation; use --no-qwen3-asr instead.[/red]"
-        )
         raise typer.Exit(1)
     if language not in {"auto", "zh", "en"}:
         console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
@@ -1732,6 +1720,289 @@ def _compute_content_hash(
 
     content = f"{title}\0{composer}\0{lyrics_raw}\0{'|'.join(lyrics_lines)}"
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+
+def _submit_forced_alignment_single(
+    song_id: str,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    language: str,
+    force: bool,
+    use_vocals_stem: bool,
+    wait: bool,
+    console: Console,
+) -> None:
+    """Submit forced alignment for a single recording."""
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(f"[red]No recording found for {song_id}.[/red]")
+        raise typer.Exit(1)
+
+    song = db_client.get_song(song_id)
+    if not song or not song.lyrics_raw:
+        console.print(f"[red]No lyrics found for song {song_id}.[/red]")
+        raise typer.Exit(1)
+
+    if not recording.r2_audio_url:
+        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
+        raise typer.Exit(1)
+
+    if recording.lrc_status == "completed" and not force:
+        console.print(
+            f"[yellow]Recording {recording.hash_prefix} already has LRC. "
+            f"Use --force to re-align.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
+        console.print(
+            f"[yellow]LRC generation already in progress for "
+            f"{recording.hash_prefix} (job: {recording.lrc_job_id})[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    if recording.duration_seconds and recording.duration_seconds > 300:
+        console.print(
+            f"[red]Recording {recording.hash_prefix} is too long "
+            f"({recording.duration_seconds:.0f}s > 300s limit).[/red]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        job = analysis_client.submit_forced_alignment(
+            audio_url=recording.r2_audio_url,
+            content_hash=recording.content_hash,
+            lyrics_text=song.lyrics_raw,
+            song_title=song.title,
+            language=language,
+            force=force,
+            use_vocals_stem=use_vocals_stem,
+        )
+    except AnalysisServiceError as e:
+        console.print(f"[red]Failed to submit forced alignment job: {e}[/red]")
+        raise typer.Exit(1)
+
+    job_id = job.job_id
+
+    db_client.update_recording_status(
+        hash_prefix=recording.hash_prefix,
+        lrc_status="processing",
+        lrc_job_id=job_id,
+    )
+
+    console.print(f"[green]Forced alignment job submitted (job: {job_id})[/green]")
+
+    if wait:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("{task.fields[stage]}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Forced aligning...", total=100, stage="", completed=0)
+
+            def update_progress(job_info: JobInfo) -> None:
+                pct = int(job_info.progress * 100)
+                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
+
+            try:
+                final_job = analysis_client.wait_for_completion(
+                    job_id,
+                    poll_interval=30.0,
+                    timeout=600.0,
+                    callback=update_progress,
+                )
+            except AnalysisServiceError as e:
+                console.print(f"[red]{e}[/red]")
+                db_client.update_recording_status(
+                    hash_prefix=recording.hash_prefix,
+                    lrc_status="failed",
+                )
+                raise typer.Exit(1)
+
+        if final_job.status == "failed":
+            error_msg = final_job.error_message or "Unknown error"
+            console.print(f"[red]Forced alignment failed: {error_msg}[/red]")
+            db_client.update_recording_status(
+                hash_prefix=recording.hash_prefix,
+                lrc_status="failed",
+            )
+            raise typer.Exit(1)
+
+        if final_job.result and final_job.result.lrc_url:
+            db_client.update_recording_lrc(
+                hash_prefix=recording.hash_prefix,
+                r2_lrc_url=final_job.result.lrc_url,
+                visibility_status="review",
+            )
+
+        console.print(f"[green]Forced alignment completed for {song_id}[/green]")
+        if final_job.result and final_job.result.lrc_url:
+            console.print(f"  LRC URL: {final_job.result.lrc_url}")
+
+
+def _submit_forced_alignment_batch(
+    song_ids: list[str],
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    language: str,
+    force: bool,
+    use_vocals_stem: bool,
+    console: Console,
+) -> None:
+    """Submit forced alignment for multiple recordings (batch mode, no wait)."""
+    submitted = 0
+    skipped = 0
+    errors = 0
+
+    for i, song_id in enumerate(song_ids, 1):
+        console.print(f"[{i}/{len(song_ids)}] Processing {song_id}...")
+
+        recording = db_client.get_recording_by_song_id(song_id)
+        if not recording:
+            console.print("  [red]No recording found[/red]")
+            errors += 1
+            continue
+
+        song = db_client.get_song(song_id)
+        if not song or not song.lyrics_raw:
+            console.print("  [red]No lyrics found[/red]")
+            errors += 1
+            continue
+
+        if not recording.r2_audio_url:
+            console.print("  [red]No audio URL[/red]")
+            errors += 1
+            continue
+
+        if recording.lrc_status == "completed" and not force:
+            console.print("  [yellow]Already has LRC (skipped)[/yellow]")
+            skipped += 1
+            continue
+
+        if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
+            console.print("  [yellow]Already in progress (skipped)[/yellow]")
+            skipped += 1
+            continue
+
+        if recording.duration_seconds and recording.duration_seconds > 300:
+            console.print("  [yellow]Too long (>5 min, skipped)[/yellow]")
+            skipped += 1
+            continue
+
+        try:
+            job = analysis_client.submit_forced_alignment(
+                audio_url=recording.r2_audio_url,
+                content_hash=recording.content_hash,
+                lyrics_text=song.lyrics_raw,
+                song_title=song.title,
+                language=language,
+                force=force,
+                use_vocals_stem=use_vocals_stem,
+            )
+
+            db_client.update_recording_status(
+                hash_prefix=recording.hash_prefix,
+                lrc_status="processing",
+                lrc_job_id=job.job_id,
+            )
+
+            console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
+            submitted += 1
+
+        except AnalysisServiceError as e:
+            console.print(f"  [red]Failed to submit: {e}[/red]")
+            errors += 1
+        except Exception as e:
+            console.print(f"  [red]Unexpected error: {e}[/red]")
+            errors += 1
+
+    console.print("")
+    console.print("[cyan]Batch Summary:[/cyan]")
+    console.print(f"  Submitted: {submitted}")
+    console.print(f"  Skipped: {skipped}")
+    console.print(f"  Errors: {errors}")
+
+
+@app.command("align-lrc")
+def align_lrc_recording(
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to force-align LRC for"),
+    language: str = typer.Option("zh", "--lang", help="Language: zh, en"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-alignment"),
+    use_vocals_stem: bool = typer.Option(
+        True, "--use-vocals-stem/--no-vocals-stem",
+        help="Use clean vocal stem for better accuracy",
+    ),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin"),
+    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for alignment to complete"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Submit a recording for forced LRC alignment using Qwen3ForcedAligner.
+
+    Uses the Qwen3ForcedAligner model to align lyrics to audio timestamps.
+    Best for songs with known lyrics that need precise timing.
+
+    For batch processing, pipe song IDs via stdin:
+        sow-admin audio list --lrc incomplete --format ids | sow-admin audio align-lrc --stdin
+    """
+    if not song_id and not stdin:
+        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+    if song_id and stdin:
+        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+    if stdin and wait:
+        console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
+        raise typer.Exit(1)
+    if language not in {"zh", "en"}:
+        console.print("[red]Error: --lang must be one of: zh, en[/red]")
+        raise typer.Exit(1)
+
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    try:
+        analysis_client = AnalysisClient(config.analysis_url)
+    except ValueError as e:
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
+        raise typer.Exit(1)
+
+    if stdin:
+        song_ids = _read_song_ids_from_stdin()
+        if not song_ids:
+            console.print("[yellow]No song IDs provided via stdin[/yellow]")
+            raise typer.Exit(0)
+    else:
+        song_ids = [song_id]
+
+    if len(song_ids) == 1:
+        _submit_forced_alignment_single(
+            song_id=song_ids[0],
+            db_client=db_client,
+            analysis_client=analysis_client,
+            language=language,
+            force=force,
+            use_vocals_stem=use_vocals_stem,
+            wait=wait,
+            console=console,
+        )
+    else:
+        _submit_forced_alignment_batch(
+            song_ids=song_ids,
+            db_client=db_client,
+            analysis_client=analysis_client,
+            language=language,
+            force=force,
+            use_vocals_stem=use_vocals_stem,
+            console=console,
+        )
 
 
 def _submit_embedding_single(
