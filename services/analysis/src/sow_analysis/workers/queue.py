@@ -960,6 +960,7 @@ class JobQueue:
                         lrc_path,
                         object_name=f"lyrics.{resolved_language}.v2.lrc",
                     )
+                    await self.r2_client.upload_lrc(hash_prefix, lrc_path)
 
                 # Save to cache using composite key (audio hash + lyrics hash)
                 cache_result = {

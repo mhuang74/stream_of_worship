@@ -5,7 +5,7 @@ import logging
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from sow_analysis.models import AnalyzeJobRequest, JobStatus, JobType, LrcJobRequest, LrcOptions
@@ -191,6 +191,43 @@ class TestLRCJobProcessing:
         assert job.status == JobStatus.COMPLETED
         assert job.stage == "cached"
         assert job.result.line_count == 2
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_uploads_versioned_lrc_and_legacy_alias(self, queue):
+        """New LRC jobs preserve the legacy lyrics.lrc path consumed by renderers."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="Amazing grace",
+            options=LrcOptions(language="en", use_qwen3_asr=False, use_vocals_stem=False),
+        )
+        job = Job(
+            id="job_test_lrc_upload_alias",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+        queue.r2_client = MagicMock()
+        queue.r2_client.download_audio = AsyncMock()
+
+        async def upload_lrc(hash_prefix, _lrc_path, object_name="lyrics.lrc"):
+            return f"s3://bucket/{hash_prefix}/{object_name}"
+
+        queue.r2_client.upload_lrc = AsyncMock(side_effect=upload_lrc)
+
+        async def generate_lrc(_audio_path, _lyrics_text, _options, output_path, **_kwargs):
+            output_path.write_text("[00:00.00] Amazing grace\n")
+            return output_path, 1, []
+
+        with patch("sow_analysis.workers.queue.generate_lrc", new=generate_lrc):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.COMPLETED
+        assert job.result.lrc_url == "s3://bucket/abc123def456/lyrics.en.v2.lrc"
+        queue.r2_client.upload_lrc.assert_any_await(
+            "abc123def456", ANY, object_name="lyrics.en.v2.lrc"
+        )
+        queue.r2_client.upload_lrc.assert_any_await("abc123def456", ANY)
 
     @pytest.mark.asyncio
     async def test_lrc_job_with_invalid_request(self, queue):
