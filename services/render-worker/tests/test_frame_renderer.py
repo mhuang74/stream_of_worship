@@ -135,9 +135,7 @@ class TestVideoTemplates:
 
 class TestSegmentInfo:
     def test_frozen_dataclass(self):
-        s = SegmentInfo(
-            id="1", song_id="s1", position=0, song_title="Test"
-        )
+        s = SegmentInfo(id="1", song_id="s1", position=0, song_title="Test")
         with pytest.raises(AttributeError):
             s.id = "2"
 
@@ -203,9 +201,7 @@ class TestFrameRendererInit:
         assert renderer.resolution == (1920, 1080)
 
     def test_custom_resolution(self):
-        renderer = FrameRenderer(
-            template=VIDEO_TEMPLATES["dark"], resolution=(1280, 720)
-        )
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"], resolution=(1280, 720))
         assert renderer.resolution == (1280, 720)
 
     def test_get_base_font_size(self):
@@ -291,9 +287,7 @@ class TestRenderFrame:
         assert result.size == (1920, 1080)
 
     def test_custom_resolution(self):
-        renderer = FrameRenderer(
-            template=VIDEO_TEMPLATES["dark"], resolution=(1280, 720)
-        )
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"], resolution=(1280, 720))
         lyrics = _make_lyrics([(5.0, "Hello")])
         segments = [_make_segment(start=0.0, duration=60.0)]
         result = renderer.render_frame(lyrics, segments, 7.0)
@@ -314,9 +308,7 @@ class TestRenderFrame:
     def test_before_first_lyric_shows_intro(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         lyrics = _make_lyrics([(10.0, "Hello")])
-        segment = _make_segment(
-            start=0.0, duration=60.0, composer="Test Composer"
-        )
+        segment = _make_segment(start=0.0, duration=60.0, composer="Test Composer")
         result = renderer.render_frame(lyrics, [segment], 2.0)
         assert isinstance(result, Image.Image)
 
@@ -372,9 +364,7 @@ class TestRenderIntroInfo:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         img = Image.new("RGB", (1920, 1080))
         draw = ImageDraw.Draw(img)
-        segment = _make_segment(
-            start=0.0, duration=60.0, composer="Test Composer"
-        )
+        segment = _make_segment(start=0.0, duration=60.0, composer="Test Composer")
         result = renderer.render_intro_info(segment, 1.0, 10.0, draw, 1920, 1080)
         assert result == 255
 
@@ -382,9 +372,7 @@ class TestRenderIntroInfo:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         img = Image.new("RGB", (1920, 1080))
         draw = ImageDraw.Draw(img)
-        segment = _make_segment(
-            start=0.0, duration=60.0, composer="Test Composer"
-        )
+        segment = _make_segment(start=0.0, duration=60.0, composer="Test Composer")
         alpha_start = renderer.render_intro_info(segment, 5.0, 10.0, draw, 1920, 1080)
         alpha_later = renderer.render_intro_info(segment, 8.0, 10.0, draw, 1920, 1080)
         assert alpha_later < alpha_start
@@ -393,9 +381,7 @@ class TestRenderIntroInfo:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         img = Image.new("RGB", (1920, 1080))
         draw = ImageDraw.Draw(img)
-        segment = _make_segment(
-            start=0.0, duration=60.0, composer="Test Composer"
-        )
+        segment = _make_segment(start=0.0, duration=60.0, composer="Test Composer")
         result = renderer.render_intro_info(segment, 9.5, 10.0, draw, 1920, 1080)
         assert result == 0
 
@@ -436,9 +422,7 @@ class TestRenderIntroInfo:
         img = Image.new("RGB", (1920, 1080))
         draw = ImageDraw.Draw(img)
         segment = _make_segment(start=0.0, duration=60.0, composer="Test")
-        alpha_at_half_fade = renderer.render_intro_info(
-            segment, 6.0, 10.0, draw, 1920, 1080
-        )
+        alpha_at_half_fade = renderer.render_intro_info(segment, 6.0, 10.0, draw, 1920, 1080)
         import math
 
         info_duration = 10.0 - 4.0 - 3.0
@@ -514,6 +498,86 @@ class TestRenderLyrics:
         renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img.getdata()) != list(blank.getdata())
+
+    def test_blank_current_line_no_preview_outside_four_beat_window(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
+        draw = ImageDraw.Draw(img)
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (40.0, "World")])
+
+        with patch.object(renderer, "_render_next_lyric_preview") as mock_preview:
+            renderer.render_lyrics(lyrics, 17.0, "Song", draw, 1920, 1080, tempo_bpm=120.0)
+
+        blank = Image.new("RGB", (1920, 1080), bg)
+        mock_preview.assert_not_called()
+        assert list(img.getdata()) == list(blank.getdata())
+
+    def test_blank_current_line_preview_inside_four_beat_window(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
+        draw = ImageDraw.Draw(img)
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")])
+
+        with patch.object(renderer, "_render_next_lyric_preview") as mock_preview:
+            renderer.render_lyrics(lyrics, 11.25, "Song", draw, 1920, 1080, tempo_bpm=120.0)
+
+        mock_preview.assert_called_once()
+        assert mock_preview.call_args.args[0].text == "World"
+        assert mock_preview.call_args.args[1] == 64
+
+    def test_blank_preview_fade_in_alpha(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")])
+
+        assert renderer._compute_blank_preview_alpha(lyrics, 11.0, 1, 120.0) == 0
+        assert renderer._compute_blank_preview_alpha(lyrics, 11.25, 1, 120.0) == 64
+        assert renderer._compute_blank_preview_alpha(lyrics, 11.5, 1, 120.0) == 128
+
+    def test_blank_preview_skips_future_blank_lines(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (12.0, ""), (14.0, "World")])
+
+        assert renderer._compute_blank_preview_alpha(lyrics, 12.25, 1, 120.0) == 64
+
+    def test_blank_preview_uses_default_tempo_fallback(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (14.0, "World")])
+
+        assert renderer._compute_blank_preview_alpha(lyrics, 10.55, 1, None) == 0
+        assert renderer._compute_blank_preview_alpha(lyrics, 10.6, 1, 0.0) > 0
+
+    def test_blank_previous_lyric_holds_then_fades(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, "")])
+
+        assert renderer._compute_blank_previous_fade_alpha(lyrics, 11.0, 1) == 255
+        assert 0 < renderer._compute_blank_previous_fade_alpha(lyrics, 14.0, 1) < 255
+        assert renderer._compute_blank_previous_fade_alpha(lyrics, 16.0, 1) == 0
+
+    def test_blank_previous_and_preview_can_overlap(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")])
+
+        previous_alpha = renderer._compute_blank_previous_fade_alpha(lyrics, 11.25, 1)
+        preview_alpha = renderer._compute_blank_preview_alpha(lyrics, 11.25, 1, 120.0)
+
+        assert previous_alpha == 255
+        assert preview_alpha == 64
+
+    def test_trailing_blank_holds_then_fades_last_sung_line(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, "")])
+
+        img_hold = Image.new("RGB", (1920, 1080), bg)
+        renderer.render_lyrics(lyrics, 11.0, "Song", ImageDraw.Draw(img_hold), 1920, 1080)
+        img_faded = Image.new("RGB", (1920, 1080), bg)
+        renderer.render_lyrics(lyrics, 16.0, "Song", ImageDraw.Draw(img_faded), 1920, 1080)
+        blank = Image.new("RGB", (1920, 1080), bg)
+
+        assert list(img_hold.getdata()) != list(blank.getdata())
+        assert list(img_faded.getdata()) == list(blank.getdata())
 
 
 class TestRenderTitleCard:
@@ -603,11 +667,13 @@ class TestLoadFont:
 class TestFrameRendererIntegration:
     def test_full_render_pipeline(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([
-            (5.0, "First line"),
-            (10.0, "Second line"),
-            (15.0, "Third line"),
-        ])
+        lyrics = _make_lyrics(
+            [
+                (5.0, "First line"),
+                (10.0, "Second line"),
+                (15.0, "Third line"),
+            ]
+        )
         segments = [_make_segment(start=0.0, duration=60.0)]
 
         for t in [0.0, 3.0, 7.0, 12.0, 20.0]:
@@ -645,9 +711,7 @@ class TestFrameRendererIntegration:
         segments = [_make_segment(start=0.0, duration=60.0)]
 
         for preset in ["S", "M", "L", "XL"]:
-            renderer = FrameRenderer(
-                template=VIDEO_TEMPLATES["dark"], font_size_preset=preset
-            )
+            renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"], font_size_preset=preset)
             result = renderer.render_frame(lyrics, segments, 7.0)
             assert result.size == (1920, 1080)
 
@@ -810,7 +874,26 @@ class TestComputeCacheKey:
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         state = renderer._resolve_visual_state([], [], 0.0)
         key = renderer._compute_cache_key(state)
-        assert key == ("noto_serif_tc", "", "", -1, 0, 255, False)
+        assert key == ("noto_serif_tc", "", "", -1, 0, 255, 0, False)
+
+    def test_blank_preview_alpha_changes_cache_key(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")], title="Test Song")
+        segment = _make_segment(start=0.0, duration=60.0, tempo=120.0)
+
+        state_before = renderer._resolve_visual_state(lyrics, [segment], 10.5)
+        state_fading = renderer._resolve_visual_state(lyrics, [segment], 11.25)
+        state_visible = renderer._resolve_visual_state(lyrics, [segment], 11.5)
+
+        assert state_before.preview_alpha == 0
+        assert state_fading.preview_alpha == 64
+        assert state_visible.preview_alpha == 128
+        assert renderer._compute_cache_key(state_before) != renderer._compute_cache_key(
+            state_fading
+        )
+        assert renderer._compute_cache_key(state_fading) != renderer._compute_cache_key(
+            state_visible
+        )
 
 
 class TestFrameCache:
@@ -900,6 +983,7 @@ class TestFrameCachePerformance:
         renderer.render_frame_bytes(lyrics, segments, 7.0)
 
         import time
+
         start = time.monotonic()
         for _ in range(100):
             renderer.render_frame_bytes(lyrics, segments, 7.0)

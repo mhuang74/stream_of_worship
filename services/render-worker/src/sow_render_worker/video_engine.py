@@ -159,8 +159,11 @@ class VideoEngine:
 
         logger.info(
             "[%s] generate_video: duration=%.1fs, total_frames=%d, resolution=%s, fps=%d",
-            job_id or "unknown", total_duration_seconds, total_frames,
-            f"{self.resolution[0]}x{self.resolution[1]}", self.fps,
+            job_id or "unknown",
+            total_duration_seconds,
+            total_frames,
+            f"{self.resolution[0]}x{self.resolution[1]}",
+            self.fps,
         )
 
         all_lyrics: list[GlobalLRCLine] = []
@@ -179,9 +182,8 @@ class VideoEngine:
                 continue
 
             local_lyrics = parse_lrc(lrc_content)
-            title = (
-                segment.item.song_title
-                or (str(segment.item.song_id) if segment.item.song_id else f"song-{i}")
+            title = segment.item.song_title or (
+                str(segment.item.song_id) if segment.item.song_id else f"song-{i}"
             )
             global_lyrics = convert_to_global_timeline(
                 local_lyrics, segment.start_time_seconds, title
@@ -208,9 +210,11 @@ class VideoEngine:
                 )
             )
 
-        if not all_lyrics:
+        if not all_lyrics or all(not line.text for line in all_lyrics):
             return self.generate_blank_video(
-                audio_path, output_path, total_duration_seconds,
+                audio_path,
+                output_path,
+                total_duration_seconds,
                 job_id=job_id,
             )
 
@@ -238,7 +242,9 @@ class VideoEngine:
             else:
                 song_titles = [seg.item.song_title for seg in segments if seg.item.song_title]
                 display_name = self.songset_name or "Worship Set"
-                title_lines = tuple([display_name] + song_titles) if song_titles else (display_name,)
+                title_lines = (
+                    tuple([display_name] + song_titles) if song_titles else (display_name,)
+                )
 
             title_card_config = TitleCardConfig(
                 enabled=True,
@@ -262,7 +268,8 @@ class VideoEngine:
 
         logger.info(
             "[%s] generate_video: complete, %d frames encoded",
-            job_id or "unknown", total_frames,
+            job_id or "unknown",
+            total_frames,
         )
 
         return VideoExportResult(
@@ -295,7 +302,10 @@ class VideoEngine:
         ffmpeg_start_ns = time.monotonic_ns()
         logger.info(
             "[%s] encode_video_with_ffmpeg: starting FFmpeg pipe, %d frames (%.1fs at %dfps)",
-            job_id or "unknown", total_frames, total_duration_seconds, self.fps,
+            job_id or "unknown",
+            total_frames,
+            total_duration_seconds,
+            self.fps,
         )
 
         args = [
@@ -334,6 +344,7 @@ class VideoEngine:
         stderr_chunks: list[bytes] = []
         stderr_thread: threading.Thread | None = None
         if process.stderr:
+
             def _drain_stderr(pipe, chunks):
                 try:
                     while True:
@@ -344,7 +355,9 @@ class VideoEngine:
                 except Exception:
                     pass
 
-            stderr_thread = threading.Thread(target=_drain_stderr, args=(process.stderr, stderr_chunks), daemon=True)
+            stderr_thread = threading.Thread(
+                target=_drain_stderr, args=(process.stderr, stderr_chunks), daemon=True
+            )
             stderr_thread.start()
 
         title_card_frame_count = (
@@ -375,7 +388,9 @@ class VideoEngine:
                 else:
                     current_time = frame_count / self.fps
                     t0 = time.monotonic_ns()
-                    frame_bytes = self.frame_renderer.render_frame_bytes(lyrics, segments, current_time)
+                    frame_bytes = self.frame_renderer.render_frame_bytes(
+                        lyrics, segments, current_time
+                    )
                     render_total_ns += time.monotonic_ns() - t0
 
                 try:
@@ -390,19 +405,24 @@ class VideoEngine:
                     if process.returncode == 0:
                         logger.info(
                             "[%s] FFmpeg completed early (stopped reading at frame %d/%d)",
-                            job_id or "unknown", frame_count, total_frames,
+                            job_id or "unknown",
+                            frame_count,
+                            total_frames,
                         )
                         ffmpeg_elapsed = (time.monotonic_ns() - ffmpeg_start_ns) / 1e9
                         logger.info(
                             "[%s] FFmpeg process exited with code 0 in %.1fs",
-                            job_id or "unknown", ffmpeg_elapsed,
+                            job_id or "unknown",
+                            ffmpeg_elapsed,
                         )
                         if progress_callback:
                             progress_callback(total_frames, total_frames)
                         return
                     logger.error(
                         "[%s] FFmpeg pipe broken at frame %d/%d",
-                        job_id or "unknown", frame_count, total_frames,
+                        job_id or "unknown",
+                        frame_count,
+                        total_frames,
                     )
                     stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
                     stderr_info = (
@@ -433,7 +453,8 @@ class VideoEngine:
                         "[%s] Encoding breakdown at frame %d/%d: "
                         "render=%.1fs (%.1f%%), pipe_write=%.1fs (%.1f%%)%s",
                         job_id or "unknown",
-                        frame_count, total_frames,
+                        frame_count,
+                        total_frames,
                         render_total_ns / 1e9,
                         render_total_ns / elapsed_so_far * 100,
                         write_total_ns / 1e9,
@@ -460,7 +481,11 @@ class VideoEngine:
                 logger.info(
                     "[%s] Frame cache final: %d entries, %d hits, %d misses (%.1f%% hit rate), max=%d",
                     job_id or "unknown",
-                    stats["entries"], stats["hits"], stats["misses"], hit_rate, stats["max_entries"],
+                    stats["entries"],
+                    stats["hits"],
+                    stats["misses"],
+                    hit_rate,
+                    stats["max_entries"],
                 )
             if total_elapsed_ns > 0:
                 logger.info(
@@ -488,7 +513,9 @@ class VideoEngine:
         ffmpeg_elapsed = (time.monotonic_ns() - ffmpeg_start_ns) / 1e9
         logger.info(
             "[%s] FFmpeg process exited with code %d in %.1fs",
-            job_id or "unknown", return_code, ffmpeg_elapsed,
+            job_id or "unknown",
+            return_code,
+            ffmpeg_elapsed,
         )
         stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
         if return_code != 0:
@@ -515,7 +542,9 @@ class VideoEngine:
 
         logger.info(
             "[%s] generate_blank_video: %.1fs, %s",
-            job_id or "unknown", duration_seconds, output_path,
+            job_id or "unknown",
+            duration_seconds,
+            output_path,
         )
 
         args = [
@@ -567,7 +596,9 @@ class VideoEngine:
     ) -> bool:
         logger.info(
             "[%s] inject_chapters: %d chapters into %s",
-            job_id or "unknown", len(chapters), video_path,
+            job_id or "unknown",
+            len(chapters),
+            video_path,
         )
         try:
             temp_dir = self.asset_fetcher.get_temp_dir()

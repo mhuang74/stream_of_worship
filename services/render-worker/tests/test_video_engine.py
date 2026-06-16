@@ -324,12 +324,18 @@ class TestEncodeVideoWithFFmpeg:
         engine = VideoEngine(fetcher, fps=24)
 
         lyrics: list[GlobalLRCLine] = [
-            GlobalLRCLine(text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, title="Song"),
+            GlobalLRCLine(
+                text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, title="Song"
+            ),
         ]
         segments = [
             SegmentInfo(
-                id="1", song_id="s1", position=0, song_title="Song",
-                start_time_seconds=0.0, duration_seconds=10.0,
+                id="1",
+                song_id="s1",
+                position=0,
+                song_title="Song",
+                start_time_seconds=0.0,
+                duration_seconds=10.0,
             ),
         ]
 
@@ -452,12 +458,18 @@ class TestEncodeVideoWithFFmpeg:
         engine = VideoEngine(fetcher, fps=24, include_title_card=True)
 
         lyrics: list[GlobalLRCLine] = [
-            GlobalLRCLine(text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, title="Song"),
+            GlobalLRCLine(
+                text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, title="Song"
+            ),
         ]
         segments = [
             SegmentInfo(
-                id="1", song_id="s1", position=0, song_title="Song",
-                start_time_seconds=0.0, duration_seconds=10.0,
+                id="1",
+                song_id="s1",
+                position=0,
+                song_title="Song",
+                start_time_seconds=0.0,
+                duration_seconds=10.0,
             ),
         ]
 
@@ -528,15 +540,23 @@ class TestEncodeVideoWithFFmpeg:
     def test_encode_lyrics_timeline_sync_with_title_card(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         fetcher = MockAssetFetcher()
-        engine = VideoEngine(fetcher, fps=24, include_title_card=True, title_card_duration_seconds=5.0)
+        engine = VideoEngine(
+            fetcher, fps=24, include_title_card=True, title_card_duration_seconds=5.0
+        )
 
         lyrics: list[GlobalLRCLine] = [
-            GlobalLRCLine(text="Hello", local_time_seconds=5.0, global_time_seconds=5.0, title="Song"),
+            GlobalLRCLine(
+                text="Hello", local_time_seconds=5.0, global_time_seconds=5.0, title="Song"
+            ),
         ]
         segments = [
             SegmentInfo(
-                id="1", song_id="s1", position=0, song_title="Song",
-                start_time_seconds=0.0, duration_seconds=10.0,
+                id="1",
+                song_id="s1",
+                position=0,
+                song_title="Song",
+                start_time_seconds=0.0,
+                duration_seconds=10.0,
             ),
         ]
 
@@ -561,8 +581,12 @@ class TestEncodeVideoWithFFmpeg:
             render_times.append(current_time)
             return original_render_frame_bytes(lyrics_arg, segments_arg, current_time)
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
-             patch.object(engine.frame_renderer, "render_frame_bytes", side_effect=capture_render_time):
+        with (
+            patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen,
+            patch.object(
+                engine.frame_renderer, "render_frame_bytes", side_effect=capture_render_time
+            ),
+        ):
             mock_popen.return_value = mock_process
             engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
@@ -610,8 +634,10 @@ class TestGenerateVideo:
             fps=24,
         )
 
-        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
-             patch.object(engine, "generate_blank_video", return_value=blank_result) as mock_blank:
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "generate_blank_video", return_value=blank_result) as mock_blank,
+        ):
             result = engine.generate_video("/tmp/audio.mp3", [], output_path, job_id="test-job")
 
         mock_blank.assert_called_once_with("/tmp/audio.mp3", output_path, 60.0, job_id="test-job")
@@ -630,9 +656,13 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
-             patch.object(engine, "encode_video_with_ffmpeg") as mock_encode:
-            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
 
         mock_encode.assert_called_once()
         call_args = mock_encode.call_args
@@ -642,6 +672,63 @@ class TestGenerateVideo:
         assert result.width == 1920
         assert result.height == 1080
         assert result.fps == 24
+
+    def test_blank_timing_lines_mixed_with_lyrics_encode_video(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher(lrc_content="[00:00.00]Hello\n[00:05.00]\n[00:08.00]World")
+        engine = VideoEngine(fetcher, include_title_card=False)
+
+        segment = _make_segment()
+        audio_info = {
+            "duration_seconds": 180.0,
+            "duration_ms": 180000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+            patch.object(engine, "generate_blank_video") as mock_blank,
+        ):
+            engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
+
+        mock_blank.assert_not_called()
+        mock_encode.assert_called_once()
+
+    def test_all_blank_timing_lines_generate_blank_video(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher(lrc_content="[00:00.00]\n[00:05.00]   ")
+        engine = VideoEngine(fetcher, include_title_card=False)
+
+        segment = _make_segment()
+        audio_info = {
+            "duration_seconds": 180.0,
+            "duration_ms": 180000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+        blank_result = VideoExportResult(
+            output_path=output_path,
+            total_frames=4320,
+            duration_seconds=180.0,
+            width=1920,
+            height=1080,
+            fps=24,
+        )
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "generate_blank_video", return_value=blank_result) as mock_blank,
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
+
+        mock_blank.assert_called_once_with("/tmp/audio.mp3", output_path, 180.0, job_id="test-job")
+        mock_encode.assert_not_called()
+        assert result == blank_result
 
     def test_skips_segment_without_hash_prefix(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
@@ -657,9 +744,13 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
-             patch.object(engine, "generate_blank_video") as mock_blank:
-            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "generate_blank_video") as mock_blank,
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
 
         mock_blank.assert_called_once()
 
@@ -676,9 +767,13 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
-             patch.object(engine, "generate_blank_video") as mock_blank:
-            result = engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "generate_blank_video") as mock_blank,
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
 
         mock_blank.assert_called_once()
 
@@ -703,8 +798,10 @@ class TestGenerateVideo:
             fps=24,
         )
 
-        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
-             patch.object(engine, "generate_blank_video", return_value=blank_result):
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "generate_blank_video", return_value=blank_result),
+        ):
             engine.generate_video("/tmp/audio.mp3", [], output_path, job_id="test-job")
 
         assert Path(tmp_path / "subdir").is_dir()
@@ -722,12 +819,20 @@ class TestGenerateVideo:
             "channels": 2,
         }
 
-        with patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info), \
-             patch.object(engine, "encode_video_with_ffmpeg") as mock_encode:
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
             engine.generate_video("/tmp/audio.mp3", [segment], output_path, job_id="test-job")
 
         call_kwargs = mock_encode.call_args
-        title_card_config = call_kwargs[1].get("title_card_config") if "title_card_config" in call_kwargs[1] else call_kwargs[0][7] if len(call_kwargs[0]) > 7 else None
+        title_card_config = (
+            call_kwargs[1].get("title_card_config")
+            if "title_card_config" in call_kwargs[1]
+            else call_kwargs[0][7]
+            if len(call_kwargs[0]) > 7
+            else None
+        )
         assert title_card_config is not None
         assert title_card_config.enabled is True
         assert len(title_card_config.lines) >= 1
@@ -761,8 +866,10 @@ class TestInjectChapters:
         mock_result.returncode = 0
         mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
-             patch("sow_render_worker.video_engine.shutil.move"):
+        with (
+            patch("sow_render_worker.video_engine.subprocess.run") as mock_run,
+            patch("sow_render_worker.video_engine.shutil.move"),
+        ):
             mock_run.return_value = mock_result
             result = engine.inject_chapters(video_path, chapters, job_id="test-job")
 
@@ -828,8 +935,10 @@ class TestInjectChapters:
         mock_result.returncode = 0
         mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
-             patch("sow_render_worker.video_engine.shutil.move"):
+        with (
+            patch("sow_render_worker.video_engine.subprocess.run") as mock_run,
+            patch("sow_render_worker.video_engine.shutil.move"),
+        ):
             mock_run.return_value = mock_result
             result = engine.inject_chapters(video_path, chapters, job_id="test-job")
 
@@ -861,8 +970,10 @@ class TestInjectChapters:
         mock_result.returncode = 0
         mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
-             patch("sow_render_worker.video_engine.shutil.move"):
+        with (
+            patch("sow_render_worker.video_engine.subprocess.run") as mock_run,
+            patch("sow_render_worker.video_engine.shutil.move"),
+        ):
             mock_run.return_value = mock_result
             engine.inject_chapters(video_path, chapters, job_id="test-job")
 
@@ -1023,8 +1134,10 @@ class TestFFmpegCommandConstruction:
         mock_result.returncode = 0
         mock_result.stderr = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.run") as mock_run, \
-             patch("sow_render_worker.video_engine.shutil.move"):
+        with (
+            patch("sow_render_worker.video_engine.subprocess.run") as mock_run,
+            patch("sow_render_worker.video_engine.shutil.move"),
+        ):
             mock_run.return_value = mock_result
             engine.inject_chapters(video_path, chapters, job_id="test-job")
 
@@ -1070,16 +1183,20 @@ class TestCheckMemoryPressure:
     def test_raises_at_90_percent(self):
         status_content = "Name: test\nVmRSS: 2900000 kB\nVmSize: 4000000 kB\n"
 
-        with patch.dict("os.environ", {"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "3072"}), \
-             patch("builtins.open", mock_open(read_data=status_content)):
+        with (
+            patch.dict("os.environ", {"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "3072"}),
+            patch("builtins.open", mock_open(read_data=status_content)),
+        ):
             with pytest.raises(MemoryError, match="Memory pressure"):
                 _check_memory_pressure()
 
     def test_passes_below_threshold(self):
         status_content = "Name: test\nVmRSS: 1000000 kB\nVmSize: 2000000 kB\n"
 
-        with patch.dict("os.environ", {"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "3072"}), \
-             patch("builtins.open", mock_open(read_data=status_content)):
+        with (
+            patch.dict("os.environ", {"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "3072"}),
+            patch("builtins.open", mock_open(read_data=status_content)),
+        ):
             _check_memory_pressure()
 
     def test_noop_without_proc(self):
@@ -1106,8 +1223,10 @@ class TestGCCollect:
         mock_process.stderr = MagicMock()
         mock_process.stderr.read.return_value = b""
 
-        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen, \
-             patch("sow_render_worker.video_engine.gc") as mock_gc:
+        with (
+            patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen,
+            patch("sow_render_worker.video_engine.gc") as mock_gc,
+        ):
             mock_popen.return_value = mock_process
             engine.encode_video_with_ffmpeg(
                 "/tmp/audio.mp3",
