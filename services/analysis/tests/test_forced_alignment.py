@@ -1,6 +1,7 @@
 """Tests for forced alignment job processing."""
 
 import asyncio
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch, patch
 
@@ -115,9 +116,7 @@ class TestForcedAlignmentWorker:
         queue.r2_client = AsyncMock()
         queue.r2_client.bucket = "test-bucket"
         queue.r2_client.download_audio = AsyncMock()
-        queue.r2_client.upload_official_lrc = AsyncMock(
-            return_value="s3://bucket/test/lyrics.lrc"
-        )
+        queue.r2_client.upload_official_lrc = AsyncMock(return_value="s3://bucket/test/lyrics.lrc")
         queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"abc123"'})
         queue.r2_client.check_exists = AsyncMock(return_value=False)
         queue.r2_client.copy_object = AsyncMock()
@@ -153,9 +152,7 @@ class TestForcedAlignmentWorker:
 
     @pytest.mark.asyncio
     async def test_process_forced_alignment_job_success(self, mock_queue, fa_job):
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
@@ -168,14 +165,42 @@ class TestForcedAlignmentWorker:
     @pytest.mark.asyncio
     async def test_process_forced_alignment_job_language_mapping(self, mock_queue, fa_job):
         fa_job.request.options.language = "en"
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         mock_queue._forced_aligner_wrapper.align.assert_called_once()
         call_args = mock_queue._forced_aligner_wrapper.align.call_args
         assert call_args[0][2] == "English"
+
+    @pytest.mark.asyncio
+    async def test_process_forced_alignment_job_logs_resolved_audio_input(
+        self, mock_queue, fa_job, caplog
+    ):
+        from sow_analysis.workers.queue import ResolvedTranscriptionAudio
+
+        stem_path = Path("/tmp/vocals_dry.flac")
+        stem_url = "s3://bucket/abc123def456/stems/vocals_dry.flac"
+        mock_queue._resolve_transcription_audio.return_value = ResolvedTranscriptionAudio(
+            path=stem_path,
+            r2_url=stem_url,
+            stem_kind="vocals_dry",
+            is_dry_or_clean_vocals=True,
+        )
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
+                await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.COMPLETED
+        mock_queue._forced_aligner_wrapper.align.assert_awaited_once()
+        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        assert call_args[0][0] == stem_path
+        assert "Forced alignment audio input resolved" in caplog.text
+        assert "stem_kind=vocals_dry" in caplog.text
+        assert "is_dry_or_clean_vocals=True" in caplog.text
+        assert "use_vocals_stem=True" in caplog.text
+        assert f"source_url={stem_url}" in caplog.text
+        assert f"local_path={stem_path}" in caplog.text
 
     @pytest.mark.asyncio
     async def test_process_forced_alignment_job_invalid_request(self, mock_queue):
@@ -207,11 +232,11 @@ class TestForcedAlignmentWorker:
 
     @pytest.mark.asyncio
     async def test_process_forced_alignment_job_alignment_failure(self, mock_queue, fa_job):
-        mock_queue._forced_aligner_wrapper.align = AsyncMock(side_effect=RuntimeError("Model failed"))
+        mock_queue._forced_aligner_wrapper.align = AsyncMock(
+            side_effect=RuntimeError("Model failed")
+        )
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
         assert fa_job.status == JobStatus.FAILED
         assert "Model failed" in fa_job.error_message
@@ -223,9 +248,7 @@ class TestForcedAlignmentWorker:
             return_value="s3://bucket/test/lyrics.lrc"
         )
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
@@ -241,9 +264,7 @@ class TestForcedAlignmentWorker:
 
         queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
         queue._forced_aligner_wrapper = AsyncMock()
-        queue._forced_aligner_wrapper.align = AsyncMock(
-            return_value=[(0.0, 2.0, "test")]
-        )
+        queue._forced_aligner_wrapper.align = AsyncMock(return_value=[(0.0, 2.0, "test")])
         queue.r2_client = AsyncMock()
         queue.r2_client.bucket = "test-bucket"
         queue.r2_client.download_audio = AsyncMock()
@@ -256,9 +277,7 @@ class TestForcedAlignmentWorker:
 
         fa_job.request.options.use_vocals_stem = False
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await queue._process_forced_alignment_job(fa_job)
         assert fa_job.status == JobStatus.COMPLETED
 
@@ -269,12 +288,10 @@ class TestForcedAlignmentWorker:
         fa_job.request.lyrics_text = "Hello world\nThis is English"
         fa_job.request.song_title = "English Song"
 
-        with patch(
-            "sow_analysis.workers.queue.resolve_lrc_language"
-        ) as mock_resolve, patch(
-            "sow_analysis.workers.queue.warn_if_lrc_language_script_mismatch"
-        ), patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        with (
+            patch("sow_analysis.workers.queue.resolve_lrc_language") as mock_resolve,
+            patch("sow_analysis.workers.queue.warn_if_lrc_language_script_mismatch"),
+            patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0),
         ):
             from sow_analysis.workers.lrc import LrcLanguageResolution
 
@@ -294,12 +311,10 @@ class TestForcedAlignmentWorker:
         fa_job.request.lyrics_text = "我要看見\n如同摩西看見祢的榮耀"
         fa_job.request.song_title = "中文歌曲"
 
-        with patch(
-            "sow_analysis.workers.queue.resolve_lrc_language"
-        ) as mock_resolve, patch(
-            "sow_analysis.workers.queue.warn_if_lrc_language_script_mismatch"
-        ), patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        with (
+            patch("sow_analysis.workers.queue.resolve_lrc_language") as mock_resolve,
+            patch("sow_analysis.workers.queue.warn_if_lrc_language_script_mismatch"),
+            patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0),
         ):
             from sow_analysis.workers.lrc import LrcLanguageResolution
 
@@ -317,9 +332,7 @@ class TestForcedAlignmentWorker:
         """When language='zh' explicitly, auto-detection is skipped."""
         fa_job.request.options.language = "zh"
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
@@ -331,9 +344,7 @@ class TestForcedAlignmentWorker:
         """When language='en' explicitly, auto-detection is skipped."""
         fa_job.request.options.language = "en"
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
@@ -353,13 +364,13 @@ class TestForcedAlignmentWorker:
 
         fa_job.request.options.language = "auto"
 
-        with patch(
-            "sow_analysis.workers.queue.resolve_lrc_language", None
-        ):
+        with patch("sow_analysis.workers.queue.resolve_lrc_language", None):
             await queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.FAILED
-        assert "auto-detection" in fa_job.error_message or "Language resolver" in fa_job.error_message
+        assert (
+            "auto-detection" in fa_job.error_message or "Language resolver" in fa_job.error_message
+        )
 
     @pytest.mark.asyncio
     async def test_stale_object_fails_job(self, mock_queue, fa_job):
@@ -371,9 +382,7 @@ class TestForcedAlignmentWorker:
             side_effect=StaleObjectError("lyrics.lrc was modified")
         )
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.FAILED
@@ -390,9 +399,7 @@ class TestForcedAlignmentWorker:
             side_effect=BackupFailedError("copy failed")
         )
 
-        with patch(
-            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
-        ):
+        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.FAILED
