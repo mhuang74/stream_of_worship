@@ -798,6 +798,9 @@ class FrameRenderer:
         width: int,
         height: int,
     ) -> None:
+        if next_alpha <= 0 or not isinstance(next_line.text, str) or not next_line.text.strip():
+            return
+
         text_r, text_g, text_b = self.template.text_color
         next_font_size_target = self.base_font_size
         next_margin = self.get_margin(draw, next_font_size_target)
