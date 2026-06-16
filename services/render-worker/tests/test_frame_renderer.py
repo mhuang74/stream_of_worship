@@ -579,6 +579,35 @@ class TestRenderLyrics:
         assert list(img_hold.getdata()) != list(blank.getdata())
         assert list(img_faded.getdata()) == list(blank.getdata())
 
+    @pytest.mark.parametrize(
+        ("text", "alpha"),
+        [
+            ("World", 0),
+            ("", 128),
+            ("   ", 128),
+            (None, 128),
+            (123, 128),
+        ],
+    )
+    def test_next_lyric_preview_guard_skips_non_renderable_text(self, text, alpha):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        img = Image.new("RGB", (1920, 1080), VIDEO_TEMPLATES["dark"].background_color)
+        draw = ImageDraw.Draw(img)
+        draw_text = MagicMock()
+        draw.text = draw_text
+        line = GlobalLRCLine(
+            text=text,
+            local_time_seconds=10.0,
+            global_time_seconds=10.0,
+            title="Song",
+        )
+
+        with patch.object(renderer, "fit_text") as fit_text:
+            renderer._render_next_lyric_preview(line, alpha, draw, 1920, 1080)
+
+        fit_text.assert_not_called()
+        draw_text.assert_not_called()
+
 
 class TestRenderTitleCard:
     def test_returns_pil_image(self):
