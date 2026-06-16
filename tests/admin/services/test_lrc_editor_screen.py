@@ -242,6 +242,27 @@ async def test_edit_text_uses_overlay_and_updates_captured_row():
 
 
 @pytest.mark.asyncio
+async def test_edit_text_overlay_starts_at_beginning_of_long_existing_lyric():
+    long_text = "This is a long existing lyric line that should be visible from the beginning"
+    app, _ = _make_app_with_lines(
+        [LRCLine(time_seconds=0.0, text=long_text, raw_timestamp="[00:00.00]")]
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        await pilot.press("e")
+        await pilot.pause()
+
+        edit_input = app.screen.query_one("#row-edit-input", Input)
+        assert edit_input.value == long_text
+        assert edit_input.cursor_position == 0
+        assert edit_input.scroll_x == 0
+        assert edit_input.display is True
+        assert app.focused is edit_input
+
+
+@pytest.mark.asyncio
 async def test_edit_text_defers_overlay_until_after_refresh(monkeypatch):
     app, _ = _make_app(line_count=3)
 
