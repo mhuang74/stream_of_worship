@@ -170,19 +170,30 @@ class TestLRCJobProcessing:
             await q.stop()
 
     @pytest.mark.asyncio
-    async def test_lrc_job_uses_cache(self, queue):
-        """Test LRC job returns cached result when available."""
+    async def test_lrc_job_uses_cache_with_text(self, queue):
+        """Test LRC job with cached text rewrites official lyrics.lrc."""
         request = LrcJobRequest(
             audio_url="s3://bucket/hash/audio.mp3",
             content_hash="abc123def456",
             lyrics_text="Line 1\nLine 2",
         )
 
-        # Pre-populate cache with correct composite key
+        # Pre-populate cache with text
         cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text, "en")
         queue.cache_manager.save_lrc_result(
             cache_key,
-            {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 2},
+            {
+                "lrc_url": "s3://bucket/abc123def456/lyrics.lrc",
+                "line_count": 2,
+                "lrc_source": "whisper_asr",
+                "lrc_text": "[00:00.00] Line 1\n[00:05.00] Line 2\n",
+            },
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/abc123def456/lyrics.lrc"
         )
 
         job = await queue.submit(JobType.LRC, request)
@@ -191,10 +202,11 @@ class TestLRCJobProcessing:
         assert job.status == JobStatus.COMPLETED
         assert job.stage == "cached"
         assert job.result.line_count == 2
+        queue.r2_client.upload_official_lrc.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_lrc_job_uploads_versioned_lrc_and_legacy_alias(self, queue):
-        """New LRC jobs preserve the legacy lyrics.lrc path consumed by renderers."""
+    async def test_lrc_job_uploads_official_lrc(self, queue):
+        """New LRC jobs upload only to the official lyrics.lrc path."""
         request = LrcJobRequest(
             audio_url="s3://bucket/hash/audio.mp3",
             content_hash="abc123def456",
@@ -209,11 +221,10 @@ class TestLRCJobProcessing:
         )
         queue.r2_client = MagicMock()
         queue.r2_client.download_audio = AsyncMock()
-
-        async def upload_lrc(hash_prefix, _lrc_path, object_name="lyrics.lrc"):
-            return f"s3://bucket/{hash_prefix}/{object_name}"
-
-        queue.r2_client.upload_lrc = AsyncMock(side_effect=upload_lrc)
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/abc123def456/lyrics.lrc"
+        )
 
         async def generate_lrc(_audio_path, _lyrics_text, _options, output_path, **_kwargs):
             output_path.write_text("[00:00.00] Amazing grace\n")
@@ -223,11 +234,122 @@ class TestLRCJobProcessing:
             await queue._process_lrc_job(job)
 
         assert job.status == JobStatus.COMPLETED
-        assert job.result.lrc_url == "s3://bucket/abc123def456/lyrics.en.v2.lrc"
-        queue.r2_client.upload_lrc.assert_any_await(
-            "abc123def456", ANY, object_name="lyrics.en.v2.lrc"
+        assert job.result.lrc_url == "s3://bucket/abc123def456/lyrics.lrc"
+        queue.r2_client.upload_official_lrc.assert_awaited_once_with(
+            "abc123def456", ANY, expected_etag="etag"
         )
-        queue.r2_client.upload_lrc.assert_any_await("abc123def456", ANY)
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_cache_hit_with_text_rewrites_official(self, queue):
+        """Cache hit with cached text rewrites official lyrics.lrc with ETag check."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="Line 1\nLine 2",
+        )
+
+        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text, "en")
+        queue.cache_manager.save_lrc_result(
+            cache_key,
+            {
+                "lrc_url": "s3://bucket/abc123def456/lyrics.lrc",
+                "line_count": 2,
+                "lrc_source": "whisper_asr",
+                "lrc_text": "[00:00.00] Line 1\n[00:05.00] Line 2\n",
+            },
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/abc123def456/lyrics.lrc"
+        )
+
+        job = await queue.submit(JobType.LRC, request)
+        await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.COMPLETED
+        assert job.stage == "cached"
+        queue.r2_client.upload_official_lrc.assert_awaited_once_with(
+            "abc123def456", ANY, expected_etag="etag"
+        )
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_cache_hit_metadata_only_ignored(self, queue):
+        """Metadata-only legacy cache entry is ignored and regenerated."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="Amazing grace",
+            options=LrcOptions(language="en", use_qwen3_asr=False, use_vocals_stem=False),
+        )
+
+        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text, "en")
+        queue.cache_manager.save_lrc_result(
+            cache_key,
+            {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 1},
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/abc123def456/lyrics.lrc"
+        )
+        queue.r2_client.download_audio = AsyncMock()
+
+        async def generate_lrc(_audio_path, _lyrics_text, _options, output_path, **_kwargs):
+            output_path.write_text("[00:00.00] Amazing grace\n")
+            return output_path, 1, []
+
+        job = Job(
+            id="job_test_cache_ignore",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with patch("sow_analysis.workers.queue.generate_lrc", new=generate_lrc):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.COMPLETED
+        assert job.stage == "complete"
+        queue.r2_client.upload_official_lrc.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_stale_object_fails(self, queue):
+        """If lyrics.lrc ETag changes after job start, LRC job fails."""
+        from sow_analysis.storage.r2 import StaleObjectError
+
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="Amazing grace",
+            options=LrcOptions(language="en", use_qwen3_asr=False, use_vocals_stem=False),
+        )
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"oldetag"'})
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            side_effect=StaleObjectError("lyrics.lrc was modified")
+        )
+        queue.r2_client.download_audio = AsyncMock()
+
+        async def generate_lrc(_audio_path, _lyrics_text, _options, output_path, **_kwargs):
+            output_path.write_text("[00:00.00] Amazing grace\n")
+            return output_path, 1, []
+
+        job = Job(
+            id="job_test_stale",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with patch("sow_analysis.workers.queue.generate_lrc", new=generate_lrc):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.FAILED
+        assert "stale_object" in job.stage
+        assert "modified" in job.error_message
 
     @pytest.mark.asyncio
     async def test_lrc_job_with_invalid_request(self, queue):

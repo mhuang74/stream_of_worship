@@ -3620,11 +3620,30 @@ def upload_lrc(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
-    # Upload to R2
+    # Capture ETag before upload for stale-object protection
+    expected_etag: Optional[str] = None
+    try:
+        identity = r2_client.get_lrc_identity(recording.hash_prefix)
+        if identity.exists:
+            expected_etag = identity.etag
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not capture ETag for stale-object check: {e}[/yellow]")
+
+    # Upload to R2 with backup + ETag protection
     console.print("[cyan]Uploading LRC to R2...[/cyan]")
     try:
-        r2_url = r2_client.upload_lrc(lrc_file, recording.hash_prefix)
+        from stream_of_worship.admin.services.r2 import StaleObjectError, BackupFailedError
+
+        r2_url = r2_client.upload_official_lrc(
+            recording.hash_prefix, lrc_file, expected_etag=expected_etag
+        )
         console.print(f"[green]Uploaded: {r2_url}[/green]")
+    except StaleObjectError as e:
+        console.print(f"[red]Upload failed: {e}. The official LRC was modified after you started.[/red]")
+        raise typer.Exit(1)
+    except BackupFailedError as e:
+        console.print(f"[red]Upload failed: {e}. Backup of existing LRC failed.[/red]")
+        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Upload failed: {e}[/red]")
         raise typer.Exit(1)

@@ -18,6 +18,16 @@ STEM_LEGACY_NAMES = {
     "instrumental": "instrumental_clean",
 }
 
+MAX_BACKUPS_PER_PREFIX = 5
+
+
+class StaleObjectError(Exception):
+    """Raised when the official LRC object was modified after the job started."""
+
+
+class BackupFailedError(Exception):
+    """Raised when copying the current official LRC to backup fails."""
+
 
 def parse_s3_url(s3_url: str) -> Tuple[str, str]:
     """Parse s3://bucket/key to (bucket, key).
@@ -283,3 +293,151 @@ class R2Client:
                 CopySource=copy_source, Bucket=dest_bucket, Key=dest_key
             ),
         )
+
+    async def head_object(self, s3_url: str) -> dict:
+        """HEAD an object in R2 and return response metadata.
+
+        Args:
+            s3_url: s3://bucket/key URL
+
+        Returns:
+            dict with headers including ETag, LastModified, etc.
+
+        Raises:
+            ClientError: If object does not exist or other error.
+        """
+        bucket, key = parse_s3_url(s3_url)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, lambda: self.s3.head_object(Bucket=bucket, Key=key)
+        )
+
+    async def list_objects(self, prefix: str) -> list:
+        """List objects in R2 with the given prefix.
+
+        Args:
+            prefix: Key prefix to list under
+
+        Returns:
+            List of object key strings.
+        """
+        loop = asyncio.get_event_loop()
+        keys = []
+        paginator = self.s3.get_paginator("list_objects_v2")
+        pages = await loop.run_in_executor(
+            None,
+            lambda: list(paginator.paginate(Bucket=self.bucket, Prefix=prefix)),
+        )
+        for page in pages:
+            for obj in page.get("Contents", []):
+                keys.append(obj["Key"])
+        return keys
+
+    async def delete_object(self, key: str) -> None:
+        """Delete an object from R2 by key.
+
+        Args:
+            key: Object key to delete
+        """
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None, lambda: self.s3.delete_object(Bucket=self.bucket, Key=key)
+        )
+
+    async def upload_official_lrc(
+        self,
+        hash_prefix: str,
+        lrc_path: Path,
+        expected_etag: Optional[str] = None,
+        skip_backup: bool = False,
+    ) -> str:
+        """Upload the official lyrics.lrc with backup and ETag protection.
+
+        1. HEAD lyrics.lrc to get current ETag.
+        2. If expected_etag is provided and current ETag != expected_etag:
+             raise StaleObjectError
+        3. If lyrics.lrc exists and not skip_backup:
+             copy to lyrics.backup.{timestamp_ms}.lrc
+             If copy fails: raise BackupFailedError
+        4. Upload new lyrics.lrc
+        5. Prune old backups: list lyrics.backup.*.lrc, delete oldest if count > MAX_BACKUPS_PER_PREFIX
+        6. Return s3://{bucket}/{hash_prefix}/lyrics.lrc
+
+        Args:
+            hash_prefix: Content hash prefix for the path
+            lrc_path: Path to the LRC file to upload
+            expected_etag: ETag captured at job start (None if object didn't exist)
+            skip_backup: If True, skip backup even if it would fail
+
+        Returns:
+            S3 URL of the uploaded official LRC
+
+        Raises:
+            StaleObjectError: If ETag mismatch detected
+            BackupFailedError: If backup copy fails and skip_backup=False
+        """
+        official_key = f"{hash_prefix}/lyrics.lrc"
+        official_url = f"s3://{self.bucket}/{official_key}"
+
+        # 1. HEAD lyrics.lrc to get current ETag
+        current_etag: Optional[str] = None
+        exists = False
+        try:
+            head_resp = await self.head_object(official_url)
+            current_etag = head_resp.get("ETag", "").strip('"')
+            exists = True
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code not in ("404", "NoSuchKey"):
+                raise
+
+        # 2. ETag stale-object check
+        if expected_etag is not None:
+            if current_etag != expected_etag:
+                raise StaleObjectError(
+                    "lyrics.lrc was modified by another process after this job started"
+                )
+
+        # 3. Backup existing official LRC
+        if exists and not skip_backup:
+            timestamp_ms = int(asyncio.get_event_loop().time() * 1000)
+            backup_key = f"{hash_prefix}/lyrics.backup.{timestamp_ms}.lrc"
+            backup_url = f"s3://{self.bucket}/{backup_key}"
+            try:
+                await self.copy_object(official_url, backup_url)
+            except Exception as e:
+                raise BackupFailedError(f"Failed to backup existing lyrics.lrc: {e}")
+
+        # 4. Upload new lyrics.lrc
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None, self.s3.upload_file, str(lrc_path), self.bucket, official_key
+        )
+
+        # 5. Prune old backups
+        backup_prefix = f"{hash_prefix}/lyrics.backup."
+        try:
+            backup_keys = await self.list_objects(backup_prefix)
+            backup_keys = [k for k in backup_keys if k.startswith(backup_prefix) and k.endswith(".lrc")]
+            if len(backup_keys) > MAX_BACKUPS_PER_PREFIX:
+                # Sort by timestamp embedded in key name
+                def _extract_ts(key: str) -> int:
+                    try:
+                        # key format: {hash_prefix}/lyrics.backup.{timestamp_ms}.lrc
+                        parts = key.split("lyrics.backup.")
+                        if len(parts) == 2:
+                            ts_str = parts[1].split(".lrc")[0]
+                            return int(ts_str)
+                    except (ValueError, IndexError):
+                        pass
+                    return 0
+
+                backup_keys.sort(key=_extract_ts)
+                to_delete = backup_keys[:-MAX_BACKUPS_PER_PREFIX]
+                for key in to_delete:
+                    await self.delete_object(key)
+        except Exception:
+            # Pruning failure is non-fatal
+            pass
+
+        return official_url

@@ -241,7 +241,10 @@ def upload_revised_lrc(
     try:
         revised_path.write_text(revised_content, encoding="utf-8")
 
-        r2_url = r2_client.upload_lrc(revised_path, hash_prefix)
+        # Use upload_official_lrc for backup + upload
+        # The editor's stale-session check (check_transcribed_changed) already handles
+        # ETag-based protection, so we don't pass expected_etag here.
+        r2_url = r2_client.upload_official_lrc(hash_prefix, revised_path)
     except Exception as e:
         return UploadResult(
             success=False,

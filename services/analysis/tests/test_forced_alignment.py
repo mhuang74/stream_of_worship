@@ -115,7 +115,10 @@ class TestForcedAlignmentWorker:
         queue.r2_client = AsyncMock()
         queue.r2_client.bucket = "test-bucket"
         queue.r2_client.download_audio = AsyncMock()
-        queue.r2_client.upload_lrc = AsyncMock(return_value="s3://bucket/test/lyrics.zh.forced.lrc")
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/test/lyrics.lrc"
+        )
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"abc123"'})
         queue.r2_client.check_exists = AsyncMock(return_value=False)
         queue.r2_client.copy_object = AsyncMock()
         queue.job_store = AsyncMock()
@@ -159,6 +162,8 @@ class TestForcedAlignmentWorker:
         assert fa_job.result is not None
         assert fa_job.result.lrc_source == "forced_alignment"
         assert fa_job.result.line_count == 2
+        assert fa_job.result.lrc_url == "s3://bucket/test/lyrics.lrc"
+        mock_queue.r2_client.upload_official_lrc.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_process_forced_alignment_job_language_mapping(self, mock_queue, fa_job):
@@ -213,8 +218,10 @@ class TestForcedAlignmentWorker:
 
     @pytest.mark.asyncio
     async def test_service_level_backup(self, mock_queue, fa_job):
-        mock_queue.r2_client.check_exists = AsyncMock(return_value=True)
-        mock_queue.r2_client.copy_object = AsyncMock()
+        mock_queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"oldetag"'})
+        mock_queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/test/lyrics.lrc"
+        )
 
         with patch(
             "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
@@ -222,7 +229,9 @@ class TestForcedAlignmentWorker:
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
-        mock_queue.r2_client.copy_object.assert_called_once()
+        mock_queue.r2_client.upload_official_lrc.assert_awaited_once()
+        call_kwargs = mock_queue.r2_client.upload_official_lrc.call_args.kwargs
+        assert call_kwargs.get("expected_etag") == "oldetag"
 
     @pytest.mark.asyncio
     async def test_deadlock_prevention(self, fa_job):
@@ -238,7 +247,8 @@ class TestForcedAlignmentWorker:
         queue.r2_client = AsyncMock()
         queue.r2_client.bucket = "test-bucket"
         queue.r2_client.download_audio = AsyncMock()
-        queue.r2_client.upload_lrc = AsyncMock(return_value="s3://bucket/test.lrc")
+        queue.r2_client.upload_official_lrc = AsyncMock(return_value="s3://bucket/test.lrc")
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
         queue.r2_client.check_exists = AsyncMock(return_value=False)
         queue.r2_client.copy_object = AsyncMock()
         queue.job_store = AsyncMock()
@@ -350,6 +360,43 @@ class TestForcedAlignmentWorker:
 
         assert fa_job.status == JobStatus.FAILED
         assert "auto-detection" in fa_job.error_message or "Language resolver" in fa_job.error_message
+
+    @pytest.mark.asyncio
+    async def test_stale_object_fails_job(self, mock_queue, fa_job):
+        """If lyrics.lrc ETag changes after job start, upload fails with stale_object."""
+        from sow_analysis.storage.r2 import StaleObjectError
+
+        mock_queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"oldetag"'})
+        mock_queue.r2_client.upload_official_lrc = AsyncMock(
+            side_effect=StaleObjectError("lyrics.lrc was modified")
+        )
+
+        with patch(
+            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        ):
+            await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.FAILED
+        assert "stale_object" in fa_job.stage
+        assert "modified" in fa_job.error_message
+
+    @pytest.mark.asyncio
+    async def test_backup_failure_fails_job(self, mock_queue, fa_job):
+        """If backup fails and skip_backup=False, job fails with backup_failed."""
+        from sow_analysis.storage.r2 import BackupFailedError
+
+        mock_queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
+        mock_queue.r2_client.upload_official_lrc = AsyncMock(
+            side_effect=BackupFailedError("copy failed")
+        )
+
+        with patch(
+            "sow_analysis.workers.queue.validate_audio_duration", return_value=120.0
+        ):
+            await mock_queue._process_forced_alignment_job(fa_job)
+
+        assert fa_job.status == JobStatus.FAILED
+        assert "backup_failed" in fa_job.stage
 
 
 class TestForcedAlignerWrapper:
