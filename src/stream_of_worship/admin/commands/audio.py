@@ -1722,6 +1722,35 @@ def _compute_content_hash(
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
+def _get_alignment_lyrics_text(
+    recording: "Recording",
+    song: "Song",
+    r2_client: Optional[R2Client],
+    console: Console,
+) -> str:
+    """Return lyrics text for forced alignment, preferring existing LRC over nominal lyrics.
+
+    If an official lyrics.lrc exists in R2, download and parse it to extract the
+    transcribed lyrics text (timestamps stripped). This ensures forced alignment
+    only updates timestamps without changing the lyrics text.
+
+    Falls back to song.lyrics_raw with a console warning if the LRC is missing
+    or cannot be parsed.
+    """
+    if r2_client and recording.r2_lrc_url:
+        try:
+            lrc_content = r2_client.download_lrc_content(recording.hash_prefix)
+            if lrc_content:
+                lrc_file = parse_lrc(lrc_content)
+                return "\n".join(line.text for line in lrc_file.lines)
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not read existing LRC for {recording.hash_prefix} "
+                f"({e}), using nominal lyrics[/yellow]"
+            )
+    return song.lyrics_raw
+
+
 def _submit_forced_alignment_single(
     song_id: str,
     db_client: DatabaseClient,
@@ -1731,6 +1760,7 @@ def _submit_forced_alignment_single(
     use_vocals_stem: bool,
     wait: bool,
     console: Console,
+    r2_client: Optional[R2Client] = None,
 ) -> None:
     """Submit forced alignment for a single recording."""
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1768,11 +1798,13 @@ def _submit_forced_alignment_single(
         )
         raise typer.Exit(1)
 
+    lyrics_text = _get_alignment_lyrics_text(recording, song, r2_client, console)
+
     try:
         job = analysis_client.submit_forced_alignment(
             audio_url=recording.r2_audio_url,
             content_hash=recording.content_hash,
-            lyrics_text=song.lyrics_raw,
+            lyrics_text=lyrics_text,
             song_title=song.title,
             language=language,
             force=force,
@@ -1851,6 +1883,7 @@ def _submit_forced_alignment_batch(
     force: bool,
     use_vocals_stem: bool,
     console: Console,
+    r2_client: Optional[R2Client] = None,
 ) -> None:
     """Submit forced alignment for multiple recordings (batch mode, no wait)."""
     submitted = 0
@@ -1892,11 +1925,13 @@ def _submit_forced_alignment_batch(
             skipped += 1
             continue
 
+        lyrics_text = _get_alignment_lyrics_text(recording, song, r2_client, console)
+
         try:
             job = analysis_client.submit_forced_alignment(
                 audio_url=recording.r2_audio_url,
                 content_hash=recording.content_hash,
-                lyrics_text=song.lyrics_raw,
+                lyrics_text=lyrics_text,
                 song_title=song.title,
                 language=language,
                 force=force,
@@ -1974,6 +2009,11 @@ def align_lrc_recording(
         console.print(f"[red]Analysis service not configured: {e}[/red]")
         raise typer.Exit(1)
 
+    try:
+        r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+    except ValueError:
+        r2_client = None
+
     if stdin:
         song_ids = _read_song_ids_from_stdin()
         if not song_ids:
@@ -1992,6 +2032,7 @@ def align_lrc_recording(
             use_vocals_stem=use_vocals_stem,
             wait=wait,
             console=console,
+            r2_client=r2_client,
         )
     else:
         _submit_forced_alignment_batch(
@@ -2002,6 +2043,7 @@ def align_lrc_recording(
             force=force,
             use_vocals_stem=use_vocals_stem,
             console=console,
+            r2_client=r2_client,
         )
 
 
