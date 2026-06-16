@@ -7,3 +7,7 @@
 - Added curated `sow-admin catalog insert`, `catalog edit`, `catalog quarantine`, `catalog restore`, and `catalog list --deleted` flows.
 - Added reviewed YouTube metadata/transcript drafting plus shared song ID and lyrics normalization helpers.
 - Refactored the YouTube audio import path so `catalog insert --youtube` reuses the `audio download` core behavior.
+
+## 2026-06-16
+
+- Fixed render-worker lyric fade colors to composite faded text over the active template background instead of scaling RGB toward black; added focused `test_frame_renderer.py` coverage and refreshed graphify output.
