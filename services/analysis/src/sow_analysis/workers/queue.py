@@ -646,6 +646,7 @@ class JobQueue:
             ext = ".flac" if vocals_url.endswith(".flac") else ".wav"
             stem_path = temp_path / f"vocals_stem{ext}"
             await self.r2_client.download_audio(vocals_url, stem_path)
+            logger.info("Using existing vocals_dry for transcription: %s", vocals_url)
             return ResolvedTranscriptionAudio(stem_path, vocals_url, "vocals_dry", True)
 
         logger.info("No clean vocals found, auto-triggering stem separation")
@@ -821,7 +822,9 @@ class JobQueue:
                     # Legacy metadata-only cache entries have no cached text; ignore and regenerate
                     cached_text = cached.get("lrc_text")
                     if cached_text:
-                        logger.info("LRC cache hit with cached text - rewriting official lyrics.lrc")
+                        logger.info(
+                            "LRC cache hit with cached text - rewriting official lyrics.lrc"
+                        )
                         import tempfile
 
                         with tempfile.TemporaryDirectory() as temp_dir:
@@ -979,9 +982,7 @@ class JobQueue:
                             lrc_source = "qwen3_asr"
                             await self._update_stage(job, "qwen3_asr_done", 0.7)
                         except Qwen3AsrError as e:
-                            logger.warning(
-                                "Qwen3 ASR failed; falling back to LLM-based ASR: %s", e
-                            )
+                            logger.warning("Qwen3 ASR failed; falling back to LLM-based ASR: %s", e)
                             await self._update_stage(job, "falling_back_to_whisper", 0.45)
                         except Exception as e:
                             logger.warning(
@@ -1075,9 +1076,7 @@ class JobQueue:
                                 error_message=str(e),
                             )
                         except Exception as db_err:
-                            logger.error(
-                                f"Failed to update job {job.id} in database: {db_err}"
-                            )
+                            logger.error(f"Failed to update job {job.id} in database: {db_err}")
                         return
                     except BackupFailedError as e:
                         job.status = JobStatus.FAILED
@@ -1092,9 +1091,7 @@ class JobQueue:
                                 error_message=str(e),
                             )
                         except Exception as db_err:
-                            logger.error(
-                                f"Failed to update job {job.id} in database: {db_err}"
-                            )
+                            logger.error(f"Failed to update job {job.id} in database: {db_err}")
                         return
 
                 # Save to cache using composite key (audio hash + lyrics hash)
@@ -1168,7 +1165,7 @@ class JobQueue:
         """Process a forced alignment job."""
         set_job_id(job.id)
         job_start_time = time.time()
-        logger.info(f"Starting forced alignment job for audio: {job.request.audio_url}")
+        logger.info(f"Starting forced alignment job for original audio: {job.request.audio_url}")
 
         job.status = JobStatus.PROCESSING
         job.updated_at = datetime.now(timezone.utc)
@@ -1243,9 +1240,7 @@ class JobQueue:
                 except Exception as e:
                     logger.error(f"Failed to update job {job.id} in database: {e}")
                 return
-            resolution = resolve_lrc_language(
-                "auto", request.song_title, request.lyrics_text
-            )
+            resolution = resolve_lrc_language("auto", request.song_title, request.lyrics_text)
             detected_lang = resolution.resolved
             logger.info(
                 "Auto-detected forced alignment language: %s (reason: %s)",
@@ -1266,7 +1261,9 @@ class JobQueue:
             if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
                 self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
             if not self.r2_client:
-                raise RuntimeError("R2 client is not initialized. Forced alignment requires R2 storage.")
+                raise RuntimeError(
+                    "R2 client is not initialized. Forced alignment requires R2 storage."
+                )
 
             hash_prefix = request.content_hash[:12]
 
@@ -1304,6 +1301,16 @@ class JobQueue:
                 if job.status == JobStatus.CANCELLED:
                     logger.info("Forced alignment job %s cancelled; skipping alignment", job.id)
                     return
+
+                logger.info(
+                    "Forced alignment audio input resolved: stem_kind=%s "
+                    "is_dry_or_clean_vocals=%s use_vocals_stem=%s source_url=%s local_path=%s",
+                    resolved_audio.stem_kind,
+                    resolved_audio.is_dry_or_clean_vocals,
+                    request.options.use_vocals_stem,
+                    resolved_audio.r2_url or request.audio_url,
+                    resolved_audio.path,
+                )
 
                 await self._update_stage(job, "validating_duration", 0.3)
                 validate_audio_duration(resolved_audio.path, max_seconds=300.0)
@@ -1355,9 +1362,7 @@ class JobQueue:
                                 error_message=str(e),
                             )
                         except Exception as db_err:
-                            logger.error(
-                                f"Failed to update job {job.id} in database: {db_err}"
-                            )
+                            logger.error(f"Failed to update job {job.id} in database: {db_err}")
                         return
                     except BackupFailedError as e:
                         job.status = JobStatus.FAILED
@@ -1372,9 +1377,7 @@ class JobQueue:
                                 error_message=str(e),
                             )
                         except Exception as db_err:
-                            logger.error(
-                                f"Failed to update job {job.id} in database: {db_err}"
-                            )
+                            logger.error(f"Failed to update job {job.id} in database: {db_err}")
                         return
 
                 job.result = JobResult(
@@ -1821,8 +1824,7 @@ class JobQueue:
                 has_reportable_jobs = True
             elif (
                 job.status == JobStatus.FAILED
-                and (now - job.updated_at).total_seconds()
-                <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
+                and (now - job.updated_at).total_seconds() <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
             ):
                 has_reportable_jobs = True
 
