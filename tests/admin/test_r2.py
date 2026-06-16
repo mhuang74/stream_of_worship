@@ -506,3 +506,129 @@ class TestUploadBytes:
             Body=b"content",
             ContentType="text/plain",
         )
+
+
+class TestUploadOfficialLrc:
+    """Tests for R2Client.upload_official_lrc."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_uploads_new_object_without_backup(self, mock_boto_client, r2_env, tmp_path):
+        """When lyrics.lrc doesn't exist, upload without backup."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        lrc_path = tmp_path / "lyrics.lrc"
+        lrc_path.write_text("[00:00.00]Line 1")
+
+        result = client.upload_official_lrc("abc123", lrc_path)
+
+        assert result == "s3://sow-audio/abc123/lyrics.lrc"
+        mock_s3.upload_file.assert_called_once()
+        mock_s3.copy_object.assert_not_called()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_creates_backup_before_overwrite(self, mock_boto_client, r2_env, tmp_path):
+        """When lyrics.lrc exists, copy to backup before overwrite."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {"ETag": '"oldetag"'}
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        lrc_path = tmp_path / "lyrics.lrc"
+        lrc_path.write_text("[00:00.00]Line 1")
+
+        result = client.upload_official_lrc("abc123", lrc_path)
+
+        assert result == "s3://sow-audio/abc123/lyrics.lrc"
+        mock_s3.copy_object.assert_called_once()
+        copy_call = mock_s3.copy_object.call_args
+        assert "lyrics.backup." in copy_call.kwargs["Key"]
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_stale_etag_raises(self, mock_boto_client, r2_env, tmp_path):
+        """When expected_etag doesn't match current ETag, raise StaleObjectError."""
+        from stream_of_worship.admin.services.r2 import StaleObjectError
+
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {"ETag": '"newetag"'}
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        lrc_path = tmp_path / "lyrics.lrc"
+        lrc_path.write_text("[00:00.00]Line 1")
+
+        with pytest.raises(StaleObjectError):
+            client.upload_official_lrc("abc123", lrc_path, expected_etag="oldetag")
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_backup_failure_raises(self, mock_boto_client, r2_env, tmp_path):
+        """When copy_object fails and skip_backup=False, raise BackupFailedError."""
+        from stream_of_worship.admin.services.r2 import BackupFailedError
+
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {"ETag": '"etag"'}
+        mock_s3.copy_object.side_effect = ClientError(
+            {"Error": {"Code": "InternalError"}}, "CopyObject"
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        lrc_path = tmp_path / "lyrics.lrc"
+        lrc_path.write_text("[00:00.00]Line 1")
+
+        with pytest.raises(BackupFailedError):
+            client.upload_official_lrc("abc123", lrc_path)
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_skip_backup_ignores_copy_failure(self, mock_boto_client, r2_env, tmp_path):
+        """When skip_backup=True, upload proceeds even if backup would fail."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {"ETag": '"etag"'}
+        mock_s3.copy_object.side_effect = ClientError(
+            {"Error": {"Code": "InternalError"}}, "CopyObject"
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        lrc_path = tmp_path / "lyrics.lrc"
+        lrc_path.write_text("[00:00.00]Line 1")
+
+        result = client.upload_official_lrc("abc123", lrc_path, skip_backup=True)
+
+        assert result == "s3://sow-audio/abc123/lyrics.lrc"
+        mock_s3.upload_file.assert_called_once()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_prunes_old_backups(self, mock_boto_client, r2_env, tmp_path):
+        """When backup count exceeds MAX_BACKUPS_PER_PREFIX, oldest are deleted."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {"ETag": '"etag"'}
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": "abc123/lyrics.backup.1000.lrc"},
+                    {"Key": "abc123/lyrics.backup.2000.lrc"},
+                    {"Key": "abc123/lyrics.backup.3000.lrc"},
+                    {"Key": "abc123/lyrics.backup.4000.lrc"},
+                    {"Key": "abc123/lyrics.backup.5000.lrc"},
+                    {"Key": "abc123/lyrics.backup.6000.lrc"},
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = mock_paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        lrc_path = tmp_path / "lyrics.lrc"
+        lrc_path.write_text("[00:00.00]Line 1")
+
+        client.upload_official_lrc("abc123", lrc_path)
+
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123/lyrics.backup.1000.lrc"
+        )

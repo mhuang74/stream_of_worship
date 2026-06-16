@@ -151,3 +151,122 @@ class TestR2Client:
         exists = await client.check_exists("s3://my-bucket/missing.mp3")
 
         assert exists is False
+
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_new_object(self, mock_boto3):
+        """upload_official_lrc uploads to lyrics.lrc when object doesn't exist."""
+        mock_boto3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404"}}, "HeadObject"
+        )
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            url = await client.upload_official_lrc("abc123", lrc_path)
+
+        assert url == "s3://my-bucket/abc123/lyrics.lrc"
+        mock_boto3.upload_file.assert_called_once()
+        mock_boto3.copy_object.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_creates_backup(self, mock_boto3):
+        """upload_official_lrc copies existing object to backup before overwrite."""
+        mock_boto3.head_object.return_value = {"ETag": '"oldetag"'}
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            url = await client.upload_official_lrc("abc123", lrc_path)
+
+        assert url == "s3://my-bucket/abc123/lyrics.lrc"
+        mock_boto3.copy_object.assert_called_once()
+        copy_call = mock_boto3.copy_object.call_args
+        assert "lyrics.backup." in copy_call.kwargs["Key"]
+
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_stale_etag_raises(self, mock_boto3):
+        """upload_official_lrc raises StaleObjectError when ETag mismatches."""
+        from sow_analysis.storage.r2 import StaleObjectError
+
+        mock_boto3.head_object.return_value = {"ETag": '"newetag"'}
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            with pytest.raises(StaleObjectError):
+                await client.upload_official_lrc("abc123", lrc_path, expected_etag="oldetag")
+
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_backup_failure_raises(self, mock_boto3):
+        """upload_official_lrc raises BackupFailedError when copy_object fails."""
+        from sow_analysis.storage.r2 import BackupFailedError
+
+        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+        mock_boto3.copy_object.side_effect = ClientError(
+            {"Error": {"Code": "InternalError"}}, "CopyObject"
+        )
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            with pytest.raises(BackupFailedError):
+                await client.upload_official_lrc("abc123", lrc_path)
+
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_skip_backup(self, mock_boto3):
+        """upload_official_lrc proceeds even if backup would fail when skip_backup=True."""
+        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+        mock_boto3.copy_object.side_effect = ClientError(
+            {"Error": {"Code": "InternalError"}}, "CopyObject"
+        )
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            url = await client.upload_official_lrc("abc123", lrc_path, skip_backup=True)
+
+        assert url == "s3://my-bucket/abc123/lyrics.lrc"
+        mock_boto3.upload_file.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_prunes_old_backups(self, mock_boto3):
+        """upload_official_lrc deletes oldest backups when count exceeds MAX_BACKUPS_PER_PREFIX."""
+        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+
+        # Mock paginator to return 6 backup objects
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": "abc123/lyrics.backup.1000.lrc"},
+                    {"Key": "abc123/lyrics.backup.2000.lrc"},
+                    {"Key": "abc123/lyrics.backup.3000.lrc"},
+                    {"Key": "abc123/lyrics.backup.4000.lrc"},
+                    {"Key": "abc123/lyrics.backup.5000.lrc"},
+                    {"Key": "abc123/lyrics.backup.6000.lrc"},
+                ]
+            }
+        ]
+        mock_boto3.get_paginator.return_value = mock_paginator
+
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            await client.upload_official_lrc("abc123", lrc_path)
+
+        mock_boto3.delete_object.assert_called_once_with(
+            Bucket="my-bucket", Key="abc123/lyrics.backup.1000.lrc"
+        )

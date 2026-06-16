@@ -216,7 +216,7 @@ class TestCheckActiveLrcJob:
 class TestUploadRevisedLrc:
     def test_manual_editor_upload_does_not_force_review_visibility(self, tmp_path):
         r2_client = MagicMock()
-        r2_client.upload_lrc.return_value = "s3://bucket/abc123def456/lyrics.lrc"
+        r2_client.upload_official_lrc.return_value = "s3://bucket/abc123def456/lyrics.lrc"
 
         db_client = MagicMock()
         db_client.get_recording_by_hash.return_value = Recording(

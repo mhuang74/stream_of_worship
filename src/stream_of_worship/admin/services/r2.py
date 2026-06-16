@@ -7,6 +7,7 @@ variables so they never appear in config files.
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -14,6 +15,17 @@ from typing import Optional
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+
+MAX_BACKUPS_PER_PREFIX = 5
+
+
+class StaleObjectError(Exception):
+    """Raised when the official LRC object was modified after the operation started."""
+
+
+class BackupFailedError(Exception):
+    """Raised when copying the current official LRC to backup fails."""
 
 
 @dataclass
@@ -360,3 +372,105 @@ class R2Client:
             ClientError: If deletion fails
         """
         self._client.delete_object(Bucket=self.bucket, Key=s3_key)
+
+    def upload_official_lrc(
+        self,
+        hash_prefix: str,
+        lrc_path: Path,
+        expected_etag: Optional[str] = None,
+        skip_backup: bool = False,
+    ) -> str:
+        """Upload the official lyrics.lrc with backup and ETag protection.
+
+        1. HEAD lyrics.lrc to get current ETag.
+        2. If expected_etag is provided and current ETag != expected_etag:
+             raise StaleObjectError
+        3. If lyrics.lrc exists and not skip_backup:
+             copy to lyrics.backup.{timestamp_ms}.lrc
+             If copy fails: raise BackupFailedError
+        4. Upload new lyrics.lrc
+        5. Prune old backups: list lyrics.backup.*.lrc, delete oldest if count > MAX_BACKUPS_PER_PREFIX
+        6. Return s3://{bucket}/{hash_prefix}/lyrics.lrc
+
+        Args:
+            hash_prefix: Content hash prefix for the path
+            lrc_path: Path to the LRC file to upload
+            expected_etag: ETag captured before upload (None if object didn't exist)
+            skip_backup: If True, skip backup even if it would fail
+
+        Returns:
+            S3 URL of the uploaded official LRC
+
+        Raises:
+            StaleObjectError: If ETag mismatch detected
+            BackupFailedError: If backup copy fails and skip_backup=False
+        """
+        official_key = f"{hash_prefix}/lyrics.lrc"
+        official_url = f"s3://{self.bucket}/{official_key}"
+
+        # 1. HEAD lyrics.lrc to get current ETag
+        current_etag: Optional[str] = None
+        exists = False
+        try:
+            head_resp = self._client.head_object(Bucket=self.bucket, Key=official_key)
+            current_etag = head_resp.get("ETag", "").strip('"')
+            exists = True
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code not in ("404", "NoSuchKey"):
+                raise
+
+        # 2. ETag stale-object check
+        if expected_etag is not None:
+            if current_etag != expected_etag:
+                raise StaleObjectError(
+                    "lyrics.lrc was modified by another process after this job started"
+                )
+
+        # 3. Backup existing official LRC
+        if exists and not skip_backup:
+            timestamp_ms = int(time.time() * 1000)
+            backup_key = f"{hash_prefix}/lyrics.backup.{timestamp_ms}.lrc"
+            copy_source = {"Bucket": self.bucket, "Key": official_key}
+            try:
+                self._client.copy_object(
+                    CopySource=copy_source, Bucket=self.bucket, Key=backup_key
+                )
+            except Exception as e:
+                raise BackupFailedError(f"Failed to backup existing lyrics.lrc: {e}")
+
+        # 4. Upload new lyrics.lrc
+        self._client.upload_file(str(lrc_path), self.bucket, official_key)
+
+        # 5. Prune old backups
+        backup_prefix = f"{hash_prefix}/lyrics.backup."
+        try:
+            backup_keys = []
+            paginator = self._client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=backup_prefix):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if key.startswith(backup_prefix) and key.endswith(".lrc"):
+                        backup_keys.append(key)
+
+            if len(backup_keys) > MAX_BACKUPS_PER_PREFIX:
+
+                def _extract_ts(key: str) -> int:
+                    try:
+                        parts = key.split("lyrics.backup.")
+                        if len(parts) == 2:
+                            ts_str = parts[1].split(".lrc")[0]
+                            return int(ts_str)
+                    except (ValueError, IndexError):
+                        pass
+                    return 0
+
+                backup_keys.sort(key=_extract_ts)
+                to_delete = backup_keys[:-MAX_BACKUPS_PER_PREFIX]
+                for key in to_delete:
+                    self._client.delete_object(Bucket=self.bucket, Key=key)
+        except Exception:
+            # Pruning failure is non-fatal
+            pass
+
+        return official_url

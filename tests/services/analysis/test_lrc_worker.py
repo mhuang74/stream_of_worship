@@ -486,7 +486,7 @@ class TestLRCJobQueueProcessing:
 
     @pytest.mark.asyncio
     async def test_lrc_job_uses_cache(self, queue):
-        """Test LRC job returns cached result."""
+        """Test LRC job returns cached result with text rewrite."""
         request = LrcJobRequest(
             audio_url="s3://bucket/hash/audio.mp3",
             content_hash="abc123def456",
@@ -494,11 +494,22 @@ class TestLRCJobQueueProcessing:
             options=LrcOptions(use_vocals_stem=False),
         )
 
-        # Pre-populate cache with correct composite key
+        # Pre-populate cache with correct composite key including text
         cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
         queue.cache_manager.save_lrc_result(
             cache_key,
-            {"lrc_url": "s3://bucket/abc123def456/lyrics.lrc", "line_count": 5},
+            {
+                "lrc_url": "s3://bucket/abc123def456/lyrics.lrc",
+                "line_count": 5,
+                "lrc_source": "whisper_asr",
+                "lrc_text": "[00:00.00] 測試歌詞\n",
+            },
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
+        queue.r2_client.upload_official_lrc = AsyncMock(
+            return_value="s3://bucket/abc123def456/lyrics.lrc"
         )
 
         job = Job(
@@ -513,6 +524,7 @@ class TestLRCJobQueueProcessing:
         assert job.status == JobStatus.COMPLETED
         assert job.stage == "cached"
         assert job.result.line_count == 5
+        queue.r2_client.upload_official_lrc.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_lrc_job_force_bypasses_cache(self, queue):

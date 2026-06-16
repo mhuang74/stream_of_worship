@@ -796,44 +796,97 @@ class JobQueue:
         logger.info(f"LRC cache key: {lrc_cache_key} (audio_hash={request.content_hash[:12]}...)")
 
         try:
+            # Initialize R2 if not done (needed for ETag capture and upload)
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+
+            hash_prefix = request.content_hash[:12]
+
+            # Capture ETag of official lyrics.lrc at job start for stale-object protection
+            official_lrc_etag: Optional[str] = None
+            if self.r2_client:
+                from ..storage.r2 import StaleObjectError
+
+                official_lrc_url = f"s3://{self.r2_client.bucket}/{hash_prefix}/lyrics.lrc"
+                try:
+                    head_resp = await self.r2_client.head_object(official_lrc_url)
+                    official_lrc_etag = head_resp.get("ETag", "").strip('"')
+                except Exception:
+                    official_lrc_etag = None
+
             # Check LRC result cache first (unless force=True - allows prompt improvements)
             if not request.options.force:
                 cached = self.cache_manager.get_lrc_result(lrc_cache_key)
                 if cached:
-                    logger.info("LRC cache hit - returning cached result")
-                    job.result = JobResult(
-                        lrc_url=cached.get("lrc_url"),
-                        line_count=cached.get("line_count"),
-                        lrc_source=cached.get("lrc_source"),
-                    )
-                    job.status = JobStatus.COMPLETED
-                    job.progress = 1.0
-                    job.stage = "cached"
-                    job.updated_at = datetime.now(timezone.utc)
+                    # Legacy metadata-only cache entries have no cached text; ignore and regenerate
+                    cached_text = cached.get("lrc_text")
+                    if cached_text:
+                        logger.info("LRC cache hit with cached text - rewriting official lyrics.lrc")
+                        import tempfile
 
-                    # Persist cache hit result
-                    try:
-                        await self.job_store.update_job(
-                            job.id,
-                            status="completed",
-                            progress=1.0,
-                            stage="cached",
-                            result_json=job.result.model_dump_json(),
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            temp_path = Path(temp_dir)
+                            lrc_path = temp_path / "lyrics.lrc"
+                            lrc_path.write_text(cached_text, encoding="utf-8")
+                            line_count = cached.get("line_count", 0)
+                            lrc_source = cached.get("lrc_source")
+
+                            if self.r2_client:
+                                try:
+                                    lrc_url = await self.r2_client.upload_official_lrc(
+                                        hash_prefix,
+                                        lrc_path,
+                                        expected_etag=official_lrc_etag,
+                                    )
+                                except StaleObjectError as e:
+                                    job.status = JobStatus.FAILED
+                                    job.error_message = str(e)
+                                    job.stage = "stale_object"
+                                    job.updated_at = datetime.now(timezone.utc)
+                                    try:
+                                        await self.job_store.update_job(
+                                            job.id,
+                                            status="failed",
+                                            stage="stale_object",
+                                            error_message=str(e),
+                                        )
+                                    except Exception as db_err:
+                                        logger.error(
+                                            f"Failed to update job {job.id} in database: {db_err}"
+                                        )
+                                    return
+
+                            job.result = JobResult(
+                                lrc_url=lrc_url,
+                                line_count=line_count,
+                                lrc_source=lrc_source,
+                            )
+                            job.status = JobStatus.COMPLETED
+                            job.progress = 1.0
+                            job.stage = "cached"
+                            job.updated_at = datetime.now(timezone.utc)
+
+                            try:
+                                await self.job_store.update_job(
+                                    job.id,
+                                    status="completed",
+                                    progress=1.0,
+                                    stage="cached",
+                                    result_json=job.result.model_dump_json(),
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to update job {job.id} in database: {e}")
+
+                            return
+                    else:
+                        logger.info(
+                            "LRC cache hit with metadata-only legacy entry - ignoring and regenerating"
                         )
-                    except Exception as e:
-                        logger.error(f"Failed to update job {job.id} in database: {e}")
-
-                    return
-
-            # Initialize R2 if not done
-            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
-                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
             import tempfile
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
-                hash_prefix = request.content_hash[:12]
                 lrc_path = temp_path / "lyrics.lrc"
                 whisper_phrases = []
                 line_count = 0
@@ -998,21 +1051,60 @@ class JobQueue:
                 job.progress = 0.8
                 job.updated_at = datetime.now(timezone.utc)
 
-                # Upload LRC to R2
+                # Upload official LRC to R2 with backup + ETag protection
                 lrc_url = None
                 if self.r2_client:
-                    lrc_url = await self.r2_client.upload_lrc(
-                        hash_prefix,
-                        lrc_path,
-                        object_name=f"lyrics.{resolved_language}.v2.lrc",
-                    )
-                    await self.r2_client.upload_lrc(hash_prefix, lrc_path)
+                    from ..storage.r2 import BackupFailedError, StaleObjectError
+
+                    try:
+                        lrc_url = await self.r2_client.upload_official_lrc(
+                            hash_prefix,
+                            lrc_path,
+                            expected_etag=official_lrc_etag,
+                        )
+                    except StaleObjectError as e:
+                        job.status = JobStatus.FAILED
+                        job.error_message = str(e)
+                        job.stage = "stale_object"
+                        job.updated_at = datetime.now(timezone.utc)
+                        try:
+                            await self.job_store.update_job(
+                                job.id,
+                                status="failed",
+                                stage="stale_object",
+                                error_message=str(e),
+                            )
+                        except Exception as db_err:
+                            logger.error(
+                                f"Failed to update job {job.id} in database: {db_err}"
+                            )
+                        return
+                    except BackupFailedError as e:
+                        job.status = JobStatus.FAILED
+                        job.error_message = str(e)
+                        job.stage = "backup_failed"
+                        job.updated_at = datetime.now(timezone.utc)
+                        try:
+                            await self.job_store.update_job(
+                                job.id,
+                                status="failed",
+                                stage="backup_failed",
+                                error_message=str(e),
+                            )
+                        except Exception as db_err:
+                            logger.error(
+                                f"Failed to update job {job.id} in database: {db_err}"
+                            )
+                        return
 
                 # Save to cache using composite key (audio hash + lyrics hash)
+                # Include LRC text for cache-hit rewrite path
+                lrc_text = lrc_path.read_text(encoding="utf-8") if lrc_path.exists() else ""
                 cache_result = {
                     "lrc_url": lrc_url,
                     "line_count": line_count,
                     "lrc_source": lrc_source,
+                    "lrc_text": lrc_text,
                 }
                 self.cache_manager.save_lrc_result(lrc_cache_key, cache_result)
                 logger.info(f"LRC result cached with key: {lrc_cache_key}")
@@ -1176,11 +1268,21 @@ class JobQueue:
             if not self.r2_client:
                 raise RuntimeError("R2 client is not initialized. Forced alignment requires R2 storage.")
 
+            hash_prefix = request.content_hash[:12]
+
+            # Capture ETag of official lyrics.lrc at job start for stale-object protection
+            official_lrc_etag: Optional[str] = None
+            official_lrc_url = f"s3://{self.r2_client.bucket}/{hash_prefix}/lyrics.lrc"
+            try:
+                head_resp = await self.r2_client.head_object(official_lrc_url)
+                official_lrc_etag = head_resp.get("ETag", "").strip('"')
+            except Exception:
+                official_lrc_etag = None
+
             import tempfile
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
-                hash_prefix = request.content_hash[:12]
 
                 await self._update_stage(job, "downloading", 0.2)
                 audio_path = temp_path / "audio.mp3"
@@ -1232,25 +1334,48 @@ class JobQueue:
 
                 lrc_url = None
                 if self.r2_client:
-                    lrc_object_name = f"lyrics.{resolved_lang_code}.forced.lrc"
-                    target_key = f"{hash_prefix}/{lrc_object_name}"
-                    try:
-                        existing_lrc_url = f"s3://{self.r2_client.bucket}/{target_key}"
-                        if await self.r2_client.check_exists(existing_lrc_url):
-                            backup_key = (
-                                f"{hash_prefix}/lyrics.{resolved_lang_code}"
-                                f".backup.{int(time.time())}.lrc"
-                            )
-                            await self.r2_client.copy_object(
-                                existing_lrc_url, f"s3://{self.r2_client.bucket}/{backup_key}"
-                            )
-                            logger.info(f"Backed up existing LRC to {backup_key}")
-                    except Exception as e:
-                        logger.warning(f"Failed to backup existing LRC: {e}")
+                    from ..storage.r2 import BackupFailedError, StaleObjectError
 
-                    lrc_url = await self.r2_client.upload_lrc(
-                        hash_prefix, lrc_path, object_name=lrc_object_name
-                    )
+                    try:
+                        lrc_url = await self.r2_client.upload_official_lrc(
+                            hash_prefix,
+                            lrc_path,
+                            expected_etag=official_lrc_etag,
+                        )
+                    except StaleObjectError as e:
+                        job.status = JobStatus.FAILED
+                        job.error_message = str(e)
+                        job.stage = "stale_object"
+                        job.updated_at = datetime.now(timezone.utc)
+                        try:
+                            await self.job_store.update_job(
+                                job.id,
+                                status="failed",
+                                stage="stale_object",
+                                error_message=str(e),
+                            )
+                        except Exception as db_err:
+                            logger.error(
+                                f"Failed to update job {job.id} in database: {db_err}"
+                            )
+                        return
+                    except BackupFailedError as e:
+                        job.status = JobStatus.FAILED
+                        job.error_message = str(e)
+                        job.stage = "backup_failed"
+                        job.updated_at = datetime.now(timezone.utc)
+                        try:
+                            await self.job_store.update_job(
+                                job.id,
+                                status="failed",
+                                stage="backup_failed",
+                                error_message=str(e),
+                            )
+                        except Exception as db_err:
+                            logger.error(
+                                f"Failed to update job {job.id} in database: {db_err}"
+                            )
+                        return
 
                 job.result = JobResult(
                     lrc_url=lrc_url,
