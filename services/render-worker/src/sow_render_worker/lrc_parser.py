@@ -34,8 +34,7 @@ def parse_lrc(lrc_content: str) -> list[LRCLine]:
         milliseconds = int(ms_str.ljust(3, "0")[:3])
         text = match.group(4).strip()
         time_seconds = minutes * 60 + seconds + milliseconds / 1000.0
-        if text:
-            lines.append(LRCLine(time_seconds=time_seconds, text=text))
+        lines.append(LRCLine(time_seconds=time_seconds, text=text))
     lines.sort(key=lambda line: line.time_seconds)
     return lines
 
@@ -63,14 +62,22 @@ def estimate_last_lyric_duration(
     if not song_lyrics:
         return 5.0
 
-    last_lyric = song_lyrics[-1]
+    last_lyric_index = -1
+    for i in range(len(song_lyrics) - 1, -1, -1):
+        if song_lyrics[i].text.strip():
+            last_lyric_index = i
+            break
 
-    for i in range(len(song_lyrics) - 2, -1, -1):
+    if last_lyric_index < 0:
+        return 5.0
+
+    last_lyric = song_lyrics[last_lyric_index]
+
+    for i in range(last_lyric_index - 1, -1, -1):
         if song_lyrics[i].text == last_lyric.text:
             if i + 1 < len(song_lyrics):
                 duration = (
-                    song_lyrics[i + 1].global_time_seconds
-                    - song_lyrics[i].global_time_seconds
+                    song_lyrics[i + 1].global_time_seconds - song_lyrics[i].global_time_seconds
                 )
                 return max(3.0, duration)
 

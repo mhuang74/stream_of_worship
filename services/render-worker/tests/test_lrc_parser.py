@@ -47,11 +47,23 @@ class TestParseLRC:
         assert len(result) == 1
         assert result[0].text == "Hello"
 
-    def test_empty_text_lines_ignored(self):
+    def test_empty_text_lines_preserved(self):
         content = "[00:01.00]\n[00:05.00]Hello"
         result = parse_lrc(content)
-        assert len(result) == 1
-        assert result[0].text == "Hello"
+        assert result == [
+            LRCLine(time_seconds=1.0, text=""),
+            LRCLine(time_seconds=5.0, text="Hello"),
+        ]
+
+    def test_whitespace_only_text_lines_preserved_as_blank(self):
+        content = "[00:01.00]   \n[00:05.00]Hello"
+        result = parse_lrc(content)
+        assert result[0] == LRCLine(time_seconds=1.0, text="")
+
+    def test_blank_lines_sort_by_timestamp(self):
+        content = "[00:10.00]Second\n[00:01.00]\n[00:05.00]First"
+        result = parse_lrc(content)
+        assert [line.text for line in result] == ["", "First", "Second"]
 
     def test_empty_content(self):
         result = parse_lrc("")
@@ -126,9 +138,7 @@ class TestConvertToGlobalTimeline:
 class TestEstimateLastLyricDuration:
     def _make_lyrics(self, times_and_texts):
         return [
-            GlobalLRCLine(
-                text=t, local_time_seconds=ts, global_time_seconds=ts, title="Song"
-            )
+            GlobalLRCLine(text=t, local_time_seconds=ts, global_time_seconds=ts, title="Song")
             for ts, t in times_and_texts
         ]
 
@@ -136,19 +146,23 @@ class TestEstimateLastLyricDuration:
         assert estimate_last_lyric_duration([]) == 5.0
 
     def test_matching_previous_text(self):
-        lyrics = self._make_lyrics([
-            (0.0, "Chorus"),
-            (5.0, "Verse"),
-            (10.0, "Chorus"),
-        ])
+        lyrics = self._make_lyrics(
+            [
+                (0.0, "Chorus"),
+                (5.0, "Verse"),
+                (10.0, "Chorus"),
+            ]
+        )
         result = estimate_last_lyric_duration(lyrics)
         assert result == 5.0
 
     def test_matching_previous_text_minimum_3(self):
-        lyrics = self._make_lyrics([
-            (0.0, "Chorus"),
-            (1.0, "Chorus"),
-        ])
+        lyrics = self._make_lyrics(
+            [
+                (0.0, "Chorus"),
+                (1.0, "Chorus"),
+            ]
+        )
         result = estimate_last_lyric_duration(lyrics)
         assert result == 3.0
 
@@ -182,6 +196,22 @@ class TestEstimateLastLyricDuration:
         lyrics = self._make_lyrics([(0.0, "Only line")])
         result = estimate_last_lyric_duration(lyrics)
         assert result >= 3.0
+
+    def test_skips_trailing_blank_lines(self):
+        lyrics = self._make_lyrics(
+            [
+                (0.0, "Chorus"),
+                (5.0, "Verse"),
+                (10.0, "Chorus"),
+                (14.0, ""),
+            ]
+        )
+        result = estimate_last_lyric_duration(lyrics)
+        assert result == 5.0
+
+    def test_all_blank_lines_return_default(self):
+        lyrics = self._make_lyrics([(0.0, ""), (5.0, "")])
+        assert estimate_last_lyric_duration(lyrics) == 5.0
 
 
 class TestFindCurrentLyricIndex:

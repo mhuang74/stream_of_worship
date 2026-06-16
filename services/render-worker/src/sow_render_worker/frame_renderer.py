@@ -30,6 +30,11 @@ FontFamily = Literal[
 _DEFAULT_FADE_ALPHA_STEPS = 16
 _DEFAULT_MAX_CACHE_ENTRIES = 200
 _DEFAULT_CACHE_ENABLED = True
+_DEFAULT_TEMPO_BPM = 70.0
+_BLANK_PREVIEW_ALPHA = 128
+_BLANK_PREVIEW_FADE_SECONDS = 0.5
+_BLANK_PREVIOUS_HOLD_SECONDS = 2.0
+_BLANK_PREVIOUS_FADE_SECONDS = 4.0
 
 
 def _get_bool_env(name: str, default: bool) -> bool:
@@ -92,6 +97,8 @@ class VisualState:
     current_lyric_index: int
     intro_alpha: int
     fade_alpha: int
+    preview_alpha: int
+    tempo_bpm: float | None
     is_last_lyric_faded: bool
     current_time: float
 
@@ -188,11 +195,15 @@ def _load_font(
         return font
     except (OSError, IOError):
         font = ImageFont.load_default(size=size)
-        logger.warning("No TrueType font found, using default font (size=%d, family=%s)", size, font_family)
+        logger.warning(
+            "No TrueType font found, using default font (size=%d, family=%s)", size, font_family
+        )
         return font
     except TypeError:
         font = ImageFont.load_default()
-        logger.warning("No TrueType font found, using default font (size=%d, family=%s)", size, font_family)
+        logger.warning(
+            "No TrueType font found, using default font (size=%d, family=%s)", size, font_family
+        )
         return font
 
 
@@ -211,8 +222,12 @@ class FrameRenderer:
         self.font_family = font_family
 
         self._cache_enabled = _get_bool_env("SOW_FRAME_CACHE_ENABLED", _DEFAULT_CACHE_ENABLED)
-        self._fade_alpha_steps = min(256, max(2, _get_int_env("SOW_FADE_ALPHA_STEPS", _DEFAULT_FADE_ALPHA_STEPS)))
-        self._max_cache_entries = max(1, _get_int_env("SOW_MAX_CACHE_ENTRIES", _DEFAULT_MAX_CACHE_ENTRIES))
+        self._fade_alpha_steps = min(
+            256, max(2, _get_int_env("SOW_FADE_ALPHA_STEPS", _DEFAULT_FADE_ALPHA_STEPS))
+        )
+        self._max_cache_entries = max(
+            1, _get_int_env("SOW_MAX_CACHE_ENTRIES", _DEFAULT_MAX_CACHE_ENTRIES)
+        )
         self._frame_cache: OrderedDict[tuple, bytes] = OrderedDict()
         self._cache_hits = 0
         self._cache_misses = 0
@@ -221,8 +236,14 @@ class FrameRenderer:
         logger.info(
             "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d, font_family=%s, "
             "cache_enabled=%s, fade_alpha_steps=%d, max_entries=%d",
-            self.template.name, self.font_size_preset, self.resolution[0], self.resolution[1],
-            self.font_family, self._cache_enabled, self._fade_alpha_steps, self._max_cache_entries,
+            self.template.name,
+            self.font_size_preset,
+            self.resolution[0],
+            self.resolution[1],
+            self.font_family,
+            self._cache_enabled,
+            self._fade_alpha_steps,
+            self._max_cache_entries,
         )
 
     def get_base_font_size(self) -> int:
@@ -331,6 +352,78 @@ class FrameRenderer:
 
         return 255
 
+    def _find_previous_non_blank_index(
+        self,
+        song_lyrics: list[GlobalLRCLine],
+        current_index: int,
+    ) -> int:
+        for i in range(current_index - 1, -1, -1):
+            if song_lyrics[i].text.strip():
+                return i
+        return -1
+
+    def _find_next_non_blank_index(
+        self,
+        song_lyrics: list[GlobalLRCLine],
+        current_index: int,
+    ) -> int:
+        for i in range(current_index + 1, len(song_lyrics)):
+            if song_lyrics[i].text.strip():
+                return i
+        return -1
+
+    def _compute_blank_previous_fade_alpha(
+        self,
+        song_lyrics: list[GlobalLRCLine],
+        current_time: float,
+        current_index: int,
+    ) -> int:
+        if current_index < 0 or current_index >= len(song_lyrics):
+            return 0
+        if song_lyrics[current_index].text.strip():
+            return 0
+        if self._find_previous_non_blank_index(song_lyrics, current_index) < 0:
+            return 0
+
+        elapsed = current_time - song_lyrics[current_index].global_time_seconds
+        if elapsed < _BLANK_PREVIOUS_HOLD_SECONDS:
+            return 255
+
+        fade_elapsed = elapsed - _BLANK_PREVIOUS_HOLD_SECONDS
+        if fade_elapsed >= _BLANK_PREVIOUS_FADE_SECONDS:
+            return 0
+
+        fade_progress = max(0.0, fade_elapsed / _BLANK_PREVIOUS_FADE_SECONDS)
+        return math.floor(255 * (1.0 - math.sqrt(fade_progress)))
+
+    def _compute_blank_preview_alpha(
+        self,
+        song_lyrics: list[GlobalLRCLine],
+        current_time: float,
+        current_index: int,
+        tempo_bpm: float | None,
+    ) -> int:
+        if current_index < 0 or current_index >= len(song_lyrics):
+            return 0
+        if song_lyrics[current_index].text.strip():
+            return 0
+
+        next_index = self._find_next_non_blank_index(song_lyrics, current_index)
+        if next_index < 0:
+            return 0
+
+        bpm = tempo_bpm if tempo_bpm and tempo_bpm > 0 else _DEFAULT_TEMPO_BPM
+        four_beat_window_seconds = 4 * 60 / bpm
+        preview_start = song_lyrics[next_index].global_time_seconds - four_beat_window_seconds
+        if current_time < preview_start:
+            return 0
+
+        preview_elapsed = current_time - preview_start
+        return min(
+            _BLANK_PREVIEW_ALPHA,
+            math.floor(_BLANK_PREVIEW_ALPHA * preview_elapsed / _BLANK_PREVIEW_FADE_SECONDS),
+        )
+
     def _resolve_visual_state(
         self,
         lyrics: list[GlobalLRCLine],
@@ -339,6 +432,7 @@ class FrameRenderer:
     ) -> VisualState:
         current_title = ""
         current_segment: SegmentInfo | None = None
+        tempo_bpm: float | None = None
 
         for segment in segments:
             segment_start = segment.start_time_seconds
@@ -346,6 +440,8 @@ class FrameRenderer:
             if segment_start <= current_time < segment_end:
                 current_title = segment.song_title or "Unknown"
                 current_segment = segment
+                if segment.tempo_bpm and segment.tempo_bpm > 0:
+                    tempo_bpm = segment.tempo_bpm
                 break
 
         lyrics_by_song = group_lyrics_by_song(lyrics)
@@ -361,6 +457,7 @@ class FrameRenderer:
 
         current_lyric_index = -1
         fade_alpha = 255
+        preview_alpha = 0
         is_last_lyric_faded = False
 
         if current_song_lyrics and current_time >= current_song_lyrics[0].global_time_seconds:
@@ -371,14 +468,23 @@ class FrameRenderer:
                     break
 
             if current_lyric_index >= 0:
-                is_last = current_lyric_index == len(current_song_lyrics) - 1
-                if is_last:
-                    fade_alpha = self._compute_last_lyric_fade_alpha(
+                current_line = current_song_lyrics[current_lyric_index]
+                if current_line.text.strip():
+                    is_last = current_lyric_index == len(current_song_lyrics) - 1
+                    if is_last:
+                        fade_alpha = self._compute_last_lyric_fade_alpha(
+                            current_song_lyrics, current_time, current_lyric_index
+                        )
+                        if fade_alpha <= 0:
+                            is_last_lyric_faded = True
+                            current_lyric_index = -1
+                else:
+                    fade_alpha = self._compute_blank_previous_fade_alpha(
                         current_song_lyrics, current_time, current_lyric_index
                     )
-                    if fade_alpha <= 0:
-                        is_last_lyric_faded = True
-                        current_lyric_index = -1
+                    preview_alpha = self._compute_blank_preview_alpha(
+                        current_song_lyrics, current_time, current_lyric_index, tempo_bpm
+                    )
 
         return VisualState(
             segment_id=current_segment.id if current_segment else "",
@@ -388,6 +494,8 @@ class FrameRenderer:
             current_lyric_index=current_lyric_index,
             intro_alpha=intro_alpha,
             fade_alpha=fade_alpha,
+            preview_alpha=preview_alpha,
+            tempo_bpm=tempo_bpm,
             is_last_lyric_faded=is_last_lyric_faded,
             current_time=current_time,
         )
@@ -395,6 +503,9 @@ class FrameRenderer:
     def _compute_cache_key(self, state: VisualState) -> tuple:
         quantized_intro = self._quantize_alpha(state.intro_alpha) if state.intro_alpha > 0 else 0
         quantized_fade = self._quantize_alpha(state.fade_alpha) if state.fade_alpha < 255 else 255
+        quantized_preview = (
+            self._quantize_alpha(state.preview_alpha) if state.preview_alpha > 0 else 0
+        )
 
         return (
             self.font_family,
@@ -403,6 +514,7 @@ class FrameRenderer:
             state.current_lyric_index,
             quantized_intro,
             quantized_fade,
+            quantized_preview,
             state.is_last_lyric_faded,
         )
 
@@ -495,6 +607,7 @@ class FrameRenderer:
                     draw,
                     width,
                     height,
+                    tempo_bpm=state.tempo_bpm,
                 )
 
         return img
@@ -580,6 +693,7 @@ class FrameRenderer:
         draw: ImageDraw.ImageDraw,
         width: int,
         height: int,
+        tempo_bpm: float | None = None,
     ) -> None:
         current_index = -1
         for i, line in enumerate(song_lyrics):
@@ -598,15 +712,54 @@ class FrameRenderer:
         current_line = song_lyrics[current_index]
         is_last_lyric = current_index == len(song_lyrics) - 1
 
+        highlight_r, highlight_g, highlight_b = self.template.highlight_color
+        current_font_size_target = self.base_font_size * 2
+        margin = self.get_margin(draw, current_font_size_target)
+
+        if not current_line.text.strip():
+            previous_index = self._find_previous_non_blank_index(song_lyrics, current_index)
+            previous_alpha = self._compute_blank_previous_fade_alpha(
+                song_lyrics, current_time, current_index
+            )
+            if previous_index >= 0 and previous_alpha > 0:
+                previous_line = song_lyrics[previous_index]
+                previous_font_size = self.fit_text(
+                    draw, previous_line.text, current_font_size_target, width - margin * 2
+                )
+                previous_font = self._get_font(previous_font_size)
+                previous_fill_color = (
+                    int(highlight_r * previous_alpha / 255),
+                    int(highlight_g * previous_alpha / 255),
+                    int(highlight_b * previous_alpha / 255),
+                )
+                draw.text(
+                    (width // 2, int(height * 0.33)),
+                    previous_line.text,
+                    fill=previous_fill_color,
+                    font=previous_font,
+                    anchor="mt",
+                )
+
+            preview_alpha = self._compute_blank_preview_alpha(
+                song_lyrics, current_time, current_index, tempo_bpm
+            )
+            next_index = self._find_next_non_blank_index(song_lyrics, current_index)
+            if next_index >= 0 and preview_alpha > 0:
+                self._render_next_lyric_preview(
+                    song_lyrics[next_index],
+                    preview_alpha,
+                    draw,
+                    width,
+                    height,
+                )
+            return
+
         fade_alpha = self._compute_last_lyric_fade_alpha(song_lyrics, current_time, current_index)
         is_last_lyric_faded = is_last_lyric and fade_alpha <= 0
 
         if is_last_lyric_faded:
             return
 
-        highlight_r, highlight_g, highlight_b = self.template.highlight_color
-        current_font_size_target = self.base_font_size * 2
-        margin = self.get_margin(draw, current_font_size_target)
         current_font_size = self.fit_text(
             draw, current_line.text, current_font_size_target, width - margin * 2
         )
@@ -635,29 +788,39 @@ class FrameRenderer:
                     fade_progress = 1.0 - fade_alpha / 255.0
                     next_alpha = math.floor(128 * (1 - fade_progress))
 
-                text_r, text_g, text_b = self.template.text_color
-                next_font_size_target = self.base_font_size
-                next_margin = self.get_margin(draw, next_font_size_target)
-                next_font_size = self.fit_text(
-                    draw,
-                    next_line.text,
-                    next_font_size_target,
-                    width - next_margin * 2,
-                )
-                next_font = self._get_font(next_font_size)
-                next_fill_color = (
-                    int(text_r * next_alpha / 255),
-                    int(text_g * next_alpha / 255),
-                    int(text_b * next_alpha / 255),
-                )
-                next_y = int(height * 0.33 + 200)
-                draw.text(
-                    (width // 2, next_y),
-                    next_line.text,
-                    fill=next_fill_color,
-                    font=next_font,
-                    anchor="mt",
-                )
+                self._render_next_lyric_preview(next_line, next_alpha, draw, width, height)
+
+    def _render_next_lyric_preview(
+        self,
+        next_line: GlobalLRCLine,
+        next_alpha: int,
+        draw: ImageDraw.ImageDraw,
+        width: int,
+        height: int,
+    ) -> None:
+        text_r, text_g, text_b = self.template.text_color
+        next_font_size_target = self.base_font_size
+        next_margin = self.get_margin(draw, next_font_size_target)
+        next_font_size = self.fit_text(
+            draw,
+            next_line.text,
+            next_font_size_target,
+            width - next_margin * 2,
+        )
+        next_font = self._get_font(next_font_size)
+        next_fill_color = (
+            int(text_r * next_alpha / 255),
+            int(text_g * next_alpha / 255),
+            int(text_b * next_alpha / 255),
+        )
+        next_y = int(height * 0.33 + 200)
+        draw.text(
+            (width // 2, next_y),
+            next_line.text,
+            fill=next_fill_color,
+            font=next_font,
+            anchor="mt",
+        )
 
     def render_title_card(self, config: TitleCardConfig) -> Image.Image:
         width, height = self.resolution
