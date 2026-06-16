@@ -1045,6 +1045,12 @@ test = [
 - Phase 10: Lambda Render Worker Migration
 - Phase 11: `029b7f5` - Simplify Render Progress Notification v2
 
+### Latest Update - 2026-06-16
+
+- Render worker lyric fades now composite text colors over `template.background_color`, so faded intro info, lyric text, blank-line previous lyrics, and next-line previews fade into the active flat template background instead of black.
+- Added targeted `services/render-worker/tests/test_frame_renderer.py` coverage for helper clamping, mid-blend behavior, and channel-wise rendered pixels on a non-black template background.
+- Validation: `uv run --python 3.11 --project services/render-worker pytest services/render-worker/tests/test_frame_renderer.py -v` passed with 133 tests.
+
 ---
 
 *This document should be updated as implementation progresses.*

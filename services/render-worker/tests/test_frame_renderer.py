@@ -209,6 +209,37 @@ class TestFrameRendererInit:
         assert renderer.get_base_font_size() == 80
 
 
+class TestCompositeOverBackground:
+    def test_returns_foreground_at_full_alpha(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["gradient_warm"])
+
+        assert renderer._composite_over_background((255, 240, 220), 255) == (255, 240, 220)
+
+    def test_returns_background_at_zero_alpha(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["gradient_warm"])
+
+        assert renderer._composite_over_background((255, 240, 220), 0) == (
+            VIDEO_TEMPLATES["gradient_warm"].background_color
+        )
+
+    def test_clamps_alpha_below_zero_and_above_255(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["gradient_warm"])
+
+        assert renderer._composite_over_background((255, 240, 220), -1) == (
+            VIDEO_TEMPLATES["gradient_warm"].background_color
+        )
+        assert renderer._composite_over_background((255, 240, 220), 256) == (255, 240, 220)
+
+    def test_mid_blend_uses_background_instead_of_black_scale(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["gradient_warm"])
+        foreground = VIDEO_TEMPLATES["gradient_warm"].highlight_color
+
+        result = renderer._composite_over_background(foreground, 128)
+
+        assert result == (157, 115, 85)
+        assert result != tuple(int(channel * 128 / 255) for channel in foreground)
+
+
 class TestVideoTemplatesAndFontSizes:
     def test_available_templates(self):
         assert "dark" in VIDEO_TEMPLATES
@@ -588,6 +619,21 @@ class TestRenderLyrics:
 
         assert list(img_hold.getdata()) != list(blank.getdata())
         assert list(img_faded.getdata()) == list(blank.getdata())
+
+    def test_fading_lyric_pixels_never_dip_below_template_background(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["gradient_warm"])
+        bg = VIDEO_TEMPLATES["gradient_warm"].background_color
+        img = Image.new("RGB", (1920, 1080), bg)
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, "")])
+
+        renderer.render_lyrics(lyrics, 14.0, "Song", ImageDraw.Draw(img), 1920, 1080)
+
+        changed_pixels = [pixel for pixel in img.getdata() if pixel != bg]
+        assert changed_pixels
+        for pixel in changed_pixels:
+            assert pixel[0] >= bg[0]
+            assert pixel[1] >= bg[1]
+            assert pixel[2] >= bg[2]
 
     @pytest.mark.parametrize(
         ("text", "alpha"),

@@ -294,6 +294,17 @@ class FrameRenderer:
             return 255
         return (alpha // self._alpha_step_size) * self._alpha_step_size
 
+    def _composite_over_background(
+        self,
+        foreground: tuple[int, int, int],
+        alpha: int,
+    ) -> tuple[int, int, int]:
+        clamped_alpha = min(255, max(0, alpha))
+        return tuple(
+            int(background + (channel - background) * clamped_alpha / 255)
+            for channel, background in zip(foreground, self.template.background_color)
+        )
+
     def _compute_intro_alpha(
         self,
         segment: SegmentInfo,
@@ -672,7 +683,6 @@ class FrameRenderer:
         total_height = len(info_lines) * line_height
         base_y = height / 2 - total_height / 2
 
-        text_r, text_g, text_b = self.template.text_color
         intro_font_size = math.floor(self.base_font_size * 0.9)
         margin = self.get_margin(draw, intro_font_size)
         max_width = width - margin * 2
@@ -680,11 +690,7 @@ class FrameRenderer:
         for i, line in enumerate(info_lines):
             fitted_size = self.fit_text(draw, line, intro_font_size, max_width)
             font = self._get_font(fitted_size)
-            fill_color = (
-                int(text_r * alpha / 255),
-                int(text_g * alpha / 255),
-                int(text_b * alpha / 255),
-            )
+            fill_color = self._composite_over_background(self.template.text_color, alpha)
             y_pos = base_y + i * line_height + line_height / 2
             draw.text(
                 (width // 2, int(y_pos)),
@@ -723,7 +729,6 @@ class FrameRenderer:
         current_line = song_lyrics[current_index]
         is_last_lyric = current_index == len(song_lyrics) - 1
 
-        highlight_r, highlight_g, highlight_b = self.template.highlight_color
         current_font_size_target = self.base_font_size * 2
         margin = self.get_margin(draw, current_font_size_target)
 
@@ -738,10 +743,8 @@ class FrameRenderer:
                     draw, previous_line.text, current_font_size_target, width - margin * 2
                 )
                 previous_font = self._get_font(previous_font_size)
-                previous_fill_color = (
-                    int(highlight_r * previous_alpha / 255),
-                    int(highlight_g * previous_alpha / 255),
-                    int(highlight_b * previous_alpha / 255),
+                previous_fill_color = self._composite_over_background(
+                    self.template.highlight_color, previous_alpha
                 )
                 draw.text(
                     (width // 2, int(height * 0.33)),
@@ -775,11 +778,7 @@ class FrameRenderer:
             draw, current_line.text, current_font_size_target, width - margin * 2
         )
         font = self._get_font(current_font_size)
-        fill_color = (
-            int(highlight_r * fade_alpha / 255),
-            int(highlight_g * fade_alpha / 255),
-            int(highlight_b * fade_alpha / 255),
-        )
+        fill_color = self._composite_over_background(self.template.highlight_color, fade_alpha)
         y = int(height * 0.33)
         draw.text(
             (width // 2, y),
@@ -812,7 +811,6 @@ class FrameRenderer:
         if next_alpha <= 0 or not isinstance(next_line.text, str) or not next_line.text.strip():
             return
 
-        text_r, text_g, text_b = self.template.text_color
         next_font_size_target = self.base_font_size
         next_margin = self.get_margin(draw, next_font_size_target)
         next_font_size = self.fit_text(
@@ -822,11 +820,7 @@ class FrameRenderer:
             width - next_margin * 2,
         )
         next_font = self._get_font(next_font_size)
-        next_fill_color = (
-            int(text_r * next_alpha / 255),
-            int(text_g * next_alpha / 255),
-            int(text_b * next_alpha / 255),
-        )
+        next_fill_color = self._composite_over_background(self.template.text_color, next_alpha)
         next_y = int(height * 0.33 + 200)
         draw.text(
             (width // 2, next_y),
