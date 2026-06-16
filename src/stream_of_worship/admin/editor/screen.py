@@ -321,7 +321,11 @@ class LRCEditorScreen(Screen[None]):
             yield CurrentLyricDisplay()
             yield PlaybackBar()
             yield LyricLineTable(id="line-table")
-            yield Input(id="row-edit-input", placeholder="Edit selected cell")
+            yield Input(
+                id="row-edit-input",
+                placeholder="Edit selected cell",
+                select_on_focus=False,
+            )
             yield StatusIndicator()
         yield GroupedFooter()
 
@@ -717,7 +721,13 @@ class LRCEditorScreen(Screen[None]):
             x, y, width = resolved
             edit_input = self.query_one("#row-edit-input", Input)
             line = self.state.timed_lines[row]
+
+            def reset_edit_viewport() -> None:
+                edit_input.cursor_position = 0
+                edit_input.set_scroll(0, None)
+
             edit_input.value = line.text if mode == "text" else format_centiseconds(line.time_seconds)
+            reset_edit_viewport()
             edit_input.placeholder = "Edit text" if mode == "text" else "Edit timestamp"
             edit_input.styles.offset = Offset(x, y)
             edit_input.styles.width = max(1, width)
@@ -726,6 +736,7 @@ class LRCEditorScreen(Screen[None]):
             self._edit_target_row = row
             self._edit_target_column = column
             edit_input.focus()
+            self.app.call_later(reset_edit_viewport)
 
         self.call_after_refresh(do_show)
 
