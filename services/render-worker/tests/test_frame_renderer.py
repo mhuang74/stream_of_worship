@@ -555,6 +555,16 @@ class TestRenderLyrics:
         assert 0 < renderer._compute_blank_previous_fade_alpha(lyrics, 14.0, 1) < 255
         assert renderer._compute_blank_previous_fade_alpha(lyrics, 16.0, 1) == 0
 
+    def test_consecutive_blank_previous_fade_stays_anchored_to_first_blank(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, ""), (20.0, "World")])
+
+        alpha_from_first_blank = renderer._compute_blank_previous_fade_alpha(lyrics, 14.0, 1)
+        alpha_from_later_blank = renderer._compute_blank_previous_fade_alpha(lyrics, 14.0, 2)
+
+        assert 0 < alpha_from_later_blank < 255
+        assert alpha_from_later_blank == alpha_from_first_blank
+
     def test_blank_previous_and_preview_can_overlap(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
         lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")])

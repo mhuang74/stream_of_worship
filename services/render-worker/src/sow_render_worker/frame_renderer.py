@@ -372,6 +372,16 @@ class FrameRenderer:
                 return i
         return -1
 
+    def _find_blank_run_start_index(
+        self,
+        song_lyrics: list[GlobalLRCLine],
+        current_index: int,
+    ) -> int:
+        for i in range(current_index - 1, -1, -1):
+            if song_lyrics[i].text.strip():
+                return i + 1
+        return 0
+
     def _compute_blank_previous_fade_alpha(
         self,
         song_lyrics: list[GlobalLRCLine],
@@ -385,7 +395,8 @@ class FrameRenderer:
         if self._find_previous_non_blank_index(song_lyrics, current_index) < 0:
             return 0
 
-        elapsed = current_time - song_lyrics[current_index].global_time_seconds
+        blank_run_start_index = self._find_blank_run_start_index(song_lyrics, current_index)
+        elapsed = current_time - song_lyrics[blank_run_start_index].global_time_seconds
         if elapsed < _BLANK_PREVIOUS_HOLD_SECONDS:
             return 255
 
