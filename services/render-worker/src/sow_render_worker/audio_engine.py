@@ -4,6 +4,7 @@ import json
 import logging
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -25,6 +26,8 @@ class SongsetItem:
     tempo_ratio: float | None = None
     tempo_bpm: float | None = None
     duration_seconds: float | None = None
+    recording_id: str | None = None
+    deleted_at: datetime | None = None
 
 
 @dataclass(frozen=True)

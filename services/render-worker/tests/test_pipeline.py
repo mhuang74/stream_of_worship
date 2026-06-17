@@ -38,6 +38,8 @@ def _make_songset_item(**overrides) -> SongsetItem:
         "tempo_ratio": 1.0,
         "tempo_bpm": 120.0,
         "duration_seconds": 180.0,
+        "recording_id": "rec_001",
+        "deleted_at": None,
     }
     defaults.update(overrides)
     return SongsetItem(**defaults)
@@ -245,6 +247,8 @@ class TestFetchSongsetItems:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
+                "recording_id": "rec_001",
+                "deleted_at": None,
                 "song_title": "Test Song",
             },
             {
@@ -260,6 +264,8 @@ class TestFetchSongsetItems:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 100.0,
                 "duration_seconds": 200.0,
+                "recording_id": "rec_002",
+                "deleted_at": None,
                 "song_title": "Second Song",
             },
         ]
@@ -293,6 +299,8 @@ class TestFetchSongsetItems:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
+                "recording_id": "rec_001",
+                "deleted_at": None,
                 "song_title": "Song",
             }
         ]
@@ -331,6 +339,8 @@ class TestFetchSongsetItems:
                 "tempo_ratio": None,
                 "tempo_bpm": None,
                 "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
                 "song_title": None,
             }
         ]
@@ -1157,3 +1167,340 @@ class TestExecuteRenderPipeline:
             mock_ve_class.assert_called_once()
             call_kwargs = mock_ve_class.call_args[1]
             assert call_kwargs["font_family"] == "noto_serif_tc"
+
+
+class TestFetchSongsetItemsSoftDeleteValidation:
+    def test_rejects_soft_deleted_recordings(self):
+        deleted_at = datetime(2026, 6, 8, 22, 33, 22, tzinfo=timezone.utc)
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "b1979244c818",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 120.0,
+                "duration_seconds": 180.0,
+                "recording_id": "rec_001",
+                "deleted_at": deleted_at,
+                "song_title": "Deleted Song",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="soft-deleted recording"):
+            fetch_songset_items(conn, "ss_001")
+
+    def test_rejects_missing_recording_rows(self):
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "b1979244c818",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": None,
+                "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
+                "song_title": "Missing Song",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="not found in database"):
+            fetch_songset_items(conn, "ss_001")
+
+    def test_missing_checked_before_deleted(self):
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "b1979244c818",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": None,
+                "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
+                "song_title": "Missing Song",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="not found in database"):
+            fetch_songset_items(conn, "ss_001")
+
+    def test_allows_active_recordings(self):
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "abc123",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 120.0,
+                "duration_seconds": 180.0,
+                "recording_id": "rec_001",
+                "deleted_at": None,
+                "song_title": "Active Song 1",
+            },
+            {
+                "id": "item_2",
+                "songset_id": "ss_001",
+                "song_id": "song_2",
+                "recording_hash_prefix": "def456",
+                "position": 1,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 100.0,
+                "duration_seconds": 200.0,
+                "recording_id": "rec_002",
+                "deleted_at": None,
+                "song_title": "Active Song 2",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        songset_name, items = fetch_songset_items(conn, "ss_001")
+        assert len(items) == 2
+        assert items[0].recording_id == "rec_001"
+        assert items[0].deleted_at is None
+        assert items[1].recording_id == "rec_002"
+        assert items[1].deleted_at is None
+
+    def test_allows_null_recording_hash(self):
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": None,
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": None,
+                "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
+                "song_title": "No Recording",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        songset_name, items = fetch_songset_items(conn, "ss_001")
+        assert len(items) == 1
+        assert items[0].recording_hash_prefix is None
+
+    def test_multiple_soft_deleted_recordings(self):
+        deleted_at = datetime(2026, 6, 8, 22, 33, 22, tzinfo=timezone.utc)
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "hash_a",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 120.0,
+                "duration_seconds": 180.0,
+                "recording_id": "rec_001",
+                "deleted_at": deleted_at,
+                "song_title": "Deleted A",
+            },
+            {
+                "id": "item_2",
+                "songset_id": "ss_001",
+                "song_id": "song_2",
+                "recording_hash_prefix": "hash_b",
+                "position": 1,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 100.0,
+                "duration_seconds": 200.0,
+                "recording_id": "rec_002",
+                "deleted_at": deleted_at,
+                "song_title": "Deleted B",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="2 soft-deleted recording"):
+            fetch_songset_items(conn, "ss_001")
+
+    def test_multiple_missing_recording_rows(self):
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "hash_a",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": None,
+                "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
+                "song_title": "Missing A",
+            },
+            {
+                "id": "item_2",
+                "songset_id": "ss_001",
+                "song_id": "song_2",
+                "recording_hash_prefix": "hash_b",
+                "position": 1,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": None,
+                "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
+                "song_title": "Missing B",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="2 recording"):
+            fetch_songset_items(conn, "ss_001")
+
+    def test_error_message_includes_hash_prefix(self):
+        deleted_at = datetime(2026, 6, 8, 22, 33, 22, tzinfo=timezone.utc)
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "b1979244c818",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 120.0,
+                "duration_seconds": 180.0,
+                "recording_id": "rec_001",
+                "deleted_at": deleted_at,
+                "song_title": "Deleted Song",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="b1979244c818") as exc_info:
+            fetch_songset_items(conn, "ss_001")
+        assert "repair-songsets" in str(exc_info.value)
+
+    def test_missing_row_error_message_includes_hash_prefix(self):
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "b1979244c818",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": None,
+                "duration_seconds": None,
+                "recording_id": None,
+                "deleted_at": None,
+                "song_title": "Missing Song",
+            },
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        with pytest.raises(ValueError, match="b1979244c818") as exc_info:
+            fetch_songset_items(conn, "ss_001")
+        assert "hard-deleted" in str(exc_info.value)
+
+
+class TestPipelineSoftDeleteFailFast:
+    def test_pipeline_fails_fast_on_soft_deleted_recording(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=ValueError(
+                 "Songset contains 1 soft-deleted recording(s): b1979244c818. "
+                 "Run 'sow-admin maintenance repair-songsets' to fix stale references."
+             )), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio") as mock_audio:
+
+            with pytest.raises(ValueError, match="soft-deleted"):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+            mock_audio.assert_not_called()
+            mock_fail.assert_called_once()
+            assert "soft-deleted" in mock_fail.call_args[0][3]
+
+    def test_pipeline_fails_fast_on_missing_recording_row(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", side_effect=ValueError(
+                 "Songset contains 1 recording(s) not found in database: b1979244c818. "
+                 "Recording row may have been hard-deleted or never existed."
+             )), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio") as mock_audio:
+
+            with pytest.raises(ValueError, match="not found in database"):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+            mock_audio.assert_not_called()
+            mock_fail.assert_called_once()
+            assert "not found in database" in mock_fail.call_args[0][3]

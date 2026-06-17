@@ -129,6 +129,8 @@ def fetch_songset_items(
             "  si.tempo_ratio, "
             "  r.tempo_bpm, "
             "  r.duration_seconds, "
+            "  r.id AS recording_id, "
+            "  r.deleted_at, "
             "  s.title AS song_title "
             "FROM songset_items si "
             "LEFT JOIN recordings r ON si.recording_hash_prefix = r.hash_prefix "
@@ -154,9 +156,35 @@ def fetch_songset_items(
             tempo_bpm=row["tempo_bpm"],
             duration_seconds=row["duration_seconds"],
             song_title=row["song_title"],
+            recording_id=row["recording_id"],
+            deleted_at=row["deleted_at"],
         )
         for row in rows
     ]
+
+    missing_items = [
+        item for item in items
+        if item.recording_hash_prefix and item.recording_id is None
+    ]
+
+    if missing_items:
+        hashes = ", ".join(item.recording_hash_prefix for item in missing_items)
+        raise ValueError(
+            f"Songset contains {len(missing_items)} recording(s) not found in database: {hashes}. "
+            f"Recording row may have been hard-deleted or never existed."
+        )
+
+    deleted_items = [
+        item for item in items
+        if item.recording_hash_prefix and item.deleted_at is not None
+    ]
+
+    if deleted_items:
+        hashes = ", ".join(item.recording_hash_prefix for item in deleted_items)
+        raise ValueError(
+            f"Songset contains {len(deleted_items)} soft-deleted recording(s): {hashes}. "
+            f"Run 'sow-admin maintenance repair-songsets' to fix stale references."
+        )
 
     return songset_name, items
 
