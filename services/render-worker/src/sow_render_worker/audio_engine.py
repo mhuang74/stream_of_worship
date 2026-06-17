@@ -26,7 +26,7 @@ class SongsetItem:
     tempo_ratio: float | None = None
     tempo_bpm: float | None = None
     duration_seconds: float | None = None
-    recording_id: str | None = None
+    recording_content_hash: str | None = None
     deleted_at: datetime | None = None
 
 
