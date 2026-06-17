@@ -1045,7 +1045,14 @@ test = [
 - Phase 10: Lambda Render Worker Migration
 - Phase 11: `029b7f5` - Simplify Render Progress Notification v2
 
-### Latest Update - 2026-06-16
+### Latest Update - 2026-06-17
+
+- Addressed PR #108 second-round review feedback for admin soft-delete/R2 maintenance.
+- `purge-soft-deletes --confirm` now hard-deletes the DB row before R2 deletion, skips R2 when the DB delete is blocked or stale, and reports R2 cleanup failures in the manifest.
+- Hardened R2 recording-prefix validation, increased R2 scan page size to 1000, applied orphan limits after DB filtering, guarded repair manifests before DB queries, handled same-hash force imports without soft-deleting the active recording, and fixed failed render job timestamp formatting.
+- Validation: `PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/admin/test_audio_soft_delete_maintenance.py tests/admin/test_r2.py -v` passed with 53 tests; Black check passed for edited files; `graphify update .` refreshed the graph.
+
+### Previous Update - 2026-06-16
 
 - Render worker lyric fades now composite text colors over `template.background_color`, so faded intro info, lyric text, blank-line previous lyrics, and next-line previews fade into the active flat template background instead of black.
 - Added targeted `services/render-worker/tests/test_frame_renderer.py` coverage for helper clamping, mid-blend behavior, and channel-wise rendered pixels on a non-black template background.

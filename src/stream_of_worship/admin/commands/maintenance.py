@@ -197,8 +197,22 @@ def purge_soft_deletes(
         }
         rows.append(item)
         if confirm and not blocked:
-            r2_client.delete_prefix(recording.hash_prefix)
-            db_client.hard_delete_soft_deleted_recording(recording.hash_prefix)
+            try:
+                deleted = db_client.hard_delete_soft_deleted_recording(recording.hash_prefix)
+            except ValueError as e:
+                item["action"] = "blocked"
+                item["blocked_reasons"] = str(e)
+                continue
+            if not deleted:
+                item["action"] = "skipped"
+                item["blocked_reasons"] = "recording-not-soft-deleted"
+                continue
+            try:
+                summary = r2_client.delete_prefix(recording.hash_prefix)
+                item["deleted_object_count"] = summary.object_count
+            except Exception as e:
+                item["action"] = "purged-db-r2-failed"
+                item["blocked_reasons"] = f"r2-delete-failed: {e}"
 
     for row in songs:
         song = row["song"]
@@ -279,9 +293,9 @@ def _repair_manifest(
     hash_prefix: Optional[str],
     all_: bool,
 ) -> list[dict]:
-    stale = db_client.find_stale_songset_items(songset_id=songset_id, hash_prefix=hash_prefix)
     if not all_ and not songset_id and not hash_prefix:
         return []
+    stale = db_client.find_stale_songset_items(songset_id=songset_id, hash_prefix=hash_prefix)
     rows = []
     for item in stale:
         replacement = None
@@ -365,7 +379,7 @@ def _orphan_r2_prefixes(
     limit: Optional[int],
 ) -> list[dict]:
     rows = []
-    for summary in r2_client.scan_recording_prefixes(blacklist=blacklist, limit=limit):
+    for summary in r2_client.scan_recording_prefixes(blacklist=blacklist):
         if db_client.recording_row_exists(summary.prefix):
             continue
         references = db_client.count_recording_songset_references(summary.prefix)
@@ -378,6 +392,8 @@ def _orphan_r2_prefixes(
                 "songset_reference_count": references,
             }
         )
+        if limit is not None and len(rows) >= limit:
+            break
     return rows
 
 

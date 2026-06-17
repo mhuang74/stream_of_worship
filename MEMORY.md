@@ -11,3 +11,7 @@
 ## 2026-06-16
 
 - Fixed render-worker lyric fade colors to composite faded text over the active template background instead of scaling RGB toward black; added focused `test_frame_renderer.py` coverage and refreshed graphify output.
+
+## 2026-06-17
+
+- Addressed PR #108 second-round review feedback for admin maintenance: DB-first soft-delete purges with R2 failure reporting, stricter R2 prefix normalization, orphan limit-after-filtering, repair manifest guard, same-hash force-import refresh handling, failed render job timestamp formatting, focused tests, and refreshed graphify output.

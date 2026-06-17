@@ -124,9 +124,11 @@ class R2Client:
     @staticmethod
     def validate_recording_hash_prefix(hash_prefix: str) -> str:
         """Validate and normalize a full recording hash prefix."""
-        normalized = hash_prefix.strip().rstrip("/")
+        if not isinstance(hash_prefix, str):
+            raise ValueError("Recording hash prefix must be a string")
+        normalized = hash_prefix.strip().rstrip("/").lower()
         if not RECORDING_HASH_PREFIX_RE.fullmatch(normalized):
-            raise ValueError("Recording hash prefix must be exactly 12 lowercase hex characters")
+            raise ValueError("Recording hash prefix must be exactly 12 hex characters")
         return normalized
 
     @classmethod
@@ -218,7 +220,7 @@ class R2Client:
         summaries: dict[str, R2PrefixSummary] = {}
         latest_values: dict[str, object] = {}
 
-        for page in paginator.paginate(Bucket=self.bucket, PaginationConfig={"PageSize": 100}):
+        for page in paginator.paginate(Bucket=self.bucket, PaginationConfig={"PageSize": 1000}):
             for obj in page.get("Contents", []):
                 key = obj.get("Key", "")
                 if any(key.startswith(blocked) for blocked in blacklist):

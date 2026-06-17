@@ -862,10 +862,16 @@ def import_youtube_audio_for_song(
     )
     if existing and force:
         updated_items = db_client.replace_recording_after_import(existing.hash_prefix, recording)
-        console.print(
-            f"[green]Replacement saved; updated {updated_items} songset item reference(s) and "
-            f"soft-deleted old recording {existing.hash_prefix}.[/green]"
-        )
+        if existing.hash_prefix == recording.hash_prefix:
+            console.print(
+                f"[green]Recording refreshed; same hash {recording.hash_prefix}, "
+                "no songset references changed.[/green]"
+            )
+        else:
+            console.print(
+                f"[green]Replacement saved; updated {updated_items} songset item reference(s) and "
+                f"soft-deleted old recording {existing.hash_prefix}.[/green]"
+            )
     else:
         db_client.insert_recording(recording)
     console.print(f"[green]Recording saved (hash_prefix: {prefix})[/green]")
