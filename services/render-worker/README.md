@@ -167,6 +167,38 @@ The Docker image requires R2 credentials at build time to download FFmpeg from R
 
 FFmpeg is sourced from R2 (`build-dependencies/ffmpeg/`) with johnvansickle.com as a timed fallback (60s timeout). The shared `scripts/download-ffmpeg.sh` script handles the download logic for both `Dockerfile` and `Dockerfile.dev`.
 
+### Uploading FFmpeg to R2
+
+FFmpeg binaries must be uploaded to R2 before the Docker build can use them as the primary source. Use the `scripts/upload-ffmpeg-to-r2.sh` script from the project root:
+
+```bash
+# Ensure R2 credentials are set in your environment
+./scripts/upload-ffmpeg-to-r2.sh 7.0.2
+```
+
+The script:
+1. Downloads the FFmpeg static build from johnvansickle.com
+2. Computes a SHA256 checksum (`--tag` format for portability)
+3. Uploads both files to `s3://$SOW_R2_BUCKET/build-dependencies/ffmpeg/`
+4. Verifies the upload by listing the R2 prefix
+
+Required environment variables: `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`, `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`
+
+### Updating FFmpeg Version
+
+When a new johnvansickle release is available:
+
+1. Upload the new version to R2:
+   ```bash
+   ./scripts/upload-ffmpeg-to-r2.sh X.Y.Z
+   ```
+2. Update the `FFMPEG_VERSION` ARG default in both `Dockerfile` and `Dockerfile.dev`:
+   ```dockerfile
+   ARG FFMPEG_VERSION=X.Y.Z
+   ```
+3. Run the full test suite
+4. Commit and deploy
+
 ## Local Development
 
 ### Install Dependencies
