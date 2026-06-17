@@ -294,3 +294,6 @@ node_modules/
 # Local tool state
 .beads/
 .opencode/
+
+# Render worker local secrets
+services/render-worker/secrets/

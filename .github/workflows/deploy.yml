@@ -115,10 +115,39 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: sow-render-worker
           IMAGE_TAG: ${{ github.sha }}
+          R2_BUCKET: ${{ secrets.SOW_R2_BUCKET }}
+          R2_ENDPOINT_URL: ${{ secrets.SOW_R2_ENDPOINT_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.SOW_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.SOW_R2_SECRET_ACCESS_KEY }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          BUILD_LOG="$(mktemp)"
+          # --progress=plain is load-bearing: BuildKit only streams RUN stdout
+          # (our 'Downloaded ffmpeg from R2' marker) in plain mode; the
+          # progress-bar mode buffers/discards it, which would break the grep.
+          docker build \
+            --progress=plain \
+            --build-arg R2_BUCKET="$R2_BUCKET" \
+            --build-arg R2_ENDPOINT_URL="$R2_ENDPOINT_URL" \
+            --build-arg R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+            --build-arg R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" . 2>&1 | tee "$BUILD_LOG"
+
+          # R2 creds must be present in a deployed build; an empty secret would
+          # mean we silently fall back to the flaky johnvansickle primary the
+          # v2 spec set out to eliminate.
+          for k in R2_BUCKET R2_ENDPOINT_URL R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            [ -n "${!k}" ] || { echo "::error::Secret $k is empty; refusing to deploy a fallback-built image."; exit 1; }
+          done
+
+          if ! grep -q "Downloaded ffmpeg from R2" "$BUILD_LOG"; then
+            echo "::error::FFmpeg was NOT fetched from R2 - build fell back to johnvansickle.com. Aborting deploy to surface the issue (see log for 'R2 download failed:' cause)."
+            exit 1
+          fi
+          echo "Verified: FFmpeg sourced from R2."
+
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Update Lambda function
         env:

@@ -1,7 +1,7 @@
 # Graph Report - stream_of_worship  (2026-06-17)
 
 ## Corpus Check
-- 370 files · ~263,499 words
+- 370 files · ~263,808 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
