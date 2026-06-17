@@ -169,10 +169,11 @@ FFmpeg is sourced from R2 (`build-dependencies/ffmpeg/`) with johnvansickle.com 
 
 ### Uploading FFmpeg to R2
 
-FFmpeg binaries must be uploaded to R2 before the Docker build can use them as the primary source. Use the `scripts/upload-ffmpeg-to-r2.sh` script from the project root:
+FFmpeg binaries must be uploaded to R2 before the Docker build can use them as the primary source. Use the `scripts/upload-ffmpeg-to-r2.sh` script from the `services/render-worker/` directory:
 
 ```bash
-# Ensure R2 credentials are set in your environment
+# Ensure R2 credentials are set in your environment (or source .env)
+cd services/render-worker
 ./scripts/upload-ffmpeg-to-r2.sh 7.0.2
 ```
 
@@ -190,7 +191,7 @@ When a new johnvansickle release is available:
 
 1. Upload the new version to R2:
    ```bash
-   ./scripts/upload-ffmpeg-to-r2.sh X.Y.Z
+   cd services/render-worker && ./scripts/upload-ffmpeg-to-r2.sh X.Y.Z
    ```
 2. Update the `FFMPEG_VERSION` ARG default in both `Dockerfile` and `Dockerfile.dev`:
    ```dockerfile
