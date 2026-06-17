@@ -10,8 +10,19 @@ class TestDockerBuild:
     IMAGE_NAME = "sow-render-worker-test"
 
     def test_docker_build_succeeds(self):
+        build_cmd = [
+            "docker",
+            "build",
+            "-t",
+            self.IMAGE_NAME,
+        ]
+        for arg_name in ("R2_BUCKET", "R2_ENDPOINT_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+            env_val = os.environ.get(f"SOW_{arg_name}")
+            if env_val:
+                build_cmd.extend(["--build-arg", f"{arg_name}={env_val}"])
+        build_cmd.append(".")
         result = subprocess.run(
-            ["docker", "build", "-t", self.IMAGE_NAME, "."],
+            build_cmd,
             capture_output=True,
             text=True,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

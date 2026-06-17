@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+      args:
+        R2_BUCKET: ${SOW_R2_BUCKET}
+        R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
+        R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
+        R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
     ports:
       - "9000:8080"
     volumes:

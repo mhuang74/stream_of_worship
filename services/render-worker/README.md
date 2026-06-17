@@ -135,8 +135,9 @@ Cloudflare R2 — stores rendered artifacts
 - Docker (for containerized builds)
 - FFmpeg and CJK fonts (installed in the Docker image)
 - AWS account with SQS, Lambda, and private ECR access
-- Cloudflare R2 account
+- Cloudflare R2 account (credentials required for both build time and runtime)
 - Neon PostgreSQL database
+- A `.env` file with R2 credentials (used at Docker build time via build args and at runtime)
 
 ## Environment Variables
 
@@ -145,12 +146,26 @@ Cloudflare R2 — stores rendered artifacts
 | `SOW_DATABASE_URL` | Neon PostgreSQL connection string |
 | `SOW_R2_BUCKET` | Cloudflare R2 bucket name |
 | `SOW_R2_ENDPOINT_URL` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
-| `SOW_R2_ACCESS_KEY_ID` | R2 access key ID |
-| `SOW_R2_SECRET_ACCESS_KEY` | R2 secret access key |
+| `SOW_R2_ACCESS_KEY_ID` | R2 access key ID (also used at Docker build time) |
+| `SOW_R2_SECRET_ACCESS_KEY` | R2 secret access key (also used at Docker build time) |
 | `SOW_AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
 | `SOW_SQS_QUEUE_URL` | SQS queue URL for render job messages |
 
 Copy `.env.example` to `.env` and fill in the values for local development.
+
+## Build Args
+
+The Docker image requires R2 credentials at build time to download FFmpeg from R2. These are passed as build args:
+
+| Build Arg | Description |
+|-----------|-------------|
+| `R2_BUCKET` | Cloudflare R2 bucket name |
+| `R2_ENDPOINT_URL` | R2 S3-compatible endpoint |
+| `R2_ACCESS_KEY_ID` | R2 access key ID |
+| `R2_SECRET_ACCESS_KEY` | R2 secret access key |
+| `FFMPEG_VERSION` | FFmpeg version to download (default: `7.0.2`) |
+
+FFmpeg is sourced from R2 (`build-dependencies/ffmpeg/`) with johnvansickle.com as a timed fallback (60s timeout). The shared `scripts/download-ffmpeg.sh` script handles the download logic for both `Dockerfile` and `Dockerfile.dev`.
 
 ## Local Development
 
@@ -184,6 +199,8 @@ The Docker Compose setup runs the Lambda container locally with the Lambda Runti
 ```bash
 docker compose up --build
 ```
+
+R2 credentials are passed as build args from the `.env` file via docker compose variable substitution.
 
 ### Send a Test Event
 
@@ -263,7 +280,12 @@ REST mode sends all jobs to a single Docker container with no concurrency limit.
 
 1. **Build the Docker image:**
    ```bash
-   docker build -t sow-render-worker .
+   docker build \
+     --build-arg R2_BUCKET=$SOW_R2_BUCKET \
+     --build-arg R2_ENDPOINT_URL=$SOW_R2_ENDPOINT_URL \
+     --build-arg R2_ACCESS_KEY_ID=$SOW_R2_ACCESS_KEY_ID \
+     --build-arg R2_SECRET_ACCESS_KEY=$SOW_R2_SECRET_ACCESS_KEY \
+     -t sow-render-worker .
    ```
 
 2. **Push to AWS ECR:**
@@ -296,7 +318,7 @@ Pushes to `main` that modify `services/render-worker/` trigger the deploy workfl
 3. Builds, tags, and pushes the Docker image
 4. Updates the Lambda function code with the new image URI
 
-Required GitHub secrets: `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY`
+Required GitHub secrets: `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`, `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`
 
 ### SQS Queue Setup
 
