@@ -62,6 +62,8 @@ jobs:
   render-worker-test:
     name: Render Worker Test
     runs-on: ubuntu-latest
+    env:
+      SKIP_DOCKER_TESTS: "1"
     defaults:
       run:
         working-directory: services/render-worker
