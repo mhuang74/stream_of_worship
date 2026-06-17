@@ -37,7 +37,7 @@ try:
     s3.download_file(bucket, checksum_key, checksum_path)
 except Exception as e:
     print(f'Checksum not available on R2: {e}', file=sys.stderr)
-    sys.exit(0)
+    sys.exit(1)
 
 # Expected file format (produced by 'sha256sum --tag <file>'):
 #     SHA256 (ffmpeg-release-amd64-static-7.0.2.tar.xz) = <64-hex-hash>
