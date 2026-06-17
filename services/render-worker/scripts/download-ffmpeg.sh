@@ -39,6 +39,14 @@ except Exception as e:
     print(f'Checksum not available on R2: {e}', file=sys.stderr)
     sys.exit(0)
 
+# Expected file format (produced by 'sha256sum --tag <file>'):
+#     SHA256 (ffmpeg-release-amd64-static-7.0.2.tar.xz) = <64-hex-hash>
+# The '--tag' (BSD) form is used so the expected hash can be extracted by
+# splitting on '=' regardless of the locally-downloaded filename
+# (/tmp/ffmpeg.tar.xz differs from the .sha256's embedded name under
+# 'sha256sum -c'). If the staged file on R2 is regenerated without '--tag',
+# this verification will fail loudly (build aborts, does NOT silently fall
+# back) -- see scripts/upload-ffmpeg-to-r2.sh which enforces '--tag'.
 try:
     with open(checksum_path, 'r') as f:
         expected = f.read().split('=')[-1].strip()
