@@ -68,12 +68,15 @@ class TestPrefixMaintenance:
         client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
 
         assert client.validate_recording_hash_prefix("abc123def456") == "abc123def456"
+        assert client.validate_recording_hash_prefix(" ABC123DEF456/ ") == "abc123def456"
         with pytest.raises(ValueError):
             client.validate_recording_hash_prefix("abc123")
         with pytest.raises(ValueError):
             client.validate_recording_hash_prefix("abc123def45g")
         with pytest.raises(ValueError):
             client.validate_recording_hash_prefix("renders")
+        with pytest.raises(ValueError):
+            client.validate_recording_hash_prefix(None)
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
     def test_list_prefix_uses_100_object_pages(self, mock_boto_client, r2_env):
@@ -178,6 +181,10 @@ class TestPrefixMaintenance:
 
         assert [summary.prefix for summary in summaries] == ["abc123def456", "def123abc456"]
         assert [summary.total_bytes for summary in summaries] == [100, 200]
+        paginator.paginate.assert_called_once_with(
+            Bucket="sow-audio",
+            PaginationConfig={"PageSize": 1000},
+        )
 
     def test_missing_secret_key_raises(self, monkeypatch):
         """Raises ValueError when SOW_R2_SECRET_ACCESS_KEY is unset."""

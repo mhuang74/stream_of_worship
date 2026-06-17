@@ -19,6 +19,7 @@ from stream_of_worship.admin.db.schema import (
     ROW_COUNT_QUERY,
 )
 from stream_of_worship.db.connection import ConnectionProvider
+from stream_of_worship.db.helpers import to_str
 
 logger = logging.getLogger("sow_admin.db")
 
@@ -1315,6 +1316,9 @@ class DatabaseClient:
             )
             if cursor.fetchone() is None:
                 raise ValueError(f"Active recording not found: {old_hash_prefix}")
+            if recording.hash_prefix == old_hash_prefix:
+                self._insert_recording_with_cursor(cursor, recording)
+                return 0
             self._insert_recording_with_cursor(cursor, recording)
             cursor.execute(
                 """
@@ -1615,8 +1619,8 @@ class DatabaseClient:
                 "songset_id": row[1],
                 "status": row[2],
                 "error_message": row[3],
-                "created_at": _to_str(row[4]),
-                "updated_at": _to_str(row[5]),
+                "created_at": to_str(row[4]),
+                "updated_at": to_str(row[5]),
             }
             for row in cursor.fetchall()
         ]

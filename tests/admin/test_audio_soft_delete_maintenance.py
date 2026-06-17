@@ -9,7 +9,9 @@ import typer
 from typer.testing import CliRunner
 
 from stream_of_worship.admin.commands.audio import import_youtube_audio_for_song
+from stream_of_worship.admin.commands.maintenance import _orphan_r2_prefixes, _repair_manifest
 from stream_of_worship.admin.config import AdminConfig
+from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.main import app
 
@@ -164,6 +166,8 @@ class FakeMaintenanceDb:
         deleted.deleted_at = "2024-01-02T00:00:00"
         self.deleted_recording = deleted
         self.purged_recordings: list[str] = []
+        self.hard_delete_result = True
+        self.call_order: list[str] = []
 
     def list_soft_deleted_songs_with_counts(self, limit=None):
         return []
@@ -172,8 +176,9 @@ class FakeMaintenanceDb:
         return [{"recording": self.deleted_recording, "songset_reference_count": 0}]
 
     def hard_delete_soft_deleted_recording(self, hash_prefix: str):
+        self.call_order.append(f"db:{hash_prefix}")
         self.purged_recordings.append(hash_prefix)
-        return True
+        return self.hard_delete_result
 
     def recording_row_exists(self, hash_prefix: str):
         return hash_prefix == "def123abc456"
@@ -198,9 +203,15 @@ def test_maintenance_list_soft_deletes_ids():
     assert "recording:abc123def456" in result.output
 
 
-def test_maintenance_purge_soft_deletes_confirm_deletes_r2_then_db():
+def test_maintenance_purge_soft_deletes_confirm_deletes_db_then_r2():
     db = FakeMaintenanceDb()
     r2 = MagicMock()
+
+    def _delete_prefix(hash_prefix):
+        db.call_order.append(f"r2:{hash_prefix}")
+        return SimpleNamespace(object_count=1)
+
+    r2.delete_prefix.side_effect = _delete_prefix
 
     with (
         patch(
@@ -226,6 +237,73 @@ def test_maintenance_purge_soft_deletes_confirm_deletes_r2_then_db():
     assert result.exit_code == 0
     r2.delete_prefix.assert_called_once_with("abc123def456")
     assert db.purged_recordings == ["abc123def456"]
+    assert db.call_order == ["db:abc123def456", "r2:abc123def456"]
+
+
+def test_maintenance_purge_soft_deletes_skips_r2_when_db_delete_returns_false():
+    db = FakeMaintenanceDb()
+    db.hard_delete_result = False
+    r2 = MagicMock()
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2) as r2_cls,
+    ):
+        r2_cls.validate_recording_hash_prefix.side_effect = lambda prefix: prefix
+        result = runner.invoke(
+            app,
+            [
+                "maintenance",
+                "purge-soft-deletes",
+                "--entity",
+                "recordings",
+                "--all",
+                "--confirm",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    r2.delete_prefix.assert_not_called()
+    assert "recording-not-soft-deleted" in result.output
+
+
+def test_maintenance_purge_soft_deletes_reports_r2_delete_failure():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.delete_prefix.side_effect = RuntimeError("r2 down")
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2) as r2_cls,
+    ):
+        r2_cls.validate_recording_hash_prefix.side_effect = lambda prefix: prefix
+        result = runner.invoke(
+            app,
+            [
+                "maintenance",
+                "purge-soft-deletes",
+                "--entity",
+                "recordings",
+                "--all",
+                "--confirm",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "purged-db-r2-failed" in result.output
+    assert "r2-delete-failed: r2 down" in result.output
 
 
 def test_maintenance_purge_r2_waste_refuses_existing_rows():
@@ -271,3 +349,102 @@ def test_maintenance_purge_r2_waste_refuses_existing_rows():
     assert result.exit_code == 0
     assert "recording-row-exists" in result.output
     r2.delete_prefix.assert_not_called()
+
+
+def test_repair_manifest_no_selector_returns_before_querying_db():
+    db = MagicMock()
+    r2 = MagicMock()
+
+    assert _repair_manifest(db, r2, None, None, False) == []
+    db.find_stale_songset_items.assert_not_called()
+
+
+def test_orphan_r2_prefixes_applies_limit_after_filtering_db_rows():
+    db = MagicMock()
+    db.recording_row_exists.side_effect = lambda prefix: prefix == "aaaaaaaaaaaa"
+    db.count_recording_songset_references.return_value = 0
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = [
+        SimpleNamespace(prefix="aaaaaaaaaaaa", object_count=1, total_bytes=10, last_modified=None),
+        SimpleNamespace(prefix="bbbbbbbbbbbb", object_count=1, total_bytes=20, last_modified=None),
+        SimpleNamespace(prefix="cccccccccccc", object_count=1, total_bytes=30, last_modified=None),
+    ]
+
+    rows = _orphan_r2_prefixes(db, r2, [], limit=1)
+
+    assert [row["prefix"] for row in rows] == ["bbbbbbbbbbbb"]
+    r2.scan_recording_prefixes.assert_called_once_with(blacklist=[])
+
+
+class FakeCursor:
+    def __init__(self, fetchone_rows=None, fetchall_rows=None):
+        self.fetchone_rows = list(fetchone_rows or [])
+        self.fetchall_rows = list(fetchall_rows or [])
+        self.executed: list[tuple[str, tuple | list | None]] = []
+        self.rowcount = 0
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+
+    def fetchone(self):
+        return self.fetchone_rows.pop(0) if self.fetchone_rows else None
+
+    def fetchall(self):
+        return self.fetchall_rows
+
+
+class FakeConnection:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def cursor(self):
+        return self._cursor
+
+    def transaction(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def commit(self):
+        pass
+
+
+class FakeProvider:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def get_connection(self):
+        return self.connection
+
+    def invalidate(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def test_replace_recording_after_import_same_hash_upserts_without_soft_delete():
+    cursor = FakeCursor(fetchone_rows=[("abc123def456",)])
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+    recording = _recording("abc123def456")
+
+    updated_items = db.replace_recording_after_import("abc123def456", recording)
+
+    assert updated_items == 0
+    assert not any("SET deleted_at = NOW()" in sql for sql, _ in cursor.executed)
+
+
+def test_find_failed_render_jobs_formats_datetimes():
+    created = datetime(2024, 1, 1, 12, 30)
+    updated = datetime(2024, 1, 1, 12, 45)
+    cursor = FakeCursor(fetchall_rows=[("job_1", "songset_1", "failed", "boom", created, updated)])
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    jobs = db.find_failed_render_jobs()
+
+    assert jobs[0]["created_at"] == created.isoformat()
+    assert jobs[0]["updated_at"] == updated.isoformat()
