@@ -258,6 +258,7 @@ describe("schema: page-load hot path indexes", () => {
   it("songsetItems has ordering and staleness indexes", () => {
     expect(indexNames(songsetItems)).toContain("idx_songset_items_songset_position");
     expect(indexNames(songsetItems)).toContain("idx_songset_items_songset_updated");
+    expect(indexNames(songsetItems)).toContain("idx_songset_items_recording_hash_prefix");
   });
 
   it("renderJobs has songset and status indexes", () => {

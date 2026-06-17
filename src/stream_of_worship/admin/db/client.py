@@ -300,7 +300,9 @@ class DatabaseClient:
         """Find a song by source URL."""
         cursor = self.connection.cursor()
         if include_deleted:
-            cursor.execute("SELECT * FROM songs WHERE source_url = %s ORDER BY updated_at DESC", (source_url,))
+            cursor.execute(
+                "SELECT * FROM songs WHERE source_url = %s ORDER BY updated_at DESC", (source_url,)
+            )
         else:
             cursor.execute(
                 "SELECT * FROM songs WHERE source_url = %s AND deleted_at IS NULL ORDER BY updated_at DESC",
@@ -500,77 +502,81 @@ class DatabaseClient:
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO recordings (
-                    content_hash, hash_prefix, song_id, original_filename,
-                    file_size_bytes, imported_at, r2_audio_url, r2_stems_url,
-                    r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
-                    musical_mode, key_confidence, loudness_db, beats,
-                    downbeats, sections, embeddings_shape, analysis_status,
-                    analysis_job_id, lrc_status, lrc_job_id, visibility_status,
-                    download_status, created_at, updated_at, youtube_url
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (content_hash) DO UPDATE SET
-                    hash_prefix = EXCLUDED.hash_prefix,
-                    song_id = CASE WHEN recordings.song_id IS NOT NULL THEN recordings.song_id ELSE EXCLUDED.song_id END,
-                    original_filename = EXCLUDED.original_filename,
-                    file_size_bytes = EXCLUDED.file_size_bytes,
-                    imported_at = EXCLUDED.imported_at,
-                    r2_audio_url = EXCLUDED.r2_audio_url,
-                    r2_stems_url = EXCLUDED.r2_stems_url,
-                    r2_lrc_url = EXCLUDED.r2_lrc_url,
-                    duration_seconds = COALESCE(EXCLUDED.duration_seconds, recordings.duration_seconds),
-                    tempo_bpm = EXCLUDED.tempo_bpm,
-                    musical_key = EXCLUDED.musical_key,
-                    musical_mode = EXCLUDED.musical_mode,
-                    key_confidence = EXCLUDED.key_confidence,
-                    loudness_db = EXCLUDED.loudness_db,
-                    beats = EXCLUDED.beats,
-                    downbeats = EXCLUDED.downbeats,
-                    sections = EXCLUDED.sections,
-                    embeddings_shape = EXCLUDED.embeddings_shape,
-                    analysis_status = EXCLUDED.analysis_status,
-                    analysis_job_id = EXCLUDED.analysis_job_id,
-                    lrc_status = EXCLUDED.lrc_status,
-                    lrc_job_id = EXCLUDED.lrc_job_id,
-                    visibility_status = EXCLUDED.visibility_status,
-                    download_status = EXCLUDED.download_status,
-                    updated_at = EXCLUDED.updated_at,
-                    youtube_url = EXCLUDED.youtube_url,
-                    deleted_at = NULL
-                """,
-                (
-                    recording.content_hash,
-                    recording.hash_prefix,
-                    recording.song_id,
-                    recording.original_filename,
-                    recording.file_size_bytes,
-                    recording.imported_at,
-                    recording.r2_audio_url,
-                    recording.r2_stems_url,
-                    recording.r2_lrc_url,
-                    recording.duration_seconds,
-                    recording.tempo_bpm,
-                    recording.musical_key,
-                    recording.musical_mode,
-                    recording.key_confidence,
-                    recording.loudness_db,
-                    recording.beats,
-                    recording.downbeats,
-                    recording.sections,
-                    recording.embeddings_shape,
-                    recording.analysis_status,
-                    recording.analysis_job_id,
-                    recording.lrc_status,
-                    recording.lrc_job_id,
-                    recording.visibility_status,
-                    recording.download_status or "pending",
-                    recording.created_at or datetime.now().isoformat(),
-                    recording.updated_at or datetime.now().isoformat(),
-                    recording.youtube_url,
-                ),
-            )
+            self._insert_recording_with_cursor(cursor, recording)
+
+    def _insert_recording_with_cursor(self, cursor, recording: Recording) -> None:
+        """Insert or upsert a recording using an existing transaction cursor."""
+        cursor.execute(
+            """
+            INSERT INTO recordings (
+                content_hash, hash_prefix, song_id, original_filename,
+                file_size_bytes, imported_at, r2_audio_url, r2_stems_url,
+                r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
+                musical_mode, key_confidence, loudness_db, beats,
+                downbeats, sections, embeddings_shape, analysis_status,
+                analysis_job_id, lrc_status, lrc_job_id, visibility_status,
+                download_status, created_at, updated_at, youtube_url
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (content_hash) DO UPDATE SET
+                hash_prefix = EXCLUDED.hash_prefix,
+                song_id = CASE WHEN recordings.song_id IS NOT NULL THEN recordings.song_id ELSE EXCLUDED.song_id END,
+                original_filename = EXCLUDED.original_filename,
+                file_size_bytes = EXCLUDED.file_size_bytes,
+                imported_at = EXCLUDED.imported_at,
+                r2_audio_url = EXCLUDED.r2_audio_url,
+                r2_stems_url = EXCLUDED.r2_stems_url,
+                r2_lrc_url = EXCLUDED.r2_lrc_url,
+                duration_seconds = COALESCE(EXCLUDED.duration_seconds, recordings.duration_seconds),
+                tempo_bpm = EXCLUDED.tempo_bpm,
+                musical_key = EXCLUDED.musical_key,
+                musical_mode = EXCLUDED.musical_mode,
+                key_confidence = EXCLUDED.key_confidence,
+                loudness_db = EXCLUDED.loudness_db,
+                beats = EXCLUDED.beats,
+                downbeats = EXCLUDED.downbeats,
+                sections = EXCLUDED.sections,
+                embeddings_shape = EXCLUDED.embeddings_shape,
+                analysis_status = EXCLUDED.analysis_status,
+                analysis_job_id = EXCLUDED.analysis_job_id,
+                lrc_status = EXCLUDED.lrc_status,
+                lrc_job_id = EXCLUDED.lrc_job_id,
+                visibility_status = EXCLUDED.visibility_status,
+                download_status = EXCLUDED.download_status,
+                updated_at = EXCLUDED.updated_at,
+                youtube_url = EXCLUDED.youtube_url,
+                deleted_at = NULL
+            """,
+            (
+                recording.content_hash,
+                recording.hash_prefix,
+                recording.song_id,
+                recording.original_filename,
+                recording.file_size_bytes,
+                recording.imported_at,
+                recording.r2_audio_url,
+                recording.r2_stems_url,
+                recording.r2_lrc_url,
+                recording.duration_seconds,
+                recording.tempo_bpm,
+                recording.musical_key,
+                recording.musical_mode,
+                recording.key_confidence,
+                recording.loudness_db,
+                recording.beats,
+                recording.downbeats,
+                recording.sections,
+                recording.embeddings_shape,
+                recording.analysis_status,
+                recording.analysis_job_id,
+                recording.lrc_status,
+                recording.lrc_job_id,
+                recording.visibility_status,
+                recording.download_status or "pending",
+                recording.created_at or datetime.now().isoformat(),
+                recording.updated_at or datetime.now().isoformat(),
+                recording.youtube_url,
+            ),
+        )
 
     def get_recording_by_hash(
         self, hash_prefix: str, include_deleted: bool = False
@@ -584,6 +590,7 @@ class DatabaseClient:
         Returns:
             ``Recording`` or ``None`` if not found.
         """
+
         def _query(conn):
             cursor = conn.cursor()
             if include_deleted:
@@ -1252,6 +1259,368 @@ class DatabaseClient:
             )
             return cursor.rowcount > 0
 
+    def count_active_recordings_by_song(self, song_id: str) -> int:
+        """Count active recordings for a song."""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
+            (song_id,),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    def list_active_recordings_by_song(self, song_id: str) -> list[Recording]:
+        """List active recordings for a song using deterministic ordering."""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM recordings
+            WHERE song_id = %s AND deleted_at IS NULL
+            ORDER BY imported_at DESC, hash_prefix ASC
+            """,
+            (song_id,),
+        )
+        return [Recording.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def count_recording_songset_references(self, hash_prefix: str) -> int:
+        """Count songset item references to a recording hash."""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM songset_items WHERE recording_hash_prefix = %s",
+            (hash_prefix,),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    def count_recordings_for_song(self, song_id: str) -> int:
+        """Count all recordings for a song, active and soft-deleted."""
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM recordings WHERE song_id = %s", (song_id,))
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    def recording_row_exists(self, hash_prefix: str) -> bool:
+        """Return whether any recording row exists for a hash prefix."""
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT 1 FROM recordings WHERE hash_prefix = %s", (hash_prefix,))
+        return cursor.fetchone() is not None
+
+    def replace_recording_after_import(self, old_hash_prefix: str, recording: Recording) -> int:
+        """Persist replacement, update songsets, and soft-delete old recording atomically."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT hash_prefix FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL FOR UPDATE",
+                (old_hash_prefix,),
+            )
+            if cursor.fetchone() is None:
+                raise ValueError(f"Active recording not found: {old_hash_prefix}")
+            self._insert_recording_with_cursor(cursor, recording)
+            cursor.execute(
+                """
+                UPDATE songset_items
+                SET recording_hash_prefix = %s
+                WHERE recording_hash_prefix = %s
+                """,
+                (recording.hash_prefix, old_hash_prefix),
+            )
+            updated_items = cursor.rowcount
+            cursor.execute(
+                "UPDATE recordings SET deleted_at = NOW() WHERE hash_prefix = %s AND deleted_at IS NULL",
+                (old_hash_prefix,),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Could not soft-delete old recording: {old_hash_prefix}")
+            return updated_items
+
+    def update_songset_items_recording_hash(
+        self, old_hash_prefix: str, new_hash_prefix: str
+    ) -> int:
+        """Update songset item recording hashes in a batch."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE songset_items
+                SET recording_hash_prefix = %s
+                WHERE recording_hash_prefix = %s
+                """,
+                (new_hash_prefix, old_hash_prefix),
+            )
+            return cursor.rowcount
+
+    def list_soft_deleted_songs_with_counts(self, limit: Optional[int] = None) -> list[dict]:
+        """List soft-deleted songs with recording and songset reference counts."""
+        cursor = self.connection.cursor()
+        sql = """
+            SELECT s.*, COUNT(DISTINCT r.content_hash) AS recording_count,
+                   COUNT(DISTINCT si.id) AS songset_reference_count
+            FROM songs s
+            LEFT JOIN recordings r ON r.song_id = s.id
+            LEFT JOIN songset_items si ON si.song_id = s.id
+            WHERE s.deleted_at IS NOT NULL
+            GROUP BY s.id
+            ORDER BY s.deleted_at DESC, s.id ASC
+        """
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        cursor.execute(sql)
+        results = []
+        for row in cursor.fetchall():
+            values = tuple(row)
+            results.append(
+                {
+                    "song": Song.from_row(values[:17]),
+                    "recording_count": int(values[17]),
+                    "songset_reference_count": int(values[18]),
+                }
+            )
+        return results
+
+    def list_soft_deleted_recordings_with_counts(self, limit: Optional[int] = None) -> list[dict]:
+        """List soft-deleted recordings with songset reference counts."""
+        cursor = self.connection.cursor()
+        sql = """
+            SELECT r.*, COUNT(si.id) AS songset_reference_count
+            FROM recordings r
+            LEFT JOIN songset_items si ON si.recording_hash_prefix = r.hash_prefix
+            WHERE r.deleted_at IS NOT NULL
+            GROUP BY r.content_hash
+            ORDER BY r.deleted_at DESC, r.hash_prefix ASC
+        """
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        cursor.execute(sql)
+        results = []
+        for row in cursor.fetchall():
+            values = tuple(row)
+            results.append(
+                {
+                    "recording": Recording.from_row(values[:29]),
+                    "songset_reference_count": int(values[29]),
+                }
+            )
+        return results
+
+    def hard_delete_soft_deleted_recording(self, hash_prefix: str) -> bool:
+        """Hard-delete a soft-deleted recording after locking and reference checks."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT hash_prefix FROM recordings
+                WHERE hash_prefix = %s AND deleted_at IS NOT NULL
+                FOR UPDATE
+                """,
+                (hash_prefix,),
+            )
+            if cursor.fetchone() is None:
+                return False
+            cursor.execute(
+                "SELECT COUNT(*) FROM songset_items WHERE recording_hash_prefix = %s",
+                (hash_prefix,),
+            )
+            if int(cursor.fetchone()[0]) > 0:
+                raise ValueError(f"Recording {hash_prefix} is still referenced by songset_items")
+            cursor.execute(
+                "DELETE FROM recordings WHERE hash_prefix = %s AND deleted_at IS NOT NULL",
+                (hash_prefix,),
+            )
+            return cursor.rowcount > 0
+
+    def hard_delete_soft_deleted_song(self, song_id: str) -> bool:
+        """Hard-delete a soft-deleted song with no recordings or songset references."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM songs WHERE id = %s AND deleted_at IS NOT NULL FOR UPDATE",
+                (song_id,),
+            )
+            if cursor.fetchone() is None:
+                return False
+            cursor.execute("SELECT COUNT(*) FROM recordings WHERE song_id = %s", (song_id,))
+            if int(cursor.fetchone()[0]) > 0:
+                raise ValueError(f"Song {song_id} still has recordings")
+            cursor.execute("SELECT COUNT(*) FROM songset_items WHERE song_id = %s", (song_id,))
+            if int(cursor.fetchone()[0]) > 0:
+                raise ValueError(f"Song {song_id} is still referenced by songset_items")
+            cursor.execute("DELETE FROM songs WHERE id = %s AND deleted_at IS NOT NULL", (song_id,))
+            return cursor.rowcount > 0
+
+    def is_recording_song_soft_deleted(self, hash_prefix: str) -> bool:
+        """Return true when a recording's parent song is soft-deleted."""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT s.deleted_at IS NOT NULL
+            FROM recordings r
+            JOIN songs s ON s.id = r.song_id
+            WHERE r.hash_prefix = %s
+            """,
+            (hash_prefix,),
+        )
+        row = cursor.fetchone()
+        return bool(row[0]) if row else False
+
+    def find_stale_songset_items(
+        self,
+        songset_id: Optional[str] = None,
+        hash_prefix: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> list[dict]:
+        """Find songset items pointing at missing or soft-deleted recordings."""
+        cursor = self.connection.cursor()
+        params: list = []
+        sql = """
+            SELECT si.id, si.songset_id, si.song_id, si.recording_hash_prefix,
+                   s.title, r.deleted_at, r.hash_prefix
+            FROM songset_items si
+            LEFT JOIN songs s ON s.id = si.song_id
+            LEFT JOIN recordings r ON r.hash_prefix = si.recording_hash_prefix
+            WHERE si.recording_hash_prefix IS NOT NULL
+              AND (r.hash_prefix IS NULL OR r.deleted_at IS NOT NULL)
+        """
+        if songset_id:
+            sql += " AND si.songset_id = %s"
+            params.append(songset_id)
+        if hash_prefix:
+            sql += " AND si.recording_hash_prefix = %s"
+            params.append(hash_prefix)
+        sql += " ORDER BY si.songset_id, si.id"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        cursor.execute(sql, params)
+        rows = []
+        for row in cursor.fetchall():
+            rows.append(
+                {
+                    "item_id": row[0],
+                    "songset_id": row[1],
+                    "song_id": row[2],
+                    "old_hash": row[3],
+                    "song_title": row[4],
+                    "reason": "missing-row" if row[6] is None else "soft-deleted-row",
+                }
+            )
+        return rows
+
+    def find_replacement_recording_candidates(self, song_id: str) -> list[Recording]:
+        """Find active recording candidates for a stale songset item."""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM recordings
+            WHERE song_id = %s AND deleted_at IS NULL
+            ORDER BY
+                CASE WHEN visibility_status = 'published' THEN 0 ELSE 1 END,
+                CASE WHEN lrc_status = 'completed' THEN 0 ELSE 1 END,
+                CASE WHEN analysis_status = 'completed' THEN 0 ELSE 1 END,
+                imported_at DESC,
+                hash_prefix ASC
+            """,
+            (song_id,),
+        )
+        return [Recording.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def find_active_render_jobs_for_songsets(self, songset_ids: list[str]) -> list[dict]:
+        """Find queued/running render jobs for affected songsets."""
+        if not songset_ids:
+            return []
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, songset_id, status
+                FROM render_jobs
+                WHERE songset_id = ANY(%s) AND status IN ('queued', 'running')
+                ORDER BY created_at DESC
+                """,
+                (songset_ids,),
+            )
+        except psycopg.errors.UndefinedTable:
+            self.connection.rollback()
+            return []
+        return [{"id": row[0], "songset_id": row[1], "status": row[2]} for row in cursor.fetchall()]
+
+    def render_jobs_table_exists(self) -> bool:
+        """Return whether the optional render_jobs table exists."""
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT to_regclass('public.render_jobs')")
+        row = cursor.fetchone()
+        return bool(row and row[0])
+
+    def repair_songset_items(self, replacements: list[tuple[str, str, str]]) -> int:
+        """Apply stale songset item repairs after locking affected songsets/jobs."""
+        if not replacements:
+            return 0
+        songset_ids = sorted({songset_id for _, songset_id, _ in replacements})
+        active_jobs = self.find_active_render_jobs_for_songsets(songset_ids)
+        if active_jobs:
+            raise ValueError("Affected songsets have queued or running render jobs")
+        has_render_jobs = self.render_jobs_table_exists()
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM songsets WHERE id = ANY(%s) FOR UPDATE", (songset_ids,))
+            if has_render_jobs:
+                cursor.execute(
+                    """
+                    SELECT id FROM render_jobs
+                    WHERE songset_id = ANY(%s) AND status IN ('queued', 'running')
+                    FOR UPDATE
+                    """,
+                    (songset_ids,),
+                )
+                if cursor.fetchall():
+                    raise ValueError("Affected songsets have queued or running render jobs")
+            updated = 0
+            for item_id, _songset_id, new_hash in replacements:
+                cursor.execute(
+                    "UPDATE songset_items SET recording_hash_prefix = %s WHERE id = %s",
+                    (new_hash, item_id),
+                )
+                updated += cursor.rowcount
+            return updated
+
+    def find_failed_render_jobs(
+        self,
+        job_id: Optional[str] = None,
+        since_days: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> list[dict]:
+        """Find failed render jobs for diagnosis."""
+        cursor = self.connection.cursor()
+        params: list = []
+        sql = """
+            SELECT id, songset_id, status, error_message, created_at, updated_at
+            FROM render_jobs
+            WHERE status = 'failed'
+        """
+        if job_id:
+            sql += " AND id = %s"
+            params.append(job_id)
+        if since_days:
+            sql += " AND created_at >= NOW() - (%s * INTERVAL '1 day')"
+            params.append(since_days)
+        sql += " ORDER BY created_at DESC"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        try:
+            cursor.execute(sql, params)
+        except psycopg.errors.UndefinedTable:
+            self.connection.rollback()
+            return []
+        return [
+            {
+                "job_id": row[0],
+                "songset_id": row[1],
+                "status": row[2],
+                "error_message": row[3],
+                "created_at": _to_str(row[4]),
+                "updated_at": _to_str(row[5]),
+            }
+            for row in cursor.fetchall()
+        ]
+
     def upsert_song_embedding(
         self, song_id: str, embedding: list[float], model_version: str, content_hash: str
     ) -> None:
@@ -1317,8 +1686,7 @@ class DatabaseClient:
             List of Song objects without embeddings.
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
                    s.album_name, s.album_series, s.musical_key,
                    s.lyrics_raw, s.lyrics_lines, s.sections,
@@ -1336,8 +1704,7 @@ class DatabaseClient:
                     AND r.visibility_status = 'published'
                     AND r.deleted_at IS NULL
               )
-            """
-        )
+            """)
         return [Song.from_row(tuple(row)) for row in cursor.fetchall()]
 
     def get_all_songs_with_lyrics(self) -> list[Song]:
@@ -1348,8 +1715,7 @@ class DatabaseClient:
             List of Song objects with lyrics and published recordings.
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
                    s.album_name, s.album_series, s.musical_key,
                    s.lyrics_raw, s.lyrics_lines, s.sections,
@@ -1365,8 +1731,7 @@ class DatabaseClient:
                     AND r.visibility_status = 'published'
                     AND r.deleted_at IS NULL
               )
-            """
-        )
+            """)
         return [Song.from_row(tuple(row)) for row in cursor.fetchall()]
 
     def get_embedding_content_hash(self, song_id: str) -> Optional[str]:
