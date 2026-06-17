@@ -38,7 +38,7 @@ def _make_songset_item(**overrides) -> SongsetItem:
         "tempo_ratio": 1.0,
         "tempo_bpm": 120.0,
         "duration_seconds": 180.0,
-        "recording_id": "rec_001",
+        "recording_content_hash": "abc123def456",
         "deleted_at": None,
     }
     defaults.update(overrides)
@@ -247,7 +247,7 @@ class TestFetchSongsetItems:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
-                "recording_id": "rec_001",
+                "recording_content_hash": "abc123def456",
                 "deleted_at": None,
                 "song_title": "Test Song",
             },
@@ -264,7 +264,7 @@ class TestFetchSongsetItems:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 100.0,
                 "duration_seconds": 200.0,
-                "recording_id": "rec_002",
+                "recording_content_hash": "def456ghi789",
                 "deleted_at": None,
                 "song_title": "Second Song",
             },
@@ -299,7 +299,7 @@ class TestFetchSongsetItems:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
-                "recording_id": "rec_001",
+                "recording_content_hash": "abc123def456",
                 "deleted_at": None,
                 "song_title": "Song",
             }
@@ -339,7 +339,7 @@ class TestFetchSongsetItems:
                 "tempo_ratio": None,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": None,
             }
@@ -1186,7 +1186,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
-                "recording_id": "rec_001",
+                "recording_content_hash": "abc123def456",
                 "deleted_at": deleted_at,
                 "song_title": "Deleted Song",
             },
@@ -1210,7 +1210,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": "Missing Song",
             },
@@ -1220,12 +1220,13 @@ class TestFetchSongsetItemsSoftDeleteValidation:
             fetch_songset_items(conn, "ss_001")
 
     def test_missing_checked_before_deleted(self):
+        deleted_at = datetime(2026, 6, 8, 22, 33, 22, tzinfo=timezone.utc)
         rows = [
             {
                 "id": "item_1",
                 "songset_id": "ss_001",
                 "song_id": "song_1",
-                "recording_hash_prefix": "b1979244c818",
+                "recording_hash_prefix": "missing_hash",
                 "position": 0,
                 "gap_beats": 2.0,
                 "crossfade_enabled": 0,
@@ -1234,9 +1235,26 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": "Missing Song",
+            },
+            {
+                "id": "item_2",
+                "songset_id": "ss_001",
+                "song_id": "song_2",
+                "recording_hash_prefix": "deleted_hash",
+                "position": 1,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 120.0,
+                "duration_seconds": 180.0,
+                "recording_content_hash": "deleted_hash_full",
+                "deleted_at": deleted_at,
+                "song_title": "Deleted Song",
             },
         ]
         conn, cursor = _make_mock_conn(fetchall_result=rows)
@@ -1258,7 +1276,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
-                "recording_id": "rec_001",
+                "recording_content_hash": "abc123def456",
                 "deleted_at": None,
                 "song_title": "Active Song 1",
             },
@@ -1275,7 +1293,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 100.0,
                 "duration_seconds": 200.0,
-                "recording_id": "rec_002",
+                "recording_content_hash": "def456ghi789",
                 "deleted_at": None,
                 "song_title": "Active Song 2",
             },
@@ -1283,9 +1301,9 @@ class TestFetchSongsetItemsSoftDeleteValidation:
         conn, cursor = _make_mock_conn(fetchall_result=rows)
         songset_name, items = fetch_songset_items(conn, "ss_001")
         assert len(items) == 2
-        assert items[0].recording_id == "rec_001"
+        assert items[0].recording_content_hash == "abc123def456"
         assert items[0].deleted_at is None
-        assert items[1].recording_id == "rec_002"
+        assert items[1].recording_content_hash == "def456ghi789"
         assert items[1].deleted_at is None
 
     def test_allows_null_recording_hash(self):
@@ -1303,7 +1321,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": "No Recording",
             },
@@ -1329,7 +1347,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
-                "recording_id": "rec_001",
+                "recording_content_hash": "abc123def456",
                 "deleted_at": deleted_at,
                 "song_title": "Deleted A",
             },
@@ -1346,7 +1364,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 100.0,
                 "duration_seconds": 200.0,
-                "recording_id": "rec_002",
+                "recording_content_hash": "def456ghi789",
                 "deleted_at": deleted_at,
                 "song_title": "Deleted B",
             },
@@ -1370,7 +1388,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": "Missing A",
             },
@@ -1387,7 +1405,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": "Missing B",
             },
@@ -1412,7 +1430,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": 120.0,
                 "duration_seconds": 180.0,
-                "recording_id": "rec_001",
+                "recording_content_hash": "abc123def456",
                 "deleted_at": deleted_at,
                 "song_title": "Deleted Song",
             },
@@ -1437,7 +1455,7 @@ class TestFetchSongsetItemsSoftDeleteValidation:
                 "tempo_ratio": 1.0,
                 "tempo_bpm": None,
                 "duration_seconds": None,
-                "recording_id": None,
+                "recording_content_hash": None,
                 "deleted_at": None,
                 "song_title": "Missing Song",
             },

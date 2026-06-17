@@ -129,7 +129,7 @@ def fetch_songset_items(
             "  si.tempo_ratio, "
             "  r.tempo_bpm, "
             "  r.duration_seconds, "
-            "  r.id AS recording_id, "
+            "  r.content_hash AS recording_content_hash, "
             "  r.deleted_at, "
             "  s.title AS song_title "
             "FROM songset_items si "
@@ -156,7 +156,7 @@ def fetch_songset_items(
             tempo_bpm=row["tempo_bpm"],
             duration_seconds=row["duration_seconds"],
             song_title=row["song_title"],
-            recording_id=row["recording_id"],
+            recording_content_hash=row["recording_content_hash"],
             deleted_at=row["deleted_at"],
         )
         for row in rows
@@ -164,11 +164,11 @@ def fetch_songset_items(
 
     missing_items = [
         item for item in items
-        if item.recording_hash_prefix and item.recording_id is None
+        if item.recording_hash_prefix and item.recording_content_hash is None
     ]
 
     if missing_items:
-        hashes = ", ".join(item.recording_hash_prefix for item in missing_items)
+        hashes = ", ".join(dict.fromkeys(item.recording_hash_prefix for item in missing_items))
         raise ValueError(
             f"Songset contains {len(missing_items)} recording(s) not found in database: {hashes}. "
             f"Recording row may have been hard-deleted or never existed."
@@ -180,7 +180,7 @@ def fetch_songset_items(
     ]
 
     if deleted_items:
-        hashes = ", ".join(item.recording_hash_prefix for item in deleted_items)
+        hashes = ", ".join(dict.fromkeys(item.recording_hash_prefix for item in deleted_items))
         raise ValueError(
             f"Songset contains {len(deleted_items)} soft-deleted recording(s): {hashes}. "
             f"Run 'sow-admin maintenance repair-songsets' to fix stale references."

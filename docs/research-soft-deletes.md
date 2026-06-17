@@ -245,8 +245,7 @@ Example observed failure mode:
   `DatabaseClient.restore_recording()` exists.
 - Recording soft delete does not clean up or invalidate `songset_items`
   references.
-- The render worker does not filter deleted songs or recordings when fetching
-  songset items.
+- The render worker does not filter deleted songs when fetching songset items, but it now validates and fails fast on soft-deleted or missing recordings.
 - Signed URL and transition preview handlers check `visibility_status =
   'published'` but do not explicitly check `deleted_at IS NULL`.
 - Webapp songset list/detail filtering can hide dangling/deleted recording items
