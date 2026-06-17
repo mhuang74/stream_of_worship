@@ -122,7 +122,7 @@ class R2Client:
         return f"s3://{self.bucket}/{s3_key}"
 
     @staticmethod
-    def validate_recording_hash_prefix(hash_prefix: str) -> str:
+    def validate_recording_hash_prefix(hash_prefix: object) -> str:
         """Validate and normalize a full recording hash prefix."""
         if not isinstance(hash_prefix, str):
             raise ValueError("Recording hash prefix must be a string")
