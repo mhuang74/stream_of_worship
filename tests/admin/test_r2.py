@@ -1,6 +1,7 @@
 """Tests for R2 storage client."""
 
 import json
+from datetime import datetime
 from unittest.mock import ANY, MagicMock, patch
 
 import pytest
@@ -57,6 +58,126 @@ class TestR2ClientInit:
 
         with pytest.raises(ValueError, match="R2 credentials not set"):
             R2Client(bucket="b", endpoint_url="http://localhost")
+
+
+class TestPrefixMaintenance:
+    """Tests for recording-prefix maintenance helpers."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_validate_recording_hash_prefix_is_strict(self, mock_boto_client, r2_env):
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        assert client.validate_recording_hash_prefix("abc123def456") == "abc123def456"
+        with pytest.raises(ValueError):
+            client.validate_recording_hash_prefix("abc123")
+        with pytest.raises(ValueError):
+            client.validate_recording_hash_prefix("abc123def45g")
+        with pytest.raises(ValueError):
+            client.validate_recording_hash_prefix("renders")
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_list_prefix_uses_100_object_pages(self, mock_boto_client, r2_env):
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": "abc123def456/audio.mp3",
+                        "Size": 100,
+                        "LastModified": datetime(2024, 1, 1),
+                    },
+                    {
+                        "Key": "abc123def456/lyrics.lrc",
+                        "Size": 20,
+                        "LastModified": datetime(2024, 1, 2),
+                    },
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.list_prefix("abc123def456")
+
+        assert summary.object_count == 2
+        assert summary.total_bytes == 120
+        paginator.paginate.assert_called_once_with(
+            Bucket="sow-audio",
+            Prefix="abc123def456/",
+            PaginationConfig={"PageSize": 100},
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_prefix_batches_100_objects_and_missing_is_success(
+        self, mock_boto_client, r2_env
+    ):
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": f"abc123def456/file-{idx}",
+                        "Size": 1,
+                        "LastModified": datetime(2024, 1, 1),
+                    }
+                    for idx in range(205)
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.delete_prefix("abc123def456")
+
+        assert summary.object_count == 205
+        assert mock_s3.delete_objects.call_count == 3
+
+        paginator.paginate.return_value = [{}]
+        empty = client.delete_prefix("abc123def456")
+        assert empty.object_count == 0
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_scan_recording_prefixes_filters_non_hash_and_blacklist(self, mock_boto_client, r2_env):
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": "abc123def456/audio.mp3",
+                        "Size": 100,
+                        "LastModified": datetime(2024, 1, 1),
+                    },
+                    {
+                        "Key": "renders/abc123def456/output.mp4",
+                        "Size": 999,
+                        "LastModified": datetime(2024, 1, 2),
+                    },
+                    {
+                        "Key": "not-a-hash/file.txt",
+                        "Size": 50,
+                        "LastModified": datetime(2024, 1, 3),
+                    },
+                    {
+                        "Key": "def123abc456/audio.mp3",
+                        "Size": 200,
+                        "LastModified": datetime(2024, 1, 4),
+                    },
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summaries = client.scan_recording_prefixes(blacklist=["renders/"])
+
+        assert [summary.prefix for summary in summaries] == ["abc123def456", "def123abc456"]
+        assert [summary.total_bytes for summary in summaries] == [100, 200]
 
     def test_missing_secret_key_raises(self, monkeypatch):
         """Raises ValueError when SOW_R2_SECRET_ACCESS_KEY is unset."""

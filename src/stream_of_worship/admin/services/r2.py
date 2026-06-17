@@ -7,8 +7,10 @@ variables so they never appear in config files.
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -16,8 +18,8 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-
 MAX_BACKUPS_PER_PREFIX = 5
+RECORDING_HASH_PREFIX_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
 class StaleObjectError(Exception):
@@ -40,6 +42,16 @@ class R2ObjectIdentity:
 
     exists: bool
     etag: Optional[str] = None
+    last_modified: Optional[str] = None
+
+
+@dataclass
+class R2PrefixSummary:
+    """Summary of objects under an R2 prefix."""
+
+    prefix: str
+    object_count: int
+    total_bytes: int
     last_modified: Optional[str] = None
 
 
@@ -108,6 +120,129 @@ class R2Client:
         s3_key = f"{hash_prefix}/audio.mp3"
         self._client.upload_file(str(file_path), self.bucket, s3_key)
         return f"s3://{self.bucket}/{s3_key}"
+
+    @staticmethod
+    def validate_recording_hash_prefix(hash_prefix: str) -> str:
+        """Validate and normalize a full recording hash prefix."""
+        normalized = hash_prefix.strip().rstrip("/")
+        if not RECORDING_HASH_PREFIX_RE.fullmatch(normalized):
+            raise ValueError("Recording hash prefix must be exactly 12 lowercase hex characters")
+        return normalized
+
+    @classmethod
+    def recording_prefix_key(cls, hash_prefix: str) -> str:
+        """Return the exact R2 prefix for a recording hash."""
+        return f"{cls.validate_recording_hash_prefix(hash_prefix)}/"
+
+    @staticmethod
+    def _last_modified_to_str(value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    def list_prefix(self, prefix: str) -> R2PrefixSummary:
+        """List objects under an exact recording prefix using 100-object pages."""
+        prefix_key = self.recording_prefix_key(prefix)
+        paginator = self._client.get_paginator("list_objects_v2")
+        object_count = 0
+        total_bytes = 0
+        latest: object = None
+
+        for page in paginator.paginate(
+            Bucket=self.bucket,
+            Prefix=prefix_key,
+            PaginationConfig={"PageSize": 100},
+        ):
+            for obj in page.get("Contents", []):
+                object_count += 1
+                total_bytes += int(obj.get("Size") or 0)
+                modified = obj.get("LastModified")
+                if modified is not None and (latest is None or modified > latest):
+                    latest = modified
+
+        return R2PrefixSummary(
+            prefix=prefix_key.rstrip("/"),
+            object_count=object_count,
+            total_bytes=total_bytes,
+            last_modified=self._last_modified_to_str(latest),
+        )
+
+    def delete_prefix(self, prefix: str) -> R2PrefixSummary:
+        """Delete all objects under an exact recording prefix in 100-object batches."""
+        prefix_key = self.recording_prefix_key(prefix)
+        paginator = self._client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        total_bytes = 0
+        latest: object = None
+
+        for page in paginator.paginate(
+            Bucket=self.bucket,
+            Prefix=prefix_key,
+            PaginationConfig={"PageSize": 100},
+        ):
+            for obj in page.get("Contents", []):
+                keys.append(obj["Key"])
+                total_bytes += int(obj.get("Size") or 0)
+                modified = obj.get("LastModified")
+                if modified is not None and (latest is None or modified > latest):
+                    latest = modified
+
+        for start in range(0, len(keys), 100):
+            batch = keys[start : start + 100]
+            if not batch:
+                continue
+            self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
+
+        return R2PrefixSummary(
+            prefix=prefix_key.rstrip("/"),
+            object_count=len(keys),
+            total_bytes=total_bytes,
+            last_modified=self._last_modified_to_str(latest),
+        )
+
+    def scan_recording_prefixes(
+        self,
+        blacklist: Optional[list[str]] = None,
+        limit: Optional[int] = None,
+    ) -> list[R2PrefixSummary]:
+        """Scan bucket objects and summarize top-level hash-like recording prefixes."""
+        blacklist = blacklist or []
+        paginator = self._client.get_paginator("list_objects_v2")
+        summaries: dict[str, R2PrefixSummary] = {}
+        latest_values: dict[str, object] = {}
+
+        for page in paginator.paginate(Bucket=self.bucket, PaginationConfig={"PageSize": 100}):
+            for obj in page.get("Contents", []):
+                key = obj.get("Key", "")
+                if any(key.startswith(blocked) for blocked in blacklist):
+                    continue
+                prefix = key.split("/", 1)[0]
+                if not RECORDING_HASH_PREFIX_RE.fullmatch(prefix):
+                    continue
+                current = summaries.setdefault(
+                    prefix,
+                    R2PrefixSummary(prefix=prefix, object_count=0, total_bytes=0),
+                )
+                current.object_count += 1
+                current.total_bytes += int(obj.get("Size") or 0)
+                modified = obj.get("LastModified")
+                if modified is not None and (
+                    prefix not in latest_values or modified > latest_values[prefix]
+                ):
+                    latest_values[prefix] = modified
+                    current.last_modified = self._last_modified_to_str(modified)
+
+        result = sorted(summaries.values(), key=lambda summary: summary.prefix)
+        if limit is not None:
+            result = result[:limit]
+        return result
 
     def upload_lrc(self, file_path: Path, hash_prefix: str) -> str:
         """Upload an LRC file to R2 under the hash-prefix directory.
@@ -249,7 +384,9 @@ class R2Client:
             resp = self._client.head_object(Bucket=self.bucket, Key=s3_key)
             etag = resp.get("ETag", "").strip('"')
             lm = resp.get("LastModified")
-            last_modified = lm.isoformat() if lm and hasattr(lm, "isoformat") else str(lm) if lm else None
+            last_modified = (
+                lm.isoformat() if lm and hasattr(lm, "isoformat") else str(lm) if lm else None
+            )
             return R2ObjectIdentity(
                 exists=True,
                 etag=etag,
@@ -433,9 +570,7 @@ class R2Client:
             backup_key = f"{hash_prefix}/lyrics.backup.{timestamp_ms}.lrc"
             copy_source = {"Bucket": self.bucket, "Key": official_key}
             try:
-                self._client.copy_object(
-                    CopySource=copy_source, Bucket=self.bucket, Key=backup_key
-                )
+                self._client.copy_object(CopySource=copy_source, Bucket=self.bucket, Key=backup_key)
             except Exception as e:
                 raise BackupFailedError(f"Failed to backup existing lyrics.lrc: {e}")
 

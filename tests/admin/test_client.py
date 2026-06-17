@@ -307,18 +307,19 @@ class TestDatabaseClientIntegration:
 
         with admin_client.connection.cursor() as cur:
             cur.execute(
-                "INSERT INTO users (id, email, password_hash, created_at, updated_at) "
-                "VALUES (%s, %s, %s, NOW(), NOW())",
-                ("user_1", "test@example.com", "hash"),
+                'INSERT INTO "user" ("name", "email", "emailVerified", "createdAt", "updatedAt") '
+                "VALUES (%s, %s, %s, NOW(), NOW()) RETURNING id",
+                ("Test User", "test@example.com", False),
             )
+            user_id = cur.fetchone()[0]
             cur.execute(
                 "INSERT INTO songsets (id, user_id, name, created_at, updated_at) "
                 "VALUES (%s, %s, %s, NOW(), NOW())",
-                ("songset_1", "user_1", "Set 1"),
+                ("songset_1", user_id, "Set 1"),
             )
             cur.execute(
-                "INSERT INTO songset_items (id, songset_id, song_id, position, created_at, updated_at) "
-                "VALUES (%s, %s, %s, %s, NOW(), NOW())",
+                "INSERT INTO songset_items (id, songset_id, song_id, position, created_at) "
+                "VALUES (%s, %s, %s, %s, NOW())",
                 ("item_1", "songset_1", "song_1", 1),
             )
             admin_client.connection.commit()
@@ -487,9 +488,7 @@ class TestDatabaseClientIntegration:
         )
         admin_client.insert_recording(recording)
 
-        admin_client.update_recording_youtube_url(
-            "abc123", "https://youtube.com/watch?v=test123"
-        )
+        admin_client.update_recording_youtube_url("abc123", "https://youtube.com/watch?v=test123")
 
         result = admin_client.get_recording_by_hash("abc123")
         assert result.youtube_url == "https://youtube.com/watch?v=test123"

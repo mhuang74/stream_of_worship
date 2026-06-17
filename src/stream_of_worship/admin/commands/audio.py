@@ -208,6 +208,35 @@ def _delete_recording_and_files(
     db_client.delete_recording(recording.hash_prefix)
 
 
+def _soft_delete_recording_only(
+    db_client: DatabaseClient,
+    recording: Recording,
+    console: Console,
+) -> None:
+    """Soft-delete a recording row while preserving R2 assets."""
+    db_client.delete_recording(recording.hash_prefix)
+    console.print(
+        f"[green]✓ Soft-deleted {recording.hash_prefix}; R2 assets were preserved for maintenance review.[/green]"
+    )
+
+
+def _get_single_active_recording_for_song(
+    db_client: DatabaseClient,
+    song_id: str,
+    console: Console,
+) -> Optional[Recording]:
+    """Return the only active recording for a song or refuse ambiguous matches."""
+    recordings = db_client.list_active_recordings_by_song(song_id)
+    if len(recordings) > 1:
+        hashes = ", ".join(recording.hash_prefix for recording in recordings)
+        console.print(
+            f"[red]Multiple active recordings found for {song_id}: {hashes}. "
+            "Use a hash-prefix targeted command where available.[/red]"
+        )
+        raise typer.Exit(1)
+    return recordings[0] if recordings else None
+
+
 def _format_size_mb(bytes: Optional[int]) -> str:
     """Format bytes as MB with 2 decimal places.
 
@@ -694,7 +723,7 @@ def import_youtube_audio_for_song(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
-    existing = db_client.get_recording_by_song_id(song_id)
+    existing = _get_single_active_recording_for_song(db_client, song_id, console)
     if existing:
         if not force:
             console.print(
@@ -702,10 +731,10 @@ def import_youtube_audio_for_song(
                 f"(hash: {existing.hash_prefix}). Use --force to replace.[/yellow]"
             )
             raise typer.Exit(0)
-
-        console.print(f"[cyan]Deleting existing recording {existing.hash_prefix}...[/cyan]")
-        _delete_recording_and_files(db_client, r2_client, existing, console)
-        console.print("[green]Existing recording deleted. Proceeding with download...[/green]")
+        console.print(
+            f"[cyan]Replacement mode: existing recording {existing.hash_prefix} will stay active "
+            "until the new recording is safely persisted.[/cyan]"
+        )
 
     downloader = YouTubeDownloader()
     if youtube_url:
@@ -831,7 +860,14 @@ def import_youtube_audio_for_song(
         youtube_url=video_info.get("webpage_url"),
         duration_seconds=duration,
     )
-    db_client.insert_recording(recording)
+    if existing and force:
+        updated_items = db_client.replace_recording_after_import(existing.hash_prefix, recording)
+        console.print(
+            f"[green]Replacement saved; updated {updated_items} songset item reference(s) and "
+            f"soft-deleted old recording {existing.hash_prefix}.[/green]"
+        )
+    else:
+        db_client.insert_recording(recording)
     console.print(f"[green]Recording saved (hash_prefix: {prefix})[/green]")
 
     if analyze:
@@ -937,11 +973,10 @@ def delete_recording(
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Delete a recording and all associated R2 files.
+    """Soft-delete a recording while preserving associated R2 files.
 
-    Removes the recording from the database and deletes associated files
-    from R2 (audio, stems, LRC). Use this when the wrong audio was
-    downloaded and you want to re-download the correct version.
+    Marks the recording as deleted in the database. R2 assets are preserved
+    so they can be reviewed, restored, or purged by maintenance commands.
 
     For batch deletion, pipe song IDs via stdin:
 
@@ -963,32 +998,20 @@ def delete_recording(
 
     db_client = get_db_client(config)
 
-    # Initialize R2 client
-    try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
-    except ValueError as e:
-        console.print(f"[red]R2 configuration error: {e}[/red]")
-        raise typer.Exit(1)
-
     if stdin:
-        _delete_recordings_batch(db_client, r2_client, yes, console)
+        _delete_recordings_batch(db_client, yes, console)
     else:
-        _delete_recording_single(song_id, db_client, r2_client, yes, console)
+        _delete_recording_single(song_id, db_client, yes, console)
 
 
 def _delete_recording_single(
     song_id: str,
     db_client: DatabaseClient,
-    r2_client: R2Client,
     yes: bool,
     console: Console,
 ) -> None:
     """Delete a single recording by song_id."""
-    recording = db_client.get_recording_by_song_id(song_id)
+    recording = _get_single_active_recording_for_song(db_client, song_id, console)
     if not recording:
         console.print(f"[red]No recording found for song: {song_id}[/red]")
         raise typer.Exit(1)
@@ -1009,7 +1032,7 @@ def _delete_recording_single(
     ]
 
     info_lines.append("")
-    info_lines.append("[bold]R2 Resources to delete:[/bold]")
+    info_lines.append("[bold]R2 Resources preserved after soft-delete:[/bold]")
 
     if recording.r2_audio_url:
         info_lines.append(f"  [green]✓[/green] Audio file: {recording.r2_audio_url}")
@@ -1035,20 +1058,21 @@ def _delete_recording_single(
     )
 
     if not yes:
-        console.print("[red bold]Warning: This action cannot be undone![/red bold]")
-        confirmed = _prompt_confirmation("Delete this recording and all associated files?")
+        console.print(
+            "[yellow]This soft-deletes the DB row only; R2 assets remain for maintenance review.[/yellow]"
+        )
+        confirmed = _prompt_confirmation("Soft-delete this recording?")
         if not confirmed:
             console.print("[yellow]Deletion cancelled.[/yellow]")
             raise typer.Exit(0)
 
-    console.print("[cyan]Deleting recording...[/cyan]")
-    _delete_recording_and_files(db_client, r2_client, recording, console)
-    console.print(f"[green]Recording {recording.hash_prefix} deleted successfully.[/green]")
+    console.print("[cyan]Soft-deleting recording...[/cyan]")
+    _soft_delete_recording_only(db_client, recording, console)
+    console.print(f"[green]Recording {recording.hash_prefix} soft-deleted successfully.[/green]")
 
 
 def _delete_recordings_batch(
     db_client: DatabaseClient,
-    r2_client: R2Client,
     yes: bool,
     console: Console,
 ) -> None:
@@ -1065,7 +1089,7 @@ def _delete_recordings_batch(
     not_found: list[str] = []
 
     for sid in song_ids:
-        recording = db_client.get_recording_by_song_id(sid)
+        recording = _get_single_active_recording_for_song(db_client, sid, console)
         if recording:
             song = db_client.get_song(sid)
             title = song.title if song else "Unknown"
@@ -1103,10 +1127,10 @@ def _delete_recordings_batch(
     )
 
     if not yes:
-        console.print("[red bold]Warning: This action cannot be undone![/red bold]")
-        confirmed = _prompt_confirmation(
-            f"Delete {len(recordings_to_delete)} recording(s) and all associated files?"
+        console.print(
+            "[yellow]This soft-deletes DB rows only; R2 assets remain for maintenance review.[/yellow]"
         )
+        confirmed = _prompt_confirmation(f"Soft-delete {len(recordings_to_delete)} recording(s)?")
         if not confirmed:
             console.print("[yellow]Deletion cancelled.[/yellow]")
             raise typer.Exit(0)
@@ -1116,7 +1140,7 @@ def _delete_recordings_batch(
 
     for sid, recording, title in recordings_to_delete:
         try:
-            _delete_recording_and_files(db_client, r2_client, recording, console)
+            _soft_delete_recording_only(db_client, recording, console)
             deleted_count += 1
             console.print(f"[green]✓ Deleted: {sid} ({title})[/green]")
         except Exception as e:
@@ -1967,7 +1991,8 @@ def align_lrc_recording(
     language: str = typer.Option("auto", "--lang", help="Language: auto, zh, en"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-alignment"),
     use_vocals_stem: bool = typer.Option(
-        True, "--use-vocals-stem/--no-vocals-stem",
+        True,
+        "--use-vocals-stem/--no-vocals-stem",
         help="Use clean vocal stem for better accuracy",
     ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin"),
@@ -3669,7 +3694,9 @@ def upload_lrc(
         if identity.exists:
             expected_etag = identity.etag
     except Exception as e:
-        console.print(f"[yellow]Warning: Could not capture ETag for stale-object check: {e}[/yellow]")
+        console.print(
+            f"[yellow]Warning: Could not capture ETag for stale-object check: {e}[/yellow]"
+        )
 
     # Upload to R2 with backup + ETag protection
     console.print("[cyan]Uploading LRC to R2...[/cyan]")
@@ -3681,7 +3708,9 @@ def upload_lrc(
         )
         console.print(f"[green]Uploaded: {r2_url}[/green]")
     except StaleObjectError as e:
-        console.print(f"[red]Upload failed: {e}. The official LRC was modified after you started.[/red]")
+        console.print(
+            f"[red]Upload failed: {e}. The official LRC was modified after you started.[/red]"
+        )
         raise typer.Exit(1)
     except BackupFailedError as e:
         console.print(f"[red]Upload failed: {e}. Backup of existing LRC failed.[/red]")

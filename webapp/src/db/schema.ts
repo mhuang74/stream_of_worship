@@ -204,6 +204,7 @@ export const songsetItems = pgTable("songset_items", {
 }, (t) => [
   index("idx_songset_items_songset_position").on(t.songsetId, t.position),
   index("idx_songset_items_songset_updated").on(t.songsetId, t.updatedAt),
+  index("idx_songset_items_recording_hash_prefix").on(t.recordingHashPrefix),
 ]);
 
 // ---------------------------------------------------------------------------

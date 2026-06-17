@@ -12,6 +12,7 @@ from stream_of_worship.admin import __version__
 from stream_of_worship.admin.commands import audio as audio_commands
 from stream_of_worship.admin.commands import catalog as catalog_commands
 from stream_of_worship.admin.commands import db as db_commands
+from stream_of_worship.admin.commands import maintenance as maintenance_commands
 from stream_of_worship.admin.commands import users as users_commands
 console = Console()
 
@@ -27,6 +28,7 @@ app.add_typer(db_commands.app, name="db", help="Database operations")
 app.add_typer(users_commands.app, name="users", help="User management")
 app.add_typer(catalog_commands.app, name="catalog", help="Catalog operations")
 app.add_typer(audio_commands.app, name="audio", help="Audio recording operations")
+app.add_typer(maintenance_commands.app, name="maintenance", help="Maintenance operations")
 
 
 def version_callback(value: bool) -> None:

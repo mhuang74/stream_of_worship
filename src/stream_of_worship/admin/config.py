@@ -8,7 +8,7 @@ Handles loading, saving, and validating TOML configuration stored in:
 
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -40,6 +40,11 @@ class AdminConfig:
 
     # Postgres database (password via SOW_DATABASE_PASSWORD env var)
     database_url: str = ""
+
+    # R2 maintenance guardrails
+    r2_waste_blacklist: list[str] = field(
+        default_factory=lambda: ["renders/", "thumbnails/", "temp/"]
+    )
 
     def get_connection_url(self) -> str:
         """Return a Postgres DSN with password injected from env var.
@@ -100,6 +105,7 @@ class AdminConfig:
             config.r2_bucket = r2.get("bucket", config.r2_bucket)
             config.r2_endpoint_url = r2.get("endpoint_url", config.r2_endpoint_url)
             config.r2_region = r2.get("region", config.r2_region)
+            config.r2_waste_blacklist = list(r2.get("waste_blacklist", config.r2_waste_blacklist))
 
         # Load database config (new [database] section)
         if "database" in data:
@@ -134,6 +140,7 @@ class AdminConfig:
                 "bucket": self.r2_bucket,
                 "endpoint_url": self.r2_endpoint_url,
                 "region": self.r2_region,
+                "waste_blacklist": self.r2_waste_blacklist,
             },
             "database": {"url": self.database_url},
         }

@@ -61,6 +61,10 @@ CREATE_APP_INDEXES = [
     CREATE INDEX IF NOT EXISTS idx_songset_items_song_id
     ON songset_items(song_id);
     """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_songset_items_recording_hash_prefix
+    ON songset_items(recording_hash_prefix);
+    """,
 ]
 
 # Trigger to update updated_at on songsets
