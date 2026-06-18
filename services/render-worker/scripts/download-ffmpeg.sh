@@ -27,11 +27,15 @@ import sys, hashlib, boto3
 
 bucket, endpoint, access_key, secret_key, key, checksum_key, archive, checksum_path = sys.argv[1:]
 
-s3 = boto3.client('s3',
-    endpoint_url=endpoint,
-    aws_access_key_id=access_key,
-    aws_secret_access_key=secret_key,
-    region_name='auto')
+try:
+    s3 = boto3.client('s3',
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name='auto')
+except Exception as e:
+    print(f'R2 client creation failed: {e}', file=sys.stderr)
+    sys.exit(2)
 
 try:
     s3.download_file(bucket, key, archive)

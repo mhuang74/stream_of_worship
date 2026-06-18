@@ -161,5 +161,7 @@ class TestDockerConfiguration:
 
         assert 'REQUIRE_R2="${6:-false}"' in script
         assert "R2 FFmpeg download is required" in script
+        assert "R2 client creation failed" in script
+        assert "sys.exit(2)" in script
         assert "Expected R2 objects:" in script
         assert "Falling back to johnvansickle.com" in script
