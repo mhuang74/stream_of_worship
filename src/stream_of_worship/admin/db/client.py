@@ -1508,6 +1508,43 @@ class DatabaseClient:
             )
         return rows
 
+    def find_songsets_needing_repair(self, limit: Optional[int] = 20) -> list[dict]:
+        """Find songsets that have at least one stale songset item.
+
+        Returns one row per songset with: songset_id, name, created_at,
+        song_count (total items in songset), user_email.
+        """
+        cursor = self.connection.cursor()
+        sql = """
+            SELECT s.id, s.name, s.created_at,
+                   (SELECT COUNT(*) FROM songset_items si2
+                    WHERE si2.songset_id = s.id) AS song_count,
+                   u.email
+            FROM songsets s
+            LEFT JOIN "user" u ON u.id = s.user_id
+            WHERE EXISTS (
+                SELECT 1 FROM songset_items si
+                LEFT JOIN recordings r ON r.hash_prefix = si.recording_hash_prefix
+                WHERE si.songset_id = s.id
+                  AND si.recording_hash_prefix IS NOT NULL
+                  AND (r.hash_prefix IS NULL OR r.deleted_at IS NOT NULL)
+            )
+            ORDER BY s.created_at DESC
+        """
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        cursor.execute(sql)
+        return [
+            {
+                "songset_id": row[0],
+                "name": row[1],
+                "created_at": to_str(row[2]),
+                "song_count": row[3],
+                "user_email": row[4] or "",
+            }
+            for row in cursor.fetchall()
+        ]
+
     def find_replacement_recording_candidates(self, song_id: str) -> list[Recording]:
         """Find active recording candidates for a stale songset item."""
         cursor = self.connection.cursor()
