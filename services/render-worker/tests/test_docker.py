@@ -1,8 +1,11 @@
 import importlib
 import os
+from pathlib import Path
 import subprocess
 
 import pytest
+
+RENDER_WORKER_DIR = Path(__file__).resolve().parent.parent
 
 
 @pytest.mark.skipif(os.environ.get("SKIP_DOCKER_TESTS") == "1", reason="Docker tests disabled")
@@ -135,3 +138,28 @@ class TestHandlerImportable:
     def test_pipeline_module_importable(self):
         mod = importlib.import_module("sow_render_worker.pipeline")
         assert hasattr(mod, "execute_render_pipeline")
+
+
+class TestDockerConfiguration:
+    def test_deploy_requires_r2_ffmpeg_build_arg(self):
+        workflow = (RENDER_WORKER_DIR.parent.parent / ".github/workflows/deploy.yml").read_text()
+
+        assert 'FFMPEG_VERSION: "7.0.2"' in workflow
+        assert '--build-arg FFMPEG_VERSION="$FFMPEG_VERSION"' in workflow
+        assert "--build-arg REQUIRE_R2_FFMPEG=true" in workflow
+        assert "refusing to deploy without R2-sourced FFmpeg" in workflow
+
+    def test_dockerfiles_pass_require_r2_flag_to_download_script(self):
+        for dockerfile_name in ("Dockerfile", "Dockerfile.dev"):
+            dockerfile = (RENDER_WORKER_DIR / dockerfile_name).read_text()
+
+            assert "ARG REQUIRE_R2_FFMPEG=false" in dockerfile
+            assert '"${REQUIRE_R2_FFMPEG}"' in dockerfile
+
+    def test_download_script_has_required_r2_mode(self):
+        script = (RENDER_WORKER_DIR / "scripts/download-ffmpeg.sh").read_text()
+
+        assert 'REQUIRE_R2="${6:-false}"' in script
+        assert "R2 FFmpeg download is required" in script
+        assert "Expected R2 objects:" in script
+        assert "Falling back to johnvansickle.com" in script
