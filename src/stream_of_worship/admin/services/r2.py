@@ -209,6 +209,83 @@ class R2Client:
             last_modified=self._last_modified_to_str(latest),
         )
 
+    def list_stems(self, prefix: str) -> R2PrefixSummary:
+        """List objects under ``{prefix}/stems/`` for a recording.
+
+        Args:
+            prefix: 12-character recording hash prefix
+
+        Returns:
+            R2PrefixSummary scoped to the stems subdirectory
+        """
+        stems_key = f"{self.validate_recording_hash_prefix(prefix)}/stems/"
+        paginator = self._client.get_paginator("list_objects_v2")
+        object_count = 0
+        total_bytes = 0
+        latest: object = None
+
+        for page in paginator.paginate(
+            Bucket=self.bucket,
+            Prefix=stems_key,
+            PaginationConfig={"PageSize": 100},
+        ):
+            for obj in page.get("Contents", []):
+                object_count += 1
+                total_bytes += int(obj.get("Size") or 0)
+                modified = obj.get("LastModified")
+                if modified is not None and (latest is None or modified > latest):
+                    latest = modified
+
+        return R2PrefixSummary(
+            prefix=stems_key.rstrip("/"),
+            object_count=object_count,
+            total_bytes=total_bytes,
+            last_modified=self._last_modified_to_str(latest),
+        )
+
+    def delete_stems(self, prefix: str) -> R2PrefixSummary:
+        """Delete all objects under ``{prefix}/stems/`` in 100-object batches.
+
+        Args:
+            prefix: 12-character recording hash prefix
+
+        Returns:
+            R2PrefixSummary with counts of deleted stems objects
+        """
+        stems_key = f"{self.validate_recording_hash_prefix(prefix)}/stems/"
+        paginator = self._client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        total_bytes = 0
+        latest: object = None
+
+        for page in paginator.paginate(
+            Bucket=self.bucket,
+            Prefix=stems_key,
+            PaginationConfig={"PageSize": 100},
+        ):
+            for obj in page.get("Contents", []):
+                keys.append(obj["Key"])
+                total_bytes += int(obj.get("Size") or 0)
+                modified = obj.get("LastModified")
+                if modified is not None and (latest is None or modified > latest):
+                    latest = modified
+
+        for start in range(0, len(keys), 100):
+            batch = keys[start : start + 100]
+            if not batch:
+                continue
+            self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
+
+        return R2PrefixSummary(
+            prefix=stems_key.rstrip("/"),
+            object_count=len(keys),
+            total_bytes=total_bytes,
+            last_modified=self._last_modified_to_str(latest),
+        )
+
     def scan_recording_prefixes(
         self,
         blacklist: Optional[list[str]] = None,

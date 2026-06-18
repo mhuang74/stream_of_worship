@@ -14,7 +14,7 @@ from stream_of_worship.admin.commands.maintenance import (
     _format_datetime,
     _orphan_r2_prefixes,
     _repair_manifest,
-    _sort_by_last_modified_desc,
+    _sort_by_last_modified_asc,
     _transform_rows,
 )
 from stream_of_worship.admin.config import AdminConfig
@@ -384,6 +384,308 @@ def test_maintenance_purge_r2_waste_refuses_existing_rows():
     r2.delete_prefix.assert_not_called()
 
 
+def _make_purge_orphan_prefixes():
+    return [
+        SimpleNamespace(
+            prefix="old_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=datetime(2023, 1, 1).isoformat(),
+        ),
+        SimpleNamespace(
+            prefix="new_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=datetime(2024, 6, 1).isoformat(),
+        ),
+        SimpleNamespace(
+            prefix="null_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=None,
+        ),
+        SimpleNamespace(
+            prefix="mid_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=datetime(2024, 1, 1).isoformat(),
+        ),
+    ]
+
+
+def test_maintenance_purge_r2_waste_dry_run_orders_by_last_modified_asc():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = _make_purge_orphan_prefixes()
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app,
+            ["maintenance", "purge-r2-waste", "--all", "--format", "json"],
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout.split("\nDry run only")[0])
+    prefixes = [row["prefix"] for row in data]
+    assert prefixes == ["old_prefix", "mid_prefix", "new_prefix", "null_prefix"]
+    r2.delete_prefix.assert_not_called()
+
+
+def test_maintenance_purge_r2_waste_confirm_deletes_oldest_first():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = _make_purge_orphan_prefixes()
+
+    deleted_order: list[str] = []
+
+    def _record_delete(prefix):
+        deleted_order.append(prefix)
+        return SimpleNamespace(object_count=1)
+
+    r2.delete_prefix.side_effect = _record_delete
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app,
+            ["maintenance", "purge-r2-waste", "--all", "--confirm", "--format", "json"],
+        )
+
+    assert result.exit_code == 0
+    assert deleted_order == ["old_prefix", "mid_prefix", "new_prefix", "null_prefix"]
+
+
+def test_maintenance_purge_r2_waste_stems_only_prefix_deletes_stems_not_prefix():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.list_stems.return_value = SimpleNamespace(
+        prefix="abc123def456/stems",
+        object_count=5,
+        total_bytes=245_000_000,
+        last_modified=datetime(2024, 1, 1).isoformat(),
+    )
+    r2.delete_stems.return_value = SimpleNamespace(object_count=5)
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2) as r2_cls,
+    ):
+        r2_cls.validate_recording_hash_prefix.side_effect = lambda prefix: prefix
+        result = runner.invoke(
+            app,
+            [
+                "maintenance",
+                "purge-r2-waste",
+                "--prefix",
+                "abc123def456",
+                "--stems-only",
+                "--confirm",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    r2.list_stems.assert_called_once_with("abc123def456")
+    r2.delete_stems.assert_called_once_with("abc123def456")
+    r2.list_prefix.assert_not_called()
+    r2.delete_prefix.assert_not_called()
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert data[0]["object_count"] == 5
+    assert data[0]["deleted_object_count"] == 5
+
+
+def test_maintenance_purge_r2_waste_stems_only_all_uses_stems_metrics():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = [
+        SimpleNamespace(
+            prefix="old_prefix",
+            object_count=10,
+            total_bytes=1_000_000_000,
+            last_modified=datetime(2023, 1, 1).isoformat(),
+        ),
+        SimpleNamespace(
+            prefix="new_prefix",
+            object_count=8,
+            total_bytes=800_000_000,
+            last_modified=datetime(2024, 6, 1).isoformat(),
+        ),
+    ]
+
+    def _list_stems(prefix):
+        if prefix == "old_prefix":
+            return SimpleNamespace(
+                prefix=f"{prefix}/stems",
+                object_count=5,
+                total_bytes=245_000_000,
+                last_modified=datetime(2023, 1, 1).isoformat(),
+            )
+        return SimpleNamespace(
+            prefix=f"{prefix}/stems",
+            object_count=4,
+            total_bytes=196_000_000,
+            last_modified=datetime(2024, 6, 1).isoformat(),
+        )
+
+    r2.list_stems.side_effect = _list_stems
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app,
+            ["maintenance", "purge-r2-waste", "--all", "--stems-only", "--format", "json"],
+        )
+
+    assert result.exit_code == 0
+    r2.list_stems.assert_any_call("old_prefix")
+    r2.list_stems.assert_any_call("new_prefix")
+    r2.delete_stems.assert_not_called()
+    r2.delete_prefix.assert_not_called()
+    import json as _json
+
+    data = _json.loads(result.stdout.split("\nDry run only")[0])
+    by_prefix = {row["prefix"]: row for row in data}
+    assert by_prefix["old_prefix"]["object_count"] == 5
+    assert by_prefix["new_prefix"]["object_count"] == 4
+
+
+def test_maintenance_purge_r2_waste_stems_only_dry_run_no_delete():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = _make_purge_orphan_prefixes()
+    r2.list_stems.return_value = SimpleNamespace(
+        prefix="old_prefix/stems",
+        object_count=5,
+        total_bytes=245_000_000,
+        last_modified=datetime(2023, 1, 1).isoformat(),
+    )
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app,
+            ["maintenance", "purge-r2-waste", "--all", "--stems-only", "--format", "json"],
+        )
+
+    assert result.exit_code == 0
+    r2.delete_stems.assert_not_called()
+    r2.delete_prefix.assert_not_called()
+    assert "Dry run only" in result.output
+
+
+def test_maintenance_purge_r2_waste_stems_only_keeps_blocking_checks():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.list_stems.return_value = SimpleNamespace(
+        prefix="def123abc456/stems",
+        object_count=5,
+        total_bytes=245_000_000,
+        last_modified=datetime(2024, 1, 1).isoformat(),
+    )
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2) as r2_cls,
+    ):
+        r2_cls.validate_recording_hash_prefix.side_effect = lambda prefix: prefix
+        result = runner.invoke(
+            app,
+            [
+                "maintenance",
+                "purge-r2-waste",
+                "--prefix",
+                "def123abc456",
+                "--stems-only",
+                "--confirm",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "recording-row-exists" in result.output
+    r2.delete_stems.assert_not_called()
+    r2.delete_prefix.assert_not_called()
+
+
+def test_maintenance_purge_r2_waste_stems_only_empty_stems_included():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = [
+        SimpleNamespace(
+            prefix="old_prefix",
+            object_count=2,
+            total_bytes=200_000,
+            last_modified=datetime(2023, 1, 1).isoformat(),
+        ),
+    ]
+    r2.list_stems.return_value = SimpleNamespace(
+        prefix="old_prefix/stems",
+        object_count=0,
+        total_bytes=0,
+        last_modified=None,
+    )
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app,
+            ["maintenance", "purge-r2-waste", "--all", "--stems-only", "--format", "json"],
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout.split("\nDry run only")[0])
+    assert len(data) == 1
+    assert data[0]["object_count"] == 0
+    assert data[0]["total_mb"] == 0
+
+
 def test_repair_manifest_no_selector_returns_before_querying_db():
     db = MagicMock()
     r2 = MagicMock()
@@ -732,7 +1034,7 @@ def test_list_r2_waste_all_shows_all():
     assert len(data) == 25
 
 
-def test_list_r2_waste_orders_by_last_modified_desc():
+def test_list_r2_waste_orders_by_last_modified_asc():
     db = FakeMaintenanceDb()
     r2 = MagicMock()
     r2.scan_recording_prefixes.return_value = [
@@ -779,27 +1081,27 @@ def test_list_r2_waste_orders_by_last_modified_desc():
 
     data = _json.loads(result.stdout)
     prefixes = [row["prefix"] for row in data]
-    assert prefixes == ["new_prefix", "mid_prefix", "old_prefix", "null_prefix"]
+    assert prefixes == ["old_prefix", "mid_prefix", "new_prefix", "null_prefix"]
 
 
-def test_sort_by_last_modified_desc_none_sorts_last():
+def test_sort_by_last_modified_asc_none_sorts_last():
     rows = [
         {"prefix": "a", "last_modified": "2024-01-01T00:00:00"},
         {"prefix": "b", "last_modified": None},
         {"prefix": "c", "last_modified": "2023-01-01T00:00:00"},
     ]
-    result = _sort_by_last_modified_desc(rows)
-    assert [r["prefix"] for r in result] == ["a", "c", "b"]
+    result = _sort_by_last_modified_asc(rows)
+    assert [r["prefix"] for r in result] == ["c", "a", "b"]
 
 
-def test_sort_by_last_modified_desc_timezone_aware():
+def test_sort_by_last_modified_asc_timezone_aware():
     rows = [
         {"prefix": "tz", "last_modified": "2024-06-01T12:00:00+00:00"},
         {"prefix": "naive", "last_modified": "2024-01-01T00:00:00"},
         {"prefix": "none", "last_modified": None},
     ]
-    result = _sort_by_last_modified_desc(rows)
-    assert [r["prefix"] for r in result] == ["tz", "naive", "none"]
+    result = _sort_by_last_modified_asc(rows)
+    assert [r["prefix"] for r in result] == ["naive", "tz", "none"]
 
 
 def test_diagnose_render_failures_defaults_to_limit_20():
