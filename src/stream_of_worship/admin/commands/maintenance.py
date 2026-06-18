@@ -1,6 +1,7 @@
 """Maintenance commands for soft-deleted catalog data and R2 cleanup."""
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -55,7 +56,43 @@ def _print_json(rows: list[dict]) -> None:
     console.print(json.dumps(rows, default=_json_default, ensure_ascii=False, indent=2))
 
 
+def _bytes_to_mb(total_bytes: int) -> int:
+    """Convert bytes to decimal MB (1 MB = 1,000,000 bytes), rounded to integer."""
+    return round(total_bytes / 1_000_000)
+
+
+def _format_datetime(ts: Optional[str]) -> str:
+    """Truncate timestamp to seconds and format as 'YYYY-MM-DD HH:MM:SS'."""
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(ts)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return str(ts)
+
+
+_BYTE_FIELDS = {"total_bytes": "total_mb", "r2_bytes": "r2_mb"}
+_DATETIME_FIELDS = {"last_modified", "created_at", "deleted_at"}
+
+
+def _transform_rows(rows: list[dict]) -> list[dict]:
+    """Apply display transformations: bytes to MB, truncate datetimes to seconds."""
+    transformed = []
+    for row in rows:
+        new_row = dict(row)
+        for src, dst in _BYTE_FIELDS.items():
+            if src in new_row:
+                new_row[dst] = _bytes_to_mb(new_row.pop(src))
+        for field in _DATETIME_FIELDS:
+            if field in new_row:
+                new_row[field] = _format_datetime(new_row[field])
+        transformed.append(new_row)
+    return transformed
+
+
 def _print_manifest(rows: list[dict], format_: str) -> None:
+    rows = _transform_rows(rows)
     if format_ == "json":
         _print_json(rows)
         return
@@ -108,7 +145,8 @@ def _selected_soft_deleted_recordings(
 def list_soft_deletes(
     entity: str = typer.Option("all", "--entity", help="all|songs|recordings"),
     format_: str = typer.Option("table", "--format", help="table|json|ids"),
-    limit: Optional[int] = typer.Option(None, "--limit", min=1),
+    limit: Optional[int] = typer.Option(20, "--limit", min=1),
+    all_: bool = typer.Option(False, "--all", help="List all results without limit"),
     with_r2: bool = typer.Option(
         False, "--with-r2", help="Include R2 object counts for recordings"
     ),
@@ -120,9 +158,11 @@ def list_soft_deletes(
     config, db_client = _load_clients(config_path)
     r2_client = _load_r2(config) if with_r2 else None
 
+    effective_limit = None if all_ else limit
+
     rows: list[dict] = []
     if entity in ("all", "songs"):
-        for row in db_client.list_soft_deleted_songs_with_counts(limit=limit):
+        for row in db_client.list_soft_deleted_songs_with_counts(limit=effective_limit):
             song = row["song"]
             rows.append(
                 {
@@ -135,7 +175,7 @@ def list_soft_deletes(
                 }
             )
     if entity in ("all", "recordings"):
-        for row in db_client.list_soft_deleted_recordings_with_counts(limit=limit):
+        for row in db_client.list_soft_deleted_recordings_with_counts(limit=effective_limit):
             recording = row["recording"]
             item = {
                 "entity": "recording",
@@ -317,17 +357,33 @@ def _repair_manifest(
 def repair_songsets(
     songset_id: Optional[str] = typer.Option(None, "--songset-id"),
     hash_prefix: Optional[str] = typer.Option(None, "--hash-prefix"),
-    all_: bool = typer.Option(False, "--all"),
+    all_: bool = typer.Option(
+        False,
+        "--all",
+        help="List all songsets needing repair (without --confirm); "
+        "repair all stale items (with --confirm)",
+    ),
     confirm: bool = typer.Option(False, "--confirm"),
+    limit: Optional[int] = typer.Option(20, "--limit", min=1),
     format_: str = typer.Option("table", "--format", help="table|json"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Repair songset items that point at missing or soft-deleted recordings."""
-    if not (songset_id or hash_prefix or all_):
-        console.print("[red]Provide --songset-id, --hash-prefix, or --all.[/red]")
+    if confirm and not (songset_id or hash_prefix or all_):
+        console.print("[red]Provide --songset-id, --hash-prefix, or --all --confirm.[/red]")
         raise typer.Exit(1)
+
     config, db_client = _load_clients(config_path)
     r2_client = _load_r2(config)
+
+    is_repair_mode = songset_id is not None or hash_prefix is not None or (all_ and confirm)
+
+    if not is_repair_mode:
+        effective_limit = None if all_ else limit
+        rows = db_client.find_songsets_needing_repair(limit=effective_limit)
+        _print_manifest(rows, format_)
+        return
+
     rows = _repair_manifest(db_client, r2_client, songset_id, hash_prefix, all_)
     active_jobs = db_client.find_active_render_jobs_for_songsets(
         sorted({row["songset_id"] for row in rows})
@@ -354,15 +410,19 @@ def repair_songsets(
 def diagnose_render_failures(
     job_id: Optional[str] = typer.Option(None, "--job-id"),
     since_days: Optional[int] = typer.Option(None, "--since-days", min=1),
-    limit: Optional[int] = typer.Option(None, "--limit", min=1),
+    limit: Optional[int] = typer.Option(20, "--limit", min=1),
+    all_: bool = typer.Option(False, "--all", help="List all results without limit"),
     format_: str = typer.Option("table", "--format", help="table|json"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Diagnose failed render jobs against current songset state."""
     config, db_client = _load_clients(config_path)
     r2_client = _load_r2(config)
+    effective_limit = None if all_ else limit
     rows: list[dict] = []
-    for job in db_client.find_failed_render_jobs(job_id=job_id, since_days=since_days, limit=limit):
+    for job in db_client.find_failed_render_jobs(
+        job_id=job_id, since_days=since_days, limit=effective_limit
+    ):
         stale = _repair_manifest(db_client, r2_client, job["songset_id"], None, True)
         if stale:
             for item in stale:
@@ -372,11 +432,25 @@ def diagnose_render_failures(
     _print_manifest(rows, format_)
 
 
+def _sort_by_last_modified_desc(rows: list[dict]) -> list[dict]:
+    """Sort rows by last_modified DESC. None/empty values sort last."""
+
+    def sort_key(row):
+        ts = row.get("last_modified")
+        if not ts:
+            return datetime.min
+        try:
+            return datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            return datetime.min
+
+    return sorted(rows, key=sort_key, reverse=True)
+
+
 def _orphan_r2_prefixes(
     db_client: DatabaseClient,
     r2_client: R2Client,
     blacklist: list[str],
-    limit: Optional[int],
 ) -> list[dict]:
     rows = []
     for summary in r2_client.scan_recording_prefixes(blacklist=blacklist):
@@ -392,21 +466,24 @@ def _orphan_r2_prefixes(
                 "songset_reference_count": references,
             }
         )
-        if limit is not None and len(rows) >= limit:
-            break
     return rows
 
 
 @app.command("list-r2-waste")
 def list_r2_waste(
     format_: str = typer.Option("table", "--format", help="table|json"),
-    limit: Optional[int] = typer.Option(None, "--limit", min=1),
+    limit: Optional[int] = typer.Option(20, "--limit", min=1),
+    all_: bool = typer.Option(False, "--all", help="List all results without limit"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """List orphan hash-like R2 prefixes with no DB recording row."""
     config, db_client = _load_clients(config_path)
     r2_client = _load_r2(config)
-    rows = _orphan_r2_prefixes(db_client, r2_client, config.r2_waste_blacklist, limit)
+    rows = _orphan_r2_prefixes(db_client, r2_client, config.r2_waste_blacklist)
+    rows = _sort_by_last_modified_desc(rows)
+    effective_limit = None if all_ else limit
+    if effective_limit is not None:
+        rows = rows[:effective_limit]
     _print_manifest(rows, format_)
 
 
@@ -425,7 +502,7 @@ def purge_r2_waste(
     config, db_client = _load_clients(config_path)
     r2_client = _load_r2(config)
     if all_:
-        rows = _orphan_r2_prefixes(db_client, r2_client, config.r2_waste_blacklist, None)
+        rows = _orphan_r2_prefixes(db_client, r2_client, config.r2_waste_blacklist)
     else:
         rows = []
         for prefix in prefixes:

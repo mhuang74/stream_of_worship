@@ -9,7 +9,14 @@ import typer
 from typer.testing import CliRunner
 
 from stream_of_worship.admin.commands.audio import import_youtube_audio_for_song
-from stream_of_worship.admin.commands.maintenance import _orphan_r2_prefixes, _repair_manifest
+from stream_of_worship.admin.commands.maintenance import (
+    _bytes_to_mb,
+    _format_datetime,
+    _orphan_r2_prefixes,
+    _repair_manifest,
+    _sort_by_last_modified_desc,
+    _transform_rows,
+)
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
@@ -168,6 +175,8 @@ class FakeMaintenanceDb:
         self.purged_recordings: list[str] = []
         self.hard_delete_result = True
         self.call_order: list[str] = []
+        self._songsets_needing_repair: list[dict] = []
+        self._failed_render_jobs: list[dict] = []
 
     def list_soft_deleted_songs_with_counts(self, limit=None):
         return []
@@ -184,6 +193,30 @@ class FakeMaintenanceDb:
         return hash_prefix == "def123abc456"
 
     def count_recording_songset_references(self, hash_prefix: str):
+        return 0
+
+    def find_songsets_needing_repair(self, limit=20):
+        rows = self._songsets_needing_repair
+        if limit is not None:
+            rows = rows[:limit]
+        return rows
+
+    def find_failed_render_jobs(self, job_id=None, since_days=None, limit=None):
+        rows = self._failed_render_jobs
+        if limit is not None:
+            rows = rows[:limit]
+        return rows
+
+    def find_stale_songset_items(self, songset_id=None, hash_prefix=None, limit=None):
+        return []
+
+    def find_replacement_recording_candidates(self, song_id):
+        return []
+
+    def find_active_render_jobs_for_songsets(self, songset_ids):
+        return []
+
+    def repair_songset_items(self, replacements):
         return 0
 
 
@@ -359,7 +392,7 @@ def test_repair_manifest_no_selector_returns_before_querying_db():
     db.find_stale_songset_items.assert_not_called()
 
 
-def test_orphan_r2_prefixes_applies_limit_after_filtering_db_rows():
+def test_orphan_r2_prefixes_filters_db_rows():
     db = MagicMock()
     db.recording_row_exists.side_effect = lambda prefix: prefix == "aaaaaaaaaaaa"
     db.count_recording_songset_references.return_value = 0
@@ -370,9 +403,9 @@ def test_orphan_r2_prefixes_applies_limit_after_filtering_db_rows():
         SimpleNamespace(prefix="cccccccccccc", object_count=1, total_bytes=30, last_modified=None),
     ]
 
-    rows = _orphan_r2_prefixes(db, r2, [], limit=1)
+    rows = _orphan_r2_prefixes(db, r2, [])
 
-    assert [row["prefix"] for row in rows] == ["bbbbbbbbbbbb"]
+    assert [row["prefix"] for row in rows] == ["bbbbbbbbbbbb", "cccccccccccc"]
     r2.scan_recording_prefixes.assert_called_once_with(blacklist=[])
 
 
@@ -448,3 +481,515 @@ def test_find_failed_render_jobs_formats_datetimes():
 
     assert jobs[0]["created_at"] == created.isoformat()
     assert jobs[0]["updated_at"] == updated.isoformat()
+
+
+# ---------------------------------------------------------------------------
+# New tests for admin-maintenance-improvements-v2
+# ---------------------------------------------------------------------------
+
+
+def test_bytes_to_mb():
+    assert _bytes_to_mb(0) == 0
+    assert _bytes_to_mb(1_000_000) == 1
+    assert _bytes_to_mb(12_500_000) == 12
+    assert _bytes_to_mb(999_999) == 1
+
+
+def test_format_datetime():
+    assert _format_datetime(None) == ""
+    assert _format_datetime("") == ""
+    assert _format_datetime("2024-01-15T12:30:45.123456") == "2024-01-15 12:30:45"
+    assert _format_datetime("2024-01-15T12:30:45") == "2024-01-15 12:30:45"
+    assert _format_datetime("not-a-date") == "not-a-date"
+
+
+def test_transform_rows_converts_byte_fields():
+    rows = [{"total_bytes": 12_000_000, "r2_bytes": 5_000_000}]
+    result = _transform_rows(rows)
+    assert "total_bytes" not in result[0]
+    assert "r2_bytes" not in result[0]
+    assert result[0]["total_mb"] == 12
+    assert result[0]["r2_mb"] == 5
+
+
+def test_transform_rows_formats_datetime_fields():
+    rows = [
+        {
+            "last_modified": "2024-01-15T12:30:45.999",
+            "created_at": "2024-01-10T08:00:00.123",
+            "deleted_at": "2024-01-20T18:45:00",
+        }
+    ]
+    result = _transform_rows(rows)
+    assert result[0]["last_modified"] == "2024-01-15 12:30:45"
+    assert result[0]["created_at"] == "2024-01-10 08:00:00"
+    assert result[0]["deleted_at"] == "2024-01-20 18:45:00"
+
+
+def test_transform_rows_preserves_other_fields():
+    rows = [{"prefix": "abc123def456", "object_count": 3, "total_bytes": 1_000_000}]
+    result = _transform_rows(rows)
+    assert result[0]["prefix"] == "abc123def456"
+    assert result[0]["object_count"] == 3
+    assert result[0]["total_mb"] == 1
+
+
+def test_print_manifest_converts_total_bytes_to_mb():
+    with patch("stream_of_worship.admin.commands.maintenance.console") as mock_console:
+        from stream_of_worship.admin.commands.maintenance import _print_manifest
+
+        _print_manifest(
+            [{"prefix": "abc123def456", "total_bytes": 12_000_000}],
+            "json",
+        )
+        output = mock_console.print.call_args[0][0]
+        import json as _json
+
+        data = _json.loads(output)
+        assert "total_bytes" not in data[0]
+        assert data[0]["total_mb"] == 12
+
+
+def test_print_manifest_formats_last_modified():
+    with patch("stream_of_worship.admin.commands.maintenance.console") as mock_console:
+        from stream_of_worship.admin.commands.maintenance import _print_manifest
+
+        _print_manifest(
+            [{"prefix": "abc123def456", "last_modified": "2024-01-15T12:30:45.999"}],
+            "json",
+        )
+        output = mock_console.print.call_args[0][0]
+        import json as _json
+
+        data = _json.loads(output)
+        assert data[0]["last_modified"] == "2024-01-15 12:30:45"
+
+
+def test_print_manifest_formats_deleted_at():
+    with patch("stream_of_worship.admin.commands.maintenance.console") as mock_console:
+        from stream_of_worship.admin.commands.maintenance import _print_manifest
+
+        _print_manifest(
+            [{"id": "song_1", "deleted_at": "2024-01-20T18:45:00.5"}],
+            "json",
+        )
+        output = mock_console.print.call_args[0][0]
+        import json as _json
+
+        data = _json.loads(output)
+        assert data[0]["deleted_at"] == "2024-01-20 18:45:00"
+
+
+def _make_soft_deleted_recordings(count: int) -> list[dict]:
+    return [
+        {
+            "recording": _recording(f"prefix{i:04d}"),
+            "songset_reference_count": 0,
+        }
+        for i in range(count)
+    ]
+
+
+def test_list_soft_deletes_defaults_to_limit_20():
+    db = FakeMaintenanceDb()
+    db._failed_render_jobs = []
+    recordings = _make_soft_deleted_recordings(25)
+    db.list_soft_deleted_recordings_with_counts = lambda limit=None: recordings[: (limit if limit else len(recordings))]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+    ):
+        result = runner.invoke(app, ["maintenance", "list-soft-deletes", "--format", "json"])
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 20
+
+
+def test_list_soft_deletes_all_shows_all():
+    db = FakeMaintenanceDb()
+    recordings = _make_soft_deleted_recordings(25)
+    db.list_soft_deleted_recordings_with_counts = lambda limit=None: recordings[: (limit if limit else len(recordings))]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "list-soft-deletes", "--all", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 25
+
+
+def _make_orphan_prefixes(count: int) -> list:
+    return [
+        SimpleNamespace(
+            prefix=f"prefix{i:04d}",
+            object_count=1,
+            total_bytes=100 * (i + 1),
+            last_modified=datetime(2024, 1, i + 1).isoformat() if i < 28 else None,
+        )
+        for i in range(count)
+    ]
+
+
+def test_list_r2_waste_defaults_to_limit_20():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = _make_orphan_prefixes(25)
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(app, ["maintenance", "list-r2-waste", "--format", "json"])
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 20
+
+
+def test_list_r2_waste_all_shows_all():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = _make_orphan_prefixes(25)
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "list-r2-waste", "--all", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 25
+
+
+def test_list_r2_waste_orders_by_last_modified_desc():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+    r2.scan_recording_prefixes.return_value = [
+        SimpleNamespace(
+            prefix="old_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=datetime(2023, 1, 1).isoformat(),
+        ),
+        SimpleNamespace(
+            prefix="new_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=datetime(2024, 6, 1).isoformat(),
+        ),
+        SimpleNamespace(
+            prefix="null_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=None,
+        ),
+        SimpleNamespace(
+            prefix="mid_prefix",
+            object_count=1,
+            total_bytes=100,
+            last_modified=datetime(2024, 1, 1).isoformat(),
+        ),
+    ]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "list-r2-waste", "--all", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    prefixes = [row["prefix"] for row in data]
+    assert prefixes == ["new_prefix", "mid_prefix", "old_prefix", "null_prefix"]
+
+
+def test_sort_by_last_modified_desc_none_sorts_last():
+    rows = [
+        {"prefix": "a", "last_modified": "2024-01-01T00:00:00"},
+        {"prefix": "b", "last_modified": None},
+        {"prefix": "c", "last_modified": "2023-01-01T00:00:00"},
+    ]
+    result = _sort_by_last_modified_desc(rows)
+    assert [r["prefix"] for r in result] == ["a", "c", "b"]
+
+
+def test_diagnose_render_failures_defaults_to_limit_20():
+    db = FakeMaintenanceDb()
+    db._failed_render_jobs = [
+        {
+            "job_id": f"job_{i}",
+            "songset_id": f"ss_{i}",
+            "status": "failed",
+            "error_message": "boom",
+            "created_at": "2024-01-01T00:00:00",
+            "updated_at": "2024-01-01T00:00:00",
+        }
+        for i in range(25)
+    ]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client"),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "diagnose-render-failures", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 20
+
+
+def test_diagnose_render_failures_all_shows_all():
+    db = FakeMaintenanceDb()
+    db._failed_render_jobs = [
+        {
+            "job_id": f"job_{i}",
+            "songset_id": f"ss_{i}",
+            "status": "failed",
+            "error_message": "boom",
+            "created_at": "2024-01-01T00:00:00",
+            "updated_at": "2024-01-01T00:00:00",
+        }
+        for i in range(25)
+    ]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client"),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "diagnose-render-failures", "--all", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 25
+
+
+def test_repair_songsets_no_args_lists_songsets_needing_repair():
+    db = FakeMaintenanceDb()
+    db._songsets_needing_repair = [
+        {
+            "songset_id": "ss_1",
+            "name": "My Songset",
+            "created_at": "2024-01-15T12:30:45",
+            "song_count": 5,
+            "user_email": "user@example.com",
+        }
+    ]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client"),
+    ):
+        result = runner.invoke(app, ["maintenance", "repair-songsets", "--format", "json"])
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 1
+    assert data[0]["songset_id"] == "ss_1"
+    assert data[0]["name"] == "My Songset"
+    assert data[0]["created_at"] == "2024-01-15 12:30:45"
+    assert data[0]["song_count"] == 5
+    assert data[0]["user_email"] == "user@example.com"
+
+
+def test_repair_songsets_all_lists_all_songsets():
+    db = FakeMaintenanceDb()
+    db._songsets_needing_repair = [
+        {
+            "songset_id": f"ss_{i}",
+            "name": f"Songset {i}",
+            "created_at": "2024-01-15T12:30:45",
+            "song_count": i,
+            "user_email": f"user{i}@example.com",
+        }
+        for i in range(25)
+    ]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client"),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "repair-songsets", "--all", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 25
+
+
+def test_repair_songsets_all_confirm_repairs_all():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "repair-songsets", "--all", "--confirm", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+
+
+def test_repair_songsets_songset_id_triggers_repair_mode():
+    db = FakeMaintenanceDb()
+    r2 = MagicMock()
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+    ):
+        result = runner.invoke(
+            app,
+            ["maintenance", "repair-songsets", "--songset-id", "ss_1", "--format", "json"],
+        )
+
+    assert result.exit_code == 0
+
+
+def test_repair_songsets_confirm_without_target_errors():
+    db = FakeMaintenanceDb()
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+        patch("stream_of_worship.admin.commands.maintenance.R2Client"),
+    ):
+        result = runner.invoke(app, ["maintenance", "repair-songsets", "--confirm"])
+
+    assert result.exit_code == 1
+    assert "Provide --songset-id, --hash-prefix, or --all --confirm" in result.output
+
+
+def test_find_songsets_needing_repair_query():
+    cursor = FakeCursor(
+        fetchall_rows=[
+            ("ss_1", "My Songset", datetime(2024, 1, 15, 12, 30, 45), 5, "user@example.com")
+        ]
+    )
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    rows = db.find_songsets_needing_repair()
+
+    assert len(rows) == 1
+    assert rows[0]["songset_id"] == "ss_1"
+    assert rows[0]["name"] == "My Songset"
+    assert rows[0]["created_at"] == "2024-01-15T12:30:45"
+    assert rows[0]["song_count"] == 5
+    assert rows[0]["user_email"] == "user@example.com"
+
+    sql = cursor.executed[0][0]
+    assert "EXISTS" in sql
+    assert '"user"' in sql
+    assert "LEFT JOIN" in sql
+
+
+def test_find_songsets_needing_repair_limit_applied():
+    cursor = FakeCursor(fetchall_rows=[])
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    db.find_songsets_needing_repair(limit=10)
+
+    sql = cursor.executed[0][0]
+    assert "LIMIT 10" in sql
+
+
+def test_find_songsets_needing_repair_no_limit():
+    cursor = FakeCursor(fetchall_rows=[])
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    db.find_songsets_needing_repair(limit=None)
+
+    sql = cursor.executed[0][0]
+    assert "LIMIT" not in sql
+
+
+def test_find_songsets_needing_repair_user_email_defaults_to_empty():
+    cursor = FakeCursor(
+        fetchall_rows=[("ss_1", "My Songset", datetime(2024, 1, 15), 3, None)]
+    )
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    rows = db.find_songsets_needing_repair()
+
+    assert rows[0]["user_email"] == ""
