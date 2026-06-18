@@ -68,6 +68,32 @@ describe("SongsetRow", () => {
       renderRow();
       expect(screen.getByText("Rendered")).toBeInTheDocument();
     });
+
+    it("passes failure fields to the badge", () => {
+      renderRow({
+        renderState: "failed" as RenderState,
+        renderErrorMessage: "FFmpeg crashed",
+        failedAt: new Date("2024-06-15T10:30:00Z"),
+      });
+      expect(screen.getByText("Render failed")).toBeInTheDocument();
+      const trigger = screen.getByText("Render failed").closest("button")!;
+      fireEvent.focus(trigger);
+      expect(screen.getByText("FFmpeg crashed")).toBeInTheDocument();
+    });
+
+    it("tooltip interaction does not trigger row navigation", () => {
+      const onPlay = vi.fn();
+      renderRow({
+        renderState: "failed" as RenderState,
+        renderErrorMessage: "FFmpeg crashed",
+        failedAt: new Date("2024-06-15T10:30:00Z"),
+        onPlay,
+      });
+      const trigger = screen.getByText("Render failed").closest("button")!;
+      fireEvent.focus(trigger);
+      fireEvent.click(trigger);
+      expect(onPlay).not.toHaveBeenCalled();
+    });
   });
 
   describe("stale state badge", () => {

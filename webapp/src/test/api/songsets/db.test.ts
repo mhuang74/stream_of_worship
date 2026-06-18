@@ -312,6 +312,9 @@ describe("listSongsetSummaries", () => {
         latestItemUpdatedAt: null,
         latestJobStatus: null,
         latestJobCompletedAt: null,
+        renderErrorMessage: null,
+        latestJobStartedAt: null,
+        latestJobCreatedAt: null,
       },
     ];
 
@@ -324,6 +327,111 @@ describe("listSongsetSummaries", () => {
     const result = await listSongsetSummaries(1, 50, 0);
 
     expect(result.songsets[0].itemCount).toBe(2);
+  });
+
+  it("returns sanitized failure fields for a latest failed job", async () => {
+    const startedAt = new Date("2024-06-15T10:30:00Z");
+    const mockRows = [
+      {
+        id: "ss-1",
+        name: "Failed Songset",
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        latestRenderJobId: "job-1",
+        lastFailedRenderJobId: "job-1",
+        lastCompletedRenderJobId: null,
+        itemCount: 1,
+        durationSeconds: 120,
+        latestItemUpdatedAt: null,
+        latestJobStatus: "failed",
+        latestJobCompletedAt: null,
+        renderErrorMessage: "FFmpeg crashed",
+        latestJobStartedAt: startedAt,
+        latestJobCreatedAt: new Date("2024-06-15T10:00:00Z"),
+      },
+    ];
+
+    const chain = createSelectChain(mockRows);
+    const countChain = createSelectChain([{ count: 1 }]);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(chain as any)
+      .mockReturnValueOnce(countChain as any);
+
+    const result = await listSongsetSummaries(1, 50, 0);
+
+    expect(result.songsets[0].renderState).toBe("failed");
+    expect(result.songsets[0].renderErrorMessage).toBe("FFmpeg crashed");
+    expect(result.songsets[0].failedAt).toEqual(startedAt);
+  });
+
+  it("returns failedAt from createdAt when startedAt is null", async () => {
+    const createdAt = new Date("2024-06-15T10:00:00Z");
+    const mockRows = [
+      {
+        id: "ss-1",
+        name: "Failed Songset",
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        latestRenderJobId: "job-1",
+        lastFailedRenderJobId: "job-1",
+        lastCompletedRenderJobId: null,
+        itemCount: 1,
+        durationSeconds: 120,
+        latestItemUpdatedAt: null,
+        latestJobStatus: "failed",
+        latestJobCompletedAt: null,
+        renderErrorMessage: "Error",
+        latestJobStartedAt: null,
+        latestJobCreatedAt: createdAt,
+      },
+    ];
+
+    const chain = createSelectChain(mockRows);
+    const countChain = createSelectChain([{ count: 1 }]);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(chain as any)
+      .mockReturnValueOnce(countChain as any);
+
+    const result = await listSongsetSummaries(1, 50, 0);
+
+    expect(result.songsets[0].failedAt).toEqual(createdAt);
+  });
+
+  it("returns null failure fields for non-failed states even when prior failures exist", async () => {
+    const mockRows = [
+      {
+        id: "ss-1",
+        name: "Fresh Songset",
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        latestRenderJobId: "job-2",
+        lastFailedRenderJobId: "job-1",
+        lastCompletedRenderJobId: "job-2",
+        itemCount: 1,
+        durationSeconds: 120,
+        latestItemUpdatedAt: null,
+        latestJobStatus: "completed",
+        latestJobCompletedAt: new Date("2024-06-16T10:30:00Z"),
+        renderErrorMessage: "Old error from job-1",
+        latestJobStartedAt: new Date("2024-06-16T10:00:00Z"),
+        latestJobCreatedAt: new Date("2024-06-16T09:00:00Z"),
+      },
+    ];
+
+    const chain = createSelectChain(mockRows);
+    const countChain = createSelectChain([{ count: 1 }]);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(chain as any)
+      .mockReturnValueOnce(countChain as any);
+
+    const result = await listSongsetSummaries(1, 50, 0);
+
+    expect(result.songsets[0].renderState).toBe("fresh");
+    expect(result.songsets[0].renderErrorMessage).toBeNull();
+    expect(result.songsets[0].failedAt).toBeNull();
   });
 });
 
@@ -574,6 +682,71 @@ describe("getSongsetEditorData", () => {
     const result = await getSongsetEditorData("ss-1", 1);
 
     expect(result!.durationSeconds).toBe(100);
+  });
+
+  it("returns sanitized failure fields for a latest failed job", async () => {
+    const startedAt = new Date("2024-06-15T10:30:00Z");
+    const songsetRow = {
+      id: "ss-1",
+      name: "Failed Songset",
+      description: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      latestRenderJobId: "job-1",
+      lastFailedRenderJobId: "job-1",
+      lastCompletedRenderJobId: null,
+      latestJobStatus: "failed",
+      latestJobCompletedAt: null,
+      renderErrorMessage: "FFmpeg crashed",
+      latestJobStartedAt: startedAt,
+      latestJobCreatedAt: new Date("2024-06-15T10:00:00Z"),
+    };
+
+    const itemRows: any[] = [];
+
+    const songsetChain = createSelectChain([songsetRow]);
+    const itemChain = createSelectChain(itemRows);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(songsetChain as any)
+      .mockReturnValueOnce(itemChain as any);
+
+    const result = await getSongsetEditorData("ss-1", 1);
+
+    expect(result!.renderState).toBe("failed");
+    expect(result!.renderErrorMessage).toBe("FFmpeg crashed");
+    expect(result!.failedAt).toEqual(startedAt);
+  });
+
+  it("returns null failure fields for non-failed states", async () => {
+    const songsetRow = {
+      id: "ss-1",
+      name: "Fresh Songset",
+      description: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      latestRenderJobId: "job-2",
+      lastFailedRenderJobId: "job-1",
+      lastCompletedRenderJobId: "job-2",
+      latestJobStatus: "completed",
+      latestJobCompletedAt: new Date("2024-06-16T10:30:00Z"),
+      renderErrorMessage: "Old error from job-1",
+      latestJobStartedAt: new Date("2024-06-16T10:00:00Z"),
+      latestJobCreatedAt: new Date("2024-06-16T09:00:00Z"),
+    };
+
+    const itemRows: any[] = [];
+
+    const songsetChain = createSelectChain([songsetRow]);
+    const itemChain = createSelectChain(itemRows);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(songsetChain as any)
+      .mockReturnValueOnce(itemChain as any);
+
+    const result = await getSongsetEditorData("ss-1", 1);
+
+    expect(result!.renderState).toBe("fresh");
+    expect(result!.renderErrorMessage).toBeNull();
+    expect(result!.failedAt).toBeNull();
   });
 });
 

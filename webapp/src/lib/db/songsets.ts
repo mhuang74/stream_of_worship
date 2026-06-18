@@ -11,6 +11,7 @@ import {
 import { eq, and, desc, gt, sql, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
+import { sanitizeRenderErrorMessage } from "@/lib/render/error-message";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
 
@@ -113,6 +114,8 @@ export interface SongsetListItem {
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  renderErrorMessage: string | null;
+  failedAt: Date | null;
 }
 
 export interface SongsetItemRecording {
@@ -293,6 +296,9 @@ export async function listSongsetSummaries(
         latestItemUpdatedAt: sql<Date | null>`max(${songsetItems.updatedAt}) filter (where ${recordings.deletedAt} is null)`,
         latestJobStatus: renderJobs.status,
         latestJobCompletedAt: renderJobs.completedAt,
+        renderErrorMessage: sql<string | null>`left(${renderJobs.errorMessage}, 4000)`,
+        latestJobStartedAt: renderJobs.startedAt,
+        latestJobCreatedAt: renderJobs.createdAt,
       })
       .from(songsets)
       .leftJoin(songsetItems, eq(songsetItems.songsetId, songsets.id))
@@ -309,7 +315,10 @@ export async function listSongsetSummaries(
         songsets.lastFailedRenderJobId,
         songsets.lastCompletedRenderJobId,
         renderJobs.status,
-        renderJobs.completedAt
+        renderJobs.completedAt,
+        renderJobs.errorMessage,
+        renderJobs.startedAt,
+        renderJobs.createdAt
       )
       .orderBy(desc(songsets.updatedAt))
       .limit(limit)
@@ -322,25 +331,32 @@ export async function listSongsetSummaries(
 
     return {
       total: Number(countResult[0]?.count ?? 0),
-      songsets: rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        latestRenderJobId: row.latestRenderJobId,
-        lastFailedRenderJobId: row.lastFailedRenderJobId,
-        lastCompletedRenderJobId: row.lastCompletedRenderJobId,
-        itemCount: Number(row.itemCount ?? 0),
-        durationSeconds: row.durationSeconds == null ? null : Number(row.durationSeconds),
-        renderState: mapRenderStateFromSnapshot({
+      songsets: rows.map((row) => {
+        const renderState = mapRenderStateFromSnapshot({
           latestRenderJobId: row.latestRenderJobId,
           lastFailedRenderJobId: row.lastFailedRenderJobId,
           latestJobStatus: row.latestJobStatus,
           latestJobCompletedAt: row.latestJobCompletedAt,
           latestItemUpdatedAt: row.latestItemUpdatedAt,
-        }),
-      })),
+        });
+        const failedAt = row.latestJobStartedAt ?? row.latestJobCreatedAt;
+        return {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          latestRenderJobId: row.latestRenderJobId,
+          lastFailedRenderJobId: row.lastFailedRenderJobId,
+          lastCompletedRenderJobId: row.lastCompletedRenderJobId,
+          itemCount: Number(row.itemCount ?? 0),
+          durationSeconds: row.durationSeconds == null ? null : Number(row.durationSeconds),
+          renderState,
+          renderErrorMessage:
+            renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
+          failedAt: renderState === "failed" ? failedAt : null,
+        };
+      }),
     };
   });
 }
@@ -362,6 +378,9 @@ export async function getSongsetEditorData(
         lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
         latestJobStatus: renderJobs.status,
         latestJobCompletedAt: renderJobs.completedAt,
+        renderErrorMessage: renderJobs.errorMessage,
+        latestJobStartedAt: renderJobs.startedAt,
+        latestJobCreatedAt: renderJobs.createdAt,
       })
       .from(songsets)
       .leftJoin(renderJobs, eq(renderJobs.id, songsets.latestRenderJobId))
@@ -470,6 +489,15 @@ export async function getSongsetEditorData(
         : null,
     }));
 
+    const renderState = mapRenderStateFromSnapshot({
+      latestRenderJobId: row.latestRenderJobId,
+      lastFailedRenderJobId: row.lastFailedRenderJobId,
+      latestJobStatus: row.latestJobStatus,
+      latestJobCompletedAt: row.latestJobCompletedAt,
+      latestItemUpdatedAt,
+    });
+    const failedAt = row.latestJobStartedAt ?? row.latestJobCreatedAt;
+
     return {
       id: row.id,
       name: row.name,
@@ -482,13 +510,10 @@ export async function getSongsetEditorData(
       itemCount: items.length,
       durationSeconds:
         items.reduce((sum, item) => sum + (item.recording?.durationSeconds ?? 0), 0) || null,
-      renderState: mapRenderStateFromSnapshot({
-        latestRenderJobId: row.latestRenderJobId,
-        lastFailedRenderJobId: row.lastFailedRenderJobId,
-        latestJobStatus: row.latestJobStatus,
-        latestJobCompletedAt: row.latestJobCompletedAt,
-        latestItemUpdatedAt,
-      }),
+      renderState,
+      renderErrorMessage:
+        renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
+      failedAt: renderState === "failed" ? failedAt : null,
       items,
     };
   });
@@ -737,6 +762,8 @@ export async function getSongset(
       0
     ) || null,
     renderState,
+    renderErrorMessage: null,
+    failedAt: null,
     items,
   };
 }
@@ -764,6 +791,8 @@ export async function createSongset(
     itemCount: 0,
     durationSeconds: null,
     renderState: "unrendered",
+    renderErrorMessage: null,
+    failedAt: null,
   };
 }
 
@@ -816,6 +845,8 @@ export async function updateSongset(
         0
       ) || null,
     renderState,
+    renderErrorMessage: null,
+    failedAt: null,
   };
 }
 

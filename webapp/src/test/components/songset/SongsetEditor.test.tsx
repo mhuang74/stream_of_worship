@@ -375,4 +375,65 @@ describe("SongsetEditor", () => {
       expect(onRender).toHaveBeenCalled();
     });
   });
+
+  describe("render failure alert", () => {
+    it("shows inline failure alert when renderState is failed", () => {
+      renderEditor({
+        songset: {
+          ...mockSongset,
+          renderState: "failed" as RenderState,
+          renderErrorMessage: "FFmpeg crashed",
+          failedAt: "2024-06-15T10:30:00Z",
+        },
+      });
+      expect(screen.getByText("FFmpeg crashed")).toBeInTheDocument();
+    });
+
+    it("shows fallback text when error message is absent", () => {
+      renderEditor({
+        songset: {
+          ...mockSongset,
+          renderState: "failed" as RenderState,
+          renderErrorMessage: null,
+          failedAt: "2024-06-15T10:30:00Z",
+        },
+      });
+      expect(screen.getByText(/Render failed around/)).toBeInTheDocument();
+      expect(screen.getByText(/Please render again/)).toBeInTheDocument();
+    });
+
+    it("shows generic fallback when both error message and failedAt are absent", () => {
+      renderEditor({
+        songset: {
+          ...mockSongset,
+          renderState: "failed" as RenderState,
+          renderErrorMessage: null,
+          failedAt: null,
+        },
+      });
+      expect(screen.getByText("Render failed. Please render again.")).toBeInTheDocument();
+    });
+
+    it("does not show failure alert when renderState is not failed", () => {
+      renderEditor({
+        songset: { ...mockSongset, renderState: "fresh" as RenderState },
+      });
+      expect(screen.queryByText("Render again")).not.toBeInTheDocument();
+    });
+
+    it("Render again button calls onRender", () => {
+      const onRender = vi.fn();
+      renderEditor({
+        songset: {
+          ...mockSongset,
+          renderState: "failed" as RenderState,
+          renderErrorMessage: "FFmpeg crashed",
+          failedAt: "2024-06-15T10:30:00Z",
+        },
+        onRender,
+      });
+      fireEvent.click(screen.getByRole("button", { name: /render again/i }));
+      expect(onRender).toHaveBeenCalled();
+    });
+  });
 });

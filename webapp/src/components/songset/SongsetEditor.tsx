@@ -24,10 +24,11 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle, AlertAction } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { getRenderFailureText } from "@/lib/render/error-message";
 import {
   ArrowLeft,
   MoreVertical,
@@ -38,6 +39,7 @@ import {
   Trash2,
   Share2,
   AlertTriangle,
+  AlertCircle,
   X,
   Monitor,
   Plus,
@@ -56,6 +58,8 @@ export interface SongsetEditorProps {
     latestRenderJobId: string | null;
     lastFailedRenderJobId: string | null;
     lastCompletedRenderJobId: string | null;
+    renderErrorMessage?: string | null;
+    failedAt?: string | null;
     updatedAt: string;
   };
   items: SongListItem[];
@@ -255,7 +259,11 @@ export function SongsetEditor({
           </div>
 
           {/* Render status badge */}
-          <RenderStatusBadge state={songset.renderState} />
+          <RenderStatusBadge
+            state={songset.renderState}
+            errorMessage={songset.renderErrorMessage}
+            failedAt={songset.failedAt ? new Date(songset.failedAt) : null}
+          />
 
           {/* Overflow menu */}
           <DropdownMenu>
@@ -316,6 +324,25 @@ export function SongsetEditor({
           </DropdownMenu>
         </div>
       </header>
+
+      {/* Render failure alert */}
+      {songset.renderState === "failed" && (
+        <Alert variant="destructive" className="rounded-none border-x-0">
+          <AlertCircle className="size-4" />
+          <AlertTitle>Render failed</AlertTitle>
+          <AlertDescription>
+            {getRenderFailureText(
+              songset.renderErrorMessage,
+              songset.failedAt ? new Date(songset.failedAt) : null
+            )}
+          </AlertDescription>
+          <AlertAction>
+            <Button size="sm" variant="outline" onClick={onRender}>
+              Render again
+            </Button>
+          </AlertAction>
+        </Alert>
+      )}
 
       {/* Stale banner */}
       {songset.isArtifactsStale && !isStaleBannerDismissed && (

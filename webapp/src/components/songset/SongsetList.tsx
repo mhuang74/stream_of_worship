@@ -30,6 +30,8 @@ export interface Songset {
   isArtifactsStale?: boolean;
   latestRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  renderErrorMessage?: string | null;
+  failedAt?: Date | null;
 }
 
 interface SongsetListProps {

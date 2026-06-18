@@ -21,6 +21,7 @@ export default async function SongsetsPage() {
           ...songset,
           createdAt: songset.createdAt.toISOString(),
           updatedAt: songset.updatedAt.toISOString(),
+          failedAt: songset.failedAt?.toISOString() ?? null,
         })),
       }}
     />
