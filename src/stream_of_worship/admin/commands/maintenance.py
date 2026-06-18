@@ -437,22 +437,22 @@ def diagnose_render_failures(
     _print_manifest(rows, format_)
 
 
-def _sort_by_last_modified_desc(rows: list[dict]) -> list[dict]:
-    """Sort rows by last_modified DESC. None/empty values sort last."""
+def _sort_by_last_modified_asc(rows: list[dict]) -> list[dict]:
+    """Sort rows by last_modified ASC (oldest first). None/empty values sort last."""
 
     def sort_key(row):
         ts = row.get("last_modified")
         if not ts:
-            return (0, datetime.min)
+            return (1, datetime.min)
         try:
             dt = datetime.fromisoformat(ts)
             if dt.tzinfo is not None:
                 dt = dt.replace(tzinfo=None)
-            return (1, dt)
+            return (0, dt)
         except (ValueError, TypeError):
-            return (0, datetime.min)
+            return (1, datetime.min)
 
-    return sorted(rows, key=sort_key, reverse=True)
+    return sorted(rows, key=sort_key)
 
 
 def _orphan_r2_prefixes(
@@ -488,7 +488,7 @@ def list_r2_waste(
     config, db_client = _load_clients(config_path)
     r2_client = _load_r2(config)
     rows = _orphan_r2_prefixes(db_client, r2_client, config.r2_waste_blacklist)
-    rows = _sort_by_last_modified_desc(rows)
+    rows = _sort_by_last_modified_asc(rows)
     effective_limit = None if all_ else limit
     if effective_limit is not None:
         rows = rows[:effective_limit]
@@ -500,6 +500,11 @@ def purge_r2_waste(
     prefixes: list[str] = typer.Option([], "--prefix"),
     all_: bool = typer.Option(False, "--all"),
     confirm: bool = typer.Option(False, "--confirm"),
+    stems_only: bool = typer.Option(
+        False,
+        "--stems-only",
+        help="Delete only {prefix}/stems/ objects, not the entire prefix",
+    ),
     format_: str = typer.Option("table", "--format", help="table|json"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
@@ -511,11 +516,21 @@ def purge_r2_waste(
     r2_client = _load_r2(config)
     if all_:
         rows = _orphan_r2_prefixes(db_client, r2_client, config.r2_waste_blacklist)
+        if stems_only:
+            for row in rows:
+                stems_summary = r2_client.list_stems(row["prefix"])
+                row["object_count"] = stems_summary.object_count
+                row["total_bytes"] = stems_summary.total_bytes
+                row["last_modified"] = stems_summary.last_modified
     else:
         rows = []
         for prefix in prefixes:
             validated = R2Client.validate_recording_hash_prefix(prefix)
-            summary = r2_client.list_prefix(validated)
+            summary = (
+                r2_client.list_stems(validated)
+                if stems_only
+                else r2_client.list_prefix(validated)
+            )
             rows.append(
                 {
                     "prefix": validated,
@@ -527,6 +542,7 @@ def purge_r2_waste(
                     ),
                 }
             )
+    rows = _sort_by_last_modified_asc(rows)
     for row in rows:
         blocked = []
         if db_client.recording_row_exists(row["prefix"]):
@@ -536,7 +552,11 @@ def purge_r2_waste(
         row["action"] = "purge" if not blocked else "blocked"
         row["blocked_reasons"] = ",".join(blocked)
         if confirm and not blocked:
-            summary: R2PrefixSummary = r2_client.delete_prefix(row["prefix"])
+            summary: R2PrefixSummary = (
+                r2_client.delete_stems(row["prefix"])
+                if stems_only
+                else r2_client.delete_prefix(row["prefix"])
+            )
             row["deleted_object_count"] = summary.object_count
     _print_manifest(rows, format_)
     if not confirm:

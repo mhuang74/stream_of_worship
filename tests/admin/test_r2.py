@@ -203,6 +203,168 @@ class TestPrefixMaintenance:
             R2Client(bucket="b", endpoint_url="http://localhost")
 
 
+class TestStemsMaintenance:
+    """Tests for R2Client.list_stems and R2Client.delete_stems."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_list_stems_uses_stems_prefix(self, mock_boto_client, r2_env):
+        """list_stems paginates with Prefix={hash}/stems/."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": "abc123def456/stems/bass.wav",
+                        "Size": 49_140_000,
+                        "LastModified": datetime(2024, 1, 1),
+                    },
+                    {
+                        "Key": "abc123def456/stems/drums.wav",
+                        "Size": 49_140_000,
+                        "LastModified": datetime(2024, 1, 2),
+                    },
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.list_stems("abc123def456")
+
+        assert summary.object_count == 2
+        assert summary.total_bytes == 98_280_000
+        assert summary.prefix == "abc123def456/stems"
+        paginator.paginate.assert_called_once_with(
+            Bucket="sow-audio",
+            Prefix="abc123def456/stems/",
+            PaginationConfig={"PageSize": 100},
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_list_stems_returns_empty_when_no_stems(self, mock_boto_client, r2_env):
+        """list_stems returns zero-count summary when no stems exist."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.list_stems("abc123def456")
+
+        assert summary.object_count == 0
+        assert summary.total_bytes == 0
+        assert summary.last_modified is None
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_list_stems_tracks_latest_last_modified(self, mock_boto_client, r2_env):
+        """list_stems picks the most recent LastModified across all stem objects."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        latest = datetime(2024, 3, 8, 17, 46, 27)
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": "abc123def456/stems/bass.wav",
+                        "Size": 100,
+                        "LastModified": datetime(2024, 2, 7, 20, 15, 10),
+                    },
+                    {
+                        "Key": "abc123def456/stems/vocals_clean.wav",
+                        "Size": 200,
+                        "LastModified": latest,
+                    },
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.list_stems("abc123def456")
+
+        assert summary.last_modified == latest.isoformat()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_stems_deletes_only_stems_objects(self, mock_boto_client, r2_env):
+        """delete_stems collects keys under {hash}/stems/ and batch-deletes them."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        keys = [
+            f"abc123def456/stems/{stem}.wav"
+            for stem in ("bass", "drums", "other", "vocals", "vocals_clean")
+        ]
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": key,
+                        "Size": 49_000_000,
+                        "LastModified": datetime(2024, 1, 1),
+                    }
+                    for key in keys
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.delete_stems("abc123def456")
+
+        assert summary.object_count == 5
+        assert summary.total_bytes == 245_000_000
+        mock_s3.delete_objects.assert_called_once()
+        delete_call = mock_s3.delete_objects.call_args
+        assert delete_call.kwargs["Bucket"] == "sow-audio"
+        deleted_keys = [obj["Key"] for obj in delete_call.kwargs["Delete"]["Objects"]]
+        assert deleted_keys == keys
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_stems_returns_empty_when_no_stems(self, mock_boto_client, r2_env):
+        """delete_stems returns zero-count summary when no stems exist."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.delete_stems("abc123def456")
+
+        assert summary.object_count == 0
+        mock_s3.delete_objects.assert_not_called()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_stems_batches_100_objects(self, mock_boto_client, r2_env):
+        """delete_stems splits deletes into 100-object batches."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": f"abc123def456/stems/stem-{idx}.wav",
+                        "Size": 1,
+                        "LastModified": datetime(2024, 1, 1),
+                    }
+                    for idx in range(205)
+                ]
+            }
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        summary = client.delete_stems("abc123def456")
+
+        assert summary.object_count == 205
+        assert mock_s3.delete_objects.call_count == 3
+
+
 class TestUploadAudio:
     """Tests for R2Client.upload_audio."""
 
