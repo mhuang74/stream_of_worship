@@ -782,12 +782,13 @@ def restore_r2(
     ]
 
     if format_ == "json":
-        _print_json_to_stdout(
-            {
-                "plan": rows_data,
-                "confirm": confirm,
-            }
-        )
+        if not confirm:
+            _print_json_to_stdout(
+                {
+                    "plan": rows_data,
+                    "confirm": confirm,
+                }
+            )
     else:
         table = Table(title="Restore Plan" + (" (DRY RUN)" if not confirm else ""))
         table.add_column("Key")
