@@ -207,6 +207,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       const removedIndex = items.findIndex((item) => item.id === itemId);
       const prevRenderState = songset?.renderState;
       const prevIsArtifactsStale = songset?.isArtifactsStale;
+      const prevRenderErrorMessage = songset?.renderErrorMessage;
+      const prevFailedAt = songset?.failedAt;
 
       setItems((prev) => prev.filter((item) => item.id !== itemId));
       setSongset((prev) =>
@@ -247,6 +249,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
                   itemCount: prev.itemCount + 1,
                   renderState: prevRenderState ?? prev.renderState,
                   isArtifactsStale: prevIsArtifactsStale ?? prev.isArtifactsStale,
+                  renderErrorMessage: prevRenderErrorMessage ?? prev.renderErrorMessage,
+                  failedAt: prevFailedAt ?? prev.failedAt,
                 }
               : prev
           );
@@ -256,7 +260,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         setIsRemoving(false);
       }
     },
-    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState]
+    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState, songset?.renderErrorMessage, songset?.failedAt]
   );
 
   // Handle transition update
