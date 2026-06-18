@@ -783,10 +783,12 @@ class R2Client:
         Returns:
             S3-style URL of the uploaded object
         """
+        from boto3.s3.transfer import TransferConfig
         self._client.upload_fileobj(
             Fileobj=fileobj,
             Bucket=self.bucket,
             Key=s3_key,
             ExtraArgs=extra_args or {},
+            Config=TransferConfig(use_threads=False),
         )
         return f"s3://{self.bucket}/{s3_key}"

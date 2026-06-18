@@ -1096,6 +1096,7 @@ class TestUploadFileobj:
     def test_upload_fileobj_with_extra_args(self, mock_boto_client, r2_env):
         """upload_fileobj passes ExtraArgs for metadata preservation."""
         import io
+        from unittest.mock import ANY
 
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -1115,12 +1116,14 @@ class TestUploadFileobj:
             Bucket="sow-audio",
             Key="abc123/audio.mp3",
             ExtraArgs=extra_args,
+            Config=ANY,
         )
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
     def test_upload_fileobj_without_extra_args(self, mock_boto_client, r2_env):
         """upload_fileobj works without extra_args."""
         import io
+        from unittest.mock import ANY
 
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -1136,4 +1139,5 @@ class TestUploadFileobj:
             Bucket="sow-audio",
             Key="abc123/audio.mp3",
             ExtraArgs={},
+            Config=ANY,
         )

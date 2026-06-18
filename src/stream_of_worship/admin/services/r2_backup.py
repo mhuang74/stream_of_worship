@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from botocore.exceptions import ClientError
 from stream_of_worship.admin.services.r2 import R2Client
 
 MANIFEST_VERSION = 3
@@ -179,7 +180,13 @@ def _check_disk_space(path: Path, required_bytes: int) -> None:
     Raises:
         BackupError: If insufficient disk space.
     """
-    usage = shutil.disk_usage(str(path))
+    check_path = path
+    while not check_path.exists() and check_path != check_path.parent:
+        check_path = check_path.parent
+    try:
+        usage = shutil.disk_usage(str(check_path))
+    except OSError as e:
+        raise BackupError(f"Failed to check disk space at {check_path}: {e}")
     if usage.free < required_bytes:
         raise BackupError(
             f"Insufficient disk space: {usage.free} bytes available, "
@@ -238,77 +245,94 @@ def _download_object_to_tar(
 ) -> dict:
     """Download a single object into a tar member with consistency checking.
 
+    Downloads to a temporary file first to avoid corrupting the tar archive
+    on retry. Only writes to the tar once the download is fully verified.
+
     Returns the manifest object entry on success.
 
     Raises:
         BackupError: If the object cannot be captured consistently.
     """
+    import tempfile
+
     last_error: Optional[str] = None
     for attempt in range(max_retries + 1):
+        temp_path: Optional[Path] = None
         try:
             resp = r2_client.get_object_stream(inv_obj.key)
             body = resp["body"]
             content_length = resp["content_length"]
-            hashing_reader = HashingReader(body)
-
-            tar_info = tarfile.TarInfo(name=member_name)
-            tar_info.size = content_length
-            tar_info.mtime = 0
-            tar_info.mode = 0o644
-            tar_info.type = tarfile.REGTYPE
 
             try:
-                tar.addfile(tar_info, hashing_reader)
-            except OSError as e:
+                # Download to a temporary file first to avoid corrupting
+                # the tar archive on failure
+                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                    temp_path = Path(temp_file.name)
+                    hashing_reader = HashingReader(body)
+                    shutil.copyfileobj(hashing_reader, temp_file)
+
+                if hashing_reader.bytes_read != content_length:
+                    raise BackupError(
+                        f"Short read for {inv_obj.key}: expected {content_length} bytes, "
+                        f"got {hashing_reader.bytes_read}"
+                    )
+
+                if hashing_reader.bytes_read != inv_obj.size:
+                    raise BackupError(
+                        f"Size mismatch for {inv_obj.key}: inventory says {inv_obj.size}, "
+                        f"downloaded {hashing_reader.bytes_read}"
+                    )
+
+                sha256 = hashing_reader.sha256_hex
+
+                # Post-download head check for consistency
+                head_data = r2_client.head_object(inv_obj.key)
+                if head_data is None:
+                    raise BackupError(
+                        f"Object {inv_obj.key} disappeared during backup"
+                    )
+
+                if head_data["size"] != inv_obj.size:
+                    raise BackupError(
+                        f"Object {inv_obj.key} size changed: inventory {inv_obj.size}, "
+                        f"post-download {head_data['size']}"
+                    )
+
+                if head_data["etag"] != inv_obj.etag:
+                    raise BackupError(
+                        f"Object {inv_obj.key} ETag changed: inventory {inv_obj.etag}, "
+                        f"post-download {head_data['etag']}"
+                    )
+
+                # Successfully verified, now add to tar archive
+                tar_info = tarfile.TarInfo(name=member_name)
+                tar_info.size = hashing_reader.bytes_read
+                tar_info.mtime = 0
+                tar_info.mode = 0o644
+                tar_info.type = tarfile.REGTYPE
+
+                with open(temp_path, "rb") as f_in:
+                    tar.addfile(tar_info, f_in)
+
+                return _build_manifest_object(
+                    inv_obj, member_name, sha256, 0, head_data
+                )
+            finally:
                 body.close()
-                raise BackupError(
-                    f"Short read for {inv_obj.key}: expected {content_length} bytes, "
-                    f"got {hashing_reader.bytes_read}: {e}"
-                )
-            body.close()
 
-            if hashing_reader.bytes_read != content_length:
-                raise BackupError(
-                    f"Short read for {inv_obj.key}: expected {content_length} bytes, "
-                    f"got {hashing_reader.bytes_read}"
-                )
-
-            if hashing_reader.bytes_read != inv_obj.size:
-                raise BackupError(
-                    f"Size mismatch for {inv_obj.key}: inventory says {inv_obj.size}, "
-                    f"downloaded {hashing_reader.bytes_read}"
-                )
-
-            sha256 = hashing_reader.sha256_hex
-
-            # Post-download head check for consistency
-            head_data = r2_client.head_object(inv_obj.key)
-            if head_data is None:
-                raise BackupError(
-                    f"Object {inv_obj.key} disappeared during backup"
-                )
-
-            if head_data["size"] != inv_obj.size:
-                raise BackupError(
-                    f"Object {inv_obj.key} size changed: inventory {inv_obj.size}, "
-                    f"post-download {head_data['size']}"
-                )
-
-            if head_data["etag"] != inv_obj.etag:
-                raise BackupError(
-                    f"Object {inv_obj.key} ETag changed: inventory {inv_obj.etag}, "
-                    f"post-download {head_data['etag']}"
-                )
-
-            return _build_manifest_object(
-                inv_obj, member_name, sha256, 0, head_data
-            )
-
-        except BackupError as e:
+        except (BackupError, ClientError) as e:
             last_error = str(e)
             if attempt < max_retries:
                 continue
-            raise
+            raise BackupError(
+                f"Failed to backup {inv_obj.key} after retries: {last_error}"
+            ) from e
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
     raise BackupError(f"Failed to backup {inv_obj.key} after retries: {last_error}")
 
@@ -445,7 +469,7 @@ def write_backup(
             manifest=manifest,
         )
 
-    except Exception:
+    except BaseException:
         if current_tar is not None:
             try:
                 current_tar.close()
@@ -532,10 +556,10 @@ def _validate_manifest_invariants(manifest: dict) -> list[str]:
             continue
         if os.path.isabs(name):
             errors.append(f"Absolute member name: {name}")
-        normalized = os.path.normpath(name)
+        normalized = os.path.normpath(name).replace("\\", "/")
         if normalized.startswith(".."):
             errors.append(f"Member name escapes directory: {name}")
-        if not name.startswith("objects/"):
+        if not normalized.startswith("objects/"):
             errors.append(f"Member name not under objects/: {name}")
 
     return errors
@@ -571,6 +595,8 @@ def verify_archive(dir_path: Path) -> VerifyResult:
         return VerifyResult(ok=False, errors=[str(e)])
     except json.JSONDecodeError as e:
         return VerifyResult(ok=False, errors=[f"Invalid manifest JSON: {e}"])
+    except OSError as e:
+        return VerifyResult(ok=False, errors=[f"Failed to read manifest: {e}"])
 
     errors.extend(_validate_manifest_invariants(manifest))
 
@@ -656,17 +682,18 @@ def verify_archive(dir_path: Path) -> VerifyResult:
                             f"Missing member {expected_name} in {chunk_file.name}"
                         )
 
-        except tarfile.TarError as e:
+        except (tarfile.TarError, OSError) as e:
             errors.append(f"Cannot read tar {chunk_file.name}: {e}")
 
     # Check for extra chunk files
     for entry in dir_path.iterdir():
-        if entry.name.startswith("chunk-") and entry.name.endswith(".tar"):
-            try:
-                ci = int(entry.name[6:12])
+        if entry.is_file() and entry.name.startswith("chunk-") and entry.name.endswith(".tar"):
+            match = re.match(r"^chunk-(\d+)\.tar$", entry.name)
+            if match:
+                ci = int(match.group(1))
                 if ci >= chunk_count:
                     errors.append(f"Extra chunk file: {entry.name}")
-            except ValueError:
+            else:
                 errors.append(f"Unparseable chunk file name: {entry.name}")
 
     return VerifyResult(
@@ -731,35 +758,38 @@ def plan_restore(
     objects = manifest.get("objects", [])
     plan = RestorePlan()
 
-    for obj in objects:
-        key = obj["key"]
-        if prefixes:
-            if not any(key.startswith(p) for p in prefixes):
-                continue
+    try:
+        for obj in objects:
+            key = obj["key"]
+            if prefixes:
+                if not any(key.startswith(p) for p in prefixes):
+                    continue
 
-        head = r2_client.head_object(key)
-        target_exists = head is not None
+            head = r2_client.head_object(key)
+            target_exists = head is not None
 
-        if not target_exists:
-            action = "create"
-        elif skip_existing:
-            action = "skip"
-        elif overwrite_existing:
-            action = "overwrite"
-        else:
-            action = "conflict"
+            if not target_exists:
+                action = "create"
+            elif skip_existing:
+                action = "skip"
+            elif overwrite_existing:
+                action = "overwrite"
+            else:
+                action = "conflict"
 
-        plan.rows.append(
-            RestorePlanRow(
-                key=key,
-                member_name=obj["member_name"],
-                chunk_index=obj["chunk_index"],
-                size=obj["size"],
-                sha256=obj["sha256"],
-                action=action,
-                target_exists=target_exists,
+            plan.rows.append(
+                RestorePlanRow(
+                    key=key,
+                    member_name=obj["member_name"],
+                    chunk_index=obj["chunk_index"],
+                    size=obj["size"],
+                    sha256=obj["sha256"],
+                    action=action,
+                    target_exists=target_exists,
+                )
             )
-        )
+    except ClientError as e:
+        raise RestoreError(f"Failed to check target object metadata: {e}") from e
 
     return plan
 
@@ -864,18 +894,18 @@ def restore_from_archive(
                             )
                             continue
 
-                        obj_entry = obj_by_key.get(row.key, {})
-                        extra_args = _build_extra_args(obj_entry)
+                        with f:
+                            obj_entry = obj_by_key.get(row.key, {})
+                            extra_args = _build_extra_args(obj_entry)
 
-                        r2_client.upload_fileobj(
-                            f, row.key, extra_args=extra_args
-                        )
-                        f.close()
+                            r2_client.upload_fileobj(
+                                f, row.key, extra_args=extra_args
+                            )
                         result.uploaded += 1
                     except Exception as e:
                         result.failed += 1
                         result.failures.append({"key": row.key, "error": str(e)})
-        except tarfile.TarError as e:
+        except (tarfile.TarError, OSError) as e:
             for row in rows:
                 result.failed += 1
                 result.failures.append(
