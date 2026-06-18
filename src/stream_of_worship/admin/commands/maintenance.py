@@ -1,6 +1,7 @@
 """Maintenance commands for soft-deleted catalog data and R2 cleanup."""
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -13,6 +14,20 @@ from stream_of_worship.admin.commands.catalog import get_db_client
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.services.r2 import R2Client, R2PrefixSummary
+from stream_of_worship.admin.services.r2_backup import (
+    DEFAULT_CHUNK_SIZE_BYTES,
+    MIN_CHUNK_SIZE_BYTES,
+    BackupError,
+    RestoreError,
+    VerifyError,
+    build_inventory,
+    load_manifest,
+    parse_size,
+    plan_restore,
+    restore_from_archive,
+    verify_archive,
+    write_backup,
+)
 
 console = Console()
 app = typer.Typer(help="Safe catalog and storage maintenance")
@@ -561,3 +576,273 @@ def purge_r2_waste(
     _print_manifest(rows, format_)
     if not confirm:
         console.print("[yellow]Dry run only. Re-run with --confirm to apply.[/yellow]")
+
+
+# ------------------------------------------------------------------
+# R2 Backup / Restore commands
+# ------------------------------------------------------------------
+
+BACKUP_FORMAT_VALUES = {"table", "json"}
+
+
+def _print_json_to_stdout(data: object) -> None:
+    """Print JSON to stdout only (for --format json mode)."""
+    print(json.dumps(data, default=str, ensure_ascii=False, indent=2))
+
+
+def _print_backup_summary_table(result, output_dir: Path) -> None:
+    table = Table(title="R2 Backup Complete")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Output directory", str(output_dir))
+    table.add_row("Object count", str(result.object_count))
+    table.add_row("Total bytes", str(result.total_bytes))
+    table.add_row("Chunk count", str(result.chunk_count))
+    console.print(table)
+
+
+@app.command("backup-r2")
+def backup_r2(
+    output: Path = typer.Option(..., "--output", help="Output directory for backup"),
+    chunk_size: str = typer.Option(
+        "10GiB", "--chunk-size", help="Chunk size (e.g. 10GiB, 500MiB, raw bytes)"
+    ),
+    format_: str = typer.Option("table", "--format", help="table|json"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Backup entire R2 bucket to a local directory with chunked tar archives."""
+    _validate_choice(format_, BACKUP_FORMAT_VALUES, "--format")
+
+    try:
+        chunk_size_bytes = parse_size(chunk_size)
+    except ValueError as e:
+        console.print(f"[red]Invalid --chunk-size: {e}[/red]")
+        raise typer.Exit(1)
+
+    if chunk_size_bytes < MIN_CHUNK_SIZE_BYTES:
+        console.print(
+            f"[red]Chunk size {chunk_size_bytes} is below minimum "
+            f"{MIN_CHUNK_SIZE_BYTES} (64MiB)[/red]"
+        )
+        raise typer.Exit(1)
+
+    config, _ = _load_clients(config_path)
+    r2_client = _load_r2(config)
+
+    if format_ == "json":
+        progress_console = Console(file=sys.stderr)
+    else:
+        progress_console = console
+
+    progress_console.print("[cyan]Building R2 inventory...[/cyan]")
+    inventory = build_inventory(r2_client)
+    progress_console.print(
+        f"[green]Inventory complete: {inventory.object_count} objects, "
+        f"{inventory.total_bytes} bytes[/green]"
+    )
+
+    try:
+        result = write_backup(
+            r2_client=r2_client,
+            output_dir=output,
+            inventory=inventory,
+            chunk_size_bytes=chunk_size_bytes,
+        )
+    except BackupError as e:
+        console.print(f"[red]Backup failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    if format_ == "json":
+        _print_json_to_stdout(
+            {
+                "output_dir": str(result.output_dir),
+                "object_count": result.object_count,
+                "total_bytes": result.total_bytes,
+                "chunk_count": result.chunk_count,
+            }
+        )
+    else:
+        _print_backup_summary_table(result, output)
+
+
+@app.command("verify-r2-backup")
+def verify_r2_backup(
+    dir: Path = typer.Option(..., "--dir", help="Backup directory to verify"),
+    format_: str = typer.Option("table", "--format", help="table|json"),
+) -> None:
+    """Verify a local R2 backup archive without R2 credentials."""
+    _validate_choice(format_, BACKUP_FORMAT_VALUES, "--format")
+
+    if not dir.is_dir():
+        console.print(f"[red]Directory not found: {dir}[/red]")
+        raise typer.Exit(1)
+
+    result = verify_archive(dir)
+
+    if format_ == "json":
+        _print_json_to_stdout(
+            {
+                "ok": result.ok,
+                "errors": result.errors,
+                "object_count": result.object_count,
+                "total_bytes": result.total_bytes,
+                "chunk_count": result.chunk_count,
+            }
+        )
+    else:
+        if result.ok:
+            console.print(
+                f"[green]Verification OK: {result.object_count} objects, "
+                f"{result.total_bytes} bytes, {result.chunk_count} chunks[/green]"
+            )
+        else:
+            console.print(f"[red]Verification failed with {len(result.errors)} error(s):[/red]")
+            for err in result.errors:
+                console.print(f"  [red]- {err}[/red]")
+
+    if not result.ok:
+        raise typer.Exit(1)
+
+
+@app.command("restore-r2")
+def restore_r2(
+    dir: Path = typer.Option(..., "--dir", help="Backup directory to restore from"),
+    prefixes: list[str] = typer.Option(
+        [], "--prefix", help="Only restore objects with this key prefix (repeatable)"
+    ),
+    skip_existing: bool = typer.Option(
+        False, "--skip-existing", help="Skip existing target objects"
+    ),
+    overwrite_existing: bool = typer.Option(
+        False, "--overwrite-existing", help="Overwrite existing target objects"
+    ),
+    confirm: bool = typer.Option(
+        False, "--confirm", help="Perform restore (default is dry-run)"
+    ),
+    format_: str = typer.Option("table", "--format", help="table|json"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Restore R2 objects from a local backup archive."""
+    _validate_choice(format_, BACKUP_FORMAT_VALUES, "--format")
+
+    if skip_existing and overwrite_existing:
+        console.print(
+            "[red]--skip-existing and --overwrite-existing are mutually exclusive.[/red]"
+        )
+        raise typer.Exit(1)
+
+    if not dir.is_dir():
+        console.print(f"[red]Backup directory not found: {dir}[/red]")
+        raise typer.Exit(1)
+
+    # Always verify before restore
+    verify_result = verify_archive(dir)
+    if not verify_result.ok:
+        console.print("[red]Backup verification failed. Cannot restore.[/red]")
+        for err in verify_result.errors:
+            console.print(f"  [red]- {err}[/red]")
+        raise typer.Exit(1)
+
+    manifest = load_manifest(dir)
+
+    config, _ = _load_clients(config_path)
+    r2_client = _load_r2(config)
+
+    # Build restore plan
+    try:
+        plan = plan_restore(
+            r2_client=r2_client,
+            manifest=manifest,
+            prefixes=prefixes if prefixes else None,
+            skip_existing=skip_existing,
+            overwrite_existing=overwrite_existing,
+        )
+    except RestoreError as e:
+        console.print(f"[red]Restore planning failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not plan.rows:
+        if format_ == "json":
+            _print_json_to_stdout(
+                {"uploaded": 0, "skipped": 0, "conflicts": 0, "failed": 0, "message": "No objects matched"}
+            )
+        else:
+            console.print("[yellow]No objects matched the filter. Nothing to restore.[/yellow]")
+        return
+
+    # Print plan
+    rows_data = [
+        {
+            "key": r.key,
+            "action": r.action,
+            "size": r.size,
+            "chunk_index": r.chunk_index,
+        }
+        for r in plan.rows
+    ]
+
+    if format_ == "json":
+        _print_json_to_stdout(
+            {
+                "plan": rows_data,
+                "confirm": confirm,
+            }
+        )
+    else:
+        table = Table(title="Restore Plan" + (" (DRY RUN)" if not confirm else ""))
+        table.add_column("Key")
+        table.add_column("Action")
+        table.add_column("Size")
+        for row in rows_data:
+            table.add_row(row["key"], row["action"], str(row["size"]))
+        console.print(table)
+
+    if not confirm:
+        if format_ != "json":
+            console.print("[yellow]Dry run only. Re-run with --confirm to apply.[/yellow]")
+        return
+
+    # Abort on conflicts
+    if plan.has_conflicts:
+        conflict_count = sum(1 for r in plan.rows if r.action == "conflict")
+        console.print(
+            f"[red]Aborting: {conflict_count} conflict(s) detected. "
+            "Use --skip-existing or --overwrite-existing.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Execute restore
+    try:
+        result = restore_from_archive(
+            r2_client=r2_client,
+            dir_path=dir,
+            manifest=manifest,
+            plan=plan,
+            confirm=confirm,
+        )
+    except RestoreError as e:
+        console.print(f"[red]Restore failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    if format_ == "json":
+        _print_json_to_stdout(
+            {
+                "uploaded": result.uploaded,
+                "skipped": result.skipped,
+                "conflicts": result.conflicts,
+                "failed": result.failed,
+                "failures": result.failures,
+            }
+        )
+    else:
+        console.print(
+            f"[green]Restore complete: {result.uploaded} uploaded, "
+            f"{result.skipped} skipped, {result.conflicts} conflicts, "
+            f"{result.failed} failed[/green]"
+        )
+        if result.failures:
+            for fail in result.failures:
+                console.print(f"  [red]- {fail['key']}: {fail['error']}[/red]")
+
+    if result.failed > 0:
+        raise typer.Exit(1)

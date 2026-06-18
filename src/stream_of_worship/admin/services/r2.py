@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 import boto3
 from botocore.config import Config
@@ -688,3 +688,105 @@ class R2Client:
             pass
 
         return official_url
+
+    # ------------------------------------------------------------------
+    # Backup / restore oriented methods
+    # ------------------------------------------------------------------
+
+    def iter_objects(self) -> Iterator[dict]:
+        """Iterate over all objects in the bucket using list_objects_v2 paginator.
+
+        Yields:
+            dict with keys: key, size, etag, last_modified
+        """
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, PaginationConfig={"PageSize": 1000}):
+            for obj in page.get("Contents", []):
+                yield {
+                    "key": obj["Key"],
+                    "size": int(obj.get("Size") or 0),
+                    "etag": (obj.get("ETag") or "").strip('"'),
+                    "last_modified": self._last_modified_to_str(obj.get("LastModified")),
+                }
+
+    def get_object_stream(self, s3_key: str) -> dict:
+        """Stream an object from R2 via get_object.
+
+        Args:
+            s3_key: Full S3 key (path within bucket)
+
+        Returns:
+            dict with keys: body (streaming body), content_length, etag,
+            last_modified, content_type, cache_control, content_disposition,
+            content_encoding, metadata
+
+        Raises:
+            ClientError: On any R2 error (including 404).
+        """
+        resp = self._client.get_object(Bucket=self.bucket, Key=s3_key)
+        return {
+            "body": resp["Body"],
+            "content_length": int(resp.get("ContentLength") or 0),
+            "etag": (resp.get("ETag") or "").strip('"'),
+            "last_modified": self._last_modified_to_str(resp.get("LastModified")),
+            "content_type": resp.get("ContentType"),
+            "cache_control": resp.get("CacheControl"),
+            "content_disposition": resp.get("ContentDisposition"),
+            "content_encoding": resp.get("ContentEncoding"),
+            "metadata": resp.get("Metadata") or {},
+        }
+
+    def head_object(self, s3_key: str) -> Optional[dict]:
+        """Head an object to get metadata without downloading body.
+
+        Args:
+            s3_key: Full S3 key (path within bucket)
+
+        Returns:
+            dict with keys: size, etag, last_modified, content_type,
+            cache_control, content_disposition, content_encoding, metadata;
+            or None on 404/NoSuchKey.
+
+        Raises:
+            ClientError: On non-404 errors.
+        """
+        try:
+            resp = self._client.head_object(Bucket=self.bucket, Key=s3_key)
+            return {
+                "size": int(resp.get("ContentLength") or 0),
+                "etag": (resp.get("ETag") or "").strip('"'),
+                "last_modified": self._last_modified_to_str(resp.get("LastModified")),
+                "content_type": resp.get("ContentType"),
+                "cache_control": resp.get("CacheControl"),
+                "content_disposition": resp.get("ContentDisposition"),
+                "content_encoding": resp.get("ContentEncoding"),
+                "metadata": resp.get("Metadata") or {},
+            }
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+
+    def upload_fileobj(
+        self, fileobj, s3_key: str, extra_args: Optional[dict] = None
+    ) -> str:
+        """Upload a file-like object to R2 with optional metadata/content headers.
+
+        Args:
+            fileobj: A readable file-like object
+            s3_key: Full S3 key (path within bucket)
+            extra_args: Optional dict of extra args for upload_fileobj
+                (ContentType, CacheControl, ContentDisposition,
+                ContentEncoding, Metadata, etc.)
+
+        Returns:
+            S3-style URL of the uploaded object
+        """
+        self._client.upload_fileobj(
+            Fileobj=fileobj,
+            Bucket=self.bucket,
+            Key=s3_key,
+            ExtraArgs=extra_args or {},
+        )
+        return f"s3://{self.bucket}/{s3_key}"
