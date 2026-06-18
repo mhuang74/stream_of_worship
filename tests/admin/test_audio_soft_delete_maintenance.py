@@ -493,6 +493,7 @@ def test_bytes_to_mb():
     assert _bytes_to_mb(1_000_000) == 1
     assert _bytes_to_mb(12_500_000) == 12
     assert _bytes_to_mb(999_999) == 1
+    assert _bytes_to_mb(None) == 0
 
 
 def test_format_datetime():
@@ -635,6 +636,44 @@ def test_list_soft_deletes_all_shows_all():
     assert len(data) == 25
 
 
+def test_list_soft_deletes_global_limit_across_entities():
+    db = FakeMaintenanceDb()
+    songs = [
+        {
+            "song": Song(
+                id=f"song_{i}",
+                title=f"Song {i}",
+                source_url="https://example.com",
+                scraped_at="2024-01-01T00:00:00",
+                deleted_at="2024-01-02T00:00:00",
+            ),
+            "recording_count": 0,
+            "songset_reference_count": 0,
+        }
+        for i in range(15)
+    ]
+    recordings = _make_soft_deleted_recordings(15)
+    db.list_soft_deleted_songs_with_counts = lambda limit=None: songs[: (limit if limit else len(songs))]
+    db.list_soft_deleted_recordings_with_counts = lambda limit=None: recordings[: (limit if limit else len(recordings))]
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.maintenance.AdminConfig.load",
+            return_value=AdminConfig(),
+        ),
+        patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=db),
+    ):
+        result = runner.invoke(
+            app, ["maintenance", "list-soft-deletes", "--entity", "all", "--format", "json"]
+        )
+
+    assert result.exit_code == 0
+    import json as _json
+
+    data = _json.loads(result.stdout)
+    assert len(data) == 20
+
+
 def _make_orphan_prefixes(count: int) -> list:
     return [
         SimpleNamespace(
@@ -751,6 +790,16 @@ def test_sort_by_last_modified_desc_none_sorts_last():
     ]
     result = _sort_by_last_modified_desc(rows)
     assert [r["prefix"] for r in result] == ["a", "c", "b"]
+
+
+def test_sort_by_last_modified_desc_timezone_aware():
+    rows = [
+        {"prefix": "tz", "last_modified": "2024-06-01T12:00:00+00:00"},
+        {"prefix": "naive", "last_modified": "2024-01-01T00:00:00"},
+        {"prefix": "none", "last_modified": None},
+    ]
+    result = _sort_by_last_modified_desc(rows)
+    assert [r["prefix"] for r in result] == ["tz", "naive", "none"]
 
 
 def test_diagnose_render_failures_defaults_to_limit_20():
