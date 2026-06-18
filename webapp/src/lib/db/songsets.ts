@@ -307,18 +307,7 @@ export async function listSongsetSummaries(
       .where(eq(songsets.userId, userId))
       .groupBy(
         songsets.id,
-        songsets.name,
-        songsets.description,
-        songsets.createdAt,
-        songsets.updatedAt,
-        songsets.latestRenderJobId,
-        songsets.lastFailedRenderJobId,
-        songsets.lastCompletedRenderJobId,
-        renderJobs.status,
-        renderJobs.completedAt,
-        renderJobs.errorMessage,
-        renderJobs.startedAt,
-        renderJobs.createdAt
+        renderJobs.id
       )
       .orderBy(desc(songsets.updatedAt))
       .limit(limit)

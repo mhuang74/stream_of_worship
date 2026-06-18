@@ -63,7 +63,7 @@ describe("sanitizeRenderErrorMessage", () => {
   });
 
   it("redacts secret-like key/value fragments", () => {
-    const input = "TOKEN=abc123 API_KEY=xyz PASSWORD=hunter2";
+    const input = "Error: TOKEN=abc123 API_KEY=xyz PASSWORD=hunter2";
     const result = sanitizeRenderErrorMessage(input);
     expect(result).not.toContain("abc123");
     expect(result).not.toContain("xyz");
@@ -72,7 +72,7 @@ describe("sanitizeRenderErrorMessage", () => {
   });
 
   it("redacts SOW_*_KEY fragments", () => {
-    const input = "SOW_R2_KEY=mysecret";
+    const input = "Error: SOW_R2_KEY=mysecret";
     const result = sanitizeRenderErrorMessage(input);
     expect(result).not.toContain("mysecret");
     expect(result).toContain("[redacted]");
@@ -94,7 +94,12 @@ describe("sanitizeRenderErrorMessage", () => {
     const input = "https://example.com";
     expect(sanitizeRenderErrorMessage(input)).toBeNull();
   });
-});
+
+  it("returns null when only placeholders remain after redaction", () => {
+    expect(sanitizeRenderErrorMessage("https://example.com /usr/local/bin")).toBeNull();
+    expect(sanitizeRenderErrorMessage("TOKEN=secret API_KEY=xyz")).toBeNull();
+    expect(sanitizeRenderErrorMessage("[url] [path] [redacted]")).toBeNull();
+  });});
 
 describe("formatRenderFailedAt", () => {
   it("formats a date in a readable format", () => {

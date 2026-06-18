@@ -5,7 +5,7 @@ const CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 const URL_PATTERN = /\bhttps?:\/\/[^\s]+/gi;
 const UNIX_PATH = /(^|[\s(:'\[])(\/(?:[^/\s]+\/)+[^/\s]+)/g;
 const WINDOWS_PATH = /\b[A-Za-z]:\\(?:[^\\\s]+\\)+[^\\\s]+/g;
-const SECRET_PATTERN = /\b(TOKEN|API_KEY|PASSWORD|SECRET|DATABASE_URL|SOW_[A-Z_]*_KEY)=[^\s]*/gi;
+const SECRET_PATTERN = /\b(TOKEN|API_KEY|PASSWORD|SECRET|DATABASE_URL|SOW_\w*_KEY)=[^\s]*/gi;
 
 const TRACEBACK_PREFIXES = [
   /^\s*Traceback \(most recent call last\):\s*/i,
@@ -45,6 +45,9 @@ export function sanitizeRenderErrorMessage(message: unknown): string | null {
 
   if (!text) return null;
 
+  const PLACEHOLDER_ONLY = /^((\w+=)?\[url\]|(\w+=)?\[path\]|(\w+=)?\[redacted\]|\s)+$/;
+  if (PLACEHOLDER_ONLY.test(text)) return null;
+
   if (text.length > MAX_LENGTH) {
     text = text.slice(0, MAX_LENGTH - 1) + "…";
   }
@@ -59,7 +62,8 @@ export function formatRenderFailedAt(date: Date): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+    timeZone: "UTC",
+  }).format(date) + " UTC";
 }
 
 export function getRenderFailureText(
