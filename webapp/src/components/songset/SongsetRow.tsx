@@ -44,6 +44,8 @@ export interface SongsetRowProps {
   isArtifactsStale?: boolean;
   latestRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  renderErrorMessage?: string | null;
+  failedAt?: Date | null;
   onRender?: () => void;
   onPlay?: () => void;
   onRetry?: () => void;
@@ -67,6 +69,8 @@ export function SongsetRow({
   isOfflineAvailable = false,
   isArtifactsStale = false,
   lastCompletedRenderJobId,
+  renderErrorMessage,
+  failedAt,
   onRender,
   onPlay,
   onRename,
@@ -215,9 +219,14 @@ export function SongsetRow({
                   Updated {formatDate(updatedAt)}
                 </span>
               </div>
+            </Link>
 
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <RenderStatusBadge state={renderState} />
+                <RenderStatusBadge
+                  state={renderState}
+                  errorMessage={renderErrorMessage}
+                  failedAt={failedAt}
+                />
                 {isOfflineAvailable && (
                   <Badge variant="secondary" className="text-xs gap-1">
                     <WifiOff className="size-3" />
@@ -231,7 +240,6 @@ export function SongsetRow({
                   </Badge>
                 )}
               </div>
-            </Link>
           </div>
         </div>
       </CardContent>

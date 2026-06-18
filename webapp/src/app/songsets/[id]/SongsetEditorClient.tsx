@@ -33,6 +33,8 @@ interface ApiSongset {
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  renderErrorMessage: string | null;
+  failedAt: string | null;
   isArtifactsStale?: boolean;
 }
 
@@ -75,6 +77,8 @@ interface ApiResponse {
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  renderErrorMessage: string | null;
+  failedAt: string | null;
   isArtifactsStale?: boolean;
   items: ApiSongsetItem[];
 }
@@ -122,6 +126,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     latestRenderJobId: initialData.latestRenderJobId,
     lastFailedRenderJobId: initialData.lastFailedRenderJobId,
     lastCompletedRenderJobId: initialData.lastCompletedRenderJobId,
+    renderErrorMessage: initialData.renderErrorMessage,
+    failedAt: initialData.failedAt,
     isArtifactsStale: initialData.isArtifactsStale,
   }));
   const [items, setItems] = useState<SongListItem[]>(() => transformItems(initialData.items));
@@ -144,7 +150,13 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const markStale = useCallback(() => {
     setSongset((prev) =>
       prev
-        ? { ...prev, renderState: "stale" as RenderState, isArtifactsStale: true }
+        ? {
+            ...prev,
+            renderState: "stale" as RenderState,
+            isArtifactsStale: true,
+            renderErrorMessage: null,
+            failedAt: null,
+          }
         : prev
     );
   }, []);
@@ -204,6 +216,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
               itemCount: Math.max(0, prev.itemCount - 1),
               renderState: "stale" as RenderState,
               isArtifactsStale: true,
+              renderErrorMessage: null,
+              failedAt: null,
             }
           : prev
       );
@@ -455,6 +469,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
               itemCount: prev.itemCount + 1,
               renderState: "stale" as RenderState,
               isArtifactsStale: true,
+              renderErrorMessage: null,
+              failedAt: null,
             }
           : prev
       );

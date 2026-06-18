@@ -25,6 +25,8 @@ interface ApiSongset {
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  renderErrorMessage: string | null;
+  failedAt: string | null;
 }
 
 interface ApiResponse {
@@ -43,6 +45,8 @@ function transformSongsets(songsets: ApiSongset[]): Songset[] {
     renderState: songset.renderState,
     latestRenderJobId: songset.latestRenderJobId,
     lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
+    renderErrorMessage: songset.renderErrorMessage,
+    failedAt: songset.failedAt ? new Date(songset.failedAt) : null,
     isOfflineAvailable: false,
     isArtifactsStale: songset.renderState === "stale",
   }));

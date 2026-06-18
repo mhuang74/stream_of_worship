@@ -37,6 +37,8 @@ export default async function SongsetEditorPage({
         latestRenderJobId: songset.latestRenderJobId,
         lastFailedRenderJobId: songset.lastFailedRenderJobId,
         lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
+        renderErrorMessage: songset.renderErrorMessage,
+        failedAt: songset.failedAt?.toISOString() ?? null,
         isArtifactsStale: songset.renderState === "stale",
         items: songset.items.map((item) => ({
           id: item.id,
