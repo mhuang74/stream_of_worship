@@ -521,6 +521,30 @@ class TestWriteBackup:
         assert not partial.exists()
 
 
+class TestWriteBackupProgress:
+    def test_on_progress_called_with_correct_counts(self, tmp_path):
+        """write_backup calls on_progress with correct object and byte counts."""
+        objects = [
+            {"key": "a/file1", "size": 100, "etag": "etag1", "data": b"x" * 100},
+            {"key": "a/file2", "size": 200, "etag": "etag2", "data": b"y" * 200},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        calls = []
+        def _on_progress(objects_done: int, bytes_done: int) -> None:
+            calls.append((objects_done, bytes_done))
+
+        result = write_backup(r2, output, inventory, on_progress=_on_progress)
+
+        assert len(calls) == 2
+        assert calls[0] == (1, 100)
+        assert calls[1] == (2, 300)
+        assert result.object_count == 2
+        assert result.total_bytes == 300
+
+
 # ---------------------------------------------------------------------------
 # verify_archive tests
 # ---------------------------------------------------------------------------

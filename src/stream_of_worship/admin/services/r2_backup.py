@@ -15,7 +15,7 @@ import tarfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from botocore.exceptions import ClientError
 from stream_of_worship.admin.services.r2 import R2Client
@@ -353,6 +353,7 @@ def write_backup(
     output_dir: Path,
     inventory: Inventory,
     chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> BackupResult:
     """Write a full backup to the output directory.
 
@@ -364,6 +365,8 @@ def write_backup(
         output_dir: Final output directory path
         inventory: Pre-built inventory
         chunk_size_bytes: Max bytes per chunk tar
+        on_progress: Optional callback invoked after each object is written.
+            Receives (objects_completed, bytes_completed).
 
     Returns:
         BackupResult with summary info.
@@ -410,6 +413,7 @@ def write_backup(
             chunk_index += 1
             current_chunk_bytes = 0
 
+        bytes_completed = 0
         for idx, inv_obj in enumerate(inventory.objects):
             member_name = _member_name_for_index(idx)
 
@@ -427,6 +431,10 @@ def write_backup(
             obj_entry["chunk_index"] = chunk_index
             manifest_objects.append(obj_entry)
             current_chunk_bytes += inv_obj.size
+            bytes_completed += inv_obj.size
+
+            if on_progress is not None:
+                on_progress(idx + 1, bytes_completed)
 
         if current_tar is not None:
             current_tar.close()

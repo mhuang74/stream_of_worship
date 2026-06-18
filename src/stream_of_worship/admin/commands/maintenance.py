@@ -8,6 +8,16 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
 from rich.table import Table
 
 from stream_of_worship.admin.commands.catalog import get_db_client
@@ -596,7 +606,7 @@ def _print_backup_summary_table(result, output_dir: Path) -> None:
     table.add_column("Value")
     table.add_row("Output directory", str(output_dir))
     table.add_row("Object count", str(result.object_count))
-    table.add_row("Total bytes", str(result.total_bytes))
+    table.add_row("Total MB", str(_bytes_to_mb(result.total_bytes)))
     table.add_row("Chunk count", str(result.chunk_count))
     console.print(table)
 
@@ -638,16 +648,42 @@ def backup_r2(
     inventory = build_inventory(r2_client)
     progress_console.print(
         f"[green]Inventory complete: {inventory.object_count} objects, "
-        f"{inventory.total_bytes} bytes[/green]"
+        f"{_bytes_to_mb(inventory.total_bytes)} MB[/green]"
     )
 
     try:
-        result = write_backup(
-            r2_client=r2_client,
-            output_dir=output,
-            inventory=inventory,
-            chunk_size_bytes=chunk_size_bytes,
-        )
+        with Progress(
+            SpinnerColumn(),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("{task.fields[objects_done]}/{task.fields[object_count]} objects"),
+            TextColumn("[progress.description]{task.description}"),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=progress_console,
+        ) as progress:
+            task = progress.add_task(
+                "Backing up...",
+                total=inventory.total_bytes,
+                objects_done=0,
+                object_count=inventory.object_count,
+            )
+
+            def _on_progress(objects_done: int, bytes_done: int) -> None:
+                progress.update(
+                    task,
+                    completed=bytes_done,
+                    objects_done=objects_done,
+                )
+
+            result = write_backup(
+                r2_client=r2_client,
+                output_dir=output,
+                inventory=inventory,
+                chunk_size_bytes=chunk_size_bytes,
+                on_progress=_on_progress,
+            )
     except BackupError as e:
         console.print(f"[red]Backup failed: {e}[/red]")
         raise typer.Exit(1)
@@ -657,7 +693,7 @@ def backup_r2(
             {
                 "output_dir": str(result.output_dir),
                 "object_count": result.object_count,
-                "total_bytes": result.total_bytes,
+                "total_mb": _bytes_to_mb(result.total_bytes),
                 "chunk_count": result.chunk_count,
             }
         )
@@ -685,7 +721,7 @@ def verify_r2_backup(
                 "ok": result.ok,
                 "errors": result.errors,
                 "object_count": result.object_count,
-                "total_bytes": result.total_bytes,
+                "total_mb": _bytes_to_mb(result.total_bytes),
                 "chunk_count": result.chunk_count,
             }
         )
@@ -693,7 +729,7 @@ def verify_r2_backup(
         if result.ok:
             console.print(
                 f"[green]Verification OK: {result.object_count} objects, "
-                f"{result.total_bytes} bytes, {result.chunk_count} chunks[/green]"
+                f"{_bytes_to_mb(result.total_bytes)} MB, {result.chunk_count} chunks[/green]"
             )
         else:
             console.print(f"[red]Verification failed with {len(result.errors)} error(s):[/red]")
@@ -775,7 +811,7 @@ def restore_r2(
         {
             "key": r.key,
             "action": r.action,
-            "size": r.size,
+            "size_mb": _bytes_to_mb(r.size),
             "chunk_index": r.chunk_index,
         }
         for r in plan.rows
@@ -793,9 +829,9 @@ def restore_r2(
         table = Table(title="Restore Plan" + (" (DRY RUN)" if not confirm else ""))
         table.add_column("Key")
         table.add_column("Action")
-        table.add_column("Size")
+        table.add_column("Size (MB)")
         for row in rows_data:
-            table.add_row(row["key"], row["action"], str(row["size"]))
+            table.add_row(row["key"], row["action"], str(row["size_mb"]))
         console.print(table)
 
     if not confirm:

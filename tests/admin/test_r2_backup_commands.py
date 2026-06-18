@@ -193,14 +193,13 @@ class TestBackupR2Command:
             )
 
         assert result.exit_code == 0
-        # Extract JSON from output (progress goes to stderr, JSON to stdout,
-        # but CliRunner mixes them)
-        json_start = result.output.index("{")
-        data = json.loads(result.output[json_start:])
+        data = json.loads(result.stdout)
         assert data["object_count"] == 1
-        assert data["total_bytes"] == 5
+        assert data["total_mb"] == 0   # 5 bytes rounds to 0 MB
         assert data["chunk_count"] == 1
         assert data["output_dir"] == str(output)
+        # total_bytes no longer present in JSON output
+        assert "total_bytes" not in data
 
 
 class TestVerifyR2BackupCommand:
@@ -245,9 +244,11 @@ class TestVerifyR2BackupCommand:
         )
 
         assert result.exit_code == 0
-        data = json.loads(result.output.strip())
+        data = json.loads(result.stdout)
         assert data["ok"] is True
         assert data["object_count"] == 1
+        assert "total_mb" in data
+        assert "total_bytes" not in data
 
     def test_verify_no_config_required(self, tmp_path):
         """verify-r2-backup does not require config or R2 credentials."""
@@ -415,11 +416,10 @@ class TestRestoreR2Command:
             )
 
         assert result.exit_code == 0
-        json_start = result.output.index("{")
-        data = json.loads(result.output[json_start:])
-        assert "plan" in data
-        assert len(data["plan"]) == 1
+        data = json.loads(result.stdout)
         assert data["plan"][0]["action"] == "create"
+        assert "size_mb" in data["plan"][0]
+        assert "size" not in data["plan"][0]
 
     def test_restore_prefix_filtering(self, tmp_path):
         """restore-r2 --prefix filters objects."""
