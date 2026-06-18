@@ -56,8 +56,10 @@ def _print_json(rows: list[dict]) -> None:
     console.print(json.dumps(rows, default=_json_default, ensure_ascii=False, indent=2))
 
 
-def _bytes_to_mb(total_bytes: int) -> int:
+def _bytes_to_mb(total_bytes: Optional[int]) -> int:
     """Convert bytes to decimal MB (1 MB = 1,000,000 bytes), rounded to integer."""
+    if total_bytes is None:
+        return 0
     return round(total_bytes / 1_000_000)
 
 
@@ -190,6 +192,9 @@ def list_soft_deletes(
                     {"r2_object_count": summary.object_count, "r2_bytes": summary.total_bytes}
                 )
             rows.append(item)
+
+    if effective_limit is not None:
+        rows = rows[:effective_limit]
 
     if format_ == "ids":
         for row in rows:
@@ -374,7 +379,6 @@ def repair_songsets(
         raise typer.Exit(1)
 
     config, db_client = _load_clients(config_path)
-    r2_client = _load_r2(config)
 
     is_repair_mode = songset_id is not None or hash_prefix is not None or (all_ and confirm)
 
@@ -384,6 +388,7 @@ def repair_songsets(
         _print_manifest(rows, format_)
         return
 
+    r2_client = _load_r2(config)
     rows = _repair_manifest(db_client, r2_client, songset_id, hash_prefix, all_)
     active_jobs = db_client.find_active_render_jobs_for_songsets(
         sorted({row["songset_id"] for row in rows})
@@ -438,11 +443,14 @@ def _sort_by_last_modified_desc(rows: list[dict]) -> list[dict]:
     def sort_key(row):
         ts = row.get("last_modified")
         if not ts:
-            return datetime.min
+            return (0, datetime.min)
         try:
-            return datetime.fromisoformat(ts)
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            return (1, dt)
         except (ValueError, TypeError):
-            return datetime.min
+            return (0, datetime.min)
 
     return sorted(rows, key=sort_key, reverse=True)
 
