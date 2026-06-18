@@ -13,10 +13,11 @@ ARG R2_BUCKET
 ARG R2_ENDPOINT_URL
 ARG R2_ACCESS_KEY_ID
 ARG R2_SECRET_ACCESS_KEY
+ARG REQUIRE_R2_FFMPEG=false
 
 COPY scripts/download-ffmpeg.sh /tmp/download-ffmpeg.sh
 RUN chmod +x /tmp/download-ffmpeg.sh \
-    && /tmp/download-ffmpeg.sh "${FFMPEG_VERSION}" "${R2_BUCKET}" "${R2_ENDPOINT_URL}" "${R2_ACCESS_KEY_ID}" "${R2_SECRET_ACCESS_KEY}" \
+    && /tmp/download-ffmpeg.sh "${FFMPEG_VERSION}" "${R2_BUCKET}" "${R2_ENDPOINT_URL}" "${R2_ACCESS_KEY_ID}" "${R2_SECRET_ACCESS_KEY}" "${REQUIRE_R2_FFMPEG}" \
     && rm -f /tmp/download-ffmpeg.sh
 
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
