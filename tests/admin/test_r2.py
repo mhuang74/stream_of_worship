@@ -922,3 +922,218 @@ class TestUploadOfficialLrc:
         mock_s3.delete_object.assert_called_once_with(
             Bucket="sow-audio", Key="abc123/lyrics.backup.1000.lrc"
         )
+
+
+class TestIterObjects:
+    """Tests for R2Client.iter_objects (backup-oriented listing)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_iter_objects_paginates_all_objects(self, mock_boto_client, r2_env):
+        """iter_objects yields all objects across pages with key/size/etag/last_modified."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {
+                        "Key": "abc123/audio.mp3",
+                        "Size": 100,
+                        "ETag": '"etag1"',
+                        "LastModified": datetime(2024, 1, 1),
+                    },
+                    {
+                        "Key": "abc123/lyrics.lrc",
+                        "Size": 20,
+                        "ETag": '"etag2"',
+                        "LastModified": datetime(2024, 1, 2),
+                    },
+                ]
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "def456/audio.mp3",
+                        "Size": 200,
+                        "ETag": '"etag3"',
+                        "LastModified": datetime(2024, 1, 3),
+                    },
+                ]
+            },
+        ]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        objects = list(client.iter_objects())
+
+        assert len(objects) == 3
+        assert objects[0] == {
+            "key": "abc123/audio.mp3",
+            "size": 100,
+            "etag": "etag1",
+            "last_modified": datetime(2024, 1, 1).isoformat(),
+        }
+        assert objects[2]["key"] == "def456/audio.mp3"
+        assert objects[2]["size"] == 200
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_iter_objects_empty_bucket(self, mock_boto_client, r2_env):
+        """iter_objects yields nothing for an empty bucket."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]
+        mock_s3.get_paginator.return_value = paginator
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        objects = list(client.iter_objects())
+
+        assert objects == []
+
+
+class TestGetObjectStream:
+    """Tests for R2Client.get_object_stream."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_get_object_stream_returns_body_and_metadata(self, mock_boto_client, r2_env):
+        """get_object_stream returns body stream and all metadata fields."""
+        import io
+
+        mock_s3 = MagicMock()
+        body = io.BytesIO(b"test data")
+        mock_s3.get_object.return_value = {
+            "Body": body,
+            "ContentLength": 9,
+            "ETag": '"abc123etag"',
+            "LastModified": datetime(2024, 1, 1),
+            "ContentType": "audio/mpeg",
+            "CacheControl": "max-age=3600",
+            "ContentDisposition": "attachment",
+            "ContentEncoding": "gzip",
+            "Metadata": {"custom": "value"},
+        }
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.get_object_stream("abc123/audio.mp3")
+
+        assert result["body"] is body
+        assert result["content_length"] == 9
+        assert result["etag"] == "abc123etag"
+        assert result["content_type"] == "audio/mpeg"
+        assert result["cache_control"] == "max-age=3600"
+        assert result["content_disposition"] == "attachment"
+        assert result["content_encoding"] == "gzip"
+        assert result["metadata"] == {"custom": "value"}
+        mock_s3.get_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123/audio.mp3"
+        )
+
+
+class TestHeadObject:
+    """Tests for R2Client.head_object (backup-oriented)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_head_object_returns_metadata_when_found(self, mock_boto_client, r2_env):
+        """head_object returns size, etag, last_modified, and metadata fields."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.return_value = {
+            "ContentLength": 500,
+            "ETag": '"etag123"',
+            "LastModified": datetime(2024, 1, 1),
+            "ContentType": "audio/mpeg",
+            "CacheControl": None,
+            "ContentDisposition": None,
+            "ContentEncoding": None,
+            "Metadata": {"key": "val"},
+        }
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.head_object("abc123/audio.mp3")
+
+        assert result is not None
+        assert result["size"] == 500
+        assert result["etag"] == "etag123"
+        assert result["content_type"] == "audio/mpeg"
+        assert result["metadata"] == {"key": "val"}
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_head_object_returns_none_on_404(self, mock_boto_client, r2_env):
+        """head_object returns None on 404/NoSuchKey."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.head_object("abc123/nonexistent")
+
+        assert result is None
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_head_object_raises_on_non_404(self, mock_boto_client, r2_env):
+        """head_object raises ClientError on non-404 errors."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "403", "Message": "Access Denied"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
+        with pytest.raises(ClientError):
+            client.head_object("abc123/audio.mp3")
+
+
+class TestUploadFileobj:
+    """Tests for R2Client.upload_fileobj (backup-oriented upload)."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_upload_fileobj_with_extra_args(self, mock_boto_client, r2_env):
+        """upload_fileobj passes ExtraArgs for metadata preservation."""
+        import io
+
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        fileobj = io.BytesIO(b"test data")
+        extra_args = {
+            "ContentType": "audio/mpeg",
+            "Metadata": {"custom": "val"},
+        }
+
+        result = client.upload_fileobj(fileobj, "abc123/audio.mp3", extra_args=extra_args)
+
+        assert result == "s3://sow-audio/abc123/audio.mp3"
+        mock_s3.upload_fileobj.assert_called_once_with(
+            Fileobj=fileobj,
+            Bucket="sow-audio",
+            Key="abc123/audio.mp3",
+            ExtraArgs=extra_args,
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_upload_fileobj_without_extra_args(self, mock_boto_client, r2_env):
+        """upload_fileobj works without extra_args."""
+        import io
+
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        fileobj = io.BytesIO(b"test data")
+
+        result = client.upload_fileobj(fileobj, "abc123/audio.mp3")
+
+        assert result == "s3://sow-audio/abc123/audio.mp3"
+        mock_s3.upload_fileobj.assert_called_once_with(
+            Fileobj=fileobj,
+            Bucket="sow-audio",
+            Key="abc123/audio.mp3",
+            ExtraArgs={},
+        )
