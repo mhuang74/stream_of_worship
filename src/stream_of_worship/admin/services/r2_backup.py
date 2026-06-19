@@ -8,6 +8,7 @@ that maps safe internal member names back to R2 keys and metadata.
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -20,6 +21,8 @@ from typing import Callable, Optional
 
 from botocore.exceptions import ClientError
 from stream_of_worship.admin.services.r2 import R2Client
+
+logger = logging.getLogger(__name__)
 
 MANIFEST_VERSION = 4
 DEFAULT_CHUNK_SIZE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GiB
@@ -302,7 +305,14 @@ def _download_object_to_tempfile(
                     )
 
                 if "-" not in get_etag:
-                    md5_hex = hashlib.md5(temp_path.read_bytes()).hexdigest()
+                    md5_hasher = hashlib.md5()
+                    with open(temp_path, "rb") as md5_file:
+                        while True:
+                            md5_chunk = md5_file.read(65536)
+                            if not md5_chunk:
+                                break
+                            md5_hasher.update(md5_chunk)
+                    md5_hex = md5_hasher.hexdigest()
                     if md5_hex != get_etag:
                         raise BackupError(
                             f"Object {inv_obj.key} MD5 mismatch: ETag {get_etag}, "
@@ -329,7 +339,7 @@ def _download_object_to_tempfile(
             finally:
                 body.close()
 
-        except (BackupError, ClientError) as e:
+        except Exception as e:
             last_error = str(e)
             if temp_path is not None:
                 try:
@@ -526,11 +536,17 @@ def write_backup(
                 try:
                     head_data = r2_client.head_object(obj_entry["key"])
                     if head_data is None:
+                        logger.warning(
+                            f"Spot-check: Object {obj_entry['key']} was deleted after backup"
+                        )
                         continue
                     if head_data["etag"] != obj_entry["etag"]:
-                        pass
-                except ClientError:
-                    pass
+                        logger.warning(
+                            f"Spot-check: Object {obj_entry['key']} ETag changed after backup: "
+                            f"expected {obj_entry['etag']}, got {head_data['etag']}"
+                        )
+                except ClientError as e:
+                    logger.warning(f"Spot-check: Failed to HEAD {obj_entry['key']}: {e}")
 
         final_chunk_count = chunk_index + 1 if manifest_objects else 0
 
@@ -587,21 +603,30 @@ def write_backup(
         raise
 
 
+SUPPORTED_MANIFEST_VERSIONS = {3, 4}
+
+
 def load_manifest(dir_path: Path) -> dict:
     """Load and return manifest.json from a backup directory.
 
+    Supports manifest versions 3 and 4. Version 3 uses post-download HEAD
+    consistency checks; version 4 uses GET-ETag checks with MD5 body
+    verification. Both produce identical object/chunk structures for
+    verification and restore.
+
     Raises:
-        VerifyError: If manifest is missing or has wrong version.
+        VerifyError: If manifest is missing or has unsupported version.
     """
     manifest_path = dir_path / "manifest.json"
     if not manifest_path.exists():
         raise VerifyError(f"manifest.json not found in {dir_path}")
     with open(manifest_path) as f:
         manifest = json.load(f)
-    if manifest.get("version") != MANIFEST_VERSION:
+    version = manifest.get("version")
+    if version not in SUPPORTED_MANIFEST_VERSIONS:
         raise VerifyError(
-            f"Unsupported manifest version: {manifest.get('version')}, "
-            f"expected {MANIFEST_VERSION}"
+            f"Unsupported manifest version: {version}, "
+            f"expected one of {sorted(SUPPORTED_MANIFEST_VERSIONS)}"
         )
     return manifest
 

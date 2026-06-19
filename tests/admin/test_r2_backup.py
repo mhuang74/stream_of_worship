@@ -520,7 +520,7 @@ class TestWriteBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(BackupError, match="Failed to backup"):
             write_backup(r2, output, inventory)
 
         assert not output.exists()
@@ -675,7 +675,7 @@ class TestConcurrentBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(BackupError, match="Failed to backup"):
             write_backup(r2, output, inventory)
 
         assert not output.exists()
@@ -849,6 +849,21 @@ class TestVerifyArchive:
 
         assert result.ok is False
         assert any("Unsupported manifest version" in e for e in result.errors)
+
+    def test_verify_v3_manifest_still_supported(self, tmp_path):
+        """Manifests with version 3 (from previous implementation) are still readable."""
+        backup_dir = _create_valid_backup(tmp_path, [
+            {"key": "a/file", "size": 5, "etag": "etag1", "data": b"hello"}
+        ])
+        # Downgrade manifest version to 3 to simulate old backup
+        manifest = json.loads((backup_dir / "manifest.json").read_text())
+        manifest["version"] = 3
+        (backup_dir / "manifest.json").write_text(json.dumps(manifest))
+
+        result = verify_archive(backup_dir)
+
+        assert result.ok is True
+        assert result.object_count == 1
 
     def test_verify_corrupt_tar(self, tmp_path):
         backup_dir = _create_valid_backup(tmp_path, [
