@@ -617,6 +617,10 @@ def backup_r2(
     chunk_size: str = typer.Option(
         "10GiB", "--chunk-size", help="Chunk size (e.g. 10GiB, 500MiB, raw bytes)"
     ),
+    concurrency: int = typer.Option(
+        8, "--concurrency", min=1, max=64,
+        help="Number of concurrent download workers"
+    ),
     format_: str = typer.Option("table", "--format", help="table|json"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
@@ -682,6 +686,7 @@ def backup_r2(
                 output_dir=output,
                 inventory=inventory,
                 chunk_size_bytes=chunk_size_bytes,
+                concurrency=concurrency,
                 on_progress=_on_progress,
             )
     except BackupError as e:

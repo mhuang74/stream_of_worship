@@ -27,6 +27,9 @@ from stream_of_worship.admin.services.r2_backup import (
     restore_from_archive,
     verify_archive,
     write_backup,
+    DEFAULT_CONCURRENCY,
+    COPY_BUFFER_SIZE,
+    SPOT_CHECK_HEAD_RATIO,
 )
 
 
@@ -162,7 +165,7 @@ class TestBuildInventory:
 
 class TestManifestStructure:
     def test_manifest_version_constant(self):
-        assert MANIFEST_VERSION == 3
+        assert MANIFEST_VERSION == 4
 
     def test_default_chunk_size(self):
         assert DEFAULT_CHUNK_SIZE_BYTES == 10 * 1024**3
@@ -192,10 +195,17 @@ def _make_r2_mock(objects: list[dict], head_data: dict | None = None) -> MagicMo
     r2.endpoint_url = "https://test.r2.cloudflarestorage.com"
     r2.region = "auto"
 
-    obj_list = [
-        {"key": o["key"], "size": o["size"], "etag": o["etag"], "last_modified": o.get("last_modified", "")}
-        for o in objects
-    ]
+    obj_list = []
+    for o in objects:
+        etag = o.get("etag")
+        if etag is None or "-" not in etag:
+            etag = hashlib.md5(o["data"]).hexdigest()
+        obj_list.append({
+            "key": o["key"],
+            "size": o["size"],
+            "etag": etag,
+            "last_modified": o.get("last_modified", ""),
+        })
     r2.iter_objects.return_value = iter(obj_list)
 
     obj_map = {o["key"]: o for o in objects}
@@ -203,10 +213,13 @@ def _make_r2_mock(objects: list[dict], head_data: dict | None = None) -> MagicMo
     def _get_object_stream(key):
         o = obj_map[key]
         body = io.BytesIO(o["data"])
+        etag = o.get("etag")
+        if etag is None or "-" not in etag:
+            etag = hashlib.md5(o["data"]).hexdigest()
         return {
             "body": body,
             "content_length": len(o["data"]),
-            "etag": o["etag"],
+            "etag": etag,
             "last_modified": o.get("last_modified", ""),
             "content_type": o.get("content_type"),
             "cache_control": o.get("cache_control"),
@@ -223,9 +236,12 @@ def _make_r2_mock(objects: list[dict], head_data: dict | None = None) -> MagicMo
         o = obj_map.get(key)
         if o is None:
             return None
+        etag = o.get("etag")
+        if etag is None or "-" not in etag:
+            etag = hashlib.md5(o["data"]).hexdigest()
         return {
             "size": len(o["data"]),
-            "etag": o["etag"],
+            "etag": etag,
             "last_modified": o.get("last_modified", ""),
             "content_type": o.get("content_type"),
             "cache_control": o.get("cache_control"),
@@ -259,7 +275,7 @@ class TestWriteBackup:
         assert (output / "chunk-000000.tar").exists()
 
         manifest = json.loads((output / "manifest.json").read_text())
-        assert manifest["version"] == 3
+        assert manifest["version"] == 4
         assert manifest["object_count"] == 2
         assert manifest["total_bytes"] == 16
         assert manifest["chunk_count"] == 1
@@ -359,7 +375,7 @@ class TestWriteBackup:
             return {
                 "body": io.BytesIO(b"short"),
                 "content_length": 100,
-                "etag": "etag1",
+                "etag": "etag1-with-dash-suffix",
                 "last_modified": "",
                 "content_type": None,
                 "cache_control": None,
@@ -369,16 +385,6 @@ class TestWriteBackup:
             }
 
         r2.get_object_stream.side_effect = _get_object_stream
-        r2.head_object.return_value = {
-            "size": 100,
-            "etag": "etag1",
-            "last_modified": "",
-            "content_type": None,
-            "cache_control": None,
-            "content_disposition": None,
-            "content_encoding": None,
-            "metadata": {},
-        }
 
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
@@ -394,29 +400,23 @@ class TestWriteBackup:
     def test_backup_changed_object_retries_and_succeeds(self, tmp_path):
         """Object that changes on first attempt succeeds on retry."""
         data = b"hello world"
-        objects = [{"key": "a/file", "size": 11, "etag": "etag1", "data": data}]
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
         r2 = _make_r2_mock(objects)
 
-        # First head returns different etag, second returns matching
+        # First GET returns different etag, second returns matching
         call_count = [0]
-        original_head = r2.head_object.side_effect
+        original_get = r2.get_object_stream.side_effect
 
-        def _flaky_head(key):
+        def _flaky_get(key):
             call_count[0] += 1
             if call_count[0] == 1:
-                return {
-                    "size": 11,
-                    "etag": "changed_etag",
-                    "last_modified": "",
-                    "content_type": None,
-                    "cache_control": None,
-                    "content_disposition": None,
-                    "content_encoding": None,
-                    "metadata": {},
-                }
-            return original_head(key)
+                resp = original_get(key)
+                resp["etag"] = "changed_etag"
+                return resp
+            return original_get(key)
 
-        r2.head_object.side_effect = _flaky_head
+        r2.get_object_stream.side_effect = _flaky_get
 
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
@@ -428,20 +428,19 @@ class TestWriteBackup:
     def test_backup_changed_object_exceeds_retries_fails(self, tmp_path):
         """Object that keeps changing fails after retry budget."""
         data = b"hello world"
-        objects = [{"key": "a/file", "size": 11, "etag": "etag1", "data": data}]
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
         r2 = _make_r2_mock(objects)
 
-        # head always returns different etag
-        r2.head_object.side_effect = lambda key: {
-            "size": 11,
-            "etag": "always_different",
-            "last_modified": "",
-            "content_type": None,
-            "cache_control": None,
-            "content_disposition": None,
-            "content_encoding": None,
-            "metadata": {},
-        }
+        # GET always returns different etag
+        original_get = r2.get_object_stream.side_effect
+
+        def _always_different_get(key):
+            resp = original_get(key)
+            resp["etag"] = "always_different"
+            return resp
+
+        r2.get_object_stream.side_effect = _always_different_get
 
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
@@ -454,17 +453,25 @@ class TestWriteBackup:
     def test_backup_deleted_object_during_backup_fails(self, tmp_path):
         """Object that disappears during backup fails and cleans up."""
         data = b"hello world"
-        objects = [{"key": "a/file", "size": 11, "etag": "etag1", "data": data}]
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
         r2 = _make_r2_mock(objects)
 
-        # head returns None (object deleted) - need to reset side_effect
-        r2.head_object.side_effect = None
-        r2.head_object.return_value = None
+        # GET raises ClientError 404 (object deleted)
+        from botocore.exceptions import ClientError
+
+        def _not_found_get(key):
+            raise ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}},
+                "GetObject",
+            )
+
+        r2.get_object_stream.side_effect = _not_found_get
 
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError, match="disappeared"):
+        with pytest.raises(BackupError, match="Failed to backup"):
             write_backup(r2, output, inventory)
 
         assert not output.exists()
@@ -543,6 +550,244 @@ class TestWriteBackupProgress:
         assert calls[1] == (2, 300)
         assert result.object_count == 2
         assert result.total_bytes == 300
+
+
+class TestConcurrentBackup:
+    def test_concurrent_backup_produces_valid_archive(self, tmp_path):
+        """Concurrent download with default concurrency produces valid backup."""
+        objects = [
+            {"key": f"obj{i}/file", "size": 100, "etag": f"etag{i}", "data": bytes([i]) * 100}
+            for i in range(20)
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory)
+
+        assert result.object_count == 20
+        assert result.total_bytes == 2000
+        assert (output / "manifest.json").exists()
+        assert (output / "chunk-000000.tar").exists()
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        assert manifest["version"] == 4
+        assert manifest["consistency"]["mode"] == "initial-inventory-with-get-etag-check"
+        assert manifest["consistency"]["md5_body_check"] is True
+
+        for i, obj in enumerate(manifest["objects"]):
+            expected_hash = hashlib.sha256(bytes([i]) * 100).hexdigest()
+            assert obj["sha256"] == expected_hash
+
+    def test_concurrency_1_works(self, tmp_path):
+        """concurrency=1 falls back to sequential (no thread pool issues)."""
+        objects = [
+            {"key": "a/file", "size": 5, "etag": "etag1", "data": b"hello"},
+            {"key": "b/file", "size": 5, "etag": "etag2", "data": b"world"},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory, concurrency=1)
+
+        assert result.object_count == 2
+        assert output.exists()
+
+    def test_concurrent_backup_preserves_object_order(self, tmp_path):
+        """Manifest objects are in inventory order regardless of download completion order."""
+        objects = [
+            {"key": f"obj{i}/file", "size": 10, "etag": f"etag{i}", "data": bytes([i]) * 10}
+            for i in range(10)
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory, concurrency=4)
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        for i, obj in enumerate(manifest["objects"]):
+            assert obj["key"] == f"obj{i}/file"
+
+    def test_concurrent_backup_cleans_up_temp_files(self, tmp_path):
+        """No temp files remain after successful backup."""
+        objects = [
+            {"key": f"obj{i}/file", "size": 100, "etag": f"etag{i}", "data": b"x" * 100}
+            for i in range(5)
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        write_backup(r2, output, inventory)
+
+        temp_dir = output.with_suffix(output.suffix + ".part")
+        assert not temp_dir.exists()
+        assert not (output / "tmp").exists()
+
+    def test_concurrent_backup_cleans_up_temp_files_on_failure(self, tmp_path):
+        """Temp files are cleaned up when backup fails mid-way."""
+        data1 = b"hello"
+        data2 = b"world"
+        etag1 = hashlib.md5(data1).hexdigest()
+        etag2 = hashlib.md5(data2).hexdigest()
+        objects = [
+            {"key": "a/file", "size": 5, "etag": etag1, "data": data1},
+            {"key": "b/file", "size": 5, "etag": etag2, "data": data2},
+        ]
+        r2 = _make_r2_mock(objects)
+
+        # Make the second object fail with a different etag
+        original_get = r2.get_object_stream.side_effect
+
+        def _flaky_get(key):
+            if key == "b/file":
+                resp = original_get(key)
+                resp["etag"] = "wrong"
+                return resp
+            return original_get(key)
+
+        r2.get_object_stream.side_effect = _flaky_get
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with pytest.raises(BackupError):
+            write_backup(r2, output, inventory)
+
+        assert not output.exists()
+        partial = output.with_suffix(output.suffix + ".part")
+        assert not partial.exists()
+
+    def test_concurrent_backup_failure_cancels_remaining(self, tmp_path):
+        """On failure, remaining futures are cancelled and partial dir cleaned up."""
+        r2 = MagicMock()
+        r2.bucket = "test-bucket"
+        r2.endpoint_url = "https://test.r2.cloudflarestorage.com"
+        r2.region = "auto"
+        r2.iter_objects.return_value = iter([
+            {"key": "a/file", "size": 100, "etag": "etag1", "last_modified": ""},
+            {"key": "b/file", "size": 100, "etag": "etag2", "last_modified": ""},
+        ])
+        r2.get_object_stream.side_effect = RuntimeError("connection failed")
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with pytest.raises(RuntimeError):
+            write_backup(r2, output, inventory)
+
+        assert not output.exists()
+        partial = output.with_suffix(output.suffix + ".part")
+        assert not partial.exists()
+
+    def test_md5_body_check_catches_corruption(self, tmp_path):
+        """Single-part object with corrupted body fails with MD5 mismatch."""
+        data = b"hello world"
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
+        r2 = _make_r2_mock(objects)
+
+        # Corrupt the body but keep the correct etag
+        original_get = r2.get_object_stream.side_effect
+
+        def _corrupted_get(key):
+            resp = original_get(key)
+            resp["body"] = io.BytesIO(b"corrupted!")
+            return resp
+
+        r2.get_object_stream.side_effect = _corrupted_get
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with pytest.raises(BackupError, match="Short read|Size mismatch|MD5 mismatch"):
+            write_backup(r2, output, inventory)
+
+        assert not output.exists()
+
+    def test_spot_check_head_warns_on_drift(self, tmp_path):
+        """Spot-check HEAD logs warning when object changed after backup."""
+        data = b"hello"
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 5, "etag": etag, "data": data}]
+        r2 = _make_r2_mock(objects)
+
+        # head_object returns different etag (drift detected)
+        r2.head_object.side_effect = lambda key: {
+            "size": 5,
+            "etag": "different_etag",
+            "last_modified": "",
+            "content_type": None,
+            "cache_control": None,
+            "content_disposition": None,
+            "content_encoding": None,
+            "metadata": {},
+        }
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory)
+
+        assert result.object_count == 1
+        assert output.exists()
+
+    def test_manifest_version_4(self, tmp_path):
+        """Backup produces manifest version 4."""
+        objects = [{"key": "a/file", "size": 5, "etag": "etag1", "data": b"hello"}]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        write_backup(r2, output, inventory)
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        assert manifest["version"] == 4
+        assert manifest["consistency"]["mode"] == "initial-inventory-with-get-etag-check"
+        assert manifest["consistency"]["md5_body_check"] is True
+        assert manifest["consistency"]["spot_check_head_ratio"] == SPOT_CHECK_HEAD_RATIO
+
+    def test_get_last_modified_in_metadata(self, tmp_path):
+        """Manifest stores GET response last_modified in metadata."""
+        data = b"hello"
+        objects = [
+            {
+                "key": "a/file",
+                "size": 5,
+                "etag": "etag1",
+                "data": data,
+                "last_modified": "2024-01-15T10:30:00+00:00",
+            }
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        write_backup(r2, output, inventory)
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        obj = manifest["objects"][0]
+        assert obj["last_modified"] == "2024-01-15T10:30:00+00:00"
+
+    def test_concurrency_validation_rejects_zero(self, tmp_path):
+        """write_backup raises BackupError for concurrency=0."""
+        r2 = _make_r2_mock([])
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with pytest.raises(BackupError, match="concurrency must be 1-64"):
+            write_backup(r2, output, inventory, concurrency=0)
+
+    def test_concurrency_validation_rejects_65(self, tmp_path):
+        """write_backup raises BackupError for concurrency=65."""
+        r2 = _make_r2_mock([])
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with pytest.raises(BackupError, match="concurrency must be 1-64"):
+            write_backup(r2, output, inventory, concurrency=65)
 
 
 # ---------------------------------------------------------------------------
@@ -746,7 +991,7 @@ class TestVerifyArchive:
 class TestPlanRestore:
     def _make_manifest(self, objects: list[dict]) -> dict:
         return {
-            "version": 3,
+            "version": 4,
             "objects": objects,
         }
 

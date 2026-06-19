@@ -1,5 +1,6 @@
 """Command-level tests for R2 backup/restore maintenance commands."""
 
+import hashlib
 import io
 import json
 from datetime import datetime
@@ -29,10 +30,17 @@ def _make_r2_mock(objects: list[dict] | None = None) -> MagicMock:
     r2.endpoint_url = "https://test.r2.cloudflarestorage.com"
     r2.region = "auto"
 
-    obj_list = [
-        {"key": o["key"], "size": o["size"], "etag": o["etag"], "last_modified": o.get("last_modified", "")}
-        for o in objects
-    ]
+    obj_list = []
+    for o in objects:
+        etag = o.get("etag")
+        if etag is None or "-" not in etag:
+            etag = hashlib.md5(o["data"]).hexdigest()
+        obj_list.append({
+            "key": o["key"],
+            "size": o["size"],
+            "etag": etag,
+            "last_modified": o.get("last_modified", ""),
+        })
     r2.iter_objects.return_value = iter(obj_list)
 
     obj_map = {o["key"]: o for o in objects}
@@ -40,10 +48,13 @@ def _make_r2_mock(objects: list[dict] | None = None) -> MagicMock:
     def _get_object_stream(key):
         o = obj_map[key]
         body = io.BytesIO(o["data"])
+        etag = o.get("etag")
+        if etag is None or "-" not in etag:
+            etag = hashlib.md5(o["data"]).hexdigest()
         return {
             "body": body,
             "content_length": len(o["data"]),
-            "etag": o["etag"],
+            "etag": etag,
             "last_modified": o.get("last_modified", ""),
             "content_type": o.get("content_type"),
             "cache_control": o.get("cache_control"),
@@ -58,9 +69,12 @@ def _make_r2_mock(objects: list[dict] | None = None) -> MagicMock:
         o = obj_map.get(key)
         if o is None:
             return None
+        etag = o.get("etag")
+        if etag is None or "-" not in etag:
+            etag = hashlib.md5(o["data"]).hexdigest()
         return {
             "size": len(o["data"]),
-            "etag": o["etag"],
+            "etag": etag,
             "last_modified": o.get("last_modified", ""),
             "content_type": o.get("content_type"),
             "cache_control": o.get("cache_control"),
@@ -200,6 +214,30 @@ class TestBackupR2Command:
         assert data["output_dir"] == str(output)
         # total_bytes no longer present in JSON output
         assert "total_bytes" not in data
+
+    def test_backup_concurrency_flag(self, tmp_path):
+        """backup-r2 --concurrency 4 passes concurrency to write_backup."""
+        objects = [
+            {"key": "a/file", "size": 5, "etag": "etag1", "data": b"hello"},
+        ]
+        r2 = _make_r2_mock(objects)
+        config = AdminConfig(database_url="postgresql://example", r2_endpoint_url="https://r2.example.com")
+        output = tmp_path / "backup"
+
+        with (
+            patch("stream_of_worship.admin.commands.maintenance.AdminConfig.load", return_value=config),
+            patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=MagicMock()),
+            patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+            patch("stream_of_worship.admin.commands.maintenance.write_backup", wraps=write_backup) as mock_write,
+        ):
+            result = runner.invoke(
+                app,
+                ["maintenance", "backup-r2", "--output", str(output), "--concurrency", "4"],
+            )
+
+        assert result.exit_code == 0
+        mock_write.assert_called_once()
+        assert mock_write.call_args.kwargs["concurrency"] == 4
 
 
 class TestVerifyR2BackupCommand:

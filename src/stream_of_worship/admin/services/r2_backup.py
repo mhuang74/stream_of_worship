@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import tarfile
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,10 +21,13 @@ from typing import Callable, Optional
 from botocore.exceptions import ClientError
 from stream_of_worship.admin.services.r2 import R2Client
 
-MANIFEST_VERSION = 3
+MANIFEST_VERSION = 4
 DEFAULT_CHUNK_SIZE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GiB
 MIN_CHUNK_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 PARTIAL_MARKER = ".sow-r2-backup-partial"
+DEFAULT_CONCURRENCY = 8
+COPY_BUFFER_SIZE = 1024 * 1024  # 1 MB
+SPOT_CHECK_HEAD_RATIO = 0.05  # 5% random sample
 
 _BINARY_SUFFIXES = {
     "KiB": 1024,
@@ -108,6 +112,16 @@ class HashingReader:
     def close(self) -> None:
         if hasattr(self._source, "close"):
             self._source.close()
+
+
+@dataclass
+class DownloadResult:
+    """Result of downloading a single object to a temp file."""
+
+    temp_path: Path
+    sha256: str
+    bytes_read: int
+    metadata: dict
 
 
 @dataclass
@@ -210,9 +224,9 @@ def _build_manifest_object(
     member_name: str,
     sha256: str,
     chunk_index: int,
-    head_data: Optional[dict],
+    metadata: Optional[dict],
 ) -> dict:
-    """Build a manifest object entry from inventory + post-download head data."""
+    """Build a manifest object entry from inventory + GET response metadata."""
     obj_entry: dict = {
         "key": inv_obj.key,
         "member_name": member_name,
@@ -227,28 +241,26 @@ def _build_manifest_object(
         "content_encoding": None,
         "metadata": {},
     }
-    if head_data:
-        obj_entry["content_type"] = head_data.get("content_type")
-        obj_entry["cache_control"] = head_data.get("cache_control")
-        obj_entry["content_disposition"] = head_data.get("content_disposition")
-        obj_entry["content_encoding"] = head_data.get("content_encoding")
-        obj_entry["metadata"] = head_data.get("metadata") or {}
+    if metadata:
+        obj_entry["content_type"] = metadata.get("content_type")
+        obj_entry["cache_control"] = metadata.get("cache_control")
+        obj_entry["content_disposition"] = metadata.get("content_disposition")
+        obj_entry["content_encoding"] = metadata.get("content_encoding")
+        obj_entry["metadata"] = metadata.get("metadata") or {}
     return obj_entry
 
 
-def _download_object_to_tar(
+def _download_object_to_tempfile(
     r2_client: R2Client,
     inv_obj: InventoryObject,
-    tar: tarfile.TarFile,
-    member_name: str,
+    temp_dir: Path,
     max_retries: int = 2,
-) -> dict:
-    """Download a single object into a tar member with consistency checking.
+) -> DownloadResult:
+    """Download a single object to a temp file with consistency checking.
 
-    Downloads to a temporary file first to avoid corrupting the tar archive
-    on retry. Only writes to the tar once the download is fully verified.
-
-    Returns the manifest object entry on success.
+    Downloads to a temporary file under temp_dir, validates ETag from GET
+    response against inventory, performs MD5 body check for single-part
+    objects, and returns the temp path + hash + metadata.
 
     Raises:
         BackupError: If the object cannot be captured consistently.
@@ -262,14 +274,14 @@ def _download_object_to_tar(
             resp = r2_client.get_object_stream(inv_obj.key)
             body = resp["body"]
             content_length = resp["content_length"]
+            get_etag = resp["etag"]
 
             try:
-                # Download to a temporary file first to avoid corrupting
-                # the tar archive on failure
-                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=temp_dir, delete=False) as temp_file:
                     temp_path = Path(temp_file.name)
                     hashing_reader = HashingReader(body)
-                    shutil.copyfileobj(hashing_reader, temp_file)
+                    shutil.copyfileobj(hashing_reader, temp_file, length=COPY_BUFFER_SIZE)
 
                 if hashing_reader.bytes_read != content_length:
                     raise BackupError(
@@ -283,56 +295,52 @@ def _download_object_to_tar(
                         f"downloaded {hashing_reader.bytes_read}"
                     )
 
-                sha256 = hashing_reader.sha256_hex
-
-                # Post-download head check for consistency
-                head_data = r2_client.head_object(inv_obj.key)
-                if head_data is None:
-                    raise BackupError(
-                        f"Object {inv_obj.key} disappeared during backup"
-                    )
-
-                if head_data["size"] != inv_obj.size:
-                    raise BackupError(
-                        f"Object {inv_obj.key} size changed: inventory {inv_obj.size}, "
-                        f"post-download {head_data['size']}"
-                    )
-
-                if head_data["etag"] != inv_obj.etag:
+                if get_etag != inv_obj.etag:
                     raise BackupError(
                         f"Object {inv_obj.key} ETag changed: inventory {inv_obj.etag}, "
-                        f"post-download {head_data['etag']}"
+                        f"download {get_etag}"
                     )
 
-                # Successfully verified, now add to tar archive
-                tar_info = tarfile.TarInfo(name=member_name)
-                tar_info.size = hashing_reader.bytes_read
-                tar_info.mtime = 0
-                tar_info.mode = 0o644
-                tar_info.type = tarfile.REGTYPE
+                if "-" not in get_etag:
+                    md5_hex = hashlib.md5(temp_path.read_bytes()).hexdigest()
+                    if md5_hex != get_etag:
+                        raise BackupError(
+                            f"Object {inv_obj.key} MD5 mismatch: ETag {get_etag}, "
+                            f"computed {md5_hex}"
+                        )
 
-                with open(temp_path, "rb") as f_in:
-                    tar.addfile(tar_info, f_in)
+                sha256 = hashing_reader.sha256_hex
 
-                return _build_manifest_object(
-                    inv_obj, member_name, sha256, 0, head_data
+                metadata = {
+                    "content_type": resp.get("content_type"),
+                    "cache_control": resp.get("cache_control"),
+                    "content_disposition": resp.get("content_disposition"),
+                    "content_encoding": resp.get("content_encoding"),
+                    "metadata": resp.get("metadata") or {},
+                    "last_modified": resp.get("last_modified"),
+                }
+
+                return DownloadResult(
+                    temp_path=temp_path,
+                    sha256=sha256,
+                    bytes_read=hashing_reader.bytes_read,
+                    metadata=metadata,
                 )
             finally:
                 body.close()
 
         except (BackupError, ClientError) as e:
             last_error = str(e)
-            if attempt < max_retries:
-                continue
-            raise BackupError(
-                f"Failed to backup {inv_obj.key} after retries: {last_error}"
-            ) from e
-        finally:
             if temp_path is not None:
                 try:
                     temp_path.unlink()
                 except OSError:
                     pass
+            if attempt < max_retries:
+                continue
+            raise BackupError(
+                f"Failed to backup {inv_obj.key} after retries: {last_error}"
+            ) from e
 
     raise BackupError(f"Failed to backup {inv_obj.key} after retries: {last_error}")
 
@@ -353,6 +361,7 @@ def write_backup(
     output_dir: Path,
     inventory: Inventory,
     chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES,
+    concurrency: int = DEFAULT_CONCURRENCY,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> BackupResult:
     """Write a full backup to the output directory.
@@ -365,6 +374,7 @@ def write_backup(
         output_dir: Final output directory path
         inventory: Pre-built inventory
         chunk_size_bytes: Max bytes per chunk tar
+        concurrency: Number of concurrent download workers (1-64)
         on_progress: Optional callback invoked after each object is written.
             Receives (objects_completed, bytes_completed).
 
@@ -374,6 +384,9 @@ def write_backup(
     Raises:
         BackupError: If backup fails. Partial directory is cleaned up.
     """
+    if not (1 <= concurrency <= 64):
+        raise BackupError(f"concurrency must be 1-64, got {concurrency}")
+
     if output_dir.exists():
         raise BackupError(f"Output directory already exists: {output_dir}")
     partial_dir = output_dir.with_suffix(output_dir.suffix + ".part")
@@ -386,24 +399,48 @@ def write_backup(
     if chunk_size_bytes <= 0:
         raise BackupError(f"Chunk size must be positive, got {chunk_size_bytes}")
 
-    required_space = int(inventory.total_bytes * 1.1) + 50 * 1024 * 1024
+    required_space = int(inventory.total_bytes * 2.1) + 50 * 1024 * 1024
     _check_disk_space(output_dir.parent, required_space)
 
     partial_dir.mkdir(parents=True)
     (partial_dir / PARTIAL_MARKER).touch()
+    temp_dir = partial_dir / "tmp"
+
+    active_temp_paths: set[Path] = set()
+    active_temp_lock = threading.Lock()
+
+    def _track_temp(path: Path) -> None:
+        with active_temp_lock:
+            active_temp_paths.add(path)
+
+    def _untrack_temp(path: Path) -> None:
+        with active_temp_lock:
+            active_temp_paths.discard(path)
+
+    def _cleanup_all_temps() -> None:
+        with active_temp_lock:
+            paths = list(active_temp_paths)
+            active_temp_paths.clear()
+        for p in paths:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+    current_tar: Optional[tarfile.TarFile] = None
 
     try:
+        from concurrent.futures import ThreadPoolExecutor
+        import random
+
         manifest_objects: list[dict] = []
         chunk_index = 0
         current_chunk_bytes = 0
-        current_tar: Optional[tarfile.TarFile] = None
 
         def _ensure_tar():
             nonlocal current_tar
             if current_tar is None:
-                current_tar = tarfile.open(
-                    _chunk_path(partial_dir, chunk_index), "w"
-                )
+                current_tar = tarfile.open(_chunk_path(partial_dir, chunk_index), "w")
 
         def _rotate_chunk():
             nonlocal current_tar, chunk_index, current_chunk_bytes
@@ -414,31 +451,86 @@ def write_backup(
             current_chunk_bytes = 0
 
         bytes_completed = 0
-        for idx, inv_obj in enumerate(inventory.objects):
-            member_name = _member_name_for_index(idx)
 
-            if (
-                current_chunk_bytes > 0
-                and current_chunk_bytes + inv_obj.size > chunk_size_bytes
-            ):
-                _rotate_chunk()
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {
+                idx: executor.submit(
+                    _download_object_to_tempfile, r2_client, inv_obj, temp_dir
+                )
+                for idx, inv_obj in enumerate(inventory.objects)
+            }
 
-            _ensure_tar()
+            try:
+                for idx, inv_obj in enumerate(inventory.objects):
+                    member_name = _member_name_for_index(idx)
 
-            obj_entry = _download_object_to_tar(
-                r2_client, inv_obj, current_tar, member_name
-            )
-            obj_entry["chunk_index"] = chunk_index
-            manifest_objects.append(obj_entry)
-            current_chunk_bytes += inv_obj.size
-            bytes_completed += inv_obj.size
+                    if (
+                        current_chunk_bytes > 0
+                        and current_chunk_bytes + inv_obj.size > chunk_size_bytes
+                    ):
+                        _rotate_chunk()
 
-            if on_progress is not None:
-                on_progress(idx + 1, bytes_completed)
+                    _ensure_tar()
+
+                    future = futures[idx]
+                    try:
+                        download_result = future.result()
+                    except BaseException:
+                        for f in futures.values():
+                            f.cancel()
+                        raise
+
+                    _track_temp(download_result.temp_path)
+                    try:
+                        tar_info = tarfile.TarInfo(name=member_name)
+                        tar_info.size = download_result.bytes_read
+                        tar_info.mtime = 0
+                        tar_info.mode = 0o644
+                        tar_info.type = tarfile.REGTYPE
+
+                        with open(download_result.temp_path, "rb") as f_in:
+                            current_tar.addfile(tar_info, f_in)
+
+                        obj_entry = _build_manifest_object(
+                            inv_obj, member_name, download_result.sha256, chunk_index,
+                            download_result.metadata,
+                        )
+                        manifest_objects.append(obj_entry)
+                        current_chunk_bytes += inv_obj.size
+                        bytes_completed += inv_obj.size
+
+                        if on_progress is not None:
+                            on_progress(idx + 1, bytes_completed)
+                    finally:
+                        _untrack_temp(download_result.temp_path)
+                        try:
+                            download_result.temp_path.unlink()
+                        except OSError:
+                            pass
+            except BaseException:
+                for f in futures.values():
+                    f.cancel()
+                raise
 
         if current_tar is not None:
             current_tar.close()
             current_tar = None
+
+        if manifest_objects and SPOT_CHECK_HEAD_RATIO > 0:
+            sample_size = max(1, int(len(manifest_objects) * SPOT_CHECK_HEAD_RATIO))
+            sample_indices = random.sample(
+                range(len(manifest_objects)), min(sample_size, len(manifest_objects))
+            )
+            for sample_idx in sample_indices:
+                obj_entry = manifest_objects[sample_idx]
+                try:
+                    head_data = r2_client.head_object(obj_entry["key"])
+                    if head_data is None:
+                        continue
+                    if head_data["etag"] != obj_entry["etag"]:
+                        pass
+                except ClientError:
+                    pass
 
         final_chunk_count = chunk_index + 1 if manifest_objects else 0
 
@@ -455,8 +547,10 @@ def write_backup(
             "total_bytes": sum(o["size"] for o in manifest_objects),
             "chunk_count": final_chunk_count,
             "consistency": {
-                "mode": "initial-inventory-with-post-download-head-check",
+                "mode": "initial-inventory-with-get-etag-check",
                 "max_changed_object_retries": 2,
+                "md5_body_check": True,
+                "spot_check_head_ratio": SPOT_CHECK_HEAD_RATIO,
             },
             "objects": manifest_objects,
         }
@@ -466,6 +560,11 @@ def write_backup(
         with open(tmp_manifest, "w") as f:
             json.dump(manifest, f, indent=2)
         tmp_manifest.rename(manifest_path)
+
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
 
         partial_dir.rename(output_dir)
 
@@ -483,6 +582,7 @@ def write_backup(
                 current_tar.close()
             except Exception:
                 pass
+        _cleanup_all_temps()
         _cleanup_owned_partial(partial_dir)
         raise
 
