@@ -102,6 +102,7 @@ class R2Client:
                 connect_timeout=10,
                 read_timeout=30,
                 retries={"max_attempts": 2},
+                max_pool_connections=32,
             ),
         )
 
