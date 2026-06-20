@@ -1,4 +1,6 @@
-# Stream of Worship - User App (TUI)
+# Stream of Worship - User App (TUI) ⚠️ DEPRECATED
+
+> **This component is deprecated.** The [Web App](../../webapp/README.md) (`sow-webapp`) is now the primary end-user interface for worship leaders and media teams. The TUI may not be fully migrated to the shared PostgreSQL (Neon) database and is not actively maintained.
 
 An interactive Textual TUI application for worship leaders to browse the song catalog, assemble multi-song songsets with smooth transitions, preview audio, and export final audio + lyrics video files.
 
@@ -7,7 +9,7 @@ An interactive Textual TUI application for worship leaders to browse the song ca
 ### 🎵 Songset Management
 - **Create and manage songsets** - Organize multiple songs into sets for worship sessions
 - **Reorder songs** - Drag-and-drop or keyboard-based reordering in the songset editor
-- **Persistent storage** - Songsets saved to local SQLite database
+- **Persistent storage** - Songsets saved to database (migration status to shared PostgreSQL/Neon uncertain; Web App is the recommended interface)
 
 ### 📚 Catalog Browsing
 - **Browse master catalog** - View all songs from the admin-managed catalog
@@ -85,8 +87,8 @@ An interactive Textual TUI application for worship leaders to browse the song ca
 # With config file
 sow-app --config /path/to/config.toml
 
-# With database URL directly
-sow-app --database-url "sqlite:////path/to/sow.db"
+# With database URL directly (PostgreSQL)
+sow-app --database-url "postgresql://sow_app@ep-xxx-pooler.neon.tech/sow"
 
 # Show help
 sow-app --help
@@ -128,11 +130,11 @@ The User App follows a service-oriented architecture:
 - **AppState**: Central reactive state management with observer pattern
 - **Services**: Modular services for catalog, playback, audio/video processing
 - **Screens**: Textual-based UI screens composing the interface
-- **Database**: SQLite with separate clients for read-only (admin tables) and read-write (app tables) access
+- **Database**: PostgreSQL (Neon) via psycopg3 — migration status uncertain; Web App is the recommended interface for all songset operations
 
 ## Troubleshooting
 
-**App won't start**: Check that database file exists and is accessible
+**App won't start**: Check PostgreSQL connection and that schema has been initialized (run `sow-admin db init` first)
 
 **No audio playback**: Verify miniaudio is installed and audio files are cached
 
