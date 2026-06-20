@@ -14,6 +14,7 @@ import re
 import shutil
 import tarfile
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,30 +92,130 @@ def parse_size(value: str) -> int:
 
 
 class HashingReader:
-    """A wrapper around a readable stream that computes SHA-256 as data is read.
+    """A wrapper around a readable stream that computes SHA-256 and MD5 as data is read.
 
-    Also tracks total bytes read for short-read detection.
+    Also tracks total bytes read for short-read detection, and optionally
+    invokes a callback after each read for progress reporting.
     """
 
-    def __init__(self, source):
+    def __init__(self, source, on_read: Optional[Callable[[int], None]] = None):
         self._source = source
-        self._hasher = hashlib.sha256()
+        self._sha256_hasher = hashlib.sha256()
+        self._md5_hasher = hashlib.md5()
         self.bytes_read = 0
+        self._on_read = on_read
 
     def read(self, size: int = -1) -> bytes:
         data = self._source.read(size)
         if data:
-            self._hasher.update(data)
+            self._sha256_hasher.update(data)
+            self._md5_hasher.update(data)
             self.bytes_read += len(data)
+            if self._on_read is not None:
+                self._on_read(len(data))
         return data
 
     @property
     def sha256_hex(self) -> str:
-        return self._hasher.hexdigest()
+        return self._sha256_hasher.hexdigest()
+
+    @property
+    def md5_hex(self) -> str:
+        return self._md5_hasher.hexdigest()
 
     def close(self) -> None:
         if hasattr(self._source, "close"):
             self._source.close()
+
+
+class BackupProgress:
+    """Thread-safe progress tracker for concurrent backup downloads.
+
+    Tracks bytes downloaded, objects downloaded, and active worker count
+    across all download threads. Designed to be safely updated from worker
+    threads and read from the progress callback.
+    """
+
+    def __init__(
+        self,
+        total_objects: int,
+        total_bytes: int,
+        on_progress: Optional[Callable[["BackupProgress"], None]] = None,
+        min_report_interval: float = 0.1,
+    ):
+        self._lock = threading.Lock()
+        self._bytes_downloaded = 0
+        self._objects_downloaded = 0
+        self._active_workers = 0
+        self._objects_written = 0
+        self._bytes_written = 0
+        self.total_objects = total_objects
+        self.total_bytes = total_bytes
+        self._on_progress = on_progress
+        self._min_report_interval = min_report_interval
+        self._last_report_time = 0.0
+
+    def worker_started(self) -> None:
+        with self._lock:
+            self._active_workers += 1
+        self._maybe_report()
+
+    def worker_finished(self) -> None:
+        with self._lock:
+            self._active_workers -= 1
+        self._maybe_report()
+
+    def add_bytes(self, n: int) -> None:
+        with self._lock:
+            self._bytes_downloaded += n
+        self._maybe_report()
+
+    def mark_object_downloaded(self) -> None:
+        with self._lock:
+            self._objects_downloaded += 1
+        self._maybe_report()
+
+    def object_written(self, bytes_written: int) -> None:
+        with self._lock:
+            self._objects_written += 1
+            self._bytes_written += bytes_written
+        self._maybe_report()
+
+    def _maybe_report(self) -> None:
+        """Call on_progress if enough time has elapsed since last report."""
+        if self._on_progress is None:
+            return
+        now = time.monotonic()
+        with self._lock:
+            if now - self._last_report_time < self._min_report_interval:
+                return
+            self._last_report_time = now
+        self._on_progress(self)
+
+    @property
+    def bytes_downloaded(self) -> int:
+        with self._lock:
+            return self._bytes_downloaded
+
+    @property
+    def objects_downloaded(self) -> int:
+        with self._lock:
+            return self._objects_downloaded
+
+    @property
+    def active_workers(self) -> int:
+        with self._lock:
+            return self._active_workers
+
+    @property
+    def objects_written(self) -> int:
+        with self._lock:
+            return self._objects_written
+
+    @property
+    def bytes_written(self) -> int:
+        with self._lock:
+            return self._bytes_written
 
 
 @dataclass
@@ -257,6 +358,7 @@ def _download_object_to_tempfile(
     r2_client: R2Client,
     inv_obj: InventoryObject,
     temp_dir: Path,
+    progress: Optional[BackupProgress] = None,
     max_retries: int = 2,
 ) -> DownloadResult:
     """Download a single object to a temp file with consistency checking.
@@ -264,6 +366,13 @@ def _download_object_to_tempfile(
     Downloads to a temporary file under temp_dir, validates ETag from GET
     response against inventory, performs MD5 body check for single-part
     objects, and returns the temp path + hash + metadata.
+
+    Args:
+        r2_client: R2Client instance
+        inv_obj: Inventory object to download
+        temp_dir: Directory for temporary files
+        progress: Optional BackupProgress tracker for reporting
+        max_retries: Number of retry attempts for transient failures
 
     Raises:
         BackupError: If the object cannot be captured consistently.
@@ -274,6 +383,9 @@ def _download_object_to_tempfile(
     for attempt in range(max_retries + 1):
         temp_path: Optional[Path] = None
         try:
+            if progress is not None:
+                progress.worker_started()
+
             resp = r2_client.get_object_stream(inv_obj.key)
             body = resp["body"]
             content_length = resp["content_length"]
@@ -283,7 +395,9 @@ def _download_object_to_tempfile(
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 with tempfile.NamedTemporaryFile(dir=temp_dir, delete=False) as temp_file:
                     temp_path = Path(temp_file.name)
-                    hashing_reader = HashingReader(body)
+
+                    on_read = progress.add_bytes if progress is not None else None
+                    hashing_reader = HashingReader(body, on_read=on_read)
                     shutil.copyfileobj(hashing_reader, temp_file, length=COPY_BUFFER_SIZE)
 
                 if hashing_reader.bytes_read != content_length:
@@ -304,19 +418,12 @@ def _download_object_to_tempfile(
                         f"download {get_etag}"
                     )
 
+                # MD5 body check — uses streaming MD5 from HashingReader
                 if "-" not in get_etag:
-                    md5_hasher = hashlib.md5()
-                    with open(temp_path, "rb") as md5_file:
-                        while True:
-                            md5_chunk = md5_file.read(65536)
-                            if not md5_chunk:
-                                break
-                            md5_hasher.update(md5_chunk)
-                    md5_hex = md5_hasher.hexdigest()
-                    if md5_hex != get_etag:
+                    if hashing_reader.md5_hex != get_etag:
                         raise BackupError(
                             f"Object {inv_obj.key} MD5 mismatch: ETag {get_etag}, "
-                            f"computed {md5_hex}"
+                            f"computed {hashing_reader.md5_hex}"
                         )
 
                 sha256 = hashing_reader.sha256_hex
@@ -351,8 +458,9 @@ def _download_object_to_tempfile(
             raise BackupError(
                 f"Failed to backup {inv_obj.key} after retries: {last_error}"
             ) from e
-
-    raise BackupError(f"Failed to backup {inv_obj.key} after retries: {last_error}")
+        finally:
+            if progress is not None:
+                progress.worker_finished()
 
 
 @dataclass
@@ -372,7 +480,7 @@ def write_backup(
     inventory: Inventory,
     chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES,
     concurrency: int = DEFAULT_CONCURRENCY,
-    on_progress: Optional[Callable[[int, int], None]] = None,
+    on_progress: Optional[Callable[[BackupProgress], None]] = None,
 ) -> BackupResult:
     """Write a full backup to the output directory.
 
@@ -385,8 +493,8 @@ def write_backup(
         inventory: Pre-built inventory
         chunk_size_bytes: Max bytes per chunk tar
         concurrency: Number of concurrent download workers (1-64)
-        on_progress: Optional callback invoked after each object is written.
-            Receives (objects_completed, bytes_completed).
+        on_progress: Optional callback invoked with BackupProgress updates.
+            Called from worker threads (throttled to ~10/sec).
 
     Returns:
         BackupResult with summary info.
@@ -460,12 +568,16 @@ def write_backup(
             chunk_index += 1
             current_chunk_bytes = 0
 
-        bytes_completed = 0
+        progress = BackupProgress(
+            total_objects=inventory.object_count,
+            total_bytes=inventory.total_bytes,
+            on_progress=on_progress,
+        )
 
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = {
                 idx: executor.submit(
-                    _download_object_to_tempfile, r2_client, inv_obj, temp_dir
+                    _download_object_to_tempfile, r2_client, inv_obj, temp_dir, progress
                 )
                 for idx, inv_obj in enumerate(inventory.objects)
             }
@@ -490,6 +602,9 @@ def write_backup(
                             f.cancel()
                         raise
 
+                    if progress is not None:
+                        progress.mark_object_downloaded()
+
                     _track_temp(download_result.temp_path)
                     try:
                         tar_info = tarfile.TarInfo(name=member_name)
@@ -507,10 +622,9 @@ def write_backup(
                         )
                         manifest_objects.append(obj_entry)
                         current_chunk_bytes += inv_obj.size
-                        bytes_completed += inv_obj.size
 
-                        if on_progress is not None:
-                            on_progress(idx + 1, bytes_completed)
+                        if progress is not None:
+                            progress.object_written(inv_obj.size)
                     finally:
                         _untrack_temp(download_result.temp_path)
                         try:
