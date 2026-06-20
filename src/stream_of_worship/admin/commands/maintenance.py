@@ -15,6 +15,7 @@ from rich.progress import (
     SpinnerColumn,
     TaskProgressColumn,
     TextColumn,
+    TimeElapsedColumn,
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
@@ -28,6 +29,7 @@ from stream_of_worship.admin.services.r2_backup import (
     DEFAULT_CHUNK_SIZE_BYTES,
     MIN_CHUNK_SIZE_BYTES,
     BackupError,
+    BackupProgress,
     RestoreError,
     VerifyError,
     build_inventory,
@@ -660,25 +662,28 @@ def backup_r2(
             SpinnerColumn(),
             BarColumn(),
             TaskProgressColumn(),
-            TextColumn("{task.fields[objects_done]}/{task.fields[object_count]} objects"),
-            TextColumn("[progress.description]{task.description}"),
             DownloadColumn(),
             TransferSpeedColumn(),
             TimeRemainingColumn(),
+            TimeElapsedColumn(),
+            TextColumn("{task.fields[workers]} workers"),
+            TextColumn("{task.fields[objects_done]}/{task.fields[object_count]} objects"),
             console=progress_console,
         ) as progress:
             task = progress.add_task(
                 "Backing up...",
                 total=inventory.total_bytes,
+                workers=0,
                 objects_done=0,
                 object_count=inventory.object_count,
             )
 
-            def _on_progress(objects_done: int, bytes_done: int) -> None:
+            def _on_progress(prog: BackupProgress) -> None:
                 progress.update(
                     task,
-                    completed=bytes_done,
-                    objects_done=objects_done,
+                    completed=prog.bytes_downloaded,
+                    workers=prog.active_workers,
+                    objects_done=prog.objects_downloaded,
                 )
 
             result = write_backup(

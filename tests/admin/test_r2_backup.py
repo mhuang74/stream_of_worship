@@ -15,6 +15,7 @@ from stream_of_worship.admin.services.r2_backup import (
     MANIFEST_VERSION,
     MIN_CHUNK_SIZE_BYTES,
     BackupError,
+    BackupProgress,
     HashingReader,
     Inventory,
     InventoryObject,
@@ -94,8 +95,8 @@ class TestHashingReader:
         result = reader.read()
         assert result == data
         assert reader.bytes_read == len(data)
-        expected = hashlib.sha256(data).hexdigest()
-        assert reader.sha256_hex == expected
+        assert reader.sha256_hex == hashlib.sha256(data).hexdigest()
+        assert reader.md5_hex == hashlib.md5(data).hexdigest()
 
     def test_partial_reads(self):
         data = b"hello world"
@@ -106,8 +107,8 @@ class TestHashingReader:
         assert chunk1 == b"hello"
         assert chunk2 == b" world"
         assert reader.bytes_read == len(data)
-        expected = hashlib.sha256(data).hexdigest()
-        assert reader.sha256_hex == expected
+        assert reader.sha256_hex == hashlib.sha256(data).hexdigest()
+        assert reader.md5_hex == hashlib.md5(data).hexdigest()
 
     def test_empty_read(self):
         source = io.BytesIO(b"")
@@ -115,14 +116,30 @@ class TestHashingReader:
         result = reader.read()
         assert result == b""
         assert reader.bytes_read == 0
-        expected = hashlib.sha256(b"").hexdigest()
-        assert reader.sha256_hex == expected
+        assert reader.sha256_hex == hashlib.sha256(b"").hexdigest()
+        assert reader.md5_hex == hashlib.md5(b"").hexdigest()
 
     def test_close(self):
         source = MagicMock()
         reader = HashingReader(source)
         reader.close()
         source.close.assert_called_once()
+
+    def test_on_read_callback(self):
+        """on_read callback is invoked with chunk byte count after each read."""
+        data = b"hello world"
+        source = io.BytesIO(data)
+        calls = []
+        reader = HashingReader(source, on_read=lambda n: calls.append(n))
+        reader.read(5)
+        reader.read(6)
+        assert calls == [5, 6]
+
+    def test_on_read_not_called_on_empty_read(self):
+        """on_read is not called when read returns empty bytes."""
+        source = io.BytesIO(b"")
+        reader = HashingReader(source, on_read=lambda n: pytest.fail("should not be called"))
+        reader.read()
 
 
 # ---------------------------------------------------------------------------
@@ -530,7 +547,7 @@ class TestWriteBackup:
 
 class TestWriteBackupProgress:
     def test_on_progress_called_with_correct_counts(self, tmp_path):
-        """write_backup calls on_progress with correct object and byte counts."""
+        """write_backup calls on_progress with BackupProgress reflecting downloads."""
         objects = [
             {"key": "a/file1", "size": 100, "etag": "etag1", "data": b"x" * 100},
             {"key": "a/file2", "size": 200, "etag": "etag2", "data": b"y" * 200},
@@ -539,17 +556,133 @@ class TestWriteBackupProgress:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        calls = []
-        def _on_progress(objects_done: int, bytes_done: int) -> None:
-            calls.append((objects_done, bytes_done))
+        last_progress = None
+
+        def _on_progress(prog: BackupProgress) -> None:
+            nonlocal last_progress
+            last_progress = prog
 
         result = write_backup(r2, output, inventory, on_progress=_on_progress)
 
-        assert len(calls) == 2
-        assert calls[0] == (1, 100)
-        assert calls[1] == (2, 300)
+        assert last_progress is not None
+        assert last_progress.bytes_downloaded == 300
+        assert last_progress.objects_downloaded == 2
+        assert last_progress.active_workers == 0
+        assert last_progress.objects_written == 2
+        assert last_progress.bytes_written == 300
         assert result.object_count == 2
         assert result.total_bytes == 300
+
+    def test_on_progress_none_works(self, tmp_path):
+        """write_backup works with on_progress=None (default)."""
+        objects = [
+            {"key": "a/file1", "size": 100, "etag": "etag1", "data": b"x" * 100},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory)
+
+        assert result.object_count == 1
+
+
+class TestBackupProgress:
+    def test_initial_state(self):
+        prog = BackupProgress(total_objects=10, total_bytes=1000)
+        assert prog.bytes_downloaded == 0
+        assert prog.objects_downloaded == 0
+        assert prog.active_workers == 0
+        assert prog.objects_written == 0
+        assert prog.bytes_written == 0
+        assert prog.total_objects == 10
+        assert prog.total_bytes == 1000
+
+    def test_worker_started_finished(self):
+        prog = BackupProgress(total_objects=10, total_bytes=1000)
+        prog.worker_started()
+        assert prog.active_workers == 1
+        prog.worker_started()
+        assert prog.active_workers == 2
+        prog.worker_finished()
+        assert prog.active_workers == 1
+        prog.worker_finished()
+        assert prog.active_workers == 0
+
+    def test_add_bytes(self):
+        prog = BackupProgress(total_objects=10, total_bytes=1000)
+        prog.add_bytes(100)
+        prog.add_bytes(200)
+        assert prog.bytes_downloaded == 300
+
+    def test_mark_object_downloaded(self):
+        prog = BackupProgress(total_objects=10, total_bytes=1000)
+        prog.mark_object_downloaded()
+        prog.mark_object_downloaded()
+        assert prog.objects_downloaded == 2
+
+    def test_object_written(self):
+        prog = BackupProgress(total_objects=10, total_bytes=1000)
+        prog.object_written(100)
+        prog.object_written(200)
+        assert prog.objects_written == 2
+        assert prog.bytes_written == 300
+
+    def test_on_progress_callback_invoked(self):
+        calls = []
+        prog = BackupProgress(
+            total_objects=10, total_bytes=1000,
+            on_progress=lambda p: calls.append(p),
+            min_report_interval=0.0,  # no throttling for tests
+        )
+        prog.add_bytes(100)
+        assert len(calls) >= 1
+        assert calls[-1].bytes_downloaded == 100
+
+    def test_on_progress_throttled(self):
+        calls = []
+        prog = BackupProgress(
+            total_objects=10, total_bytes=1000,
+            on_progress=lambda p: calls.append(p),
+            min_report_interval=1.0,  # 1 second throttle
+        )
+        prog.add_bytes(10)
+        prog.add_bytes(20)
+        prog.add_bytes(30)
+        # Only first call should trigger (subsequent calls within 1s are throttled)
+        assert len(calls) == 1
+        # But the counter still reflects all additions
+        assert calls[0].bytes_downloaded == 60
+
+    def test_on_progress_none_no_error(self):
+        """No error when on_progress is None."""
+        prog = BackupProgress(total_objects=10, total_bytes=1000)
+        prog.add_bytes(100)
+        prog.worker_started()
+        prog.worker_finished()
+        prog.mark_object_downloaded()
+        prog.object_written(100)
+
+    def test_thread_safety(self):
+        """Concurrent updates from multiple threads produce correct totals."""
+        import threading
+
+        prog = BackupProgress(
+            total_objects=100, total_bytes=10000,
+            min_report_interval=0.0,
+        )
+
+        def worker():
+            for _ in range(100):
+                prog.add_bytes(1)
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert prog.bytes_downloaded == 1000
 
 
 class TestConcurrentBackup:
