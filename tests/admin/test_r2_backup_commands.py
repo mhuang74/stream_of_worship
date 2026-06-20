@@ -489,3 +489,156 @@ class TestRestoreR2Command:
         data = json.loads(result.output[json_start:])
         assert len(data["plan"]) == 1
         assert data["plan"][0]["key"] == "prefix_a/file"
+
+
+def _make_minimal_inventory():
+    """Create a minimal inventory for mocking build_inventory."""
+    from stream_of_worship.admin.services.r2_backup import Inventory, InventoryObject
+
+    return Inventory(
+        objects=[
+            InventoryObject(key="test/file", size=5, etag="etag1", last_modified="")
+        ],
+        started_at="2024-01-01T00:00:00",
+        completed_at="2024-01-01T00:00:01",
+    )
+
+
+def _make_fake_config():
+    """Create a fake AdminConfig for mocking."""
+    from stream_of_worship.admin.config import AdminConfig
+
+    return AdminConfig(
+        database_url="postgresql://example",
+        r2_endpoint_url="https://r2.example.com",
+        r2_bucket="test-bucket",
+        r2_region="auto",
+    )
+
+
+def _make_fake_r2():
+    """Create a fake R2Client for mocking."""
+    from unittest.mock import MagicMock
+
+    r2 = MagicMock()
+    r2.bucket = "test-bucket"
+    r2.endpoint_url = "https://r2.example.com"
+    r2.region = "auto"
+    return r2
+
+
+def test_backup_r2_debug_traces_flag_passes_tracer(monkeypatch, tmp_path):
+    """--debug-traces constructs a BackupTracer and passes it to write_backup."""
+    from stream_of_worship.admin.services.r2_backup import BackupResult
+
+    captured = {}
+
+    def _fake_write_backup(
+        *,
+        r2_client,
+        output_dir,
+        inventory,
+        chunk_size_bytes,
+        concurrency,
+        on_progress,
+        tracer,
+    ):
+        captured["tracer"] = tracer
+        captured["concurrency"] = concurrency
+        return BackupResult(
+            output_dir=output_dir,
+            object_count=0,
+            total_bytes=0,
+            chunk_count=0,
+            manifest={"version": 4, "objects": []},
+        )
+
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance.write_backup",
+        _fake_write_backup,
+    )
+    # Also mock build_inventory to avoid R2 calls
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance.build_inventory",
+        lambda r2_client: _make_minimal_inventory(),
+    )
+    # Mock config + R2 client load
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance._load_clients",
+        lambda config_path: (_make_fake_config(), None),
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance._load_r2",
+        lambda config: _make_fake_r2(),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "maintenance",
+            "backup-r2",
+            "--output",
+            str(tmp_path / "out"),
+            "--debug-traces",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["tracer"] is not None
+    assert captured["tracer"].__class__.__name__ == "BackupTracer"
+
+
+def test_backup_r2_default_no_tracer_passes_none(monkeypatch, tmp_path):
+    """Without --debug-traces, tracer is None."""
+    from stream_of_worship.admin.services.r2_backup import BackupResult
+
+    captured = {}
+
+    def _fake_write_backup(
+        *,
+        r2_client,
+        output_dir,
+        inventory,
+        chunk_size_bytes,
+        concurrency,
+        on_progress,
+        tracer,
+    ):
+        captured["tracer"] = tracer
+        return BackupResult(
+            output_dir=output_dir,
+            object_count=0,
+            total_bytes=0,
+            chunk_count=0,
+            manifest={"version": 4, "objects": []},
+        )
+
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance.write_backup",
+        _fake_write_backup,
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance.build_inventory",
+        lambda r2_client: _make_minimal_inventory(),
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance._load_clients",
+        lambda config_path: (_make_fake_config(), None),
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance._load_r2",
+        lambda config: _make_fake_r2(),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "maintenance",
+            "backup-r2",
+            "--output",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["tracer"] is None

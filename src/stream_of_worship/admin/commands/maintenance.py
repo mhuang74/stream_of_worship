@@ -1,10 +1,11 @@
 """Maintenance commands for soft-deleted catalog data and R2 cleanup."""
 
 import json
+import logging as _stdlogging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import typer
 from rich.console import Console
@@ -30,6 +31,7 @@ from stream_of_worship.admin.services.r2_backup import (
     MIN_CHUNK_SIZE_BYTES,
     BackupError,
     BackupProgress,
+    BackupTracer,
     RestoreError,
     VerifyError,
     build_inventory,
@@ -613,6 +615,32 @@ def _print_backup_summary_table(result, output_dir: Path) -> None:
     console.print(table)
 
 
+def _configure_r2_backup_debug_logging(console: Console) -> None:
+    """Attach a DEBUG-level stderr handler to the r2_backup module logger.
+
+    Idempotent: if a handler tagged with the marker attribute is already
+    attached, does nothing.
+    """
+    target = _stdlogging.getLogger(
+        "stream_of_worship.admin.services.r2_backup"
+    )
+    target.setLevel(_stdlogging.DEBUG)
+    marker_attr = "_sow_r2_backup_debug_handler"
+    for h in target.handlers:
+        if getattr(h, marker_attr, False):
+            return
+    handler = _stdlogging.StreamHandler(console.file)
+    handler.setLevel(_stdlogging.DEBUG)
+    handler.setFormatter(
+        _stdlogging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
+    setattr(handler, marker_attr, True)
+    target.addHandler(handler)
+
+
 @app.command("backup-r2")
 def backup_r2(
     output: Path = typer.Option(..., "--output", help="Output directory for backup"),
@@ -622,6 +650,10 @@ def backup_r2(
     concurrency: int = typer.Option(
         8, "--concurrency", min=1, max=64,
         help="Number of concurrent download workers"
+    ),
+    debug_traces: bool = typer.Option(
+        False, "--debug-traces",
+        help="Emit per-object and per-phase performance traces to stderr at DEBUG level"
     ),
     format_: str = typer.Option("table", "--format", help="table|json"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
@@ -650,8 +682,21 @@ def backup_r2(
     else:
         progress_console = console
 
+    tracer: Optional[BackupTracer] = None
+    if debug_traces:
+        _configure_r2_backup_debug_logging(progress_console)
+        tracer = BackupTracer()
+
     progress_console.print("[cyan]Building R2 inventory...[/cyan]")
+    if tracer is not None:
+        tracer.phase_start("inventory")
     inventory = build_inventory(r2_client)
+    if tracer is not None:
+        tracer.phase_end(
+            "inventory",
+            objects=inventory.object_count,
+            total_bytes=inventory.total_bytes,
+        )
     progress_console.print(
         f"[green]Inventory complete: {inventory.object_count} objects, "
         f"{_bytes_to_mb(inventory.total_bytes)} MB[/green]"
@@ -678,6 +723,8 @@ def backup_r2(
                 object_count=inventory.object_count,
             )
 
+            base_callback: Optional[Callable[[BackupProgress], None]] = None
+
             def _on_progress(prog: BackupProgress) -> None:
                 progress.update(
                     task,
@@ -685,6 +732,12 @@ def backup_r2(
                     workers=prog.active_workers,
                     objects_done=prog.objects_downloaded,
                 )
+                if tracer is not None:
+                    tracer.bytes_downloaded_sample(
+                        prog.bytes_downloaded, prog.active_workers
+                    )
+
+            base_callback = _on_progress
 
             result = write_backup(
                 r2_client=r2_client,
@@ -692,7 +745,8 @@ def backup_r2(
                 inventory=inventory,
                 chunk_size_bytes=chunk_size_bytes,
                 concurrency=concurrency,
-                on_progress=_on_progress,
+                on_progress=base_callback,
+                tracer=tracer,
             )
     except BackupError as e:
         console.print(f"[red]Backup failed: {e}[/red]")
