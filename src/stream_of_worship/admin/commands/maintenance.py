@@ -646,11 +646,12 @@ def backup_r2(
         "10GiB", "--chunk-size", help="Chunk size (e.g. 10GiB, 500MiB, raw bytes)"
     ),
     concurrency: int = typer.Option(
-        32, "--concurrency", min=1, max=128,
+        8, "--concurrency", min=1, max=64,
         help=(
-            "Number of concurrent download workers (default 32). "
-            "Per-stream R2 bandwidth caps at ~1 MBps; raise this to scale aggregate "
-            "throughput until the R2 account-level throttle is hit."
+            "Number of concurrent download workers (default 8). "
+            "R2 exhibits an account-level throughput cap (~7 MiB/s from this client); "
+            "raising workers past 8 typically REDUCES throughput (verified at 32 workers: "
+            "~5 MiB/s vs ~7 MiB/s at 8 workers). Use --diag-range-key to investigate."
         ),
     ),
     debug_traces: bool = typer.Option(
