@@ -29,12 +29,18 @@ MANIFEST_VERSION = 4
 DEFAULT_CHUNK_SIZE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GiB
 MIN_CHUNK_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 PARTIAL_MARKER = ".sow-r2-backup-partial"
-# 32 workers gave ~30% LOWER throughput than 8 workers in real traces
-# (5.0 vs 7.3 MiB/s) — see specs/admin-r2-backup-throughput-remediation-v2.md.
-# R2 exhibits a ~7 MiB/s account/bucket aggregate cap from this client;
-# adding workers past ~8 slices the cap thinner without raising it.
-# Verified via --diag-range-key (ratio=2.41, partial scaling, not pure per-conn cap).
-DEFAULT_CONCURRENCY = 8
+# Concurrency past 1 buys ~0 aggregate throughput. R2 exhibits an
+# account/bucket-level cap (~7 MiB/s from this client); a single connection
+# now saturates it. The v1 rclone benchmark confirmed this:
+#   boto3 single-conn  7.85 MiB/s (best observed)
+#   boto3 4-range     6.54 MiB/s  (ratio=0.83, parallel HURTS)
+#   boto3 32-worker   5.0  MiB/s  (v2 trace, 30% regression)
+#   rclone 8-transfer 5.68 MiB/s  (slower than single boto3 conn)
+# See reports/admin-r2-backup-rclone-download-v1-results.md and
+# specs/admin-r2-backup-throughput-remediation-v2.md.
+# --concurrency N>1 remains available for experimentation but is not expected
+# to help; run --diag-range-key first.
+DEFAULT_CONCURRENCY = 1
 COPY_BUFFER_SIZE = 1024 * 1024  # 1 MB
 SPOT_CHECK_HEAD_RATIO = 0.05  # 5% random sample
 
@@ -911,8 +917,8 @@ def write_backup(
     Raises:
         BackupError: If backup fails. Partial directory is cleaned up.
     """
-    if not (1 <= concurrency <= 64):
-        raise BackupError(f"concurrency must be 1-64, got {concurrency}")
+    if not (1 <= concurrency <= 5):
+        raise BackupError(f"concurrency must be 1-5, got {concurrency}")
 
     if output_dir.exists():
         raise BackupError(f"Output directory already exists: {output_dir}")

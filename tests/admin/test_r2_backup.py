@@ -910,17 +910,17 @@ class TestConcurrentBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError, match="concurrency must be 1-64"):
+        with pytest.raises(BackupError, match="concurrency must be 1-5"):
             write_backup(r2, output, inventory, concurrency=0)
 
-    def test_concurrency_validation_rejects_65(self, tmp_path):
-        """write_backup raises BackupError for concurrency=65."""
+    def test_concurrency_validation_rejects_6(self, tmp_path):
+        """write_backup raises BackupError for concurrency=6."""
         r2 = _make_r2_mock([])
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError, match="concurrency must be 1-64"):
-            write_backup(r2, output, inventory, concurrency=65)
+        with pytest.raises(BackupError, match="concurrency must be 1-5"):
+            write_backup(r2, output, inventory, concurrency=6)
 
 
 # ---------------------------------------------------------------------------
