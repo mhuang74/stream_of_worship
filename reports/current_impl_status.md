@@ -1045,7 +1045,11 @@ test = [
 - Phase 10: Lambda Render Worker Migration
 - Phase 11: `029b7f5` - Simplify Render Progress Notification v2
 
-### Latest Update - 2026-06-17
+### Latest Update - 2026-06-20
+
+- **R2 backup rclone download path benchmarked and rejected.** Per `specs/admin-r2-backup-rclone-download-v1.md` Step 1c, executed mandatory pre-implementation benchmarks before writing any production code. Results: boto3 single conn = 7.85 MiB/s; rclone single file = 4.07 MiB/s; rclone multi-file (8 transfers) = 5.68 MiB/s. rclone achieves only 0.52×–0.72× the boto3 baseline, well below the 1.2× proceed threshold. Confirms the throughput cap is R2-account-level, not boto3-specific. Fixes 1-7 from the spec are NOT implemented. Full benchmark report: `reports/admin-r2-backup-rclone-download-v1-results.md`.
+
+### Previous Update - 2026-06-17
 
 - Addressed PR #108 second-round review feedback for admin soft-delete/R2 maintenance.
 - `purge-soft-deletes --confirm` now hard-deletes the DB row before R2 deletion, skips R2 when the DB delete is blocked or stale, and reports R2 cleanup failures in the manifest.

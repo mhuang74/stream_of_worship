@@ -2,6 +2,8 @@
 
 - R2 backup throughput investigation closed. 32-worker concurrency bump (commit ea397e7) regressed throughput 7.3 → 5.0 MiB/s. Reverted DEFAULT_CONCURRENCY to 8; kept as_completed / size-sort / tracer / range-GET diagnostic / read_timeout=300. Account-level R2 cap at ~7 MiB/s confirmed via --diag-range-key (ratio=2.41). <10 min backup goal for 12.9 GB closed as not feasible within local Python CLI architecture; reopening requires Cloudflare Worker backup or bucket size reduction. See specs/admin-r2-backup-throughput-remediation-v2.md.
 
+- **R2 backup rclone path benchmarked and REJECTED.** Per specs/admin-r2-backup-rclone-download-v1.md Step 1c, ran mandatory pre-implementation benchmarks: boto3 single conn = 7.85 MiB/s, rclone single file = 4.07 MiB/s, rclone multi-file (8 transfers) = 5.68 MiB/s. rclone achieves only 0.52×–0.72× the boto3 baseline, well below the 1.2× proceed threshold. The cap is confirmed R2-account-level, not boto3-specific. Fixes 1-7 from the spec are NOT implemented. Full results recorded in reports/admin-r2-backup-rclone-download-v1-results.md.
+
 
 - Addressed PR #104 review feedback by hardening LRC language/script mismatch warnings against missing or non-string lyric payloads, preserving the legacy `lyrics.lrc` R2 alias for renderers, and adding regression coverage.
 - Implemented `catalog-insert-youtube-v2` for the admin CLI.
