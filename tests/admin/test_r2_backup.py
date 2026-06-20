@@ -16,6 +16,7 @@ from stream_of_worship.admin.services.r2_backup import (
     MIN_CHUNK_SIZE_BYTES,
     BackupError,
     BackupProgress,
+    BackupTracer,
     HashingReader,
     Inventory,
     InventoryObject,
@@ -1413,3 +1414,227 @@ class TestRestoreFromArchive:
         assert result.uploaded == 1
         assert result.failed == 1
         assert len(result.failures) == 1
+
+
+# ---------------------------------------------------------------------------
+# BackupTracer tests
+# ---------------------------------------------------------------------------
+
+
+class TestBackupTracer:
+    def test_disabled_when_logger_below_debug(self):
+        """Tracer is no-op when logger is not at DEBUG level."""
+        import logging
+
+        log = logging.getLogger("test_disabled_tracer")
+        log.setLevel(logging.INFO)
+        tracer = BackupTracer(logger=log)
+        # All methods should be no-ops and not raise
+        tracer.phase_start("x")
+        tracer.phase_end("x")
+        tracer.object_download_trace(
+            key="k",
+            worker="t1",
+            attempt=0,
+            conn_ms=1.0,
+            stream_ms=2.0,
+            bytes_read=10,
+            retries=0,
+        )
+        tracer.tar_write_trace(
+            idx=0, key="k", wait_ms=1.0, tar_write_ms=2.0, bytes_written=10
+        )
+        tracer.bytes_downloaded_sample(100, 1)
+        tracer.finalize(total_objects=1, total_bytes=10)
+        # No assert needed; absence of error proves no-op
+
+    def test_phase_start_end_emits_debug(self, caplog):
+        import logging
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            tracer.phase_start("phase_x")
+            tracer.phase_end("phase_x", foo="bar")
+        assert any("phase_end name=phase_x" in r.message for r in caplog.records)
+        assert any("foo=bar" in r.message for r in caplog.records)
+
+    def test_object_download_trace_updates_accumulators(self, caplog):
+        import logging
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            tracer.object_download_trace(
+                key="a",
+                worker="t1",
+                attempt=0,
+                conn_ms=10.0,
+                stream_ms=100.0,
+                bytes_read=1024 * 1024,
+                retries=0,
+            )
+        assert any("object_download key=a" in r.message for r in caplog.records)
+        assert tracer._bytes_downloaded == 1024 * 1024
+        assert tracer._sum_download_ms == 100.0
+        assert tracer._sum_conn_ms == 10.0
+        assert tracer._max_object_download_ms == 110.0
+        assert tracer._max_object_download_key == "a"
+
+    def test_tar_write_trace_updates_accumulators(self, caplog):
+        import logging
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            tracer.tar_write_trace(
+                idx=0, key="a", wait_ms=50.0, tar_write_ms=30.0, bytes_written=1024 * 1024
+            )
+            tracer.tar_write_trace(
+                idx=1, key="b", wait_ms=10.0, tar_write_ms=20.0, bytes_written=1024 * 1024
+            )
+        assert tracer._sum_wait_ms == 60.0
+        assert tracer._sum_tar_write_ms == 50.0
+        assert tracer._bytes_written == 2 * 1024 * 1024
+        assert tracer._object_count_written == 2
+        assert any("wait_is_bottleneck=yes" in r.message for r in caplog.records)  # 50 > 30
+        assert any("wait_is_bottleneck=no" in r.message for r in caplog.records)  # 10 < 20
+
+    def test_bytes_downloaded_sample_throttles_logs(self, caplog):
+        """Throughput log emitted at most once per THROUGHPUT_SAMPLE_INTERVAL."""
+        import logging
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            tracer._run_start = 0.0  # enable t+ logging
+            for i in range(5):
+                tracer.bytes_downloaded_sample(i * 1024 * 1024, 8)
+            # All 5 calls recorded as samples
+            assert len(tracer._throughput_samples) == 5
+            assert tracer._peak_workers == 8
+            # At most 1 throughput_sample log line within the 5s window
+            sample_logs = [r for r in caplog.records if "throughput_sample" in r.message]
+            assert len(sample_logs) <= 1
+
+    def test_finalize_emits_summary_with_network_saturation_field(self, caplog):
+        import logging
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            tracer._run_start = 0.0
+            tracer.bytes_downloaded_sample(0, 4)
+            # Simulate wall-clock passage
+            import time as _t
+
+            new_t = _t.time() + 60  # 60s later in real time
+            tracer._throughput_samples.append((new_t, 100 * 1024 * 1024, 4))
+            tracer._last_throughput_log = 0  # allow next log
+            tracer._bytes_downloaded = 100 * 1024 * 1024
+            tracer._sum_download_ms = 60_000.0  # 1 worker × 60s
+            tracer._peak_workers = 4
+            tracer.finalize(total_objects=100, total_bytes=100 * 1024 * 1024)
+        summary_logs = [r for r in caplog.records if r.message.startswith("summary")]
+        assert len(summary_logs) == 1
+        msg = summary_logs[0].message
+        assert "aggregate_mbps" in msg
+        assert "single_worker_avg_mbps" in msg
+        assert "network_saturated" in msg
+        assert "peak_workers=4" in msg
+
+    def test_thread_safety(self):
+        """Concurrent calls to BackupTracer methods do not corrupt accumulators."""
+        import logging
+        import threading
+
+        log = logging.getLogger("test_tracer_thread_safety")
+        log.setLevel(logging.DEBUG)
+        tracer = BackupTracer(logger=log)
+        barrier = threading.Barrier(8)
+
+        def worker():
+            barrier.wait()
+            for i in range(100):
+                tracer.object_download_trace(
+                    key=f"k{i}",
+                    worker="w",
+                    attempt=0,
+                    conn_ms=1.0,
+                    stream_ms=1.0,
+                    bytes_read=100,
+                    retries=0,
+                )
+                tracer.bytes_downloaded_sample(i * 100, 8)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert tracer._object_count_downloaded == 800
+        assert tracer._bytes_downloaded == 80000
+
+
+class TestWriteBackupTracerIntegration:
+    """Verify write_backup plumbs tracer through and emits expected traces."""
+
+    def test_debug_traces_emits_object_and_tar_traces(self, tmp_path, caplog):
+        import logging
+
+        objects = [
+            {"key": "a/file1", "size": 100, "etag": "etag1", "data": b"x" * 100},
+            {"key": "a/file2", "size": 200, "etag": "etag2", "data": b"y" * 200},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            result = write_backup(
+                r2,
+                output,
+                inventory,
+                tracer=tracer,
+            )
+
+        assert result.object_count == 2
+
+        # At least one object_download and one tar_write log per object
+        download_logs = [r for r in caplog.records if "object_download" in r.message]
+        tar_logs = [r for r in caplog.records if "tar_write" in r.message]
+        phase_logs = [r for r in caplog.records if "phase_end" in r.message]
+        summary_logs = [r for r in caplog.records if r.message.startswith("summary")]
+        assert len(download_logs) >= 2
+        assert len(tar_logs) >= 2
+        assert any("phase_end name=download_phase" in r.message for r in phase_logs)
+        assert any("phase_end name=total" in r.message for r in phase_logs)
+        assert len(summary_logs) == 1
+
+    def test_write_backup_without_tracer_no_logs(self, tmp_path, caplog):
+        """Default (tracer=None) emits no backup DEBUG logs."""
+        import logging
+
+        objects = [
+            {"key": "a/file1", "size": 100, "etag": "etag1", "data": b"x" * 100},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            result = write_backup(r2, output, inventory)
+        assert result.object_count == 1
+        assert not [r for r in caplog.records if "object_download" in r.message]
+        assert not [r for r in caplog.records if "tar_write" in r.message]
+        assert not [r for r in caplog.records if "summary" in r.message]

@@ -228,6 +228,248 @@ class DownloadResult:
     metadata: dict
 
 
+class BackupTracer:
+    """Collects and emits performance traces for backup operations.
+
+    Thread-safe. Designed to be passed (as `tracer=`) into `write_backup`
+    and `_download_object_to_tempfile` to emit per-object and per-phase
+    timing logs at DEBUG level. All methods are no-ops if the tracer is
+    disabled (logger level above DEBUG).
+
+    Traces are written to the module logger (`stream_of_worship.admin.services.r2_backup`).
+    Per-object events fire from worker threads; Rich `Progress` renders on the
+    same stderr but the tracer is throttled by the existing `BackupProgress._maybe_report`
+    path (which feeds `bytes_downloaded_sample` via the wrapped callback in maintenance.py).
+    """
+
+    # Aggregate throughput sample interval (seconds)
+    THROUGHPUT_SAMPLE_INTERVAL = 5.0
+
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self._logger = logger or logging.getLogger(__name__)
+        self._enabled = self._logger.isEnabledFor(logging.DEBUG)
+        self._lock = threading.Lock()
+
+        # Phase timing
+        self._phase_starts: dict[str, float] = {}
+
+        # Per-object accumulators (aggregate over all objects)
+        self._object_count_downloaded = 0
+        self._object_count_written = 0
+        self._bytes_downloaded = 0
+        self._bytes_written = 0
+        self._retries_total = 0
+        self._sum_download_ms = 0.0  # sum of worker download_ms across objects
+        self._sum_conn_ms = 0.0  # sum of boto3 get_object_stream ms
+        self._sum_wait_ms = 0.0  # sum of main-thread future.result() wait ms
+        self._sum_tar_write_ms = 0.0  # sum of main-thread tar.addfile ms
+        self._max_object_download_ms = 0.0
+        self._max_object_download_key = ""
+
+        # Throughput sampling (fed via bytes_downloaded_sample)
+        self._throughput_samples: list[tuple[float, int, int]] = []  # (t, bytes, workers)
+        self._last_throughput_log = 0.0
+        self._peak_workers = 0
+
+        # Run totals
+        self._run_start = 0.0
+
+    # ---- Phase-level tracing ----
+
+    def phase_start(self, name: str) -> None:
+        if not self._enabled:
+            return
+        with self._lock:
+            self._phase_starts[name] = time.monotonic()
+        if name == "total":
+            self._run_start = time.monotonic()
+
+    def phase_end(self, name: str, **extra) -> None:
+        if not self._enabled:
+            return
+        with self._lock:
+            start = self._phase_starts.pop(name, None)
+        if start is None:
+            return
+        elapsed_ms = (time.monotonic() - start) * 1000.0
+        fields = " ".join(f"{k}={v}" for k, v in extra.items())
+        self._logger.debug(f"phase_end name={name} elapsed_ms={elapsed_ms:.1f} {fields}")
+
+    # ---- Per-object download tracing (worker thread) ----
+
+    def object_download_trace(
+        self,
+        key: str,
+        worker: str,
+        attempt: int,
+        conn_ms: float,
+        stream_ms: float,
+        bytes_read: int,
+        retries: int,
+    ) -> None:
+        """Emit per-object download trace and update accumulators.
+
+        Called from each download worker thread after a download attempt completes
+        (success or final failure).
+        """
+        if not self._enabled:
+            return
+        self._logger.debug(
+            f"object_download key={key} worker={worker} attempt={attempt} "
+            f"conn_ms={conn_ms:.1f} stream_ms={stream_ms:.1f} "
+            f"bytes={bytes_read} download_mbps={(bytes_read / max(stream_ms, 1.0)) * 1000 / (1024*1024):.2f} "
+            f"retries={retries}"
+        )
+        with self._lock:
+            self._object_count_downloaded += 1
+            self._bytes_downloaded += bytes_read
+            self._retries_total += retries
+            self._sum_download_ms += stream_ms
+            self._sum_conn_ms += conn_ms
+            total_ms = stream_ms + conn_ms
+            if total_ms > self._max_object_download_ms:
+                self._max_object_download_ms = total_ms
+                self._max_object_download_key = key
+
+    # ---- Per-object tar-write tracing (main thread) ----
+
+    def tar_write_trace(
+        self,
+        idx: int,
+        key: str,
+        wait_ms: float,
+        tar_write_ms: float,
+        bytes_written: int,
+    ) -> None:
+        """Emit per-object tar-write trace and update accumulators.
+
+        Called from the main thread after writing one object to the chunk tar.
+
+        `wait_ms` = wall time spent on `future.result(idx)` (head-of-line wait).
+        `tar_write_ms` = wall time spent in `current_tar.addfile(...)` end-to-end
+        (includes opening temp file, reading from disk, and writing to tar).
+        """
+        if not self._enabled:
+            return
+        self._logger.debug(
+            f"tar_write idx={idx} key={key} "
+            f"wait_ms={wait_ms:.1f} tar_write_ms={tar_write_ms:.1f} "
+            f"bytes={bytes_written} "
+            f"wait_is_bottleneck={'yes' if wait_ms > tar_write_ms else 'no'}"
+        )
+        with self._lock:
+            self._object_count_written += 1
+            self._bytes_written += bytes_written
+            self._sum_wait_ms += wait_ms
+            self._sum_tar_write_ms += tar_write_ms
+
+    # ---- Throughput sampling (called from throttled on_progress callback) ----
+
+    def bytes_downloaded_sample(self, bytes_downloaded: int, active_workers: int) -> None:
+        """Record a throughput sample and emit periodic aggregate throughput log.
+
+        Called ~10/sec from `BackupProgress._maybe_report` via the wrapped
+        `_on_progress` callback in maintenance.py.
+        """
+        if not self._enabled:
+            return
+        now = time.monotonic()
+        with self._lock:
+            self._throughput_samples.append((now, bytes_downloaded, active_workers))
+            if active_workers > self._peak_workers:
+                self._peak_workers = active_workers
+            if now - self._last_throughput_log < self.THROUGHPUT_SAMPLE_INTERVAL:
+                return
+            self._last_throughput_log = now
+            if len(self._throughput_samples) >= 2:
+                t0, b0, _ = self._throughput_samples[0]
+                t1, b1, w1 = self._throughput_samples[-1]
+                dt = max(t1 - t0, 1e-9)
+                mbps = (b1 - b0) / dt / (1024 * 1024)
+                elapsed_since_run_start = now - self._run_start if self._run_start else 0.0
+                self._logger.debug(
+                    f"throughput_sample t+{elapsed_since_run_start:.1f}s "
+                    f"workers={w1} downloaded_mib={b1 / (1024*1024):.2f} "
+                    f"aggregate_mbps={mbps:.2f} peak_workers={self._peak_workers}"
+                )
+
+    # ---- Final summary ----
+
+    def finalize(self, total_objects: int, total_bytes: int) -> None:
+        """Emit aggregate summary stats.
+
+        Expected to be called from `write_backup()` after the ThreadPoolExecutor
+        block completes (after downloads + tar writes, before spot-check).
+        """
+        if not self._enabled:
+            return
+        with self._lock:
+            samples = list(self._throughput_samples)
+            peak_workers = self._peak_workers
+            sum_download_ms = self._sum_download_ms
+            sum_conn_ms = self._sum_conn_ms
+            sum_wait_ms = self._sum_wait_ms
+            sum_tar_write_ms = self._sum_tar_write_ms
+            bytes_downloaded = self._bytes_downloaded
+            retries_total = self._retries_total
+            max_object_download_ms = self._max_object_download_ms
+            max_object_download_key = self._max_object_download_key
+
+        # Aggregate throughput across whole run (wall-clock between first and last sample)
+        if len(samples) >= 2:
+            t0, b0, _ = samples[0]
+            t1, b1, _ = samples[-1]
+            dt = max(t1 - t0, 1e-9)
+            aggregate_mbps = (b1 - b0) / dt / (1024 * 1024)
+        else:
+            aggregate_mbps = 0.0
+
+        # Single-worker average throughput = bytes / per-object average download time.
+        # If single-worker avg << aggregate, workers ARE scaling (network not saturated).
+        # If single-worker avg ≈ aggregate, network is saturated (adding workers won't help).
+        avg_per_object_download_ms = sum_download_ms / max(total_objects, 1)
+        avg_object_bytes = bytes_downloaded / max(total_objects, 1)
+        single_worker_avg_mbps = (
+            avg_object_bytes / max(avg_per_object_download_ms, 1.0) * 1000 / (1024 * 1024)
+        )
+
+        # Head-of-line blocking ratio: wait_ms / (wait_ms + tar_write_ms).
+        # If ratio is high, main thread is bottlenecked on slow head-of-queue downloads
+        # rather than running tar writes.
+        main_thread_total = sum_wait_ms + sum_tar_write_ms
+        wait_ratio = (sum_wait_ms / max(main_thread_total, 1.0)) * 100.0
+        tar_ratio = (sum_tar_write_ms / max(main_thread_total, 1.0)) * 100.0
+
+        self._logger.debug(
+            "summary total_objects=%d total_bytes=%d "
+            "aggregate_mbps=%.2f single_worker_avg_mbps=%.2f "
+            "peak_workers=%d retries_total=%d "
+            "sum_download_ms=%.1f sum_conn_ms=%.1f sum_wait_ms=%.1f sum_tar_write_ms=%.1f "
+            "wait_pct=%.1f tar_write_pct=%.1f "
+            "max_object_download_ms=%.1f max_object_download_key=%s "
+            "network_saturated=%s",
+            total_objects,
+            total_bytes,
+            aggregate_mbps,
+            single_worker_avg_mbps,
+            peak_workers,
+            retries_total,
+            sum_download_ms,
+            sum_conn_ms,
+            sum_wait_ms,
+            sum_tar_write_ms,
+            wait_ratio,
+            tar_ratio,
+            max_object_download_ms,
+            max_object_download_key,
+            "yes"
+            if single_worker_avg_mbps > 0
+            and aggregate_mbps > 0
+            and (aggregate_mbps / max(single_worker_avg_mbps * peak_workers, 1.0)) < 0.5
+            else "no (or inconclusive)",
+        )
+
+
 @dataclass
 class InventoryObject:
     """A single object from the R2 inventory."""
@@ -359,6 +601,7 @@ def _download_object_to_tempfile(
     inv_obj: InventoryObject,
     temp_dir: Path,
     progress: Optional[BackupProgress] = None,
+    tracer: Optional[BackupTracer] = None,
     max_retries: int = 2,
 ) -> DownloadResult:
     """Download a single object to a temp file with consistency checking.
@@ -372,6 +615,7 @@ def _download_object_to_tempfile(
         inv_obj: Inventory object to download
         temp_dir: Directory for temporary files
         progress: Optional BackupProgress tracker for reporting
+        tracer: Optional BackupTracer for performance tracing
         max_retries: Number of retry attempts for transient failures
 
     Raises:
@@ -380,13 +624,20 @@ def _download_object_to_tempfile(
     import tempfile
 
     last_error: Optional[str] = None
+    worker_name = threading.current_thread().name
+    retries_taken = 0
+    conn_ms = 0.0
+    stream_ms = 0.0
+
     for attempt in range(max_retries + 1):
         temp_path: Optional[Path] = None
         try:
             if progress is not None:
                 progress.worker_started()
 
+            t_conn_start = time.monotonic() if tracer is not None else 0.0
             resp = r2_client.get_object_stream(inv_obj.key)
+            conn_ms = (time.monotonic() - t_conn_start) * 1000.0 if tracer is not None else 0.0
             body = resp["body"]
             content_length = resp["content_length"]
             get_etag = resp["etag"]
@@ -398,7 +649,9 @@ def _download_object_to_tempfile(
 
                     on_read = progress.add_bytes if progress is not None else None
                     hashing_reader = HashingReader(body, on_read=on_read)
+                    t_stream_start = time.monotonic() if tracer is not None else 0.0
                     shutil.copyfileobj(hashing_reader, temp_file, length=COPY_BUFFER_SIZE)
+                    stream_ms = (time.monotonic() - t_stream_start) * 1000.0 if tracer is not None else 0.0
 
                 if hashing_reader.bytes_read != content_length:
                     raise BackupError(
@@ -437,6 +690,17 @@ def _download_object_to_tempfile(
                     "last_modified": resp.get("last_modified"),
                 }
 
+                if tracer is not None:
+                    tracer.object_download_trace(
+                        key=inv_obj.key,
+                        worker=worker_name,
+                        attempt=attempt,
+                        conn_ms=conn_ms,
+                        stream_ms=stream_ms,
+                        bytes_read=hashing_reader.bytes_read,
+                        retries=retries_taken,
+                    )
+
                 return DownloadResult(
                     temp_path=temp_path,
                     sha256=sha256,
@@ -448,13 +712,24 @@ def _download_object_to_tempfile(
 
         except Exception as e:
             last_error = str(e)
-            if temp_path is not None:
-                try:
-                    temp_path.unlink()
-                except OSError:
-                    pass
             if attempt < max_retries:
+                retries_taken += 1
+                if temp_path is not None:
+                    try:
+                        temp_path.unlink()
+                    except OSError:
+                        pass
                 continue
+            if tracer is not None:
+                tracer.object_download_trace(
+                    key=inv_obj.key,
+                    worker=worker_name,
+                    attempt=attempt,
+                    conn_ms=conn_ms,
+                    stream_ms=stream_ms,
+                    bytes_read=0,
+                    retries=retries_taken,
+                )
             raise BackupError(
                 f"Failed to backup {inv_obj.key} after retries: {last_error}"
             ) from e
@@ -481,6 +756,7 @@ def write_backup(
     chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES,
     concurrency: int = DEFAULT_CONCURRENCY,
     on_progress: Optional[Callable[[BackupProgress], None]] = None,
+    tracer: Optional[BackupTracer] = None,
 ) -> BackupResult:
     """Write a full backup to the output directory.
 
@@ -495,6 +771,7 @@ def write_backup(
         concurrency: Number of concurrent download workers (1-64)
         on_progress: Optional callback invoked with BackupProgress updates.
             Called from worker threads (throttled to ~10/sec).
+        tracer: Optional BackupTracer for performance tracing.
 
     Returns:
         BackupResult with summary info.
@@ -518,11 +795,20 @@ def write_backup(
         raise BackupError(f"Chunk size must be positive, got {chunk_size_bytes}")
 
     required_space = int(inventory.total_bytes * 2.1) + 50 * 1024 * 1024
-    _check_disk_space(output_dir.parent, required_space)
 
+    if tracer is not None:
+        tracer.phase_start("disk_check")
+    _check_disk_space(output_dir.parent, required_space)
+    if tracer is not None:
+        tracer.phase_end("disk_check", required_bytes=required_space)
+
+    if tracer is not None:
+        tracer.phase_start("setup")
     partial_dir.mkdir(parents=True)
     (partial_dir / PARTIAL_MARKER).touch()
     temp_dir = partial_dir / "tmp"
+    if tracer is not None:
+        tracer.phase_end("setup")
 
     active_temp_paths: set[Path] = set()
     active_temp_lock = threading.Lock()
@@ -574,10 +860,14 @@ def write_backup(
             on_progress=on_progress,
         )
 
+        if tracer is not None:
+            tracer.phase_start("total")
+            tracer.phase_start("download_phase")
+
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = {
                 idx: executor.submit(
-                    _download_object_to_tempfile, r2_client, inv_obj, temp_dir, progress
+                    _download_object_to_tempfile, r2_client, inv_obj, temp_dir, progress, tracer
                 )
                 for idx, inv_obj in enumerate(inventory.objects)
             }
@@ -595,12 +885,14 @@ def write_backup(
                     _ensure_tar()
 
                     future = futures[idx]
+                    t_wait_start = time.monotonic() if tracer is not None else 0.0
                     try:
                         download_result = future.result()
                     except BaseException:
                         for f in futures.values():
                             f.cancel()
                         raise
+                    wait_ms = (time.monotonic() - t_wait_start) * 1000.0 if tracer is not None else 0.0
 
                     if progress is not None:
                         progress.mark_object_downloaded()
@@ -613,8 +905,19 @@ def write_backup(
                         tar_info.mode = 0o644
                         tar_info.type = tarfile.REGTYPE
 
+                        t_tar_start = time.monotonic() if tracer is not None else 0.0
                         with open(download_result.temp_path, "rb") as f_in:
                             current_tar.addfile(tar_info, f_in)
+                        tar_write_ms = (time.monotonic() - t_tar_start) * 1000.0 if tracer is not None else 0.0
+
+                        if tracer is not None:
+                            tracer.tar_write_trace(
+                                idx=idx,
+                                key=inv_obj.key,
+                                wait_ms=wait_ms,
+                                tar_write_ms=tar_write_ms,
+                                bytes_written=inv_obj.size,
+                            )
 
                         obj_entry = _build_manifest_object(
                             inv_obj, member_name, download_result.sha256, chunk_index,
@@ -636,11 +939,28 @@ def write_backup(
                     f.cancel()
                 raise
 
+        if tracer is not None:
+            tracer.phase_end(
+                "download_phase",
+                objects=inventory.object_count,
+                total_bytes=inventory.total_bytes,
+            )
+            tracer.finalize(
+                total_objects=inventory.object_count,
+                total_bytes=inventory.total_bytes,
+            )
+
         if current_tar is not None:
+            if tracer is not None:
+                tracer.phase_start("tar_close")
             current_tar.close()
             current_tar = None
+            if tracer is not None:
+                tracer.phase_end("tar_close")
 
         if manifest_objects and SPOT_CHECK_HEAD_RATIO > 0:
+            if tracer is not None:
+                tracer.phase_start("spot_check")
             sample_size = max(1, int(len(manifest_objects) * SPOT_CHECK_HEAD_RATIO))
             sample_indices = random.sample(
                 range(len(manifest_objects)), min(sample_size, len(manifest_objects))
@@ -661,6 +981,8 @@ def write_backup(
                         )
                 except ClientError as e:
                     logger.warning(f"Spot-check: Failed to HEAD {obj_entry['key']}: {e}")
+            if tracer is not None:
+                tracer.phase_end("spot_check", samples=sample_size)
 
         final_chunk_count = chunk_index + 1 if manifest_objects else 0
 
@@ -685,18 +1007,29 @@ def write_backup(
             "objects": manifest_objects,
         }
 
+        if tracer is not None:
+            tracer.phase_start("manifest_write")
         manifest_path = partial_dir / "manifest.json"
         tmp_manifest = partial_dir / "manifest.json.tmp"
         with open(tmp_manifest, "w") as f:
             json.dump(manifest, f, indent=2)
         tmp_manifest.rename(manifest_path)
+        if tracer is not None:
+            tracer.phase_end("manifest_write")
 
         try:
             temp_dir.rmdir()
         except OSError:
             pass
 
+        if tracer is not None:
+            tracer.phase_start("rename")
         partial_dir.rename(output_dir)
+        if tracer is not None:
+            tracer.phase_end("rename")
+
+        if tracer is not None:
+            tracer.phase_end("total")
 
         return BackupResult(
             output_dir=output_dir,
