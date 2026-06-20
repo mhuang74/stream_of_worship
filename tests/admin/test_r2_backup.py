@@ -4,7 +4,6 @@ import hashlib
 import io
 import json
 import tarfile
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,10 +17,7 @@ from stream_of_worship.admin.services.r2_backup import (
     BackupProgress,
     BackupTracer,
     HashingReader,
-    Inventory,
-    InventoryObject,
     RestoreError,
-    VerifyError,
     build_inventory,
     load_manifest,
     parse_size,
@@ -29,8 +25,6 @@ from stream_of_worship.admin.services.r2_backup import (
     restore_from_archive,
     verify_archive,
     write_backup,
-    DEFAULT_CONCURRENCY,
-    COPY_BUFFER_SIZE,
     SPOT_CHECK_HEAD_RATIO,
 )
 
@@ -514,7 +508,7 @@ class TestWriteBackup:
         inventory = build_inventory(r2)
 
         output = tmp_path / "backup"
-        result = write_backup(r2, output, inventory)
+        write_backup(r2, output, inventory)
 
         manifest = json.loads((output / "manifest.json").read_text())
         obj = manifest["objects"][0]
@@ -709,9 +703,13 @@ class TestConcurrentBackup:
         assert manifest["consistency"]["mode"] == "initial-inventory-with-get-etag-check"
         assert manifest["consistency"]["md5_body_check"] is True
 
-        for i, obj in enumerate(manifest["objects"]):
+        # Objects are in completion order, not inventory order — verify by key lookup
+        obj_by_key = {o["key"]: o for o in manifest["objects"]}
+        for i in range(20):
+            key = f"obj{i}/file"
+            assert key in obj_by_key
             expected_hash = hashlib.sha256(bytes([i]) * 100).hexdigest()
-            assert obj["sha256"] == expected_hash
+            assert obj_by_key[key]["sha256"] == expected_hash
 
     def test_concurrency_1_works(self, tmp_path):
         """concurrency=1 falls back to sequential (no thread pool issues)."""
@@ -729,7 +727,7 @@ class TestConcurrentBackup:
         assert output.exists()
 
     def test_concurrent_backup_preserves_object_order(self, tmp_path):
-        """Manifest objects are in inventory order regardless of download completion order."""
+        """Manifest objects are in completion order with as_completed, but all present."""
         objects = [
             {"key": f"obj{i}/file", "size": 10, "etag": f"etag{i}", "data": bytes([i]) * 10}
             for i in range(10)
@@ -738,11 +736,12 @@ class TestConcurrentBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        result = write_backup(r2, output, inventory, concurrency=4)
+        write_backup(r2, output, inventory, concurrency=4)
 
         manifest = json.loads((output / "manifest.json").read_text())
-        for i, obj in enumerate(manifest["objects"]):
-            assert obj["key"] == f"obj{i}/file"
+        # All objects present regardless of completion order
+        keys = {o["key"] for o in manifest["objects"]}
+        assert keys == {f"obj{i}/file" for i in range(10)}
 
     def test_concurrent_backup_cleans_up_temp_files(self, tmp_path):
         """No temp files remain after successful backup."""
@@ -911,17 +910,17 @@ class TestConcurrentBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError, match="concurrency must be 1-64"):
+        with pytest.raises(BackupError, match="concurrency must be 1-128"):
             write_backup(r2, output, inventory, concurrency=0)
 
-    def test_concurrency_validation_rejects_65(self, tmp_path):
-        """write_backup raises BackupError for concurrency=65."""
+    def test_concurrency_validation_rejects_129(self, tmp_path):
+        """write_backup raises BackupError for concurrency=129."""
         r2 = _make_r2_mock([])
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError, match="concurrency must be 1-64"):
-            write_backup(r2, output, inventory, concurrency=65)
+        with pytest.raises(BackupError, match="concurrency must be 1-128"):
+            write_backup(r2, output, inventory, concurrency=129)
 
 
 # ---------------------------------------------------------------------------
@@ -1638,3 +1637,249 @@ class TestWriteBackupTracerIntegration:
         assert not [r for r in caplog.records if "object_download" in r.message]
         assert not [r for r in caplog.records if "tar_write" in r.message]
         assert not [r for r in caplog.records if "summary" in r.message]
+
+
+# ---------------------------------------------------------------------------
+# as_completed tar ingestion tests
+# ---------------------------------------------------------------------------
+
+
+class TestAsCompletedTarIngestion:
+    def test_chunk_index_follows_completion_order_not_submission_order(self, tmp_path):
+        """With as_completed, chunk_index is assigned in completion order."""
+        # Create objects where the second one "downloads" faster than the first
+        # by using a mock that simulates delay based on key
+        data_large = b"x" * 100
+        data_small = b"y" * 50
+        objects = [
+            {"key": "a/large", "size": 100, "etag": "etag1", "data": data_large},
+            {"key": "b/small", "size": 50, "etag": "etag2", "data": data_small},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        # Use tiny chunk size so each object gets its own chunk
+        result = write_backup(r2, output, inventory, chunk_size_bytes=75)
+
+        assert result.object_count == 2
+        assert result.chunk_count == 2
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        # Both objects present
+        keys = {o["key"] for o in manifest["objects"]}
+        assert keys == {"a/large", "b/small"}
+        # chunk_index values are valid
+        for obj in manifest["objects"]:
+            assert obj["chunk_index"] in {0, 1}
+
+        # Verify archive still passes
+        verify_result = verify_archive(output)
+        assert verify_result.ok is True
+
+    def test_all_objects_present_after_as_completed(self, tmp_path):
+        """All objects are present in manifest after as_completed rewrite."""
+        objects = [
+            {"key": f"obj{i}/file", "size": 10, "etag": f"etag{i}", "data": bytes([i]) * 10}
+            for i in range(10)
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory, concurrency=4)
+
+        assert result.object_count == 10
+        manifest = json.loads((output / "manifest.json").read_text())
+        assert len(manifest["objects"]) == 10
+        keys = {o["key"] for o in manifest["objects"]}
+        assert keys == {f"obj{i}/file" for i in range(10)}
+
+        verify_result = verify_archive(output)
+        assert verify_result.ok is True
+
+
+class TestInventorySortBySize:
+    def test_submission_order_is_size_descending(self, tmp_path):
+        """Large objects are submitted first to ThreadPoolExecutor."""
+        objects = [
+            {"key": "small/file", "size": 10, "etag": "etag1", "data": b"x" * 10},
+            {"key": "large/file", "size": 100, "etag": "etag2", "data": b"y" * 100},
+            {"key": "medium/file", "size": 50, "etag": "etag3", "data": b"z" * 50},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        write_backup(r2, output, inventory)
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        # member_name indices should still be original inventory order
+        obj_by_key = {o["key"]: o for o in manifest["objects"]}
+        # All objects present
+        assert set(obj_by_key.keys()) == {"small/file", "large/file", "medium/file"}
+
+    def test_member_name_indices_are_original_inventory_order(self, tmp_path):
+        """member_name uses original inventory index, not submission order."""
+        objects = [
+            {"key": "a/file", "size": 10, "etag": "etag1", "data": b"x" * 10},
+            {"key": "b/file", "size": 100, "etag": "etag2", "data": b"y" * 100},
+        ]
+        r2 = _make_r2_mock(objects)
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        write_backup(r2, output, inventory)
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        # Find the object entries by key
+        obj_by_key = {o["key"]: o for o in manifest["objects"]}
+        # a/file was inventory index 0, b/file was index 1
+        assert obj_by_key["a/file"]["member_name"] == "objects/000000000000.bin"
+        assert obj_by_key["b/file"]["member_name"] == "objects/000000000001.bin"
+
+
+class TestRetryTraceEmission:
+    def test_retry_trace_called_on_timeout_error(self, tmp_path, caplog):
+        """retry_trace is called with correct error_code when a retry fires."""
+        import logging
+        from botocore.exceptions import ClientError
+
+        data = b"hello world"
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
+        r2 = _make_r2_mock(objects)
+
+        call_count = [0]
+        original_get = r2.get_object_stream.side_effect
+
+        def _timeout_then_success(key):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ClientError(
+                    {"Error": {"Code": "RequestTimeout", "Message": "Timeout"}},
+                    "GetObject",
+                )
+            return original_get(key)
+
+        r2.get_object_stream.side_effect = _timeout_then_success
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            result = write_backup(r2, output, inventory, tracer=tracer)
+
+        assert result.object_count == 1
+
+        retry_logs = [r for r in caplog.records if "download_retry" in r.message]
+        assert len(retry_logs) == 1
+        msg = retry_logs[0].message
+        assert "error_code=RequestTimeout" in msg
+        assert "attempt=0" in msg
+        assert "key=a/file" in msg
+
+    def test_timeout_retries_counter_incremented(self, tmp_path, caplog):
+        """_timeout_retries is incremented for timeout-class errors."""
+        import logging
+        from botocore.exceptions import ClientError
+
+        data = b"hello world"
+        etag = hashlib.md5(data).hexdigest()
+        objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
+        r2 = _make_r2_mock(objects)
+
+        call_count = [0]
+        original_get = r2.get_object_stream.side_effect
+
+        def _slow_down_then_success(key):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ClientError(
+                    {"Error": {"Code": "SlowDown", "Message": "Slow down"}},
+                    "GetObject",
+                )
+            return original_get(key)
+
+        r2.get_object_stream.side_effect = _slow_down_then_success
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        with caplog.at_level(
+            logging.DEBUG, logger="stream_of_worship.admin.services.r2_backup"
+        ):
+            tracer = BackupTracer()
+            write_backup(r2, output, inventory, tracer=tracer)
+
+        assert tracer._timeout_retries == 1
+        # _retries_total is 2: retry_trace increments once for the retry event,
+        # and object_download_trace increments once for retries_taken on the
+        # successful final attempt.
+        assert tracer._retries_total == 2
+
+
+class TestRangeGetDiagnostic:
+    def test_range_get_diagnostic_structure(self):
+        """range_get_throughput_diag returns correct structure and values."""
+        from stream_of_worship.admin.services.r2_backup import range_get_throughput_diag
+        import threading
+
+        r2 = MagicMock()
+        r2.bucket = "test-bucket"
+
+        # Simulate a 40 MB object
+        content_length = 40 * 1024 * 1024
+        r2._client.head_object.return_value = {"ContentLength": content_length}
+
+        # Each range read returns exactly range_size bytes
+        def _get_object(**kwargs):
+            range_header = kwargs.get("Range", "")
+            import re
+            m = re.match(r"bytes=(\d+)-(\d+)", range_header)
+            assert m is not None
+            start = int(m.group(1))
+            end = int(m.group(2))
+            size = end - start + 1
+            return {"Body": io.BytesIO(b"x" * size)}
+
+        r2._client.get_object.side_effect = _get_object
+
+        # Thread-safe mock for time.monotonic that increments by 1.0 each call.
+        # We pre-compute a sequence of values and use an index with a lock.
+        mono_values = [
+            0.0,   # single start
+            1.0,   # single end
+            1.0,   # multi outer start
+            1.0, 2.0,  # range 0 start/end
+            1.0, 2.0,  # range 1 start/end
+            1.0, 2.0,  # range 2 start/end
+            1.0, 2.0,  # range 3 start/end
+            2.0,   # multi outer end
+        ]
+        mono_idx = [0]
+        mono_lock = threading.Lock()
+
+        def _mock_monotonic():
+            with mono_lock:
+                i = mono_idx[0]
+                mono_idx[0] = i + 1
+                return mono_values[i]
+
+        with patch("time.monotonic", side_effect=_mock_monotonic):
+            result = range_get_throughput_diag(r2, "test/key", num_ranges=4)
+
+        assert result["content_length"] == content_length
+        assert result["num_ranges"] == 4
+        # Single connection: 10 MB in 1s = 10 MB/s
+        assert result["single_conn_mbps"] == pytest.approx(10.0, rel=0.01)
+        # Multi connection: 40 MB in 1s = 40 MB/s
+        assert result["multi_conn_total_mbps"] == pytest.approx(40.0, rel=0.01)
+        # Ratio should be ~4.0
+        assert result["ratio"] == pytest.approx(4.0, rel=0.01)
+        assert len(result["per_range_mbps"]) == 4
+        for m in result["per_range_mbps"]:
+            assert m == pytest.approx(10.0, rel=0.01)

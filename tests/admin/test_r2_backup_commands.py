@@ -3,18 +3,14 @@
 import hashlib
 import io
 import json
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
-from stream_of_worship.admin.commands.maintenance import _bytes_to_mb, _format_datetime
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.main import app
 from stream_of_worship.admin.services.r2_backup import (
-    MANIFEST_VERSION,
     build_inventory,
     write_backup,
 )
@@ -642,3 +638,51 @@ def test_backup_r2_default_no_tracer_passes_none(monkeypatch, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert captured["tracer"] is None
+
+
+def test_backup_r2_diag_range_key_flag(monkeypatch, tmp_path):
+    """--diag-range-key short-circuits write_backup and prints JSON diag result."""
+    captured = {}
+
+    def _fake_range_get_diag(r2_client, s3_key):
+        captured["diag_key"] = s3_key
+        return {
+            "content_length": 45854636,
+            "num_ranges": 4,
+            "single_conn_mbps": 0.95,
+            "multi_conn_total_mbps": 3.72,
+            "ratio": 3.91,
+            "per_range_mbps": [0.92, 0.95, 0.91, 0.94],
+        }
+
+    # Patch at the source module where the import resolves
+    monkeypatch.setattr(
+        "stream_of_worship.admin.services.r2_backup.range_get_throughput_diag",
+        _fake_range_get_diag,
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance._load_clients",
+        lambda config_path: (_make_fake_config(), None),
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.commands.maintenance._load_r2",
+        lambda config: _make_fake_r2(),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "maintenance",
+            "backup-r2",
+            "--output",
+            str(tmp_path / "out"),
+            "--diag-range-key",
+            "02fa022169b7/stems/bass.wav",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["diag_key"] == "02fa022169b7/stems/bass.wav"
+    data = json.loads(result.stdout)
+    assert data["ratio"] == 3.91
+    assert data["num_ranges"] == 4
