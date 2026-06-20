@@ -27,13 +27,11 @@ from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.services.r2 import R2Client, R2PrefixSummary
 from stream_of_worship.admin.services.r2_backup import (
-    DEFAULT_CHUNK_SIZE_BYTES,
     MIN_CHUNK_SIZE_BYTES,
     BackupError,
     BackupProgress,
     BackupTracer,
     RestoreError,
-    VerifyError,
     build_inventory,
     load_manifest,
     parse_size,
@@ -648,8 +646,12 @@ def backup_r2(
         "10GiB", "--chunk-size", help="Chunk size (e.g. 10GiB, 500MiB, raw bytes)"
     ),
     concurrency: int = typer.Option(
-        8, "--concurrency", min=1, max=64,
-        help="Number of concurrent download workers"
+        32, "--concurrency", min=1, max=128,
+        help=(
+            "Number of concurrent download workers (default 32). "
+            "Per-stream R2 bandwidth caps at ~1 MBps; raise this to scale aggregate "
+            "throughput until the R2 account-level throttle is hit."
+        ),
     ),
     debug_traces: bool = typer.Option(
         False, "--debug-traces",
@@ -657,6 +659,14 @@ def backup_r2(
     ),
     format_: str = typer.Option("table", "--format", help="table|json"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+    diag_range_key: Optional[str] = typer.Option(
+        None, "--diag-range-key",
+        help=(
+            "Run a parallel Range-GET throughput diagnostic on this S3 key and exit "
+            "(does not perform a backup). Use with a large object key like "
+            "'<hash>/stems/bass.wav' to diagnose per-stream R2 bandwidth caps."
+        ),
+    ),
 ) -> None:
     """Backup entire R2 bucket to a local directory with chunked tar archives."""
     _validate_choice(format_, BACKUP_FORMAT_VALUES, "--format")
@@ -676,6 +686,13 @@ def backup_r2(
 
     config, _ = _load_clients(config_path)
     r2_client = _load_r2(config)
+
+    # Short-circuit: diagnostic mode
+    if diag_range_key is not None:
+        from stream_of_worship.admin.services.r2_backup import range_get_throughput_diag
+        result = range_get_throughput_diag(r2_client, diag_range_key)
+        _print_json_to_stdout(result)
+        return
 
     if format_ == "json":
         progress_console = Console(file=sys.stderr)

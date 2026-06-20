@@ -6,7 +6,6 @@ that maps safe internal member names back to R2 keys and metadata.
 """
 
 import hashlib
-import io
 import json
 import logging
 import os
@@ -15,6 +14,7 @@ import shutil
 import tarfile
 import threading
 import time
+from concurrent.futures import as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,7 +29,12 @@ MANIFEST_VERSION = 4
 DEFAULT_CHUNK_SIZE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GiB
 MIN_CHUNK_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 PARTIAL_MARKER = ".sow-r2-backup-partial"
-DEFAULT_CONCURRENCY = 8
+# Bumped from 8 → 32 based on trace evidence (2026-06): with 8 workers, each
+# R2 stream caps at ~1 MBps and aggregate throughput plateaus at ~7.3 MBps
+# (see specs/admin-r2-backup-throughput-remediation-v1.md). The per-stream cap is
+# R2-side (confirmed by --diag-range-key), so more connections is the only way
+# to scale until/if multipart Range-GET per object is added.
+DEFAULT_CONCURRENCY = 32
 COPY_BUFFER_SIZE = 1024 * 1024  # 1 MB
 SPOT_CHECK_HEAD_RATIO = 0.05  # 5% random sample
 
@@ -259,6 +264,7 @@ class BackupTracer:
         self._bytes_downloaded = 0
         self._bytes_written = 0
         self._retries_total = 0
+        self._timeout_retries = 0
         self._sum_download_ms = 0.0  # sum of worker download_ms across objects
         self._sum_conn_ms = 0.0  # sum of boto3 get_object_stream ms
         self._sum_wait_ms = 0.0  # sum of main-thread future.result() wait ms
@@ -363,6 +369,34 @@ class BackupTracer:
             self._sum_wait_ms += wait_ms
             self._sum_tar_write_ms += tar_write_ms
 
+    # ---- Retry tracing ----
+
+    def retry_trace(
+        self,
+        key: str,
+        worker: str,
+        attempt: int,
+        error_code: str,
+        elapsed_ms: float,
+    ) -> None:
+        """Emit a retry trace event when a download retry fires.
+
+        Called from `_download_object_to_tempfile` on each retry attempt
+        (before the next attempt begins). `error_code` is the botocore
+        ClientError error code string (e.g., "RequestTimeout", "ReadTimeout",
+        "SlowDown", "SocketError").
+        """
+        if not self._enabled:
+            return
+        self._logger.debug(
+            f"download_retry key={key} worker={worker} attempt={attempt} "
+            f"error_code={error_code} elapsed_ms={elapsed_ms:.1f}"
+        )
+        with self._lock:
+            self._retries_total += 1
+            if error_code in ("RequestTimeout", "ReadTimeout", "SlowDown"):
+                self._timeout_retries += 1
+
     # ---- Throughput sampling (called from throttled on_progress callback) ----
 
     def bytes_downloaded_sample(self, bytes_downloaded: int, active_workers: int) -> None:
@@ -412,6 +446,7 @@ class BackupTracer:
             sum_tar_write_ms = self._sum_tar_write_ms
             bytes_downloaded = self._bytes_downloaded
             retries_total = self._retries_total
+            timeout_retries = self._timeout_retries
             max_object_download_ms = self._max_object_download_ms
             max_object_download_key = self._max_object_download_key
 
@@ -443,7 +478,7 @@ class BackupTracer:
         self._logger.debug(
             "summary total_objects=%d total_bytes=%d "
             "aggregate_mbps=%.2f single_worker_avg_mbps=%.2f "
-            "peak_workers=%d retries_total=%d "
+            "peak_workers=%d retries_total=%d timeout_retries=%d "
             "sum_download_ms=%.1f sum_conn_ms=%.1f sum_wait_ms=%.1f sum_tar_write_ms=%.1f "
             "wait_pct=%.1f tar_write_pct=%.1f "
             "max_object_download_ms=%.1f max_object_download_key=%s "
@@ -454,6 +489,7 @@ class BackupTracer:
             single_worker_avg_mbps,
             peak_workers,
             retries_total,
+            timeout_retries,
             sum_download_ms,
             sum_conn_ms,
             sum_wait_ms,
@@ -712,8 +748,19 @@ def _download_object_to_tempfile(
 
         except Exception as e:
             last_error = str(e)
+            error_code = ""
+            if isinstance(e, ClientError):
+                error_code = e.response.get("Error", {}).get("Code", "")
             if attempt < max_retries:
                 retries_taken += 1
+                if tracer is not None:
+                    tracer.retry_trace(
+                        key=inv_obj.key,
+                        worker=worker_name,
+                        attempt=attempt,
+                        error_code=error_code,
+                        elapsed_ms=(conn_ms + stream_ms),
+                    )
                 if temp_path is not None:
                     try:
                         temp_path.unlink()
@@ -736,6 +783,91 @@ def _download_object_to_tempfile(
         finally:
             if progress is not None:
                 progress.worker_finished()
+
+
+def range_get_throughput_diag(
+    r2_client: "R2Client",
+    s3_key: str,
+    num_ranges: int = 4,
+) -> dict:
+    """Run a parallel Range-GET throughput diagnostic on a single R2 object.
+
+    Issues `num_ranges` concurrent Range-GET requests against non-overlapping
+    byte ranges of `s3_key` and measures aggregate throughput. Used to
+    distinguish R2-side per-connection throttling (N ranges → ~N MBps) from
+    client-network saturation (N ranges → ~1 MBps total).
+
+    Args:
+        r2_client: R2Client instance
+        s3_key: Full S3 key of a large object (recommend >20 MB stem file)
+        num_ranges: Number of parallel Range-GET workers (default 4)
+
+    Returns:
+        Dict with keys:
+            - content_length: int (total object size in bytes)
+            - num_ranges: int
+            - single_conn_mbps: float (throughput of one range, MB/s)
+            - multi_conn_total_mbps: float (aggregate throughput of all ranges, MB/s)
+            - ratio: float (multi / single; >1.5 suggests R2-side per-conn cap)
+            - per_range_mbps: list[float] (per-range throughput)
+    """
+    import concurrent.futures
+
+    head = r2_client._client.head_object(Bucket=r2_client.bucket, Key=s3_key)
+    content_length = int(head["ContentLength"])
+    range_size = content_length // num_ranges
+
+    ranges: list[tuple[int, int]] = []
+    for i in range(num_ranges):
+        start = i * range_size
+        end = (start + range_size - 1) if i < num_ranges - 1 else (content_length - 1)
+        ranges.append((start, end))
+
+    def _fetch_range(start: int, end: int) -> tuple[float, int]:
+        t0 = time.monotonic()
+        resp = r2_client._client.get_object(
+            Bucket=r2_client.bucket,
+            Key=s3_key,
+            Range=f"bytes={start}-{end}",
+        )
+        body = resp["Body"]
+        bytes_read = 0
+        while True:
+            chunk = body.read(1024 * 1024)
+            if not chunk:
+                break
+            bytes_read += len(chunk)
+        body.close()
+        elapsed = time.monotonic() - t0
+        return (elapsed, bytes_read)
+
+    # Single-connection baseline (first range only)
+    single_elapsed, single_bytes = _fetch_range(*ranges[0])
+    single_mbps = (single_bytes / max(single_elapsed, 1e-9)) / (1024 * 1024)
+
+    # Multi-connection parallel
+    per_range_mbps: list[float] = []
+    t_multi_start = time.monotonic()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_ranges) as executor:
+        future_list = [executor.submit(_fetch_range, s, e) for s, e in ranges]
+        multi_results = [f.result() for f in future_list]
+    multi_elapsed = time.monotonic() - t_multi_start
+    multi_total_bytes = sum(b for _, b in multi_results)
+    multi_mbps = (multi_total_bytes / max(multi_elapsed, 1e-9)) / (1024 * 1024)
+
+    for elapsed, bytes_read in multi_results:
+        per_range_mbps.append((bytes_read / max(elapsed, 1e-9)) / (1024 * 1024))
+
+    ratio = multi_mbps / max(single_mbps, 1e-9)
+
+    return {
+        "content_length": content_length,
+        "num_ranges": num_ranges,
+        "single_conn_mbps": round(single_mbps, 2),
+        "multi_conn_total_mbps": round(multi_mbps, 2),
+        "ratio": round(ratio, 2),
+        "per_range_mbps": [round(m, 2) for m in per_range_mbps],
+    }
 
 
 @dataclass
@@ -779,8 +911,8 @@ def write_backup(
     Raises:
         BackupError: If backup fails. Partial directory is cleaned up.
     """
-    if not (1 <= concurrency <= 64):
-        raise BackupError(f"concurrency must be 1-64, got {concurrency}")
+    if not (1 <= concurrency <= 128):
+        raise BackupError(f"concurrency must be 1-128, got {concurrency}")
 
     if output_dir.exists():
         raise BackupError(f"Output directory already exists: {output_dir}")
@@ -864,18 +996,40 @@ def write_backup(
             tracer.phase_start("total")
             tracer.phase_start("download_phase")
 
+        # Sort inventory indices by size descending for submission order.
+        # This ensures the slowest 50MB stems download first (in parallel with
+        # small lrc/json files), so the end of the run is small fast objects —
+        # no slow tail with workers=1.
+        submission_order = sorted(
+            range(len(inventory.objects)),
+            key=lambda i: inventory.objects[i].size,
+            reverse=True,
+        )
+
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = {
                 idx: executor.submit(
-                    _download_object_to_tempfile, r2_client, inv_obj, temp_dir, progress, tracer
+                    _download_object_to_tempfile,
+                    r2_client,
+                    inventory.objects[idx],
+                    temp_dir,
+                    progress,
+                    tracer,
                 )
-                for idx, inv_obj in enumerate(inventory.objects)
+                for idx in submission_order
             }
 
+            # Build reverse lookup: future → idx (needed because as_completed yields futures,
+            # not indices).
+            future_to_idx = {f: idx for idx, f in futures.items()}
+
             try:
-                for idx, inv_obj in enumerate(inventory.objects):
+                for future in as_completed(futures.values()):
+                    idx = future_to_idx[future]
+                    inv_obj = inventory.objects[idx]
                     member_name = _member_name_for_index(idx)
 
+                    # Rotate chunk if needed (based on completion-order size, not submission order)
                     if (
                         current_chunk_bytes > 0
                         and current_chunk_bytes + inv_obj.size > chunk_size_bytes
@@ -884,7 +1038,6 @@ def write_backup(
 
                     _ensure_tar()
 
-                    future = futures[idx]
                     t_wait_start = time.monotonic() if tracer is not None else 0.0
                     try:
                         download_result = future.result()

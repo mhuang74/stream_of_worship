@@ -100,9 +100,13 @@ class R2Client:
             region_name=region,
             config=Config(
                 connect_timeout=10,
-                read_timeout=30,
+                # 50MB stem at 1MBps = 50s; bump from 30s to avoid mid-stream timeout
+                # retries that would force full re-download from scratch.
+                read_timeout=300,
                 retries={"max_attempts": 2},
-                max_pool_connections=32,
+                # Bump from 32 to 64 to align with new DEFAULT_CONCURRENCY=32 plus headroom
+                # for the diagnostic Range-GET workers.
+                max_pool_connections=64,
             ),
         )
 
