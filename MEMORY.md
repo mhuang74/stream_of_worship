@@ -4,6 +4,16 @@
 
 - **R2 backup rclone path benchmarked and REJECTED.** Per specs/admin-r2-backup-rclone-download-v1.md Step 1c, ran mandatory pre-implementation benchmarks: boto3 single conn = 7.85 MiB/s, rclone single file = 4.07 MiB/s, rclone multi-file (8 transfers) = 5.68 MiB/s. rclone achieves only 0.52×–0.72× the boto3 baseline, well below the 1.2× proceed threshold. The cap is confirmed R2-account-level, not boto3-specific. Fixes 1-7 from the spec are NOT implemented. Full results recorded in reports/admin-r2-backup-rclone-download-v1-results.md.
 
+- R2 backup default concurrency reverted 8 → 1. The v1 rclone benchmark
+  (reports/admin-r2-backup-rclone-download-v1-results.md) confirmed a single
+  connection now saturates the R2 account-level cap: boto3 single-conn
+  7.85 MiB/s vs 4-range parallel 6.54 MiB/s (ratio=0.83, parallel HURTS;
+  v2 trace had ratio=2.41). Tightened --concurrency max 64 → 5 and
+  max_pool_connections 64 → 5 to match. Concurrency machinery
+  (ThreadPoolExecutor, as_completed, size-sort, BackupTracer,
+  range_get_throughput_diag) retained for experimentation; run
+  --diag-range-key before raising --concurrency above 1.
+
 
 - Addressed PR #104 review feedback by hardening LRC language/script mismatch warnings against missing or non-string lyric payloads, preserving the legacy `lyrics.lrc` R2 alias for renderers, and adding regression coverage.
 - Implemented `catalog-insert-youtube-v2` for the admin CLI.

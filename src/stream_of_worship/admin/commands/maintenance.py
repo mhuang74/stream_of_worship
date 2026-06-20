@@ -646,12 +646,13 @@ def backup_r2(
         "10GiB", "--chunk-size", help="Chunk size (e.g. 10GiB, 500MiB, raw bytes)"
     ),
     concurrency: int = typer.Option(
-        8, "--concurrency", min=1, max=64,
+        1, "--concurrency", min=1, max=5,
         help=(
-            "Number of concurrent download workers (default 8). "
+            "Number of concurrent download workers (default 1). "
             "R2 exhibits an account-level throughput cap (~7 MiB/s from this client); "
-            "raising workers past 8 typically REDUCES throughput (verified at 32 workers: "
-            "~5 MiB/s vs ~7 MiB/s at 8 workers). Use --diag-range-key to investigate."
+            "a single connection already saturates it. The v1 rclone benchmark showed "
+            "boto3 single-conn 7.85 MiB/s vs 4-range parallel 6.54 MiB/s (ratio=0.83, "
+            "parallel HURTS). Use --diag-range-key to investigate before raising."
         ),
     ),
     debug_traces: bool = typer.Option(

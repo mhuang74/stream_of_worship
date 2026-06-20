@@ -104,9 +104,10 @@ class R2Client:
                 # retries that would force full re-download from scratch.
                 read_timeout=300,
                 retries={"max_attempts": 2},
-                # Bump from 32 to 64 to align with new DEFAULT_CONCURRENCY=32 plus headroom
-                # for the diagnostic Range-GET workers.
-                max_pool_connections=64,
+                # Align with DEFAULT_CONCURRENCY=1 plus headroom for the
+                # --diag-range-key diagnostic's 4 parallel Range-GET workers.
+                # Higher parallelism is counterproductive under R2's account-level cap.
+                max_pool_connections=5,
             ),
         )
 
