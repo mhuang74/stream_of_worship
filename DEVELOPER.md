@@ -111,7 +111,7 @@ The project consists of **six architecturally separate components**:
 | **Runtime Model** | One-shot commands | Long-lived daemon | Interactive TUI | Serverless + browser | Event-driven Lambda |
 | **Target Users** | Admins / DevOps | Internal service | End users (legacy) | End users | Internal service |
 | **Dependencies** | Minimal | Very heavy (PyTorch) | Moderate | Node.js stack | Moderate (psycopg2, FFmpeg) |
-| **Distribution** | `uv run --project ops/admin-cli --extra admin` | Docker image | `uv run --project lab/sow-app` | Vercel | Lambda container |
+| **Distribution** | `uv run --project ops/admin-cli --extra admin sow-admin` | Docker image | `uv run --project lab/sow-app sow-app` | Vercel | Lambda container |
 | **Data Access** | PostgreSQL (Neon) + R2 | R2 + SQLite (jobs) | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 |
 | **Database Driver** | psycopg3 | aiosqlite | psycopg3 | Drizzle ORM + Neon | psycopg2 |
 
@@ -445,8 +445,8 @@ sow_cli_admin/                           # Repository root
 
 | Directory | Package Name | Purpose | Target Users | Database | Deployment |
 |-----------|-------------|---------|--------------|----------|------------|
-| `ops/admin-cli/src/stream_of_worship/admin/` | `stream-of-worship-admin` | Backend management CLI | Admins / DevOps | PostgreSQL (Neon) + R2 | `uv run --project ops/admin-cli --extra admin` |
-| `lab/sow-app/src/sow_lab_app/` | `stream-of-worship-app` | End-user TUI (DEPRECATED) | End users (legacy) | PostgreSQL (Neon) + R2 | `uv run --project lab/sow-app` |
+| `ops/admin-cli/src/stream_of_worship/admin/` | `stream-of-worship-admin` | Backend management CLI | Admins / DevOps | PostgreSQL (Neon) + R2 | `uv run --project ops/admin-cli --extra admin sow-admin` |
+| `lab/sow-app/src/sow_lab_app/` | `stream-of-worship-app` | End-user TUI (DEPRECATED) | End users (legacy) | PostgreSQL (Neon) + R2 | `uv run --project lab/sow-app sow-app` |
 | `ops/analysis-service/` | `sow-analysis` | Audio analysis microservice | Internal service | SQLite (jobs only) + R2 | Docker image |
 | `delivery/webapp/` | `sow-webapp` | Web application | End users | PostgreSQL (Neon) + R2 | Vercel |
 | `delivery/render-worker/` | `sow-render-worker` | Render processing | Internal service | PostgreSQL (Neon) + R2 | Lambda container |
