@@ -297,3 +297,7 @@ node_modules/
 
 # Render worker local secrets
 services/render-worker/secrets/
+
+# custom agent harness
+.planning/
+.dex/
