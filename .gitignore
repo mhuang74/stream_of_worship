@@ -15,8 +15,8 @@ downloads/
 eggs/
 .eggs/
 lib/
-!webapp/src/lib/
-!webapp/src/test/lib/
+!delivery/webapp/src/lib/
+!delivery/webapp/src/test/lib/
 lib64/
 parts/
 sdist/
@@ -218,18 +218,18 @@ __marimo__/
 # ============================================================================
 
 # POC outputs (generated files)
-poc/output/*
-poc/output_*/*
-poc/experiment_*/*
-!poc/output/.gitkeep
-!poc/output_allinone/.gitkeep
-poc/demix/*
+lab/poc-scripts/output/*
+lab/poc-scripts/output_*/*
+lab/poc-scripts/experiment_*/*
+!lab/poc-scripts/output/.gitkeep
+!lab/poc-scripts/output_allinone/.gitkeep
+lab/poc-scripts/demix/*
 
 # Audio files (too large for git, user-provided)
-poc/audio/*
+lab/poc-scripts/audio/*
 output_songs/*
 stems_output/*
-!poc/audio/.gitkeep
+!lab/poc-scripts/audio/.gitkeep
 *.flac
 *.mp3
 *.wav
@@ -296,7 +296,7 @@ node_modules/
 .opencode/
 
 # Render worker local secrets
-services/render-worker/secrets/
+delivery/render-worker/secrets/
 
 # custom agent harness
 .planning/

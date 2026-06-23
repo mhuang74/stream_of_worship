@@ -1,0 +1,428 @@
+"""Browse screen.
+
+Allows browsing and searching the song catalog to add songs to a songset.
+"""
+
+import logging
+from typing import Optional
+
+from textual.app import ComposeResult
+
+logger = logging.getLogger("sow_app.screens.browse")
+from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
+
+from stream_of_worship.db.app.songset_client import SongsetClient
+from sow_lab_app.services.catalog import CatalogService, SongWithRecording
+from sow_lab_app.services.playback import PlaybackPosition, PlaybackState
+from sow_lab_app.state import AppState
+from sow_lab_app.widgets import PlaybackBar
+
+
+class BrowseScreen(Screen):
+    """Screen for browsing and searching songs."""
+
+    BINDINGS = [
+        ("a", "add_to_songset", "Add to Songset"),
+        ("space", "toggle_playback", "Play/Stop"),
+        ("left", "skip_backward", "Skip -10s"),
+        ("right", "skip_forward", "Skip +10s"),
+        ("f", "focus_search", "Search"),
+        ("escape", "back", "Back"),
+        ("q", "quit", "Quit"),
+    ]
+
+    def __init__(
+        self,
+        state: AppState,
+        catalog: CatalogService,
+        songset_client: SongsetClient,
+    ):
+        """Initialize the screen.
+
+        Args:
+            state: Application state
+            catalog: Catalog service
+            songset_client: Songset database client
+        """
+        super().__init__()
+        self.state = state
+        self.catalog = catalog
+        self.songset_client = songset_client
+        self.songs: list[SongWithRecording] = []
+
+    def _parse_search_query(self, query: str) -> tuple[str, str]:
+        """Parse search query to extract field specifier.
+
+        Field specifier can be at the beginning or end of the query.
+        Examples: "field:all 讚美", "讚美 field:all", "field:lyrics:讚美"
+
+        Args:
+            query: Raw search query
+
+        Returns:
+            Tuple of (search_query, field)
+            field is one of: 'title', 'lyrics', 'composer', 'all'
+        """
+        query = query.strip()
+
+        import re
+
+        # Check if field: is at the beginning
+        if query.startswith("field:"):
+            rest = query[6:]  # Remove 'field:' prefix
+            # Match field name (word characters)
+            match = re.match(r"^(\w+)(?::|\s)?\s*", rest)
+            if match:
+                field = match.group(1).lower()
+                search_query = rest[match.end():].strip()
+                return search_query, field
+            # Just "field:" with no field name - treat as title search
+            return query, "title"
+
+        # Check if field: is at the end
+        if " field:" in query:
+            parts = query.rsplit(" field:", 1)
+            search_query = parts[0].strip()
+            field_part = parts[1].strip()
+            # Extract just the field name (ignore trailing colon if present)
+            field = field_part.rstrip(":").split()[0].lower()
+            if field in ("title", "lyrics", "composer", "all"):
+                return search_query, field
+
+        return query, "title"  # Default to title-only search
+
+    def compose(self) -> ComposeResult:
+        """Compose the screen layout."""
+        yield Header()
+
+        with Vertical():
+            yield Label("[bold]Browse Songs[/bold]", id="title")
+
+            with Horizontal(id="search_row"):
+                yield Input(
+                    placeholder="Search by title, or use field:<title|lyrics|composer|all> ...",
+                    id="search_input",
+                )
+                yield Button("Search", id="btn_search")
+                yield Button("Clear", id="btn_clear")
+
+            table = DataTable(id="song_table")
+            table.add_columns("Title", "Key", "Tempo", "Duration", "Album")
+            table.cursor_type = "row"
+            yield table
+
+            with Vertical(id="empty_state", classes="hidden"):
+                yield Static("📭", id="empty_icon")
+                yield Label("[bold]Catalog Empty[/bold]", id="empty_title")
+                yield Static("Loading...", id="empty_message")
+                yield Button("Refresh", id="btn_refresh", variant="default")
+
+            with Horizontal(id="buttons"):
+                yield Button("Add to Songset", id="btn_add", variant="primary")
+                yield Button("Preview", id="btn_preview")
+                yield Button("Back", id="btn_back")
+
+            yield PlaybackBar(self.app.playback, id="playback_bar")
+
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Handle mount event."""
+        self._load_songs()
+        self.app.playback.set_callbacks(
+            on_position_changed=self._on_position_changed,
+            on_state_changed=self._on_state_changed,
+            on_finished=self._on_finished,
+        )
+        self.call_after_refresh(self._focus_song_table)
+
+    def _focus_song_table(self) -> None:
+        """Focus the song table and set cursor to first row."""
+        table = self.query_one("#song_table", DataTable)
+        table.focus()
+        if len(table.rows) > 0:
+            table.move_cursor(row=0)
+
+    def on_unmount(self) -> None:
+        """Unregister callbacks to prevent memory leaks."""
+        self.app.playback.set_callbacks()
+
+    def _on_position_changed(self, position: PlaybackPosition) -> None:
+        """Handle position updates from playback service."""
+
+        def _update():
+            try:
+                self.query_one(PlaybackBar).update_display(position)
+            except NoMatches:
+                pass
+
+        self.call_after_refresh(_update)
+
+    def _on_state_changed(self, state: PlaybackState) -> None:
+        """Handle state changes from playback service."""
+
+        def _update():
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+                if state != PlaybackState.STOPPED:
+                    self.query_one(PlaybackBar).update_display(
+                        self.app.playback.get_position()
+                    )
+            except NoMatches:
+                pass
+
+        self.call_after_refresh(_update)
+
+    def _on_finished(self) -> None:
+        """Handle playback finished."""
+
+        def _update():
+            try:
+                self.query_one(PlaybackBar).update_visibility()
+            except NoMatches:
+                pass
+
+        self.call_after_refresh(_update)
+
+    def _show_empty_state(self, message: str) -> None:
+        """Show empty state with custom message."""
+        empty_container = self.query_one("#empty_state")
+        empty_container.remove_class("hidden")
+
+        message_widget = self.query_one("#empty_message", Static)
+        message_widget.update(message)
+
+        table = self.query_one("#song_table", DataTable)
+        table.add_class("hidden")
+
+    def _hide_empty_state(self) -> None:
+        """Hide empty state and show table."""
+        empty_container = self.query_one("#empty_state")
+        empty_container.add_class("hidden")
+
+        table = self.query_one("#song_table", DataTable)
+        table.remove_class("hidden")
+
+    def _load_songs(self, query: str = "") -> None:
+        """Load songs on a worker thread (Fix 9).
+
+        Args:
+            query: Optional search query
+        """
+        self.run_worker(
+            lambda: self._load_songs_worker(query),
+            exclusive=True,
+            group="load_songs",
+            thread=True,
+        )
+
+    def _load_songs_worker(self, query: str) -> None:
+        """Worker: fetch songs from DB then update UI."""
+        try:
+            if query:
+                search_query, field = self._parse_search_query(query)
+                logger.info(f"Searching: query='{search_query}', field={field}")
+                songs = self.catalog.search_songs_with_recordings(
+                    search_query, field=field, limit=50
+                )
+            else:
+                logger.info("Loading all LRC-ready songs (limit=50)")
+                songs = self.catalog.list_songs_with_recordings(only_with_lrc=True, limit=50)
+
+            logger.info(f"Loaded {len(songs)} songs for display")
+            self.app.call_from_thread(self._update_songs_table, songs)
+        except Exception as e:
+            logger.error(f"Error loading songs: {e}")
+            self.app.call_from_thread(self.notify, "Failed to load catalog", severity="error")
+
+    def _update_songs_table(self, songs) -> None:
+        """Update the songs table on the main thread."""
+        self.songs = songs
+        table = self.query_one("#song_table", DataTable)
+        table.clear()
+
+        if not self.songs:
+            health = self.catalog.get_catalog_health()
+            self._show_empty_state(health["guidance"])
+            return
+
+        self._hide_empty_state()
+
+        for song in self.songs:
+            table.add_row(
+                song.song.title,
+                song.display_key,
+                f"{int(song.tempo_bpm)}" if song.tempo_bpm else "-",
+                song.formatted_duration,
+                song.song.album_name or "-",
+                key=song.song.id,
+            )
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle search input changes."""
+        if event.input.id == "search_input":
+            self.state.set_search_query(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key in search input."""
+        if event.input.id == "search_input":
+            self._load_songs(event.value)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        button_id = event.button.id
+
+        if button_id == "btn_search":
+            search_input = self.query_one("#search_input", Input)
+            self._load_songs(search_input.value)
+        elif button_id == "btn_clear":
+            search_input = self.query_one("#search_input", Input)
+            search_input.value = ""
+            self._load_songs()
+        elif button_id == "btn_refresh":
+            self._load_songs()
+            self.notify("Catalog refreshed")
+        elif button_id == "btn_add":
+            self.action_add_to_songset()
+        elif button_id == "btn_preview":
+            self.action_preview()
+        elif button_id == "btn_back":
+            self.app.navigate_back()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection."""
+        song_id = event.row_key.value
+        song = self.catalog.get_song_with_recording(song_id)
+        if song:
+            self.state.select_song(song)
+
+    def _get_selected_song(self) -> Optional[SongWithRecording]:
+        """Get the currently highlighted song based on cursor position."""
+        table = self.query_one("#song_table", DataTable)
+
+        # Always use cursor row - that's what the user sees highlighted
+        if table.cursor_row is not None:
+            rows = list(table.rows.keys())
+            if table.cursor_row < len(rows):
+                song_id = rows[table.cursor_row].value
+                return self.catalog.get_song_with_recording(song_id)
+
+        # Fallback to explicit selection if cursor not available
+        return self.state.selected_song
+
+    def action_add_to_songset(self) -> None:
+        """Add selected song to current songset."""
+        song = self._get_selected_song()
+
+        if not song:
+            self.notify("No song selected", severity="warning")
+            return
+
+        # Update state to reflect selection
+        self.state.select_song(song)
+
+        # If no songset selected, create one automatically
+        if not self.state.selected_songset:
+            songset = self.songset_client.create_songset(
+                name="New Songset",
+                description="",
+            )
+            self.state.select_songset(songset)
+            self.notify(f"Created new songset: {songset.name}")
+
+        recording = song.recording
+
+        if not recording:
+            self.notify("No recording available for this song", severity="error")
+            return
+
+        self.songset_client.add_item(
+            songset_id=self.state.selected_songset.id,
+            song_id=song.song.id,
+            recording_hash_prefix=recording.hash_prefix,
+        )
+
+        self.notify(f"Added '{song.song.title}' to songset")
+
+    def action_preview(self) -> None:
+        """Preview selected song."""
+        song = self._get_selected_song()
+
+        if not song:
+            self.notify("No song selected", severity="warning")
+            return
+
+        self.state.select_song(song)
+        recording = song.recording
+        if not recording:
+            self.notify("No recording available for preview", severity="error")
+            return
+
+        self.run_worker(
+            lambda: self._play_worker(recording.hash_prefix),
+            exclusive=True,
+            group="playback",
+            thread=True,
+        )
+
+    def _play_worker(self, hash_prefix: str) -> None:
+        """Worker: download audio then play on main thread (Fix 9)."""
+        try:
+            audio_path = self.app.asset_cache.download_audio(hash_prefix)
+            if audio_path:
+                self.app.call_from_thread(self.app.playback.play, audio_path)
+            else:
+                self.app.call_from_thread(
+                    self.notify, "Failed to download audio", severity="error"
+                )
+        except Exception as e:
+            logger.error(f"Error downloading audio: {e}")
+            self.app.call_from_thread(self.notify, f"Error: {e}", severity="error")
+
+    def action_toggle_playback(self) -> None:
+        """Toggle playback of the currently selected song with spacebar."""
+        if self.app.playback.is_playing:
+            self.app.playback.stop()
+            self.notify("Playback stopped")
+            return
+
+        song = self._get_selected_song()
+        if not song:
+            self.notify("No song selected", severity="warning")
+            return
+
+        self.state.select_song(song)
+        recording = song.recording
+        if not recording:
+            self.notify("No recording available for preview", severity="error")
+            return
+
+        self.run_worker(
+            lambda: self._play_worker(recording.hash_prefix),
+            exclusive=True,
+            group="playback",
+            thread=True,
+        )
+
+    def action_skip_forward(self) -> None:
+        """Skip forward 10 seconds in current playback."""
+        if not self.app.playback.is_playing and not self.app.playback.is_paused:
+            return
+        self.app.playback.skip_forward(10.0)
+
+    def action_skip_backward(self) -> None:
+        """Skip backward 10 seconds in current playback."""
+        if not self.app.playback.is_playing and not self.app.playback.is_paused:
+            return
+        self.app.playback.skip_backward(10.0)
+
+    def action_focus_search(self) -> None:
+        """Focus the search input."""
+        self.query_one("#search_input", Input).focus()
+
+    def action_back(self) -> None:
+        """Go back."""
+        self.app.navigate_back()

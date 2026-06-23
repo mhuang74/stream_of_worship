@@ -17,44 +17,36 @@ The end goal is to:
 **Run Components:**
 ```bash
 # Admin CLI (lightweight, no ML)
-uv run --extra admin sow-admin --help
+uv run --project ops/admin-cli --extra admin sow-admin --help
 
-# User App TUI
-uv run --extra app sow-app run
+# Lab User App TUI
+uv run --project lab/sow-app sow-app --help
 
-# Web App (Next.js, from webapp/ directory)
-cd webapp && pnpm dev
+# Web App (Next.js, from delivery/webapp/ directory)
+cd delivery/webapp && pnpm dev
 # Or from project root:
 pnpm --filter sow-webapp dev
 
 # Analysis Service (heavy ML, requires Docker + R2 credentials)
-cd services/analysis && docker compose up -d
+cd ops/analysis-service && docker compose up -d
 ```
 
 **Run Tests:**
 ```bash
-# Always set PYTHONPATH=src prefix and use Python 3.11
-# Use --extra app --extra test to include all test dependencies (fastapi, pydantic, aiosqlite, etc.)
-PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/app/services/test_video_engine.py -v
+# Admin CLI + shared DB helpers
+PYTHONPATH=ops/admin-cli/src uv run --project ops/admin-cli --python 3.11 --extra admin --extra test pytest ops/admin-cli/tests -v
 
-# Run all tests (excludes poc/, scripts/ directories per pyproject.toml config)
-PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/ -v
+# Lab app
+uv run --project lab/sow-app --extra test pytest lab/sow-app/tests -v
 
-# Run specific test categories
-PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/app/ -v
-PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/admin/ -v
+# Analysis service
+cd ops/analysis-service && PYTHONPATH=src pytest tests/ -v
 
-# Note: tests/services/analysis/ require the analysis service dependencies
-# which are installed separately in services/analysis/ and run via Docker
-
-# Run tests excluding backend services (analysis/qwen3) - FAST, no Docker needed
-PYTHONPATH=src uv run --python 3.11 --extra app --extra test pytest tests/ \
-  --ignore=tests/services/analysis \
-  --ignore=services/qwen3/tests \
-  --ignore=services/analysis/tests -v
+# Render worker
+cd delivery/render-worker && PYTHONPATH=src pytest tests/ -v
 ```
 
-**Web App Commands (webapp/ directory):**
+**Web App Commands (delivery/webapp/ directory):**
 ```bash
 # Development
 pnpm dev          # Start dev server on http://localhost:8080
@@ -69,7 +61,7 @@ npx drizzle-kit generate   # Generate migration files
 npx drizzle-kit migrate    # Run pending migrations
 ```
 
-**Render Worker Commands (services/render-worker/ directory):**
+**Render Worker Commands (delivery/render-worker/ directory):**
 ```bash
 # Run tests
 PYTHONPATH=src pytest tests/ -v
@@ -87,31 +79,31 @@ docker compose up --build
 The project consists of **six architecturally separate components**:
 
 ### 1. POC Scripts (Experimental)
-- **Location:** `poc/` directory
+- **Location:** `lab/poc-scripts/` directory
 
 ### 2. Admin CLI (Backend Management)
-- **Location:** `src/stream_of_worship/admin/` (Python package)
+- **Location:** `ops/admin-cli/src/stream_of_worship/admin/` (Python package)
 
 ### 3. Analysis Service (Microservice)
-- **Location:** `services/analysis/` (separate package: `sow_analysis`)
+- **Location:** `ops/analysis-service/` (separate package: `sow_analysis`)
 
-### 4. User App (End-User Application)
-- **Location:** `src/stream_of_worship/app/` (Python package)
+### 4. Lab User App (Deprecated TUI)
+- **Location:** `lab/sow-app/` (Python package: `sow_lab_app`)
 
 ### 5. Web App (Next.js Browser Application)
-- **Location:** `webapp/` (Node.js/TypeScript, Next.js 16 App Router)
+- **Location:** `delivery/webapp/` (Node.js/TypeScript, Next.js 16 App Router)
 - **Stack:** Drizzle ORM + Neon Postgres, Better Auth, Cloudflare R2, AWS SQS (render jobs enqueued to SQS, processed by Lambda worker)
-- **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `webapp/` or via `pnpm --filter sow-webapp`)
+- **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `delivery/webapp/` or via `pnpm --filter sow-webapp`)
 
 ### 6. Render Worker (AWS Lambda)
-- **Location:** `services/render-worker/` (Python, deployed as Lambda container via private ECR)
+- **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Stack:** psycopg2, boto3, Pillow, FFmpeg, urllib3
-- **Commands:** See `services/render-worker/README.md`
+- **Commands:** See `delivery/render-worker/README.md`
 
 **Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components.
 
 - **Admin CLI**: Lightweight catalog/audio management
-- **User App**: TUI for transitions, read-only from PostgreSQL/R2
+- **Lab User App**: Deprecated TUI for transitions, read-only from PostgreSQL/R2
 - **Analysis Service**: Heavy ML (PyTorch, Demucs, allin1) in Docker
 
 ## Development Guidelines
@@ -119,7 +111,7 @@ The project consists of **six architecturally separate components**:
 - **Python Version**: 3.11
 - **Python Env**:
   - ALWAYS use `uv add` to add dependencies so it's documented in pyproject.toml
-  - for running song analysis using allinone library, use Docker via docker/docker-compose.allinone.yml (due to dependencies on NATTEN native libraries, doesn't work on Apple Silicon MacOS)
+  - for running song analysis using allinone library, use Docker via lab/poc-scripts/docker/docker-compose.allinone.yml (due to dependencies on NATTEN native libraries, doesn't work on Apple Silicon MacOS)
   - when not doing song analysis via allinone, use `uv run` to execute in isolated environment
   - put dependencies for different usecases into separate extra sections in pyproject.toml, eg song_analysis, scraper, tui, etc
 - **Path Handling**: ALWAYS use `pathlib.Path` for file system operations. Do not use string concatenation for paths.

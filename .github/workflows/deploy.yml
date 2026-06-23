@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "webapp/**"
-      - "services/render-worker/**"
+      - "delivery/webapp/**"
+      - "delivery/render-worker/**"
 
 jobs:
   detect-changes:
@@ -30,8 +30,8 @@ jobs:
             webapp=false
             render_worker=false
             for file in $(git diff --name-only "$before" "${{ github.sha }}"); do
-              if [[ "$file" == webapp/* ]]; then webapp=true; fi
-              if [[ "$file" == services/render-worker/* ]]; then render_worker=true; fi
+              if [[ "$file" == delivery/webapp/* ]]; then webapp=true; fi
+              if [[ "$file" == delivery/render-worker/* ]]; then render_worker=true; fi
             done
             echo "webapp=$webapp" >> $GITHUB_OUTPUT
             echo "render-worker=$render_worker" >> $GITHUB_OUTPUT
@@ -47,7 +47,7 @@ jobs:
       cancel-in-progress: false
     defaults:
       run:
-        working-directory: webapp
+        working-directory: delivery/webapp
 
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +93,7 @@ jobs:
       cancel-in-progress: false
     defaults:
       run:
-        working-directory: services/render-worker
+        working-directory: delivery/render-worker
 
     steps:
       - uses: actions/checkout@v4
