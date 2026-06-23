@@ -1,0 +1,1195 @@
+#!/usr/bin/env python3
+"""
+POC Analysis using All-In-One: Worship Music Transition System
+
+Version: 0.2.0-poc-allinone
+Date: 2024-12-31
+Goal: Validate all-in-one deep learning approach vs librosa baseline
+
+Key Differences from Original:
+- Uses all-in-one for beat/downbeat/tempo detection
+- Uses ML-predicted segment labels (intro/verse/chorus/bridge/outro)
+- Extracts and stores 24-dim embeddings per stem
+- Outputs to poc_output_allinone/
+"""
+
+import warnings
+warnings.filterwarnings('ignore')
+
+# Silence NATTEN deprecation warnings
+import os
+os.environ['NATTEN_LOG_LEVEL'] = 'error'
+import logging
+logging.getLogger('natten.functional').setLevel(logging.ERROR)
+
+# Set matplotlib backend before importing pyplot
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for Docker
+
+try:
+    import allin1
+    import torch
+    print("✓ All-in-one library loaded successfully")
+except ImportError as e:
+    print(f"❌ ERROR: All-in-one library not available: {e}")
+    print("   This script requires the allinone library to run.")
+    print("   For librosa-based analysis, use poc_analysis.py instead.")
+    import sys
+    sys.exit(1)
+
+# Audio processing (still needed for key detection and loading)
+import librosa
+import librosa.display
+import soundfile as sf
+
+# Data and math
+import numpy as np
+import pandas as pd
+from scipy import signal
+
+# Visualization
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style("whitegrid")
+
+# Utilities
+from pathlib import Path
+import json
+from datetime import datetime
+import hashlib
+from typing import Optional
+import base64
+import time
+import argparse
+import sys
+import shutil
+import subprocess
+
+# Configuration
+AUDIO_DIR = Path("poc_audio")
+OUTPUT_DIR = Path("poc_output_allinone")  # DIFFERENT OUTPUT DIR
+CACHE_DIR = OUTPUT_DIR / "cache"  # Cache subdirectory
+
+
+def parse_args():
+    """Parse command-line arguments for stem generation and analysis options."""
+    parser = argparse.ArgumentParser(
+        description='POC Analysis using All-In-One with optional stem generation',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Standard analysis (no stems)
+  python poc_analysis_allinone.py
+
+  # Generate stems after analysis
+  python poc_analysis_allinone.py --generate-stems
+
+  # Generate stems only (skip analysis, use cache)
+  python poc_analysis_allinone.py --stems-only
+
+  # Force regenerate all stems using GPU
+  python poc_analysis_allinone.py --generate-stems --force-stems --stem-device cuda
+
+  # Custom stems directory
+  python poc_analysis_allinone.py --generate-stems --stems-dir /path/to/stems
+"""
+    )
+
+    # Stem generation control
+    parser.add_argument('--generate-stems', action='store_true',
+                       help='Generate stem separations using Demucs (adds ~2 min per song)')
+    parser.add_argument('--stems-only', action='store_true',
+                       help='Only generate stems without analysis (fast for cached songs)')
+
+    # Demucs configuration
+    parser.add_argument('--stem-model', default='htdemucs',
+                       choices=['htdemucs', 'demucs', 'demucs_extra', 'demucs_quantized'],
+                       help='Demucs model to use (default: htdemucs)')
+    parser.add_argument('--stem-device', default='cpu',
+                       choices=['cpu', 'cuda'],
+                       help='Device for Demucs processing (default: cpu)')
+
+    # Directory configuration
+    parser.add_argument('--audio-dir', type=Path, default=AUDIO_DIR,
+                       help=f'Audio files directory (default: {AUDIO_DIR})')
+    parser.add_argument('--output-dir', type=Path, default=OUTPUT_DIR,
+                       help=f'Output directory (default: {OUTPUT_DIR})')
+    parser.add_argument('--stems-dir', type=Path, default=None,
+                       help='Custom stems directory (default: {output_dir}/stems)')
+
+    # Cache control
+    parser.add_argument('--no-cache', action='store_true',
+                       help='Disable analysis cache (force re-analysis)')
+    parser.add_argument('--force-stems', action='store_true',
+                       help='Regenerate stems even if they already exist')
+
+    return parser.parse_args()
+
+
+def compute_file_hash(filepath: Path) -> str:
+    """
+    Compute SHA256 hash of audio file contents.
+
+    This hash serves as a content-addressable identifier that remains
+    stable even if the file is renamed or moved.
+
+    Args:
+        filepath: Path to audio file
+
+    Returns:
+        64-character lowercase hex string (SHA256 hash)
+
+    Performance: ~10ms for 5MB files with 64KB chunk reading
+    """
+    sha256_hash = hashlib.sha256()
+
+    # Read file in chunks to handle large files efficiently
+    with open(filepath, "rb") as f:
+        for byte_block in iter(lambda: f.read(65536), b""):
+            sha256_hash.update(byte_block)
+
+    return sha256_hash.hexdigest()
+
+
+def load_from_cache(content_hash: str, cache_dir: Path) -> Optional[dict]:
+    """
+    Load cached analysis results for a given content hash.
+
+    Args:
+        content_hash: SHA256 hash of audio file contents
+        cache_dir: Path to cache directory (e.g., poc_output_allinone/cache)
+
+    Returns:
+        Dictionary with full analysis results if cache hit, None if cache miss
+
+    Cache miss reasons:
+    - Hash not found in cache
+    - Cache file corrupted/unreadable
+    - Cache version mismatch (future-proofing)
+    """
+    # Truncate hash to 32 chars for filename (still 128 bits of entropy)
+    cache_filename = f"{content_hash[:32]}.json"
+    cache_filepath = cache_dir / cache_filename
+
+    if not cache_filepath.exists():
+        return None
+
+    try:
+        with open(cache_filepath, 'r') as f:
+            cache_data = json.load(f)
+
+        # Validate cache format version
+        if cache_data.get('cache_version') != '1.0':
+            print(f"  ⚠️  Cache version mismatch for {cache_data.get('original_filename')}")
+            return None
+
+        # Validate hash matches
+        if cache_data.get('content_hash') != content_hash:
+            print(f"  ⚠️  Hash mismatch in cache file (corrupted?)")
+            return None
+
+        # Deserialize embeddings from base64
+        result_data = cache_data['result_data'].copy()
+        if 'embeddings_serialized' in result_data:
+            embeddings_bytes = base64.b64decode(result_data['embeddings_serialized'])
+            embeddings = np.frombuffer(embeddings_bytes, dtype=np.float32)
+            embeddings = embeddings.reshape(result_data['embeddings_shape'])
+            result_data['_embeddings'] = embeddings
+            del result_data['embeddings_serialized']  # Clean up
+
+        print(f"  ✓ Cache HIT: {cache_data['original_filename']} "
+              f"(cached {cache_data['cached_at'][:10]})")
+
+        return result_data
+
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"  ⚠️  Cache file corrupted: {e}")
+        return None
+
+
+def save_to_cache(
+    content_hash: str,
+    result_data: dict,
+    cache_dir: Path,
+    analysis_duration: float
+) -> None:
+    """
+    Save analysis results to cache immediately after allin1 completes.
+
+    Args:
+        content_hash: SHA256 hash of audio file contents
+        result_data: Full result dictionary from analyze_song_allinone()
+        cache_dir: Path to cache directory
+        analysis_duration: Time taken for analysis (seconds)
+
+    Side effects:
+        - Creates cache_dir if it doesn't exist
+        - Writes individual cache file
+        - Updates cache metadata index
+    """
+    try:
+        # Ensure cache directory exists
+        cache_dir.mkdir(exist_ok=True)
+
+        # Prepare cache data (don't modify original result_data)
+        cache_entry = {
+            'cache_version': '1.0',
+            'content_hash': content_hash,
+            'original_filename': result_data['filename'],
+            'cached_at': datetime.now().isoformat(),
+            'allinone_version': allin1.__version__ if hasattr(allin1, '__version__') else '1.1.0',
+            'analysis_duration_seconds': round(analysis_duration, 2),
+            'result_data': {}
+        }
+
+        # Serialize result data
+        for key, value in result_data.items():
+            if key.startswith('_'):
+                # Handle special underscore-prefixed data
+                if key == '_embeddings':
+                    # Serialize numpy array to base64
+                    embeddings_bytes = value.astype(np.float32).tobytes()
+                    cache_entry['result_data']['embeddings_serialized'] = \
+                        base64.b64encode(embeddings_bytes).decode('ascii')
+                # Skip other underscore fields (y, sr, chroma, rms, beats, downbeats)
+                # They can be recomputed from audio if needed
+            else:
+                # Regular data - JSON serializable
+                cache_entry['result_data'][key] = value
+
+        # Write cache file (truncated hash for filename)
+        cache_filename = f"{content_hash[:32]}.json"
+        cache_filepath = cache_dir / cache_filename
+
+        with open(cache_filepath, 'w') as f:
+            json.dump(cache_entry, f, indent=2)
+
+        # Update metadata index
+        update_cache_metadata(content_hash, cache_entry, cache_dir)
+
+        print(f"  ✓ Cached results: {cache_filename} "
+              f"({analysis_duration:.1f}s analysis time)")
+
+    except (IOError, OSError) as e:
+        print(f"  ⚠️  Failed to write cache: {e}")
+        # Continue execution - analysis still succeeds
+
+
+def update_cache_metadata(content_hash: str, cache_entry: dict, cache_dir: Path) -> None:
+    """
+    Update the central cache metadata index.
+
+    Args:
+        content_hash: SHA256 hash of audio file
+        cache_entry: Full cache entry data
+        cache_dir: Path to cache directory
+    """
+    try:
+        metadata_file = cache_dir / 'metadata.json'
+
+        # Load existing metadata or create new
+        if metadata_file.exists():
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+        else:
+            metadata = {
+                'cache_format_version': '1.0',
+                'last_updated': datetime.now().isoformat(),
+                'total_entries': 0,
+                'entries': {}
+            }
+
+        # Get file size from cache file
+        cache_filename = f"{content_hash[:32]}.json"
+        cache_filepath = cache_dir / cache_filename
+        file_size = cache_filepath.stat().st_size if cache_filepath.exists() else 0
+
+        # Update entry
+        metadata['entries'][content_hash] = {
+            'original_filename': cache_entry['original_filename'],
+            'cached_at': cache_entry['cached_at'],
+            'file_size_bytes': file_size,
+            'cache_file': cache_filename
+        }
+
+        # Update metadata
+        metadata['last_updated'] = datetime.now().isoformat()
+        metadata['total_entries'] = len(metadata['entries'])
+
+        # Save metadata
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+
+    except (IOError, OSError, KeyError) as e:
+        print(f"  ⚠️  Failed to update cache metadata: {e}")
+        # Continue execution - cache file is still valid
+
+
+def generate_stems_for_songs(
+    audio_files: list,
+    stems_dir: Path,
+    model: str = 'htdemucs',
+    device: str = 'cpu',
+    force: bool = False
+) -> list:
+    """
+    Generate stem separations using Demucs.
+
+    This function wraps Demucs to generate 4-stem separations (bass, drums, other, vocals)
+    directly into the POC output directory structure, independently of allin1 analysis.
+
+    Args:
+        audio_files: List of Path objects to audio files
+        stems_dir: Base directory for stems (e.g., poc_output_allinone/stems)
+        model: Demucs model name ('htdemucs', 'demucs', etc.)
+        device: 'cpu' or 'cuda'
+        force: If False, skip files that already have all 4 stems
+
+    Returns:
+        List of Path objects to stem directories (one per song)
+
+    Directory structure created:
+        stems_dir/
+        ├── song1/
+        │   ├── bass.wav
+        │   ├── drums.wav
+        │   ├── other.wav
+        │   └── vocals.wav
+        └── song2/
+            ├── bass.wav
+            └── ...
+    """
+    print(f"\n{'='*70}")
+    print(f"STEM GENERATION")
+    print(f"{'='*70}")
+    print(f"Model: {model}")
+    print(f"Device: {device}")
+    print(f"Output: {stems_dir}")
+
+    # Ensure stems directory exists
+    stems_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check which files need processing
+    todos = []
+    stem_dirs = []
+
+    for audio_file in audio_files:
+        stem_dir = stems_dir / audio_file.stem
+        stem_dirs.append(stem_dir)
+
+        # Check if all 4 stems exist
+        if not force and stem_dir.is_dir():
+            stems_exist = all([
+                (stem_dir / 'bass.wav').is_file(),
+                (stem_dir / 'drums.wav').is_file(),
+                (stem_dir / 'other.wav').is_file(),
+                (stem_dir / 'vocals.wav').is_file()
+            ])
+            if stems_exist:
+                print(f"  ✓ Stems exist: {audio_file.name} (skipping)")
+                continue
+
+        todos.append(audio_file)
+
+    print(f"\n=> Found {len(audio_files) - len(todos)} songs with stems, {len(todos)} to process")
+
+    if not todos:
+        print("✓ All stems already generated")
+        return stem_dirs
+
+    # Run Demucs for songs that need processing
+    # Process one song at a time and move stems immediately for robustness
+    # This ensures completed stems are preserved even if interrupted
+    print(f"\nProcessing {len(todos)} songs...")
+
+    temp_demix_dir = stems_dir / '_demix_temp'
+    completed = 0
+
+    for audio_file in todos:
+        print(f"\n[{completed + 1}/{len(todos)}] {audio_file.name}")
+        temp_demix_dir.mkdir(exist_ok=True)
+
+        try:
+            # Run Demucs on single song
+            subprocess.run(
+                [
+                    sys.executable, '-m', 'demucs.separate',
+                    '--out', temp_demix_dir.as_posix(),
+                    '--name', model,
+                    '--device', device,
+                    audio_file.as_posix(),
+                ],
+                check=True,
+                capture_output=True,  # Suppress verbose Demucs output
+                text=True
+            )
+
+            # Move stems from temp/{model}/{song}/ to stems/{song}/
+            temp_song_dir = temp_demix_dir / model / audio_file.stem
+            final_song_dir = stems_dir / audio_file.stem
+            final_song_dir.mkdir(exist_ok=True)
+
+            # Move each stem
+            for stem_name in ['bass', 'drums', 'other', 'vocals']:
+                src = temp_song_dir / f'{stem_name}.wav'
+                dst = final_song_dir / f'{stem_name}.wav'
+                if src.exists():
+                    src.rename(dst)
+                    print(f"  ✓ {stem_name}.wav")
+                else:
+                    print(f"  ⚠️  {stem_name}.wav not found")
+
+            completed += 1
+            print(f"  ✓ Complete ({completed}/{len(todos)})")
+
+        except subprocess.CalledProcessError as e:
+            print(f"  ❌ ERROR: Demucs failed with exit code {e.returncode}")
+            if e.stderr:
+                print(f"     {e.stderr}")
+            print(f"  Skipping {audio_file.name}, continuing with remaining songs...")
+            continue
+
+        finally:
+            # Clean up temp directory for this song
+            if temp_demix_dir.exists():
+                shutil.rmtree(temp_demix_dir)
+
+    print(f"\n✓ Successfully generated stems for {completed}/{len(todos)} songs")
+
+    return stem_dirs
+
+
+def analyze_song_allinone(filepath, cache_dir=None, use_cache=True):
+    """
+    Run all-in-one analysis on a single song (with caching).
+
+    Args:
+        filepath: Path to audio file
+        cache_dir: Path to cache directory (default: None = no caching)
+        use_cache: Whether to use cache (default: True)
+
+    Returns dictionary with:
+    - Basic metadata (filename, duration)
+    - All-in-one results (BPM, beats, downbeats, segments with ML labels)
+    - Embeddings (24-dim per stem: bass, drums, other, vocals)
+    - Key detection (still use librosa chroma - all-in-one doesn't provide key)
+    - Energy metrics (RMS, loudness - computed from audio)
+    """
+    print(f"\n{'='*70}")
+    print(f"Analyzing with All-In-One: {filepath.name}")
+    print(f"{'='*70}")
+
+    # === CACHE CHECK ===
+    content_hash = None
+    analysis_start_time = None
+
+    if use_cache and cache_dir is not None:
+        print(f"Computing file hash...")
+        content_hash = compute_file_hash(filepath)
+        print(f"  Hash: {content_hash[:16]}...")
+
+        cached_result = load_from_cache(content_hash, cache_dir)
+        if cached_result is not None:
+            # Cache HIT - need to recompute raw data for visualizations
+            print(f"  Loading audio for visualization data...")
+            y, sr = librosa.load(str(filepath), sr=22050, mono=True)
+
+            # Add raw visualization data back
+            cached_result['_y'] = y
+            cached_result['_sr'] = sr
+
+            # Recompute chroma for visualization
+            chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=512)
+            cached_result['_chroma'] = chroma
+
+            # Recompute RMS for visualization
+            rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+            cached_result['_rms'] = rms
+
+            # Convert beats/downbeats back to numpy arrays
+            cached_result['_beats'] = np.array(cached_result['beats'])
+            cached_result['_downbeats'] = np.array(cached_result['downbeats'])
+
+            print(f"✓ Analysis loaded from cache")
+            return cached_result
+
+        print(f"  Cache MISS - running full analysis...")
+        analysis_start_time = time.time()
+
+    # === LOAD AUDIO FOR KEY/ENERGY ANALYSIS ===
+    # We still need librosa for key detection and energy metrics
+    y, sr = librosa.load(str(filepath), sr=22050, mono=True)
+    duration = librosa.get_duration(y=y, sr=sr)
+    print(f"✓ Loaded: {duration:.1f}s @ {sr} Hz")
+
+    # === ALL-IN-ONE ANALYSIS ===
+    print(f"Running All-In-One analysis (this may take a moment)...")
+    result = allin1.analyze(
+        str(filepath),
+        out_dir=None,  # Don't save intermediate files
+        visualize=False,  # We'll create our own visualizations
+        include_embeddings=True,  # Extract embeddings for future use
+        sonify=False
+    )
+
+    # Extract results
+    bpm = result.bpm
+    beats = result.beats  # List of beat times in seconds
+    downbeats = result.downbeats  # List of downbeat times
+    segments = result.segments  # List of segment objects with start, end, label
+    embeddings = result.embeddings  # Shape: (4, timesteps, 24)
+
+    print(f"✓ All-In-One Analysis Complete")
+    print(f"  BPM: {bpm}")
+    print(f"  Beats: {len(beats)} detected")
+    print(f"  Downbeats: {len(downbeats)} detected")
+    print(f"  Segments: {len(segments)} detected")
+    print(f"  Embeddings shape: {embeddings.shape}")
+
+    # === KEY DETECTION (Still Use Librosa) ===
+    # All-in-one doesn't provide key detection
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=512)
+    chroma_avg = np.mean(chroma, axis=1)
+
+    # Krumhansl-Schmuckler key profiles
+    keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09,
+                              2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+    minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
+                              2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+
+    correlations = []
+    for shift in range(12):
+        # Major key correlation
+        major_corr = np.corrcoef(
+            chroma_avg,
+            np.roll(major_profile, shift)
+        )[0, 1]
+        correlations.append(('major', keys[shift], major_corr))
+
+        # Minor key correlation
+        minor_corr = np.corrcoef(
+            chroma_avg,
+            np.roll(minor_profile, shift)
+        )[0, 1]
+        correlations.append(('minor', keys[shift], minor_corr))
+
+    best_key = max(correlations, key=lambda x: x[2])
+    mode, key, confidence = best_key
+    print(f"✓ Key: {key} {mode} (confidence: {confidence:.3f})")
+
+    # === ENERGY ANALYSIS ===
+    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+    rms_db = librosa.amplitude_to_db(rms, ref=np.max)
+    loudness_mean = float(np.mean(rms_db))
+    loudness_std = float(np.std(rms_db))
+
+    # Spectral centroid (brightness)
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+    centroid_mean = float(np.mean(centroid))
+
+    print(f"✓ Energy: {loudness_mean:.1f} dB (±{loudness_std:.1f})")
+    print(f"  Brightness: {centroid_mean:.0f} Hz")
+
+    # === STRUCTURE FROM ALL-IN-ONE ===
+    # Process segments from all-in-one
+    sections = []
+    for seg in segments:
+        sections.append({
+            'label': seg.label,  # ML-predicted label (intro/verse/chorus/bridge/outro)
+            'start': seg.start,
+            'end': seg.end,
+            'duration': seg.end - seg.start
+        })
+
+    print(f"✓ Structure: {len(sections)} sections with ML labels")
+    for sec in sections:
+        print(f"  {sec['start']:.1f}s - {sec['end']:.1f}s: {sec['label']} ({sec['duration']:.1f}s)")
+
+    # === RETURN RESULTS ===
+    result = {
+        # Metadata
+        'filename': filepath.name,
+        'filepath': str(filepath),
+        'duration': duration,
+
+        # Rhythm (from all-in-one)
+        'tempo': float(bpm),
+        'tempo_source': 'allinone',
+        'num_beats': len(beats),
+        'beats': beats[:100].tolist() if isinstance(beats, np.ndarray) else list(beats)[:100],  # First 100 beats
+        'num_downbeats': len(downbeats),
+        'downbeats': downbeats[:50].tolist() if isinstance(downbeats, np.ndarray) else list(downbeats)[:50],  # First 50 downbeats
+
+        # Harmony (from librosa - all-in-one doesn't provide)
+        'key': key,
+        'mode': mode,
+        'key_confidence': float(confidence),
+        'full_key': f"{key} {mode}",
+        'key_source': 'librosa',
+
+        # Energy
+        'loudness_db': loudness_mean,
+        'loudness_std': loudness_std,
+        'spectral_centroid': centroid_mean,
+
+        # Structure (from all-in-one with ML labels)
+        'num_sections': len(sections),
+        'sections': sections,
+        'section_label_source': 'allinone_ml',
+
+        # Embeddings (NEW - for future compatibility matching)
+        'embeddings_shape': list(embeddings.shape),
+        'embeddings_mean': float(np.mean(embeddings)),
+        'embeddings_std': float(np.std(embeddings)),
+        'embeddings_hop_length': 512,  # Required for section timestep alignment
+        'embeddings_sr': 22050,         # Sample rate for embeddings
+        # Store full embeddings as numpy array for future use
+        '_embeddings': embeddings,  # Shape: (4 stems, timesteps, 24 dims)
+
+        # Raw data for visualization
+        '_y': y,
+        '_sr': sr,
+        '_chroma': chroma,
+        '_rms': rms,
+        '_beats': beats,
+        '_downbeats': downbeats
+    }
+
+    # === CACHE SAVE ===
+    if use_cache and cache_dir is not None and content_hash is not None:
+        analysis_duration = time.time() - analysis_start_time
+        save_to_cache(content_hash, result, cache_dir, analysis_duration)
+
+    return result
+
+
+def calculate_compatibility(song_a, song_b):
+    """
+    Calculate compatibility scores between two songs.
+
+    Scoring:
+    - Tempo: 100 if <5% diff, scales down to 0 at >20% diff
+    - Key: 100 if same, 80 if compatible, 40 otherwise
+    - Energy: Based on loudness difference
+    - Overall: Weighted average (40% tempo + 40% key + 20% energy)
+    """
+    # === TEMPO COMPATIBILITY ===
+    tempo_diff_pct = abs(song_a['tempo'] - song_b['tempo']) / max(song_a['tempo'], song_b['tempo'])
+
+    if tempo_diff_pct < 0.05:
+        tempo_score = 100.0
+    elif tempo_diff_pct < 0.10:
+        tempo_score = 100 - (tempo_diff_pct - 0.05) * 400  # Linear 100->80
+    elif tempo_diff_pct < 0.15:
+        tempo_score = 80 - (tempo_diff_pct - 0.10) * 400   # Linear 80->60
+    elif tempo_diff_pct < 0.20:
+        tempo_score = 60 - (tempo_diff_pct - 0.15) * 1200  # Linear 60->0
+    else:
+        tempo_score = 0.0
+
+    # === KEY COMPATIBILITY (SIMPLIFIED) ===
+    # Full implementation would use Camelot wheel
+    if song_a['key'] == song_b['key'] and song_a['mode'] == song_b['mode']:
+        key_score = 100.0
+    elif song_a['key'] == song_b['key']:  # Same root, different mode (relative)
+        key_score = 80.0
+    else:
+        # Simplified compatible key mapping
+        compatible_keys = {
+            'C': ['G', 'F', 'Am'],
+            'G': ['D', 'C', 'Em'],
+            'D': ['A', 'G', 'Bm'],
+            'A': ['E', 'D', 'F#m'],
+            'E': ['B', 'A', 'C#m'],
+            'F': ['C', 'Bb', 'Dm'],
+        }
+        key_a = f"{song_a['key']}{' ' if song_a['mode'] == 'major' else 'm'}"
+        key_b = f"{song_b['key']}{' ' if song_b['mode'] == 'major' else 'm'}"
+
+        if key_b in compatible_keys.get(song_a['key'], []):
+            key_score = 70.0
+        else:
+            key_score = 40.0
+
+    # === ENERGY COMPATIBILITY ===
+    energy_diff = abs(song_a['loudness_db'] - song_b['loudness_db'])
+    energy_score = max(0, 100 - energy_diff * 5)  # 5dB diff = 75 score
+
+    # === OVERALL SCORE ===
+    overall_score = (tempo_score * 0.40 +
+                     key_score * 0.40 +
+                     energy_score * 0.20)
+
+    return {
+        'song_a': song_a['filename'],
+        'song_b': song_b['filename'],
+        'tempo_a': song_a['tempo'],
+        'tempo_b': song_b['tempo'],
+        'tempo_diff_pct': tempo_diff_pct * 100,
+        'tempo_score': round(tempo_score, 1),
+        'key_a': song_a['full_key'],
+        'key_b': song_b['full_key'],
+        'key_score': round(key_score, 1),
+        'energy_diff_db': round(energy_diff, 1),
+        'energy_score': round(energy_score, 1),
+        'overall_score': round(overall_score, 1)
+    }
+
+
+def create_simple_crossfade(song_a_path, song_b_path, crossfade_duration=8.0):
+    """
+    Create equal-power crossfade between two songs.
+
+    Algorithm:
+    1. Load stereo audio at 44100 Hz
+    2. Extract outro of song A (last N seconds)
+    3. Extract intro of song B (first N seconds)
+    4. Apply equal-power fade curves (sqrt for energy preservation)
+    5. Mix faded segments
+
+    Returns: (transition_audio, sample_rate)
+    """
+    print(f"\nCreating {crossfade_duration}s crossfade...")
+
+    # Load stereo audio for higher quality transition
+    y_a, sr = librosa.load(str(song_a_path), sr=44100, mono=False)
+    y_b, sr_b = librosa.load(str(song_b_path), sr=44100, mono=False)
+
+    # Ensure stereo (2 channels)
+    if y_a.ndim == 1:
+        y_a = np.stack([y_a, y_a])
+    if y_b.ndim == 1:
+        y_b = np.stack([y_b, y_b])
+
+    crossfade_samples = int(crossfade_duration * sr)
+
+    # Extract segments
+    outro = y_a[:, -crossfade_samples:]  # Last N seconds of A
+    intro = y_b[:, :crossfade_samples]   # First N seconds of B
+
+    print(f"  Outro shape: {outro.shape}")
+    print(f"  Intro shape: {intro.shape}")
+
+    # Equal-power crossfade curves
+    fade_curve = np.linspace(0, 1, crossfade_samples)
+    fade_out = np.sqrt(1 - fade_curve)  # Starts at 1, ends at 0
+    fade_in = np.sqrt(fade_curve)       # Starts at 0, ends at 1
+
+    # Apply fades to both channels
+    outro_faded = outro * fade_out
+    intro_faded = intro * fade_in
+
+    # Mix
+    transition = outro_faded + intro_faded
+
+    return transition, sr
+
+
+def main():
+    """Main execution function with CLI argument support."""
+    # Parse command-line arguments
+    args = parse_args()
+
+    # Override directories from args
+    global OUTPUT_DIR, CACHE_DIR
+    OUTPUT_DIR = args.output_dir
+    CACHE_DIR = OUTPUT_DIR / "cache"
+
+    # Setup stems directory
+    stems_dir = args.stems_dir if args.stems_dir else (OUTPUT_DIR / 'stems')
+
+    # === SETUP AND IMPORTS ===
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    print(f"POC Analysis (All-In-One) Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Audio directory: {args.audio_dir.absolute()}")
+    print(f"Output directory: {OUTPUT_DIR.absolute()}")
+    if args.generate_stems or args.stems_only:
+        print(f"Stems directory: {stems_dir.absolute()}")
+    print()
+
+    # List available songs
+    audio_files = sorted(list(args.audio_dir.glob("*.mp3")) + list(args.audio_dir.glob("*.flac")))
+    print(f"Found {len(audio_files)} audio files:")
+    for i, f in enumerate(audio_files, 1):
+        print(f"  {i}. {f.name}")
+
+    if len(audio_files) < 3:
+        print("\n⚠️  WARNING: Need at least 3 songs for meaningful POC validation")
+        print("   Please add more audio files to audio directory")
+    elif len(audio_files) > 5:
+        print("\n⚠️  NOTE: More than 5 songs found. POC will analyze all.")
+    else:
+        print(f"\n✓ Good! {len(audio_files)} songs ready for analysis")
+
+    # === STEMS-ONLY MODE (Early Exit) ===
+    if args.stems_only:
+        print(f"\n{'='*70}")
+        print("STEMS-ONLY MODE")
+        print("Generating stems without running analysis")
+        print(f"{'='*70}\n")
+
+        try:
+            generate_stems_for_songs(
+                audio_files,
+                stems_dir,
+                model=args.stem_model,
+                device=args.stem_device,
+                force=args.force_stems
+            )
+            print(f"\n✓ Stems generation complete: {stems_dir}")
+            print(f"{'='*70}")
+            return 0
+        except Exception as e:
+            print(f"\n❌ ERROR: Stem generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+
+    # === CELL 3: ANALYZE ALL SONGS ===
+    results = []
+    errors = []
+
+    use_cache = not args.no_cache
+
+    for audio_file in audio_files:
+        try:
+            result = analyze_song_allinone(
+                audio_file,
+                cache_dir=CACHE_DIR if use_cache else None,
+                use_cache=use_cache
+            )
+            results.append(result)
+        except Exception as e:
+            print(f"\n❌ ERROR processing {audio_file.name}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            errors.append({'file': audio_file.name, 'error': str(e)})
+
+    # Create summary DataFrame
+    df_summary = pd.DataFrame([
+        {k: v for k, v in r.items() if not k.startswith('_')}
+        for r in results
+    ])
+
+    # Display summary
+    print("\n" + "="*70)
+    print("ANALYSIS SUMMARY (All-In-One)")
+    print("="*70)
+    if not df_summary.empty:
+        print(df_summary[['filename', 'duration', 'tempo', 'full_key', 'loudness_db', 'num_sections']].to_string(index=False))
+
+    if errors:
+        print(f"\n⚠️  {len(errors)} files failed to process:")
+        for err in errors:
+            print(f"  - {err['file']}: {err['error']}")
+
+    # Save summary to CSV
+    if not df_summary.empty:
+        csv_path = OUTPUT_DIR / "poc_summary.csv"
+        df_summary.to_csv(csv_path, index=False)
+        print(f"\n✓ Summary saved to: {csv_path}")
+
+        # Save full results to JSON (including raw data references)
+        json_path = OUTPUT_DIR / "poc_full_results.json"
+        results_serializable = [
+            {k: v for k, v in r.items() if not k.startswith('_')}
+            for r in results
+        ]
+        with open(json_path, 'w') as f:
+            json.dump(results_serializable, f, indent=2)
+        print(f"✓ Full results saved to: {json_path}")
+    else:
+        print("\n⚠️  No songs were successfully analyzed.")
+
+    # === GENERATE STEMS (After Analysis) ===
+    if args.generate_stems and results:
+        print(f"\n{'='*70}")
+        print("GENERATING STEMS")
+        print(f"{'='*70}\n")
+
+        try:
+            generate_stems_for_songs(
+                audio_files,
+                stems_dir,
+                model=args.stem_model,
+                device=args.stem_device,
+                force=args.force_stems
+            )
+            print(f"\n✓ Stems saved to: {stems_dir}")
+        except Exception as e:
+            print(f"\n⚠️  WARNING: Stem generation failed: {e}")
+            print("   Analysis results were saved successfully.")
+
+    # === CELL 4: VISUALIZATIONS ===
+    if not results:
+        print("⚠️  No results to visualize. Please ensure audio files are in poc_audio/ directory.")
+    else:
+        # Create comprehensive visualization
+        n_songs = len(results)
+        fig, axes = plt.subplots(n_songs, 3, figsize=(18, 5*n_songs))
+
+        # Handle single song case
+        if n_songs == 1:
+            axes = axes.reshape(1, -1)
+
+        for idx, result in enumerate(results):
+            y = result['_y']
+            sr = result['_sr']
+            chroma = result['_chroma']
+            rms = result['_rms']
+            beats = result['_beats']
+            downbeats = result['_downbeats']
+
+            # === Panel 1: Waveform with beats AND downbeats ===
+            ax = axes[idx, 0]
+            times = np.arange(len(y)) / sr
+            ax.plot(times, y, alpha=0.7, linewidth=0.5)
+
+            # Mark beats (red) and downbeats (blue)
+            for beat in beats[:50]:  # First 50 beats for clarity
+                ax.axvline(beat, color='red', alpha=0.3, linewidth=1)
+            for downbeat in downbeats[:20]:  # First 20 downbeats
+                ax.axvline(downbeat, color='blue', alpha=0.5, linewidth=2)
+
+            ax.set_title(f"{result['filename']}\nWaveform + Beats (red) + Downbeats (blue)",
+                        fontsize=12, fontweight='bold')
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Amplitude")
+            ax.grid(True, alpha=0.3)
+
+            # === Panel 2: Chromagram ===
+            ax = axes[idx, 1]
+            img = librosa.display.specshow(
+                chroma,
+                sr=sr,
+                x_axis='time',
+                y_axis='chroma',
+                hop_length=512,
+                ax=ax,
+                cmap='coolwarm'
+            )
+            ax.set_title(f"Chromagram\nDetected Key: {result['full_key']} (conf: {result['key_confidence']:.2f})",
+                         fontsize=12, fontweight='bold')
+            plt.colorbar(img, ax=ax, format='%.2f')
+
+            # === Panel 3: Energy Profile with ML-labeled sections ===
+            ax = axes[idx, 2]
+            rms_times = librosa.times_like(rms, sr=sr, hop_length=512)
+            ax.plot(rms_times, rms, color='purple', linewidth=2)
+            ax.fill_between(rms_times, 0, rms, alpha=0.3, color='purple')
+
+            # Mark sections with ML labels
+            for section in result['sections']:
+                color = {
+                    'intro': 'green',
+                    'verse': 'blue',
+                    'chorus': 'orange',
+                    'bridge': 'yellow',
+                    'outro': 'red'
+                }.get(section['label'], 'gray')
+                ax.axvspan(section['start'], section['end'], alpha=0.2, color=color, label=section['label'])
+
+            ax.set_title(f"Energy Profile (ML Labels)\n{result['tempo']:.1f} BPM, {result['loudness_db']:.1f} dB",
+                         fontsize=12, fontweight='bold')
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("RMS Energy")
+            ax.grid(True, alpha=0.3)
+
+            # Legend (only unique labels)
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=8)
+
+        plt.tight_layout()
+        viz_path = OUTPUT_DIR / "poc_analysis_visualizations.png"
+        plt.savefig(viz_path, dpi=150, bbox_inches='tight')
+        print(f"✓ Visualizations saved to: {viz_path}")
+
+    # === CELL 5: COMPATIBILITY ANALYSIS ===
+    if len(results) >= 2:
+        # Calculate all pairwise compatibilities
+        compatibilities = []
+        for i, song_a in enumerate(results):
+            for j, song_b in enumerate(results):
+                if i < j:  # Avoid self-comparison and duplicates
+                    compat = calculate_compatibility(song_a, song_b)
+                    compatibilities.append(compat)
+
+        # Create compatibility DataFrame
+        df_compat = pd.DataFrame(compatibilities)
+        df_compat_sorted = df_compat.sort_values('overall_score', ascending=False)
+
+        print("\n" + "="*70)
+        print("COMPATIBILITY MATRIX")
+        print("="*70)
+        print(df_compat_sorted.to_string(index=False))
+
+        # Save to CSV
+        compat_csv_path = OUTPUT_DIR / "poc_compatibility_scores.csv"
+        df_compat_sorted.to_csv(compat_csv_path, index=False)
+        print(f"\n✓ Compatibility matrix saved to: {compat_csv_path}")
+
+        # Visualize compatibility heatmap
+        if len(results) >= 2:
+            plt.figure(figsize=(10, 8))
+
+            # Create pivot table for heatmap
+            song_names = [r['filename'] for r in results]
+            matrix = np.zeros((len(song_names), len(song_names)))
+
+            for compat in compatibilities:
+                i = next(idx for idx, r in enumerate(results) if r['filename'] == compat['song_a'])
+                j = next(idx for idx, r in enumerate(results) if r['filename'] == compat['song_b'])
+                matrix[i, j] = compat['overall_score']
+                matrix[j, i] = compat['overall_score']
+
+            sns.heatmap(matrix, annot=True, fmt='.1f', cmap='RdYlGn', vmin=0, vmax=100,
+                        xticklabels=song_names, yticklabels=song_names)
+            plt.title("Song Compatibility Matrix (All-In-One)\n(Overall Score 0-100)",
+                     fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            heatmap_path = OUTPUT_DIR / "poc_compatibility_heatmap.png"
+            plt.savefig(heatmap_path, dpi=150, bbox_inches='tight')
+            print(f"✓ Heatmap saved to: {heatmap_path}")
+    else:
+        print("\n⚠️  Need at least 2 songs to analyze compatibility")
+        compatibilities = []
+
+    # === CELL 6: SIMPLE TRANSITION PROTOTYPE ===
+    if len(compatibilities) > 0:
+        best_pair = df_compat_sorted.iloc[0]
+
+        print("\n" + "="*70)
+        print("TRANSITION PROTOTYPE")
+        print("="*70)
+        print(f"Creating transition between most compatible pair:")
+        print(f"  Song A: {best_pair['song_a']}")
+        print(f"  Song B: {best_pair['song_b']}")
+        print(f"  Overall compatibility: {best_pair['overall_score']:.1f}/100")
+        print(f"  Tempo match: {best_pair['tempo_score']:.1f}/100 ({best_pair['tempo_a']:.1f} -> {best_pair['tempo_b']:.1f} BPM)")
+        print(f"  Key match: {best_pair['key_score']:.1f}/100 ({best_pair['key_a']} -> {best_pair['key_b']})")
+
+        # Find file paths
+        song_a_path = AUDIO_DIR / best_pair['song_a']
+        song_b_path = AUDIO_DIR / best_pair['song_b']
+
+        # Create transition
+        transition, sr = create_simple_crossfade(song_a_path, song_b_path, crossfade_duration=10.0)
+
+        # Save transition audio
+        safe_name_a = best_pair['song_a'].replace('.mp3', '').replace('.flac', '')
+        safe_name_b = best_pair['song_b'].replace('.mp3', '').replace('.flac', '')
+        transition_filename = f"transition_{safe_name_a}_to_{safe_name_b}.flac"
+        transition_path = OUTPUT_DIR / transition_filename
+
+        sf.write(transition_path, transition.T, sr)
+        print(f"\n✓ Transition audio saved to: {transition_path}")
+        print(f"  Duration: {transition.shape[1] / sr:.1f}s")
+        print(f"  Channels: {transition.shape[0]}")
+        print(f"  Sample rate: {sr} Hz")
+
+        # Visualize transition waveform
+        fig, axes = plt.subplots(2, 1, figsize=(14, 8))
+
+        # Left channel
+        ax = axes[0]
+        times = np.arange(transition.shape[1]) / sr
+        ax.plot(times, transition[0, :], linewidth=0.5, color='blue')
+        ax.fill_between(times, 0, transition[0, :], alpha=0.3, color='blue')
+        ax.set_title("Transition Waveform - Left Channel", fontsize=12, fontweight='bold')
+        ax.set_ylabel("Amplitude")
+        ax.grid(True, alpha=0.3)
+        ax.axvline(5.0, color='red', linestyle='--', label='Crossfade midpoint')
+        ax.legend()
+
+        # Right channel
+        ax = axes[1]
+        ax.plot(times, transition[1, :], linewidth=0.5, color='green')
+        ax.fill_between(times, 0, transition[1, :], alpha=0.3, color='green')
+        ax.set_title("Transition Waveform - Right Channel", fontsize=12, fontweight='bold')
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Amplitude")
+        ax.grid(True, alpha=0.3)
+        ax.axvline(5.0, color='red', linestyle='--', label='Crossfade midpoint')
+        ax.legend()
+
+        plt.tight_layout()
+        waveform_path = OUTPUT_DIR / "transition_waveform.png"
+        plt.savefig(waveform_path, dpi=150, bbox_inches='tight')
+        print(f"✓ Waveform visualization saved to: {waveform_path}")
+
+    else:
+        print("\n⚠️  No song pairs to analyze (need at least 2 songs)")
+
+    # === CELL 7: POC SUMMARY AND NEXT STEPS ===
+    print("\n" + "="*70)
+    print("POC SUMMARY REPORT (All-In-One)")
+    print("="*70)
+
+    if results:
+        # Statistics
+        print(f"\n📊 Analysis Statistics:")
+        print(f"  Total songs analyzed: {len(results)}")
+        print(f"  Total errors: {len(errors)}")
+        print(f"  Tempo range: {df_summary['tempo'].min():.1f} - {df_summary['tempo'].max():.1f} BPM")
+        print(f"  Keys detected: {', '.join(sorted(df_summary['full_key'].unique()))}")
+        print(f"  Average duration: {df_summary['duration'].mean():.1f}s ({df_summary['duration'].mean()/60:.1f} min)")
+        print(f"  Average sections per song: {df_summary['num_sections'].mean():.1f}")
+        print(f"  Average embeddings per song: {df_summary['embeddings_shape'].apply(lambda x: x[1]).mean():.0f} timesteps")
+
+        if len(compatibilities) > 0:
+            print(f"\n🔗 Compatibility Analysis:")
+            print(f"  Total pairings analyzed: {len(compatibilities)}")
+            print(f"  Best compatibility score: {df_compat['overall_score'].max():.1f}/100")
+            print(f"  Worst compatibility score: {df_compat['overall_score'].min():.1f}/100")
+            print(f"  Average compatibility: {df_compat['overall_score'].mean():.1f}/100")
+            print(f"  High-quality pairs (>70): {len(df_compat[df_compat['overall_score'] > 70])}")
+
+        # Outputs generated
+        print(f"\n📁 Outputs Generated:")
+        outputs = [
+            ("poc_summary.csv", "Summary table (CSV)"),
+            ("poc_full_results.json", "Full analysis results with embeddings (JSON)"),
+            ("poc_analysis_visualizations.png", "Song visualizations (waveform, chroma, energy)"),
+        ]
+
+        if len(compatibilities) > 0:
+            outputs.extend([
+                ("poc_compatibility_scores.csv", "Compatibility matrix (CSV)"),
+                ("poc_compatibility_heatmap.png", "Compatibility heatmap"),
+            ])
+            if 'transition_filename' in locals():
+                outputs.extend([
+                    (transition_filename, "Sample transition audio (FLAC)"),
+                    ("transition_waveform.png", "Transition waveform visualization")
+                ])
+
+        for idx, (filename, description) in enumerate(outputs, 1):
+            filepath = OUTPUT_DIR / filename
+            if filepath.exists():
+                size_kb = filepath.stat().st_size / 1024
+                print(f"  {idx}. {filename}")
+                print(f"     {description} ({size_kb:.1f} KB)")
+
+        # Comparison with librosa
+        print(f"\n🔬 NEXT STEP: Compare with Librosa Baseline")
+        print(f"Run the comparison script to see differences:")
+        print(f"  python compare_results.py")
+
+    else:
+        print(f"\n⚠️  No audio files were analyzed.")
+        print(f"\nPlease:")
+        print(f"  1. Place 3-5 audio files (MP3/FLAC) in: {args.audio_dir.absolute()}")
+        print(f"  2. Re-run this script")
+
+    print(f"\n" + "="*70)
+    print(f"POC Analysis (All-In-One) Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"="*70)
+
+    return 0 if results else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

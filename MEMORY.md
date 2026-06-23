@@ -1,5 +1,17 @@
 ## 2026-06-20
 
+- Completed the ops/delivery/lab repo reorganization. New layout: `ops/admin-cli`
+  owns `stream_of_worship.admin` and shared `stream_of_worship.db` helpers
+  (including former `stream_of_worship.app.db` as `stream_of_worship.db.app`);
+  `ops/analysis-service` owns `sow_analysis`; `delivery/webapp` owns
+  `sow-webapp`; `delivery/render-worker` owns `sow_render_worker`; lab code
+  lives in `lab/sow-app`, `lab/legacy-cli-tui`, and `lab/poc-scripts`.
+  Root Python `pyproject.toml` and `uv.lock` were removed in favor of
+  per-subproject locks. Canonical commands now use `uv --project`, e.g.
+  `uv run --project ops/admin-cli --extra admin sow-admin --help`,
+  `uv run --project lab/sow-app sow-app --help`, and
+  `uv run --project lab/legacy-cli-tui stream-of-worship --help`.
+
 - R2 backup throughput investigation closed. 32-worker concurrency bump (commit ea397e7) regressed throughput 7.3 → 5.0 MiB/s. Reverted DEFAULT_CONCURRENCY to 8; kept as_completed / size-sort / tracer / range-GET diagnostic / read_timeout=300. Account-level R2 cap at ~7 MiB/s confirmed via --diag-range-key (ratio=2.41). <10 min backup goal for 12.9 GB closed as not feasible within local Python CLI architecture; reopening requires Cloudflare Worker backup or bucket size reduction. See specs/admin-r2-backup-throughput-remediation-v2.md.
 
 - **R2 backup rclone path benchmarked and REJECTED.** Per specs/admin-r2-backup-rclone-download-v1.md Step 1c, ran mandatory pre-implementation benchmarks: boto3 single conn = 7.85 MiB/s, rclone single file = 4.07 MiB/s, rclone multi-file (8 transfers) = 5.68 MiB/s. rclone achieves only 0.52×–0.72× the boto3 baseline, well below the 1.2× proceed threshold. The cap is confirmed R2-account-level, not boto3-specific. Fixes 1-7 from the spec are NOT implemented. Full results recorded in reports/admin-r2-backup-rclone-download-v1-results.md.

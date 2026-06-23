@@ -1,0 +1,45 @@
+[project]
+name = "sow-legacy-cli-tui"
+version = "0.1.0"
+description = "Legacy CLI/TUI lab package for Stream of Worship"
+requires-python = ">=3.11"
+dependencies = [
+    "pathlib>=1.0.0",
+    "dataclasses>=0.0",
+    "typing>=3.0.0",
+]
+
+[project.optional-dependencies]
+tui = [
+    "textual>=0.44.0",
+    "pydub>=0.25.0",
+    "pyaudio>=0.2.14",
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0",
+]
+migration = ["pypinyin>=0.52.0"]
+lrc_generation = ["openai-whisper>=20231117", "openai>=1.0.0"]
+test = ["pytest>=7.4.0", "pytest-mock>=3.12.0", "pytest-asyncio>=0.23.0"]
+
+[project.scripts]
+stream-of-worship = "sow_legacy_cli_tui.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]

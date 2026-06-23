@@ -26,12 +26,12 @@ This document contains technical details for developers and contributors. For us
 
 | Component | Status | Location | Purpose |
 |-----------|--------|----------|---------|
-| **POC Scripts** | ✅ Archived | `poc/` | Experimental analysis validation (legacy) |
-| **Admin CLI** | ✅ Operational | `src/stream_of_worship/admin/` | Catalog management, audio download, schema init |
-| **Analysis Service** | ✅ Operational | `services/analysis/` | Audio analysis, stem separation, LRC generation |
-| **User App** | ⚠️ Deprecated | `src/stream_of_worship/app/` | TUI (deprecated in favor of Web App) |
-| **Web App** | ✅ Production | `webapp/` | Primary end-user interface (Next.js) |
-| **Render Worker** | ✅ Production | `services/render-worker/` | AWS Lambda render processing |
+| **POC Scripts** | ✅ Archived | `lab/poc-scripts/` | Experimental analysis validation (legacy) |
+| **Admin CLI** | ✅ Operational | `ops/admin-cli/src/stream_of_worship/admin/` | Catalog management, audio download, schema init |
+| **Analysis Service** | ✅ Operational | `ops/analysis-service/` | Audio analysis, stem separation, LRC generation |
+| **User App** | ⚠️ Deprecated | `lab/sow-app/src/sow_lab_app/` | TUI (deprecated in favor of Web App) |
+| **Web App** | ✅ Production | `delivery/webapp/` | Primary end-user interface (Next.js) |
+| **Render Worker** | ✅ Production | `delivery/render-worker/` | AWS Lambda render processing |
 
 ---
 
@@ -40,23 +40,23 @@ This document contains technical details for developers and contributors. For us
 The project consists of **six architecturally separate components**:
 
 ### 1. 🧪 POC Scripts (Archived Experimental)
-- **Location:** `poc/` directory
+- **Location:** `lab/poc-scripts/` directory
 - **Purpose:** Validate analysis algorithms during development
 - **Runtime:** One-off script execution in Docker
 - **Technologies:** Librosa (signal processing) or All-In-One (deep learning)
-- **Status:** Archived. The `poc/transition_builder_v2/` TUI lives on as the `stream-of-worship tui` command but is also deprecated.
+- **Status:** Archived. The `lab/poc-scripts/transition_builder_v2/` TUI lives on as the `stream-of-worship tui` command but is also deprecated.
 
 ### 2. 🖥️ Admin CLI (Backend Management)
-- **Location:** `src/stream_of_worship/admin/` (Python package)
+- **Location:** `ops/admin-cli/src/stream_of_worship/admin/` (Python package)
 - **Purpose:** Backend tool for catalog management and audio operations
 - **Users:** Administrators, DevOps
 - **Runtime:** One-shot CLI commands (`sow-admin catalog scrape`, `sow-admin audio download`)
 - **Dependencies:** **Lightweight** (~50MB) - typer, rich, psycopg3, boto3, yt-dlp
 - **Database:** **PostgreSQL (Neon)** via `psycopg` (psycopg3, synchronous) with `ConnectionProvider` for auto-reconnect and cold-start retry
-- **Installation:** `uv run --extra admin sow-admin`
+- **Installation:** `uv run --project ops/admin-cli --extra admin sow-admin`
 
 ### 3. 🚀 Analysis Service (Microservice)
-- **Location:** `services/analysis/` (separate package: `sow_analysis`)
+- **Location:** `ops/analysis-service/` (separate package: `sow_analysis`)
 - **Purpose:** CPU/GPU-intensive audio analysis and stem separation
 - **Users:** Called by Admin CLI or Web App
 - **Runtime:** Long-lived FastAPI HTTP server (port 8000)
@@ -67,7 +67,7 @@ The project consists of **six architecturally separate components**:
 - **API:** REST endpoints at `http://localhost:8000/api/v1/`
 
 ### 4. 🎵 User App (Deprecated)
-- **Location:** `src/stream_of_worship/app/` (Python package)
+- **Location:** `lab/sow-app/src/sow_lab_app/` (Python package)
 - **Purpose:** Interactive TUI for transitions and lyrics video generation (**deprecated**)
 - **Users:** Worship leaders, media team members (migrating to Web App)
 - **Runtime:** TUI (Textual framework)
@@ -76,7 +76,7 @@ The project consists of **six architecturally separate components**:
 - **Note:** The Web App (`sow-webapp`) is now the recommended interface for all end-user operations.
 
 ### 5. 🌐 Web App (Primary End-User Interface)
-- **Location:** `webapp/` (Node.js/TypeScript, Next.js 16 App Router)
+- **Location:** `delivery/webapp/` (Node.js/TypeScript, Next.js 16 App Router)
 - **Purpose:** Browser-based worship set editor and playback
 - **Users:** Worship leaders, media teams, end users
 - **Runtime:** Next.js server (Vercel deployment) + browser client
@@ -94,7 +94,7 @@ The project consists of **six architecturally separate components**:
   - Shareable public player links
 
 ### 6. ⚡ Render Worker (AWS Lambda)
-- **Location:** `services/render-worker/` (Python, deployed as Lambda container via private ECR)
+- **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Purpose:** Serverless render processing (audio mixing + video encoding)
 - **Users:** Called by Web App via SQS
 - **Runtime:** AWS Lambda container (triggered by SQS events)
@@ -111,7 +111,7 @@ The project consists of **six architecturally separate components**:
 | **Runtime Model** | One-shot commands | Long-lived daemon | Interactive TUI | Serverless + browser | Event-driven Lambda |
 | **Target Users** | Admins / DevOps | Internal service | End users (legacy) | End users | Internal service |
 | **Dependencies** | Minimal | Very heavy (PyTorch) | Moderate | Node.js stack | Moderate (psycopg2, FFmpeg) |
-| **Distribution** | `uv run --extra admin` | Docker image | `uv run --extra app` | Vercel | Lambda container |
+| **Distribution** | `uv run --project ops/admin-cli --extra admin` | Docker image | `uv run --project lab/sow-app` | Vercel | Lambda container |
 | **Data Access** | PostgreSQL (Neon) + R2 | R2 + SQLite (jobs) | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 |
 | **Database Driver** | psycopg3 | aiosqlite | psycopg3 | Drizzle ORM + Neon | psycopg2 |
 
@@ -224,7 +224,7 @@ Frontend Flow (End-User):
 
 The project includes two backend microservices:
 
-### 1. Analysis Service (`services/analysis/`)
+### 1. Analysis Service (`ops/analysis-service/`)
 
 FastAPI-based audio analysis service with job queue management.
 
@@ -234,9 +234,9 @@ FastAPI-based audio analysis service with job queue management.
 - **Database:** SQLite (job persistence only, not connected to shared PostgreSQL)
 - **Status:** Operational
 
-**Documentation:** [services/analysis/README.md](services/analysis/README.md)
+**Documentation:** [ops/analysis-service/README.md](ops/analysis-service/README.md)
 
-### 2. Render Worker (`services/render-worker/`)
+### 2. Render Worker (`delivery/render-worker/`)
 
 AWS Lambda container that processes render jobs from an SQS queue.
 
@@ -246,7 +246,7 @@ AWS Lambda container that processes render jobs from an SQS queue.
 - **Queue:** AWS SQS
 - **Status:** Operational
 
-**Documentation:** [services/render-worker/README.md](services/render-worker/README.md)
+**Documentation:** [delivery/render-worker/README.md](delivery/render-worker/README.md)
 
 ---
 
@@ -283,7 +283,7 @@ docker-compose build
 
 ```bash
 # Run POC analysis in one-off container
-docker-compose run --rm librosa python poc/poc_analysis.py
+docker-compose run --rm librosa python lab/poc-scripts/poc_analysis.py
 ```
 
 **Method B: Interactive Jupyter Notebook**
@@ -305,7 +305,7 @@ For ML-based analysis with semantic segment labels:
 docker compose -f docker/docker-compose.allinone.yml build
 
 # Run analysis
-docker compose -f docker/docker-compose.allinone.yml run --rm allinone python poc/poc_analysis_allinone.py
+docker compose -f docker/docker-compose.allinone.yml run --rm allinone python lab/poc-scripts/poc_analysis_allinone.py
 ```
 
 **Comparison:**
@@ -325,7 +325,7 @@ docker compose -f docker/docker-compose.allinone.yml run --rm allinone python po
 ```
 sow_cli_admin/                           # Repository root
 │
-├── src/stream_of_worship/admin/         # 🖥️ Admin CLI Package (backend)
+├── ops/admin-cli/src/stream_of_worship/admin/         # 🖥️ Admin CLI Package (backend)
 │   ├── commands/                        #    CLI command groups
 │   │   ├── db.py                        #    - db init/status/url
 │   │   ├── catalog.py                   #    - catalog scrape/list/search/show
@@ -343,7 +343,7 @@ sow_cli_admin/                           # Repository root
 │   ├── config.py                        #    TOML config loader
 │   └── main.py                          #    Typer app entry point
 │
-├── src/stream_of_worship/app/           # 🎵 User App Package (DEPRECATED)
+├── lab/sow-app/src/sow_lab_app/           # 🎵 User App Package (DEPRECATED)
 │   ├── screens/                           #    TUI screens (Textual)
 │   │   ├── generation.py                #    - Transition generator
 │   │   ├── browser.py                   #    - Song catalog browser
@@ -361,11 +361,11 @@ sow_cli_admin/                           # Repository root
 │   ├── config.py                        #    TOML config loader
 │   └── main.py                          #    App entry point
 │
-├── src/stream_of_worship/db/            # Shared database infrastructure
+├── ops/admin-cli/src/stream_of_worship/db/            # Shared database infrastructure
 │   ├── connection.py                    #    - ConnectionProvider (psycopg3)
 │   └── postgres_schema.py               #    - Unified schema DDL (all components)
 │
-├── webapp/                              # 🌐 Web App (Next.js)
+├── delivery/webapp/                              # 🌐 Web App (Next.js)
 │   ├── src/
 │   │   ├── app/                         #    Next.js App Router pages
 │   │   │   ├── api/                     #    API routes
@@ -386,7 +386,7 @@ sow_cli_admin/                           # Repository root
 │   ├── drizzle.config.ts                #    Drizzle Kit config
 │   └── package.json                     #    Node.js dependencies
 │
-├── services/analysis/                   # 🚀 Analysis Service (heavy ML)
+├── ops/analysis-service/                   # 🚀 Analysis Service (heavy ML)
 │   ├── src/sow_analysis/                #    Service package
 │   │   ├── main.py                      #    FastAPI app
 │   │   ├── config.py                    #    Pydantic settings
@@ -409,7 +409,7 @@ sow_cli_admin/                           # Repository root
 │   ├── Dockerfile                       #    Multi-platform Docker build
 │   └── README.md                        #    Service documentation
 │
-├── services/render-worker/              # ⚡ Render Worker (AWS Lambda)
+├── delivery/render-worker/              # ⚡ Render Worker (AWS Lambda)
 │   ├── src/sow_render_worker/           #    Worker package
 │   │   ├── lambda_handler.py            #    SQS event handler
 │   │   ├── config.py                    #    Env var loading
@@ -423,7 +423,7 @@ sow_cli_admin/                           # Repository root
 │   ├── Dockerfile                       #    Lambda container image
 │   └── README.md                        #    Worker documentation
 │
-├── poc/                                 # 🧪 POC Scripts (archived)
+├── lab/poc-scripts/                                 # 🧪 POC Scripts (archived)
 │   ├── docker/                          #    POC Docker environments
 │   ├── poc_analysis.py                  #    Librosa analysis script
 │   ├── poc_analysis_allinone.py         #    Deep learning analysis
@@ -445,12 +445,12 @@ sow_cli_admin/                           # Repository root
 
 | Directory | Package Name | Purpose | Target Users | Database | Deployment |
 |-----------|-------------|---------|--------------|----------|------------|
-| `src/stream_of_worship/admin/` | `stream-of-worship-admin` | Backend management CLI | Admins / DevOps | PostgreSQL (Neon) + R2 | `uv run --extra admin` |
-| `src/stream_of_worship/app/` | `stream-of-worship-app` | End-user TUI (DEPRECATED) | End users (legacy) | PostgreSQL (Neon) + R2 | `uv run --extra app` |
-| `services/analysis/` | `sow-analysis` | Audio analysis microservice | Internal service | SQLite (jobs only) + R2 | Docker image |
-| `webapp/` | `sow-webapp` | Web application | End users | PostgreSQL (Neon) + R2 | Vercel |
-| `services/render-worker/` | `sow-render-worker` | Render processing | Internal service | PostgreSQL (Neon) + R2 | Lambda container |
-| `poc/` | N/A (scripts) | Experimental validation | Developers | Local files only | Local scripts |
+| `ops/admin-cli/src/stream_of_worship/admin/` | `stream-of-worship-admin` | Backend management CLI | Admins / DevOps | PostgreSQL (Neon) + R2 | `uv run --project ops/admin-cli --extra admin` |
+| `lab/sow-app/src/sow_lab_app/` | `stream-of-worship-app` | End-user TUI (DEPRECATED) | End users (legacy) | PostgreSQL (Neon) + R2 | `uv run --project lab/sow-app` |
+| `ops/analysis-service/` | `sow-analysis` | Audio analysis microservice | Internal service | SQLite (jobs only) + R2 | Docker image |
+| `delivery/webapp/` | `sow-webapp` | Web application | End users | PostgreSQL (Neon) + R2 | Vercel |
+| `delivery/render-worker/` | `sow-render-worker` | Render processing | Internal service | PostgreSQL (Neon) + R2 | Lambda container |
+| `lab/poc-scripts/` | N/A (scripts) | Experimental validation | Developers | Local files only | Local scripts |
 
 ---
 
@@ -587,7 +587,7 @@ export SOW_ANALYSIS_API_KEY="your-api-key"
 
 ### Web App Configuration
 
-See [webapp/.env.production.example](webapp/.env.production.example) for full documentation of all environment variables.
+See [delivery/webapp/.env.production.example](delivery/webapp/.env.production.example) for full documentation of all environment variables.
 
 **Required:**
 ```bash
@@ -603,7 +603,7 @@ NEXT_PUBLIC_BASE_URL=https://...        # Public app URL
 
 ### Render Worker Configuration
 
-See [services/render-worker/.env.example](services/render-worker/.env.example).
+See [delivery/render-worker/.env.example](delivery/render-worker/.env.example).
 
 **Required:**
 ```bash
@@ -624,7 +624,7 @@ SOW_SQS_QUEUE_URL=https://...           # SQS queue URL
 **Problem:** Tempo detection seems wrong
 
 ```python
-# In poc/poc_analysis.py, adjust start_bpm parameter:
+# In lab/poc-scripts/poc_analysis.py, adjust start_bpm parameter:
 tempo_librosa, beats_frames = librosa.beat.beat_track(
     y=y, sr=sr,
     start_bpm=90,  # Try 70 for slow, 120 for fast
@@ -674,10 +674,10 @@ peaks = librosa.util.peak_pick(
 ## Resources
 
 - **Design Document:** [specs/worship-music-transition-system-design.md](specs/worship-music-transition-system-design.md)
-- **Analysis Service:** [services/analysis/README.md](services/analysis/README.md)
-- **Render Worker:** [services/render-worker/README.md](services/render-worker/README.md)
-- **Web App:** [webapp/README.md](webapp/README.md)
-- **Admin CLI:** [src/stream_of_worship/admin/README.md](src/stream_of_worship/admin/README.md)
+- **Analysis Service:** [ops/analysis-service/README.md](ops/analysis-service/README.md)
+- **Render Worker:** [delivery/render-worker/README.md](delivery/render-worker/README.md)
+- **Web App:** [delivery/webapp/README.md](delivery/webapp/README.md)
+- **Admin CLI:** [ops/admin-cli/src/stream_of_worship/admin/README.md](ops/admin-cli/src/stream_of_worship/admin/README.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
 
 ---
@@ -687,7 +687,7 @@ peaks = librosa.util.peak_pick(
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run tests: `PYTHONPATH=src uv run --extra app --extra test pytest tests/ -v`
+4. Run tests: `uv run --project lab/sow-app --extra test pytest lab/sow-app/tests -v`
 5. Submit a pull request
 
 ---

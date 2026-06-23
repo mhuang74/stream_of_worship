@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "webapp/**"
-      - "services/render-worker/**"
+      - "delivery/webapp/**"
+      - "delivery/render-worker/**"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: webapp
+        working-directory: delivery/webapp
 
     services:
       postgres:
@@ -66,7 +66,7 @@ jobs:
       SKIP_DOCKER_TESTS: "1"
     defaults:
       run:
-        working-directory: services/render-worker
+        working-directory: delivery/render-worker
 
     steps:
       - uses: actions/checkout@v4

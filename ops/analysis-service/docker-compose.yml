@@ -1,0 +1,108 @@
+# Define common environment variables using YAML anchor
+x-common-env: &common-env
+  SOW_R2_BUCKET: ${SOW_R2_BUCKET}
+  SOW_R2_ENDPOINT_URL: ${SOW_R2_ENDPOINT_URL}
+  SOW_R2_ACCESS_KEY_ID: ${SOW_R2_ACCESS_KEY_ID}
+  SOW_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
+  SOW_ANALYSIS_API_KEY: ${SOW_ANALYSIS_API_KEY}
+  SOW_ADMIN_API_KEY: ${SOW_ADMIN_API_KEY}
+  SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}
+  SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
+  SOW_AUDIO_SEPARATOR_MODEL_DIR: ${SOW_AUDIO_SEPARATOR_MODEL_DIR:-/models/audio-separator}
+  SOW_VOCAL_SEPARATION_MODEL: ${SOW_VOCAL_SEPARATION_MODEL:-model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt}
+  SOW_DEREVERB_MODEL: ${SOW_DEREVERB_MODEL:-UVR-De-Echo-Normal.pth}
+  NATTEN_LOG_LEVEL: error
+  # LLM Configuration for LRC generation
+  SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
+  SOW_LLM_BASE_URL: ${SOW_LLM_BASE_URL}
+  SOW_LLM_MODEL: ${SOW_LLM_MODEL}
+  # Embedding Model Configuration
+  SOW_LLM_EMBEDDING_MODEL: ${SOW_LLM_EMBEDDING_MODEL:-text-embedding-3-small}
+  # Whisper Configuration
+  SOW_WHISPER_DEVICE: ${SOW_WHISPER_DEVICE:-cpu}
+  # MVSEP Cloud API Configuration
+  SOW_MVSEP_API_KEY: ${SOW_MVSEP_API_KEY}
+  SOW_MVSEP_ENABLED: ${SOW_MVSEP_ENABLED:-true}
+  SOW_MVSEP_STAGE1_SEP_TYPE: ${SOW_MVSEP_STAGE1_SEP_TYPE:-48}
+  SOW_MVSEP_STAGE1_ADD_OPT1: ${SOW_MVSEP_STAGE1_ADD_OPT1:-11}
+  SOW_MVSEP_STAGE1_ADD_OPT2: ${SOW_MVSEP_STAGE1_ADD_OPT2}
+  SOW_MVSEP_STAGE2_SEP_TYPE: ${SOW_MVSEP_STAGE2_SEP_TYPE:-22}
+  SOW_MVSEP_STAGE2_ADD_OPT1: ${SOW_MVSEP_STAGE2_ADD_OPT1:-0}
+  SOW_MVSEP_STAGE2_ADD_OPT2: ${SOW_MVSEP_STAGE2_ADD_OPT2:-1}
+  SOW_MVSEP_HTTP_TIMEOUT: ${SOW_MVSEP_HTTP_TIMEOUT:-60}
+  SOW_MVSEP_STAGE_TIMEOUT: ${SOW_MVSEP_STAGE_TIMEOUT:-300}
+  SOW_MVSEP_TOTAL_TIMEOUT: ${SOW_MVSEP_TOTAL_TIMEOUT:-900}
+  SOW_MVSEP_DAILY_JOB_LIMIT: ${SOW_MVSEP_DAILY_JOB_LIMIT:-50}
+  # YouTube Proxy Configuration
+  SOW_YOUTUBE_PROXY: ${SOW_YOUTUBE_PROXY}
+  SOW_YOUTUBE_PROXY_RETRIES: ${SOW_YOUTUBE_PROXY_RETRIES:-3}
+  # DashScope Qwen3 ASR Configuration
+  SOW_DASHSCOPE_API_KEY: ${SOW_DASHSCOPE_API_KEY}
+  SOW_DASHSCOPE_ASR_REGION: ${SOW_DASHSCOPE_ASR_REGION:-intl}
+  SOW_DASHSCOPE_ASR_FLASH_MODEL: ${SOW_DASHSCOPE_ASR_FLASH_MODEL:-qwen3-asr-flash}
+  SOW_DASHSCOPE_ASR_FILETRANS_MODEL: ${SOW_DASHSCOPE_ASR_FILETRANS_MODEL:-qwen3-asr-flash-filetrans}
+  SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS: ${SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS:-10000}
+  SOW_DASHSCOPE_ASR_SNAP_THRESHOLD: ${SOW_DASHSCOPE_ASR_SNAP_THRESHOLD:-0.60}
+  SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS: ${SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS:-300}
+  SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS: ${SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS:-1800}
+  SOW_DASHSCOPE_ASR_MAX_CONCURRENT: ${SOW_DASHSCOPE_ASR_MAX_CONCURRENT:-2}
+  SOW_DASHSCOPE_ASR_CACHE_VERSION: ${SOW_DASHSCOPE_ASR_CACHE_VERSION:-1}
+  # Forced Aligner Configuration (Qwen3ForcedAligner-0.6B, runs in-process)
+  SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH:-Qwen/Qwen3-ForcedAligner-0.6B}
+  SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
+
+# Define common GPU configuration using YAML anchor
+x-gpu-deploy: &gpu-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [ gpu ]
+
+services:
+  analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+    volumes:
+      - analysis-cache:/cache
+      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
+      - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
+    # GPU support: Uncomment the 'deploy' section below if you have a GPU
+    # and NVIDIA Container Toolkit installed. See README.md for details.
+    # deploy:
+    #   <<: *gpu-deploy
+
+  # Development mode: mounts local code for hot-reload
+  # Usage: docker compose up analysis-dev
+  analysis-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        - DEV_MODE=true
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+      DEV_MODE: "true"
+    volumes:
+      - analysis-cache:/cache
+      - ./src:/workspace/src:ro
+      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
+      - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
+    # GPU support: Uncomment the 'deploy' section below if you have a GPU
+    # and NVIDIA Container Toolkit installed. See README.md for details.
+    # deploy:
+    #   <<: *gpu-deploy
+
+volumes:
+  analysis-cache:

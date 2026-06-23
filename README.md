@@ -18,11 +18,11 @@ This project consists of six components. Here's how to run each:
 
 | Component | Purpose | Run Command |
 |-----------|---------|-------------|
-| **Admin CLI** | Catalog management, audio download | `uv run --extra admin sow-admin --help` |
-| **User App** | Interactive TUI for transitions | `uv run --extra app sow-app run` |
+| **Admin CLI** | Catalog management, audio download | `uv run --project ops/admin-cli --extra admin sow-admin --help` |
+| **User App** | Interactive TUI for transitions | `uv run --project lab/sow-app sow-app run` |
 | **Web App** | Browser-based worship set editor | `pnpm --filter sow-webapp dev` |
-| **Analysis Service** | Audio analysis & stem separation | `cd services/analysis && docker compose up -d` |
-| **Render Worker** | Serverless render processing | `cd services/render-worker && docker compose up --build` |
+| **Analysis Service** | Audio analysis & stem separation | `cd ops/analysis-service && docker compose up -d` |
+| **Render Worker** | Serverless render processing | `cd delivery/render-worker && docker compose up --build` |
 
 ### Prerequisites
 - **Admin CLI & User App**: Python 3.11+, `uv` package manager
@@ -35,27 +35,27 @@ This project consists of six components. Here's how to run each:
 #### Admin CLI (Backend Management)
 ```bash
 # Initialize database
-uv run --extra admin sow-admin db init
+uv run --project ops/admin-cli --extra admin sow-admin db init
 
 # Scrape song catalog
-uv run --extra admin sow-admin catalog scrape
+uv run --project ops/admin-cli --extra admin sow-admin catalog scrape
 
 # Download audio
-uv run --extra admin sow-admin audio download --song-id "song-id"
+uv run --project ops/admin-cli --extra admin sow-admin audio download --song-id "song-id"
 ```
 
 #### User App (End-User TUI)
 ```bash
 # Run the interactive TUI
-uv run --extra app sow-app run
+uv run --project lab/sow-app sow-app run
 
 # Or with custom config
-uv run --extra app sow-app run --config /path/to/config.toml
+uv run --project lab/sow-app sow-app run --config /path/to/config.toml
 ```
 
 #### Analysis Service (Microservice)
 ```bash
-cd services/analysis
+cd ops/analysis-service
 
 # Copy and configure environment
 cp .env.example .env
@@ -78,7 +78,7 @@ pnpm install
 pnpm --filter sow-webapp dev
 
 # Or from the webapp directory
-cd webapp && pnpm dev
+cd delivery/webapp && pnpm dev
 ```
 
 ---
@@ -131,7 +131,7 @@ External services (required for full functionality):
 
 ```bash
 # Install dependencies
-cd webapp && pnpm install
+cd delivery/webapp && pnpm install
 
 # Configure environment
 cp .env.example .env.local
@@ -145,7 +145,7 @@ npx drizzle-kit push
 pnpm dev   # → http://localhost:8080
 ```
 
-See [webapp/.env.production.example](webapp/.env.production.example) for documentation of all environment variables.
+See [delivery/webapp/.env.production.example](delivery/webapp/.env.production.example) for documentation of all environment variables.
 
 ### Development Commands
 
@@ -195,7 +195,7 @@ npx drizzle-kit migrate    # Run pending migrations
 
 The web app deploys to **Vercel**. Render jobs are enqueued to AWS SQS and processed by a Lambda worker (Docker container deployed to private ECR), so the Vercel function only needs a short timeout for job creation and SSE progress streaming.
 
-See [webapp/README.md](webapp/README.md) for full deployment instructions including:
+See [delivery/webapp/README.md](delivery/webapp/README.md) for full deployment instructions including:
 - Vercel project setup
 - Environment variable configuration
 - Google Cast SDK receiver registration (dev / staging / production)
@@ -300,22 +300,22 @@ export SOW_ANALYSIS_API_KEY="your-api-key"
 
 ```bash
 # 1. Initialize the database
-uv run --extra admin sow-admin db init
+uv run --project ops/admin-cli --extra admin sow-admin db init
 
 # 2. Scrape the song catalog from sop.org
-uv run --extra admin sow-admin catalog scrape
+uv run --project ops/admin-cli --extra admin sow-admin catalog scrape
 
 # 3. Search for a specific song
-uv run --extra admin sow-admin catalog search "主祢是愛"
+uv run --project ops/admin-cli --extra admin sow-admin catalog search "主祢是愛"
 
 # 4. Download audio for a song
-uv run --extra admin sow-admin audio download --song-id "zhu-ni-shi-ai-1"
+uv run --project ops/admin-cli --extra admin sow-admin audio download --song-id "zhu-ni-shi-ai-1"
 
 # 5. Submit for analysis (requires Analysis Service running)
-uv run --extra admin sow-admin audio analyze --recording-id "abc123def456"
+uv run --project ops/admin-cli --extra admin sow-admin audio analyze --recording-id "abc123def456"
 
 # 6. Check analysis status
-uv run --extra admin sow-admin audio status
+uv run --project ops/admin-cli --extra admin sow-admin audio status
 ```
 
 ---
@@ -415,7 +415,7 @@ sow-app config show               # Display current configuration
 
 ```bash
 # 1. Run the TUI
-uv run --extra app sow-app run
+uv run --project lab/sow-app sow-app run
 
 # 2. In the TUI:
 #    - Browse catalog (press 'b')
@@ -426,7 +426,7 @@ uv run --extra app sow-app run
 #    - Export audio or video
 
 # 3. Backup songset for sharing
-uv run --extra app sow-app songsets backup <songset-id>
+uv run --project lab/sow-app sow-app songsets backup <songset-id>
 ```
 
 ---
@@ -448,8 +448,8 @@ Create `~/.local/share/sow/config.json` (Linux) or `~/Library/Application Suppor
   "audio_folder": "~/.local/share/sow/song_library",
   "output_folder": "~/.local/share/sow/output/transitions",
   "output_songs_folder": "~/.local/share/sow/output/songs",
-  "analysis_json": "poc/output_allinone/poc_full_results.json",
-  "stems_folder": "poc/output_allinone/stems",
+  "analysis_json": "lab/poc-scripts/output_allinone/poc_full_results.json",
+  "stems_folder": "lab/poc-scripts/output_allinone/stems",
   "audio_format": "ogg",
   "audio_bitrate": "192k",
   "video_resolution": "1080p"
@@ -527,7 +527,7 @@ ls poc_audio/
 ## Resources
 
 - **Developer Documentation:** [DEVELOPER.md](DEVELOPER.md) - Architecture, roadmap, advanced configuration
-- **POC Script Guide:** [poc/README.md](poc/README.md)
+- **POC Script Guide:** [lab/poc-scripts/README.md](lab/poc-scripts/README.md)
 - **Design Document:** [specs/worship-music-transition-system-design.md](specs/worship-music-transition-system-design.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
 - **Stream of Praise:** https://www.sop.org/
