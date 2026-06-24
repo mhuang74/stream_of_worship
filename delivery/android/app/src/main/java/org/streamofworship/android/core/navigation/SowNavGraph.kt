@@ -17,14 +17,27 @@ import androidx.navigation.compose.rememberNavController
 import org.streamofworship.android.core.config.AppConfig
 import org.streamofworship.android.core.network.SowApiClientFactory
 import org.streamofworship.android.core.session.AndroidSecureSessionCookieStore
+import org.streamofworship.android.data.playback.HttpPlaybackRepository
+import org.streamofworship.android.data.playback.PlaybackApi
 import org.streamofworship.android.data.render.HttpRenderRepository
 import org.streamofworship.android.data.render.RenderApi
+import org.streamofworship.android.data.settings.HttpSettingsRepository
+import org.streamofworship.android.data.settings.SettingsApi
 import org.streamofworship.android.data.songs.HttpSongsRepository
 import org.streamofworship.android.data.songs.SongsApi
 import org.streamofworship.android.data.songsets.HttpSongsetsRepository
 import org.streamofworship.android.data.songsets.SongsetsApi
+import org.streamofworship.android.feature.player.Media3PlayerController
+import org.streamofworship.android.feature.player.PlayerScreen
+import org.streamofworship.android.feature.player.PlayerViewModel
 import org.streamofworship.android.feature.render.RenderScreen
 import org.streamofworship.android.feature.render.RenderViewModel
+import org.streamofworship.android.feature.settings.SettingsScreen
+import org.streamofworship.android.feature.settings.SettingsViewModel
+import org.streamofworship.android.feature.share.HttpShareRepository
+import org.streamofworship.android.feature.share.ShareApi
+import org.streamofworship.android.feature.share.ShareScreen
+import org.streamofworship.android.feature.share.ShareViewModel
 import org.streamofworship.android.feature.songsets.SongsetDetailScreen
 import org.streamofworship.android.feature.songsets.SongsetDetailViewModel
 import org.streamofworship.android.feature.songsets.SongsetsListScreen
@@ -79,12 +92,42 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
                 onPlay = { setId, jobId -> navController.navigate(SowRoute.Player.createRoute(setId, jobId)) },
-                onDownload = { jobId -> navController.navigate(SowRoute.Player.createRoute(songsetId, jobId)) },
+                onDownload = { jobId -> navController.navigate(SowRoute.Share.createRoute(jobId)) },
             )
         }
-        sowComposable(SowRoute.Player, "Play rendered worship audio and video.")
-        sowComposable(SowRoute.Share, "Open shared worship playback links.")
-        sowComposable(SowRoute.Settings, "Configure account and Android workflow defaults.")
+        composable(SowRoute.Player.pattern) { backStackEntry ->
+            val jobId = backStackEntry.arguments?.getString("jobId").orEmpty()
+            val dependencies = rememberSongsetsDependencies()
+            val context = LocalContext.current.applicationContext
+            val mediaController = remember(jobId, context) { Media3PlayerController(context) }
+            val viewModel =
+                remember(jobId, dependencies.playbackRepository, mediaController) {
+                    PlayerViewModel(
+                        renderJobId = jobId,
+                        repository = dependencies.playbackRepository,
+                        controller = mediaController,
+                    )
+                }
+            PlayerScreen(viewModel = viewModel, media3Controller = mediaController, onBack = { navController.popBackStack() })
+        }
+        composable(SowRoute.Share.pattern) { backStackEntry ->
+            val renderJobId = backStackEntry.arguments?.getString("token").orEmpty()
+            val dependencies = rememberSongsetsDependencies()
+            val viewModel =
+                remember(renderJobId, dependencies.shareRepository, dependencies.playbackRepository) {
+                    ShareViewModel(
+                        renderJobId = renderJobId,
+                        shareRepository = dependencies.shareRepository,
+                        playbackRepository = dependencies.playbackRepository,
+                    )
+                }
+            ShareScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+        }
+        composable(SowRoute.Settings.pattern) {
+            val dependencies = rememberSongsetsDependencies()
+            val viewModel = remember(dependencies.settingsRepository) { SettingsViewModel(dependencies.settingsRepository) }
+            SettingsScreen(viewModel = viewModel)
+        }
     }
 }
 
@@ -92,6 +135,9 @@ private data class SongsetsDependencies(
     val songsetsRepository: HttpSongsetsRepository,
     val songsRepository: HttpSongsRepository,
     val renderRepository: HttpRenderRepository,
+    val playbackRepository: HttpPlaybackRepository,
+    val shareRepository: HttpShareRepository,
+    val settingsRepository: HttpSettingsRepository,
 )
 
 @Composable
@@ -108,6 +154,9 @@ private fun rememberSongsetsDependencies(): SongsetsDependencies {
             songsetsRepository = HttpSongsetsRepository(client.create<SongsetsApi>()),
             songsRepository = HttpSongsRepository(client.create<SongsApi>()),
             renderRepository = HttpRenderRepository(client.create<RenderApi>()),
+            playbackRepository = HttpPlaybackRepository(client.create<PlaybackApi>()),
+            shareRepository = HttpShareRepository(client.create<ShareApi>()),
+            settingsRepository = HttpSettingsRepository(client.create<SettingsApi>()),
         )
     }
 }
