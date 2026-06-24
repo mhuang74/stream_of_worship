@@ -15,8 +15,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import org.streamofworship.android.core.config.AppConfig
+import org.streamofworship.android.core.download.AndroidArtifactDownloadScheduler
+import org.streamofworship.android.core.download.ArtifactDownloadCoordinator
 import org.streamofworship.android.core.network.SowApiClientFactory
 import org.streamofworship.android.core.session.AndroidSecureSessionCookieStore
+import org.streamofworship.android.data.offline.FileOfflineCacheRepository
 import org.streamofworship.android.data.playback.HttpPlaybackRepository
 import org.streamofworship.android.data.playback.PlaybackApi
 import org.streamofworship.android.data.render.HttpRenderRepository
@@ -81,11 +84,12 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
             val songsetId = backStackEntry.arguments?.getString("songsetId").orEmpty()
             val dependencies = rememberSongsetsDependencies()
             val viewModel =
-                remember(songsetId, dependencies.songsetsRepository, dependencies.renderRepository) {
+                remember(songsetId, dependencies.songsetsRepository, dependencies.renderRepository, dependencies.offlineCacheRepository) {
                     RenderViewModel(
                         songsetId = songsetId,
                         songsetsRepository = dependencies.songsetsRepository,
                         renderRepository = dependencies.renderRepository,
+                        offlineCacheRepository = dependencies.offlineCacheRepository,
                     )
                 }
             RenderScreen(
@@ -101,11 +105,12 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
             val context = LocalContext.current.applicationContext
             val mediaController = remember(jobId, context) { Media3PlayerController(context) }
             val viewModel =
-                remember(jobId, dependencies.playbackRepository, mediaController) {
+                remember(jobId, dependencies.playbackRepository, mediaController, dependencies.offlineCacheRepository) {
                     PlayerViewModel(
                         renderJobId = jobId,
                         repository = dependencies.playbackRepository,
                         controller = mediaController,
+                        offlineCacheRepository = dependencies.offlineCacheRepository,
                     )
                 }
             PlayerScreen(viewModel = viewModel, media3Controller = mediaController, onBack = { navController.popBackStack() })
@@ -114,11 +119,12 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
             val renderJobId = backStackEntry.arguments?.getString("token").orEmpty()
             val dependencies = rememberSongsetsDependencies()
             val viewModel =
-                remember(renderJobId, dependencies.shareRepository, dependencies.playbackRepository) {
+                remember(renderJobId, dependencies.shareRepository, dependencies.playbackRepository, dependencies.downloadCoordinator) {
                     ShareViewModel(
                         renderJobId = renderJobId,
                         shareRepository = dependencies.shareRepository,
                         playbackRepository = dependencies.playbackRepository,
+                        downloadCoordinator = dependencies.downloadCoordinator,
                     )
                 }
             ShareScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
@@ -138,6 +144,8 @@ private data class SongsetsDependencies(
     val playbackRepository: HttpPlaybackRepository,
     val shareRepository: HttpShareRepository,
     val settingsRepository: HttpSettingsRepository,
+    val offlineCacheRepository: FileOfflineCacheRepository,
+    val downloadCoordinator: ArtifactDownloadCoordinator,
 )
 
 @Composable
@@ -150,6 +158,12 @@ private fun rememberSongsetsDependencies(): SongsetsDependencies {
                 config = AppConfig.fromBuildConfig(),
                 cookieStore = cookieStore,
             )
+        val offlineCacheRepository = FileOfflineCacheRepository(context)
+        val downloadCoordinator =
+            ArtifactDownloadCoordinator(
+                cacheRepository = offlineCacheRepository,
+                scheduler = AndroidArtifactDownloadScheduler(context),
+            )
         SongsetsDependencies(
             songsetsRepository = HttpSongsetsRepository(client.create<SongsetsApi>()),
             songsRepository = HttpSongsRepository(client.create<SongsApi>()),
@@ -157,6 +171,8 @@ private fun rememberSongsetsDependencies(): SongsetsDependencies {
             playbackRepository = HttpPlaybackRepository(client.create<PlaybackApi>()),
             shareRepository = HttpShareRepository(client.create<ShareApi>()),
             settingsRepository = HttpSettingsRepository(client.create<SettingsApi>()),
+            offlineCacheRepository = offlineCacheRepository,
+            downloadCoordinator = downloadCoordinator,
         )
     }
 }

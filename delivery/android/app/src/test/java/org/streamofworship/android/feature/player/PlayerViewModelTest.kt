@@ -7,15 +7,25 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.streamofworship.android.data.offline.FileOfflineCacheRepository
+import org.streamofworship.android.data.offline.OfflineArtifactKind
 import org.streamofworship.android.data.playback.PlaybackChapter
 import org.streamofworship.android.data.playback.PlaybackLine
 import org.streamofworship.android.data.playback.PlaybackManifest
 import org.streamofworship.android.data.playback.PlaybackRepository
 import org.streamofworship.android.data.playback.SignedUrlResponse
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModelTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
     @Test
     fun `loads media and tracks current chapter and line`() =
         runTest {
@@ -53,6 +63,72 @@ class PlayerViewModelTest {
             assertFalse(controller.playing)
         }
 
+    @Test
+    fun `uses cached artifact before requesting remote signed url`() =
+        runTest {
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            repository.markCached(
+                renderJobId = "job-1",
+                kind = OfflineArtifactKind.Video,
+                localUri = "file:///cached/job-1.mp4",
+                bytesDownloaded = 100L,
+                totalBytes = 100L,
+                nowEpochMillis = 1L,
+            )
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val playbackRepository = CountingPlaybackRepository()
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = playbackRepository,
+                    controller = controller,
+                    offlineCacheRepository = repository,
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                )
+
+            viewModel.load()
+            runCurrent()
+
+            assertEquals("file:///cached/job-1.mp4", viewModel.uiState.value.mediaUrl)
+            assertEquals(OfflinePlaybackState.Cached, viewModel.uiState.value.offlineState)
+            assertEquals(0, playbackRepository.videoUrlCalls)
+        }
+
+    @Test
+    fun `expired signed url reports retry state and retry refreshes playback`() =
+        runTest {
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val playbackRepository =
+                CountingPlaybackRepository(
+                    videoUrls =
+                        ArrayDeque(
+                            listOf(
+                                SignedUrlResponse("https://r2/expired.mp4", "2025-01-01T00:00:00Z"),
+                                SignedUrlResponse("https://r2/fresh.mp4", "2026-01-01T00:00:00Z"),
+                            ),
+                        ),
+                )
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = playbackRepository,
+                    controller = controller,
+                    clock = Clock.fixed(Instant.parse("2025-06-01T00:00:00Z"), ZoneOffset.UTC),
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                )
+
+            viewModel.load()
+            runCurrent()
+            assertEquals(OfflinePlaybackState.ExpiredSignedUrl, viewModel.uiState.value.offlineState)
+
+            viewModel.load()
+            runCurrent()
+            assertEquals("https://r2/fresh.mp4", viewModel.uiState.value.mediaUrl)
+            assertEquals(OfflinePlaybackState.Missing, viewModel.uiState.value.offlineState)
+        }
+
     private fun viewModel(
         scope: TestScope,
         controller: FakePlayerController,
@@ -64,6 +140,21 @@ class PlayerViewModelTest {
             scope = scope.backgroundScope,
             tickerMillis = 0,
         )
+}
+
+private class CountingPlaybackRepository(
+    private val videoUrls: ArrayDeque<SignedUrlResponse> =
+        ArrayDeque(listOf(SignedUrlResponse("https://r2/video.mp4", "2027-01-01T00:00:00.000Z"))),
+) : FakePlaybackRepository() {
+    var videoUrlCalls = 0
+
+    override suspend fun renderedVideoUrl(
+        renderJobId: String,
+        contentDisposition: String?,
+    ): SignedUrlResponse {
+        videoUrlCalls += 1
+        return videoUrls.removeFirst()
+    }
 }
 
 internal class FakePlayerController(
@@ -97,25 +188,25 @@ internal class FakePlayerController(
     override fun release() = Unit
 }
 
-internal class FakePlaybackRepository : PlaybackRepository {
+internal open class FakePlaybackRepository : PlaybackRepository {
     override suspend fun renderedAudioUrl(
         renderJobId: String,
         contentDisposition: String?,
-    ): SignedUrlResponse = SignedUrlResponse("https://r2/audio.mp3", "2026-01-01T00:00:00.000Z")
+    ): SignedUrlResponse = SignedUrlResponse("https://r2/audio.mp3", "2027-01-01T00:00:00.000Z")
 
     override suspend fun renderedVideoUrl(
         renderJobId: String,
         contentDisposition: String?,
-    ): SignedUrlResponse = SignedUrlResponse("https://r2/video.mp4", "2026-01-01T00:00:00.000Z")
+    ): SignedUrlResponse = SignedUrlResponse("https://r2/video.mp4", "2027-01-01T00:00:00.000Z")
 
     override suspend fun renderedChaptersUrl(renderJobId: String): SignedUrlResponse =
-        SignedUrlResponse("https://r2/chapters.json", "2026-01-01T00:00:00.000Z")
+        SignedUrlResponse("https://r2/chapters.json", "2027-01-01T00:00:00.000Z")
 
     override suspend fun sourceAudioUrl(hashPrefix: String): SignedUrlResponse =
-        SignedUrlResponse("https://r2/source.mp3", "2026-01-01T00:00:00.000Z")
+        SignedUrlResponse("https://r2/source.mp3", "2027-01-01T00:00:00.000Z")
 
     override suspend fun sourceLrcUrl(hashPrefix: String): SignedUrlResponse =
-        SignedUrlResponse("https://r2/source.lrc", "2026-01-01T00:00:00.000Z")
+        SignedUrlResponse("https://r2/source.lrc", "2027-01-01T00:00:00.000Z")
 
     override suspend fun chapters(renderJobId: String): PlaybackManifest =
         PlaybackManifest(
