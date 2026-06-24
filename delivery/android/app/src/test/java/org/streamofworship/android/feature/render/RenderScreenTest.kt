@@ -1,0 +1,83 @@
+package org.streamofworship.android.feature.render
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.test.TestScope
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.streamofworship.android.core.design.SowTheme
+import org.streamofworship.android.data.render.RenderJobStatus
+
+@RunWith(AndroidJUnit4::class)
+class RenderScreenTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun `screen renders render form and validates empty outputs`() {
+        val scope = TestScope()
+        val viewModel = RenderViewModel("set-1", FakeRenderSongsetsRepository(), FakeRenderRepository(), scope)
+
+        composeRule.setContent {
+            SowTheme {
+                RenderScreen(viewModel = viewModel, onBack = {}, onPlay = { _, _ -> }, onDownload = {})
+            }
+        }
+        composeRule.waitForIdle()
+        scope.testScheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("render-screen").assertIsDisplayed()
+        composeRule.onNodeWithText("Output Options").assertIsDisplayed()
+        composeRule.onNodeWithTag("render-audio-toggle").performClick()
+        composeRule.onNodeWithTag("render-video-toggle").performClick()
+        composeRule.onNodeWithTag("render-start-button").performClick()
+
+        composeRule.onNodeWithTag("render-validation-message").assertIsDisplayed()
+        assertEquals("Select audio, video, or both.", viewModel.uiState.value.validationMessage)
+    }
+
+    @Test
+    fun `screen surfaces completed artifacts and routes actions`() {
+        val scope = TestScope()
+        val render =
+            FakeRenderRepository(
+                jobs = mutableListOf(job("job-1", RenderJobStatus.Completed)),
+            )
+        val viewModel = RenderViewModel("set-1", FakeRenderSongsetsRepository(), render, scope)
+        var playRoute: Pair<String, String>? = null
+        var downloadJob: String? = null
+
+        composeRule.setContent {
+            SowTheme {
+                RenderScreen(
+                    viewModel = viewModel,
+                    onBack = {},
+                    onPlay = { songsetId, jobId -> playRoute = songsetId to jobId },
+                    onDownload = { downloadJob = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        scope.testScheduler.advanceUntilIdle()
+        viewModel.startPolling("job-1")
+        scope.testScheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("render-screen").performScrollToNode(hasText("Play"))
+        composeRule.onNodeWithTag("render-artifact-availability").assertIsDisplayed()
+        composeRule.onNodeWithText("Play").performClick()
+        composeRule.onNodeWithText("Download").performClick()
+
+        assertEquals("set-1" to "job-1", playRoute)
+        assertEquals("job-1", downloadJob)
+    }
+}

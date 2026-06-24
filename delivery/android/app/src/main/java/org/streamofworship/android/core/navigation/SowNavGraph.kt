@@ -17,10 +17,14 @@ import androidx.navigation.compose.rememberNavController
 import org.streamofworship.android.core.config.AppConfig
 import org.streamofworship.android.core.network.SowApiClientFactory
 import org.streamofworship.android.core.session.AndroidSecureSessionCookieStore
+import org.streamofworship.android.data.render.HttpRenderRepository
+import org.streamofworship.android.data.render.RenderApi
 import org.streamofworship.android.data.songs.HttpSongsRepository
 import org.streamofworship.android.data.songs.SongsApi
 import org.streamofworship.android.data.songsets.HttpSongsetsRepository
 import org.streamofworship.android.data.songsets.SongsetsApi
+import org.streamofworship.android.feature.render.RenderScreen
+import org.streamofworship.android.feature.render.RenderViewModel
 import org.streamofworship.android.feature.songsets.SongsetDetailScreen
 import org.streamofworship.android.feature.songsets.SongsetDetailViewModel
 import org.streamofworship.android.feature.songsets.SongsetsListScreen
@@ -60,7 +64,24 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
                 }
             SongsetDetailScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
-        sowComposable(SowRoute.Render, "Choose audio and lyric video output options.")
+        composable(SowRoute.Render.pattern) { backStackEntry ->
+            val songsetId = backStackEntry.arguments?.getString("songsetId").orEmpty()
+            val dependencies = rememberSongsetsDependencies()
+            val viewModel =
+                remember(songsetId, dependencies.songsetsRepository, dependencies.renderRepository) {
+                    RenderViewModel(
+                        songsetId = songsetId,
+                        songsetsRepository = dependencies.songsetsRepository,
+                        renderRepository = dependencies.renderRepository,
+                    )
+                }
+            RenderScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onPlay = { setId, jobId -> navController.navigate(SowRoute.Player.createRoute(setId, jobId)) },
+                onDownload = { jobId -> navController.navigate(SowRoute.Player.createRoute(songsetId, jobId)) },
+            )
+        }
         sowComposable(SowRoute.Player, "Play rendered worship audio and video.")
         sowComposable(SowRoute.Share, "Open shared worship playback links.")
         sowComposable(SowRoute.Settings, "Configure account and Android workflow defaults.")
@@ -70,6 +91,7 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
 private data class SongsetsDependencies(
     val songsetsRepository: HttpSongsetsRepository,
     val songsRepository: HttpSongsRepository,
+    val renderRepository: HttpRenderRepository,
 )
 
 @Composable
@@ -85,6 +107,7 @@ private fun rememberSongsetsDependencies(): SongsetsDependencies {
         SongsetsDependencies(
             songsetsRepository = HttpSongsetsRepository(client.create<SongsetsApi>()),
             songsRepository = HttpSongsRepository(client.create<SongsApi>()),
+            renderRepository = HttpRenderRepository(client.create<RenderApi>()),
         )
     }
 }
