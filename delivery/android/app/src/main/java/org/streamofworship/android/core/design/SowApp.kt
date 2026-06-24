@@ -16,11 +16,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import org.streamofworship.android.core.navigation.SowBottomNavDestinations
 import org.streamofworship.android.core.navigation.SowNavGraph
+import org.streamofworship.android.feature.auth.AuthenticatedAppGate
 
 @Composable
 fun SowApp() {
     SowTheme {
-        SowShell()
+        AuthenticatedAppGate {
+            SowShell()
+        }
     }
 }
 
