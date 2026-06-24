@@ -1,0 +1,70 @@
+#!/usr/bin/env sh
+set -eu
+
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+GRADLE_VERSION=8.10.2
+DIST_DIR="$APP_HOME/.gradle/wrapper-dists/gradle-$GRADLE_VERSION-bin"
+GRADLE_BIN="$DIST_DIR/gradle-$GRADLE_VERSION/bin/gradle"
+DIST_ZIP="$DIST_DIR/gradle-$GRADLE_VERSION-bin.zip"
+DIST_URL="https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+BOOTSTRAP_DIR="$APP_HOME/.gradle/bootstrap"
+JDK_DIR="$BOOTSTRAP_DIR/jdk-17"
+ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$BOOTSTRAP_DIR/android-sdk}}"
+CMDLINE_TOOLS_DIR="$ANDROID_SDK_ROOT/cmdline-tools/latest"
+
+download_file() {
+  url="$1"
+  output="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$output"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$url" -O "$output"
+  else
+    echo "curl or wget is required to download build tooling" >&2
+    exit 1
+  fi
+}
+
+if ! command -v java >/dev/null 2>&1 && [ ! -x "$JDK_DIR/bin/java" ]; then
+  mkdir -p "$BOOTSTRAP_DIR"
+  JDK_ARCHIVE="$BOOTSTRAP_DIR/temurin-jdk-17.tar.gz"
+  download_file "https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse?project=jdk" "$JDK_ARCHIVE"
+  rm -rf "$JDK_DIR"
+  mkdir -p "$JDK_DIR"
+  tar -xzf "$JDK_ARCHIVE" -C "$JDK_DIR" --strip-components=1
+fi
+
+if ! command -v java >/dev/null 2>&1; then
+  export JAVA_HOME="$JDK_DIR"
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
+
+if [ ! -x "$CMDLINE_TOOLS_DIR/bin/sdkmanager" ]; then
+  mkdir -p "$BOOTSTRAP_DIR" "$ANDROID_SDK_ROOT/cmdline-tools"
+  TOOLS_ZIP="$BOOTSTRAP_DIR/android-commandlinetools.zip"
+  download_file "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" "$TOOLS_ZIP"
+  rm -rf "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$CMDLINE_TOOLS_DIR"
+  unzip -q -o "$TOOLS_ZIP" -d "$ANDROID_SDK_ROOT/cmdline-tools"
+  mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$CMDLINE_TOOLS_DIR"
+fi
+
+export ANDROID_SDK_ROOT
+export ANDROID_HOME="$ANDROID_SDK_ROOT"
+
+if [ ! -f "$ANDROID_SDK_ROOT/platforms/android-35/android.jar" ]; then
+  yes | "$CMDLINE_TOOLS_DIR/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null
+  "$CMDLINE_TOOLS_DIR/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" \
+    "platform-tools" \
+    "platforms;android-35" \
+    "build-tools;35.0.0"
+fi
+
+if [ ! -x "$GRADLE_BIN" ]; then
+  mkdir -p "$DIST_DIR"
+  if [ ! -f "$DIST_ZIP" ]; then
+    download_file "$DIST_URL" "$DIST_ZIP"
+  fi
+  unzip -q -o "$DIST_ZIP" -d "$DIST_DIR"
+fi
+
+exec "$GRADLE_BIN" "$@"
