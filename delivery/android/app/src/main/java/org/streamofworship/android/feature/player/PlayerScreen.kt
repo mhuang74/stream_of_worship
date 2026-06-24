@@ -1,8 +1,10 @@
 package org.streamofworship.android.feature.player
 
+import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -65,6 +68,8 @@ fun PlayerScreen(
         }
     }
 
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Column(
         modifier =
             modifier
@@ -77,14 +82,20 @@ fun PlayerScreen(
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
         }
         if (state.isLoading) SowLoadingState(label = "Loading playback")
-        state.message?.let { SowErrorState(title = "Playback", message = it) }
+        OfflinePlaybackBanner(state = state, onRetry = { viewModel.load(state.artifact) })
         if (state.artifact == PlaybackArtifact.Video && media3Controller != null) {
             AndroidView(
                 factory = { PlayerView(it).apply { player = media3Controller.player } },
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(if (state.isFullscreen) 420.dp else 220.dp)
+                        .height(
+                            when {
+                                state.isFullscreen -> 420.dp
+                                isLandscape -> 180.dp
+                                else -> 220.dp
+                            },
+                        )
                         .testTag("player-video-view"),
             )
         }
@@ -122,5 +133,36 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ColumnScope.OfflinePlaybackBanner(
+    state: PlayerUiState,
+    onRetry: () -> Unit,
+) {
+    when (state.offlineState) {
+        OfflinePlaybackState.Cached ->
+            Text(
+                "Playing cached artifact",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.testTag("player-offline-state"),
+            )
+        OfflinePlaybackState.Missing ->
+            Text(
+                state.message ?: "Not cached on this device.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("player-offline-state"),
+            )
+        OfflinePlaybackState.ExpiredSignedUrl ->
+            SowErrorState(
+                title = "Playback link expired",
+                message = state.message ?: "Retry to refresh the signed URL.",
+                actionLabel = "Retry",
+                onAction = onRetry,
+                modifier = Modifier.testTag("player-expired-url-state"),
+            )
+        else ->
+            state.message?.let { SowErrorState(title = "Playback", message = it) }
     }
 }

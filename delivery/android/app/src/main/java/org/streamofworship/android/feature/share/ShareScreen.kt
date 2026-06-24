@@ -72,6 +72,14 @@ fun ShareScreen(
         }
         state.audioUrl?.let { Text("Audio ready", modifier = Modifier.testTag("share-audio-ready")) }
         state.videoUrl?.let { Text("Video ready", modifier = Modifier.testTag("share-video-ready")) }
+        state.downloads.values.forEach { download ->
+            Text(
+                "${download.kind.name} download ${download.status.name.lowercase()}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("share-download-${download.kind.name.lowercase()}"),
+            )
+            download.failureMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
     }
 }
 

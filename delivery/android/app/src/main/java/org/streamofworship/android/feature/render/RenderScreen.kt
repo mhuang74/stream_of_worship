@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import org.streamofworship.android.core.design.SowErrorState
 import org.streamofworship.android.core.design.SowLoadingState
 import org.streamofworship.android.data.render.ArtifactSizes
+import org.streamofworship.android.data.offline.OfflineArtifactMetadata
 import org.streamofworship.android.data.render.RenderFontFamily
 import org.streamofworship.android.data.render.RenderFontSize
 import org.streamofworship.android.data.render.RenderFormConfig
@@ -120,6 +121,7 @@ fun RenderScreen(
             RenderStatusPanel(
                 job = job,
                 sizes = state.artifactSizes,
+                offlineArtifacts = state.offlineArtifacts,
                 isPolling = state.isPolling,
                 retryCount = state.retryCount,
                 onCancel = viewModel::cancelRender,
@@ -254,6 +256,7 @@ fun RenderForm(
 private fun RenderStatusPanel(
     job: RenderJob,
     sizes: ArtifactSizes?,
+    offlineArtifacts: List<OfflineArtifactMetadata>,
     isPolling: Boolean,
     retryCount: Int,
     onCancel: () -> Unit,
@@ -287,6 +290,14 @@ private fun RenderStatusPanel(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("render-artifact-availability"),
             )
+            if (offlineArtifacts.isNotEmpty()) {
+                Text(
+                    offlineArtifacts.joinToString(" • ") { "${it.kind.name}: ${it.status.name}" },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("render-offline-cache-state"),
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(onClick = onPlay, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Outlined.PlayArrow, contentDescription = null)

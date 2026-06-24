@@ -10,20 +10,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.streamofworship.android.core.network.ApiException
+import org.streamofworship.android.data.offline.OfflineArtifactKind
+import org.streamofworship.android.data.offline.OfflineArtifactMetadata
+import org.streamofworship.android.data.offline.OfflineCacheRepository
 import org.streamofworship.android.data.playback.PlaybackChapter
 import org.streamofworship.android.data.playback.PlaybackLine
 import org.streamofworship.android.data.playback.PlaybackManifest
 import org.streamofworship.android.data.playback.PlaybackRepository
+import org.streamofworship.android.data.playback.SignedUrlResponse
+import java.time.Clock
+import java.time.Instant
 
 enum class PlaybackArtifact {
     Video,
     Audio,
 }
 
+enum class OfflinePlaybackState {
+    Unknown,
+    Cached,
+    Missing,
+    ExpiredSignedUrl,
+    Remote,
+}
+
 data class PlayerUiState(
     val artifact: PlaybackArtifact = PlaybackArtifact.Video,
     val mediaUrl: String? = null,
     val manifest: PlaybackManifest? = null,
+    val cachedArtifact: OfflineArtifactMetadata? = null,
+    val offlineState: OfflinePlaybackState = OfflinePlaybackState.Unknown,
     val positionMillis: Long = 0L,
     val durationMillis: Long = 0L,
     val isPlaying: Boolean = false,
@@ -42,6 +58,8 @@ class PlayerViewModel(
     private val renderJobId: String,
     private val repository: PlaybackRepository,
     private val controller: PlayerController,
+    private val offlineCacheRepository: OfflineCacheRepository? = null,
+    private val clock: Clock = Clock.systemUTC(),
     private val scope: CoroutineScope? = null,
     private val tickerMillis: Long = 500,
 ) : ViewModel() {
@@ -54,29 +72,71 @@ class PlayerViewModel(
 
     fun load(artifact: PlaybackArtifact = PlaybackArtifact.Video) {
         launchScope.launch {
-            mutableState.update { it.copy(isLoading = true, artifact = artifact, message = null) }
+            mutableState.update {
+                it.copy(
+                    isLoading = true,
+                    artifact = artifact,
+                    mediaUrl = null,
+                    offlineState = OfflinePlaybackState.Unknown,
+                    message = null,
+                )
+            }
             val result =
                 runCatching {
-                    val signedUrl =
-                        if (artifact == PlaybackArtifact.Video) {
-                            repository.renderedVideoUrl(renderJobId)
-                        } else {
-                            repository.renderedAudioUrl(renderJobId)
-                        }
+                    val kind = artifact.offlineKind()
+                    val cached = offlineCacheRepository?.getArtifact(renderJobId, kind)
                     val manifest = runCatching { repository.chapters(renderJobId) }.getOrNull()
-                    controller.setMedia(signedUrl.url, artifact == PlaybackArtifact.Video)
-                    signedUrl.url to manifest
+                    if (cached?.isPlayableOffline == true) {
+                        controller.setMedia(cached.localUri.orEmpty(), artifact == PlaybackArtifact.Video)
+                        PlaybackLoadResult(
+                            url = cached.localUri.orEmpty(),
+                            manifest = manifest,
+                            cachedArtifact = cached,
+                            offlineState = OfflinePlaybackState.Cached,
+                        )
+                    } else {
+                        val signedUrl =
+                            if (artifact == PlaybackArtifact.Video) {
+                                repository.renderedVideoUrl(renderJobId)
+                            } else {
+                                repository.renderedAudioUrl(renderJobId)
+                            }
+                        if (signedUrl.isExpired(clock)) {
+                            PlaybackLoadResult(
+                                url = null,
+                                manifest = manifest,
+                                cachedArtifact = cached,
+                                offlineState = OfflinePlaybackState.ExpiredSignedUrl,
+                            )
+                        } else {
+                            controller.setMedia(signedUrl.url, artifact == PlaybackArtifact.Video)
+                            PlaybackLoadResult(
+                                url = signedUrl.url,
+                                manifest = manifest,
+                                cachedArtifact = cached,
+                                offlineState = if (cached == null) OfflinePlaybackState.Missing else OfflinePlaybackState.Remote,
+                            )
+                        }
+                    }
                 }
-            result.onSuccess { (url, manifest) ->
+            result.onSuccess { loaded ->
                 mutableState.update {
                     it.copy(
-                        mediaUrl = url,
-                        manifest = manifest,
-                        durationMillis = manifest?.totalDurationMillis ?: controller.durationMillis,
+                        mediaUrl = loaded.url,
+                        manifest = loaded.manifest,
+                        cachedArtifact = loaded.cachedArtifact,
+                        offlineState = loaded.offlineState,
+                        durationMillis = loaded.manifest?.totalDurationMillis ?: controller.durationMillis,
                         isLoading = false,
+                        message =
+                            when (loaded.offlineState) {
+                                OfflinePlaybackState.ExpiredSignedUrl -> "Playback link expired. Retry to refresh it."
+                                OfflinePlaybackState.Missing -> "Not cached on this device. Streaming with a fresh link."
+                                else -> null
+                            },
                     )
                 }
-                startTicker()
+                if (loaded.url != null) startTicker()
             }.onFailure { error ->
                 mutableState.update { it.copy(isLoading = false, message = error.statusMessage()) }
             }
@@ -180,3 +240,20 @@ private fun Throwable.statusMessage(): String =
         is ApiException -> error.message
         else -> message ?: "Playback failed"
     }
+
+private data class PlaybackLoadResult(
+    val url: String?,
+    val manifest: PlaybackManifest?,
+    val cachedArtifact: OfflineArtifactMetadata?,
+    val offlineState: OfflinePlaybackState,
+)
+
+private fun PlaybackArtifact.offlineKind(): OfflineArtifactKind =
+    when (this) {
+        PlaybackArtifact.Video -> OfflineArtifactKind.Video
+        PlaybackArtifact.Audio -> OfflineArtifactKind.Audio
+    }
+
+private fun SignedUrlResponse.isExpired(clock: Clock): Boolean =
+    runCatching { Instant.parse(expiresAt).isBefore(Instant.now(clock)) || Instant.parse(expiresAt) == Instant.now(clock) }
+        .getOrDefault(false)

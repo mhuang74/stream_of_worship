@@ -13,6 +13,9 @@ import org.streamofworship.android.core.model.SongsetDetail
 import org.streamofworship.android.core.model.SongsetMaxDurationSeconds
 import org.streamofworship.android.core.model.SongsetMaxSongs
 import org.streamofworship.android.core.network.ApiException
+import org.streamofworship.android.data.offline.CompletedRenderArtifacts
+import org.streamofworship.android.data.offline.OfflineArtifactMetadata
+import org.streamofworship.android.data.offline.OfflineCacheRepository
 import org.streamofworship.android.data.render.ActiveRenderConflictException
 import org.streamofworship.android.data.render.ArtifactSizes
 import org.streamofworship.android.data.render.RenderFormConfig
@@ -30,6 +33,7 @@ data class RenderUiState(
     val isSubmitting: Boolean = false,
     val isPolling: Boolean = false,
     val retryCount: Int = 0,
+    val offlineArtifacts: List<OfflineArtifactMetadata> = emptyList(),
     val requiresPreviousRenderConfirmation: Boolean = false,
     val validationMessage: String? = null,
     val serverMessage: String? = null,
@@ -48,6 +52,7 @@ class RenderViewModel(
     private val songsetId: String,
     private val songsetsRepository: SongsetsRepository,
     private val renderRepository: RenderRepository,
+    private val offlineCacheRepository: OfflineCacheRepository? = null,
     private val scope: CoroutineScope? = null,
     private val pollIntervalMillis: Long = 2_000,
     private val retryDelayMillis: Long = 1_000,
@@ -203,7 +208,17 @@ class RenderViewModel(
     private fun loadArtifactSizes(jobId: String) {
         launchScope.launch {
             runCatching { renderRepository.getArtifactSizes(jobId) }
-                .onSuccess { sizes -> mutableState.update { it.copy(artifactSizes = sizes) } }
+                .onSuccess { sizes ->
+                    val artifacts =
+                        offlineCacheRepository?.markCompletedArtifacts(
+                            CompletedRenderArtifacts(
+                                renderJobId = jobId,
+                                audioAvailable = sizes.mp3SizeBytes != null,
+                                videoAvailable = sizes.mp4SizeBytes != null,
+                            ),
+                        ).orEmpty()
+                    mutableState.update { it.copy(artifactSizes = sizes, offlineArtifacts = artifacts) }
+                }
                 .onFailure { error -> mutableState.update { it.copy(serverMessage = error.statusMessage()) } }
         }
     }
