@@ -1,3 +1,14 @@
+## 2026-06-25
+
+- Completed documentation for the native Android delivery app. Added
+  `delivery/android/README.md` covering prerequisites, API base URL Gradle
+  properties, emulator and physical-device networking to the local webapp,
+  build/test commands, release build notes, Better Auth cookie and trusted-origin
+  troubleshooting, signed URL playback, and offline downloads. Root README now
+  lists Android as a delivery component, and current implementation status
+  records the Android app as a standalone Kotlin/Jetpack Compose client of the
+  existing webapp JSON APIs.
+
 ## 2026-06-20
 
 - Completed the ops/delivery/lab repo reorganization. New layout: `ops/admin-cli`

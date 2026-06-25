@@ -8,25 +8,27 @@ A seamless Chinese worship music transition system designed to analyze songs (te
 - Provide an interactive tool to select songs from the library, experiment with transition parameters, and generate output audio/video files
 - Provide an admin tool to manage the song library (via scraping sop.org) and perform song analysis and lyrics LRC generation
 
-**Note:** This repository contains both the lightweight CLI tool (`sow-admin`) and the heavy Analysis Service. They are architecturally separate but co-located in a monorepo.
+**Note:** This repository contains both lightweight tools such as `sow-admin` and heavier delivery/analysis services. They are architecturally separate but co-located in a monorepo.
 
 ---
 
 ## Quick Start
 
-This project consists of six components. Here's how to run each:
+This project consists of several architecturally separate components. Here's how to run each primary component:
 
 | Component | Purpose | Run Command |
 |-----------|---------|-------------|
 | **Admin CLI** | Catalog management, audio download | `uv run --project ops/admin-cli --extra admin sow-admin --help` |
 | **User App** | Interactive TUI for transitions | `uv run --project lab/sow-app sow-app run` |
 | **Web App** | Browser-based worship set editor | `pnpm --filter sow-webapp dev` |
+| **Android App** | Native mobile worship set editor/player | `cd delivery/android && ./gradlew assembleDebug` |
 | **Analysis Service** | Audio analysis & stem separation | `cd ops/analysis-service && docker compose up -d` |
 | **Render Worker** | Serverless render processing | `cd delivery/render-worker && docker compose up --build` |
 
 ### Prerequisites
 - **Admin CLI & User App**: Python 3.11+, `uv` package manager
 - **Web App**: Node.js 18+, `pnpm` package manager
+- **Android App**: Android Studio/JDK 17, Android SDK 35, Android 8.0+ device or emulator
 - **Web App Database**: PostgreSQL with the `pgvector` extension available
 - **Analysis Service**: Docker Desktop, Cloudflare R2 credentials
 
@@ -80,6 +82,23 @@ pnpm --filter sow-webapp dev
 # Or from the webapp directory
 cd delivery/webapp && pnpm dev
 ```
+
+#### Android App (Native Mobile Client)
+```bash
+cd delivery/android
+
+# Run JVM tests and coverage
+./gradlew testDebugUnitTest koverXmlReport
+
+# Build debug APK
+./gradlew assembleDebug
+```
+
+The debug API base URL defaults to `http://10.0.2.2:8080` for an Android
+emulator pointed at the local webapp. See
+[delivery/android/README.md](delivery/android/README.md) for physical-device
+networking, Better Auth cookie/origin troubleshooting, signed URL playback, and
+release build notes.
 
 ---
 
