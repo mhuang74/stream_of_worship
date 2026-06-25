@@ -46,16 +46,14 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import org.streamofworship.android.core.design.SowErrorState
 import org.streamofworship.android.core.design.SowLoadingState
 import org.streamofworship.android.core.util.findActivity
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -158,13 +156,23 @@ fun PlayerScreen(
         ) {
             AndroidView(
                 factory = {
-                    PlayerView(it).apply {
-                        player = videoPlayer
-                        useController = true
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
+                    createSowPlayerView(
+                        context = it,
+                        player = videoPlayer,
+                        mode = SowPlayerViewMode.Fullscreen,
+                        diagnostics =
+                            PlaybackDiagnostics(
+                                renderJobId = viewModel.renderJobId,
+                                artifact = state.artifact,
+                            ),
+                    )
                 },
-                update = { it.player = videoPlayer },
+                update = {
+                    it.configureSowPlayerView(
+                        player = videoPlayer,
+                        useController = true,
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
             )
             IconButton(
@@ -200,12 +208,23 @@ fun PlayerScreen(
         if (media3Controller != null) {
             AndroidView(
                 factory = {
-                    PlayerView(it).apply {
-                        player = videoPlayer
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
+                    createSowPlayerView(
+                        context = it,
+                        player = videoPlayer,
+                        mode = SowPlayerViewMode.Inline,
+                        diagnostics =
+                            PlaybackDiagnostics(
+                                renderJobId = viewModel.renderJobId,
+                                artifact = state.artifact,
+                            ),
+                    )
                 },
-                update = { it.player = videoPlayer },
+                update = {
+                    it.configureSowPlayerView(
+                        player = videoPlayer,
+                        useController = false,
+                    )
+                },
                 modifier =
                     Modifier
                         .fillMaxWidth()
