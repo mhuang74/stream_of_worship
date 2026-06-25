@@ -1,0 +1,74 @@
+name: Android App Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/android-app.yml"
+      - "delivery/android/**"
+  pull_request:
+    paths:
+      - ".github/workflows/android-app.yml"
+      - "delivery/android/**"
+
+concurrency:
+  group: android-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-apk:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: delivery/android
+    env:
+      ANDROID_API_BASE_URL: ${{ vars.SOW_ANDROID_API_BASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate API base URL
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_API_BASE_URL:-}" ]; then
+            echo "::error::Repository variable SOW_ANDROID_API_BASE_URL is not configured"
+            exit 1
+          fi
+
+          case "$ANDROID_API_BASE_URL" in
+            http://*|https://*) ;;
+            *)
+              echo "::error::SOW_ANDROID_API_BASE_URL must start with http:// or https://"
+              exit 1
+              ;;
+          esac
+
+      - name: Test, lint, and assemble debug APK
+        run: ./gradlew testDebugUnitTest lintDebug assembleDebug -Psow.apiBaseUrl.debug="$ANDROID_API_BASE_URL"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sow-android-debug-apk
+          path: delivery/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize APK
+        run: |
+          {
+            echo "## Android debug APK"
+            echo ""
+            echo "- Artifact: \`sow-android-debug-apk\`"
+            echo "- API base URL: \`$ANDROID_API_BASE_URL\`"
+            echo "- Application ID: \`org.streamofworship.android.debug\`"
+            echo "- Install note: download and unzip the artifact, then install the APK on a device with Android's \"install unknown apps\" permission enabled for the opening app."
+          } >> "$GITHUB_STEP_SUMMARY"
