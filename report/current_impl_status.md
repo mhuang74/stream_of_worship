@@ -10,14 +10,12 @@
 - Added `delivery/android/README.md` with prerequisites, API base URL setup, emulator and physical-device networking notes, Better Auth/local-origin troubleshooting, signed URL playback notes, offline download notes, and release build guidance.
 - Addressed follow-up PR #116 review feedback for Android render replacement validation, songset delete rollback pagination totals, and explicit description clearing from the native client; refreshed focused regression tests and graphify output.
 
-Canonical Android commands:
-
-```bash
-cd delivery/android && ./gradlew testDebugUnitTest koverXmlReport
-cd delivery/android && ./gradlew lintDebug
-cd delivery/android && ./gradlew assembleDebug
-cd delivery/android && ./gradlew assembleRelease -Psow.apiBaseUrl.release=https://app.example.com
-```
+- Completed the Consolidated Chromecast Projection v3 work (Cast SDK + AirPlay + Presentation API fallback) from `.dex/plan.md`. Tasks 1-12 are all done:
+  - Ambient `.d.ts` for Cast SDK + Presentation API (Task 1); ref-counted Cast SDK loader singleton with unmount safety (Task 2); `useCastTransport` hook + `dispatchCast` with latest-wins seek debounce, extrapolated disconnect-resume, buffering tracking, and `/api/log-client-error` telemetry (Tasks 3, 8).
+  - Presentation API split into `usePresentationSender`/`usePresentationReceiver` with a JSON validator (Task 4); controller pages wired Cast + Presentation fallback, dropped the dead `window.message` listener (Task 5); `ControllerPlayer` hardened with buffering chip, diagnostic bottom sheet, tap-to-resume, stale prompt, iPhone AirPlay hint (Task 6); `PrePlayCard` no longer owns Cast/Presentation detection (Task 6b).
+  - R2 signed URL expiry raised to 14400s for Cast/share playback via `cast=true` query param and the share-token route, keeping the session/ownership auth path (Task 7).
+  - Render worker appends `-movflags +faststart` for Cast-compatible progressive playback, with an `ffprobe` pipeline test asserting `moov` precedes `mdat` (Task 9).
+  - Docs rewritten for Default Media Receiver as the only v3 mode, iPhone AirPlay fallback, 4-hour URL policy, pre-service network test, Presentation API dev-only label, faststart requirement, and a 10-point Live-Service Go/No-Go Checklist (Task 10). Acceptance criteria verified in Task 11; Task 12 confirmed docs cover all user-facing changes.
 
 ## 2026-06-23
 
