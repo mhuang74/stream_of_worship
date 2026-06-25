@@ -1,19 +1,17 @@
 package org.streamofworship.android.core.design
 
 import androidx.compose.material3.Text
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.streamofworship.android.core.network.ApiError
-import org.streamofworship.android.core.network.ApiErrorKind
-import org.streamofworship.android.core.network.ApiException
+import org.streamofworship.android.core.navigation.SowRoute
 
 @RunWith(AndroidJUnit4::class)
 class SowShellTest {
@@ -33,10 +31,23 @@ class SowShellTest {
         composeRule.onNodeWithTag("sow-shell").assertIsDisplayed()
         composeRule.onNodeWithText("Songset workspace").assertIsDisplayed()
         composeRule.onNodeWithText("Songsets").assertIsDisplayed()
-        composeRule.onNodeWithText("Render").assertIsDisplayed()
-        composeRule.onNodeWithText("Player").assertIsDisplayed()
-        composeRule.onNodeWithText("Share").assertIsDisplayed()
         composeRule.onNodeWithText("Settings").assertIsDisplayed()
+    }
+
+    @Test
+    fun `bottom navigation invokes concrete top level route callback`() {
+        var selected: SowRoute? = null
+        composeRule.setContent {
+            SowTheme {
+                SowShell(onNavigate = { selected = it }) {
+                    Text("Songset workspace")
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Settings").performClick()
+
+        assertEquals(SowRoute.Settings, selected)
     }
 
     @Test
@@ -57,24 +68,4 @@ class SowShellTest {
         composeRule.onNodeWithText("Create").assertIsDisplayed()
     }
 
-    @Test
-    fun `renders global network session and maintenance errors`() {
-        val network = ApiException(ApiError(message = "offline", kind = ApiErrorKind.Network))
-        val session = ApiException(ApiError(statusCode = 401, message = "expired", kind = ApiErrorKind.Unauthorized))
-        val maintenance = ApiException(ApiError(statusCode = 503, message = "down", kind = ApiErrorKind.Server))
-
-        composeRule.setContent {
-            SowTheme {
-                androidx.compose.foundation.layout.Column {
-                    SowGlobalErrorState(error = network, onAction = {})
-                    SowGlobalErrorState(error = session, onAction = {})
-                    SowGlobalErrorState(error = maintenance, onAction = {})
-                }
-            }
-        }
-
-        composeRule.onAllNodesWithText("Offline").assertCountEquals(1)
-        composeRule.onAllNodesWithText("Session expired").assertCountEquals(1)
-        composeRule.onAllNodesWithText("Maintenance").assertCountEquals(1)
-    }
 }

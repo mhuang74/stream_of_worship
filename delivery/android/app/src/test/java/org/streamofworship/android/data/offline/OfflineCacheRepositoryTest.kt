@@ -44,16 +44,16 @@ class OfflineCacheRepositoryTest {
         }
 
     @Test
-    fun `records download progress and failures`() =
+    fun `records queued download ids and failures`() =
         runTest {
             val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
 
             repository.markQueued("job-1", OfflineArtifactKind.Audio, "https://r2/audio.mp3", "2026-01-01T00:00:00Z", 10L, 1L)
-            repository.markDownloading("job-1", OfflineArtifactKind.Audio, 50L, 100L, 2L)
             val failed = repository.markFailed("job-1", OfflineArtifactKind.Audio, "No network", 3L)
+            val byDownloadId = repository.findArtifactByDownloadId(10L)
 
             assertEquals(OfflineArtifactStatus.Failed, failed.status)
-            assertEquals(50L, failed.bytesDownloaded)
+            assertEquals("job-1", byDownloadId?.renderJobId)
             assertEquals("No network", failed.failureMessage)
         }
 }

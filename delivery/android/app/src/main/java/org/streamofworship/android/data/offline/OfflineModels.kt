@@ -15,7 +15,6 @@ enum class OfflineArtifactKind(
 enum class OfflineArtifactStatus {
     Available,
     Queued,
-    Downloading,
     Cached,
     Failed,
     Stale,

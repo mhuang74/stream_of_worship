@@ -27,6 +27,9 @@ cd delivery/webapp && pnpm dev
 # Or from project root:
 pnpm --filter sow-webapp dev
 
+# Android App (native mobile client)
+cd delivery/android && ./gradlew assembleDebug
+
 # Analysis Service (heavy ML, requires Docker + R2 credentials)
 cd ops/analysis-service && docker compose up -d
 ```
@@ -44,6 +47,9 @@ cd ops/analysis-service && PYTHONPATH=src pytest tests/ -v
 
 # Render worker
 cd delivery/render-worker && PYTHONPATH=src pytest tests/ -v
+
+# Android app
+cd delivery/android && ./gradlew testDebugUnitTest koverXmlReport
 ```
 
 **Web App Commands (delivery/webapp/ directory):**
@@ -74,9 +80,17 @@ PYTHONPATH=src pytest tests/test_video_engine.py -v
 docker compose up --build
 ```
 
+**Android App Commands (delivery/android/ directory):**
+```bash
+./gradlew testDebugUnitTest
+./gradlew koverXmlReport
+./gradlew lintDebug
+./gradlew assembleDebug
+```
+
 ## Architecture & Structure
 
-The project consists of **six architecturally separate components**:
+The project consists of **seven architecturally separate components**:
 
 ### 1. POC Scripts (Experimental)
 - **Location:** `lab/poc-scripts/` directory
@@ -95,16 +109,23 @@ The project consists of **six architecturally separate components**:
 - **Stack:** Drizzle ORM + Neon Postgres, Better Auth, Cloudflare R2, AWS SQS (render jobs enqueued to SQS, processed by Lambda worker)
 - **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `delivery/webapp/` or via `pnpm --filter sow-webapp`)
 
-### 6. Render Worker (AWS Lambda)
+### 6. Android App (Native Mobile Client)
+- **Location:** `delivery/android/` (Kotlin/Jetpack Compose Gradle project)
+- **Stack:** Jetpack Compose, Navigation, Retrofit/OkHttp, Better Auth cookies, Media3, Android DownloadManager, Kover, Robolectric
+- **Boundary:** Uses only the webapp JSON APIs. It does not connect directly to PostgreSQL, Cloudflare R2, or AWS SQS.
+- **Commands:** `./gradlew testDebugUnitTest`, `./gradlew koverXmlReport`, `./gradlew lintDebug`, `./gradlew assembleDebug`
+
+### 7. Render Worker (AWS Lambda)
 - **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Stack:** psycopg2, boto3, Pillow, FFmpeg, urllib3
 - **Commands:** See `delivery/render-worker/README.md`
 
-**Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components.
+**Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components. The Android app is a separate Kotlin mobile client and must use the webapp JSON APIs instead of PostgreSQL, R2, or SQS directly.
 
 - **Admin CLI**: Lightweight catalog/audio management
 - **Lab User App**: Deprecated TUI for transitions, read-only from PostgreSQL/R2
 - **Analysis Service**: Heavy ML (PyTorch, Demucs, allin1) in Docker
+- **Android App**: Native delivery client for auth, songsets, render submission/status, playback, sharing, settings, and offline downloads
 
 ## Development Guidelines
 

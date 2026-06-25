@@ -61,28 +61,98 @@ class AuthSessionManagerTest {
             assertEquals(ApiErrorKind.Validation, (state as AuthState.Error).error.kind)
         }
 
+    @Test
+    fun `register success publishes authenticated state`() =
+        runTest {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val manager =
+                AuthSessionManager(
+                    repository =
+                        AuthRepository(
+                            api = FakeAuthApi(registerResponse = Response.success(successSessionBody(email = "new@example.com"))),
+                            cookieStore = InMemorySessionCookieStore(),
+                        ),
+                    scope = CoroutineScope(dispatcher),
+                )
+
+            manager.register(name = "New User", email = "new@example.com", password = "password123")
+            advanceUntilIdle()
+
+            val state = manager.authState.value
+            assertTrue(state is AuthState.Authenticated)
+            assertEquals("new@example.com", (state as AuthState.Authenticated).session.user.email)
+        }
+
+    @Test
+    fun `register validation failure publishes typed error state`() =
+        runTest {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val manager =
+                AuthSessionManager(
+                    repository =
+                        AuthRepository(
+                            api = FakeAuthApi(registerResponse = Response.error(400, errorBody("Email already exists"))),
+                            cookieStore = InMemorySessionCookieStore(),
+                        ),
+                    scope = CoroutineScope(dispatcher),
+                )
+
+            manager.register(name = "User", email = "taken@example.com", password = "password123")
+            advanceUntilIdle()
+
+            val state = manager.authState.value
+            assertTrue(state is AuthState.Error)
+            assertEquals(ApiErrorKind.Validation, (state as AuthState.Error).error.kind)
+            assertEquals("Email already exists", state.error.message)
+        }
+
+    @Test
+    fun `sign out clears cookies and publishes unauthenticated on success or server failure`() =
+        runTest {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val cookieStore = InMemorySessionCookieStore()
+            cookieStore.save(listOf(StoredCookie("sid", "abc", "example.com", "/", Long.MAX_VALUE, false, true, true)))
+            val manager =
+                AuthSessionManager(
+                    repository =
+                        AuthRepository(
+                            api = FakeAuthApi(signOutResponse = Response.error(500, errorBody("down"))),
+                            cookieStore = cookieStore,
+                        ),
+                    scope = CoroutineScope(dispatcher),
+                )
+
+            manager.signOut()
+            advanceUntilIdle()
+
+            assertTrue(manager.authState.value is AuthState.Unauthenticated)
+            assertTrue(cookieStore.load().isEmpty())
+        }
+
     private class FakeAuthApi(
         private val signInResponse: Response<ResponseBody> = Response.success(successSessionBody()),
+        private val registerResponse: Response<ResponseBody> = Response.success(successSessionBody()),
+        private val signOutResponse: Response<ResponseBody> = Response.success("{}".jsonBody()),
         private val sessionBody: ResponseBody? = null,
     ) : AuthApi {
         override suspend fun signIn(request: EmailPasswordRequest): Response<ResponseBody> = signInResponse
 
         override suspend fun register(request: RegisterRequest): Response<ResponseBody> =
-            Response.success(successSessionBody())
+            registerResponse
 
-        override suspend fun signOut(): Response<ResponseBody> = Response.success("{}".jsonBody())
+        override suspend fun signOut(): Response<ResponseBody> = signOutResponse
 
         override suspend fun getSession(): Response<ResponseBody> =
             Response.success(sessionBody ?: successSessionBody())
     }
 
     private companion object {
-        fun successSessionBody(): ResponseBody =
+        fun successSessionBody(email: String = "user@example.com"): ResponseBody =
             """
-            {"user":{"id":"42","email":"user@example.com","name":"User"},"session":{"id":"s1"}}
+            {"user":{"id":"42","email":"$email","name":"User"},"session":{"id":"s1"}}
             """.trimIndent().jsonBody()
 
-        fun errorBody(): ResponseBody = """{"message":"Invalid email or password"}""".jsonBody()
+        fun errorBody(message: String = "Invalid email or password"): ResponseBody = """{"message":"$message"}""".jsonBody()
 
         fun String.jsonBody(): ResponseBody = toResponseBody("application/json".toMediaType())
     }

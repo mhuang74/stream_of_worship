@@ -5,10 +5,12 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.test.TestScope
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,7 +56,7 @@ class SongsetsScreensTest {
 
         composeRule.setContent {
             SowTheme {
-                SongsetDetailScreen(viewModel = viewModel, onBack = {})
+                SongsetDetailScreen(viewModel = viewModel, onBack = {}, onRender = {})
             }
         }
         composeRule.waitForIdle()
@@ -71,6 +73,32 @@ class SongsetsScreensTest {
     }
 
     @Test
+    fun `detail screen exposes render action`() {
+        val scope = TestScope()
+        val viewModel =
+            SongsetDetailViewModel(
+                songsetId = "set-1",
+                songsetsRepository = FakeSongsetsRepository(),
+                songsRepository = FakeSongsRepository(),
+                scope = scope,
+            )
+        var renderOpened = false
+
+        composeRule.setContent {
+            SowTheme {
+                SongsetDetailScreen(viewModel = viewModel, onBack = {}, onRender = { renderOpened = true })
+            }
+        }
+        composeRule.waitForIdle()
+        scope.testScheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("songset-render-button").performClick()
+
+        assertTrue(renderOpened)
+    }
+
+    @Test
     fun `detail search field accepts query text`() {
         val scope = TestScope()
         val viewModel =
@@ -83,7 +111,7 @@ class SongsetsScreensTest {
 
         composeRule.setContent {
             SowTheme {
-                SongsetDetailScreen(viewModel = viewModel, onBack = {})
+                SongsetDetailScreen(viewModel = viewModel, onBack = {}, onRender = {})
             }
         }
         composeRule.waitForIdle()

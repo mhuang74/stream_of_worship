@@ -19,6 +19,7 @@ import org.junit.runner.RunWith
 import org.streamofworship.android.core.design.SowTheme
 import org.streamofworship.android.data.offline.FileOfflineCacheRepository
 import org.streamofworship.android.data.render.RenderJobStatus
+import org.streamofworship.android.feature.player.PlaybackArtifact
 
 @RunWith(AndroidJUnit4::class)
 class RenderScreenTest {
@@ -35,7 +36,7 @@ class RenderScreenTest {
 
         composeRule.setContent {
             SowTheme {
-                RenderScreen(viewModel = viewModel, onBack = {}, onPlay = { _, _ -> }, onDownload = {})
+                RenderScreen(viewModel = viewModel, onBack = {}, onPlay = { _, _, _ -> }, onDownload = {})
             }
         }
         composeRule.waitForIdle()
@@ -63,7 +64,7 @@ class RenderScreenTest {
             )
         val offlineRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
         val viewModel = RenderViewModel("set-1", FakeRenderSongsetsRepository(), render, offlineRepository, scope)
-        var playRoute: Pair<String, String>? = null
+        var playRoute: Triple<String, String, PlaybackArtifact>? = null
         var downloadJob: String? = null
 
         composeRule.setContent {
@@ -71,7 +72,7 @@ class RenderScreenTest {
                 RenderScreen(
                     viewModel = viewModel,
                     onBack = {},
-                    onPlay = { songsetId, jobId -> playRoute = songsetId to jobId },
+                    onPlay = { songsetId, jobId, artifact -> playRoute = Triple(songsetId, jobId, artifact) },
                     onDownload = { downloadJob = it },
                 )
             }
@@ -88,7 +89,7 @@ class RenderScreenTest {
         composeRule.onNodeWithText("Play").performClick()
         composeRule.onNodeWithText("Download").performClick()
 
-        assertEquals("set-1" to "job-1", playRoute)
+        assertEquals(Triple("set-1", "job-1", PlaybackArtifact.Video), playRoute)
         assertEquals("job-1", downloadJob)
     }
 }

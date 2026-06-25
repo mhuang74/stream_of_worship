@@ -27,45 +27,4 @@ class ArtifactDownloadCoordinator(
                 nowEpochMillis = clockMillis(),
             )
         }
-
-    suspend fun applyResult(
-        renderJobId: String,
-        kind: org.streamofworship.android.data.offline.OfflineArtifactKind,
-        result: ArtifactDownloadResult,
-    ): OfflineArtifactMetadata =
-        when (result) {
-            is ArtifactDownloadResult.Queued ->
-                cacheRepository.markQueued(
-                    renderJobId = renderJobId,
-                    kind = kind,
-                    remoteUrl = "",
-                    signedUrlExpiresAt = null,
-                    downloadId = result.downloadId,
-                    nowEpochMillis = clockMillis(),
-                )
-            is ArtifactDownloadResult.Downloading ->
-                cacheRepository.markDownloading(
-                    renderJobId = renderJobId,
-                    kind = kind,
-                    bytesDownloaded = result.progress.bytesDownloaded,
-                    totalBytes = result.progress.totalBytes,
-                    nowEpochMillis = clockMillis(),
-                )
-            is ArtifactDownloadResult.Completed ->
-                cacheRepository.markCached(
-                    renderJobId = renderJobId,
-                    kind = kind,
-                    localUri = result.localUri,
-                    bytesDownloaded = result.bytesDownloaded,
-                    totalBytes = result.totalBytes,
-                    nowEpochMillis = clockMillis(),
-                )
-            is ArtifactDownloadResult.Failed ->
-                cacheRepository.markFailed(
-                    renderJobId = renderJobId,
-                    kind = kind,
-                    message = result.message,
-                    nowEpochMillis = clockMillis(),
-                )
-        }
 }

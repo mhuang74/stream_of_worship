@@ -19,6 +19,8 @@ interface OfflineCacheRepository {
 
     suspend fun listArtifacts(renderJobId: String): List<OfflineArtifactMetadata>
 
+    suspend fun findArtifactByDownloadId(downloadId: Long): OfflineArtifactMetadata?
+
     suspend fun markCompletedArtifacts(artifacts: CompletedRenderArtifacts): List<OfflineArtifactMetadata>
 
     suspend fun upsert(metadata: OfflineArtifactMetadata): OfflineArtifactMetadata
@@ -29,14 +31,6 @@ interface OfflineCacheRepository {
         remoteUrl: String,
         signedUrlExpiresAt: String?,
         downloadId: Long?,
-        nowEpochMillis: Long,
-    ): OfflineArtifactMetadata
-
-    suspend fun markDownloading(
-        renderJobId: String,
-        kind: OfflineArtifactKind,
-        bytesDownloaded: Long,
-        totalBytes: Long?,
         nowEpochMillis: Long,
     ): OfflineArtifactMetadata
 
@@ -90,6 +84,11 @@ class FileOfflineCacheRepository(
             readAllLocked().filter { it.renderJobId == renderJobId }.sortedBy { it.kind.name }
         }
 
+    override suspend fun findArtifactByDownloadId(downloadId: Long): OfflineArtifactMetadata? =
+        mutex.withLock {
+            readAllLocked().firstOrNull { it.downloadId == downloadId }
+        }
+
     override suspend fun markCompletedArtifacts(artifacts: CompletedRenderArtifacts): List<OfflineArtifactMetadata> =
         mutex.withLock {
             val existing = readAllLocked().associateBy { it.cacheKey }.toMutableMap()
@@ -140,23 +139,6 @@ class FileOfflineCacheRepository(
                 remoteUrl = remoteUrl,
                 signedUrlExpiresAt = signedUrlExpiresAt,
                 downloadId = downloadId,
-                failureMessage = null,
-                updatedAtEpochMillis = nowEpochMillis,
-            )
-        }
-
-    override suspend fun markDownloading(
-        renderJobId: String,
-        kind: OfflineArtifactKind,
-        bytesDownloaded: Long,
-        totalBytes: Long?,
-        nowEpochMillis: Long,
-    ): OfflineArtifactMetadata =
-        transition(renderJobId, kind) {
-            it.copy(
-                status = OfflineArtifactStatus.Downloading,
-                bytesDownloaded = bytesDownloaded.coerceAtLeast(0L),
-                totalBytes = totalBytes,
                 failureMessage = null,
                 updatedAtEpochMillis = nowEpochMillis,
             )
