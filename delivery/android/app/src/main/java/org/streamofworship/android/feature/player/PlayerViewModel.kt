@@ -55,7 +55,7 @@ data class PlayerUiState(
 }
 
 class PlayerViewModel(
-    private val renderJobId: String,
+    internal val renderJobId: String,
     private val repository: PlaybackRepository,
     controller: PlayerController,
     private val offlineCacheRepository: OfflineCacheRepository? = null,

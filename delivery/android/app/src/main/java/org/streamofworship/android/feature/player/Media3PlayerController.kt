@@ -2,9 +2,15 @@ package org.streamofworship.android.feature.player
 
 import android.content.ComponentName
 import android.content.Context
+import androidx.annotation.OptIn
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -17,9 +23,21 @@ class Media3PlayerController private constructor(
 ) : PlayerController {
     constructor(context: Context) : this(ServiceMediaControllerFacade(context.applicationContext))
 
-    constructor(player: Player) : this(DirectPlayerFacade(player))
+    constructor(
+        player: Player,
+        renderJobId: String? = null,
+        artifact: PlaybackArtifact? = null,
+    ) : this(
+        DirectPlayerFacade(
+            playerView = player,
+            diagnostics = PlaybackDiagnostics(renderJobId = renderJobId, artifact = artifact),
+        ),
+    )
 
-    internal constructor(fakePlayer: MediaPlayerFacade, @Suppress("UNUSED_PARAMETER") forTest: Unit = Unit) : this(fakePlayer)
+    internal constructor(
+        fakePlayer: MediaPlayerFacade,
+        @Suppress("UNUSED_PARAMETER") forTest: Unit = Unit,
+    ) : this(fakePlayer)
 
     private val playerViewHost = player as? PlayerViewHost
 
@@ -105,9 +123,15 @@ internal interface PlayerViewHost {
  */
 internal class DirectPlayerFacade(
     override val playerView: Player,
+    private val diagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
 ) : MediaPlayerFacade, PlayerViewHost {
     private var listenerAdapter: Player.Listener? = null
+    private val diagnosticListener: Player.Listener? = createVideoDiagnosticListener()
     override val playerViewState: StateFlow<Player?> = MutableStateFlow(playerView)
+
+    init {
+        diagnosticListener?.let { playerView.addListener(it) }
+    }
 
     override val durationMillis: Long get() = playerView.duration
 
@@ -116,10 +140,12 @@ internal class DirectPlayerFacade(
     override val isPlaying: Boolean get() = playerView.isPlaying
 
     override fun setMedia(url: String) {
+        SowVideoLogger.debug(diagnostics) { "setMedia" }
         playerView.setMediaItem(MediaItem.fromUri(url))
     }
 
     override fun prepare() {
+        SowVideoLogger.debug(diagnostics) { "prepare" }
         playerView.prepare()
     }
 
@@ -137,6 +163,7 @@ internal class DirectPlayerFacade(
 
     override fun release() {
         listenerAdapter?.let { playerView.removeListener(it) }
+        diagnosticListener?.let { playerView.removeListener(it) }
         listenerAdapter = null
         playerView.release()
     }
@@ -152,7 +179,7 @@ internal class DirectPlayerFacade(
                 }
 
                 override fun onPlayerErrorChanged(error: PlaybackException?) {
-                    listener.onEvent(PlayerEvent.Error(error?.message ?: "Playback error"))
+                    error?.let { listener.onEvent(PlayerEvent.Error(it.message ?: "Playback error")) }
                 }
 
                 override fun onPositionDiscontinuity(
@@ -166,7 +193,66 @@ internal class DirectPlayerFacade(
         playerView.addListener(adapter)
         listenerAdapter = adapter
     }
+
+    private fun createVideoDiagnosticListener(): Player.Listener? {
+        if (!SowVideoLogger.enabled) return null
+        return object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                SowVideoLogger.debug(diagnostics) {
+                    "videoSize=${videoSize.width}x${videoSize.height} " +
+                        "rotation=${videoSize.unappliedRotationDegrees} " +
+                        "pixelRatio=${videoSize.pixelWidthHeightRatio}"
+                }
+            }
+
+            override fun onSurfaceSizeChanged(
+                width: Int,
+                height: Int,
+            ) {
+                SowVideoLogger.debug(diagnostics) { "surfaceSize=${width}x$height" }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val format = tracks.selectedVideoFormat()
+                if (format == null) {
+                    SowVideoLogger.debug(diagnostics) { "selectedVideoFormat=none" }
+                } else {
+                    SowVideoLogger.debug(diagnostics) { "selectedVideoFormat=${format.videoSummary()}" }
+                }
+            }
+
+            override fun onRenderedFirstFrame() {
+                SowVideoLogger.debug(diagnostics) { "renderedFirstFrame" }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                SowVideoLogger.error(diagnostics, error) {
+                    "playerError code=${error.errorCodeName} cause=${error.cause?.javaClass?.name ?: "none"}"
+                }
+            }
+        }
+    }
 }
+
+private fun Tracks.selectedVideoFormat(): Format? {
+    for (group in getGroups()) {
+        if (group.type != C.TRACK_TYPE_VIDEO) continue
+        for (index in 0 until group.length) {
+            if (group.isTrackSelected(index)) return group.getTrackFormat(index)
+        }
+    }
+    return null
+}
+
+@OptIn(UnstableApi::class)
+private fun Format.videoSummary(): String =
+    "mime=${sampleMimeType ?: "unknown"} " +
+        "codecs=${codecs ?: "unknown"} " +
+        "size=${width}x$height " +
+        "frameRate=$frameRate " +
+        "rotation=$rotationDegrees " +
+        "pixelRatio=$pixelWidthHeightRatio " +
+        "bitrate=$bitrate"
 
 /**
  * Connects to the in-process [SowPlaybackService] session through a [MediaController].

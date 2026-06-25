@@ -124,13 +124,18 @@ fun SowNavGraph(
             val context = LocalContext.current.applicationContext
             // Always wire the in-process ExoPlayer: a MediaController-backed PlayerView cannot
             // render a video surface (only forwards audio commands to the service). This fixes
-            // the blank-video bug. The controller is keyed on (jobId, context) so rotation
-            // recreates it; PlayerViewModel keyed on jobId via viewModel() survives config
-            // changes (Phase 3) and the LaunchedEffect in PlayerScreen rebinds the media.
+            // the blank-video bug. The controller is keyed on (jobId, artifact, context) so
+            // rotation recreates it and debug logs keep the active artifact label;
+            // PlayerViewModel keyed on jobId via viewModel() survives config changes
+            // (Phase 3) and the LaunchedEffect in PlayerScreen rebinds the media.
             val mediaController =
-                remember(jobId, context) {
+                remember(jobId, artifact, context) {
                     val exoPlayer = VideoExoPlayerFactory.create(context)
-                    Media3PlayerController(exoPlayer)
+                    Media3PlayerController(
+                        player = exoPlayer,
+                        renderJobId = jobId,
+                        artifact = artifact,
+                    )
                 }
             val viewModel =
                 viewModel(key = jobId) {
