@@ -2,6 +2,7 @@ package org.streamofworship.android.feature.player
 
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -282,6 +283,71 @@ class PlayerViewModelTest {
             assertFalse(first.playCalled)
         }
 
+    @Test
+    fun `decoder playback error exposes retryable error and retry re-prepares current media`() =
+        runTest {
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val viewModel = viewModel(this, controller)
+            viewModel.load()
+            runCurrent()
+            viewModel.setPlaybackSnapshot(42_000, 120_000, true)
+
+            controller.emit(PlayerEvent.Error("decoder failed", PlaybackErrorKind.Decoder))
+            runCurrent()
+
+            assertEquals("Playback failed", viewModel.uiState.value.playbackError?.title)
+            assertEquals(
+                "The video format is not supported on this device. Older renders may need to be rendered again.",
+                viewModel.uiState.value.playbackError?.message,
+            )
+            assertFalse(viewModel.uiState.value.isPlaying)
+
+            viewModel.retryPlayback()
+            runCurrent()
+
+            assertNull(viewModel.uiState.value.playbackError)
+            assertEquals("https://r2/video.mp4", controller.mediaUrl)
+            assertEquals(42_000L, controller.position)
+            assertTrue(controller.playing)
+            assertEquals(2, controller.setMediaCount)
+        }
+
+    @Test
+    fun `generic playback error can be dismissed`() =
+        runTest {
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val viewModel = viewModel(this, controller)
+
+            controller.emit(PlayerEvent.Error("network dropped"))
+            runCurrent()
+            assertEquals("network dropped", viewModel.uiState.value.playbackError?.message)
+
+            viewModel.dismissPlaybackError()
+            assertNull(viewModel.uiState.value.playbackError)
+        }
+
+    @Test
+    fun `software decoder warning auto dismisses and hardware decoder clears it`() =
+        runTest {
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val viewModel = viewModel(this, controller)
+
+            controller.emit(PlayerEvent.VideoDecoderChanged("c2.android.avc.decoder", true))
+            runCurrent()
+            assertTrue(viewModel.uiState.value.softwareDecoderWarning)
+
+            advanceTimeBy(5_000)
+            runCurrent()
+            assertFalse(viewModel.uiState.value.softwareDecoderWarning)
+
+            controller.emit(PlayerEvent.VideoDecoderChanged("c2.android.avc.decoder", true))
+            runCurrent()
+            assertTrue(viewModel.uiState.value.softwareDecoderWarning)
+            controller.emit(PlayerEvent.VideoDecoderChanged("c2.exynos.h264.decoder", false))
+            runCurrent()
+            assertFalse(viewModel.uiState.value.softwareDecoderWarning)
+        }
+
     private fun viewModel(
         scope: TestScope,
         controller: FakePlayerController,
@@ -342,11 +408,14 @@ internal open class FakePlayerController(
     override val positionMillis: Long get() = position
     override val isPlaying: Boolean get() = playing
     var mediaUrl: String? = null
+    var setMediaCount = 0
+    private var listener: PlayerController.PlayerEventListener? = null
 
     override fun setMedia(
         url: String,
         isVideo: Boolean,
     ) {
+        setMediaCount += 1
         mediaUrl = url
     }
 
@@ -363,6 +432,14 @@ internal open class FakePlayerController(
     }
 
     override fun release() = Unit
+
+    override fun setEventListener(listener: PlayerController.PlayerEventListener?) {
+        this.listener = listener
+    }
+
+    fun emit(event: PlayerEvent) {
+        listener?.onEvent(event)
+    }
 }
 
 internal open class FakePlaybackRepository : PlaybackRepository {

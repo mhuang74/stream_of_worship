@@ -1,10 +1,10 @@
 # Fix Android Worship Playback: H.264 High 4:4:4 Profile Not Rendered by Pixel 6 HW Decoder
 
-**Status:** Follow-up proposal — v2 (codec fix implemented separately; UX hardening not implemented)
+**Status:** Implemented — v2 fallback/error handling
 **Date:** 2026-06-26
-**Scope:** `delivery/render-worker` (implemented primary fix) + `delivery/android` (implemented decoder fallback, proposed UX hardening)
+**Scope:** `delivery/render-worker` (implemented primary fix) + `delivery/android` (implemented decoder fallback and UX hardening)
 **Symptom:** In Worship Playback (video mode) on Android, the lyrics video does not render. In Full Screen mode only a few bright pixels ("colored dots") appear in the middle of the screen, as if the video were shrunk to near-zero dimensions. Audio of the render plays correctly.
-**Current implementation note:** The active fix forces render-worker output to H.264 `yuv420p` with an explicit compatible profile request, enables Media3 decoder fallback, and adds a Robolectric factory configuration test. The battery-warning and retry-overlay sections below are follow-up work, not part of the current implementation.
+**Current implementation note:** The active fix forces render-worker output to H.264 `yuv420p` with an explicit compatible profile request, enables Media3 decoder fallback, adds software-decoder warning detection, and surfaces retryable playback errors for decoder failures.
 
 ---
 
@@ -153,7 +153,7 @@ object VideoExoPlayerFactory {
 - No new Gradle dependencies: `androidx.media3.exoplayer.DefaultRenderersFactory` is part of the existing `androidx.media3:media3-exoplayer:1.5.1` artifact already pinned in `app/build.gradle.kts:126-128`.
 - Preserves all existing configuration: wake mode, audio-becoming-noisy handling, `SCALE_TO_FIT` scaling.
 
-### 3.2 Follow-up: decoder-fallback/battery UX wiring
+### 3.2 Decoder-fallback/battery UX wiring
 
 Add a `Player.Listener` + `AnalyticsListener` in `Media3PlayerController` (or the class that wraps the `ExoPlayer` instance) to detect when video decoder fallback activates and surface a user-facing warning.
 
@@ -169,7 +169,7 @@ Add a `Player.Listener` + `AnalyticsListener` in `Media3PlayerController` (or th
 **Why this matters for battery:**
 Software AVC decoding of 1080p@24fps on a mobile CPU can increase power draw by **3–5×** compared to hardware decoding, causing rapid battery drain and thermal throttling. The warning gives the user actionable context and avoids the perception that the app is "broken" when the device gets hot.
 
-### 3.3 Follow-up: playback error handling with retry
+### 3.3 Playback error handling with retry
 
 Add a `Player.Listener.onPlayerError` handler that catches `PlaybackException` and surfaces a retryable error UI instead of leaving the player in a broken state.
 
@@ -229,8 +229,8 @@ Update `delivery/android/app/src/test/java/org/streamofworship/android/feature/p
 | Render smoke test (optional, local) | Render a short job locally, run `ffprobe -show_streams` on the output | `codec_name=h264`, `pix_fmt=yuv420p`, and profile is not `High 4:4:4 Predictive` |
 | On-device smoke test | `./gradlew assembleDebug` → `/opt/platform-tools/adb install -r ...app-debug.apk` → navigate to a **newly-rendered** Worship Playback (video) | Video fills the surface; no "colored dots"; audio still plays |
 | On-device logcat re-check | `/opt/platform-tools/adb logcat -d \| grep -E 'NoSupport\|Format exceeds'` | `NoSupport` / `Format exceeds selected codec's capabilities` warnings gone for newly rendered jobs |
-| Follow-up battery warning check | Sideload an old `avc1.F40028` render (or mock decoder fallback in a debug build) | Future UX hardening only; not part of the current fix |
-| Follow-up error UI check | Corrupt a local MP4 file (or deny all AVC decoders via `adb shell`) | Future UX hardening only; not part of the current fix |
+| Battery warning unit/UI tests | Emit `PlayerEvent.VideoDecoderChanged(..., softwareDecoderActive=true)` | Banner appears and view-model warning auto-dismisses after 5 seconds |
+| Error UI unit/UI tests | Emit decoder `PlayerEvent.Error` | Error panel appears with Retry/Dismiss and retry re-prepares the current media |
 
 ---
 
@@ -272,7 +272,7 @@ Fix B enables decoder fallback. On devices where the hardware decoder is absent 
 
 ---
 
-## 7. Implementation summary and follow-up work
+## 7. Implementation summary
 
 1. Edit `delivery/render-worker/src/sow_render_worker/video_engine.py:129-141` → add `"-profile:v", "high"` and `"-pix_fmt", "yuv420p"` to the list returned by `get_video_codec_args()`.
 2. Edit `delivery/render-worker/tests/test_video_engine.py` → add the four assertions (profile/pix_fmt) to each `get_video_codec_args` test case (around lines 169, 186, 203, 210).
@@ -280,10 +280,10 @@ Fix B enables decoder fallback. On devices where the hardware decoder is absent 
 4. Add `delivery/android/app/src/test/java/org/streamofworship/android/feature/player/VideoExoPlayerFactoryTest.kt` (Robolectric) mirroring the `Media3PlayerControllerTest.kt` pattern.
 5. Run the verification commands in Section 4.
 6. Follow the repo's `AGENTS.md` session-completion protocol: `git pull --rebase` → `git push` → `git status` shows "up to date with origin" before stopping.
-7. Follow-up only: add **decoder-fallback detection** in `Media3PlayerController.kt` via `AnalyticsListener` → emit `PlaybackWarning.SoftwareDecoderActive` to `PlayerViewModel`.
-8. Follow-up only: add **battery warning UI** in `PlayerScreen.kt` (snackbar observing `softwareDecoderWarning`).
-9. Follow-up only: add **playback error handling** in `Media3PlayerController.kt` via `Player.Listener.onPlayerError` → emit `PlayerState.Error` to `PlayerViewModel`.
-10. Follow-up only: add **error overlay UI** in `PlayerScreen.kt` (observing `errorState`) with Retry and Dismiss actions.
+7. Add **decoder-fallback detection** in `Media3PlayerController.kt` via `AnalyticsListener` → emit software-decoder state to `PlayerViewModel`.
+8. Add **battery warning UI** in `PlayerScreen.kt` (banner observing `softwareDecoderWarning`).
+9. Add **playback error handling** in `Media3PlayerController.kt` via `Player.Listener.onPlayerError` → emit structured playback errors to `PlayerViewModel`.
+10. Add **error panel/overlay UI** in `PlayerScreen.kt` (observing `playbackError`) with Retry and Dismiss actions.
 
 ---
 

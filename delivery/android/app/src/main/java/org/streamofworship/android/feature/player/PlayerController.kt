@@ -30,7 +30,20 @@ interface PlayerController {
 sealed interface PlayerEvent {
     data class IsPlayingChanged(val isPlaying: Boolean) : PlayerEvent
 
-    data class Error(val message: String) : PlayerEvent
+    data class Error(
+        val message: String,
+        val kind: PlaybackErrorKind = PlaybackErrorKind.Generic,
+    ) : PlayerEvent
+
+    data class VideoDecoderChanged(
+        val decoderName: String,
+        val softwareDecoderActive: Boolean,
+    ) : PlayerEvent
 
     data object PositionDiscontinuity : PlayerEvent
+}
+
+enum class PlaybackErrorKind {
+    Generic,
+    Decoder,
 }

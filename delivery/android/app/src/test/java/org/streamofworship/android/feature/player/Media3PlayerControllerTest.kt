@@ -102,6 +102,15 @@ class Media3PlayerControllerTest {
             controller.release()
         }
     }
+
+    @Test
+    fun `software decoder names are classified for playback warnings`() {
+        assertTrue("c2.android.avc.decoder".isSoftwareVideoDecoder())
+        assertTrue("OMX.google.h264.decoder".isSoftwareVideoDecoder())
+        assertTrue("ffmpeg.video.decoder".isSoftwareVideoDecoder())
+        assertFalse("c2.exynos.h264.decoder".isSoftwareVideoDecoder())
+        assertFalse("OMX.qcom.video.decoder.avc".isSoftwareVideoDecoder())
+    }
 }
 
 internal class FakeMediaPlayerFacade(
