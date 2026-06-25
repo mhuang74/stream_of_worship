@@ -50,6 +50,29 @@ Override these per command when needed:
 The value must include `http://` or `https://`. Trailing slashes are normalized
 by the app.
 
+## GitHub Actions APK
+
+The `Android App Build` workflow creates an installable debug APK and uploads it
+as the `sow-android-debug-apk` artifact.
+
+Before running the workflow, set the repository variable
+`SOW_ANDROID_API_BASE_URL` to the deployed webapp origin Android should call.
+Use the same origin as `NEXT_PUBLIC_BASE_URL`, for example:
+
+```text
+https://your-app.vercel.app
+```
+
+To install a workflow-built APK:
+
+1. Run the `Android App Build` workflow from GitHub Actions, or push a change
+   under `delivery/android/`.
+2. Open the completed workflow run and download the `sow-android-debug-apk`
+   artifact.
+3. Unzip the artifact.
+4. Open `app-debug.apk` on the Android device and allow Android's "install
+   unknown apps" prompt for the app used to open it.
+
 ## Local Webapp Networking
 
 Start the webapp on all interfaces:
