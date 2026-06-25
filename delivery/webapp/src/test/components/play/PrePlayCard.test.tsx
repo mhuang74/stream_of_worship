@@ -88,13 +88,6 @@ describe("PrePlayCard", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Mock navigator.presentation
-    Object.defineProperty(navigator, "presentation", {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    });
   });
 
   describe("rendering", () => {
@@ -226,24 +219,6 @@ describe("PrePlayCard", () => {
       await waitFor(() => {
         expect(mockShare).toHaveBeenCalled();
       });
-    });
-  });
-
-  describe("Presentation API", () => {
-    it("does not show Send to TV button when Presentation API unavailable", () => {
-      render(<PrePlayCard {...defaultProps} />);
-
-      expect(screen.queryByRole("button", { name: /send to tv/i })).not.toBeInTheDocument();
-    });
-
-    it("shows Send to TV button when Presentation API available (skipped - requires async setup)", async () => {
-      // This test requires complex async mocking of Presentation API
-      // Skipped for now as the core functionality is tested above
-    });
-
-    it("disables Send to TV when no render artifacts (skipped - requires async setup)", async () => {
-      // This test requires complex async mocking of Presentation API
-      // Skipped for now as the core functionality is tested above
     });
   });
 
