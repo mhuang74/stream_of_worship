@@ -2,6 +2,7 @@ package org.streamofworship.android.feature.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -24,6 +25,9 @@ class SowPlaybackService : MediaSessionService() {
                 .Builder(this)
                 .setHandleAudioBecomingNoisy(true)
                 .build()
+                .apply {
+                    setWakeMode(C.WAKE_MODE_NETWORK)
+                }
         val sessionActivity = packageManager.getLaunchIntentForPackage(packageName)
         val builder = MediaSession.Builder(this, player)
         if (sessionActivity != null) {

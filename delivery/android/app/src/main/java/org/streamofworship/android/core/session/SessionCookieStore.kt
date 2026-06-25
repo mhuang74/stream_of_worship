@@ -1,6 +1,7 @@
 package org.streamofworship.android.core.session
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.serialization.Serializable
@@ -64,17 +65,14 @@ class AndroidSecureSessionCookieStore(
     context: Context,
     private val json: Json = Json,
 ) : SessionCookieStore {
-    private val preferences =
-        EncryptedSharedPreferences.create(
-            context,
-            PREFERENCES_NAME,
-            MasterKey
-                .Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
+    private val appContext = context.applicationContext
+    private val preferences: SharedPreferences =
+        createEncryptedPreferences(appContext).getOrElse {
+            appContext.deleteSharedPreferences(PREFERENCES_NAME)
+            createEncryptedPreferences(appContext).getOrElse {
+                appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            }
+        }
 
     override fun load(): List<StoredCookie> {
         val encoded = preferences.getString(COOKIES_KEY, null) ?: return emptyList()
@@ -97,6 +95,20 @@ class AndroidSecureSessionCookieStore(
     private companion object {
         const val PREFERENCES_NAME = "sow_secure_session"
         const val COOKIES_KEY = "cookies"
+
+        fun createEncryptedPreferences(context: Context): Result<SharedPreferences> =
+            runCatching {
+                EncryptedSharedPreferences.create(
+                    context,
+                    PREFERENCES_NAME,
+                    MasterKey
+                        .Builder(context)
+                        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                        .build(),
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+                )
+            }
     }
 }
 

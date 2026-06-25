@@ -107,13 +107,14 @@ class SongsetsListViewModel(
         description: String?,
         onCreated: (String) -> Unit = {},
     ) {
+        if (mutableState.value.isCreating) return
         val cleanName = name.trim()
         if (cleanName.isEmpty()) {
             mutableState.update { it.copy(error = "Songset name is required") }
             return
         }
+        mutableState.update { it.copy(isCreating = true, error = null) }
         launchScope.launch {
-            mutableState.update { it.copy(isCreating = true, error = null) }
             runCatching {
                 repository.createSongset(cleanName, description?.trim()?.takeIf { it.isNotEmpty() })
             }.onSuccess { created ->

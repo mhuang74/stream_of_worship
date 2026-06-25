@@ -25,13 +25,15 @@ class AndroidArtifactDownloadScheduler(
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(
+                .setDestinationInExternalFilesDir(
+                    appContext,
                     Environment.DIRECTORY_DOWNLOADS,
                     "${request.title}.${request.kind.extension}",
                 )
-        return appContext
-            .getSystemService(DownloadManager::class.java)
-            .enqueue(downloadRequest)
+        val manager =
+            appContext.getSystemService(DownloadManager::class.java)
+                ?: throw IllegalStateException("DownloadManager system service is unavailable.")
+        return manager.enqueue(downloadRequest)
     }
 
     companion object {
@@ -73,7 +75,7 @@ class ArtifactDownloadCompletionReceiver : BroadcastReceiver() {
         context: Context,
         downloadId: Long,
     ) {
-        val manager = context.getSystemService(DownloadManager::class.java)
+        val manager = context.getSystemService(DownloadManager::class.java) ?: return
         val repository = FileOfflineCacheRepository(context)
         manager.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
             if (!cursor.moveToFirst()) return

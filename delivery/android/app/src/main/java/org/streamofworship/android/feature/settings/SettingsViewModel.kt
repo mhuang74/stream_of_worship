@@ -46,14 +46,15 @@ class SettingsViewModel(
     }
 
     fun save() {
+        if (mutableState.value.isSaving) return
         val settings = mutableState.value.settings
         val validation = settingsValidationError(settings)
         if (validation != null) {
             mutableState.update { it.copy(validationMessage = validation) }
             return
         }
+        mutableState.update { it.copy(isSaving = true, serverMessage = null, saved = false) }
         launchScope.launch {
-            mutableState.update { it.copy(isSaving = true, serverMessage = null, saved = false) }
             runCatching { repository.saveSettings(settings) }
                 .onSuccess { saved -> mutableState.update { it.copy(settings = saved, isSaving = false, saved = true) } }
                 .onFailure { error -> mutableState.update { it.copy(isSaving = false, serverMessage = error.statusMessage()) } }
