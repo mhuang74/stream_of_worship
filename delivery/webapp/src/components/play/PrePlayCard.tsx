@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import {
   Play,
   Share2,
-  Monitor,
   AlertTriangle,
   RefreshCw,
   Music,
@@ -71,37 +70,7 @@ export function PrePlayCard({
   onShare,
   className,
 }: PrePlayCardProps) {
-  const [isPresentationAvailable, setIsPresentationAvailable] = useState(false);
-  const [isCastAvailable, setIsCastAvailable] = useState(false);
   const [isStartingWorship, setIsStartingWorship] = useState(false);
-
-  // Check for Presentation API and Cast availability
-  useEffect(() => {
-    const checkPresentationAvailability = async () => {
-      if (typeof navigator === "undefined") return;
-
-      // Check if Presentation API is available
-      const hasPresentation = "presentation" in navigator;
-      setIsPresentationAvailable(hasPresentation);
-
-      if (hasPresentation) {
-        try {
-          // @ts-expect-error - PresentationRequest may not be in types
-          const request = new PresentationRequest([`/songsets/${songset.id}/play/projection`]);
-          const availability = await request.getAvailability();
-          setIsCastAvailable(availability.value);
-
-          availability.addEventListener("change", () => {
-            setIsCastAvailable(availability.value);
-          });
-        } catch {
-          setIsCastAvailable(false);
-        }
-      }
-    };
-
-    checkPresentationAvailability();
-  }, [songset.id]);
 
   // Calculate total duration
   const totalDurationSeconds = items.reduce(
@@ -146,23 +115,6 @@ export function PrePlayCard({
       setIsStartingWorship(false);
     }
   }, [hasRenderArtifacts, onStartWorship]);
-
-  const handleSendToTV = useCallback(async () => {
-    if (!isPresentationAvailable) {
-      toast.error("Screen casting not available on this device");
-      return;
-    }
-
-    try {
-      // @ts-expect-error - PresentationRequest may not be in types
-      const request = new PresentationRequest([`/songsets/${songset.id}/play/projection`]);
-      await request.start();
-      toast.success("Opening on second screen");
-    } catch (error) {
-      console.error("Presentation error:", error);
-      toast.error("Failed to connect to second screen");
-    }
-  }, [isPresentationAvailable, songset.id]);
 
   const handleShare = useCallback(async () => {
     onShare();
@@ -331,19 +283,6 @@ export function PrePlayCard({
 
           {/* Secondary Actions */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Send to TV Button - only show if Presentation API available */}
-            {isPresentationAvailable && (
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={handleSendToTV}
-                disabled={!hasRenderArtifacts}
-              >
-                <Monitor className="size-4" />
-                {isCastAvailable ? "Send to TV" : "Cast unavailable"}
-              </Button>
-            )}
-
             {/* Share Button */}
             <Button
               variant="outline"
