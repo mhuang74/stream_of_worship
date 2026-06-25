@@ -104,6 +104,12 @@ class TestMp4CastCompatibility:
         assert len(video_streams) == 1
         assert video_streams[0]["codec_name"] == "h264"
 
+    def test_video_profile_is_android_compatible_yuv420p(self, sample_render_output: Path):
+        data = self._ffprobe_streams(sample_render_output)
+        video_stream = next(s for s in data["streams"] if s["codec_type"] == "video")
+        assert video_stream["profile"] != "High 4:4:4 Predictive"
+        assert video_stream["pix_fmt"] == "yuv420p"
+
     def test_audio_codec_is_aac(self, sample_render_output: Path):
         data = self._ffprobe_streams(sample_render_output)
         audio_streams = [s for s in data["streams"] if s["codec_type"] == "audio"]

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 
 /**
@@ -16,7 +17,7 @@ import androidx.media3.exoplayer.ExoPlayer
 object VideoExoPlayerFactory {
     fun create(context: Context): ExoPlayer =
         ExoPlayer
-            .Builder(context.applicationContext)
+            .Builder(context.applicationContext, createVideoRenderersFactory(context))
             .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
@@ -24,3 +25,9 @@ object VideoExoPlayerFactory {
                 setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
             }
 }
+
+@OptIn(UnstableApi::class)
+internal fun createVideoRenderersFactory(context: Context): DefaultRenderersFactory =
+    DefaultRenderersFactory(context.applicationContext)
+        .setEnableDecoderFallback(true)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
