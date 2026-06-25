@@ -13,8 +13,13 @@ vi.mock("@/hooks/useWakeLock", () => ({
   }),
 }));
 
+const { sendStatusMock, receiverMockImpl } = vi.hoisted(() => ({
+  sendStatusMock: vi.fn(),
+  receiverMockImpl: vi.fn(),
+}));
+
 vi.mock("@/hooks/usePresentation", () => ({
-  usePresentationReceiver: vi.fn(),
+  usePresentationReceiver: receiverMockImpl.mockReturnValue({ sendStatus: sendStatusMock }),
 }));
 
 import { usePresentationReceiver } from "@/hooks/usePresentation";
@@ -29,6 +34,10 @@ describe("ProjectionPlayer", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
 
+    // Re-establish the default receiver mock return (clearAllMocks preserves
+    // implementations, but individual tests below override via
+    // mockImplementation; reset to a sane default for tests that don't).
+    vi.mocked(usePresentationReceiver).mockReturnValue({ sendStatus: sendStatusMock });
     // Mock screen.orientation
     Object.defineProperty(window, "screen", {
       value: {
@@ -223,6 +232,7 @@ describe("ProjectionPlayer", () => {
       let onSongTitleCallback: ((title: string) => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onSongTitleCallback = options.onSongTitle;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -244,6 +254,7 @@ describe("ProjectionPlayer", () => {
       let onSongTitleCallback: ((title: string) => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onSongTitleCallback = options.onSongTitle;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -283,6 +294,7 @@ describe("ProjectionPlayer", () => {
       let onPlayCallback: (() => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onPlayCallback = options.onPlay;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -302,6 +314,7 @@ describe("ProjectionPlayer", () => {
       let onPauseCallback: (() => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onPauseCallback = options.onPause;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -321,6 +334,7 @@ describe("ProjectionPlayer", () => {
       let onSeekCallback: ((pos: number) => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onSeekCallback = options.onSeek;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -340,6 +354,7 @@ describe("ProjectionPlayer", () => {
       let onVolumeCallback: ((level: number) => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onVolumeCallback = options.onVolume;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -360,6 +375,7 @@ describe("ProjectionPlayer", () => {
       let onVolumeCallback: ((level: number) => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onVolumeCallback = options.onVolume;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -380,6 +396,7 @@ describe("ProjectionPlayer", () => {
       let onVolumeCallback: ((level: number) => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
         onVolumeCallback = options.onVolume;
+        return { sendStatus: sendStatusMock };
       });
 
       await act(async () => {
@@ -393,6 +410,74 @@ describe("ProjectionPlayer", () => {
       });
 
       expect(video.volume).toBe(1);
+    });
+  });
+
+  describe("sendStatus (receiver → controller)", () => {
+    it("sends ready status on loadedmetadata", async () => {
+      await act(async () => {
+        render(<ProjectionPlayer {...defaultProps} />);
+      });
+
+      const video = document.querySelector("video") as HTMLVideoElement;
+
+      sendStatusMock.mockClear();
+      await act(async () => {
+        video.dispatchEvent(new Event("loadedmetadata"));
+      });
+
+      expect(sendStatusMock).toHaveBeenCalledWith({ type: "ready" });
+    });
+
+    it("sends ready status on canplay", async () => {
+      await act(async () => {
+        render(<ProjectionPlayer {...defaultProps} />);
+      });
+
+      const video = document.querySelector("video") as HTMLVideoElement;
+
+      sendStatusMock.mockClear();
+      await act(async () => {
+        video.dispatchEvent(new Event("canplay"));
+      });
+
+      expect(sendStatusMock).toHaveBeenCalledWith({ type: "ready" });
+    });
+
+    it("sends error status when onPlay's video.play() rejects", async () => {
+      // Override play to reject for this test only.
+      Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
+        value: vi.fn().mockRejectedValue(new Error("not allowed")),
+        writable: true,
+        configurable: true,
+      });
+
+      let onPlayCallback: (() => void) | undefined;
+      vi.mocked(usePresentationReceiver).mockImplementation((options) => {
+        onPlayCallback = options.onPlay;
+        return { sendStatus: sendStatusMock };
+      });
+
+      await act(async () => {
+        render(<ProjectionPlayer {...defaultProps} />);
+      });
+
+      sendStatusMock.mockClear();
+      await act(async () => {
+        onPlayCallback?.();
+      });
+
+      expect(sendStatusMock).toHaveBeenCalledWith({
+        type: "error",
+        message: "TV projection failed — check connection",
+      });
+
+      // Restore the default resolved play mock for subsequent tests.
+      Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
+        value: vi.fn().mockResolvedValue(undefined),
+        writable: true,
+        configurable: true,
+      });
     });
   });
 

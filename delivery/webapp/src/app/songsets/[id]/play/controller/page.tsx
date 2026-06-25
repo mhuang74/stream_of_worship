@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
+import { useCastTransport, type CastMedia } from "@/hooks/useCast";
+import { usePresentationSender } from "@/hooks/usePresentation";
+import { dispatchCast } from "@/lib/cast/dispatch";
+import type { PresentationCommand } from "@/types/presentation-api";
 import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { Loader2 } from "lucide-react";
@@ -25,7 +29,6 @@ export default function ControllerPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPresentationActive, setIsPresentationActive] = useState(false);
 
   // Load songset and render job data
   useEffect(() => {
@@ -79,7 +82,9 @@ export default function ControllerPage() {
           throw new Error("No video available for this songset");
         }
 
-        // Get signed URL for video
+        // Get signed URL for video. The logged-in phone mints the presigned
+        // R2 URL with its own session and hands it to the TV receiver (the TV
+        // only hits R2, never the webapp).
         const signedUrlResponse = await fetch(
           `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video`
         );
@@ -129,34 +134,71 @@ export default function ControllerPage() {
     };
   }, [songsetId, router]);
 
-  // Listen for Presentation API messages
+  // Cast + Presentation transport wiring.
+  //
+  // The Cast Web Sender SDK is the production transport. The dev-only
+  // Presentation API sender is retained as a fallback used only when the Cast
+  // SDK is unavailable (e.g. iOS) — `sender.send` / `sender.start` are never
+  // invoked when `cast.isSupported` is true.
+  const presentationUrl = `/songsets/${songsetId}/play/projection`;
+  const media = useMemo<CastMedia>(
+    () => ({
+      videoUrl: videoUrl ?? "",
+      title: songset?.name ?? "Worship Set",
+      source: { kind: "songset", idOrToken: songsetId },
+      startSeconds: 0,
+    }),
+    [videoUrl, songset?.name, songsetId],
+  );
+
+  const cast = useCastTransport({
+    media,
+    onError: (m) => toast.error(m),
+  });
+
+  const sender = usePresentationSender({
+    presentationUrl,
+    onConnected: () => toast.success("Connected to projection screen"),
+    onDisconnected: () => toast.info("Disconnected from projection screen"),
+    onStartError: (m) => toast.error(m),
+  });
+
+  // Toasts only from transport lifecycle: cast connection transitions are
+  // observed via state (the hook exposes `isConnected`, not a callback).
+  const prevCastConnectedRef = useRef(false);
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "presentation") {
-        switch (event.data.action) {
-          case "connected":
-            setIsPresentationActive(true);
-            toast.success("Connected to projection screen");
-            break;
-          case "disconnected":
-            setIsPresentationActive(false);
-            toast.info("Disconnected from projection screen");
-            break;
-        }
+    const wasConnected = prevCastConnectedRef.current;
+    if (cast.isConnected && !wasConnected) {
+      toast.success(`Connected to ${cast.deviceName || "TV"}`);
+    } else if (!cast.isConnected && wasConnected) {
+      toast.info("Disconnected from TV");
+    }
+    prevCastConnectedRef.current = cast.isConnected;
+  }, [cast.isConnected, cast.deviceName]);
+
+  const isPresentationActive =
+    cast.isConnected || (!cast.isSupported && sender.isConnected);
+
+  // Unified intent handlers. Cast is preferred when supported; the
+  // Presentation fallback only runs when `!cast.isSupported`.
+  const handleSendToTV = useCallback(() => {
+    if (cast.isSupported) {
+      void cast.start();
+    } else {
+      void sender.start();
+    }
+  }, [cast, sender]);
+
+  const handleSendTransportCommand = useCallback(
+    (command: PresentationCommand) => {
+      if (cast.isSupported) {
+        dispatchCast(cast, command);
+      } else {
+        sender.send(command);
       }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  const handlePresentationConnect = useCallback(() => {
-    setIsPresentationActive(true);
-  }, []);
-
-  const handlePresentationDisconnect = useCallback(() => {
-    setIsPresentationActive(false);
-  }, []);
+    },
+    [cast, sender],
+  );
 
   if (isLoading) {
     return (
@@ -193,8 +235,11 @@ export default function ControllerPage() {
       videoSrc={videoUrl}
       chapters={chapters}
       isPresentationActive={isPresentationActive}
-      onPresentationConnect={handlePresentationConnect}
-      onPresentationDisconnect={handlePresentationDisconnect}
+      transport={cast}
+      isCastSupported={cast.isSupported}
+      isCastConnecting={cast.isConnecting}
+      onSendToTV={handleSendToTV}
+      onSendTransportCommand={handleSendTransportCommand}
     />
   );
 }

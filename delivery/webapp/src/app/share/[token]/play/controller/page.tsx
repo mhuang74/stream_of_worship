@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
+import { useCastTransport, type CastMedia } from "@/hooks/useCast";
+import { usePresentationSender } from "@/hooks/usePresentation";
+import { dispatchCast } from "@/lib/cast/dispatch";
+import type { PresentationCommand } from "@/types/presentation-api";
 import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { Loader2 } from "lucide-react";
@@ -14,10 +18,10 @@ export default function ShareControllerPage() {
   const token = params.token as string;
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [shareName, setShareName] = useState<string>("Shared Worship Set");
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPresentationActive, setIsPresentationActive] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +52,12 @@ export default function ShareControllerPage() {
           throw new Error("No video available for this share");
         }
 
+        // The share-token route mints a presigned R2 URL (no auth on the TV);
+        // the phone hands it to the receiver, which only hits R2.
         setVideoUrl(data.playback.mp4Url);
+        if (data?.songset?.name) {
+          setShareName(data.songset.name);
+        }
 
         if (data.playback?.chaptersUrl) {
           try {
@@ -86,34 +95,66 @@ export default function ShareControllerPage() {
     };
   }, [token]);
 
-  // Listen for Presentation API messages
+  // Cast + Presentation transport wiring (same shape as the songset
+  // controller). Cast is preferred; the Presentation API fallback runs only
+  // when `!cast.isSupported`.
+  const presentationUrl = `/share/${token}/play/projection`;
+  const media = useMemo<CastMedia>(
+    () => ({
+      videoUrl: videoUrl ?? "",
+      title: shareName,
+      source: { kind: "share", idOrToken: token },
+      startSeconds: 0,
+    }),
+    [videoUrl, shareName, token],
+  );
+
+  const cast = useCastTransport({
+    media,
+    onError: (m) => toast.error(m),
+  });
+
+  const sender = usePresentationSender({
+    presentationUrl,
+    onConnected: () => toast.success("Connected to projection screen"),
+    onDisconnected: () => toast.info("Disconnected from projection screen"),
+    onStartError: (m) => toast.error(m),
+  });
+
+  // Toasts only from transport lifecycle. Cast connection transitions are
+  // observed via state (the hook exposes `isConnected`, not a callback).
+  const prevCastConnectedRef = useRef(false);
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "presentation") {
-        switch (event.data.action) {
-          case "connected":
-            setIsPresentationActive(true);
-            toast.success("Connected to projection screen");
-            break;
-          case "disconnected":
-            setIsPresentationActive(false);
-            toast.info("Disconnected from projection screen");
-            break;
-        }
+    const wasConnected = prevCastConnectedRef.current;
+    if (cast.isConnected && !wasConnected) {
+      toast.success(`Connected to ${cast.deviceName || "TV"}`);
+    } else if (!cast.isConnected && wasConnected) {
+      toast.info("Disconnected from TV");
+    }
+    prevCastConnectedRef.current = cast.isConnected;
+  }, [cast.isConnected, cast.deviceName]);
+
+  const isPresentationActive =
+    cast.isConnected || (!cast.isSupported && sender.isConnected);
+
+  const handleSendToTV = useCallback(() => {
+    if (cast.isSupported) {
+      void cast.start();
+    } else {
+      void sender.start();
+    }
+  }, [cast, sender]);
+
+  const handleSendTransportCommand = useCallback(
+    (command: PresentationCommand) => {
+      if (cast.isSupported) {
+        dispatchCast(cast, command);
+      } else {
+        sender.send(command);
       }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  const handlePresentationConnect = useCallback(() => {
-    setIsPresentationActive(true);
-  }, []);
-
-  const handlePresentationDisconnect = useCallback(() => {
-    setIsPresentationActive(false);
-  }, []);
+    },
+    [cast, sender],
+  );
 
   if (isLoading) {
     return (
@@ -152,8 +193,11 @@ export default function ShareControllerPage() {
       exitRoute={`/share/${token}`}
       autoFullscreen={false}
       isPresentationActive={isPresentationActive}
-      onPresentationConnect={handlePresentationConnect}
-      onPresentationDisconnect={handlePresentationDisconnect}
+      transport={cast}
+      isCastSupported={cast.isSupported}
+      isCastConnecting={cast.isConnecting}
+      onSendToTV={handleSendToTV}
+      onSendTransportCommand={handleSendTransportCommand}
     />
   );
 }

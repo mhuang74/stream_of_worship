@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { usePresentationReceiver } from "@/hooks/usePresentation";
+import type { PresentationStatus } from "@/types/presentation-api";
 
 export interface ProjectionPlayerProps {
   videoSrc: string;
@@ -85,8 +86,19 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
     };
   }, []);
 
+  // `sendStatus` is populated by `usePresentationReceiver` (defined below)
+  // but `handlePlay` — passed into that hook — needs to emit a transport-
+  // relevant `error` status when `video.play()` rejects. Break the cycle with a
+  // ref that the hook result writes to on mount.
+  const sendStatusRef = useRef<((status: PresentationStatus) => void) | null>(null);
+
   const handlePlay = useCallback(() => {
-    videoRef.current?.play().catch(() => {});
+    videoRef.current?.play().catch(() => {
+      sendStatusRef.current?.({
+        type: "error",
+        message: "TV projection failed — check connection",
+      });
+    });
   }, []);
 
   const handlePause = useCallback(() => {
@@ -114,13 +126,33 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
     [showTitleTemporarily]
   );
 
-  usePresentationReceiver({
+  const { sendStatus } = usePresentationReceiver({
     onPlay: handlePlay,
     onPause: handlePause,
     onSeek: handleSeek,
     onVolume: handleVolume,
     onSongTitle: handleSongTitle,
   });
+
+  // Expose sendStatus to the handlePlay catch (defined above) now that the
+  // hook has returned it.
+  useEffect(() => {
+    sendStatusRef.current = sendStatus;
+  }, [sendStatus]);
+
+  // Notify the controlling page when the receiver is ready to play. `ready`
+  // fires on `loadedmetadata` / `canplay` (the receiver has enough data to
+  // begin playback). Transport-relevant `error` is emitted from `handlePlay`
+  // on `video.play()` rejection (autoplay block / decoder failure) — not on
+  // every media error event — so the controller can surface an actionable
+  // "TV projection failed — check connection" toast.
+  const handleLoadedMetadata = useCallback(() => {
+    sendStatus({ type: "ready" });
+  }, [sendStatus]);
+
+  const handleCanPlay = useCallback(() => {
+    sendStatus({ type: "ready" });
+  }, [sendStatus]);
 
   return (
     <div className="fixed inset-0 bg-black" data-testid="projection-player">
@@ -131,6 +163,8 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
         className="w-full h-full object-cover"
         playsInline
         aria-label="Projection video"
+        onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={handleCanPlay}
       />
 
       {/* Song title overlay at top edge */}

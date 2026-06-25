@@ -9,6 +9,8 @@ import type { Chapter } from "@/lib/render/chapters";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaSession } from "@/hooks/useMediaSession";
+import type { CastTransportResult } from "@/hooks/useCast";
+import type { PresentationCommand } from "@/types/presentation-api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, X, Info, Maximize } from "lucide-react";
@@ -18,6 +20,18 @@ export interface ControllerPlayerProps {
   videoSrc: string;
   chapters: Chapter[];
   isPresentationActive?: boolean;
+  /**
+   * Unified transport surface (Task 6 interface). When the controller page
+   * mounts `useCastTransport`, it passes the full result here so the player
+   * can reconcile on-phone UI from the receiver media status. The component
+   * body consumes these in Task 6; until then they are accepted but unused so
+   * the wiring is type-safe end-to-end.
+   */
+  transport?: CastTransportResult;
+  isCastSupported?: boolean;
+  isCastConnecting?: boolean;
+  onSendToTV?: () => void;
+  onSendTransportCommand?: (command: PresentationCommand) => void;
   onPresentationConnect?: () => void;
   onPresentationDisconnect?: () => void;
   exitRoute?: string;
