@@ -33,6 +33,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -53,8 +55,10 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val videoPlayer by
+        (media3Controller?.playerViewState?.collectAsState() ?: remember { mutableStateOf(null) })
     val context = LocalContext.current
-    val wakeLock = androidx.compose.runtime.remember(context) { PlaybackWakeLock(context.applicationContext) }
+    val wakeLock = remember(context) { PlaybackWakeLock(context.applicationContext) }
     LaunchedEffect(viewModel) {
         if (state.mediaUrl == null && !state.isLoading) viewModel.load()
     }
@@ -85,7 +89,8 @@ fun PlayerScreen(
         OfflinePlaybackBanner(state = state, onRetry = { viewModel.load(state.artifact) })
         if (state.artifact == PlaybackArtifact.Video && media3Controller != null) {
             AndroidView(
-                factory = { PlayerView(it).apply { player = media3Controller.playerView } },
+                factory = { PlayerView(it).apply { player = videoPlayer } },
+                update = { it.player = videoPlayer },
                 modifier =
                     Modifier
                         .fillMaxWidth()

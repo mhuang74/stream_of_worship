@@ -1,11 +1,11 @@
 # Graph Report - sow_android_app  (2026-06-25)
 
 ## Corpus Check
-- 488 files · ~403,064 words
+- 488 files · ~403,239 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 5983 nodes · 17676 edges · 260 communities detected
+- 5984 nodes · 17677 edges · 260 communities detected
 - Extraction: 41% EXTRACTED · 59% INFERRED · 0% AMBIGUOUS · INFERRED: 10462 edges (avg confidence: 0.57)
 - Token cost: 0 input · 0 output
 
@@ -92,7 +92,7 @@
 - [[_COMMUNITY_Community 84|Community 84]]
 - [[_COMMUNITY_Community 85|Community 85]]
 - [[_COMMUNITY_Community 86|Community 86]]
-- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 95|Community 95]]
 - [[_COMMUNITY_Community 96|Community 96]]
 - [[_COMMUNITY_Community 97|Community 97]]
 - [[_COMMUNITY_Community 98|Community 98]]
@@ -104,12 +104,12 @@
 - [[_COMMUNITY_Community 104|Community 104]]
 - [[_COMMUNITY_Community 105|Community 105]]
 - [[_COMMUNITY_Community 106|Community 106]]
-- [[_COMMUNITY_Community 107|Community 107]]
-- [[_COMMUNITY_Community 114|Community 114]]
+- [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 120|Community 120]]
 - [[_COMMUNITY_Community 121|Community 121]]
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
-- [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 126|Community 126]]
 - [[_COMMUNITY_Community 127|Community 127]]
 - [[_COMMUNITY_Community 128|Community 128]]
@@ -299,39 +299,39 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
-Nodes (383): App, main(), Main entry point for the Song Transition Preview App., Switch to a named screen.          Args:             screen_name: Name of the sc, Handle app mount event., Remove generated transition files that weren't saved by the user., Quit the application with cleanup., Main application for song transition preview. (+375 more)
+Nodes (552): App, generate_id(), Data models for sow-app database entities.  Provides dataclasses for Songset and, User-created songset (playlist) for worship sets.      Attributes:         id: U, Convert Songset to dictionary.          Returns:             Dictionary represen, A song within a songset with transition parameters.      Attributes:         id:, Songset, SongsetItem (+544 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.01
-Nodes (344): generate_id(), Data models for sow-app database entities.  Provides dataclasses for Songset and, User-created songset (playlist) for worship sets.      Attributes:         id: U, Convert Songset to dictionary.          Returns:             Dictionary represen, A song within a songset with transition parameters.      Attributes:         id:, Songset, SongsetItem, DatabaseError (+336 more)
+Nodes (489): main(), Main entry point for the Song Transition Preview App., Switch to a named screen.          Args:             screen_name: Name of the sc, Handle app mount event., Remove generated transition files that weren't saved by the user., Quit the application with cleanup., Main application for song transition preview., Initialize the application.          Args:             config_path: Path to conf (+481 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.02
-Nodes (408): AdminConfig, Configuration for sow-admin CLI.      Attributes:         analysis_url: URL of t, BaseModel, Audio commands for sow-admin.  Provides CLI commands for downloading audio from, Delete a single recording by song_id., Delete multiple recordings from stdin., List audio recordings.      Display recordings from the database with optional s, Prompt for y/n confirmation, return True if accepted.      Args:         message (+400 more)
+Nodes (433): AdminConfig, Configuration for sow-admin CLI.      Attributes:         analysis_url: URL of t, from_row(), Read-only database client for catalog tables.  Provides read-only access to song, Get a song by ID, including soft-deleted songs.          Useful for displaying o, List songs with optional filters.          Args:             album: Filter by al, Search songs by query.          Args:             query: Search query string., List all unique album names.          Returns:             List of album names ( (+425 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.01
-Nodes (363): from_row(), Read-only database client for catalog tables.  Provides read-only access to song, Get a song by ID, including soft-deleted songs.          Useful for displaying o, List songs with optional filters.          Args:             album: Filter by al, Search songs by query.          Args:             query: Search query string., List all unique album names.          Returns:             List of album names (, User-facing database error with a friendly message., List all unique musical keys.          Returns:             List of key names (e (+355 more)
+Cohesion: 0.02
+Nodes (255): BaseModel, BaseSettings, handleSave(), job(), check_cache_access(), check_embedding_connection(), check_llm_connection(), check_r2_connection() (+247 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.01
-Nodes (243): GET(), GET(), DELETE(), GET(), _json_default(), Convert Song to dictionary.          Returns:             Dictionary representat, fullTextSearchSongs(), buildPublishedRecordingExistsClause() (+235 more)
+Nodes (290): connection(), connection(), Enter modify mode with a transition's parameters., connection(), Data models for sow-admin database entities.  Provides dataclasses for Song and, Embedding vector for a song.      Attributes:         song_id: Song ID (primary, Embedding vector for a single lyric line.      Attributes:         id: Row ID (a, SongEmbedding (+282 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.01
-Nodes (304): connection(), connection(), Enter modify mode with a transition's parameters., Data models for sow-admin database entities.  Provides dataclasses for Song and, Embedding vector for a song.      Attributes:         song_id: Song ID (primary, Embedding vector for a single lyric line.      Attributes:         id: Row ID (a, SongEmbedding, SongLineEmbedding (+296 more)
+Cohesion: 0.02
+Nodes (189): GET(), align_lrc_recording(), analyze_recording(), batch(), _build_fresh_editor_state(), cache_assets(), _cancel_all_jobs(), cancel_jobs() (+181 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.02
-Nodes (207): align_lrc_recording(), analyze_recording(), batch(), cache_assets(), _cancel_all_jobs(), cancel_jobs(), _cancel_single_job(), check_status() (+199 more)
+Cohesion: 0.01
+Nodes (187): ensure_config_exists(), get_cache_dir(), get_config_dir(), get_config_path(), get_env_var_name(), get_secret(), _key_to_attr(), load() (+179 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.01
-Nodes (178): ensure_config_exists(), get_cache_dir(), get_config_dir(), get_config_path(), get_env_var_name(), get_secret(), _key_to_attr(), load() (+170 more)
+Cohesion: 0.02
+Nodes (160): cli_entry(), config(), main(), Main entry point for sow-admin CLI.  Provides a Typer-based CLI for managing Str, Entry point for the CLI application., Callback for --version flag., sow-admin: Administrative tools for Stream of Worship.      Manage song catalogs, Manage configuration.      Show, set, or display the path to the configuration f (+152 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.02
-Nodes (147): cli_entry(), config(), main(), Main entry point for sow-admin CLI.  Provides a Typer-based CLI for managing Str, Entry point for the CLI application., Callback for --version flag., sow-admin: Administrative tools for Stream of Worship.      Manage song catalogs, Manage configuration.      Show, set, or display the path to the configuration f (+139 more)
+Cohesion: 0.01
+Nodes (89): GET(), DELETE(), GET(), fullTextSearchSongs(), buildPublishedRecordingExistsClause(), buildSongWhereClause(), findTopMatchingLines(), getAlbums() (+81 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.03
@@ -339,59 +339,59 @@ Nodes (123): backup_r2(), _bytes_to_mb(), _configure_r2_backup_debug_logging(), 
 
 ### Community 10 - "Community 10"
 Cohesion: 0.03
-Nodes (68): _build_fresh_editor_state(), Textual application for the admin LRC editor.  Launches the interactive LRC edit, Admin LRC editor Textual application., autosave_exists(), clear_autosave(), from_dict(), get_autosave_path(), load_autosave() (+60 more)
-
-### Community 11 - "Community 11"
-Cohesion: 0.03
 Nodes (77): SongsetDetail, SongsetItem, SongsetItemRecording, SongsetItemSong, SongsetsPage, SongsetSummary, TransitionSettings, Protocol (+69 more)
 
-### Community 12 - "Community 12"
+### Community 11 - "Community 11"
 Cohesion: 0.05
-Nodes (56): check_mlx_audio(), check_qwen_tts_support(), cosine_similarity(), download_from_r2(), dtw_distance(), find_peak_offset(), format_timestamp(), get_cache_path() (+48 more)
+Nodes (12): Textual application for the admin LRC editor.  Launches the interactive LRC edit, Admin LRC editor Textual application., LRCEditorScreen, UndoEntry, Error, IsPlayingChanged, PlayerController, PlayerEvent (+4 more)
 
-### Community 13 - "Community 13"
+### Community 12 - "Community 12"
 Cohesion: 0.04
 Nodes (56): ai_ke_yi_zai_geng_duo_yi_dian_dian_241 —, bao_gui_shi_jia_314 —, chai_qian_wo_566 —, cong_zao_chen_dao_ye_wan_130 —, Cross-song signal comparison, dan_dan_ai_mi_249 — BAD, en_dian_zhi_lu_265 —, feng_sheng_de_ying_xu_250 — (+48 more)
 
-### Community 14 - "Community 14"
+### Community 13 - "Community 13"
 Cohesion: 0.04
 Nodes (28): renderEditor(), renderSheet(), BottomNavDestination, Login, Player, Render, Settings, Share (+20 more)
 
-### Community 15 - "Community 15"
+### Community 14 - "Community 14"
 Cohesion: 0.04
 Nodes (46): 1. Analysis Service (`ops/analysis-service/`), 1. 🧪 POC Scripts (Archived Experimental), 2. 🖥️ Admin CLI (Backend Management), 2. Render Worker (`delivery/render-worker/`), 3. 🚀 Analysis Service (Microservice), 4. 🎵 User App (Deprecated), 5. 🌐 Web App (Primary End-User Interface), 6. ⚡ Render Worker (AWS Lambda) (+38 more)
 
-### Community 16 - "Community 16"
+### Community 15 - "Community 15"
 Cohesion: 0.05
 Nodes (41): 1. Build and Start the Service, 2. Verify Health, API Endpoints, Architecture, ARM64 (Apple Silicon) - Standard PyTorch, Audio LRC Alignment CLI, Check Job Status, Configure Environment (+33 more)
 
-### Community 17 - "Community 17"
+### Community 16 - "Community 16"
 Cohesion: 0.05
 Nodes (40): 2.1 Audio-Separator Models, 2.2 Qwen3 Forced Aligner Model, 2.3 Model Storage Summary, 3.1 Create the .env File, 3.2 Fill in Required Values, 3.3 Secure the .env File, 5.1 Pull the Images, 5.2 Start the Services (+32 more)
 
-### Community 18 - "Community 18"
+### Community 17 - "Community 17"
 Cohesion: 0.05
 Nodes (37): `analyze_feedback.py`, `analyze_sections.py`, Audio Analysis Scripts, Common Pattern: LRC Generation, Common Pattern: Transition Generation, Data Flow Diagrams, `find_test_song.py`, `gen_clean_vocal_stem.py` (+29 more)
 
-### Community 19 - "Community 19"
+### Community 18 - "Community 18"
 Cohesion: 0.05
 Nodes (37): Audio Generation & Playback (Fully Implemented), Automated Tests, ✅ Completed Components, Comprehensive Test Suite, Configuration, Configuration System Refactoring (Latest), Core Features, 🎯 Current Status Summary (+29 more)
 
-### Community 20 - "Community 20"
+### Community 19 - "Community 19"
 Cohesion: 0.05
 Nodes (36): Admin CLI (Backend Management), Admin CLI (`sow-admin`), Analysis Service (Microservice), API Summary, Audio Issues, Commands, Common Commands, Common Usage Workflow (+28 more)
 
-### Community 21 - "Community 21"
+### Community 20 - "Community 20"
 Cohesion: 0.05
 Nodes (36): 1. User Request, 2. Next.js API Route (`delivery/webapp/src/app/api/render-jobs/route.ts`), 3. SQS Queue (`sow-render-jobs`), 4. Lambda Handler (`lambda_handler.py`), 5. Render Pipeline (`pipeline.py`), 6. Progress Tracking (Pull-Based), 7. Orphan Recovery, Architecture (+28 more)
 
+### Community 21 - "Community 21"
+Cohesion: 0.1
+Nodes (35): compute_dtw_signal(), compute_signals_for_song(), dtw_path_stats(), embed_framewise(), _get_expected_tone_slopes(), LineSignals, _load_embedder(), _load_qwen3_aligner() (+27 more)
+
 ### Community 22 - "Community 22"
 Cohesion: 0.06
-Nodes (33): 1. Prerequisites, 2. Start the Development Server, 3. Verify It's Running, Adding a New Job Type, Analysis Service - Developer Guide, Architecture Overview, Audio-Separator Models (Required for Stem Separation), Check Model Loading (+25 more)
+Nodes (5): DirectPlayerFacade, Media3PlayerController, MediaPlayerFacade, PlayerViewHost, ServiceMediaControllerFacade
 
 ### Community 23 - "Community 23"
 Cohesion: 0.06
-Nodes (5): DirectPlayerFacade, Media3PlayerController, MediaPlayerFacade, PlayerViewHost, ServiceMediaControllerFacade
+Nodes (33): 1. Prerequisites, 2. Start the Development Server, 3. Verify It's Running, Adding a New Job Type, Analysis Service - Developer Guide, Architecture Overview, Audio-Separator Models (Required for Stem Separation), Check Model Loading (+25 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.06
@@ -402,16 +402,16 @@ Cohesion: 0.07
 Nodes (28): Auth cookies not working, Authentication, AWS SQS, Build fails: pnpm not found, Build fails: "Root Directory" not set, Cloudflare R2, Database Migration, Deploy Webapp to Vercel (+20 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.07
-Nodes (4): ClobberingSongsetsRepository, FakeSongsetsRepository, RecordingAddSongsetsRepository, SongsetsViewModelTest
-
-### Community 27 - "Community 27"
 Cohesion: 0.08
 Nodes (3): formatDurationSafe(), formatDuration(), formatDuration()
 
-### Community 28 - "Community 28"
+### Community 27 - "Community 27"
 Cohesion: 0.08
 Nodes (4): CountingPlaybackRepository, FakePlaybackRepository, FakePlayerController, PlayerViewModelTest
+
+### Community 28 - "Community 28"
+Cohesion: 0.12
+Nodes (16): Initialize the R2 client.          Args:             bucket: R2 bucket name, cache_dir(), ensure_app_config_exists(), get_app_config_dir(), get_app_config_path(), get_cache_dir(), _key_to_attr(), load() (+8 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.08
@@ -466,16 +466,16 @@ Cohesion: 0.12
 Nodes (15): API Summary, Architecture, Database Migrations, Deployment (Vercel Pro + AWS Lambda), Development, Environment Setup, Google Cast SDK Setup, Lambda Worker Deployment (+7 more)
 
 ### Community 42 - "Community 42"
+Cohesion: 0.21
+Nodes (14): align_lyrics(), get_audio_duration(), get_model_cache_dir(), is_model_cached(), main(), map_segments_to_lines(), phrases_to_lrc(), Align lyrics to audio using Qwen3ForcedAligner.      Args:         audio_path: P (+6 more)
+
+### Community 43 - "Community 43"
 Cohesion: 0.22
 Nodes (9): current_file(), duration_seconds(), is_paused(), is_playing(), is_stopped(), position_seconds(), Audio playback service for sow-app.  Provides audio playback using miniaudio. Ma, # TODO: Implement section preview with automatic stop (+1 more)
 
-### Community 43 - "Community 43"
+### Community 44 - "Community 44"
 Cohesion: 0.15
 Nodes (7): sendMessage(), dispatchToRenderWorker(), getRenderWorkerMode(), createRestClientFromEnv(), RenderWorkerRestClient, createSQSClientFromEnv(), SQSClient
-
-### Community 44 - "Community 44"
-Cohesion: 0.14
-Nodes (4): SongSearchUiState, SongsetDetailUiState, SongsetDetailViewModel, SongsetsListUiState
 
 ### Community 45 - "Community 45"
 Cohesion: 0.14
@@ -483,15 +483,15 @@ Nodes (13): 1. Configuration System (`app/utils/config.py`), 2. Configuration Fi
 
 ### Community 46 - "Community 46"
 Cohesion: 0.15
-Nodes (9): AuthApi, AuthSession, AuthUser, BetterAuthData, BetterAuthEnvelope, BetterAuthError, CurrentSession, EmailPasswordRequest (+1 more)
-
-### Community 47 - "Community 47"
-Cohesion: 0.15
 Nodes (2): registerServiceWorker(), AuthRepository
 
-### Community 48 - "Community 48"
+### Community 47 - "Community 47"
 Cohesion: 0.23
 Nodes (8): display_name(), from_dict(), id(), Song and Section data models., Format seconds as MM:SS., Format section for display: 'Chorus (1:23-2:10, 47s)'., Represents a section within a song., Section
+
+### Community 48 - "Community 48"
+Cohesion: 0.17
+Nodes (1): Catalog browsing service for sow-app.  Provides high-level catalog operations co
 
 ### Community 49 - "Community 49"
 Cohesion: 0.17
@@ -594,72 +594,72 @@ Cohesion: 0.33
 Nodes (2): ArtifactDownloadRequest, ArtifactDownloadScheduler
 
 ### Community 79 - "Community 79"
-Cohesion: 0.5
-Nodes (3): CacheEntry, Asset cache service for sow-app.  Manages local caching of R2 audio assets (stem, Information about a cached file.      Attributes:         local_path: Path to th
-
-### Community 80 - "Community 80"
 Cohesion: 0.6
 Nodes (3): downloadArtifact(), downloadArtifactViaProxy(), fetchSignedUrlAndDownload()
 
-### Community 81 - "Community 81"
+### Community 80 - "Community 80"
 Cohesion: 0.5
 Nodes (2): buildLrc(), LyricsTimingEditor()
 
-### Community 82 - "Community 82"
+### Community 81 - "Community 81"
 Cohesion: 0.4
 Nodes (2): ChinesePlaybackRepository, PlayerScreenTest
 
-### Community 83 - "Community 83"
+### Community 82 - "Community 82"
 Cohesion: 0.4
 Nodes (1): AuthValidationTest
 
-### Community 84 - "Community 84"
+### Community 83 - "Community 83"
 Cohesion: 0.4
 Nodes (1): SowRouteTest
 
-### Community 85 - "Community 85"
+### Community 84 - "Community 84"
 Cohesion: 0.4
 Nodes (1): SowShellTest
 
-### Community 86 - "Community 86"
+### Community 85 - "Community 85"
 Cohesion: 0.4
 Nodes (1): RenderArtifactKind
 
-### Community 87 - "Community 87"
+### Community 86 - "Community 86"
 Cohesion: 0.4
 Nodes (1): SongsetsDependencies
 
-### Community 96 - "Community 96"
+### Community 95 - "Community 95"
 Cohesion: 0.5
 Nodes (1): RenderScreenTest
 
-### Community 97 - "Community 97"
+### Community 96 - "Community 96"
 Cohesion: 0.5
 Nodes (1): AndroidArtifactDownloadSchedulerTest
 
-### Community 98 - "Community 98"
+### Community 97 - "Community 97"
 Cohesion: 0.5
 Nodes (1): SessionCookieStoreTest
 
-### Community 99 - "Community 99"
+### Community 98 - "Community 98"
 Cohesion: 0.5
 Nodes (1): SowApplication
 
-### Community 100 - "Community 100"
+### Community 99 - "Community 99"
 Cohesion: 0.5
 Nodes (1): ShareApi
 
-### Community 101 - "Community 101"
+### Community 100 - "Community 100"
 Cohesion: 0.5
 Nodes (1): IntentChooserFactory
 
-### Community 102 - "Community 102"
+### Community 101 - "Community 101"
 Cohesion: 0.5
 Nodes (3): CreateShareRequest, ShareListResponse, ShareToken
 
-### Community 103 - "Community 103"
+### Community 102 - "Community 102"
 Cohesion: 0.5
 Nodes (2): AppConfig, BuildVariant
+
+### Community 103 - "Community 103"
+Cohesion: 0.5
+Nodes (1): SowApp()
 
 ### Community 104 - "Community 104"
 Cohesion: 0.5
@@ -673,29 +673,29 @@ Nodes (3): Checksums, Font Manifest, Notes
 Cohesion: 0.67
 Nodes (1): Connection health checker for sow-app.  Re-exports the shared check_database_con
 
-### Community 107 - "Community 107"
-Cohesion: 0.67
-Nodes (3): BaseSettings, Analysis service configuration., Settings
-
-### Community 114 - "Community 114"
+### Community 113 - "Community 113"
 Cohesion: 1.0
 Nodes (2): gapToSeconds(), TransitionControls()
 
-### Community 121 - "Community 121"
+### Community 120 - "Community 120"
 Cohesion: 1.0
 Nodes (2): loadSongsets(), transformSongsets()
+
+### Community 121 - "Community 121"
+Cohesion: 1.0
+Nodes (2): handleSubmit(), validate()
 
 ### Community 122 - "Community 122"
 Cohesion: 1.0
 Nodes (2): handleSubmit(), validate()
 
 ### Community 123 - "Community 123"
-Cohesion: 1.0
-Nodes (2): handleSubmit(), validate()
-
-### Community 124 - "Community 124"
 Cohesion: 0.67
 Nodes (1): MainActivity
+
+### Community 125 - "Community 125"
+Cohesion: 0.67
+Nodes (1): SettingsScreen()
 
 ### Community 126 - "Community 126"
 Cohesion: 0.67
@@ -1344,7 +1344,9 @@ Nodes (1): Analysis service external integrations.
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 37`** (17 nodes): `RenderViewModel.kt`, `RenderUiState`, `RenderViewModel`, `.cancelRender()`, `.confirmPreviousRenderAndStart()`, `.load()`, `.loadArtifactSizes()`, `.maybeLoadReviewableJob()`, `.onCleared()`, `.requestRender()`, `.retryPolling()`, `.startPolling()`, `.stopPolling()`, `.submitRender()`, `.updateConfig()`, `statusMessage()`, `validationError()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 47`** (13 nodes): `AuthRepository.kt`, `precaching.ts`, `getWorkboxInstance()`, `registerServiceWorker()`, `unregisterServiceWorker()`, `AuthRepository`, `.clearSession()`, `.executeSessionRequest()`, `.parseSession()`, `.register()`, `.restoreSession()`, `.signIn()`, `.signOut()`
+- **Thin community `Community 46`** (13 nodes): `AuthRepository.kt`, `precaching.ts`, `getWorkboxInstance()`, `registerServiceWorker()`, `unregisterServiceWorker()`, `AuthRepository`, `.clearSession()`, `.executeSessionRequest()`, `.parseSession()`, `.register()`, `.restoreSession()`, `.signIn()`, `.signOut()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 48`** (12 nodes): `catalog.py`, `catalog.py`, `catalog.py`, `display_key()`, `display_title()`, `duration_seconds()`, `formatted_duration()`, `has_analysis()`, `has_lrc()`, `is_orphan()`, `Catalog browsing service for sow-app.  Provides high-level catalog operations co`, `tempo_bpm()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 49`** (12 nodes): `AuthScreensTest`, `.`auth gate renders login screen for unauthenticated state`()`, `.`auth gate restores session and renders protected content when authenticated`()`, `.`auth gate routes non-401 sign in failures back to login form`()`, `.`login screen validates required fields before submit`()`, `FakeAuthController`, `.onSessionExpired()`, `.register()`, `.restoreSession()`, `.signIn()`, `.signOut()`, `AuthScreensTest.kt`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1378,45 +1380,49 @@ Nodes (1): Analysis service external integrations.
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 78`** (6 nodes): `ArtifactDownloadModels.kt`, `ArtifactDownloadRequest`, `ArtifactDownloadScheduler`, `.enqueue()`, `canonicalTitle()`, `parseArtifactDownloadTitle()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 81`** (5 nodes): `LyricsTimingEditor.tsx`, `buildLrc()`, `lrcTimestampToSeconds()`, `LyricsTimingEditor()`, `secondsToLrcTimestamp()`
+- **Thin community `Community 80`** (5 nodes): `LyricsTimingEditor.tsx`, `buildLrc()`, `lrcTimestampToSeconds()`, `LyricsTimingEditor()`, `secondsToLrcTimestamp()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 82`** (5 nodes): `PlayerScreenTest.kt`, `ChinesePlaybackRepository`, `.chapters()`, `PlayerScreenTest`, `.`player controls expose labels and render Chinese lyrics with large text`()`
+- **Thin community `Community 81`** (5 nodes): `PlayerScreenTest.kt`, `ChinesePlaybackRepository`, `.chapters()`, `PlayerScreenTest`, `.`player controls expose labels and render Chinese lyrics with large text`()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 83`** (5 nodes): `AuthValidationTest`, `.`login validation requires valid email and eight character password`()`, `.`register validation requires matching password confirmation`()`, `.`valid register input passes validation`()`, `AuthValidationTest.kt`
+- **Thin community `Community 82`** (5 nodes): `AuthValidationTest`, `.`login validation requires valid email and eight character password`()`, `.`register validation requires matching password confirmation`()`, `.`valid register input passes validation`()`, `AuthValidationTest.kt`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 84`** (5 nodes): `SowRouteTest.kt`, `SowRouteTest`, `.`bottom navigation exposes utility workflow destinations`()`, `.`defines expected top level route patterns`()`, `.`route builders encode path separators`()`
+- **Thin community `Community 83`** (5 nodes): `SowRouteTest.kt`, `SowRouteTest`, `.`bottom navigation exposes utility workflow destinations`()`, `.`defines expected top level route patterns`()`, `.`route builders encode path separators`()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 85`** (5 nodes): `SowShellTest.kt`, `SowShellTest`, `.`bottom navigation invokes concrete top level route callback`()`, `.`renders reusable state panels`()`, `.`renders shell content and bottom navigation`()`
+- **Thin community `Community 84`** (5 nodes): `SowShellTest.kt`, `SowShellTest`, `.`bottom navigation invokes concrete top level route callback`()`, `.`renders reusable state panels`()`, `.`renders shell content and bottom navigation`()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 86`** (5 nodes): `AndroidShareIntents.kt`, `buildShareTextIntent()`, `buildViewArtifactIntent()`, `enqueueArtifactDownload()`, `RenderArtifactKind`
+- **Thin community `Community 85`** (5 nodes): `AndroidShareIntents.kt`, `buildShareTextIntent()`, `buildViewArtifactIntent()`, `enqueueArtifactDownload()`, `RenderArtifactKind`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 87`** (5 nodes): `SowNavGraph.kt`, `rememberSongsetsDependencies()`, `SongsetsDependencies`, `SowNavGraph()`, `toPlaybackArtifact()`
+- **Thin community `Community 86`** (5 nodes): `SowNavGraph.kt`, `rememberSongsetsDependencies()`, `SongsetsDependencies`, `SowNavGraph()`, `toPlaybackArtifact()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 96`** (4 nodes): `RenderScreenTest.kt`, `RenderScreenTest`, `.`screen renders render form and validates empty outputs`()`, `.`screen surfaces completed artifacts and routes actions`()`
+- **Thin community `Community 95`** (4 nodes): `RenderScreenTest.kt`, `RenderScreenTest`, `.`screen renders render form and validates empty outputs`()`, `.`screen surfaces completed artifacts and routes actions`()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 97`** (4 nodes): `AndroidArtifactDownloadSchedulerTest.kt`, `AndroidArtifactDownloadSchedulerTest`, `.`enqueue rejects malformed urls before metadata is marked queued`()`, `.`enqueue submits download manager request and returns id`()`
+- **Thin community `Community 96`** (4 nodes): `AndroidArtifactDownloadSchedulerTest.kt`, `AndroidArtifactDownloadSchedulerTest`, `.`enqueue rejects malformed urls before metadata is marked queued`()`, `.`enqueue submits download manager request and returns id`()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (4 nodes): `SessionCookieStoreTest.kt`, `SessionCookieStoreTest`, `.`cookie jar removes expired cookies`()`, `.`cookie jar stores matching cookies and excludes other domains`()`
+- **Thin community `Community 97`** (4 nodes): `SessionCookieStoreTest.kt`, `SessionCookieStoreTest`, `.`cookie jar removes expired cookies`()`, `.`cookie jar stores matching cookies and excludes other domains`()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (4 nodes): `SowApplication`, `.onCreate()`, `.onTerminate()`, `SowApplication.kt`
+- **Thin community `Community 98`** (4 nodes): `SowApplication`, `.onCreate()`, `.onTerminate()`, `SowApplication.kt`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (4 nodes): `ShareApi.kt`, `ShareApi`, `.createShare()`, `.listShares()`
+- **Thin community `Community 99`** (4 nodes): `ShareApi.kt`, `ShareApi`, `.createShare()`, `.listShares()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (4 nodes): `ShareScreen.kt`, `IntentChooserFactory`, `.create()`, `ShareScreen()`
+- **Thin community `Community 100`** (4 nodes): `ShareScreen.kt`, `IntentChooserFactory`, `.create()`, `ShareScreen()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 103`** (4 nodes): `AppConfig`, `BuildVariant`, `fromBuildConfig()`, `AppConfig.kt`
+- **Thin community `Community 102`** (4 nodes): `AppConfig`, `BuildVariant`, `fromBuildConfig()`, `AppConfig.kt`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 103`** (4 nodes): `SowApp.kt`, `SowApp()`, `SowNavigationBarItem()`, `SowShell()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 106`** (3 nodes): `sync.py`, `sync.py`, `Connection health checker for sow-app.  Re-exports the shared check_database_con`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 114`** (3 nodes): `TransitionControls.tsx`, `gapToSeconds()`, `TransitionControls()`
+- **Thin community `Community 113`** (3 nodes): `TransitionControls.tsx`, `gapToSeconds()`, `TransitionControls()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 121`** (3 nodes): `SongsetsClient.tsx`, `loadSongsets()`, `transformSongsets()`
+- **Thin community `Community 120`** (3 nodes): `SongsetsClient.tsx`, `loadSongsets()`, `transformSongsets()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 121`** (3 nodes): `page.tsx`, `handleSubmit()`, `validate()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 122`** (3 nodes): `page.tsx`, `handleSubmit()`, `validate()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 123`** (3 nodes): `page.tsx`, `handleSubmit()`, `validate()`
+- **Thin community `Community 123`** (3 nodes): `MainActivity`, `.onCreate()`, `MainActivity.kt`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (3 nodes): `MainActivity`, `.onCreate()`, `MainActivity.kt`
+- **Thin community `Community 125`** (3 nodes): `SettingsScreen.kt`, `ChoiceRow()`, `SettingsScreen()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 126`** (3 nodes): `ArtifactDownloadCoordinator.kt`, `ArtifactDownloadCoordinator`, `.enqueue()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1742,11 +1748,11 @@ Nodes (1): Analysis service external integrations.
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GET()` connect `Community 5` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 48`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
-- **Why does `PlaybackService` connect `Community 0` to `Community 1`, `Community 2`, `Community 4`, `Community 6`, `Community 10`, `Community 42`?**
+- **Why does `GET()` connect `Community 4` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 42`, `Community 10`, `Community 47`, `Community 21`, `Community 28`?**
+  _High betweenness centrality (0.125) - this node is a cross-community bridge._
+- **Why does `PlaybackService` connect `Community 1` to `Community 0`, `Community 2`, `Community 5`, `Community 6`, `Community 11`, `Community 43`?**
   _High betweenness centrality (0.042) - this node is a cross-community bridge._
-- **Why does `R2Client` connect `Community 2` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 9`, `Community 10`, `Community 79`?**
+- **Why does `R2Client` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 9`, `Community 11`?**
   _High betweenness centrality (0.040) - this node is a cross-community bridge._
 - **Are the 323 inferred relationships involving `R2Client` (e.g. with `Audio commands for sow-admin.  Provides CLI commands for downloading audio from` and `Format seconds as MM:SS.      Args:         seconds: Duration in seconds      Re`) actually correct?**
   _`R2Client` has 323 INFERRED edges - model-reasoned connections that need verification._
