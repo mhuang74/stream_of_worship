@@ -198,7 +198,45 @@ Dockerfile:
 4. Update environment variables:
    - `BETTER_AUTH_URL=https://your-domain.com`
    - `NEXT_PUBLIC_BASE_URL=https://your-domain.com`
-   - `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` (register new Cast receiver with production URL)
+   - `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` (leave unset to use Google Default Media Receiver; one ID per environment, set only if a custom receiver is reintroduced in future — see `delivery/webapp/README.md` → Google Cast SDK Setup)
+
+### 3.7 Google Cast (Default Media Receiver)
+
+v3 of the worship controller casts an MP4 to a Google TV / Chromecast via the
+Google Cast **Web Sender SDK** using Google's built-in **Default Media
+Receiver** (`chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID` when
+`NEXT_PUBLIC_CAST_RECEIVER_APP_ID` is unset). This is the only supported v3
+Cast mode — no custom on-receiver registration is required.
+
+- **Receiver registration (default only).** Whitelist the Cast test devices
+  by serial number in the Cast SDK Developer Console
+  (<https://cast.google.com/publish> → **Device registration**) for dev/staging.
+  Cast review is the production launch gate (Submit for Approval, 2–4 weeks).
+  One `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` is allowed per environment, or omit it
+  to use the Default Media Receiver constant.
+- **Lyrics are baked into the MP4** — no custom Cast receiver UI is needed.
+- **4-hour signed URL policy.** The logged-in phone mints the MP4 at a
+  14400-second (4-hour) presigned R2 URL via
+  `POST /api/signed-url?cast=true` (songset ownership path, session-required)
+  or `GET /api/share/[token]` (public share path). The phone hands the URL to
+  the TV receiver; the receiver only hits R2, never the webapp. Services
+  longer than ~3h40m require a deliberate stop/re-cast before URL expiry.
+- **faststart requirement.** The render worker (`delivery/render-worker/`)
+  emits H.264 + AAC MP4s with `-movflags +faststart` (moov atom placed at the
+  front for fast startup / range-seek on TV hardware). The
+  `test_mp4_cast_compatibility.py` ffprobe pipeline test asserts H.264 / AAC /
+  moov-before-mdat, and the upload `content_type` is enforced as
+  `video/mp4`.
+- **Runbook (pre-service):** phone + TV on the same Wi-Fi/VLAN (no captive
+  portal / guest isolation); receiver fetches the MP4 directly from R2; R2 must
+  respond `Content-Type: video/mp4` + accept range requests. Open the MP4 URL
+  in a laptop browser on the same network and verify range-seek (forward/back
+  10s, reload) before the service. iPhone web does not support Chromecast —
+  use AirPlay to Apple TV instead. Presentation API = dev-only fallback.
+
+See the **Live-Service Go/No-Go Checklist** in
+`delivery/webapp/README.md` (10 items) before any first live use on the same
+TV + network class used in service.
 
 ---
 
@@ -302,7 +340,7 @@ Vercel's GitHub integration provides automatic deployments:
 | `BETTER_AUTH_SECRET` | Generated | `openssl rand -base64 32` |
 | `BETTER_AUTH_URL` | Custom domain | `https://your-domain.com` |
 | `NEXT_PUBLIC_BASE_URL` | Custom domain | `https://your-domain.com` |
-| `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` | Google Cast | Registered receiver app ID |
+| `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` | Google Cast | Default Media Receiver (v3). Leave unset to use Google's Default Media Receiver constant; one ID per environment is optional and only needed for a future custom receiver. Whitelist Cast test devices by serial in the Cast SDK Developer Console. Production launch = Cast approval (2–4 weeks). See the Live-Service Go/No-Go Checklist in `README.md` |
 | `AWS_REGION` | AWS | `us-west-2` |
 | `SQS_QUEUE_URL` | AWS | `https://sqs.us-west-2.amazonaws.com/.../sow-render-jobs` |
 | `AWS_ACCESS_KEY_ID` | AWS | IAM user for SQS |
