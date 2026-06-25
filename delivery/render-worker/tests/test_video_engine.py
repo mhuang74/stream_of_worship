@@ -172,6 +172,10 @@ class TestGetVideoCodecArgs:
             "libx264",
             "-preset",
             "ultrafast",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
             "-crf",
             "23",
             "-b:v",
@@ -189,6 +193,10 @@ class TestGetVideoCodecArgs:
             "libx264",
             "-preset",
             "ultrafast",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
             "-crf",
             "23",
             "-b:v",
@@ -203,6 +211,10 @@ class TestGetVideoCodecArgs:
         args = engine.get_video_codec_args("2000k")
         assert "-b:v" in args
         assert "2000k" in args
+        assert "-profile:v" in args
+        assert args[args.index("-profile:v") + 1] == "high"
+        assert "-pix_fmt" in args
+        assert args[args.index("-pix_fmt") + 1] == "yuv420p"
 
     def test_faststart_flag_present(self):
         fetcher = MockAssetFetcher()
@@ -212,6 +224,10 @@ class TestGetVideoCodecArgs:
         idx = args.index("-movflags")
         assert idx + 1 < len(args)
         assert args[idx + 1] == "+faststart"
+        assert "-profile:v" in args
+        assert args[args.index("-profile:v") + 1] == "high"
+        assert "-pix_fmt" in args
+        assert args[args.index("-pix_fmt") + 1] == "yuv420p"
 
 
 class TestGenerateBlankVideo:
@@ -336,6 +352,9 @@ class TestEncodeVideoWithFFmpeg:
         assert "1920x1080" in cmd
         assert "-pix_fmt" in cmd
         assert "rgb24" in cmd
+        assert "yuv420p" in cmd
+        assert "-profile:v" in cmd
+        assert "high" in cmd
         assert "-r" in cmd
         assert "24" in cmd
         assert "-i" in cmd
