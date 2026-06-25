@@ -147,11 +147,65 @@ class RenderViewModelTest {
             assertFalse(viewModel.uiState.value.isPolling)
         }
 
+    @Test
+    fun `initial conflict message is cleared after the first successful poll`() =
+        runTest {
+            val render =
+                FakeRenderRepository(
+                    jobs =
+                        mutableListOf(
+                            job("active-job", RenderJobStatus.Running),
+                            job("active-job", RenderJobStatus.Completed),
+                        ),
+                )
+            val viewModel = viewModel(this, render = render, pollInterval = 100)
+
+            viewModel.startPolling("active-job", initialMessage = "A render job is already in progress")
+            runCurrent()
+            // First successful response surfaces the initial message for exactly one iteration.
+            assertEquals("A render job is already in progress", viewModel.uiState.value.serverMessage)
+
+            advanceTimeBy(100)
+            runCurrent()
+            // Subsequent poll clears the initial message — the render is actively progressing.
+            assertEquals(null, viewModel.uiState.value.serverMessage)
+            assertEquals(RenderJobStatus.Completed, viewModel.uiState.value.currentJob?.status)
+        }
+
+    @Test
+    fun `polling stops and surfaces terminal status after exhausting retries`() =
+        runTest {
+            val render =
+                FakeRenderRepository(
+                    jobs = mutableListOf(job("job-1", RenderJobStatus.Queued)),
+                    getError = RuntimeException("server down"),
+                )
+            val viewModel =
+                viewModel(
+                    this,
+                    render = render,
+                    pollInterval = 100,
+                    retryDelay = 50,
+                    maxRetries = 2,
+                )
+
+            viewModel.startPolling("job-1")
+            // Two retry delays of 50ms then 100ms (exponential cap kicks in) before giving up.
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.isPolling)
+            assertEquals(3, render.getCalls)
+            val message = viewModel.uiState.value.serverMessage
+            assertTrue(message != null && message.contains("server down"))
+        }
+
     private fun viewModel(
         scope: TestScope,
         songsets: FakeRenderSongsetsRepository = FakeRenderSongsetsRepository(),
         render: FakeRenderRepository = FakeRenderRepository(),
         pollInterval: Long = 100,
+        retryDelay: Long = 100,
+        maxRetries: Int = 10,
     ): RenderViewModel =
         RenderViewModel(
             songsetId = "set-1",
@@ -159,13 +213,15 @@ class RenderViewModelTest {
             renderRepository = render,
             scope = scope,
             pollIntervalMillis = pollInterval,
-            retryDelayMillis = pollInterval,
+            retryDelayMillis = retryDelay,
+            maxRetries = maxRetries,
         )
 }
 
 internal class FakeRenderRepository(
     private val createError: RuntimeException? = null,
     private val jobs: MutableList<RenderJob> = mutableListOf(job("job-1", RenderJobStatus.Queued)),
+    private val getError: RuntimeException? = null,
 ) : RenderRepository {
     var createCalls = 0
     var getCalls = 0
@@ -181,6 +237,7 @@ internal class FakeRenderRepository(
 
     override suspend fun getRenderJob(id: String): RenderJob {
         getCalls += 1
+        getError?.let { throw it }
         return if (jobs.size > 1) jobs.removeAt(0) else jobs.first()
     }
 

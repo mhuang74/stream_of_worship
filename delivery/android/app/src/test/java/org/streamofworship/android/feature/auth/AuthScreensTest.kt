@@ -16,6 +16,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.streamofworship.android.core.design.SowTheme
+import org.streamofworship.android.core.network.ApiError
+import org.streamofworship.android.core.network.ApiErrorKind
 import org.streamofworship.android.core.network.AuthUser
 import org.streamofworship.android.core.network.CurrentSession
 import org.streamofworship.android.core.session.AuthController
@@ -80,6 +82,31 @@ class AuthScreensTest {
         }
 
         composeRule.onNodeWithTag("login-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun `auth gate routes non-401 sign in failures back to login form`() {
+        val controller =
+            FakeAuthController(
+                initialState =
+                    AuthState.Error(
+                        ApiError(
+                            statusCode = 500,
+                            message = "Stream of Worship is temporarily unavailable.",
+                            kind = ApiErrorKind.Server,
+                        ),
+                    ),
+            )
+        composeRule.setContent {
+            SowTheme {
+                AuthenticatedAppGate(authController = controller) {
+                    Text("Protected songsets")
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("login-screen").assertIsDisplayed()
+        composeRule.onNodeWithText("Stream of Worship is temporarily unavailable.").assertIsDisplayed()
     }
 
     private class FakeAuthController(

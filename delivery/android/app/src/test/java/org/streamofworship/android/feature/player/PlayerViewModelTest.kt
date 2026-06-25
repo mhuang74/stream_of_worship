@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -151,6 +152,41 @@ class PlayerViewModelTest {
             runCurrent()
             assertEquals("https://r2/fresh.mp4", viewModel.uiState.value.mediaUrl)
             assertEquals(OfflinePlaybackState.Missing, viewModel.uiState.value.offlineState)
+        }
+
+    @Test
+    fun `malformed expiry is treated as expired and triggers refresh`() =
+        runTest {
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val playbackRepository =
+                CountingPlaybackRepository(
+                    videoUrls =
+                        ArrayDeque(
+                            listOf(
+                                SignedUrlResponse("https://r2/unparseable.mp4", "not-a-date"),
+                                SignedUrlResponse("https://r2/fresh.mp4", "2026-01-01T00:00:00Z"),
+                            ),
+                        ),
+                )
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = playbackRepository,
+                    controller = controller,
+                    clock = Clock.fixed(Instant.parse("2025-06-01T00:00:00Z"), ZoneOffset.UTC),
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                )
+
+            viewModel.load()
+            runCurrent()
+            // Failing closed: an unparseable expiry must not stream the (possibly expired) URL.
+            assertEquals(OfflinePlaybackState.ExpiredSignedUrl, viewModel.uiState.value.offlineState)
+            assertNull(viewModel.uiState.value.mediaUrl)
+
+            viewModel.load()
+            runCurrent()
+            assertEquals("https://r2/fresh.mp4", viewModel.uiState.value.mediaUrl)
         }
 
     private fun viewModel(
