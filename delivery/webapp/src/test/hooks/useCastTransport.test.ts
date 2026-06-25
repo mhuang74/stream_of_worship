@@ -37,7 +37,7 @@ function setupCastSdkMock(opts?: {
   const player: Record<string, unknown> = {
     currentTime: 0,
     duration: 0,
-    volume: 1,
+    volumeLevel: 1,
     isMediaLoaded: false,
     isMuted: false,
     playerState: "",
@@ -423,7 +423,7 @@ describe("useCastTransport", () => {
       });
       expect(result.current.playerState).toBe("playing");
       await act(async () => {
-        setPlayer({ volume: 0.5 });
+        setPlayer({ volumeLevel: 0.5 });
         fireEvent("volumeLevelChanged");
       });
       expect(result.current.volume).toBe(0.5);
@@ -432,6 +432,59 @@ describe("useCastTransport", () => {
         fireEvent("isMutedChanged");
       });
       expect(result.current.isMuted).toBe(true);
+    });
+
+    it("normalizes UPPERCASE chrome.cast.media.PlayerState to lowercase", async () => {
+      // The real Web Sender RemotePlayer.playerState is
+      // chrome.cast.media.PlayerState, whose values are UPPERCASE
+      // (PLAYING / PAUSED / BUFFERING / IDLE). The hook must normalize so the
+      // controller's lowercase comparisons stay correct in live sessions.
+      const { result, fireEvent, setPlayer } = await mountHook();
+      await act(async () => {
+        setPlayer({ playerState: "PLAYING" });
+        fireEvent("playerStateChanged");
+      });
+      expect(result.current.playerState).toBe("playing");
+      await act(async () => {
+        setPlayer({ playerState: "BUFFERING" });
+        fireEvent("playerStateChanged");
+      });
+      // Buffering tracking keys off the normalized lowercase value.
+      expect(result.current.bufferingSinceMs).not.toBeNull();
+      await act(async () => {
+        setPlayer({ playerState: "PAUSED" });
+        fireEvent("playerStateChanged");
+      });
+      expect(result.current.playerState).toBe("paused");
+      expect(result.current.bufferingSinceMs).toBeNull();
+    });
+
+    it("seeds volume from player.volumeLevel on mount (not the undefined player.volume)", async () => {
+      // Real Web Sender RemotePlayer exposes receiver volume as `volumeLevel`
+      // — `player.volume` is undefined in live sessions. The hook must seed its
+      // volume state from `volumeLevel` so the slider reflects the TV volume.
+      const { result } = await mountHook(undefined, {
+        player: { volumeLevel: 0.25 },
+      });
+      expect(result.current.volume).toBe(0.25);
+    });
+
+    it("reconciles volume from player.volumeLevel on reconnect", async () => {
+      const { result, fireEvent, setPlayer } = await mountHook(undefined, {
+        player: { volumeLevel: 0.4 },
+      });
+      // Disconnect first.
+      await act(async () => {
+        setPlayer({ isConnected: false });
+        fireEvent("isConnectedChanged");
+      });
+      // Receiver volume changes while disconnected — the reconnect listener
+      // must seed from `volumeLevel`, not the stale `volume` field.
+      await act(async () => {
+        setPlayer({ volumeLevel: 0.7, isConnected: true });
+        fireEvent("isConnectedChanged");
+      });
+      expect(result.current.volume).toBe(0.7);
     });
   });
 
@@ -529,7 +582,7 @@ describe("useCastTransport", () => {
       expect(controller.setVolumeLevel).not.toHaveBeenCalled();
       // volume state unchanged
       expect(result.current.volume).toBe(1);
-      expect((player as Record<string, unknown>).volume).toBe(1);
+      expect((player as Record<string, unknown>).volumeLevel).toBe(1);
     });
   });
 
@@ -654,6 +707,35 @@ describe("useCastTransport", () => {
       // 100 + 60 = 160 → clamped to duration 120.
       expect(proposal.time).toBe(120);
       expect(proposal.isStale).toBe(true);
+    });
+
+    it("treats UPPERCASE 'PLAYING' as playing for extrapolation (casing normalized)", async () => {
+      // Real receivers report chrome.cast.media.PlayerState.PLAYING. The hook
+      // must normalize the snapshot to lowercase so the
+      // `state === "playing"` extrapolation branch runs (vs. falling through
+      // to the non-playing "frozen" branch). The lastState hint is also
+      // lowercased for consistent controller UI copy.
+      const { result, fireEvent, setPlayer } = await mountHook(undefined, {
+        player: { duration: 1000 },
+      });
+      const T0 = new Date("2026-01-01T00:00:00Z").getTime();
+      vi.setSystemTime(T0);
+      await act(async () => {
+        setPlayer({ currentTime: 100, playerState: "PLAYING" });
+        fireEvent("currentTimeChanged");
+        fireEvent("playerStateChanged");
+      });
+      vi.setSystemTime(T0 + 10_000);
+      await act(async () => {
+        setPlayer({ isConnected: false });
+        fireEvent("isConnectedChanged");
+      });
+      const proposal = result.current.resumeProposal!;
+      // Extrapolated 10s forward — only happens when the normalized state
+      // equals "playing".
+      expect(proposal.time).toBe(110);
+      expect(proposal.isStale).toBe(false);
+      expect(proposal.lastState).toBe("playing");
     });
   });
 

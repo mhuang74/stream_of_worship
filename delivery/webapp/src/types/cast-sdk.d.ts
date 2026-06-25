@@ -214,7 +214,14 @@ declare namespace cast.framework {
   export class RemotePlayer {
     currentTime: number;
     duration: number;
-    volume: number;
+    /**
+     * Receiver volume level in [0,1]. Mutated in place by the SDK to mirror
+     * the receiver's volume. (The legacy `volume` alias is intentionally NOT
+     * declared — the real Web Sender `RemotePlayer` exposes this as
+     * `volumeLevel`; reads of `player.volume` are `undefined` in live Cast
+     * sessions.)
+     */
+    volumeLevel: number;
     isMediaLoaded: boolean;
     isMuted: boolean;
     playerState: string;

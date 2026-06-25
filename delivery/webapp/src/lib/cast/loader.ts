@@ -17,6 +17,16 @@ declare global {
 const CAST_SENDER_URL = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js";
 
 /**
+ * Hard ceiling on how long `loadCastSdk()` will wait for the gstatic sender
+ * script to fire `window.__onGCastApiAvailable` before settling as failed.
+ * The SDK loads in well under a second on any realistic network; the timeout
+ * only catches the degenerate case where the script is blocked (CSP / ad
+ * blocker) and emits neither a `load` nor an `error` event, so the hook's
+ * `castAvailability` cannot strand on `"unknown"`.
+ */
+const LOAD_TIMEOUT_MS = 15_000;
+
+/**
  * Tracks in-flight loader requests by a monotonically-increasing request id.
  * Entries whose AbortSignal fires before the global callback fires are added
  * here; the global callback resolves/rejects every caller EXCEPT cancelled
@@ -60,13 +70,69 @@ let injected = false;
  */
 let settled: { loaded: true } | { loaded: false } | null = null;
 
+/**
+ * Handle of the load-timeout guard scheduled when the script is injected.
+ * Cleared on any settlement so a late timeout cannot fire after the SDK has
+ * already reported success / failure. Held at module scope so the success path
+ * can `clearTimeout` it from `dispatchSettlement`.
+ */
+let loadTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Single settlement point shared by the global SDK callback, the script
+ * `error` listener, and the load timeout. Sets `settled`, drains the pending
+ * table (resolving cancelled callers silently, resolving non-cancelled on
+ * success, rejecting on failure), and clears the load-timeout guard.
+ * Idempotent — the first caller wins; subsequent settlements short-circuit.
+ */
+function dispatchSettlement(loaded: boolean): void {
+  if (settled) return;
+  settled = loaded ? { loaded: true } : { loaded: false };
+  if (loadTimeoutHandle !== null) {
+    clearTimeout(loadTimeoutHandle);
+    loadTimeoutHandle = null;
+  }
+  const snapshot = Array.from(pending.entries());
+  pending.clear();
+  for (const [id, entry] of snapshot) {
+    if (cancelled.has(id)) {
+      // Already aborted: resolve silently, never reject, never schedule UI.
+      cancelled.delete(id);
+      entry.resolve();
+      // The abort handler already removed itself via { once: true }.
+      continue;
+    }
+    if (loaded) entry.resolve();
+    else entry.reject(new Error("Google Cast SDK failed to load"));
+    // Drop the abort listener now that this entry has settled — the
+    // `{ once: true }` flag only auto-removes on abort, not on success.
+    if (entry.signal && entry.abortHandler) {
+      try {
+        entry.signal.removeEventListener("abort", entry.abortHandler);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+}
+
 function injectScriptOnce(): void {
   if (injected) return;
   injected = true;
   const script = document.createElement("script");
   script.src = CAST_SENDER_URL;
   script.async = true;
+  // If the gstatic script is blocked by CSP / an ad blocker or the network
+  // errors, the browser fires the script `error` event and never invokes
+  // `__onGCastApiAvailable`. Settle as failed so the transport surfaces
+  // `availability: "unavailable"` and the Presentation/iPhone fallbacks
+  // render instead of stranding the UI on "unknown" forever.
+  script.addEventListener("error", () => dispatchSettlement(false));
   document.head.appendChild(script);
+  // Belt-and-braces: a hard timeout the SDK would never approach on any real
+  // network. Catches the degenerate hang where the script emits neither
+  // `load` nor `error` (e.g. a hung connection behind a captive portal).
+  loadTimeoutHandle = setTimeout(() => dispatchSettlement(false), LOAD_TIMEOUT_MS);
 }
 
 function bindGlobalCallback(): void {
@@ -75,29 +141,7 @@ function bindGlobalCallback(): void {
   // caller except cancelled ones, then records the terminal state so any
   // future caller short-circuits.
   window.__onGCastApiAvailable = (loaded: boolean) => {
-    settled = loaded ? { loaded: true } : { loaded: false };
-    const snapshot = Array.from(pending.entries());
-    pending.clear();
-    for (const [id, entry] of snapshot) {
-      if (cancelled.has(id)) {
-        // Already aborted: resolve silently, never reject, never schedule UI.
-        cancelled.delete(id);
-        entry.resolve();
-        // The abort handler already removed itself via { once: true }.
-        continue;
-      }
-      if (loaded) entry.resolve();
-      else entry.reject(new Error("Google Cast SDK failed to load"));
-      // Drop the abort listener now that this entry has settled — the
-      // `{ once: true }` flag only auto-removes on abort, not on success.
-      if (entry.signal && entry.abortHandler) {
-        try {
-          entry.signal.removeEventListener("abort", entry.abortHandler);
-        } catch {
-          /* best-effort */
-        }
-      }
-    }
+    dispatchSettlement(loaded);
   };
 }
 
@@ -111,8 +155,18 @@ function bindGlobalCallback(): void {
  *   callback, this Promise resolves silently and the caller must NOT schedule
  *   any React state update in response (treat resolution as "give up").
  *
- * Rejection only happens for callers that have NOT aborted and the SDK reports
- * `loaded===false`. An aborted caller never rejects.
+ * Settlement paths:
+ *  - `__onGCastApiAvailable(true)` → resolves (success).
+ *  - `__onGCastApiAvailable(false)` → rejects with "Google Cast SDK failed to
+ *    load" (the SDK reported it could not initialize).
+ *  - Script `error` event (CSP / ad blocker / network failure never invokes
+ *    the global callback) → rejects with the same failure error.
+ *  - `LOAD_TIMEOUT_MS` elapsed with no callback and no `error` (e.g. a hung
+ *    connection that emits nothing) → rejects with the same failure error.
+ *
+ * Rejection only happens for callers that have NOT aborted. An aborted caller
+ * never rejects. Any settlement clears the load-timeout guard so it cannot
+ * fire late.
  */
 export function loadCastSdk(opts?: { signal?: AbortSignal }): Promise<void> {
   // SSR guard — never touch `window` on the server.

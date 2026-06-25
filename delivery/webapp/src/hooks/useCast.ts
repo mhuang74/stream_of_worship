@@ -193,6 +193,19 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(v, max));
 }
 
+/**
+ * Normalize the Cast SDK receiver `playerState`. The real Web Sender
+ * `RemotePlayer.playerState` is `chrome.cast.media.PlayerState`, whose
+ * documented values are UPPERCASE (`PLAYING` / `PAUSED` / `BUFFERING` /
+ * `IDLE`). The controller UI, buffering tracker, and disconnect-extrapolation
+ * all compare against the lowercase form — normalizing once at every read
+ * site keeps them correct in live (uppercase) and mocked (lowercase) sessions
+ * alike, without sprinkling `.toLowerCase()` through the comparison logic.
+ */
+function normalizePlayerState(raw: string | undefined | null): string {
+  return typeof raw === "string" ? raw.toLowerCase() : "";
+}
+
 /** Parse the AWS SigV4 basic-format date (`YYYYMMDDTHHMMSSZ`) → epoch ms. */
 function parseAwsDateMs(s: string): number | null {
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(s);
@@ -339,13 +352,17 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
     const onPlayerStateChanged = () => {
       const p = playerRef.current;
       if (!p) return;
-      snapshotRef.current.playerState = p.playerState;
-      setPlayerState(p.playerState);
+      // Normalize UPPERCASE chrome.cast.media.PlayerState values ("PLAYING",
+      // "PAUSED", "BUFFERING", "IDLE") to the lowercase form every downstream
+      // comparison expects.
+      const state = normalizePlayerState(p.playerState);
+      snapshotRef.current.playerState = state;
+      setPlayerState(state);
       if (p.duration !== snapshotRef.current.duration) {
         snapshotRef.current.duration = p.duration;
         setDuration(p.duration);
       }
-      if (p.playerState === "buffering") {
+      if (state === "buffering") {
         if (snapshotRef.current.bufferingSinceMs === null) {
           const now = Date.now();
           snapshotRef.current.bufferingSinceMs = now;
@@ -369,8 +386,11 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
     const onVolumeLevelChanged = () => {
       const p = playerRef.current;
       if (!p) return;
-      snapshotRef.current.volume = p.volume;
-      setVolume(p.volume);
+      // Real Web Sender RemotePlayer exposes receiver volume as `volumeLevel`
+      // (not `volume`, which is undefined in live sessions). Read it here so
+      // the controller tracks actual TV volume instead of seeding undefined.
+      snapshotRef.current.volume = p.volumeLevel;
+      setVolume(p.volumeLevel);
       touchStatus();
     };
     const onIsMutedChanged = () => {
@@ -394,13 +414,16 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         setResumeProposal(null);
         setIsConnected(true);
         setDeviceName(p.displayName || "TV");
-        // Refresh derived volume/mute/state on reconnect.
-        snapshotRef.current.volume = p.volume;
-        setVolume(p.volume);
+        // Refresh derived volume/mute/state on reconnect. Use `volumeLevel`
+        // (real RemotePlayer surface) and normalize the SDK's UPPERCASE
+        // PlayerState for downstream lowercase comparisons.
+        snapshotRef.current.volume = p.volumeLevel;
+        setVolume(p.volumeLevel);
         snapshotRef.current.isMuted = p.isMuted;
         setIsMuted(p.isMuted);
-        snapshotRef.current.playerState = p.playerState;
-        setPlayerState(p.playerState);
+        const reconnectState = normalizePlayerState(p.playerState);
+        snapshotRef.current.playerState = reconnectState;
+        setPlayerState(reconnectState);
         touchStatus();
       } else {
         // Disconnect.
@@ -537,15 +560,19 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
           controller.addEventListener(type, handler);
         }
 
-        // Seed snapshot from the player's initial values.
-        snapshotRef.current.volume = player.volume;
+        // Seed snapshot from the player's initial values. `volumeLevel` is the
+        // real RemotePlayer field (`volume` is undefined in live sessions);
+        // `playerState` is normalized from UPPERCASE chrome.cast.media
+        // PlayerState to the lowercase form the controller compares against.
+        const seededState = normalizePlayerState(player.playerState);
+        snapshotRef.current.volume = player.volumeLevel;
         snapshotRef.current.isMuted = player.isMuted;
-        snapshotRef.current.playerState = player.playerState;
+        snapshotRef.current.playerState = seededState;
         snapshotRef.current.currentTime = player.currentTime;
         snapshotRef.current.duration = player.duration;
-        setVolume(player.volume);
+        setVolume(player.volumeLevel);
         setIsMuted(player.isMuted);
-        setPlayerState(player.playerState);
+        setPlayerState(seededState);
         setCurrentTime(player.currentTime);
         setDuration(player.duration);
 
