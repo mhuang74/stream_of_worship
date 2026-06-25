@@ -91,9 +91,14 @@ fun PlayerScreen(
     // Re-bind media + restore the saved position after rotation (no autoplay). When the
     // controller is fresh but the ViewModel already holds a URL, reload the media and seek to
     // the retained position. `durationMillis <= 0L` is a proxy for "no media loaded yet".
+    // The effect also re-binds the surviving ViewModel to the (possibly new) controller so
+    // that subsequent play/pause/seek commands route to the live ExoPlayer — the controller
+    // captured at VM construction may have already been released by the previous composition's
+    // DisposableEffect on rotation.
     LaunchedEffect(media3Controller, state.mediaUrl) {
-        val url = state.mediaUrl ?: return@LaunchedEffect
         val controller = media3Controller ?: return@LaunchedEffect
+        viewModel.bindController(controller)
+        val url = state.mediaUrl ?: return@LaunchedEffect
         if (controller.durationMillis <= 0L) {
             controller.setMedia(url, isVideo = true)
             if (state.positionMillis > 0L) {
@@ -103,27 +108,41 @@ fun PlayerScreen(
     }
     // Pause playback when the app goes to the background. There is no background-audio
     // requirement for the video-only worship screen, so a simple ON_STOP pause suffices.
+    // The observer reads the latest isPlaying value via the StateFlow (not a snapshot
+    // captured at composition time) so that playback started after the observer was
+    // registered is still paused.
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP && state.isPlaying) {
+                if (event == Lifecycle.Event.ON_STOP && viewModel.uiState.value.isPlaying) {
                     viewModel.pause()
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    // Immersive OS-level bar control for fullscreen.
-    LaunchedEffect(state.isFullscreen) {
-        val a = activity ?: return@LaunchedEffect
-        val window = a.window ?: return@LaunchedEffect
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        if (state.isFullscreen) {
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else {
-            controller.show(WindowInsetsCompat.Type.systemBars())
+    // Immersive OS-level bar control for fullscreen. Uses DisposableEffect so the system
+    // bars are restored in two scenarios: when fullscreen is toggled off (key change →
+    // onDispose + new effect with show), and when the composable leaves the composition
+    // while still in fullscreen (e.g. user navigates back without exiting fullscreen first).
+    // Without this restore, the bars would remain hidden for the rest of the app.
+    DisposableEffect(state.isFullscreen) {
+        val a = activity
+        val window = a?.window
+        val controller = if (window != null) WindowInsetsControllerCompat(window, window.decorView) else null
+        if (controller != null) {
+            if (state.isFullscreen) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            // Always restore system bars on dispose — covers both the toggle-off path and
+            // the leaves-composition-while-fullscreen path.
+            controller?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
     // While in fullscreen, system/gesture back exits fullscreen first. Otherwise back

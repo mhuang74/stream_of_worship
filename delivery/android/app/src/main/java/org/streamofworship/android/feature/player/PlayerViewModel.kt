@@ -57,13 +57,17 @@ data class PlayerUiState(
 class PlayerViewModel(
     private val renderJobId: String,
     private val repository: PlaybackRepository,
-    private val controller: PlayerController,
+    controller: PlayerController,
     private val offlineCacheRepository: OfflineCacheRepository? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val scope: CoroutineScope? = null,
     private val tickerMillis: Long = 500,
     private val defaultArtifact: PlaybackArtifact = PlaybackArtifact.Video,
 ) : ViewModel() {
+    // Mutable so the surviving ViewModel can be re-bound to a fresh controller after rotation
+    // (the old controller is released by PlayerScreen's DisposableEffect; play/pause/seek
+    // commands must target the live ExoPlayer, not the stale one captured at construction).
+    private var controller: PlayerController = controller
     private val mutableState = MutableStateFlow(PlayerUiState(artifact = defaultArtifact))
     val uiState: StateFlow<PlayerUiState> = mutableState
     private var ticker: Job? = null
@@ -86,6 +90,22 @@ class PlayerViewModel(
 
     init {
         controller.setEventListener(eventListener)
+    }
+
+    /**
+     * Binds the surviving ViewModel to a (potentially fresh) [PlayerController]. Used by the
+     * screen after a configuration change: `viewModel(key = jobId)` returns the retained
+     * ViewModel whose previously-bound controller has been released, so any play/pause/seek
+     * command would be forwarded to a dead ExoPlayer. The rebind re-applies the event listener
+     * on the new controller so playback/position/error events still reach the UI.
+     *
+     * No-op when [newController] is the same instance already bound (e.g. first navigation,
+     * where the constructor already wired the listener).
+     */
+    fun bindController(newController: PlayerController) {
+        if (newController === controller) return
+        controller = newController
+        newController.setEventListener(eventListener)
     }
 
     fun load(artifact: PlaybackArtifact = defaultArtifact) {
