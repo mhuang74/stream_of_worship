@@ -213,8 +213,9 @@ class RenderViewModel(
     }
 
     private fun submitRender() {
+        if (mutableState.value.isSubmitting) return
+        mutableState.update { it.copy(isSubmitting = true, validationMessage = null, serverMessage = null) }
         launchScope.launch {
-            mutableState.update { it.copy(isSubmitting = true, validationMessage = null, serverMessage = null) }
             runCatching { renderRepository.createRenderJob(songsetId, mutableState.value.config) }
                 .onSuccess { job ->
                     mutableState.update { it.copy(isSubmitting = false, currentJob = job) }

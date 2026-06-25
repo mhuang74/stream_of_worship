@@ -45,8 +45,9 @@ class ShareViewModel(
     }
 
     fun createShare() {
+        if (mutableState.value.isLoading) return
+        mutableState.update { it.copy(isLoading = true, message = null) }
         launchScope.launch {
-            mutableState.update { it.copy(isLoading = true, message = null) }
             runCatching { shareRepository.createRenderShare(renderJobId, mutableState.value.allowDownload) }
                 .onSuccess { token -> mutableState.update { it.copy(isLoading = false, shareToken = token) } }
                 .onFailure { error -> mutableState.update { it.copy(isLoading = false, message = error.statusMessage()) } }
@@ -54,8 +55,9 @@ class ShareViewModel(
     }
 
     fun loadDownloadUrls() {
+        if (mutableState.value.isLoading) return
+        mutableState.update { it.copy(isLoading = true, message = null) }
         launchScope.launch {
-            mutableState.update { it.copy(isLoading = true, message = null) }
             val sizes =
                 runCatching { renderRepository.getArtifactSizes(renderJobId) }
                     .getOrElse { error ->
