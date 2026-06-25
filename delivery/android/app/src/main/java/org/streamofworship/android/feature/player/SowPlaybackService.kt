@@ -14,6 +14,10 @@ import androidx.media3.session.MediaSessionService
  *
  * The service owns the [ExoPlayer] and the [MediaSession]; the activity binds through
  * [Media3PlayerController] via a [androidx.media3.session.MediaController].
+ *
+ * TODO: unused by PlayerScreen after v3 — the worship screen is now video-only and drives
+ * an in-process ExoPlayer directly (see [VideoExoPlayerFactory]). Retained for any future
+ * background-audio use case.
  */
 class SowPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null

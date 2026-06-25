@@ -177,6 +177,18 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Pauses playback unconditionally. Used by the screen's lifecycle observer when the app
+     * goes to the background (video playback has no background-audio requirement).
+     */
+    fun pause() {
+        if (controller.isPlaying) {
+            controller.pause()
+            syncFromController()
+            stopTicker()
+        }
+    }
+
     fun seekTo(positionMillis: Long) {
         controller.seekTo(positionMillis.coerceIn(0L, effectiveDuration()))
         syncFromController()

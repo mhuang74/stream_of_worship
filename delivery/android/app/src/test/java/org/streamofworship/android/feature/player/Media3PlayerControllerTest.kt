@@ -67,6 +67,41 @@ class Media3PlayerControllerTest {
             controller.release()
         }
     }
+
+    @Test
+    fun `video exo player factory returns a playable player with zero duration before media is set`() {
+        val exoPlayer = VideoExoPlayerFactory.create(ApplicationProvider.getApplicationContext())
+        try {
+            // A freshly-created ExoPlayer has no media, so its duration must be UNKNOWN (<= 0).
+            assertEquals(0L, exoPlayer.duration.coerceAtLeast(0L))
+        } finally {
+            exoPlayer.release()
+        }
+    }
+
+    @Test
+    fun `video exo player factory controller reports zero duration before media is set`() {
+        val exoPlayer = VideoExoPlayerFactory.create(ApplicationProvider.getApplicationContext())
+        val controller = Media3PlayerController(exoPlayer)
+        try {
+            assertEquals(0L, controller.durationMillis)
+        } finally {
+            controller.release()
+        }
+    }
+
+    @Test
+    fun `direct player facade sets file uri media without throwing`() {
+        val exoPlayer = VideoExoPlayerFactory.create(ApplicationProvider.getApplicationContext())
+        val controller = Media3PlayerController(exoPlayer)
+        try {
+            // Robolectric cannot truly decode video, but setMedia + prepare must not throw and
+            // should not leave the controller in an erroring configuration.
+            controller.setMedia("file:///data/local/tmp/test.mp4", isVideo = true)
+        } finally {
+            controller.release()
+        }
+    }
 }
 
 internal class FakeMediaPlayerFacade(
