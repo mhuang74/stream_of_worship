@@ -32,6 +32,7 @@ vi.mock("@/lib/db/songsets", () => ({
 const mockGenerateSignedUrl = vi.fn();
 const mockGetObjectSize = vi.fn();
 const mockCreateR2Client = vi.fn();
+const mockEnforceRateLimit = vi.fn();
 
 vi.mock("@/lib/r2/client", () => ({
   DEFAULT_EXPIRES_IN_SECONDS: 3600,
@@ -42,7 +43,7 @@ vi.mock("@/lib/r2/client", () => ({
 vi.mock("@/lib/rate-limit", () => ({
   getClientIp: () => "203.0.113.10",
   hashIp: async () => "test-ip-hash",
-  enforceRateLimit: async () => true,
+  enforceRateLimit: (...args: unknown[]) => mockEnforceRateLimit(...args),
 }));
 
 function makeRequest(url: string, method = "GET"): NextRequest {
@@ -125,6 +126,21 @@ describe("GET /api/share/[token]", () => {
       Promise.resolve(signedUrl(type))
     );
     mockGetObjectSize.mockResolvedValue(50 * 1024 * 1024);
+    mockEnforceRateLimit.mockResolvedValue(true);
+  });
+
+  it("checks the per-IP rate limit before consuming the shared token bucket", async () => {
+    mockEnforceRateLimit.mockResolvedValueOnce(false);
+
+    const res = await GET(makeRequest("http://localhost/api/share/valid-token-abc"), makeParams("valid-token-abc") as any);
+
+    expect(res.status).toBe(429);
+    expect(mockEnforceRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockEnforceRateLimit).toHaveBeenCalledWith(
+      "ip:test-ip-hash",
+      "sow:share-ip",
+      60,
+    );
   });
 
   it("returns 404 when share not found", async () => {

@@ -457,6 +457,10 @@ describe("usePresentationReceiver", () => {
       });
 
       expect(onDisconnected).toHaveBeenCalled();
+      expect(mockConnection.removeEventListener).toHaveBeenCalledWith(
+        "message",
+        capturedMessageHandler,
+      );
     });
 
     it("calls onDisconnected on terminate event", async () => {

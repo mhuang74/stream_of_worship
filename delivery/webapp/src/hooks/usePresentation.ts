@@ -186,6 +186,7 @@ export function usePresentationReceiver(
         }
         terminateHandlers.delete(connection);
         try {
+          connection.removeEventListener("message", handleMessage);
           connection.removeEventListener("close", onTerminate);
           connection.removeEventListener("terminate", onTerminate);
         } catch {
@@ -312,9 +313,11 @@ export function usePresentationSender(
       optionsRef.current.onConnected?.();
 
       const handleClose = () => {
-        connectionRef.current = null;
-        setIsConnected(false);
-        optionsRef.current.onDisconnected?.();
+        if (connectionRef.current === connection) {
+          connectionRef.current = null;
+          setIsConnected(false);
+          optionsRef.current.onDisconnected?.();
+        }
       };
       // Receiver→sender status channel: parse + validate inbound JSON and
       // dispatch to onStatus. Malformed / unknown payloads are dropped silently

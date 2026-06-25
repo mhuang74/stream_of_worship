@@ -32,23 +32,23 @@ export async function GET(
     // otherwise the in-memory token-bucket fallback applies so a missing env
     // var never silently unlocks unbounded anonymous writes.
     const ipHash = await hashIp(getClientIp(request));
-    const tokenAllowed = await enforceRateLimit(
-      `share:${token}`,
-      "sow:share-token",
-      SHARE_RATE_LIMIT_RPM,
-    );
-    if (!tokenAllowed) {
-      return NextResponse.json(
-        { error: "Rate limit exceeded" },
-        { status: 429, headers: NO_CACHE_HEADERS },
-      );
-    }
     const ipAllowed = await enforceRateLimit(
       `ip:${ipHash}`,
       "sow:share-ip",
       SHARE_RATE_LIMIT_RPM,
     );
     if (!ipAllowed) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded" },
+        { status: 429, headers: NO_CACHE_HEADERS },
+      );
+    }
+    const tokenAllowed = await enforceRateLimit(
+      `share:${token}`,
+      "sow:share-token",
+      SHARE_RATE_LIMIT_RPM,
+    );
+    if (!tokenAllowed) {
       return NextResponse.json(
         { error: "Rate limit exceeded" },
         { status: 429, headers: NO_CACHE_HEADERS },
