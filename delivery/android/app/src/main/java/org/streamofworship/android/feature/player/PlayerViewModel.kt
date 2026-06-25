@@ -62,15 +62,16 @@ class PlayerViewModel(
     private val clock: Clock = Clock.systemUTC(),
     private val scope: CoroutineScope? = null,
     private val tickerMillis: Long = 500,
+    private val defaultArtifact: PlaybackArtifact = PlaybackArtifact.Video,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(PlayerUiState())
+    private val mutableState = MutableStateFlow(PlayerUiState(artifact = defaultArtifact))
     val uiState: StateFlow<PlayerUiState> = mutableState
     private var ticker: Job? = null
 
     private val launchScope: CoroutineScope
         get() = scope ?: viewModelScope
 
-    fun load(artifact: PlaybackArtifact = PlaybackArtifact.Video) {
+    fun load(artifact: PlaybackArtifact = defaultArtifact) {
         launchScope.launch {
             mutableState.update {
                 it.copy(

@@ -85,7 +85,7 @@ fun PlayerScreen(
         OfflinePlaybackBanner(state = state, onRetry = { viewModel.load(state.artifact) })
         if (state.artifact == PlaybackArtifact.Video && media3Controller != null) {
             AndroidView(
-                factory = { PlayerView(it).apply { player = media3Controller.player } },
+                factory = { PlayerView(it).apply { player = media3Controller.exoPlayer } },
                 modifier =
                     Modifier
                         .fillMaxWidth()

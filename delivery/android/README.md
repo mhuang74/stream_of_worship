@@ -4,6 +4,20 @@ Native Android client for the Stream of Worship delivery workflows. The app uses
 the existing Next.js webapp as its JSON API backend; it does not connect directly
 to PostgreSQL, Cloudflare R2, or AWS SQS.
 
+## Features
+
+- Better Auth email/password login, registration, session restore, and sign-out
+  through the webapp auth APIs.
+- Songset list/detail workflows with create, duplicate, delete, song search,
+  add/remove/reorder, description editing, and transition parameter editing.
+- Render submission and status polling for audio and video jobs, including
+  completed artifact size and availability states.
+- Media3 playback for rendered MP4/MP3 artifacts with signed URL refresh,
+  chapter and lyric navigation, fullscreen video, media controls, and wake-lock
+  handling during playback.
+- Share-token creation, Android share/view intents, user settings editing, and
+  offline artifact downloads tracked in app-private metadata.
+
 ## Prerequisites
 
 - Android Studio with JDK 17 support

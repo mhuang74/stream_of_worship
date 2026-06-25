@@ -52,12 +52,13 @@ import org.streamofworship.android.data.render.RenderJobStatus
 import org.streamofworship.android.data.render.RenderResolution
 import org.streamofworship.android.data.render.RenderTemplate
 import org.streamofworship.android.data.render.RenderTitleCardDurations
+import org.streamofworship.android.feature.player.PlaybackArtifact
 
 @Composable
 fun RenderScreen(
     viewModel: RenderViewModel,
     onBack: () -> Unit,
-    onPlay: (String, String) -> Unit,
+    onPlay: (String, String, PlaybackArtifact) -> Unit,
     onDownload: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -125,12 +126,15 @@ fun RenderScreen(
                 isPolling = state.isPolling,
                 retryCount = state.retryCount,
                 onCancel = viewModel::cancelRender,
-                onPlay = { onPlay(job.songsetId, job.id) },
+                onPlay = { onPlay(job.songsetId, job.id, job.preferredPlaybackArtifact()) },
                 onDownload = { onDownload(job.id) },
             )
         }
     }
 }
+
+private fun RenderJob.preferredPlaybackArtifact(): PlaybackArtifact =
+    if (mp4R2Key != null) PlaybackArtifact.Video else PlaybackArtifact.Audio
 
 @Composable
 fun RenderForm(

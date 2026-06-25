@@ -19,8 +19,8 @@ This document contains technical details for developers and contributors. For us
 
 ## Project Status
 
-**Current Phase:** Web App production, Admin CLI operational, Analysis Service running  
-**Architecture:** Six-component system with shared PostgreSQL (Neon) database
+**Current Phase:** Web App production, Android App available, Admin CLI operational, Analysis Service running  
+**Architecture:** Seven-component system with shared PostgreSQL (Neon) database
 
 ### Components Status
 
@@ -31,13 +31,14 @@ This document contains technical details for developers and contributors. For us
 | **Analysis Service** | ✅ Operational | `ops/analysis-service/` | Audio analysis, stem separation, LRC generation |
 | **User App** | ⚠️ Deprecated | `lab/sow-app/src/sow_lab_app/` | TUI (deprecated in favor of Web App) |
 | **Web App** | ✅ Production | `delivery/webapp/` | Primary end-user interface (Next.js) |
+| **Android App** | ✅ Available | `delivery/android/` | Native mobile client (Kotlin/Jetpack Compose) |
 | **Render Worker** | ✅ Production | `delivery/render-worker/` | AWS Lambda render processing |
 
 ---
 
 ## Architecture Overview
 
-The project consists of **six architecturally separate components**:
+The project consists of **seven architecturally separate components**:
 
 ### 1. 🧪 POC Scripts (Archived Experimental)
 - **Location:** `lab/poc-scripts/` directory
@@ -93,7 +94,28 @@ The project consists of **six architecturally separate components**:
   - LRC lyrics review and editing
   - Shareable public player links
 
-### 6. ⚡ Render Worker (AWS Lambda)
+### 6. 📱 Android App (Native Mobile Client)
+- **Location:** `delivery/android/` (Kotlin/Jetpack Compose Gradle project)
+- **Purpose:** Native mobile delivery client for worship set editing, render submission/status, playback, sharing, settings, and offline downloads
+- **Users:** Worship leaders on Android devices
+- **Runtime:** Native Android app (min SDK 26 / Android 8.0+)
+- **Technologies:** Jetpack Compose, AndroidX Navigation, Retrofit/OkHttp, Better Auth cookies, Media3 ExoPlayer, Android DownloadManager, kotlinx.serialization, DataStore
+- **Dependencies:** Kotlin, AGP, Jetpack Compose, Media3, Retrofit, OkHttp, Robolectric, Kover
+- **Database:** **None directly.** Consumes the webapp JSON APIs only — does not connect to PostgreSQL, Cloudflare R2, or AWS SQS.
+- **Auth:** Better Auth cookies stored in Android-encrypted storage and forwarded by OkHttp
+- **Key Features:**
+  - Better Auth email/password login, registration, session restore, and sign-out
+  - Songset list/detail editing with song search, item reorder, transition parameter editing
+  - Render submission and status polling for audio/video jobs
+  - Media3 playback of rendered MP4/MP3 with chapters, lyrics, fullscreen, media controls, and wake-lock
+  - Share-token creation and Android share/view intents
+  - User settings editing
+  - Offline artifact downloads tracked in app-private metadata
+- **Build/Test Commands:** `./gradlew testDebugUnitTest`, `./gradlew koverXmlReport`, `./gradlew lintDebug`, `./gradlew assembleDebug` (run from `delivery/android/`)
+- **Configuration:** API base URL per build variant via `delivery/android/gradle.properties` (`sow.apiBaseUrl.debug`/`.staging`/`.release`)
+- **Boundary:** The Android app uses only the webapp JSON APIs. It does not connect directly to PostgreSQL, Cloudflare R2, or AWS SQS.
+
+### 7. ⚡ Render Worker (AWS Lambda)
 - **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Purpose:** Serverless render processing (audio mixing + video encoding)
 - **Users:** Called by Web App via SQS
@@ -106,14 +128,14 @@ The project consists of **six architecturally separate components**:
 
 ### Why Architecturally Separate?
 
-| Concern | Admin CLI | Analysis Service | User App (Dep.) | Web App | Render Worker |
-|---------|-----------|------------------|-----------------|---------|---------------|
-| **Runtime Model** | One-shot commands | Long-lived daemon | Interactive TUI | Serverless + browser | Event-driven Lambda |
-| **Target Users** | Admins / DevOps | Internal service | End users (legacy) | End users | Internal service |
-| **Dependencies** | Minimal | Very heavy (PyTorch) | Moderate | Node.js stack | Moderate (psycopg2, FFmpeg) |
-| **Distribution** | `uv run --project ops/admin-cli --extra admin sow-admin` | Docker image | `uv run --project lab/sow-app sow-app` | Vercel | Lambda container |
-| **Data Access** | PostgreSQL (Neon) + R2 | R2 + SQLite (jobs) | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 |
-| **Database Driver** | psycopg3 | aiosqlite | psycopg3 | Drizzle ORM + Neon | psycopg2 |
+| Concern | Admin CLI | Analysis Service | User App (Dep.) | Web App | Android App | Render Worker |
+|---------|-----------|------------------|-----------------|---------|-------------|---------------|
+| **Runtime Model** | One-shot commands | Long-lived daemon | Interactive TUI | Serverless + browser | Native Android app | Event-driven Lambda |
+| **Target Users** | Admins / DevOps | Internal service | End users (legacy) | End users | End users (mobile) | Internal service |
+| **Dependencies** | Minimal | Very heavy (PyTorch) | Moderate | Node.js stack | Kotlin / Jetpack Compose | Moderate (psycopg2, FFmpeg) |
+| **Distribution** | `uv run --project ops/admin-cli --extra admin sow-admin` | Docker image | `uv run --project lab/sow-app sow-app` | Vercel | APK (`./gradlew assembleDebug`) | Lambda container |
+| **Data Access** | PostgreSQL (Neon) + R2 | R2 + SQLite (jobs) | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 | Webapp JSON APIs only | PostgreSQL (Neon) + R2 |
+| **Database Driver** | psycopg3 | aiosqlite | psycopg3 | Drizzle ORM + Neon | None (API client) | psycopg2 |
 
 ### Shared Database Architecture
 
@@ -423,6 +445,20 @@ sow_cli_admin/                           # Repository root
 │   ├── Dockerfile                       #    Lambda container image
 │   └── README.md                        #    Worker documentation
 │
+├── delivery/android/                    # 📱 Android App (native mobile client)
+│   ├── app/
+│   │   ├── src/main/java/org/streamofworship/android/
+│   │   │   ├── core/                    #    Config, design, navigation, network, session, download
+│   │   │   ├── data/                    #    Repositories: songsets, songs, render, playback, share, settings, offline
+│   │   │   └── feature/                 #    Feature screens: auth, songsets, render, player, share, settings
+│   │   ├── src/test/java/...            #    JVM/Robolectric unit tests
+│   │   ├── build.gradle.kts             #    App module config (Compose, dependencies, Kover)
+│   │   └── src/main/AndroidManifest.xml
+│   ├── settings.gradle.kts              #    Root Gradle settings
+│   ├── build.gradle.kts                 #    Root Gradle config
+│   ├── gradle.properties                #    API base URLs per variant + build flags
+│   └── README.md                        #    Android app documentation
+│
 ├── lab/poc-scripts/                                 # 🧪 POC Scripts (archived)
 │   ├── docker/                          #    POC Docker environments
 │   ├── poc_analysis.py                  #    Librosa analysis script
@@ -449,6 +485,7 @@ sow_cli_admin/                           # Repository root
 | `lab/sow-app/src/sow_lab_app/` | `stream-of-worship-app` | End-user TUI (DEPRECATED) | End users (legacy) | PostgreSQL (Neon) + R2 | `uv run --project lab/sow-app sow-app` |
 | `ops/analysis-service/` | `sow-analysis` | Audio analysis microservice | Internal service | SQLite (jobs only) + R2 | Docker image |
 | `delivery/webapp/` | `sow-webapp` | Web application | End users | PostgreSQL (Neon) + R2 | Vercel |
+| `delivery/android/` | `stream-of-worship-android` | Native mobile client | End users (mobile) | Webapp JSON APIs only (no direct DB/R2/SQS) | `cd delivery/android && ./gradlew assembleDebug` |
 | `delivery/render-worker/` | `sow-render-worker` | Render processing | Internal service | PostgreSQL (Neon) + R2 | Lambda container |
 | `lab/poc-scripts/` | N/A (scripts) | Experimental validation | Developers | Local files only | Local scripts |
 
@@ -538,6 +575,17 @@ sow_cli_admin/                           # Repository root
 - [x] REST mode for local development
 - [x] CJK font support for lyrics rendering
 
+### ✅ Phase 10: Android App (Complete)
+- [x] Kotlin/Jetpack Compose Gradle project with Kover and Robolectric
+- [x] Better Auth login/registration/session-restore/sign-out via webapp JSON APIs
+- [x] Songset list/detail editing with song search, add/remove/reorder, transition parameters
+- [x] Render submission and status polling with artifact availability
+- [x] Media3 playback of rendered MP4/MP3 with chapters, lyrics, fullscreen, media controls, and wake-lock
+- [x] Share-token creation and Android share/view intents
+- [x] Settings editing via `/api/settings`
+- [x] Offline artifact downloads via Android DownloadManager with completion tracking
+- [x] API base URL configured per build variant via `delivery/android/gradle.properties`
+
 ### 📋 Future Enhancements
 - [ ] User App deprecation and removal
 - [ ] Enhanced semantic search with hybrid RRF ranking
@@ -615,6 +663,18 @@ SOW_R2_SECRET_ACCESS_KEY=...            # R2 secret key
 SOW_SQS_QUEUE_URL=https://...           # SQS queue URL
 ```
 
+### Android App Configuration
+
+The Android app has no server-side secrets; it talks only to the webapp JSON APIs. Configure the API base URL per build variant in `delivery/android/gradle.properties`:
+
+```properties
+sow.apiBaseUrl.debug=http://10.0.2.2:8080
+sow.apiBaseUrl.staging=https://staging.streamofworship.local
+sow.apiBaseUrl.release=https://app.streamofworship.local
+```
+
+For local development, start the webapp on `0.0.0.0:8080` and use the Android emulator alias (`10.0.2.2`) or your development machine's LAN IP for a physical device. See [delivery/android/README.md](delivery/android/README.md) for full networking, Better Auth cookie, signed-URL playback, and offline-download troubleshooting notes.
+
 ---
 
 ## Troubleshooting
@@ -677,6 +737,7 @@ peaks = librosa.util.peak_pick(
 - **Analysis Service:** [ops/analysis-service/README.md](ops/analysis-service/README.md)
 - **Render Worker:** [delivery/render-worker/README.md](delivery/render-worker/README.md)
 - **Web App:** [delivery/webapp/README.md](delivery/webapp/README.md)
+- **Android App:** [delivery/android/README.md](delivery/android/README.md)
 - **Admin CLI:** [ops/admin-cli/src/stream_of_worship/admin/README.md](ops/admin-cli/src/stream_of_worship/admin/README.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
 

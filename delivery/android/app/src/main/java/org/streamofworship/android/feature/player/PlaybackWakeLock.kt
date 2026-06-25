@@ -3,24 +3,52 @@ package org.streamofworship.android.feature.player
 import android.content.Context
 import android.os.PowerManager
 
-class PlaybackWakeLock(
-    context: Context,
+class PlaybackWakeLock private constructor(
+    private val handle: WakeLockHandle,
 ) {
-    private val wakeLock =
-        (context.getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "StreamOfWorship:Playback",
-        )
+    constructor(context: Context) : this(
+        AndroidWakeLockHandle(
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "StreamOfWorship:Playback",
+            ),
+        ),
+    )
+
+    internal constructor(handle: WakeLockHandle, @Suppress("UNUSED_PARAMETER") forTest: Unit = Unit) : this(handle)
 
     fun update(isPlaying: Boolean) {
-        if (isPlaying && !wakeLock.isHeld) {
-            wakeLock.acquire()
-        } else if (!isPlaying && wakeLock.isHeld) {
-            wakeLock.release()
+        if (isPlaying && !handle.isHeld) {
+            handle.acquire()
+        } else if (!isPlaying && handle.isHeld) {
+            handle.release()
         }
     }
 
     fun release() {
-        if (wakeLock.isHeld) wakeLock.release()
+        if (handle.isHeld) handle.release()
+    }
+}
+
+internal interface WakeLockHandle {
+    val isHeld: Boolean
+
+    fun acquire()
+
+    fun release()
+}
+
+private class AndroidWakeLockHandle(
+    private val wakeLock: PowerManager.WakeLock,
+) : WakeLockHandle {
+    override val isHeld: Boolean
+        get() = wakeLock.isHeld
+
+    override fun acquire() {
+        wakeLock.acquire()
+    }
+
+    override fun release() {
+        wakeLock.release()
     }
 }

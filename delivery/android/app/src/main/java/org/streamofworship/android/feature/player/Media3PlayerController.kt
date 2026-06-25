@@ -4,16 +4,23 @@ import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 
-class Media3PlayerController(
-    context: Context,
+class Media3PlayerController private constructor(
+    internal val player: MediaPlayerFacade,
 ) : PlayerController {
-    val player: ExoPlayer = ExoPlayer.Builder(context).build()
+    constructor(context: Context) : this(AndroidExoPlayerFacade(ExoPlayer.Builder(context).build()))
+
+    constructor(player: ExoPlayer) : this(AndroidExoPlayerFacade(player))
+
+    internal constructor(fakePlayer: MediaPlayerFacade, @Suppress("UNUSED_PARAMETER") forTest: Unit = Unit) : this(fakePlayer)
+
+    val exoPlayer: ExoPlayer?
+        get() = (player as? AndroidExoPlayerFacade)?.exoPlayer
 
     override val durationMillis: Long
-        get() = player.duration.takeIf { it > 0 } ?: 0L
+        get() = player.durationMillis.takeIf { it > 0 } ?: 0L
 
     override val positionMillis: Long
-        get() = player.currentPosition.coerceAtLeast(0L)
+        get() = player.positionMillis.coerceAtLeast(0L)
 
     override val isPlaying: Boolean
         get() = player.isPlaying
@@ -22,7 +29,7 @@ class Media3PlayerController(
         url: String,
         isVideo: Boolean,
     ) {
-        player.setMediaItem(MediaItem.fromUri(url))
+        player.setMedia(url)
         player.prepare()
     }
 
@@ -40,5 +47,62 @@ class Media3PlayerController(
 
     override fun release() {
         player.release()
+    }
+}
+
+internal interface MediaPlayerFacade {
+    val durationMillis: Long
+
+    val positionMillis: Long
+
+    val isPlaying: Boolean
+
+    fun setMedia(url: String)
+
+    fun prepare()
+
+    fun play()
+
+    fun pause()
+
+    fun seekTo(positionMillis: Long)
+
+    fun release()
+}
+
+private class AndroidExoPlayerFacade(
+    val exoPlayer: ExoPlayer,
+) : MediaPlayerFacade {
+    override val durationMillis: Long
+        get() = exoPlayer.duration
+
+    override val positionMillis: Long
+        get() = exoPlayer.currentPosition
+
+    override val isPlaying: Boolean
+        get() = exoPlayer.isPlaying
+
+    override fun setMedia(url: String) {
+        exoPlayer.setMediaItem(MediaItem.fromUri(url))
+    }
+
+    override fun prepare() {
+        exoPlayer.prepare()
+    }
+
+    override fun play() {
+        exoPlayer.play()
+    }
+
+    override fun pause() {
+        exoPlayer.pause()
+    }
+
+    override fun seekTo(positionMillis: Long) {
+        exoPlayer.seekTo(positionMillis)
+    }
+
+    override fun release() {
+        exoPlayer.release()
     }
 }

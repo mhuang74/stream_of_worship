@@ -41,31 +41,29 @@ class ArtifactDownloadCoordinatorTest {
         }
 
     @Test
-    fun `download results transition through progress cached and failed states`() =
+    fun `enqueue failure records failed metadata`() =
         runTest {
             val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
-            val coordinator = ArtifactDownloadCoordinator(repository, FakeScheduler(), clockMillis = { 2000L })
-
-            val downloading =
-                coordinator.applyResult(
-                    renderJobId = "job-1",
-                    kind = OfflineArtifactKind.Audio,
-                    result =
-                        ArtifactDownloadResult.Downloading(
-                            ArtifactDownloadProgress("job-1", OfflineArtifactKind.Audio, 25L, 100L),
-                        ),
-                )
-            val cached =
-                coordinator.applyResult(
-                    renderJobId = "job-1",
-                    kind = OfflineArtifactKind.Audio,
-                    result = ArtifactDownloadResult.Completed("file:///audio.mp3", 100L, 100L),
+            val coordinator =
+                ArtifactDownloadCoordinator(
+                    cacheRepository = repository,
+                    scheduler = FailingScheduler(),
+                    clockMillis = { 2000L },
                 )
 
-            assertEquals(OfflineArtifactStatus.Downloading, downloading.status)
-            assertEquals(0.25f, ArtifactDownloadProgress("job-1", OfflineArtifactKind.Audio, 25L, 100L).progressFraction)
-            assertEquals(OfflineArtifactStatus.Cached, cached.status)
-            assertEquals("file:///audio.mp3", cached.localUri)
+            val metadata =
+                coordinator.enqueue(
+                    ArtifactDownloadRequest(
+                        renderJobId = "job-1",
+                        kind = OfflineArtifactKind.Audio,
+                        url = "https://r2/audio.mp3",
+                        expiresAt = "2026-01-01T00:00:00Z",
+                        title = "audio",
+                    ),
+                )
+
+            assertEquals(OfflineArtifactStatus.Failed, metadata.status)
+            assertEquals("boom", metadata.failureMessage)
         }
 }
 
@@ -73,4 +71,10 @@ private class FakeScheduler(
     private val downloadId: Long? = null,
 ) : ArtifactDownloadScheduler {
     override suspend fun enqueue(request: ArtifactDownloadRequest): Long? = downloadId
+}
+
+private class FailingScheduler : ArtifactDownloadScheduler {
+    override suspend fun enqueue(request: ArtifactDownloadRequest): Long? {
+        error("boom")
+    }
 }

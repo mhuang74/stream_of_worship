@@ -96,6 +96,30 @@ class PlayerViewModelTest {
         }
 
     @Test
+    fun `default audio artifact loads rendered audio url`() =
+        runTest {
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val playbackRepository = CountingPlaybackRepository()
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = playbackRepository,
+                    controller = controller,
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                    defaultArtifact = PlaybackArtifact.Audio,
+                )
+
+            viewModel.load()
+            runCurrent()
+
+            assertEquals("https://r2/audio.mp3", viewModel.uiState.value.mediaUrl)
+            assertEquals(PlaybackArtifact.Audio, viewModel.uiState.value.artifact)
+            assertEquals(0, playbackRepository.videoUrlCalls)
+            assertEquals(1, playbackRepository.audioUrlCalls)
+        }
+
+    @Test
     fun `expired signed url reports retry state and retry refreshes playback`() =
         runTest {
             val controller = FakePlayerController(durationMillis = 120_000)
@@ -147,6 +171,7 @@ private class CountingPlaybackRepository(
         ArrayDeque(listOf(SignedUrlResponse("https://r2/video.mp4", "2027-01-01T00:00:00.000Z"))),
 ) : FakePlaybackRepository() {
     var videoUrlCalls = 0
+    var audioUrlCalls = 0
 
     override suspend fun renderedVideoUrl(
         renderJobId: String,
@@ -154,6 +179,14 @@ private class CountingPlaybackRepository(
     ): SignedUrlResponse {
         videoUrlCalls += 1
         return videoUrls.removeFirst()
+    }
+
+    override suspend fun renderedAudioUrl(
+        renderJobId: String,
+        contentDisposition: String?,
+    ): SignedUrlResponse {
+        audioUrlCalls += 1
+        return super.renderedAudioUrl(renderJobId, contentDisposition)
     }
 }
 

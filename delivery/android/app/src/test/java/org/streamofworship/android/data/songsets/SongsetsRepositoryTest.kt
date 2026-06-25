@@ -11,6 +11,8 @@ import org.junit.Test
 import org.streamofworship.android.core.config.AppConfig
 import org.streamofworship.android.core.config.BuildVariant
 import org.streamofworship.android.core.model.TransitionSettings
+import org.streamofworship.android.core.network.ApiErrorKind
+import org.streamofworship.android.core.network.ApiException
 import org.streamofworship.android.core.network.SowApiClientFactory
 import org.streamofworship.android.core.session.InMemorySessionCookieStore
 
@@ -107,6 +109,47 @@ class SongsetsRepositoryTest {
             assertTrue(reorder.body.readUtf8().contains("updates"))
         }
 
+    @Test
+    fun `maps common http errors through shared repository execution`() =
+        runTest {
+            val cases =
+                listOf(
+                    400 to ApiErrorKind.Validation,
+                    401 to ApiErrorKind.Unauthorized,
+                    404 to ApiErrorKind.Unknown,
+                    409 to ApiErrorKind.Unknown,
+                    500 to ApiErrorKind.Server,
+                )
+            cases.forEach { (status, kind) ->
+                server.enqueue(json("""{"message":"error $status"}""", status))
+
+                val error = assertApiException { repository.getSongset("set-$status") }
+
+                assertEquals(status, error.error.statusCode)
+                assertEquals(kind, error.error.kind)
+                assertEquals("error $status", error.error.message)
+            }
+        }
+
+    @Test
+    fun `maps empty successful bodies malformed json and network failures`() =
+        runTest {
+            server.enqueue(json("", 200))
+            val empty = assertApiException { repository.getSongset("empty") }
+            assertEquals(ApiErrorKind.Malformed, empty.error.kind)
+
+            server.enqueue(json("""{"id":""", 200))
+            val malformed = assertApiException { repository.getSongset("malformed") }
+            assertEquals(ApiErrorKind.Malformed, malformed.error.kind)
+
+            val networkServer = MockWebServer()
+            networkServer.start()
+            val networkRepository = repositoryFor(networkServer)
+            networkServer.shutdown()
+            val network = assertApiException { networkRepository.listSongsets() }
+            assertEquals(ApiErrorKind.Network, network.error.kind)
+        }
+
     private fun json(
         body: String,
         code: Int = 200,
@@ -115,6 +158,23 @@ class SongsetsRepositoryTest {
             .setResponseCode(code)
             .setHeader("Content-Type", "application/json")
             .setBody(body)
+
+    private fun repositoryFor(server: MockWebServer): SongsetsRepository {
+        val client =
+            SowApiClientFactory.create(
+                config = AppConfig(server.url("/").toString(), BuildVariant.Debug),
+                cookieStore = InMemorySessionCookieStore(),
+            )
+        return HttpSongsetsRepository(client.create<SongsetsApi>())
+    }
+
+    private suspend fun assertApiException(block: suspend () -> Unit): ApiException =
+        try {
+            block()
+            error("Expected ApiException")
+        } catch (error: ApiException) {
+            error
+        }
 
     private fun summaryJson(id: String): String =
         """

@@ -1,16 +1,11 @@
 package org.streamofworship.android.core.navigation
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -31,6 +26,7 @@ import org.streamofworship.android.data.songs.SongsApi
 import org.streamofworship.android.data.songsets.HttpSongsetsRepository
 import org.streamofworship.android.data.songsets.SongsetsApi
 import org.streamofworship.android.feature.player.Media3PlayerController
+import org.streamofworship.android.feature.player.PlaybackArtifact
 import org.streamofworship.android.feature.player.PlayerScreen
 import org.streamofworship.android.feature.player.PlayerViewModel
 import org.streamofworship.android.feature.render.RenderScreen
@@ -47,14 +43,18 @@ import org.streamofworship.android.feature.songsets.SongsetsListScreen
 import org.streamofworship.android.feature.songsets.SongsetsListViewModel
 
 @Composable
-fun SowNavGraph(modifier: Modifier = Modifier) {
-    val navController = rememberNavController()
+fun SowNavGraph(
+    modifier: Modifier = Modifier,
+    navController: NavHostController = rememberNavController(),
+) {
     NavHost(
         navController = navController,
         startDestination = SowRoute.Songsets.pattern,
         modifier = modifier,
     ) {
-        sowComposable(SowRoute.Login, "Sign in to continue.")
+        composable(SowRoute.Login.pattern) {
+            Text("Sign in to continue.")
+        }
         composable(SowRoute.Songsets.pattern) {
             val dependencies = rememberSongsetsDependencies()
             val viewModel = remember(dependencies.songsetsRepository) {
@@ -78,7 +78,11 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
                         songsRepository = dependencies.songsRepository,
                     )
                 }
-            SongsetDetailScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+            SongsetDetailScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onRender = { navController.navigate(SowRoute.Render.createRoute(songsetId)) },
+            )
         }
         composable(SowRoute.Render.pattern) { backStackEntry ->
             val songsetId = backStackEntry.arguments?.getString("songsetId").orEmpty()
@@ -95,12 +99,15 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
             RenderScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                onPlay = { setId, jobId -> navController.navigate(SowRoute.Player.createRoute(setId, jobId)) },
+                onPlay = { setId, jobId, artifact ->
+                    navController.navigate(SowRoute.Player.createRoute(setId, jobId, artifact.routeValue))
+                },
                 onDownload = { jobId -> navController.navigate(SowRoute.Share.createRoute(jobId)) },
             )
         }
         composable(SowRoute.Player.pattern) { backStackEntry ->
             val jobId = backStackEntry.arguments?.getString("jobId").orEmpty()
+            val artifact = backStackEntry.arguments?.getString("artifact").toPlaybackArtifact()
             val dependencies = rememberSongsetsDependencies()
             val context = LocalContext.current.applicationContext
             val mediaController = remember(jobId, context) { Media3PlayerController(context) }
@@ -111,6 +118,7 @@ fun SowNavGraph(modifier: Modifier = Modifier) {
                         repository = dependencies.playbackRepository,
                         controller = mediaController,
                         offlineCacheRepository = dependencies.offlineCacheRepository,
+                        defaultArtifact = artifact,
                     )
                 }
             PlayerScreen(viewModel = viewModel, media3Controller = mediaController, onBack = { navController.popBackStack() })
@@ -177,34 +185,15 @@ private fun rememberSongsetsDependencies(): SongsetsDependencies {
     }
 }
 
-private fun NavGraphBuilder.sowComposable(
-    route: SowRoute,
-    description: String,
-) {
-    composable(route.pattern) {
-        PlaceholderRoute(route = route, description = description)
-    }
-}
+private val PlaybackArtifact.routeValue: String
+    get() =
+        when (this) {
+            PlaybackArtifact.Video -> "video"
+            PlaybackArtifact.Audio -> "audio"
+        }
 
-@Composable
-private fun PlaceholderRoute(
-    route: SowRoute,
-    description: String,
-) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-    ) {
-        Text(
-            text = route.title,
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        Text(
-            text = description,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+private fun String?.toPlaybackArtifact(): PlaybackArtifact =
+    when (this?.lowercase()) {
+        "audio" -> PlaybackArtifact.Audio
+        else -> PlaybackArtifact.Video
     }
-}

@@ -220,6 +220,7 @@ private fun SongsetSummaryCard(
 fun SongsetDetailScreen(
     viewModel: SongsetDetailViewModel,
     onBack: () -> Unit,
+    onRender: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -263,7 +264,13 @@ fun SongsetDetailScreen(
             }
         }
         state.songset?.let { songset ->
-            item { SongsetHeader(songset = songset, onSaveDescription = viewModel::updateDescription) }
+            item {
+                SongsetHeader(
+                    songset = songset,
+                    onSaveDescription = viewModel::updateDescription,
+                    onRender = onRender,
+                )
+            }
             item {
                 if (state.isDurationOverLimit) {
                     Text(
@@ -299,6 +306,7 @@ fun SongsetDetailScreen(
 private fun SongsetHeader(
     songset: SongsetDetail,
     onSaveDescription: (String) -> Unit,
+    onRender: () -> Unit,
 ) {
     var description by remember(songset.id, songset.description) {
         mutableStateOf(songset.description.orEmpty())
@@ -318,8 +326,14 @@ private fun SongsetHeader(
                 label = { Text("Description") },
                 modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedButton(onClick = { onSaveDescription(description) }) {
-                Text("Save description")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { onSaveDescription(description) }, modifier = Modifier.weight(1f)) {
+                    Text("Save description")
+                }
+                Button(onClick = onRender, modifier = Modifier.weight(1f).testTag("songset-render-button")) {
+                    Icon(Icons.Outlined.Tune, contentDescription = null)
+                    Text("Render")
+                }
             }
         }
     }
