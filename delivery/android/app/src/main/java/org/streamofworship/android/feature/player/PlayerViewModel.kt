@@ -151,6 +151,10 @@ class PlayerViewModel(
             controller.play()
         }
         syncFromController()
+        // Pause the polling ticker while playback is idle/paused to avoid burning CPU and
+        // driving unnecessary recompositions while the screen sits on the back stack. The
+        // ticker relaunches on the next play.
+        if (controller.isPlaying) startTicker() else stopTicker()
     }
 
     fun seekTo(positionMillis: Long) {
@@ -209,11 +213,18 @@ class PlayerViewModel(
         ticker?.cancel()
         ticker =
             launchScope.launch {
-                while (true) {
+                // Only tick while the controller reports active playback so the loop self
+                // terminates when playback ends or pauses, instead of running forever.
+                while (controller.isPlaying) {
                     syncFromController()
                     delay(tickerMillis)
                 }
             }
+    }
+
+    private fun stopTicker() {
+        ticker?.cancel()
+        ticker = null
     }
 
     private fun syncFromController() {
@@ -230,7 +241,7 @@ class PlayerViewModel(
         maxOf(mutableState.value.durationMillis, controller.durationMillis, mutableState.value.manifest?.totalDurationMillis ?: 0L)
 
     override fun onCleared() {
-        ticker?.cancel()
+        stopTicker()
         controller.release()
         super.onCleared()
     }

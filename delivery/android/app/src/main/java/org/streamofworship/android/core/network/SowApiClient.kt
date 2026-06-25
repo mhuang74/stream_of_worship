@@ -28,6 +28,7 @@ object SowApiClientFactory {
     fun create(
         config: AppConfig,
         cookieStore: SessionCookieStore,
+        onUnauthorized: (() -> Unit)? = null,
     ): SowApiClient {
         val cookieJar = PersistentSessionCookieJar(cookieStore)
         val okHttpClient =
@@ -42,6 +43,9 @@ object SowApiClientFactory {
                     val response = chain.proceed(chain.request())
                     if (response.code == 401) {
                         cookieStore.clear()
+                        // Surface the session invalidation so the auth gate can transition
+                        // Authenticated -> Unauthenticated and return the user to sign-in.
+                        onUnauthorized?.invoke()
                     }
                     response
                 }.build()

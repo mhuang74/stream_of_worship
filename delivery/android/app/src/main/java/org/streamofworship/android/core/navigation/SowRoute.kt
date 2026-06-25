@@ -13,7 +13,7 @@ sealed class SowRoute(
     data object Songsets : SowRoute("songsets", "Songsets")
     data object SongsetDetail : SowRoute("songsets/{songsetId}", "Songset")
     data object Render : SowRoute("songsets/{songsetId}/render", "Render")
-    data object Player : SowRoute("songsets/{songsetId}/player/{jobId}/{artifact}", "Player")
+    data object Player : SowRoute("player/{jobId}/{artifact}", "Player")
     data object Share : SowRoute("share/{token}", "Share")
     data object Settings : SowRoute("settings", "Settings")
 
@@ -41,10 +41,9 @@ fun SowRoute.Render.createRoute(songsetId: String): String =
     "songsets/${songsetId.encodeRouteSegment()}/render"
 
 fun SowRoute.Player.createRoute(
-    songsetId: String,
     jobId: String,
     artifact: String = "video",
-): String = "songsets/${songsetId.encodeRouteSegment()}/player/${jobId.encodeRouteSegment()}/${artifact.encodeRouteSegment()}"
+): String = "player/${jobId.encodeRouteSegment()}/${artifact.encodeRouteSegment()}"
 
 fun SowRoute.Share.createRoute(token: String): String = "share/${token.encodeRouteSegment()}"
 

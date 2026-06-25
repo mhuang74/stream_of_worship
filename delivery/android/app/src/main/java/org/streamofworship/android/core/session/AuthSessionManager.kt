@@ -41,6 +41,13 @@ interface AuthController {
     )
 
     fun signOut()
+
+    /**
+     * Reflect a server-side session invalidation (e.g. a 401 on any protected request) back to
+     * the auth gate so protected screens return to the login screen instead of trapping the
+     * user on stale authenticated content. Does not perform a network sign-out call.
+     */
+    fun onSessionExpired()
 }
 
 class AuthSessionManager(
@@ -96,6 +103,15 @@ class AuthSessionManager(
         mutableAuthState.value = AuthState.Restoring
         scope.launch {
             runCatching { repository.signOut() }
+            mutableAuthState.value = AuthState.Unauthenticated
+        }
+    }
+
+    override fun onSessionExpired() {
+        // Avoid clobbering Restoring/Error states during the initial session lookup; only flip
+        // an already Authenticated session to Unauthenticated so protected screens drop back
+        // to the login gate.
+        if (mutableAuthState.value is AuthState.Authenticated) {
             mutableAuthState.value = AuthState.Unauthenticated
         }
     }

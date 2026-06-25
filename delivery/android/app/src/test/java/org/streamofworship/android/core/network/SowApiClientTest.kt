@@ -95,6 +95,36 @@ class SowApiClientTest {
         }
 
     @Test
+    fun `unauthorized response invokes onUnauthorized callback so the auth gate can react`() =
+        runTest {
+            var unauthorizedInvocations = 0
+            val localCookieStore = InMemorySessionCookieStore()
+            val client =
+                SowApiClientFactory.create(
+                    config =
+                        AppConfig(
+                            apiBaseUrl = server.url("/").toString(),
+                            buildVariant = BuildVariant.Debug,
+                        ),
+                    cookieStore = localCookieStore,
+                    onUnauthorized = { unauthorizedInvocations += 1 },
+                )
+            server.enqueue(jsonResponse("""{"user":{"id":"42","email":"user@example.com"}}""").addHeader("Set-Cookie", "better-auth.session_token=abc123; Path=/; HttpOnly"))
+            server.enqueue(jsonResponse("""{"message":"Unauthorized"}""", code = 401))
+
+            val localRepository =
+                AuthRepository(
+                    api = client.create<AuthApi>(),
+                    cookieStore = localCookieStore,
+                )
+            localRepository.signIn(email = "user@example.com", password = "password123")
+            localRepository.restoreSession()
+
+            assertEquals(1, unauthorizedInvocations)
+            assertTrue(localCookieStore.load().isEmpty())
+        }
+
+    @Test
     fun `maps http error payloads into typed api errors`() =
         runTest {
             server.enqueue(jsonResponse("""{"message":"Invalid email or password","code":"BAD"}""", 400))

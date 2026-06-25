@@ -58,7 +58,7 @@ import org.streamofworship.android.feature.player.PlaybackArtifact
 fun RenderScreen(
     viewModel: RenderViewModel,
     onBack: () -> Unit,
-    onPlay: (String, String, PlaybackArtifact) -> Unit,
+    onPlay: (String, PlaybackArtifact) -> Unit,
     onDownload: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -113,9 +113,15 @@ fun RenderScreen(
             config = state.config,
             isSubmitting = state.isSubmitting,
             hasPreviousRender = state.requiresPreviousRenderConfirmation,
+            canReviewPrevious = state.currentJob?.hasPlayableArtifacts == true,
             onConfigChange = viewModel::updateConfig,
             onSubmit = viewModel::requestRender,
             onConfirmPrevious = viewModel::confirmPreviousRenderAndStart,
+            onReviewPrevious = {
+                state.currentJob?.let { job ->
+                    onPlay(job.id, job.preferredPlaybackArtifact())
+                }
+            },
         )
 
         state.currentJob?.let { job ->
@@ -126,7 +132,7 @@ fun RenderScreen(
                 isPolling = state.isPolling,
                 retryCount = state.retryCount,
                 onCancel = viewModel::cancelRender,
-                onPlay = { onPlay(job.songsetId, job.id, job.preferredPlaybackArtifact()) },
+                onPlay = { onPlay(job.id, job.preferredPlaybackArtifact()) },
                 onDownload = { onDownload(job.id) },
             )
         }
@@ -141,9 +147,11 @@ fun RenderForm(
     config: RenderFormConfig,
     isSubmitting: Boolean,
     hasPreviousRender: Boolean,
+    canReviewPrevious: Boolean,
     onConfigChange: (RenderFormConfig) -> Unit,
     onSubmit: () -> Unit,
     onConfirmPrevious: () -> Unit,
+    onReviewPrevious: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("render-form")) {
         RenderSection("Output Options") {
@@ -235,7 +243,11 @@ fun RenderForm(
             RenderSection("Previous Render") {
                 Text("A previous render exists for this songset.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = onSubmit, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = onReviewPrevious,
+                        enabled = canReviewPrevious,
+                        modifier = Modifier.weight(1f).testTag("render-review-previous-button"),
+                    ) {
                         Text("Review")
                     }
                     Button(onClick = onConfirmPrevious, enabled = !isSubmitting, modifier = Modifier.weight(1f)) {

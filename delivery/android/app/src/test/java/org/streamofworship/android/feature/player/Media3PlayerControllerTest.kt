@@ -1,10 +1,17 @@
 package org.streamofworship.android.feature.player
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class Media3PlayerControllerTest {
     @Test
     fun `forwards media setup and playback commands`() {
@@ -25,6 +32,8 @@ class Media3PlayerControllerTest {
         assertTrue(player.releaseCalled)
         assertEquals(60_000L, controller.durationMillis)
         assertEquals(0L, controller.positionMillis)
+        // Fake facade backs the controller, so no media session is created.
+        assertNull(controller.sessionToken)
     }
 
     @Test
@@ -42,6 +51,18 @@ class Media3PlayerControllerTest {
         assertEquals(2, handle.acquireCount)
         assertEquals(2, handle.releaseCount)
         assertFalse(handle.isHeld)
+    }
+
+    @Test
+    fun `real exo player controller exposes media session token and releases it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val controller = Media3PlayerController(context)
+
+        try {
+            assertNotNull("media session token should be created", controller.sessionToken)
+        } finally {
+            controller.release()
+        }
     }
 }
 

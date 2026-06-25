@@ -1,6 +1,7 @@
 package org.streamofworship.android.core.session
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -16,6 +17,7 @@ import org.streamofworship.android.core.network.EmailPasswordRequest
 import org.streamofworship.android.core.network.RegisterRequest
 import retrofit2.Response
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AuthSessionManagerTest {
     @Test
     fun `restore session publishes authenticated state`() =
@@ -127,6 +129,52 @@ class AuthSessionManagerTest {
 
             assertTrue(manager.authState.value is AuthState.Unauthenticated)
             assertTrue(cookieStore.load().isEmpty())
+        }
+
+    @Test
+    fun `on session expired drops an authenticated state back to unauthenticated`() =
+        runTest {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val manager =
+                AuthSessionManager(
+                    repository =
+                        AuthRepository(
+                            api = FakeAuthApi(sessionBody = successSessionBody()),
+                            cookieStore = InMemorySessionCookieStore(),
+                        ),
+                    scope = CoroutineScope(dispatcher),
+                )
+
+            manager.restoreSession()
+            advanceUntilIdle()
+            assertTrue(manager.authState.value is AuthState.Authenticated)
+
+            manager.onSessionExpired()
+
+            assertTrue(manager.authState.value is AuthState.Unauthenticated)
+        }
+
+    @Test
+    fun `on session expired does not clobber restoring or error states`() =
+        runTest {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val manager =
+                AuthSessionManager(
+                    repository =
+                        AuthRepository(
+                            api = FakeAuthApi(signInResponse = Response.error(400, errorBody())),
+                            cookieStore = InMemorySessionCookieStore(),
+                        ),
+                    scope = CoroutineScope(dispatcher),
+                )
+
+            manager.signIn(email = "user@example.com", password = "wrongpass")
+            advanceUntilIdle()
+            assertTrue(manager.authState.value is AuthState.Error)
+
+            manager.onSessionExpired()
+
+            assertTrue("error state should be preserved", manager.authState.value is AuthState.Error)
         }
 
     private class FakeAuthApi(

@@ -384,14 +384,23 @@ private fun SongsetItemCard(
             OutlinedTextField(
                 value = settings.gapBeats?.toString().orEmpty(),
                 onValueChange = { value ->
+                    // Update only local editing state on each keystroke so a server PATCH is
+                    // not fired per character; persistence happens when the user taps Save.
                     val next = settings.copy(gapBeats = value.toDoubleOrNull() ?: 0.0)
                     settings = next
-                    onTransitionChange(next)
                 },
                 label = { Text("Gap beats") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("songset-item-gap-beats-${item.id}"),
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = { onTransitionChange(settings) },
+                    modifier = Modifier.weight(1f).testTag("songset-item-save-transition-${item.id}"),
+                ) {
+                    Text("Save transition")
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Crossfade", modifier = Modifier.weight(1f))
                 Switch(
