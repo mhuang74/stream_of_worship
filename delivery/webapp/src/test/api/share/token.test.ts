@@ -39,6 +39,12 @@ vi.mock("@/lib/r2/client", () => ({
   createR2ClientFromEnv: (...args: unknown[]) => mockCreateR2Client(...args),
 }));
 
+vi.mock("@/lib/rate-limit", () => ({
+  getClientIp: () => "203.0.113.10",
+  hashIp: async () => "test-ip-hash",
+  enforceRateLimit: async () => true,
+}));
+
 function makeRequest(url: string, method = "GET"): NextRequest {
   const req = new Request(url, { method }) as unknown as NextRequest;
   return req;

@@ -247,4 +247,141 @@ describe("usePresentationSender", () => {
     });
     expect(conn.send).not.toHaveBeenCalled();
   });
+
+  it("disconnect (terminate event) fires onDisconnected and clears isConnected", async () => {
+    const conn = setPresentationRequest();
+    const onDisconnected = vi.fn();
+    const { result } = renderHook(() =>
+      usePresentationSender({
+        presentationUrl: "/songsets/1/play/projection",
+        onDisconnected,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    const terminateHandlers = conn.listeners.get("terminate");
+    expect(terminateHandlers?.size).toBeGreaterThan(0);
+    act(() => {
+      for (const h of terminateHandlers!) h({});
+    });
+
+    expect(result.current.isConnected).toBe(false);
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+
+    // After termination, send() is a no-op.
+    act(() => {
+      result.current.send({ type: "play" });
+    });
+    expect(conn.send).not.toHaveBeenCalled();
+  });
+
+  it("start() called twice closes the prior connection before opening a new one", async () => {
+    const firstConn = createMockConnection("/projection");
+    const secondConn = createMockConnection("/projection");
+    let calls = 0;
+    class FakePresentationRequest {
+      urls: string[];
+      constructor(urls: string | string[]) {
+        this.urls = Array.isArray(urls) ? urls : [urls];
+      }
+      start() {
+        calls += 1;
+        return Promise.resolve(calls === 1 ? firstConn : secondConn);
+      }
+    }
+    (window as unknown as { PresentationRequest: typeof PresentationRequest }).PresentationRequest =
+      FakePresentationRequest as unknown as typeof PresentationRequest;
+
+    const { result } = renderHook(() =>
+      usePresentationSender({ presentationUrl: "/songsets/1/play/projection" }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      await result.current.start();
+    });
+
+    // The first connection must have been closed when the second start() opened
+    // a new one (no leaked listeners / orphaned connection).
+    expect(firstConn.close).toHaveBeenCalledTimes(1);
+    expect(result.current.isConnected).toBe(true);
+  });
+
+  it("unmount closes the current connection", async () => {
+    const conn = setPresentationRequest();
+    const { result, unmount } = renderHook(() =>
+      usePresentationSender({ presentationUrl: "/songsets/1/play/projection" }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    unmount();
+
+    expect(conn.close).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Receiver → sender status channel (onStatus) ─────────────────────────
+
+  it("attaches a message listener and dispatches validated statuses to onStatus", async () => {
+    const conn = setPresentationRequest();
+    const onStatus = vi.fn();
+    const { result } = renderHook(() =>
+      usePresentationSender({
+        presentationUrl: "/songsets/1/play/projection",
+        onStatus,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(conn.addEventListener).toHaveBeenCalledWith("message", expect.any(Function));
+
+    const messageHandlers = conn.listeners.get("message");
+    expect(messageHandlers?.size).toBeGreaterThan(0);
+
+    act(() => {
+      for (const h of messageHandlers!) {
+        h({ data: JSON.stringify({ type: "ready" }) });
+        h({ data: JSON.stringify({ type: "error", message: "boom" }) });
+      }
+    });
+
+    expect(onStatus).toHaveBeenCalledWith({ type: "ready" });
+    expect(onStatus).toHaveBeenCalledWith({ type: "error", message: "boom" });
+  });
+
+  it("ignores malformed / unknown status payloads on the message channel", async () => {
+    const conn = setPresentationRequest();
+    const onStatus = vi.fn();
+    const { result } = renderHook(() =>
+      usePresentationSender({
+        presentationUrl: "/songsets/1/play/projection",
+        onStatus,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    const messageHandlers = conn.listeners.get("message");
+    act(() => {
+      for (const h of messageHandlers!) {
+        h({ data: "not-json" });
+        h({ data: JSON.stringify({ type: "bogus" }) });
+        h({ data: JSON.stringify({ type: "error", message: 123 }) });
+      }
+    });
+
+    expect(onStatus).not.toHaveBeenCalled();
+  });
 });

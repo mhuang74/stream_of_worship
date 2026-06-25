@@ -28,11 +28,23 @@ let nextRequestId = 0;
 
 /**
  * In-flight resolver table keyed by request id. Each entry is the tuple
- * `(resolve, reject)` to call when the global callback fires. Cancelled
- * entries are removed before the callback runs, so the lookup naturally skips
- * them (they resolve silently via the abort handler).
+ * `(resolve, reject, signal?, abortHandler?)` to call when the global callback
+ * fires. The abort handler reference is retained so the dispatcher can
+ * `removeEventListener` it on the success path (otherwise the `{ once: true }`
+ * listener would stay attached to the AbortSignal for its lifetime, leaking
+ * the closure over `id`/`resolve`/`pending`). Cancelled entries are removed
+ * before the callback runs, so the lookup naturally skips them (they resolve
+ * silently via the abort handler).
  */
-const pending = new Map<number, { resolve: () => void; reject: (e: Error) => void }>();
+const pending = new Map<
+  number,
+  {
+    resolve: () => void;
+    reject: (e: Error) => void;
+    signal?: AbortSignal;
+    abortHandler?: () => void;
+  }
+>();
 
 /**
  * True once the script tag has been appended to the DOM. Multiple callers
@@ -66,15 +78,25 @@ function bindGlobalCallback(): void {
     settled = loaded ? { loaded: true } : { loaded: false };
     const snapshot = Array.from(pending.entries());
     pending.clear();
-    for (const [id, { resolve, reject }] of snapshot) {
+    for (const [id, entry] of snapshot) {
       if (cancelled.has(id)) {
         // Already aborted: resolve silently, never reject, never schedule UI.
         cancelled.delete(id);
-        resolve();
+        entry.resolve();
+        // The abort handler already removed itself via { once: true }.
         continue;
       }
-      if (loaded) resolve();
-      else reject(new Error("Google Cast SDK failed to load"));
+      if (loaded) entry.resolve();
+      else entry.reject(new Error("Google Cast SDK failed to load"));
+      // Drop the abort listener now that this entry has settled — the
+      // `{ once: true }` flag only auto-removes on abort, not on success.
+      if (entry.signal && entry.abortHandler) {
+        try {
+          entry.signal.removeEventListener("abort", entry.abortHandler);
+        } catch {
+          /* best-effort */
+        }
+      }
     }
   };
 }
@@ -109,24 +131,32 @@ export function loadCastSdk(opts?: { signal?: AbortSignal }): Promise<void> {
   }
 
   const promise = new Promise<void>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-
+    let abortHandler: (() => void) | undefined;
     if (opts?.signal) {
-      opts.signal.addEventListener(
-        "abort",
-        () => {
-          // If the global callback already ran, nothing to do. Otherwise mark
-          // this request cancelled so the dispatcher skips it, and resolve
-          // silently now (the caller must not schedule state updates).
-          if (pending.has(id)) {
-            cancelled.add(id);
-            pending.delete(id);
-            resolve();
-          }
-        },
-        { once: true },
-      );
+      abortHandler = () => {
+        // If the global callback already ran, nothing to do. Otherwise mark
+        // this request cancelled so the dispatcher skips it, and resolve
+        // silently now (the caller must not schedule state updates).
+        if (pending.has(id)) {
+          cancelled.add(id);
+          pending.delete(id);
+          resolve();
+          // The `cancelled` entry is only consulted by the global callback
+          // dispatcher to skip a late-arriving settle for this request. If the
+          // SDK never fires that callback (script blocked / network down), the
+          // entry would otherwise linger for the lifetime of the SPA session
+          // — bounded but unbounded within a single long-lived session. Sweep
+          // it after a window longer than any plausible SDK load so the Set
+          // cannot grow monotonically across repeated mount/unmount cycles.
+          const cancelledId = id;
+          setTimeout(() => {
+            cancelled.delete(cancelledId);
+          }, 60_000);
+        }
+      };
+      opts.signal.addEventListener("abort", abortHandler, { once: true });
     }
+    pending.set(id, { resolve, reject, signal: opts?.signal, abortHandler });
   });
 
   // Install the global callback and inject the script exactly once. Doing it

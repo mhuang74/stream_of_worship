@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { loadCastSdk, isCastSdkSupported } from "@/lib/cast/loader";
 
 // The loader uses module-level singletons (injected flag, settled state,
 // pending/cancelled sets, nextRequestId counter). To get a clean slate
@@ -126,5 +125,54 @@ describe("loadCastSdk", () => {
     await expect(loadCastSdk()).resolves.toBeUndefined();
     const after = document.head.querySelectorAll("script").length;
     expect(after).toBe(before);
+  });
+
+  it("short-circuits to rejected when a previous load failed and a later caller arrives", async () => {
+    const { loadCastSdk } = await freshLoader();
+    const first = loadCastSdk();
+    window.__onGCastApiAvailable?.(false);
+    await expect(first).rejects.toThrowError(/Cast SDK failed to load/);
+    // No new script tag may be injected by the later caller.
+    const before = document.head.querySelectorAll("script").length;
+    await expect(loadCastSdk()).rejects.toThrowError(/Cast SDK failed to load/);
+    const after = document.head.querySelectorAll("script").length;
+    expect(after).toBe(before);
+  });
+
+  it("removes the abort listener on the success path (no dangling listener on the signal)", async () => {
+    const { loadCastSdk } = await freshLoader();
+    const controller = new AbortController();
+    const removeSpy = vi.spyOn(controller.signal, "removeEventListener");
+    const p = loadCastSdk({ signal: controller.signal });
+    window.__onGCastApiAvailable?.(true);
+    await p;
+    // The success path must explicitly drop the abort handler so it does not
+    // leak for the lifetime of the AbortSignal.
+    expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("sweeps the cancelled entry after a timeout so the Set cannot grow unboundedly when the SDK never loads", async () => {
+    // Repeated mount/unmount cycles where the SDK never fires its global
+    // callback must not accumulate cancelled entries forever. Each aborted
+    // entry is swept after a window longer than any plausible SDK load.
+    const { loadCastSdk } = await freshLoader();
+    vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+    const controllers: AbortController[] = [];
+    for (let i = 0; i < 5; i++) {
+      const c = new AbortController();
+      controllers.push(c);
+      void loadCastSdk({ signal: c.signal });
+      c.abort();
+    }
+    // Immediately after abort, each entry sits in the cancelled Set awaiting a
+    // late global callback. Advance past the sweep window.
+    await vi.advanceTimersByTimeAsync(61_000);
+    // The global callback was never fired; the cancelled Set must have been
+    // pruned by the sweep, not retained for the session lifetime. Firing (false)
+    // now must not find any pending/cancelled caller to reject (no unhandled
+    // rejection), and the promises for the aborted callers already resolved.
+    vi.useRealTimers();
+    window.__onGCastApiAvailable?.(false);
+    await new Promise((r) => setTimeout(r, 0));
   });
 });

@@ -70,6 +70,32 @@ export function validatePresentationCommand(raw: unknown): PresentationCommand |
   }
 }
 
+/**
+ * Validate a raw (parsed) value into a `PresentationStatus` — the
+ * receiver→sender status channel (ready / disconnected / error). Unknown types
+ * and malformed payloads return null (forward-compatible no-op) so a peer
+ * emitting an off-spec status never throws on the sender side.
+ */
+export function validatePresentationStatus(raw: unknown): PresentationStatus | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const obj = raw as Record<string, unknown>;
+  const type = obj.type;
+  if (typeof type !== "string") return null;
+  switch (type) {
+    case "ready":
+      return { type: "ready" };
+    case "disconnected":
+      return { type: "disconnected" };
+    case "error": {
+      const message = obj.message;
+      if (typeof message !== "string") return null;
+      return { type: "error", message };
+    }
+    default:
+      return null;
+  }
+}
+
 export interface UsePresentationReceiverOptions {
   onPlay?: () => void;
   onPause?: () => void;
@@ -147,14 +173,30 @@ export function usePresentationReceiver(
       }
     };
 
-    const handleTerminate = () => {
-      optionsRef.current.onDisconnected?.();
-    };
+    // Per-connection terminate handlers so the closed connection is spliced
+    // out of the active list (sendStatus must never target a dead connection).
+    const terminateHandlers = new Map<PresentationConnection, () => void>();
 
     const connectToConnection = (connection: PresentationConnection) => {
+      const onTerminate = () => {
+        const conns = connectionsRef.current;
+        const idx = conns.indexOf(connection);
+        if (idx >= 0) {
+          conns.splice(idx, 1);
+        }
+        terminateHandlers.delete(connection);
+        try {
+          connection.removeEventListener("close", onTerminate);
+          connection.removeEventListener("terminate", onTerminate);
+        } catch {
+          /* best-effort */
+        }
+        optionsRef.current.onDisconnected?.();
+      };
+      terminateHandlers.set(connection, onTerminate);
       connection.addEventListener("message", handleMessage);
-      connection.addEventListener("close", handleTerminate);
-      connection.addEventListener("terminate", handleTerminate);
+      connection.addEventListener("close", onTerminate);
+      connection.addEventListener("terminate", onTerminate);
       connectionsRef.current.push(connection);
       optionsRef.current.onConnected?.();
     };
@@ -179,13 +221,17 @@ export function usePresentationReceiver(
       const conns = connectionsRef.current;
       for (const conn of conns) {
         try {
+          const handler = terminateHandlers.get(conn);
           conn.removeEventListener("message", handleMessage);
-          conn.removeEventListener("close", handleTerminate);
-          conn.removeEventListener("terminate", handleTerminate);
+          if (handler) {
+            conn.removeEventListener("close", handler);
+            conn.removeEventListener("terminate", handler);
+          }
         } catch {
           /* best-effort cleanup */
         }
       }
+      terminateHandlers.clear();
       connectionsRef.current = [];
     };
   }, []);
@@ -198,6 +244,14 @@ export interface UsePresentationSenderOptions {
   onConnected?: () => void;
   onDisconnected?: () => void;
   onStartError?: (message: string) => void;
+  /**
+   * Receiver→sender status channel. The receiver pushes
+   * `PresentationStatus` JSON (`ready` / `disconnected` / `error`) over the
+   * same `PresentationConnection`; the sender parses, validates, and dispatches
+   * to this callback. Used to surface "TV projection failed — check
+   * connection" on `error` and to know the projection page loaded on `ready`.
+   */
+  onStatus?: (status: PresentationStatus) => void;
 }
 
 export interface UsePresentationSenderResult {
@@ -214,6 +268,9 @@ export interface UsePresentationSenderResult {
  *
  * Only used when `useCastTransport.isSupported === false` or in explicit
  * browser-to-browser dev mode — the Cast SDK is the production transport.
+ *
+ * Bidirectional: the receiver pushes `PresentationStatus` JSON back over the
+ * same connection, parsed + validated here and dispatched to `onStatus`.
  */
 export function usePresentationSender(
   options: UsePresentationSenderOptions,
@@ -236,6 +293,17 @@ export function usePresentationSender(
       optionsRef.current.onStartError?.("Presentation API not supported");
       return;
     }
+    // Close any prior connection before opening a new one so its listeners
+    // and the connection itself are not leaked across repeated start() calls.
+    const prior = connectionRef.current;
+    if (prior) {
+      connectionRef.current = null;
+      try {
+        prior.close();
+      } catch {
+        /* best-effort */
+      }
+    }
     try {
       const request = new PresentationRequest([presentationUrl]);
       const connection = await request.start();
@@ -248,8 +316,23 @@ export function usePresentationSender(
         setIsConnected(false);
         optionsRef.current.onDisconnected?.();
       };
+      // Receiver→sender status channel: parse + validate inbound JSON and
+      // dispatch to onStatus. Malformed / unknown payloads are dropped silently
+      // (forward-compatible).
+      const handleMessage = (event: Event) => {
+        try {
+          const data = (event as MessageEvent).data as string;
+          const raw = JSON.parse(data);
+          const status = validatePresentationStatus(raw);
+          if (!status) return;
+          optionsRef.current.onStatus?.(status);
+        } catch {
+          // Ignore malformed JSON / non-message events.
+        }
+      };
       connection.addEventListener("close", handleClose);
       connection.addEventListener("terminate", handleClose);
+      connection.addEventListener("message", handleMessage);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Presentation start failed";
       optionsRef.current.onStartError?.(msg);

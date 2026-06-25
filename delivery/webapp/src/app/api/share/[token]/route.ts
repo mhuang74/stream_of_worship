@@ -9,20 +9,51 @@ import {
   createR2ClientFromEnv,
 } from "@/lib/r2/client";
 import { getSongsetPublicView } from "@/lib/db/songsets";
+import { getClientIp, hashIp, enforceRateLimit } from "@/lib/rate-limit";
 
 const NO_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
   Pragma: "no-cache",
 };
 
+// Per-token + per-IP rate limits on the public (no-auth) GET endpoint so
+// anonymous callers cannot harvest fresh 4-hour MP4 URLs / songset metadata
+// without bound (R2 egress cost + metadata scraping amplifiers).
+const SHARE_RATE_LIMIT_RPM = 60;
+
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
-    // TODO: Add rate limiting by token and client IP for public share endpoint
-
     const { token } = await params;
+
+    // Rate limit (per-token + per-IP). Upstash is used when configured;
+    // otherwise the in-memory token-bucket fallback applies so a missing env
+    // var never silently unlocks unbounded anonymous writes.
+    const ipHash = await hashIp(getClientIp(request));
+    const tokenAllowed = await enforceRateLimit(
+      `share:${token}`,
+      "sow:share-token",
+      SHARE_RATE_LIMIT_RPM,
+    );
+    if (!tokenAllowed) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded" },
+        { status: 429, headers: NO_CACHE_HEADERS },
+      );
+    }
+    const ipAllowed = await enforceRateLimit(
+      `ip:${ipHash}`,
+      "sow:share-ip",
+      SHARE_RATE_LIMIT_RPM,
+    );
+    if (!ipAllowed) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded" },
+        { status: 429, headers: NO_CACHE_HEADERS },
+      );
+    }
 
     const share = await db.query.songsetShares.findFirst({
       where: eq(songsetShares.token, token),
@@ -113,8 +144,14 @@ export async function GET(
         chaptersUrl = chaptersResult?.url ?? null;
         mp3SizeBytes = mp3Size;
         mp4SizeBytes = mp4Size;
-      } catch {
-        // R2 not configured or error — degrade gracefully
+      } catch (e) {
+        // R2 not configured or error. Surface the root cause so an operator
+        // can distinguish "no render job" (content-side) from "R2 unreachable
+        // for the render job" (transient outage / misconfigured creds / wrong
+        // bucket) — otherwise the controller UI surfaces the misleading
+        // "No video available for this share" error and the Go/No-Go checklist
+        // cannot diagnose an R2 reachability failure at runtime.
+        console.error("share/[token]: R2 mint failure", { token, error: e });
       }
     }
 

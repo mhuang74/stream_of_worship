@@ -84,9 +84,10 @@ export default function ControllerPage() {
 
         // Get signed URL for video. The logged-in phone mints the presigned
         // R2 URL with its own session and hands it to the TV receiver (the TV
-        // only hits R2, never the webapp).
+        // only hits R2, never the webapp). `cast=true` mints the 4-hour
+        // Cast-playback expiry so the URL survives a full service + setup.
         const signedUrlResponse = await fetch(
-          `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video`
+          `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video&cast=true`
         );
         if (!signedUrlResponse.ok) {
           throw new Error("Failed to get video URL");
@@ -161,6 +162,11 @@ export default function ControllerPage() {
     onConnected: () => toast.success("Connected to projection screen"),
     onDisconnected: () => toast.info("Disconnected from projection screen"),
     onStartError: (m) => toast.error(m),
+    onStatus: (status) => {
+      if (status.type === "error") {
+        toast.error("TV projection failed — check connection");
+      }
+    },
   });
 
   // Toasts only from transport lifecycle: cast connection transitions are
@@ -236,7 +242,12 @@ export default function ControllerPage() {
       chapters={chapters}
       isPresentationActive={isPresentationActive}
       transport={cast}
+      presentationFallback={{
+        isSupported: sender.isSupported,
+        isConnected: sender.isConnected,
+      }}
       isCastSupported={cast.isSupported}
+      castAvailability={cast.availability}
       isCastConnecting={cast.isConnecting}
       onSendToTV={handleSendToTV}
       onSendTransportCommand={handleSendTransportCommand}

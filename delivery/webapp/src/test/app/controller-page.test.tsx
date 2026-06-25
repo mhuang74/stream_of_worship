@@ -38,13 +38,12 @@ import ShareControllerPage from "@/app/share/[token]/play/controller/page";
 function makeTransport(overrides: Partial<CastTransportResult> = {}): CastTransportResult {
   return {
     isSupported: true,
-    isAvailable: true,
+    availability: "available" as const,
     isConnecting: false,
     isConnected: false,
     deviceName: "",
     playerState: "",
     currentTime: 0,
-    lastStatusAtMs: null,
     duration: 0,
     volume: 1,
     isMuted: false,
@@ -97,6 +96,7 @@ interface CapturedControllerProps {
   chapters: unknown[];
   isPresentationActive: boolean;
   transport?: CastTransportResult;
+  presentationFallback?: { isSupported: boolean; isConnected?: boolean };
   isCastSupported?: boolean;
   isCastConnecting?: boolean;
   onSendToTV?: () => void;
@@ -121,6 +121,9 @@ vi.mock("@/components/play/ControllerPlayer", () => ({
         </div>
         <div data-testid="cast-connecting">
           {props.isCastConnecting ? "true" : "false"}
+        </div>
+        <div data-testid="presentation-fallback-supported">
+          {props.presentationFallback?.isSupported ? "true" : "false"}
         </div>
         <button
           data-testid="send-to-tv"
@@ -298,6 +301,34 @@ describe("ControllerPage (songset)", () => {
           "https://r2.example.com/videos/test.mp4"
         );
       });
+    });
+
+    it("mints the signed MP4 URL with cast=true (4-hour Cast expiry)", async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (typeof url === "string" && url.includes("/api/songsets/")) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(SONGSET_RESPONSE) });
+        }
+        if (typeof url === "string" && url.includes("/api/render-jobs/")) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(RENDER_JOB_RESPONSE) });
+        }
+        if (typeof url === "string" && url.startsWith("/api/signed-url")) {
+          // Capture the URL so we can assert the cast flag is present.
+          (fetchMock as unknown as { lastSignedUrl: string }).lastSignedUrl = url;
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(SIGNED_URL_RESPONSE) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      const captured = (fetchMock as unknown as { lastSignedUrl: string }).lastSignedUrl;
+      expect(captured).toContain("fileType=video");
+      expect(captured).toContain("cast=true");
     });
 
     it("loads chapters when chaptersR2Key present", async () => {
@@ -554,6 +585,44 @@ describe("ControllerPage (songset)", () => {
       expect(lastControllerProps?.transport).toBe(transport);
       expect(lastControllerProps?.isCastSupported).toBe(true);
       expect(lastControllerProps?.isCastConnecting).toBe(true);
+    });
+
+    it("passes presentationFallback (sender.isSupported/isConnected) to ControllerPlayer", async () => {
+      songsetSuccessFetches();
+      castTransportMock.mockImplementation(() => makeTransport({ isSupported: false }));
+      presentationSenderMock.mockImplementation(() =>
+        makeSender({ isSupported: true, isConnected: true }),
+      );
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(lastControllerProps?.presentationFallback).toEqual({
+        isSupported: true,
+        isConnected: true,
+      });
+    });
+
+    it("surfaces a toast on sender onStatus {type:'error'} (TV projection failed)", async () => {
+      songsetSuccessFetches();
+      castTransportMock.mockImplementation(() => makeTransport({ isSupported: false }));
+      presentationSenderMock.mockImplementation(() => makeSender({ isSupported: true }));
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      const senderOpts = presentationSenderMock.mock.calls[0][0] as {
+        onStatus: (status: { type: string; message?: string }) => void;
+      };
+      senderOpts.onStatus({ type: "error", message: "TV projection failed — check connection" });
+
+      expect(toastError).toHaveBeenCalledWith("TV projection failed — check connection");
     });
   });
 });

@@ -11,11 +11,21 @@ function setupCastSdkMock(opts?: {
 }) {
   const ctx = {
     setOptions: vi.fn(),
-    requestSession: vi.fn(() =>
-      opts?.requestSession === "reject"
-        ? Promise.reject(new Error("cancelled"))
-        : Promise.resolve(),
-    ),
+    requestSession: vi.fn(() => {
+      if (opts?.requestSession === "reject") {
+        // Cast SDK cancel: error object with `code: "cancel"`. Real SDK errors
+        // carry a `code` string ("cancel" | "receiver_unavailable" | "timeout"
+        // | "session_request_failed" | …) and an optional `description`.
+        return Promise.reject({ code: "cancel", description: "User cancelled" });
+      }
+      if (opts?.requestSession === "receiver_unavailable") {
+        return Promise.reject({
+          code: "receiver_unavailable",
+          description: "No Cast devices found",
+        });
+      }
+      return Promise.resolve();
+    }),
     endCurrentSession: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -216,16 +226,20 @@ describe("useCastTransport", () => {
   });
 
   describe("support detection", () => {
-    it("returns isSupported=false when env app id is missing and start() is a no-op", async () => {
+    it("falls back to the Default Media Receiver constant when env app id is unset", async () => {
       vi.stubEnv("NEXT_PUBLIC_CAST_RECEIVER_APP_ID", "");
-      setupCastSdkMock();
+      const mock = setupCastSdkMock();
       const mod = await freshModule();
       const { result } = renderHook(() => mod.useCastTransport({ media: MEDIA }));
-      expect(result.current.isSupported).toBe(false);
       await act(async () => {
-        await result.current.start();
+        window.__onGCastApiAvailable?.(true);
       });
-      expect(result.current.isSupported).toBe(false);
+      await waitFor(() => expect(result.current.isSupported).toBe(true));
+      // setOptions called with the Default Media Receiver constant, not empty.
+      expect(mock.ctx.setOptions).toHaveBeenCalledTimes(1);
+      const opts = mock.ctx.setOptions.mock.calls[0][0];
+      expect(opts.receiverApplicationId).toBe("DEFAULT");
+      vi.unstubAllEnvs();
     });
 
     it("returns isSupported=false when SDK is unavailable (globals not present)", async () => {
@@ -238,6 +252,8 @@ describe("useCastTransport", () => {
         await Promise.resolve();
       });
       expect(result.current.isSupported).toBe(false);
+      // Availability flips to "unavailable" so the diagnostic sheet can surface.
+      await waitFor(() => expect(result.current.availability).toBe("unavailable"));
     });
   });
 
@@ -257,6 +273,53 @@ describe("useCastTransport", () => {
       r1.unmount();
       r2.unmount();
     });
+
+    it("re-runs setOptions when the receiver app id changes across mounts (per-app-id singleton)", async () => {
+      // First mount with env app id "test-app-id".
+      vi.stubEnv("NEXT_PUBLIC_CAST_RECEIVER_APP_ID", "test-app-id");
+      const mock = setupCastSdkMock();
+      const mod = await freshModule();
+      const r1 = renderHook(() => mod.useCastTransport({ media: MEDIA }));
+      await act(async () => {
+        window.__onGCastApiAvailable?.(true);
+      });
+      await waitFor(() => expect(r1.result.current.isSupported).toBe(true));
+      expect(mock.ctx.setOptions).toHaveBeenCalledTimes(1);
+      expect(mock.ctx.setOptions.mock.calls[0][0].receiverApplicationId).toBe("test-app-id");
+      r1.unmount();
+      // Second mount in the same module session with a different env app id —
+      // setOptions must run again rather than silently inheriting the first
+      // mount's options (handles per-route dev/staging receiver scenarios).
+      vi.stubEnv("NEXT_PUBLIC_CAST_RECEIVER_APP_ID", "staging-app-id");
+      const r2 = renderHook(() => mod.useCastTransport({ media: MEDIA }));
+      await act(async () => {
+        window.__onGCastApiAvailable?.(true);
+      });
+      await waitFor(() => expect(r2.result.current.isSupported).toBe(true));
+      expect(mock.ctx.setOptions).toHaveBeenCalledTimes(2);
+      expect(mock.ctx.setOptions.mock.calls[1][0].receiverApplicationId).toBe("staging-app-id");
+      r2.unmount();
+    });
+  });
+
+  describe("SDK load failure → availability", () => {
+    it("sets availability='unavailable' when loadCastSdk rejects (CDN block / network blip)", async () => {
+      resetWindow();
+      // Inject a script tag whose global callback fires (false) — simulates
+      // the SDK script failing to initialize (script blocked, network 5xx).
+      const mod = await freshModule();
+      const { result } = renderHook(() => mod.useCastTransport({ media: MEDIA }));
+      await act(async () => {
+        window.__onGCastApiAvailable?.(false);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.isSupported).toBe(false);
+      // SDK failure must surface as "unavailable" (not "unknown") so the
+      // diagnostic sheet + Presentation/iPhone fallbacks can render instead of
+      // stranding the user with a blank transport surface.
+      await waitFor(() => expect(result.current.availability).toBe("unavailable"));
+    });
   });
 
   describe("start() session lifecycle", () => {
@@ -274,17 +337,51 @@ describe("useCastTransport", () => {
       expect(session.loadMedia).toHaveBeenCalledTimes(1);
     });
 
-    it("requestSession cancel → isConnecting=false, no session leak", async () => {
+    it("requestSession cancel → isConnecting=false, no session leak, no telemetry POST", async () => {
       const { result, ctx } = await mountHook(
         { media: MEDIA },
         { requestSession: "reject" },
       );
+      fetchSpy.mockClear();
       await act(async () => {
         await result.current.start();
       });
       expect(result.current.isConnecting).toBe(false);
       expect(result.current.isConnected).toBe(false);
       expect(ctx.endCurrentSession).not.toHaveBeenCalled();
+      // User-cancel is a silent reset: no lastError, no onError, no telemetry.
+      expect(result.current.lastError).toBeNull();
+      expect(
+        fetchSpy.mock.calls.some(
+          (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+        ),
+      ).toBe(false);
+    });
+
+    it("requestSession non-cancel error (receiver_unavailable) → surfaces lastError + onError + telemetry POST", async () => {
+      const onError = vi.fn();
+      const { result, ctx } = await mountHook(
+        { media: MEDIA, onError },
+        { requestSession: "receiver_unavailable" },
+      );
+      fetchSpy.mockClear();
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.isConnecting).toBe(false);
+      expect(result.current.isConnected).toBe(false);
+      // No session was created — endCurrentSession not called.
+      expect(ctx.endCurrentSession).not.toHaveBeenCalled();
+      // Non-cancel errors must surface to the user, not be swallowed.
+      expect(result.current.lastError).toBe("No Cast devices found");
+      expect(onError).toHaveBeenCalledWith("No Cast devices found");
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body.kind).toBe("cast_load");
+      expect(body.message).toBe("No Cast devices found");
     });
 
     it("loadMedia failure → endCurrentSession called, isConnected=false, lastError set, onError fired; retry emits a fresh requestSession", async () => {
@@ -311,16 +408,15 @@ describe("useCastTransport", () => {
   });
 
   describe("status listeners", () => {
-    it("update currentTime/playerState/volume/isMuted AND lastStatusAtMs", async () => {
+    it("update currentTime/playerState/volume/isMuted AND snapshot", async () => {
       const { result, fireEvent, setPlayer } = await mountHook();
-      expect(result.current.lastStatusAtMs).toBeNull();
+      expect(result.current).not.toHaveProperty("lastStatusAtMs");
       vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
       await act(async () => {
         setPlayer({ currentTime: 42 });
         fireEvent("currentTimeChanged");
       });
       expect(result.current.currentTime).toBe(42);
-      expect(result.current.lastStatusAtMs).toBe(Date.now());
       await act(async () => {
         setPlayer({ playerState: "playing" });
         fireEvent("playerStateChanged");
@@ -336,7 +432,6 @@ describe("useCastTransport", () => {
         fireEvent("isMutedChanged");
       });
       expect(result.current.isMuted).toBe(true);
-      expect(result.current.lastStatusAtMs).not.toBeNull();
     });
   });
 
@@ -376,6 +471,33 @@ describe("useCastTransport", () => {
         vi.advanceTimersByTime(200);
       });
       expect(controller.seek).toHaveBeenCalledTimes(1);
+      expect((player as Record<string, unknown>).currentTime).toBe(100);
+      vi.useRealTimers();
+    });
+
+    it("re-clamps against duration at fire time (duration reported between call and fire)", async () => {
+      // Seek issued while duration is 0 (media not loaded on the receiver).
+      // Between the seek call and the 200ms debounce fire, the receiver
+      // reports its duration (100). The deferred seek must re-clamp against
+      // the now-known duration rather than forwarding the raw out-of-range
+      // positionSeconds (e.g. a chapter jump to 3600).
+      const { result, fireEvent, setPlayer, controller, player } = await mountHook(undefined, {
+        player: { duration: 0 },
+      });
+      vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+      await act(async () => {
+        result.current.seek(3600);
+      });
+      // Before the debounce fires, the receiver reports its duration.
+      await act(async () => {
+        setPlayer({ duration: 100 });
+        fireEvent("isMediaLoadedChanged");
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(controller.seek).toHaveBeenCalledTimes(1);
+      // Re-clamped against the duration known at fire time, not the raw 3600.
       expect((player as Record<string, unknown>).currentTime).toBe(100);
       vi.useRealTimers();
     });
@@ -558,6 +680,237 @@ describe("useCastTransport", () => {
       expect(() => unmount()).not.toThrow();
       expect(controller.removeEventListener).toHaveBeenCalled();
     });
+
+    it("cancels a pending debounced seek on unmount (no late controller.seek)", async () => {
+      const { result, controller, unmount } = await mountHook(undefined, {
+        player: { duration: 1000 },
+      });
+      vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+      await act(async () => {
+        result.current.seek(50);
+      });
+      expect(controller.seek).not.toHaveBeenCalled();
+      // Unmount before the debounce fires.
+      act(() => {
+        unmount();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      // The deferred controller.seek() must NOT fire after unmount.
+      expect(controller.seek).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+  });
+
+  describe("stop()", () => {
+    it("ends the session, clears connection + deviceName, sets disconnectedAt", async () => {
+      const { result, ctx } = await mountHook(undefined, { loadMedia: "success" });
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.isConnected).toBe(true);
+      await act(async () => {
+        result.current.stop();
+      });
+      expect(ctx.endCurrentSession).toHaveBeenCalledWith(true);
+      expect(result.current.isConnected).toBe(false);
+      expect(result.current.deviceName).toBe("");
+    });
+
+    it("explicit stop does NOT emit a resumeProposal (manual stop ≠ disconnect-resume)", async () => {
+      const { result, fireEvent, setPlayer } = await mountHook(undefined, {
+        loadMedia: "success",
+        player: { duration: 1000, currentTime: 50, playerState: "playing" },
+      });
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.isConnected).toBe(true);
+      // Seed a status snapshot so the disconnect listener would normally
+      // compute an extrapolated proposal.
+      await act(async () => {
+        setPlayer({ currentTime: 80, playerState: "playing" });
+        fireEvent("currentTimeChanged");
+        fireEvent("playerStateChanged");
+      });
+      await act(async () => {
+        result.current.stop();
+      });
+      // The SDK fires IS_CONNECTED_CHANGED→false after endCurrentSession —
+      // the listener must skip resumeProposal computation because stop() set
+      // userInitiatedStopRef.
+      await act(async () => {
+        setPlayer({ isConnected: false });
+        fireEvent("isConnectedChanged");
+      });
+      expect(result.current.isConnected).toBe(false);
+      expect(result.current.resumeProposal).toBeNull();
+    });
+  });
+
+  describe("transport error telemetry", () => {
+    it("play() throw → lastError set, onError fired, POSTs kind:cast_transport", async () => {
+      const onError = vi.fn();
+      const { result, controller } = await mountHook({ media: MEDIA, onError });
+      // Re-mock controller.play to throw.
+      controller.play.mockImplementation(() => {
+        throw new Error("receiver play blew up");
+      });
+      fetchSpy.mockClear();
+      await act(async () => {
+        result.current.play();
+      });
+      expect(result.current.lastError).toBe("receiver play blew up");
+      expect(onError).toHaveBeenCalledWith("receiver play blew up");
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body.kind).toBe("cast_transport");
+      expect(body.meta.transportKind).toBe("cast");
+      expect(body.meta.mediaSourceKind).toBe("songset");
+      expect(body.meta.castAppIdMode).toBe("set");
+      expect(body.meta.platform).toBeDefined();
+      // Browser + URL reachability telemetry must be populated from the
+      // producer side so the endpoint's redaction + expiry logic is exercised.
+      expect(body.meta.browser).toBeDefined();
+      // The raw presigned URL must NEVER be transmitted — only the
+      // pre-redacted { host, path, expired } summary computed on the client.
+      expect(body.meta.urlRedacted).toEqual({
+        host: "r2.example.com",
+        path: "/renders/job-1/video.mp4",
+        expired: false,
+      });
+      expect(body.meta.url).toBeUndefined();
+      expect(JSON.stringify(body)).not.toContain("X-Amz");
+    });
+
+    it("reports castAppIdMode='default' when env app id is unset (Default Media Receiver fallback)", async () => {
+      vi.stubEnv("NEXT_PUBLIC_CAST_RECEIVER_APP_ID", "");
+      const onError = vi.fn();
+      const { result, controller } = await mountHook({ media: MEDIA, onError });
+      controller.play.mockImplementation(() => {
+        throw new Error("boom");
+      });
+      fetchSpy.mockClear();
+      await act(async () => {
+        result.current.play();
+      });
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      // env unset + chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID present in the
+      // SDK mock → mode is "default" (not "unset").
+      expect(body.meta.castAppIdMode).toBe("default");
+    });
+
+    it("derives urlExpired from presigned X-Amz-* params on the videoUrl", async () => {
+      const past = "20000101T000000Z";
+      const mediaWithExpiredUrl: CastMedia = {
+        ...MEDIA,
+        videoUrl: `https://r2.example.com/renders/job-1/video.mp4?X-Amz-Date=${past}&X-Amz-Expires=3600`,
+      };
+      const onError = vi.fn();
+      const { result, controller } = await mountHook({ media: mediaWithExpiredUrl, onError });
+      controller.play.mockImplementation(() => {
+        throw new Error("boom");
+      });
+      fetchSpy.mockClear();
+      await act(async () => {
+        result.current.play();
+      });
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      // Client-side redaction: only host+path+expired, never the raw signed URL.
+      expect(body.meta.urlRedacted).toEqual({
+        host: "r2.example.com",
+        path: "/renders/job-1/video.mp4",
+        expired: true,
+      });
+      expect(body.meta.url).toBeUndefined();
+      // Defense-in-depth: the signed query params must not transit the network.
+      expect(JSON.stringify(body)).not.toContain("X-Amz-Date");
+      expect(body.meta.urlExpired).toBeUndefined();
+    });
+
+    it("loadMedia failure → posts kind:cast_load with receiver description", async () => {
+      const onError = vi.fn();
+      const { result } = await mountHook({ media: MEDIA, onError }, { loadMedia: "error" });
+      fetchSpy.mockClear();
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.lastError).toBe("receiver rejected media");
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body.kind).toBe("cast_load");
+      expect(body.message).toBe("receiver rejected media");
+    });
+  });
+
+  describe("setMuted idempotency", () => {
+    it("short-circuits when already muted (muteOrUnmute not called)", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { isMuted: true },
+      });
+      await act(async () => {
+        result.current.setMuted(true);
+      });
+      expect(controller.muteOrUnmute).not.toHaveBeenCalled();
+      // Toggling to false still issues muteOrUnmute exactly once.
+      await act(async () => {
+        result.current.setMuted(false);
+      });
+      expect(controller.muteOrUnmute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("start() session-null branch", () => {
+    it("returns silently when getCurrentSession() is null after requestSession", async () => {
+      const { result, ctx, session } = await mountHook();
+      ctx.getCurrentSession.mockReturnValue(null);
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.isConnecting).toBe(false);
+      expect(result.current.isConnected).toBe(false);
+      expect(session.loadMedia).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("start() retry can succeed after a failure", async () => {
+    it("first loadMedia fails → endCurrentSession; retry with success → connected, lastError cleared", async () => {
+      const onError = vi.fn();
+      const { result, ctx, session } = await mountHook({ media: MEDIA, onError });
+      // First loadMedia attempt errors.
+      session.loadMedia.mockImplementationOnce(
+        (_req: unknown, _ok: () => void, err: (e: { code: string; description?: string }) => void) =>
+          err({ code: "LOAD_FAILED", description: "receiver rejected media" }),
+      );
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.isConnected).toBe(false);
+      expect(ctx.endCurrentSession).toHaveBeenCalledTimes(1);
+      // Retry: requestSession resolves to a fresh session that loads successfully.
+      await act(async () => {
+        await result.current.start();
+      });
+      expect(result.current.isConnected).toBe(true);
+      expect(result.current.lastError).toBeNull();
+      // endCurrentSession called exactly once (from the first failure only).
+      expect(ctx.endCurrentSession).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("reconnect", () => {
@@ -579,6 +932,38 @@ describe("useCastTransport", () => {
       });
       expect(result.current.isConnected).toBe(true);
       expect(controller.seek).not.toHaveBeenCalled();
+    });
+
+    it("clears resumeProposal on reconnect so a follow-up disconnect re-fires the controller effect", async () => {
+      const { result, fireEvent, setPlayer } = await mountHook(undefined, {
+        player: { duration: 1000, currentTime: 100, playerState: "playing" },
+      });
+      // Disconnect → proposal populated.
+      await act(async () => {
+        setPlayer({ isConnected: false });
+        fireEvent("isConnectedChanged");
+      });
+      expect(result.current.resumeProposal).not.toBeNull();
+      // Reconnect → proposal cleared so the controller's disconnect→resume
+      // effect doesn't re-fire on a subsequent disconnect with the same
+      // (stale) object reference, which would prevent React from re-running
+      // the effect across reconnects.
+      await act(async () => {
+        setPlayer({ isConnected: true });
+        fireEvent("isConnectedChanged");
+      });
+      expect(result.current.resumeProposal).toBeNull();
+      // A second disconnect must produce a fresh proposal object.
+      await act(async () => {
+        setPlayer({ currentTime: 150, playerState: "playing" });
+        fireEvent("currentTimeChanged");
+      });
+      await act(async () => {
+        setPlayer({ isConnected: false });
+        fireEvent("isConnectedChanged");
+      });
+      expect(result.current.resumeProposal).not.toBeNull();
+      expect(result.current.resumeProposal?.time).toBeGreaterThanOrEqual(150);
     });
   });
 });

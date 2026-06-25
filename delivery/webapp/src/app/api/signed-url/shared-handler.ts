@@ -34,17 +34,22 @@ export async function generateSignedUrlResponse(
 
   const r2Client = createR2ClientFromEnv();
 
-  // When cast=true, mint with the 4-hour Cast-playback expiry so the phone can
-  // hand the URL to the TV receiver. An explicit expiresInSeconds (clamped by
-  // zod to [60, 86400]) still wins over the cast default.
-  const castExpires = params.cast ? CAST_PLAYBACK_EXPIRES_IN_SECONDS : DEFAULT_EXPIRES_IN_SECONDS;
+  // When cast=true, mint the MP4 with the 4-hour Cast-playback expiry so the
+  // phone can hand the URL to the TV receiver. The 4-hour policy is scoped to
+  // video artefacts only — phone-only audio/LRC/chapters stay on the default
+  // 3600s expiry. An explicit expiresInSeconds (clamped by zod to
+  // [60, 86400]) still wins over the cast default.
+  const fileType = params.fileType || "audio";
+  const castExpires =
+    params.cast && fileType === "video"
+      ? CAST_PLAYBACK_EXPIRES_IN_SECONDS
+      : DEFAULT_EXPIRES_IN_SECONDS;
   const options: SignedUrlOptions = {
     expiresInSeconds: params.expiresInSeconds || castExpires,
     contentDisposition: params.contentDisposition,
   };
 
   let result;
-  const fileType = params.fileType || "audio";
 
   if (params.renderJobId) {
     const renderJob = await db.query.renderJobs.findFirst({
