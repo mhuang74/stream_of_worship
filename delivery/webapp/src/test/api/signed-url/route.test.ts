@@ -36,6 +36,8 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("@/lib/r2/client", () => ({
+  DEFAULT_EXPIRES_IN_SECONDS: 3600,
+  CAST_PLAYBACK_EXPIRES_IN_SECONDS: 14400,
   createR2ClientFromEnv: vi.fn(() => ({
     generateSignedUrl: (...args: unknown[]) => mockGenerateSignedUrl(...args),
     getAudioSignedUrl: (...args: unknown[]) => mockGetAudioSignedUrl(...args),
@@ -178,5 +180,101 @@ describe("/api/signed-url", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  describe("cast playback expiry", () => {
+    it("mints with 14400s when cast=true (video, renderJobId)", async () => {
+      mockRenderJobFindFirst.mockResolvedValue({ id: "job-1", userId: 1 });
+
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=video&cast=true"
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockGetVideoSignedUrl).toHaveBeenCalledWith(
+        "job-1",
+        expect.objectContaining({ expiresInSeconds: 14400 })
+      );
+    });
+
+    it("mints with default 3600s when cast is absent", async () => {
+      mockRenderJobFindFirst.mockResolvedValue({ id: "job-1", userId: 1 });
+
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=video"
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockGetVideoSignedUrl).toHaveBeenCalledWith(
+        "job-1",
+        expect.objectContaining({ expiresInSeconds: 3600 })
+      );
+    });
+
+    it("explicit expiresInSeconds still wins over cast default (zod clamps to [60,86400])", async () => {
+      mockRenderJobFindFirst.mockResolvedValue({ id: "job-1", userId: 1 });
+
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=video&cast=true&expiresInSeconds=120"
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockGetVideoSignedUrl).toHaveBeenCalledWith(
+        "job-1",
+        expect.objectContaining({ expiresInSeconds: 120 })
+      );
+    });
+
+    it("cast=true still requires a session (ownership enforced)", async () => {
+      vi.mocked(auth.api.getSession).mockResolvedValue(null);
+
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=video&cast=true"
+        )
+      );
+
+      expect(response.status).toBe(401);
+      expect(mockGetVideoSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it("cast=true rejects access to another user's render job", async () => {
+      mockRenderJobFindFirst.mockResolvedValue(null);
+
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-2&fileType=video&cast=true"
+        )
+      );
+
+      expect(response.status).toBe(404);
+      expect(mockGetVideoSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it("rejects expiresInSeconds below 60 (zod clamp)", async () => {
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=video&expiresInSeconds=30"
+        )
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects expiresInSeconds above 86400 (zod clamp)", async () => {
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=video&expiresInSeconds=100000"
+        )
+      );
+
+      expect(response.status).toBe(400);
+    });
   });
 });

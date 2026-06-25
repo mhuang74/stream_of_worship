@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { createR2ClientFromEnv, SignedUrlOptions } from "@/lib/r2/client";
+import {
+  CAST_PLAYBACK_EXPIRES_IN_SECONDS,
+  DEFAULT_EXPIRES_IN_SECONDS,
+  SignedUrlOptions,
+  createR2ClientFromEnv,
+} from "@/lib/r2/client";
 import { db } from "@/db";
 import { recordings, renderJobs } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -10,6 +15,7 @@ interface SignedUrlParams {
   fileType?: string;
   expiresInSeconds?: number;
   contentDisposition?: string;
+  cast?: boolean;
 }
 
 export async function generateSignedUrlResponse(
@@ -28,8 +34,12 @@ export async function generateSignedUrlResponse(
 
   const r2Client = createR2ClientFromEnv();
 
+  // When cast=true, mint with the 4-hour Cast-playback expiry so the phone can
+  // hand the URL to the TV receiver. An explicit expiresInSeconds (clamped by
+  // zod to [60, 86400]) still wins over the cast default.
+  const castExpires = params.cast ? CAST_PLAYBACK_EXPIRES_IN_SECONDS : DEFAULT_EXPIRES_IN_SECONDS;
   const options: SignedUrlOptions = {
-    expiresInSeconds: params.expiresInSeconds || 3600,
+    expiresInSeconds: params.expiresInSeconds || castExpires,
     contentDisposition: params.contentDisposition,
   };
 

@@ -9,6 +9,11 @@ const signedUrlRequestSchema = z.object({
   fileType: z.enum(["audio", "video", "lrc", "json"]).optional(),
   expiresInSeconds: z.number().int().min(60).max(86400).optional(),
   contentDisposition: z.string().optional(),
+  // When true, mint the MP4 with the 4-hour Cast-playback expiry so the
+  // logged-in phone can hand the resulting R2 presigned URL to the TV receiver
+  // (TV only hits R2, never the webapp). Omitting or setting false keeps the
+  // default 1-hour window used for phone-only preview fetches.
+  cast: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -81,6 +86,7 @@ export async function GET(request: NextRequest) {
         ? parseInt(searchParams.get("expiresInSeconds")!, 10)
         : undefined,
       contentDisposition: searchParams.get("contentDisposition") || undefined,
+      cast: searchParams.get("cast") === "true" ? true : searchParams.get("cast") === "false" ? false : undefined,
     };
 
     const parseResult = signedUrlRequestSchema.safeParse(params);

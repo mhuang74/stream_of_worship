@@ -5,6 +5,19 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+/**
+ * Default signed-URL expiry for non-cast artefacts (audio/lrc/json preview fetches).
+ */
+export const DEFAULT_EXPIRES_IN_SECONDS = 3600;
+
+/**
+ * Signed-URL expiry for Cast / TV-share playback. A 4-hour URL covers a full
+ * worship set (~2-3h of songs + setup/transition slack). Services longer than
+ * ~3h40m require a deliberate stop/re-cast from the phone, since the receiver
+ * fetches the MP4 directly from R2 and never calls the webapp.
+ */
+export const CAST_PLAYBACK_EXPIRES_IN_SECONDS = 14400;
+
 export interface R2Config {
   endpointUrl: string;
   accessKeyId: string;
@@ -74,7 +87,7 @@ export class R2Client {
     fileType: keyof typeof FILE_TYPE_CONFIGS = "audio",
     options: SignedUrlOptions = {}
   ): Promise<SignedUrlResult> {
-    const expiresInSeconds = options.expiresInSeconds || 3600; // Default 1 hour
+    const expiresInSeconds = options.expiresInSeconds || DEFAULT_EXPIRES_IN_SECONDS;
     const fileConfig = FILE_TYPE_CONFIGS[fileType];
 
     const command = new GetObjectCommand({
