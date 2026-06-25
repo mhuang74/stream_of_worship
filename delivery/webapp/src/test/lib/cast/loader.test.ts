@@ -175,4 +175,59 @@ describe("loadCastSdk", () => {
     window.__onGCastApiAvailable?.(false);
     await new Promise((r) => setTimeout(r, 0));
   });
+
+  it("rejects in-flight callers when the injected script fires its `error` event (CSP / ad blocker / network failure)", async () => {
+    // The SDK never invokes __onGCastApiAvailable when gstatic blocks the
+    // request. The loader must settle as failed off the script `error` event
+    // so the transport surfaces "unavailable" instead of stranding on "unknown".
+    const { loadCastSdk } = await freshLoader();
+    const p = loadCastSdk();
+    const script = document.head.querySelector("script");
+    expect(script).not.toBeNull();
+    script!.dispatchEvent(new Event("error"));
+    await expect(p).rejects.toThrowError(/Cast SDK failed to load/);
+    // Settlement is terminal: a later caller short-circuits to rejected without
+    // re-injecting another script tag.
+    const before = document.head.querySelectorAll("script").length;
+    await expect(loadCastSdk()).rejects.toThrowError(/Cast SDK failed to load/);
+    expect(document.head.querySelectorAll("script").length).toBe(before);
+  });
+
+  it("settles as failed after LOAD_TIMEOUT_MS when neither the global callback nor a script error fires (hung connection)", async () => {
+    // A captive-portal / hung connection can emit neither a script `load` nor an
+    // `error` event. The hard-load-timeout guard must reject so the UI does not
+    // wait forever for a settlement that will never arrive.
+    vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+    const { loadCastSdk } = await freshLoader();
+    const p = loadCastSdk();
+    // Just under the cap: still pending.
+    await vi.advanceTimersByTimeAsync(14_999);
+    // Avoid an unhandled-rejection race by not awaiting p until it settles.
+    let settled = false;
+    void p.catch(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.resolve();
+    expect(settled).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("clears the load-timeout guard on the success path so it cannot reject a later no-op", async () => {
+    // If the SDK loads successfully, the 15s timeout must be cleared; firing
+    // the global callback with (false) afterwards must NOT re-settle because
+    // settled is already { loaded: true } (idempotent dispatchSettlement).
+    vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+    const { loadCastSdk } = await freshLoader();
+    const p = loadCastSdk();
+    window.__onGCastApiAvailable?.(true);
+    await p;
+    // Advance well past LOAD_TIMEOUT_MS — a leftover timeout firing now would
+    // be a no-op (settled already), but must not throw or reject anything.
+    await vi.advanceTimersByTimeAsync(20_000);
+    // Firing the global callback again (defensive) must remain a no-op.
+    window.__onGCastApiAvailable?.(false);
+    await Promise.resolve();
+    vi.useRealTimers();
+  });
 });
