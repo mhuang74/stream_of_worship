@@ -115,6 +115,102 @@ The project consists of **seven architecturally separate components**:
 - **Configuration:** API base URL per build variant via `delivery/android/gradle.properties` (`sow.apiBaseUrl.debug`/`.staging`/`.release`)
 - **Boundary:** The Android app uses only the webapp JSON APIs. It does not connect directly to PostgreSQL, Cloudflare R2, or AWS SQS.
 
+#### Build and Load the Android App on a Phone
+
+Use this flow when testing the native Android app on a physical device.
+
+1. Install local tools.
+   - Install Android Studio with JDK 17 support.
+   - Install Android SDK 35 from Android Studio's SDK Manager.
+   - Make sure Android platform tools are available. `adb version` should print
+     an installed Android Debug Bridge version.
+
+2. Prepare the phone.
+   - On the phone, open **Settings > About phone** and tap **Build number** seven
+     times to enable Developer options.
+   - Open **Settings > System > Developer options** and enable **USB debugging**.
+   - Connect the phone by USB and accept the debugging authorization prompt.
+   - Verify the device is visible:
+
+     ```bash
+     cd delivery/android
+     adb devices
+     ```
+
+     The phone should appear as `device`, not `unauthorized`.
+
+3. Start a reachable webapp backend.
+   - For local backend testing, start the webapp from the repository root:
+
+     ```bash
+     pnpm --filter sow-webapp dev
+     ```
+
+   - The dev server listens on `0.0.0.0:8080`.
+   - Keep the computer and phone on the same network.
+   - Find the computer's LAN IP address, for example `192.168.1.25`.
+   - If the OS firewall blocks inbound connections, allow port `8080`.
+
+4. Build a debug APK for the phone.
+   - Use the computer's LAN IP as the Android API base URL. Do not use
+     `10.0.2.2` for a physical phone; that address is only for the Android
+     emulator.
+
+     ```bash
+     cd delivery/android
+     ./gradlew assembleDebug -Psow.apiBaseUrl.debug=http://192.168.1.25:8080
+     ```
+
+   - Replace `192.168.1.25` with the actual LAN IP of the development machine.
+   - For staging or production-style testing, point the property at an HTTPS
+     backend instead:
+
+     ```bash
+     ./gradlew assembleDebug -Psow.apiBaseUrl.debug=https://staging.example.com
+     ```
+
+5. Install the APK on the connected phone.
+
+   ```bash
+   cd delivery/android
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+   The `-r` flag replaces an existing debug install while preserving app data
+   when Android allows it.
+
+6. Launch and test the app.
+   - Open **Stream of Worship** from the phone launcher.
+   - Sign in or register through the webapp-backed Better Auth flow.
+   - Validate the primary user workflows: songset list/detail editing, song
+     search, render submission/status, signed URL playback, sharing, settings,
+     and offline download preparation.
+
+7. Optional: install and launch from Gradle.
+
+   ```bash
+   cd delivery/android
+   ./gradlew installDebug -Psow.apiBaseUrl.debug=http://192.168.1.25:8080
+   ```
+
+   Android Studio can also run the `app` configuration directly on the connected
+   phone. Set the same `sow.apiBaseUrl.debug` Gradle property when testing
+   against a local webapp.
+
+8. Troubleshoot common phone issues.
+   - If `adb devices` shows `unauthorized`, unplug the phone, revoke USB
+     debugging authorizations in Developer options, reconnect, and accept the
+     prompt again.
+   - If login succeeds but later API calls are unauthenticated, confirm the
+     Android app uses one consistent scheme and host for every request. Better
+     Auth cookies are host-specific.
+   - If the app cannot reach the local backend, open `http://<computer-lan-ip>:8080`
+     from the phone browser first. If that fails, fix Wi-Fi, VPN, or firewall
+     access before debugging the app.
+   - If local auth rejects the phone origin, align the webapp `BETTER_AUTH_URL`
+     with the externally reachable origin where possible. The webapp also trusts
+     private-network origins matching `192.168.*`, `10.*`, and `172.16.*`.
+
 ### 7. ⚡ Render Worker (AWS Lambda)
 - **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Purpose:** Serverless render processing (audio mixing + video encoding)
