@@ -312,6 +312,48 @@ describe("usePresentationSender", () => {
     expect(result.current.isConnected).toBe(true);
   });
 
+  it("ignores stale close events from a replaced connection", async () => {
+    const firstConn = createMockConnection("/projection");
+    const secondConn = createMockConnection("/projection");
+    let calls = 0;
+    class FakePresentationRequest {
+      urls: string[];
+      constructor(urls: string | string[]) {
+        this.urls = Array.isArray(urls) ? urls : [urls];
+      }
+      start() {
+        calls += 1;
+        return Promise.resolve(calls === 1 ? firstConn : secondConn);
+      }
+    }
+    (window as unknown as { PresentationRequest: typeof PresentationRequest }).PresentationRequest =
+      FakePresentationRequest as unknown as typeof PresentationRequest;
+
+    const onDisconnected = vi.fn();
+    const { result } = renderHook(() =>
+      usePresentationSender({
+        presentationUrl: "/songsets/1/play/projection",
+        onDisconnected,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      await result.current.start();
+    });
+
+    const firstCloseHandlers = firstConn.listeners.get("close");
+    expect(firstCloseHandlers?.size).toBeGreaterThan(0);
+    act(() => {
+      for (const handler of firstCloseHandlers!) handler({});
+    });
+
+    expect(result.current.isConnected).toBe(true);
+    expect(onDisconnected).not.toHaveBeenCalled();
+  });
+
   it("unmount closes the current connection", async () => {
     const conn = setPresentationRequest();
     const { result, unmount } = renderHook(() =>
