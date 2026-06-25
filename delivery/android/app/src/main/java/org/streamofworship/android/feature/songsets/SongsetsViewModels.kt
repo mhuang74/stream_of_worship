@@ -158,7 +158,9 @@ class SongsetsListViewModel(
     }
 
     fun delete(id: String) {
-        val previous = mutableState.value.songsets
+        val previousState = mutableState.value
+        val previous = previousState.songsets
+        val previousTotal = previousState.total
         val removed = previous.firstOrNull { it.id == id } ?: return
         mutableState.update {
             it.copy(songsets = it.songsets.filterNot { songset -> songset.id == id }, total = it.total - 1)
@@ -169,7 +171,7 @@ class SongsetsListViewModel(
                     mutableState.update {
                         it.copy(
                             songsets = previous,
-                            total = previous.size,
+                            total = previousTotal,
                             error = error.message ?: "Failed to delete ${removed.name}",
                         )
                     }
@@ -245,13 +247,14 @@ class SongsetDetailViewModel(
 
     fun updateDescription(description: String) {
         val previous = mutableState.value.songset ?: return
-        val nextDescription = description.trim().takeIf { it.isNotEmpty() }
+        val cleanDescription = description.trim()
+        val nextDescription = cleanDescription.takeIf { it.isNotEmpty() }
         mutableState.update { it.copy(songset = previous.copy(description = nextDescription), error = null) }
         pendingOptimisticEdits.incrementAndGet()
         launchScope.launch {
             try {
                 runCatching {
-                    songsetsRepository.updateSongset(songsetId, description = nextDescription)
+                    songsetsRepository.updateSongset(songsetId, description = cleanDescription)
                 }.onFailure { error ->
                     mutableState.update {
                         it.copy(songset = previous, error = error.message ?: "Failed to update description")

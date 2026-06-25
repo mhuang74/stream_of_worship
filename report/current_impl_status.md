@@ -8,6 +8,7 @@
 - The Android implementation includes focused JVM/Robolectric coverage for config, API clients, auth/session handling, songset workflows, render polling, playback/share/settings, offline download state, and UI behavior.
 - Acceptance validation completed in the Android project with unit tests, Kover coverage, lint, debug assembly, and graphify refresh.
 - Added `delivery/android/README.md` with prerequisites, API base URL setup, emulator and physical-device networking notes, Better Auth/local-origin troubleshooting, signed URL playback notes, offline download notes, and release build guidance.
+- Addressed follow-up PR #116 review feedback for Android render replacement validation, songset delete rollback pagination totals, and explicit description clearing from the native client; refreshed focused regression tests and graphify output.
 
 Canonical Android commands:
 

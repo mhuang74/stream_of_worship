@@ -121,6 +121,12 @@ class RenderViewModel(
     }
 
     fun confirmPreviousRenderAndStart() {
+        val state = mutableState.value
+        val validation = validationError(state.config, state.songset)
+        if (validation != null) {
+            mutableState.update { it.copy(validationMessage = validation) }
+            return
+        }
         mutableState.update { it.copy(requiresPreviousRenderConfirmation = false, validationMessage = null) }
         submitRender()
     }
