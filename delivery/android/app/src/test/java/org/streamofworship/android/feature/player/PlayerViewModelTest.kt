@@ -252,6 +252,36 @@ class PlayerViewModelTest {
             assertEquals("file:///cached/video.mp4", viewModel.uiState.value.mediaUrl)
         }
 
+    @Test
+    fun `bindController no-ops on the same instance and re-applies listener on a new instance`() =
+        runTest {
+            val first = RecordingPlayerController(durationMillis = 120_000)
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = FakePlaybackRepository(),
+                    controller = first,
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                )
+            // init{...} wires the listener exactly once.
+            assertEquals(1, first.listenerBindingCount)
+
+            // Re-binding the SAME instance must not double-wire.
+            viewModel.bindController(first)
+            assertEquals(1, first.listenerBindingCount)
+
+            // After rotation, a fresh controller is bound — the listener must be re-applied.
+            val second = RecordingPlayerController(durationMillis = 120_000)
+            viewModel.bindController(second)
+            assertEquals(1, second.listenerBindingCount)
+
+            // Play/pause/seek now route to the freshly bound controller, not the stale first.
+            viewModel.playPause()
+            assertTrue(second.playCalled)
+            assertFalse(first.playCalled)
+        }
+
     private fun viewModel(
         scope: TestScope,
         controller: FakePlayerController,
@@ -263,6 +293,21 @@ class PlayerViewModelTest {
             scope = scope.backgroundScope,
             tickerMillis = 0,
         )
+}
+
+private class RecordingPlayerController(
+    durationMillis: Long,
+) : FakePlayerController(durationMillis) {
+    var listenerBindingCount = 0
+    var playCalled = false
+
+    override fun setEventListener(listener: PlayerController.PlayerEventListener?) {
+        listenerBindingCount += 1
+    }
+
+    override fun play() {
+        playCalled = true
+    }
 }
 
 private class CountingPlaybackRepository(
@@ -289,7 +334,7 @@ private class CountingPlaybackRepository(
     }
 }
 
-internal class FakePlayerController(
+internal open class FakePlayerController(
     override var durationMillis: Long,
 ) : PlayerController {
     var position = 0L

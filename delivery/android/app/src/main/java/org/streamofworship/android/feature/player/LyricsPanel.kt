@@ -51,7 +51,10 @@ fun LyricsPanel(
     val listState = rememberLazyListState()
     val currentChapterIndex = manifest.chapters.indexOf(currentChapter).takeIf { it >= 0 } ?: 0
 
-    LaunchedEffect(currentChapter, currentLine) {
+    // Auto-scroll only when the current chapter changes — never on individual line changes.
+    // Including `currentLine` as a key would snap the list back to the chapter header every
+    // time the current lyric line updates during playback, fighting the user's manual scroll.
+    LaunchedEffect(currentChapter) {
         if (manifest.chapters.isNotEmpty()) {
             listState.animateScrollToItem(currentChapterIndex)
         }
