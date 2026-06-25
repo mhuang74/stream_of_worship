@@ -17,7 +17,7 @@ class ArtifactDownloadCoordinatorTest {
     @Test
     fun `enqueue records queued download metadata`() =
         runTest {
-            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             val coordinator =
                 ArtifactDownloadCoordinator(
                     cacheRepository = repository,
@@ -44,7 +44,7 @@ class ArtifactDownloadCoordinatorTest {
     @Test
     fun `enqueue persists queued row before scheduling so the receiver always finds it`() =
         runTest {
-            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             // The scheduler inspects the cache repository at enqueue-time and records what it
             // observed: the queued row must already exist (with downloadId null) before the
             // download id is known, closing the enqueue/markQueued race window.
@@ -86,7 +86,7 @@ class ArtifactDownloadCoordinatorTest {
     @Test
     fun `enqueue failure records failed metadata`() =
         runTest {
-            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             val coordinator =
                 ArtifactDownloadCoordinator(
                     cacheRepository = repository,

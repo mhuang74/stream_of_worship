@@ -31,7 +31,7 @@ class ShareViewModelTest {
     fun `creates share token and loads signed download urls`() =
         runTest {
             val shareRepository = FakeShareRepository()
-            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             val viewModel =
                 ShareViewModel(
                     renderJobId = "job-1",
@@ -63,7 +63,7 @@ class ShareViewModelTest {
     @Test
     fun `skips missing artifact kind when render produced only one type`() =
         runTest {
-            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             val viewModel =
                 ShareViewModel(
                     renderJobId = "job-1",
@@ -91,7 +91,7 @@ class ShareViewModelTest {
     @Test
     fun `enqueue failure on one artifact does not block the other`() =
         runTest {
-            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             val viewModel =
                 ShareViewModel(
                     renderJobId = "job-1",

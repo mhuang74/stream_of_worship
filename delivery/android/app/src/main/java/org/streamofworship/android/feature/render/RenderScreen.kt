@@ -113,12 +113,12 @@ fun RenderScreen(
             config = state.config,
             isSubmitting = state.isSubmitting,
             hasPreviousRender = state.requiresPreviousRenderConfirmation,
-            canReviewPrevious = state.currentJob?.hasPlayableArtifacts == true,
+            canReviewPrevious = state.reviewableCompletedJob != null,
             onConfigChange = viewModel::updateConfig,
             onSubmit = viewModel::requestRender,
             onConfirmPrevious = viewModel::confirmPreviousRenderAndStart,
             onReviewPrevious = {
-                state.currentJob?.let { job ->
+                state.reviewableCompletedJob?.let { job ->
                     onPlay(job.id, job.preferredPlaybackArtifact())
                 }
             },

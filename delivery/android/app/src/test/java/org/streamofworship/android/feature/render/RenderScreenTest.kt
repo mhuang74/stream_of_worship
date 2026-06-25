@@ -62,7 +62,7 @@ class RenderScreenTest {
             FakeRenderRepository(
                 jobs = mutableListOf(job("job-1", RenderJobStatus.Completed)),
             )
-        val offlineRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+        val offlineRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
         val viewModel = RenderViewModel("set-1", FakeRenderSongsetsRepository(), render, offlineRepository, scope)
         var playRoute: Pair<String, PlaybackArtifact>? = null
         var downloadJob: String? = null

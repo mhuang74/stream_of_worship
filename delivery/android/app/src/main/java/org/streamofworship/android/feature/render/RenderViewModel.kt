@@ -28,6 +28,7 @@ data class RenderUiState(
     val songset: SongsetDetail? = null,
     val config: RenderFormConfig = RenderFormConfig(),
     val currentJob: RenderJob? = null,
+    val reviewableJob: RenderJob? = null,
     val artifactSizes: ArtifactSizes? = null,
     val isLoadingSongset: Boolean = false,
     val isSubmitting: Boolean = false,
@@ -46,6 +47,15 @@ data class RenderUiState(
 
     val hasArtifacts: Boolean
         get() = currentJob?.hasPlayableArtifacts == true
+
+    /**
+     * Resolves the playable completed render that the Review affordance routes users to.
+     * Falls back to [reviewableJob] when the latest render job is a non-completed terminal
+     * status (failed/cancelled), so users can still reach a previously completed render's
+     * playback/download even after a subsequent failure.
+     */
+    val reviewableCompletedJob: RenderJob?
+        get() = currentJob?.takeIf { it.hasPlayableArtifacts } ?: reviewableJob?.takeIf { it.hasPlayableArtifacts }
 }
 
 class RenderViewModel(
@@ -145,6 +155,7 @@ class RenderViewModel(
                             if (job.status == RenderJobStatus.Completed) {
                                 loadArtifactSizes(job.id)
                             }
+                            maybeLoadReviewableJob(jobId, job)
                             break
                         }
                         delay(pollIntervalMillis)
@@ -241,6 +252,37 @@ class RenderViewModel(
                     mutableState.update { it.copy(artifactSizes = sizes, offlineArtifacts = artifacts) }
                 }
                 .onFailure { error -> mutableState.update { it.copy(serverMessage = error.statusMessage()) } }
+        }
+    }
+
+    /**
+     * When the latest render job ended in a non-completed terminal state (failed/cancelled)
+     * and a previously completed render exists on the songset, fetch its detail so the
+     * Review/Play affordances route users to the still-valid completed artifacts instead of
+     * being disabled behind the failed job.
+     */
+    private fun maybeLoadReviewableJob(
+        latestJobId: String,
+        latestJob: RenderJob,
+    ) {
+        if (latestJob.hasPlayableArtifacts) {
+            mutableState.update { it.copy(reviewableJob = latestJob) }
+            return
+        }
+        val completedId =
+            mutableState.value.songset?.lastCompletedRenderJobId
+                ?.takeIf { it != latestJobId }
+                ?: run {
+                    mutableState.update { it.copy(reviewableJob = null) }
+                    return
+                }
+        launchScope.launch {
+            runCatching { renderRepository.getRenderJob(completedId) }
+                .onSuccess { job ->
+                    val reviewable = job.takeIf { it.hasPlayableArtifacts }
+                    mutableState.update { state -> state.copy(reviewableJob = reviewable) }
+                }
+                .onFailure { mutableState.update { state -> state.copy(reviewableJob = null) } }
         }
     }
 

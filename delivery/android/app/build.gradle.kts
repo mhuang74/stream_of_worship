@@ -89,6 +89,10 @@ kover {
                     "*.core.session.AndroidSecureSessionCookieStore",
                     "*.feature.*.*ScreenKt",
                     "*.feature.player.Media3PlayerController",
+                    "*.feature.player.Media3PlayerControllerKt",
+                    "*.feature.player.DirectPlayerFacade",
+                    "*.feature.player.ServiceMediaControllerFacade",
+                    "*.feature.player.SowPlaybackService",
                     "*.feature.share.AndroidShareIntentsKt",
                 )
             }

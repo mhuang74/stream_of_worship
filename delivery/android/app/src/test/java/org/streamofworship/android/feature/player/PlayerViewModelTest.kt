@@ -67,7 +67,7 @@ class PlayerViewModelTest {
     @Test
     fun `uses cached artifact before requesting remote signed url`() =
         runTest {
-            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
             repository.markCached(
                 renderJobId = "job-1",
                 kind = OfflineArtifactKind.Video,
