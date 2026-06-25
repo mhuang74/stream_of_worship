@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RocketLaunch
@@ -118,8 +119,10 @@ fun RenderScreen(
             onSubmit = viewModel::requestRender,
             onConfirmPrevious = viewModel::confirmPreviousRenderAndStart,
             onReviewPrevious = {
-                state.reviewableCompletedJob?.let { job ->
-                    onPlay(job.id, job.preferredPlaybackArtifact())
+                state.reviewableCompletedJob?.let { reviewableJob ->
+                    reviewableJob.preferredPlaybackArtifact()?.let { artifact ->
+                        onPlay(reviewableJob.id, artifact)
+                    }
                 }
             },
         )
@@ -132,15 +135,19 @@ fun RenderScreen(
                 isPolling = state.isPolling,
                 retryCount = state.retryCount,
                 onCancel = viewModel::cancelRender,
-                onPlay = { onPlay(job.id, job.preferredPlaybackArtifact()) },
+                onPlay = {
+                    job.preferredPlaybackArtifact()?.let { artifact ->
+                        onPlay(job.id, artifact)
+                    }
+                },
                 onDownload = { onDownload(job.id) },
             )
         }
     }
 }
 
-private fun RenderJob.preferredPlaybackArtifact(): PlaybackArtifact =
-    if (mp4R2Key != null) PlaybackArtifact.Video else PlaybackArtifact.Audio
+private fun RenderJob.preferredPlaybackArtifact(): PlaybackArtifact? =
+    if (mp4R2Key != null) PlaybackArtifact.Video else null
 
 @Composable
 fun RenderForm(
@@ -314,10 +321,22 @@ private fun RenderStatusPanel(
                     modifier = Modifier.testTag("render-offline-cache-state"),
                 )
             }
+            val playArtifact = job.preferredPlaybackArtifact()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onPlay, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.PlayArrow, contentDescription = null)
-                    Text("Play")
+                if (playArtifact != null) {
+                    Button(onClick = onPlay, modifier = Modifier.weight(1f).testTag("render-play-button")) {
+                        Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                        Text("Play")
+                    }
+                } else {
+                    // Audio-only render: explain why Play is absent. The worship screen is
+                    // video-only, so audio-only renders cannot be played in-app.
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Audio only") },
+                        leadingIcon = { Icon(Icons.Outlined.MusicNote, contentDescription = null) },
+                        modifier = Modifier.testTag("render-audio-only-chip"),
+                    )
                 }
                 OutlinedButton(onClick = onDownload, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Outlined.Download, contentDescription = null)

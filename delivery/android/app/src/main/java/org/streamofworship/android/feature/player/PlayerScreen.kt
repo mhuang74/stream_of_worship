@@ -1,8 +1,11 @@
 package org.streamofworship.android.feature.player
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -10,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Forward10
@@ -21,12 +22,12 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Replay10
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,16 +36,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import org.streamofworship.android.core.design.SowErrorState
 import org.streamofworship.android.core.design.SowLoadingState
+import org.streamofworship.android.core.util.findActivity
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -59,21 +70,101 @@ fun PlayerScreen(
         (media3Controller?.playerViewState?.collectAsState() ?: remember { mutableStateOf(null) })
     val context = LocalContext.current
     val wakeLock = remember(context) { PlaybackWakeLock(context.applicationContext) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val activity = remember(context) { context.findActivity() }
+
     LaunchedEffect(viewModel) {
         if (state.mediaUrl == null && !state.isLoading) viewModel.load()
     }
     LaunchedEffect(state.isPlaying) {
         wakeLock.update(state.isPlaying)
     }
-    DisposableEffect(viewModel) {
+    // Keyed on the controller (not the ViewModel): the controller owns the native ExoPlayer
+    // resource. The ViewModel survives configuration changes; the controller is recreated on
+    // rotation and must be released when its reference changes.
+    DisposableEffect(media3Controller) {
         onDispose {
             wakeLock.release()
             media3Controller?.release()
         }
     }
+    // Re-bind media + restore the saved position after rotation (no autoplay). When the
+    // controller is fresh but the ViewModel already holds a URL, reload the media and seek to
+    // the retained position. `durationMillis <= 0L` is a proxy for "no media loaded yet".
+    LaunchedEffect(media3Controller, state.mediaUrl) {
+        val url = state.mediaUrl ?: return@LaunchedEffect
+        val controller = media3Controller ?: return@LaunchedEffect
+        if (controller.durationMillis <= 0L) {
+            controller.setMedia(url, isVideo = true)
+            if (state.positionMillis > 0L) {
+                controller.seekTo(state.positionMillis)
+            }
+        }
+    }
+    // Pause playback when the app goes to the background. There is no background-audio
+    // requirement for the video-only worship screen, so a simple ON_STOP pause suffices.
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP && state.isPlaying) {
+                    viewModel.pause()
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // Immersive OS-level bar control for fullscreen.
+    LaunchedEffect(state.isFullscreen) {
+        val a = activity ?: return@LaunchedEffect
+        val window = a.window ?: return@LaunchedEffect
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        if (state.isFullscreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    // While in fullscreen, system/gesture back exits fullscreen first. Otherwise back
+    // navigates as normal (pops the screen).
+    BackHandler(enabled = state.isFullscreen) {
+        viewModel.toggleFullscreen()
+    }
+
+    if (state.isFullscreen && media3Controller != null) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black).testTag("player-fullscreen"),
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        player = videoPlayer
+                        useController = true
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
+                },
+                update = { it.player = videoPlayer },
+                modifier = Modifier.fillMaxSize(),
+            )
+            IconButton(
+                onClick = { viewModel.toggleFullscreen() },
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp)
+                        .testTag("player-fullscreen-exit"),
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Exit fullscreen")
+            }
+        }
+        return
+    }
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var lyricsExpanded by remember { mutableStateOf(false) }
     Column(
         modifier =
             modifier
@@ -87,9 +178,14 @@ fun PlayerScreen(
         }
         if (state.isLoading) SowLoadingState(label = "Loading playback")
         OfflinePlaybackBanner(state = state, onRetry = { viewModel.load(state.artifact) })
-        if (state.artifact == PlaybackArtifact.Video && media3Controller != null) {
+        if (media3Controller != null) {
             AndroidView(
-                factory = { PlayerView(it).apply { player = videoPlayer } },
+                factory = {
+                    PlayerView(it).apply {
+                        player = videoPlayer
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
+                },
                 update = { it.player = videoPlayer },
                 modifier =
                     Modifier
@@ -105,7 +201,6 @@ fun PlayerScreen(
             )
         }
         Text(state.currentChapter?.title ?: "Rendered worship set", style = MaterialTheme.typography.titleLarge)
-        Text(state.currentLine?.text ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant)
         LinearProgressIndicator(
             progress = { if (state.durationMillis > 0) state.positionMillis.toFloat() / state.durationMillis else 0f },
             modifier = Modifier.fillMaxWidth().testTag("player-progress"),
@@ -127,15 +222,28 @@ fun PlayerScreen(
             IconButton(onClick = viewModel::nextChapter) {
                 Icon(Icons.Outlined.SkipNext, contentDescription = "Next chapter")
             }
+            IconButton(
+                onClick = { lyricsExpanded = !lyricsExpanded },
+                modifier = Modifier.testTag("player-lyrics-toggle"),
+            ) {
+                Icon(Icons.Outlined.Subtitles, contentDescription = "Lyrics")
+            }
             IconButton(onClick = viewModel::toggleFullscreen) {
                 Icon(Icons.Outlined.Fullscreen, contentDescription = "Fullscreen")
             }
         }
-        LazyColumn(modifier = Modifier.testTag("player-jump-list")) {
-            items(state.manifest?.chapters.orEmpty()) { chapter ->
-                OutlinedButton(onClick = { viewModel.jumpToChapter(chapter) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("${chapter.position}. ${chapter.title}")
-                }
+        if (lyricsExpanded) {
+            val manifest = state.manifest
+            if (manifest != null) {
+                LyricsPanel(
+                    manifest = manifest,
+                    positionMillis = state.positionMillis,
+                    currentChapter = state.currentChapter,
+                    currentLine = state.currentLine,
+                    onJumpToChapter = viewModel::jumpToChapter,
+                    onJumpToLine = viewModel::jumpToLine,
+                    modifier = Modifier.weight(1f).fillMaxWidth().testTag("player-lyrics-panel"),
+                )
             }
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,6 +33,7 @@ import org.streamofworship.android.feature.player.Media3PlayerController
 import org.streamofworship.android.feature.player.PlaybackArtifact
 import org.streamofworship.android.feature.player.PlayerScreen
 import org.streamofworship.android.feature.player.PlayerViewModel
+import org.streamofworship.android.feature.player.VideoExoPlayerFactory
 import org.streamofworship.android.feature.render.RenderScreen
 import org.streamofworship.android.feature.render.RenderViewModel
 import org.streamofworship.android.feature.settings.SettingsScreen
@@ -120,9 +122,18 @@ fun SowNavGraph(
             val artifact = backStackEntry.arguments?.getString("artifact").toPlaybackArtifact()
             val dependencies = rememberSongsetsDependencies(authController)
             val context = LocalContext.current.applicationContext
-            val mediaController = remember(jobId, context) { Media3PlayerController(context) }
+            // Always wire the in-process ExoPlayer: a MediaController-backed PlayerView cannot
+            // render a video surface (only forwards audio commands to the service). This fixes
+            // the blank-video bug. The controller is keyed on (jobId, context) so rotation
+            // recreates it; PlayerViewModel keyed on jobId via viewModel() survives config
+            // changes (Phase 3) and the LaunchedEffect in PlayerScreen rebinds the media.
+            val mediaController =
+                remember(jobId, context) {
+                    val exoPlayer = VideoExoPlayerFactory.create(context)
+                    Media3PlayerController(exoPlayer)
+                }
             val viewModel =
-                remember(jobId, dependencies.playbackRepository, mediaController, dependencies.offlineCacheRepository) {
+                viewModel(key = jobId) {
                     PlayerViewModel(
                         renderJobId = jobId,
                         repository = dependencies.playbackRepository,

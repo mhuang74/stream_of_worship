@@ -121,8 +121,7 @@ class PlayerViewModelTest {
         }
 
     @Test
-    fun `expired signed url reports retry state and retry refreshes playback`() =
-        runTest {
+    fun `expired signed url reports retry state and retry refreshes playback`() =        runTest {
             val controller = FakePlayerController(durationMillis = 120_000)
             val playbackRepository =
                 CountingPlaybackRepository(
@@ -187,6 +186,70 @@ class PlayerViewModelTest {
             viewModel.load()
             runCurrent()
             assertEquals("https://r2/fresh.mp4", viewModel.uiState.value.mediaUrl)
+        }
+
+    @Test
+    fun `load with video artifact and cached offline artifact calls setMedia with local uri and isVideo true`() =
+        runTest {
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
+            repository.markCached(
+                renderJobId = "job-1",
+                kind = OfflineArtifactKind.Video,
+                localUri = "file:///cached/job-1.mp4",
+                bytesDownloaded = 100L,
+                totalBytes = 100L,
+                nowEpochMillis = 1L,
+            )
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = CountingPlaybackRepository(),
+                    controller = controller,
+                    offlineCacheRepository = repository,
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                    defaultArtifact = PlaybackArtifact.Video,
+                )
+
+            viewModel.load(artifact = PlaybackArtifact.Video)
+            runCurrent()
+
+            assertEquals("file:///cached/job-1.mp4", viewModel.uiState.value.mediaUrl)
+            assertEquals("file:///cached/job-1.mp4", controller.mediaUrl)
+            // Audio is no longer played back in the worship screen; the artifact parameter is
+            // vestigial after Phase 8 (RenderScreen only ever offers a Video play route). The
+            // load() path still always queries OfflineArtifactKind.Video for playback.
+        }
+
+    @Test
+    fun `artifact parameter still selects offline kind but video is the only playable route`() =
+        runTest {
+            val repository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath(), ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher())
+            repository.markCached(
+                renderJobId = "job-1",
+                kind = OfflineArtifactKind.Video,
+                localUri = "file:///cached/video.mp4",
+                bytesDownloaded = 100L,
+                totalBytes = 100L,
+                nowEpochMillis = 1L,
+            )
+            val controller = FakePlayerController(durationMillis = 120_000)
+            val viewModel =
+                PlayerViewModel(
+                    renderJobId = "job-1",
+                    repository = FakePlaybackRepository(),
+                    controller = controller,
+                    offlineCacheRepository = repository,
+                    scope = backgroundScope,
+                    tickerMillis = 0,
+                )
+
+            // No-arg load() uses the default (Video) artifact.
+            viewModel.load()
+            runCurrent()
+
+            assertEquals("file:///cached/video.mp4", viewModel.uiState.value.mediaUrl)
         }
 
     private fun viewModel(
