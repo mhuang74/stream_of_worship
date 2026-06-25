@@ -390,6 +390,31 @@ export const songsetShares = pgTable("songset_share", {
 });
 
 // ---------------------------------------------------------------------------
+// Client error telemetry (best-effort, anonymized). Rows are appended by the
+// /api/log-client-error endpoint from Cast/Presentation transport failures.
+// PII is redacted before persistence (hashed IP, no user IDs, signed URLs
+// reduced to host+path+expiry age).
+// ---------------------------------------------------------------------------
+
+export const clientErrorLog = pgTable(
+  "client_error_log",
+  {
+    id: serial("id").primaryKey(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    // Salted SHA-256 hash of the client IP; never the raw IP. The salt rotates
+    // daily so the same IP hashes differently across days (limits linkage).
+    ipHash: text("ip_hash").notNull(),
+    message: text("message").notNull(),
+    // Discriminator for routing/queries: which transport stage failed.
+    kind: text("kind").notNull(),
+    // Redacted, structured metadata as a JSON blob (browser, platform,
+    // castAppIdMode, transportKind, mediaSourceKind, url host+path+expiry).
+    metaJson: text("meta_json"),
+  },
+  (t) => [index("idx_client_error_log_created").on(t.createdAt)]
+);
+
+// ---------------------------------------------------------------------------
 // Relations
 // ---------------------------------------------------------------------------
 
