@@ -1,5 +1,24 @@
 ## 2026-06-25
 
+- Shipped Consolidated Chromecast Projection v3 (`.dex/plan.md`, tasks 1-12).
+  Cast Web Sender SDK (Default Media Receiver only) drives TV playback from
+  Android Chrome; a dev-only W3C Presentation API fallback remains for
+  browser-to-browser projection. The logged-in phone mints a 4-hour R2
+  presigned MP4 URL (`/api/signed-url?cast=true` or `/api/share/[token]`,
+  `CAST_PLAYBACK_EXPIRES_IN_SECONDS=14400`) and hands it to the TV receiver,
+  which only hits R2. Render worker now appends `-movflags +faststart` so the
+  `moov` atom precedes `mdat` (Cast-compatible progressive playback), guarded
+  by an `ffprobe` pipeline test. `useCastTransport` implements latest-wins
+  seek debounce, extrapolated disconnect-resume with a stale (>60s) prompt,
+  buffering tracking, and best-effort telemetry to `POST /api/log-client-error`
+  (Upstash token-bucket rate-limited, PII-redacted, `client_error_log`
+  table). `ControllerPlayer` surfaces a buffering chip, a no-Cast diagnostic
+  bottom sheet, tap-to-resume on `play()` rejection, and an iPhone AirPlay
+  hint. `PrePlayCard` no longer owns any Cast/Presentation detection. Docs
+  (README.md, DEPLOY-VERCEL.md, `.env.production.example`,
+  `docs/deployment-plan-webapp*.md`) cover Default Media Receiver, iPhone
+  fallback, long-URL policy, pre-service network test, Presentation API
+  dev-only label, faststart, and a 10-point Live-Service Go/No-Go Checklist.
 - Completed documentation for the native Android delivery app. Added
   `delivery/android/README.md` covering prerequisites, API base URL Gradle
   properties, emulator and physical-device networking to the local webapp,
