@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { usePresentationReceiver } from "@/hooks/usePresentation";
+import {
+  usePresentationReceiver,
+  validatePresentationCommand,
+} from "@/hooks/usePresentation";
 
 describe("usePresentationReceiver", () => {
   let mockConnection: {
     addEventListener: ReturnType<typeof vi.fn>;
     removeEventListener: ReturnType<typeof vi.fn>;
+    send: ReturnType<typeof vi.fn>;
   };
 
   let mockConnectionList: {
@@ -33,6 +37,7 @@ describe("usePresentationReceiver", () => {
         if (event === "terminate") capturedTerminateHandler = handler as () => void;
       }),
       removeEventListener: vi.fn(),
+      send: vi.fn(),
     };
 
     mockConnectionList = {
@@ -142,6 +147,7 @@ describe("usePresentationReceiver", () => {
           onPause,
           onSeek,
           onVolume,
+          onMute,
           onSongTitle,
         })
       );
@@ -169,6 +175,7 @@ describe("usePresentationReceiver", () => {
     const onPause = vi.fn();
     const onSeek = vi.fn();
     const onVolume = vi.fn();
+    const onMute = vi.fn();
     const onSongTitle = vi.fn();
 
     beforeEach(() => {
@@ -210,6 +217,28 @@ describe("usePresentationReceiver", () => {
       expect(onVolume).toHaveBeenCalledWith(1.0);
     });
 
+    it("clamps volume level above 1 to 1", async () => {
+      await sendMessage({ type: "volume", level: 5 });
+      expect(onVolume).toHaveBeenCalledWith(1);
+    });
+
+    it("clamps volume level below 0 to 0", async () => {
+      await sendMessage({ type: "volume", level: -2 });
+      expect(onVolume).toHaveBeenCalledWith(0);
+    });
+
+    it("calls onMute with true for mute message", async () => {
+      await sendMessage({ type: "mute", muted: true });
+      expect(onMute).toHaveBeenCalledWith(true);
+    });
+
+    it("coerces non-boolean mute.muted via Boolean(...)", async () => {
+      await sendMessage({ type: "mute", muted: "yes" });
+      expect(onMute).toHaveBeenCalledWith(true);
+      await sendMessage({ type: "mute", muted: 0 });
+      expect(onMute).toHaveBeenCalledWith(false);
+    });
+
     it("does not call onVolume when level is missing", async () => {
       await sendMessage({ type: "volume" });
       expect(onVolume).not.toHaveBeenCalled();
@@ -246,6 +275,167 @@ describe("usePresentationReceiver", () => {
 
       expect(onPlay).not.toHaveBeenCalled();
     });
+
+    it("ignores unknown command type", async () => {
+      await sendMessage({ type: "totallyUnknown" });
+      expect(onPlay).not.toHaveBeenCalled();
+      expect(onSeek).not.toHaveBeenCalled();
+    });
+
+    it("ignores non-object payloads", async () => {
+      await sendMessage("just a string");
+      expect(onPlay).not.toHaveBeenCalled();
+    });
+
+    it("rejects seek with negative positionSeconds", async () => {
+      await sendMessage({ type: "seek", positionSeconds: -5 });
+      expect(onSeek).not.toHaveBeenCalled();
+    });
+
+    it("rejects seek with non-finite positionSeconds", async () => {
+      await sendMessage({ type: "seek", positionSeconds: Number.POSITIVE_INFINITY });
+      expect(onSeek).not.toHaveBeenCalled();
+    });
+
+    it("rejects songTitle with non-string title", async () => {
+      await sendMessage({ type: "songTitle", title: 42 });
+      expect(onSongTitle).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("sendStatus", () => {
+    it("pushes status JSON over connection.send", async () => {
+      const { result } = renderHook(() =>
+        usePresentationReceiver({ onConnected: vi.fn() }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedConnectionAvailableHandler?.({ connection: mockConnection });
+      });
+
+      act(() => {
+        result.current.sendStatus({ type: "ready" });
+      });
+
+      expect(mockConnection.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "ready" }),
+      );
+    });
+
+    it("sendStatus pushes error status with message", async () => {
+      const { result } = renderHook(() =>
+        usePresentationReceiver({ onConnected: vi.fn() }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedConnectionAvailableHandler?.({ connection: mockConnection });
+      });
+
+      act(() => {
+        result.current.sendStatus({ type: "error", message: "boom" });
+      });
+
+      expect(mockConnection.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "error", message: "boom" }),
+      );
+    });
+
+    it("sendStatus is a no-op when no connection", async () => {
+      const { result } = renderHook(() => usePresentationReceiver({}));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(() => {
+        act(() => {
+          result.current.sendStatus({ type: "ready" });
+        });
+      }).not.toThrow();
+
+      expect(mockConnection.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("validatePresentationCommand", () => {
+    const cases: Array<{ name: string; input: unknown; expected: object | null }> = [
+      { name: "play", input: { type: "play" }, expected: { type: "play" } },
+      { name: "pause", input: { type: "pause" }, expected: { type: "pause" } },
+      {
+        name: "seek",
+        input: { type: "seek", positionSeconds: 3 },
+        expected: { type: "seek", positionSeconds: 3 },
+      },
+      {
+        name: "volume clamped high",
+        input: { type: "volume", level: 9 },
+        expected: { type: "volume", level: 1 },
+      },
+      {
+        name: "volume clamped low",
+        input: { type: "volume", level: -1 },
+        expected: { type: "volume", level: 0 },
+      },
+      {
+        name: "mute true",
+        input: { type: "mute", muted: true },
+        expected: { type: "mute", muted: true },
+      },
+      {
+        name: "mute coerced from truthy string",
+        input: { type: "mute", muted: "yes" },
+        expected: { type: "mute", muted: true },
+      },
+      {
+        name: "mute coerced from 0",
+        input: { type: "mute", muted: 0 },
+        expected: { type: "mute", muted: false },
+      },
+      {
+        name: "songTitle",
+        input: { type: "songTitle", title: "Grace" },
+        expected: { type: "songTitle", title: "Grace" },
+      },
+      { name: "null", input: null, expected: null },
+      { name: "string", input: "hello", expected: null },
+      { name: "unknown type", input: { type: "bogus" }, expected: null },
+      { name: "missing type", input: {}, expected: null },
+      { name: "seek negative", input: { type: "seek", positionSeconds: -1 }, expected: null },
+      {
+        name: "seek non-finite",
+        input: { type: "seek", positionSeconds: NaN },
+        expected: null,
+      },
+      {
+        name: "volume non-number",
+        input: { type: "volume", level: "loud" },
+        expected: null,
+      },
+      {
+        name: "songTitle non-string",
+        input: { type: "songTitle", title: 9 },
+        expected: null,
+      },
+    ];
+
+    for (const { name, input, expected } of cases) {
+      it(`${name} → ${expected === null ? "null" : JSON.stringify(expected)}`, () => {
+        const out = validatePresentationCommand(input);
+        if (expected === null) {
+          expect(out).toBeNull();
+        } else {
+          expect(out).toEqual(expected);
+        }
+      });
+    }
   });
 
   describe("disconnect handling", () => {
