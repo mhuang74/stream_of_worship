@@ -34,6 +34,8 @@ const mockGetObjectSize = vi.fn();
 const mockCreateR2Client = vi.fn();
 
 vi.mock("@/lib/r2/client", () => ({
+  DEFAULT_EXPIRES_IN_SECONDS: 3600,
+  CAST_PLAYBACK_EXPIRES_IN_SECONDS: 14400,
   createR2ClientFromEnv: (...args: unknown[]) => mockCreateR2Client(...args),
 }));
 

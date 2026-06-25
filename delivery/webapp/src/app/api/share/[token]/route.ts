@@ -3,7 +3,11 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { songsetShares, renderJobs } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { createR2ClientFromEnv } from "@/lib/r2/client";
+import {
+  CAST_PLAYBACK_EXPIRES_IN_SECONDS,
+  DEFAULT_EXPIRES_IN_SECONDS,
+  createR2ClientFromEnv,
+} from "@/lib/r2/client";
 import { getSongsetPublicView } from "@/lib/db/songsets";
 
 const NO_CACHE_HEADERS = {
@@ -84,17 +88,21 @@ export async function GET(
     if (playbackJob) {
       try {
         const r2Client = createR2ClientFromEnv();
-        const expiresInSeconds = 3600;
+        // The share MP4 is intended for Cast / TV-share playback: the receiver
+        // fetches it directly from R2 for up to 4h (full set + setup slack).
+        // MP3/chapters stay on the default 1h window since they are phone-only.
+        const mp3Expires = DEFAULT_EXPIRES_IN_SECONDS;
+        const mp4Expires = CAST_PLAYBACK_EXPIRES_IN_SECONDS;
 
         const [mp3Result, mp4Result, chaptersResult, mp3Size, mp4Size] = await Promise.all([
           playbackJob.mp3R2Key
-            ? r2Client.generateSignedUrl(playbackJob.mp3R2Key, "audio", { expiresInSeconds })
+            ? r2Client.generateSignedUrl(playbackJob.mp3R2Key, "audio", { expiresInSeconds: mp3Expires })
             : null,
           playbackJob.mp4R2Key
-            ? r2Client.generateSignedUrl(playbackJob.mp4R2Key, "video", { expiresInSeconds })
+            ? r2Client.generateSignedUrl(playbackJob.mp4R2Key, "video", { expiresInSeconds: mp4Expires })
             : null,
           playbackJob.chaptersR2Key
-            ? r2Client.generateSignedUrl(playbackJob.chaptersR2Key, "json", { expiresInSeconds })
+            ? r2Client.generateSignedUrl(playbackJob.chaptersR2Key, "json", { expiresInSeconds: mp3Expires })
             : null,
           playbackJob.mp3R2Key ? r2Client.getObjectSize(playbackJob.mp3R2Key) : null,
           playbackJob.mp4R2Key ? r2Client.getObjectSize(playbackJob.mp4R2Key) : null,
