@@ -67,9 +67,26 @@ class PlayerViewModel(
     private val mutableState = MutableStateFlow(PlayerUiState(artifact = defaultArtifact))
     val uiState: StateFlow<PlayerUiState> = mutableState
     private var ticker: Job? = null
+    private val eventListener =
+        PlayerController.PlayerEventListener { event ->
+            when (event) {
+                is PlayerEvent.IsPlayingChanged -> {
+                    if (event.isPlaying) startTicker() else stopTicker()
+                    syncFromController()
+                }
+                is PlayerEvent.Error -> {
+                    mutableState.update { it.copy(isLoading = false, message = event.message) }
+                }
+                PlayerEvent.PositionDiscontinuity -> syncFromController()
+            }
+        }
 
     private val launchScope: CoroutineScope
         get() = scope ?: viewModelScope
+
+    init {
+        controller.setEventListener(eventListener)
+    }
 
     fun load(artifact: PlaybackArtifact = defaultArtifact) {
         launchScope.launch {
@@ -147,14 +164,17 @@ class PlayerViewModel(
     fun playPause() {
         if (controller.isPlaying) {
             controller.pause()
+            syncFromController()
+            stopTicker()
         } else {
             controller.play()
+            syncFromController()
+            // Start the ticker unconditionally so the UI tracks playback even before the
+            // service-bound controller reports STATE_READY / isPlaying=true. The loop self
+            // terminates when playback ends, and the Player.Listener wired from the ExoPlayer
+            // re-arms and stops the ticker on asynchronous state changes.
+            startTicker()
         }
-        syncFromController()
-        // Pause the polling ticker while playback is idle/paused to avoid burning CPU and
-        // driving unnecessary recompositions while the screen sits on the back stack. The
-        // ticker relaunches on the next play.
-        if (controller.isPlaying) startTicker() else stopTicker()
     }
 
     fun seekTo(positionMillis: Long) {
@@ -213,8 +233,9 @@ class PlayerViewModel(
         ticker?.cancel()
         ticker =
             launchScope.launch {
-                // Only tick while the controller reports active playback so the loop self
-                // terminates when playback ends or pauses, instead of running forever.
+                // Tick at a coarse cadence while playback is active. The Player.Listener
+                // wired from the ExoPlayer drives the immediate state transitions; the loop
+                // is only a coarse fallback that terminates itself once playback stops.
                 while (controller.isPlaying) {
                     syncFromController()
                     delay(tickerMillis)
@@ -242,6 +263,7 @@ class PlayerViewModel(
 
     override fun onCleared() {
         stopTicker()
+        controller.setEventListener(null)
         controller.release()
         super.onCleared()
     }

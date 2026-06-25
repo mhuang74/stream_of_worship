@@ -460,38 +460,16 @@ private fun SongsetItemCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = {
-                        val gapBeats = gapBeatsText.trim().toDoubleOrNull()
-                        val crossfadeDuration = crossfadeDurationText.trim().toDoubleOrNull()
-                        val keyShift = keyShiftText.trim().toIntOrNull()
-                        val tempoRatio = tempoRatioText.trim().toDoubleOrNull()
-                        transitionError =
-                            when {
-                                gapBeatsText.isNotBlank() && gapBeats == null ->
-                                    "Gap beats must be a number."
-                                crossfadeDurationText.isNotBlank() && crossfadeDuration == null ->
-                                    "Crossfade duration must be a number."
-                                crossfadeDuration != null && crossfadeDuration < 0 ->
-                                    "Crossfade duration must be 0 or greater."
-                                keyShiftText.isNotBlank() && keyShift == null ->
-                                    "Key shift must be an integer."
-                                keyShift != null && keyShift !in -12..12 ->
-                                    "Key shift must be between -12 and 12 semitones."
-                                tempoRatioText.isNotBlank() && tempoRatio == null ->
-                                    "Tempo ratio must be a number."
-                                tempoRatio != null && tempoRatio <= 0 ->
-                                    "Tempo ratio must be greater than 0."
-                                else -> null
-                            }
-                        if (transitionError == null) {
-                            onTransitionChange(
-                                TransitionSettings(
-                                    gapBeats = gapBeats ?: 0.0,
-                                    crossfadeEnabled = if (crossfadeEnabled) 1 else 0,
-                                    crossfadeDurationSeconds = crossfadeDuration ?: 0.0,
-                                    keyShiftSemitones = keyShift ?: 0,
-                                    tempoRatio = tempoRatio ?: 1.0,
-                                ),
-                            )
+                        val parsed = parseSongsetItemTransition(
+                            gapBeatsText = gapBeatsText,
+                            crossfadeDurationText = crossfadeDurationText,
+                            keyShiftText = keyShiftText,
+                            tempoRatioText = tempoRatioText,
+                            crossfadeEnabled = crossfadeEnabled,
+                        )
+                        transitionError = parsed.error
+                        if (parsed.error == null) {
+                            onTransitionChange(parsed.settings)
                         }
                     },
                     modifier = Modifier.weight(1f).testTag("songset-item-save-transition-${item.id}"),
@@ -608,4 +586,54 @@ private fun formatDuration(seconds: Double?): String {
     val minutes = total / 60
     val remainingSeconds = total % 60
     return "${minutes}:${remainingSeconds.toString().padStart(2, '0')}"
+}
+
+internal data class SongsetItemTransitionParseResult(
+    val settings: TransitionSettings,
+    val error: String?,
+)
+
+/**
+ * Parses the songset item transition editor's raw text fields into a [TransitionSettings].
+ * Returns a non-null [SongsetItemTransitionParseResult.error] when a field cannot be coerced
+ * or fails validation; the caller (the editor) shows the error in place of persisting.
+ */
+internal fun parseSongsetItemTransition(
+    gapBeatsText: String,
+    crossfadeDurationText: String,
+    keyShiftText: String,
+    tempoRatioText: String,
+    crossfadeEnabled: Boolean,
+): SongsetItemTransitionParseResult {
+    val gapBeats = gapBeatsText.trim().toDoubleOrNull()
+    val crossfadeDuration = crossfadeDurationText.trim().toDoubleOrNull()
+    val keyShift = keyShiftText.trim().toIntOrNull()
+    val tempoRatio = tempoRatioText.trim().toDoubleOrNull()
+    val error =
+        when {
+            gapBeatsText.isNotBlank() && gapBeats == null ->
+                "Gap beats must be a number."
+            crossfadeDurationText.isNotBlank() && crossfadeDuration == null ->
+                "Crossfade duration must be a number."
+            crossfadeDuration != null && crossfadeDuration < 0 ->
+                "Crossfade duration must be 0 or greater."
+            keyShiftText.isNotBlank() && keyShift == null ->
+                "Key shift must be an integer."
+            keyShift != null && keyShift !in -12..12 ->
+                "Key shift must be between -12 and 12 semitones."
+            tempoRatioText.isNotBlank() && tempoRatio == null ->
+                "Tempo ratio must be a number."
+            tempoRatio != null && tempoRatio <= 0 ->
+                "Tempo ratio must be greater than 0."
+            else -> null
+        }
+    val settings =
+        TransitionSettings(
+            gapBeats = gapBeats ?: 0.0,
+            crossfadeEnabled = if (crossfadeEnabled) 1 else 0,
+            crossfadeDurationSeconds = crossfadeDuration ?: 0.0,
+            keyShiftSemitones = keyShift ?: 0,
+            tempoRatio = tempoRatio ?: 1.0,
+        )
+    return SongsetItemTransitionParseResult(settings = settings, error = error)
 }

@@ -21,6 +21,7 @@ import org.streamofworship.android.data.songs.SongsRepository
 import org.streamofworship.android.data.songsets.ReorderItemRequest
 import org.streamofworship.android.data.songsets.SongsetsRepository
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SongsetsViewModelTest {
     @Test
     fun `delete rolls back optimistic list update on failure`() =
@@ -140,13 +141,26 @@ class SongsetsViewModelTest {
             val originalGap = viewModel.uiState.value.songset?.items?.first()?.gapBeats
             assertEquals(0.0, originalGap)
 
-            viewModel.updateTransition("item-1", TransitionSettings(gapBeats = 4.5, crossfadeEnabled = 0, crossfadeDurationSeconds = 0.0, keyShiftSemitones = 0, tempoRatio = 1.0))
-            // Do not advance — keep the optimistic write in flight while load() arrives.
+            viewModel.updateTransition(
+                "item-1",
+                TransitionSettings(
+                    gapBeats = 4.5,
+                    crossfadeEnabled = 0,
+                    crossfadeDurationSeconds = 0.0,
+                    keyShiftSemitones = 0,
+                    tempoRatio = 1.0,
+                ),
+            )
+            // The update coroutine is now suspended on the gate; fire a fresh load() while it
+            // is still in flight. pendingOptimisticEdits is non-zero so the snapshot must be
+            // rejected and the optimistically-edited gap must survive the reload.
             viewModel.load()
             advanceUntilIdle()
-
-            // The optimistically-edited gap must survive the in-flight reload.
             assertEquals(4.5, viewModel.uiState.value.songset?.items?.first()?.gapBeats)
+
+            // Release the gated write so the test scope drains cleanly at teardown.
+            songsets.updateGate.complete(Unit)
+            advanceUntilIdle()
         }
 
     private fun detailViewModel(
@@ -161,7 +175,7 @@ class SongsetsViewModelTest {
         )
 }
 
-internal class FakeSongsetsRepository(
+internal open class FakeSongsetsRepository(
     private val detail: SongsetDetail = detail(),
     private val deleteError: RuntimeException? = null,
     private val deleteItemError: RuntimeException? = null,
@@ -229,14 +243,16 @@ internal class RecordingAddSongsetsRepository : FakeSongsetsRepository() {
 }
 
 internal class ClobberingSongsetsRepository : FakeSongsetsRepository() {
+    val updateGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+
     override suspend fun updateItemTransition(
         songsetId: String,
         itemId: String,
         settings: TransitionSettings,
     ): SongsetItem {
-        // Never complete to keep the optimistic write flagged as in-flight while load() runs.
-        kotlinx.coroutines.CompletableDeferred<Unit>().await()
-        @Suppress("UNREACHABLE_CODE")
+        // Suspend until the test releases the gate, keeping the optimistic write flagged as
+        // in-flight while load() runs but without hanging the test scheduler indefinitely.
+        updateGate.await()
         return super.updateItemTransition(songsetId, itemId, settings)
     }
 }

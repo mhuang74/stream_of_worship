@@ -1,11 +1,12 @@
 package org.streamofworship.android.feature.player
 
-import android.content.Context
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,8 +33,8 @@ class Media3PlayerControllerTest {
         assertTrue(player.releaseCalled)
         assertEquals(60_000L, controller.durationMillis)
         assertEquals(0L, controller.positionMillis)
-        // Fake facade backs the controller, so no media session is created.
-        assertNull(controller.sessionToken)
+        // Fake facade backs the controller, so no underlying PlayerView host is exposed.
+        assertNull(controller.playerView)
     }
 
     @Test
@@ -54,19 +55,21 @@ class Media3PlayerControllerTest {
     }
 
     @Test
-    fun `real exo player controller exposes media session token and releases it`() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val controller = Media3PlayerController(context)
-
+    fun `direct player facade exposes the underlying player view and releases cleanly`() {
+        val exoPlayer = ExoPlayer.Builder(ApplicationProvider.getApplicationContext()).build()
+        val controller = Media3PlayerController(exoPlayer)
         try {
-            assertNotNull("media session token should be created", controller.sessionToken)
+            assertSame(exoPlayer, controller.playerView)
+            // Listener registration must not crash; silence is fine since the underlying
+            // player has nothing to play yet.
+            controller.setEventListener(PlayerController.PlayerEventListener { })
         } finally {
             controller.release()
         }
     }
 }
 
-private class FakeMediaPlayerFacade(
+internal class FakeMediaPlayerFacade(
     private val duration: Long,
     private val position: Long,
 ) : MediaPlayerFacade {
@@ -103,6 +106,8 @@ private class FakeMediaPlayerFacade(
     override fun release() {
         releaseCalled = true
     }
+
+    override fun setEventListener(listener: PlayerController.PlayerEventListener?) = Unit
 }
 
 private class FakeWakeLockHandle : WakeLockHandle {

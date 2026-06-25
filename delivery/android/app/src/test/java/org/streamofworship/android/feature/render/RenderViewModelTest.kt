@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.streamofworship.android.core.model.RenderState
@@ -170,6 +171,37 @@ class RenderViewModelTest {
             // Subsequent poll clears the initial message — the render is actively progressing.
             assertEquals(null, viewModel.uiState.value.serverMessage)
             assertEquals(RenderJobStatus.Completed, viewModel.uiState.value.currentJob?.status)
+        }
+
+    @Test
+    fun `latest failed render surfaces the previous completed render for review and playback`() =
+        runTest {
+            val songset =
+                detail().copy(latestRenderJobId = "latest", lastCompletedRenderJobId = "completed-old")
+            val render =
+                FakeRenderRepository(
+                    jobs =
+                        mutableListOf(
+                            job("latest", RenderJobStatus.Failed),
+                            job("completed-old", RenderJobStatus.Completed),
+                        ),
+                )
+            val viewModel =
+                viewModel(
+                    this,
+                    songsets = FakeRenderSongsetsRepository(songset),
+                    render = render,
+                    pollInterval = 100,
+                )
+            viewModel.load()
+            advanceUntilIdle()
+
+            assertEquals(RenderJobStatus.Failed, viewModel.uiState.value.currentJob?.status)
+            assertFalse(viewModel.uiState.value.currentJob?.hasPlayableArtifacts == true)
+            val reviewable = viewModel.uiState.value.reviewableCompletedJob
+            assertNotNull(reviewable)
+            assertEquals("completed-old", reviewable?.id)
+            assertTrue(reviewable?.hasPlayableArtifacts == true)
         }
 
     @Test
