@@ -26,6 +26,8 @@ import org.streamofworship.android.data.songs.HttpSongsRepository
 import org.streamofworship.android.data.songs.SongsApi
 import org.streamofworship.android.data.songsets.HttpSongsetsRepository
 import org.streamofworship.android.data.songsets.SongsetsApi
+import org.streamofworship.android.feature.auth.LoginScreen
+import org.streamofworship.android.feature.auth.rememberAuthController
 import org.streamofworship.android.feature.player.Media3PlayerController
 import org.streamofworship.android.feature.player.PlaybackArtifact
 import org.streamofworship.android.feature.player.PlayerScreen
@@ -55,7 +57,13 @@ fun SowNavGraph(
         modifier = modifier,
     ) {
         composable(SowRoute.Login.pattern) {
-            Text("Sign in to continue.")
+            val authController = rememberAuthController()
+            LoginScreen(
+                loading = false,
+                formError = null,
+                onSubmit = authController::signIn,
+                onRegisterClick = {},
+            )
         }
         composable(SowRoute.Songsets.pattern) {
             val dependencies = rememberSongsetsDependencies(authController)

@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.streamofworship.android.core.model.RenderState
 import org.streamofworship.android.core.model.Song
 import org.streamofworship.android.core.model.SongsetDetail
@@ -20,6 +22,7 @@ import org.streamofworship.android.core.model.withItemsMarkedStale
 import org.streamofworship.android.data.songs.SongsRepository
 import org.streamofworship.android.data.songsets.ReorderItemRequest
 import org.streamofworship.android.data.songsets.SongsetsRepository
+import java.util.concurrent.atomic.AtomicInteger
 
 data class SongsetsListUiState(
     val songsets: List<SongsetSummary> = emptyList(),
@@ -202,15 +205,38 @@ class SongsetDetailViewModel(
     private val launchScope: CoroutineScope
         get() = scope ?: viewModelScope
 
+    // Tracks optimistic edits (description, reorder, transition, removal, add) whose local
+    // state has not yet been flushed to the server. While > 0, load() must not clobber the
+    // optimistically-edited songset with a server snapshot fetched mid-edit.
+    private val pendingOptimisticEdits = AtomicInteger(0)
+
+    private val addSongMutex = Mutex()
+
     fun load() {
         launchScope.launch {
             mutableState.update { it.copy(isLoading = true, error = null) }
             runCatching { songsetsRepository.getSongset(songsetId) }
                 .onSuccess { detail ->
-                    mutableState.update { it.copy(songset = detail, isLoading = false) }
-                }.onFailure { error ->
+                    // Only apply the server snapshot when no optimistic edit is mid-flight;
+                    // otherwise in-flight edits (description change, reorder, transition tweak,
+                    // item removal) would be silently discarded before the server has flushed
+                    // the optimistic value back.
+                    val applySnapshot = pendingOptimisticEdits.get() == 0
                     mutableState.update {
-                        it.copy(isLoading = false, error = error.message ?: "Failed to load songset")
+                        if (applySnapshot) {
+                            it.copy(songset = detail, isLoading = false)
+                        } else {
+                            it.copy(isLoading = false)
+                        }
+                    }
+                }.onFailure { error ->
+                    val applyError = pendingOptimisticEdits.get() == 0
+                    mutableState.update {
+                        if (applyError) {
+                            it.copy(isLoading = false, error = error.message ?: "Failed to load songset")
+                        } else {
+                            it.copy(isLoading = false)
+                        }
                     }
                 }
         }
@@ -220,13 +246,18 @@ class SongsetDetailViewModel(
         val previous = mutableState.value.songset ?: return
         val nextDescription = description.trim().takeIf { it.isNotEmpty() }
         mutableState.update { it.copy(songset = previous.copy(description = nextDescription), error = null) }
+        pendingOptimisticEdits.incrementAndGet()
         launchScope.launch {
-            runCatching {
-                songsetsRepository.updateSongset(songsetId, description = nextDescription)
-            }.onFailure { error ->
-                mutableState.update {
-                    it.copy(songset = previous, error = error.message ?: "Failed to update description")
+            try {
+                runCatching {
+                    songsetsRepository.updateSongset(songsetId, description = nextDescription)
+                }.onFailure { error ->
+                    mutableState.update {
+                        it.copy(songset = previous, error = error.message ?: "Failed to update description")
+                    }
                 }
+            } finally {
+                pendingOptimisticEdits.decrementAndGet()
             }
         }
     }
@@ -237,13 +268,18 @@ class SongsetDetailViewModel(
             item.copy(position = index)
         }
         mutableState.update { it.copy(songset = previous.withItemsMarkedStale(nextItems), error = null) }
+        pendingOptimisticEdits.incrementAndGet()
         launchScope.launch {
-            runCatching { songsetsRepository.deleteItem(songsetId, itemId) }
-                .onFailure { error ->
-                    mutableState.update {
-                        it.copy(songset = previous, error = error.message ?: "Failed to remove song")
+            try {
+                runCatching { songsetsRepository.deleteItem(songsetId, itemId) }
+                    .onFailure { error ->
+                        mutableState.update {
+                            it.copy(songset = previous, error = error.message ?: "Failed to remove song")
+                        }
                     }
-                }
+            } finally {
+                pendingOptimisticEdits.decrementAndGet()
+            }
         }
     }
 
@@ -260,14 +296,19 @@ class SongsetDetailViewModel(
         reordered.add(targetIndex, moved)
         val nextItems = reordered.mapIndexed { index, item -> item.copy(position = index) }
         mutableState.update { it.copy(songset = previous.withItemsMarkedStale(nextItems), error = null) }
+        pendingOptimisticEdits.incrementAndGet()
         launchScope.launch {
-            val updates = nextItems.map { ReorderItemRequest(itemId = it.id, position = it.position) }
-            runCatching { songsetsRepository.reorderItems(songsetId, updates) }
-                .onFailure { error ->
-                    mutableState.update {
-                        it.copy(songset = previous, error = error.message ?: "Failed to reorder items")
+            try {
+                val updates = nextItems.map { ReorderItemRequest(itemId = it.id, position = it.position) }
+                runCatching { songsetsRepository.reorderItems(songsetId, updates) }
+                    .onFailure { error ->
+                        mutableState.update {
+                            it.copy(songset = previous, error = error.message ?: "Failed to reorder items")
+                        }
                     }
-                }
+            } finally {
+                pendingOptimisticEdits.decrementAndGet()
+            }
         }
     }
 
@@ -291,13 +332,18 @@ class SongsetDetailViewModel(
                 }
             }
         mutableState.update { it.copy(songset = previous.withItemsMarkedStale(nextItems), error = null) }
+        pendingOptimisticEdits.incrementAndGet()
         launchScope.launch {
-            runCatching { songsetsRepository.updateItemTransition(songsetId, itemId, settings) }
-                .onFailure { error ->
-                    mutableState.update {
-                        it.copy(songset = previous, error = error.message ?: "Failed to update transition")
+            try {
+                runCatching { songsetsRepository.updateItemTransition(songsetId, itemId, settings) }
+                    .onFailure { error ->
+                        mutableState.update {
+                            it.copy(songset = previous, error = error.message ?: "Failed to update transition")
+                        }
                     }
-                }
+            } finally {
+                pendingOptimisticEdits.decrementAndGet()
+            }
         }
     }
 
@@ -344,35 +390,60 @@ class SongsetDetailViewModel(
     fun addSong(song: Song) {
         val previous = mutableState.value.songset ?: return
         val recording = song.publishedRecordings.firstOrNull()
-        val durationAfterAdd =
-            (previous.durationSeconds ?: 0.0) + (recording?.durationSeconds ?: 0.0)
+        // Synchronous pre-check for immediate UX feedback (does not race-protect alone).
         if (previous.items.size >= SongsetMaxSongs) {
             mutableState.update { it.copy(validationMessage = "Songsets can include up to 5 songs") }
             return
         }
+        val durationAfterAdd =
+            (previous.durationSeconds ?: 0.0) + (recording?.durationSeconds ?: 0.0)
         if (durationAfterAdd > SongsetMaxDurationSeconds) {
             mutableState.update { it.copy(validationMessage = "Songset duration must stay under 25 minutes") }
             return
         }
+        // Serialize concurrent addSong invocations so two rapid taps do not both pass
+        // validation against the same snapshot and POST the same position to the server.
         launchScope.launch {
-            runCatching {
-                songsetsRepository.addItem(
-                    songsetId = songsetId,
-                    songId = song.id,
-                    recordingHashPrefix = recording?.hashPrefix,
-                    position = previous.items.size,
-                )
-            }.onSuccess { item ->
-                val latest = mutableState.value.songset ?: previous
-                mutableState.update {
-                    it.copy(
-                        songset = latest.withItemsMarkedStale(latest.items + item),
-                        validationMessage = null,
-                        error = null,
-                    )
+            addSongMutex.withLock {
+                // Re-read latest state after acquiring the mutex and re-validate before posting
+                // so concurrent addSong calls do not both pass validation and POST the same
+                // position or exceed the song/duration cap.
+                val current = mutableState.value.songset ?: return@withLock
+                val currentRecording = song.publishedRecordings.firstOrNull()
+                if (current.items.size >= SongsetMaxSongs) {
+                    mutableState.update { it.copy(validationMessage = "Songsets can include up to 5 songs") }
+                    return@withLock
                 }
-            }.onFailure { error ->
-                mutableState.update { it.copy(error = error.message ?: "Failed to add song") }
+                val recheckDuration =
+                    (current.durationSeconds ?: 0.0) + (currentRecording?.durationSeconds ?: 0.0)
+                if (recheckDuration > SongsetMaxDurationSeconds) {
+                    mutableState.update { it.copy(validationMessage = "Songset duration must stay under 25 minutes") }
+                    return@withLock
+                }
+                pendingOptimisticEdits.incrementAndGet()
+                try {
+                    runCatching {
+                        songsetsRepository.addItem(
+                            songsetId = songsetId,
+                            songId = song.id,
+                            recordingHashPrefix = currentRecording?.hashPrefix,
+                            position = current.items.size,
+                        )
+                    }.onSuccess { item ->
+                        val latest = mutableState.value.songset ?: current
+                        mutableState.update {
+                            it.copy(
+                                songset = latest.withItemsMarkedStale(latest.items + item),
+                                validationMessage = null,
+                                error = null,
+                            )
+                        }
+                    }.onFailure { error ->
+                        mutableState.update { it.copy(error = error.message ?: "Failed to add song") }
+                    }
+                } finally {
+                    pendingOptimisticEdits.decrementAndGet()
+                }
             }
         }
     }

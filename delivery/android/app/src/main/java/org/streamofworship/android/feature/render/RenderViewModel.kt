@@ -56,6 +56,8 @@ class RenderViewModel(
     private val scope: CoroutineScope? = null,
     private val pollIntervalMillis: Long = 2_000,
     private val retryDelayMillis: Long = 1_000,
+    private val maxRetries: Int = 10,
+    private val maxBackoffMillis: Long = 30_000,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(RenderUiState())
     val uiState: StateFlow<RenderUiState> = mutableState
@@ -122,6 +124,9 @@ class RenderViewModel(
             launchScope.launch {
                 mutableState.update { it.copy(isPolling = true, retryCount = 0, serverMessage = initialMessage) }
                 var retries = 0
+                // Track whether the initial conflict message has been shown for exactly one
+                // iteration so it does not persist for the entire render lifetime.
+                var firstResponse = true
                 while (true) {
                     val result = runCatching { renderRepository.getRenderJob(jobId) }
                     val job = result.getOrNull()
@@ -132,9 +137,10 @@ class RenderViewModel(
                                 currentJob = job,
                                 isPolling = job.isActive,
                                 retryCount = 0,
-                                serverMessage = if (initialMessage != null && retries == 0) it.serverMessage else null,
+                                serverMessage = if (firstResponse && initialMessage != null) it.serverMessage else null,
                             )
                         }
+                        firstResponse = false
                         if (!job.isActive) {
                             if (job.status == RenderJobStatus.Completed) {
                                 loadArtifactSizes(job.id)
@@ -144,6 +150,21 @@ class RenderViewModel(
                         delay(pollIntervalMillis)
                     } else {
                         retries += 1
+                        if (retries > maxRetries) {
+                            mutableState.update {
+                                it.copy(
+                                    isPolling = false,
+                                    retryCount = retries,
+                                    serverMessage =
+                                        result.exceptionOrNull()?.statusMessage()
+                                            ?: "Status unavailable. Retry manually.",
+                                )
+                            }
+                            break
+                        }
+                        val backoff =
+                            (retryDelayMillis * (1L shl (retries - 1).coerceAtMost(5)))
+                                .coerceAtMost(maxBackoffMillis)
                         mutableState.update {
                             it.copy(
                                 isPolling = true,
@@ -151,7 +172,7 @@ class RenderViewModel(
                                 serverMessage = result.exceptionOrNull()?.statusMessage() ?: "Render status unavailable",
                             )
                         }
-                        delay(retryDelayMillis)
+                        delay(backoff)
                     }
                 }
             }

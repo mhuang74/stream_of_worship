@@ -347,7 +347,22 @@ private fun SongsetItemCard(
     onMoveDown: () -> Unit,
     onTransitionChange: (TransitionSettings) -> Unit,
 ) {
-    var settings by remember(item.id, item.transitionSettings) { mutableStateOf(item.transitionSettings) }
+    val initial = item.transitionSettings
+    // Editing holds raw text so partial numeric input (e.g. "1.", "-2", "0.") does not get
+    // overwritten by a coerced default on every keystroke. Persistence happens only when
+    // the user taps Save transition.
+    var gapBeatsText by remember(item.id, initial) { mutableStateOf(initial.gapBeats?.toString().orEmpty()) }
+    var crossfadeEnabled by remember(item.id, initial) { mutableStateOf(initial.crossfadeEnabled == 1) }
+    var crossfadeDurationText by remember(item.id, initial) {
+        mutableStateOf(initial.crossfadeDurationSeconds?.toString().orEmpty())
+    }
+    var keyShiftText by remember(item.id, initial) {
+        mutableStateOf(initial.keyShiftSemitones?.toString().orEmpty())
+    }
+    var tempoRatioText by remember(item.id, initial) {
+        mutableStateOf(initial.tempoRatio?.toString().orEmpty())
+    }
+    var transitionError by remember(item.id) { mutableStateOf<String?>(null) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().testTag("songset-item-${item.id}"),
@@ -382,35 +397,107 @@ private fun SongsetItemCard(
                 Text("Transition", fontWeight = FontWeight.Medium)
             }
             OutlinedTextField(
-                value = settings.gapBeats?.toString().orEmpty(),
-                onValueChange = { value ->
-                    // Update only local editing state on each keystroke so a server PATCH is
-                    // not fired per character; persistence happens when the user taps Save.
-                    val next = settings.copy(gapBeats = value.toDoubleOrNull() ?: 0.0)
-                    settings = next
+                value = gapBeatsText,
+                onValueChange = {
+                    gapBeatsText = it
+                    transitionError = null
                 },
                 label = { Text("Gap beats") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("songset-item-gap-beats-${item.id}"),
             )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Crossfade", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = crossfadeEnabled,
+                    onCheckedChange = {
+                        crossfadeEnabled = it
+                        transitionError = null
+                    },
+                )
+            }
+            OutlinedTextField(
+                value = crossfadeDurationText,
+                onValueChange = {
+                    crossfadeDurationText = it
+                    transitionError = null
+                },
+                label = { Text("Crossfade duration (s)") },
+                enabled = crossfadeEnabled,
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("songset-item-crossfade-duration-${item.id}"),
+            )
+            OutlinedTextField(
+                value = keyShiftText,
+                onValueChange = {
+                    keyShiftText = it
+                    transitionError = null
+                },
+                label = { Text("Key shift semitones") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("songset-item-key-shift-${item.id}"),
+            )
+            OutlinedTextField(
+                value = tempoRatioText,
+                onValueChange = {
+                    tempoRatioText = it
+                    transitionError = null
+                },
+                label = { Text("Tempo ratio") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("songset-item-tempo-ratio-${item.id}"),
+            )
+            transitionError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("songset-item-transition-error-${item.id}"),
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
-                    onClick = { onTransitionChange(settings) },
+                    onClick = {
+                        val gapBeats = gapBeatsText.trim().toDoubleOrNull()
+                        val crossfadeDuration = crossfadeDurationText.trim().toDoubleOrNull()
+                        val keyShift = keyShiftText.trim().toIntOrNull()
+                        val tempoRatio = tempoRatioText.trim().toDoubleOrNull()
+                        transitionError =
+                            when {
+                                gapBeatsText.isNotBlank() && gapBeats == null ->
+                                    "Gap beats must be a number."
+                                crossfadeDurationText.isNotBlank() && crossfadeDuration == null ->
+                                    "Crossfade duration must be a number."
+                                crossfadeDuration != null && crossfadeDuration < 0 ->
+                                    "Crossfade duration must be 0 or greater."
+                                keyShiftText.isNotBlank() && keyShift == null ->
+                                    "Key shift must be an integer."
+                                keyShift != null && keyShift !in -12..12 ->
+                                    "Key shift must be between -12 and 12 semitones."
+                                tempoRatioText.isNotBlank() && tempoRatio == null ->
+                                    "Tempo ratio must be a number."
+                                tempoRatio != null && tempoRatio <= 0 ->
+                                    "Tempo ratio must be greater than 0."
+                                else -> null
+                            }
+                        if (transitionError == null) {
+                            onTransitionChange(
+                                TransitionSettings(
+                                    gapBeats = gapBeats ?: 0.0,
+                                    crossfadeEnabled = if (crossfadeEnabled) 1 else 0,
+                                    crossfadeDurationSeconds = crossfadeDuration ?: 0.0,
+                                    keyShiftSemitones = keyShift ?: 0,
+                                    tempoRatio = tempoRatio ?: 1.0,
+                                ),
+                            )
+                        }
+                    },
                     modifier = Modifier.weight(1f).testTag("songset-item-save-transition-${item.id}"),
                 ) {
                     Text("Save transition")
                 }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Crossfade", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = settings.crossfadeEnabled == 1,
-                    onCheckedChange = { enabled ->
-                        val next = settings.copy(crossfadeEnabled = if (enabled) 1 else 0)
-                        settings = next
-                        onTransitionChange(next)
-                    },
-                )
             }
         }
     }

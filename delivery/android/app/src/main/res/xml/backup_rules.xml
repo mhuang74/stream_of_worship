@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- EncryptedSharedPreferences still leak signed R2 token lifecycles; never
+         back them up or transfer them between devices. -->
+    <exclude domain="sharedpref" path="sow_secure_session.xml" />
+    <!-- artifacts.json holds signed R2 URLs with embedded token query parameters;
+         exclude the offline cache from backup and device transfer. -->
+    <exclude domain="file" path="offline/" />
+</full-backup-content>

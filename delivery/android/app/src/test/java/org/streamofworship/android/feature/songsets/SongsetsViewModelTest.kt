@@ -111,6 +111,44 @@ class SongsetsViewModelTest {
             assertEquals(3, detail?.items?.size)
         }
 
+    @Test
+    fun `concurrent add song calls post distinct positions`() =
+        runTest {
+            val songsets = RecordingAddSongsetsRepository()
+            val viewModel = detailViewModel(this, songsets)
+            viewModel.load()
+            advanceUntilIdle()
+
+            // Fire two addSong calls before either coroutine has a chance to update state.
+            viewModel.addSong(song("song-a", duration = 60.0))
+            viewModel.addSong(song("song-b", duration = 60.0))
+            advanceUntilIdle()
+
+            assertEquals(2, songsets.addedPositions.size)
+            assertEquals(listOf(2, 3), songsets.addedPositions.sorted())
+            assertEquals(4, viewModel.uiState.value.songset?.items?.size)
+        }
+
+    @Test
+    fun `load does not clobber optimistic transition edits while a write is in flight`() =
+        runTest {
+            val songsets = ClobberingSongsetsRepository()
+            val viewModel = detailViewModel(this, songsets)
+            viewModel.load()
+            advanceUntilIdle()
+
+            val originalGap = viewModel.uiState.value.songset?.items?.first()?.gapBeats
+            assertEquals(0.0, originalGap)
+
+            viewModel.updateTransition("item-1", TransitionSettings(gapBeats = 4.5, crossfadeEnabled = 0, crossfadeDurationSeconds = 0.0, keyShiftSemitones = 0, tempoRatio = 1.0))
+            // Do not advance — keep the optimistic write in flight while load() arrives.
+            viewModel.load()
+            advanceUntilIdle()
+
+            // The optimistically-edited gap must survive the in-flight reload.
+            assertEquals(4.5, viewModel.uiState.value.songset?.items?.first()?.gapBeats)
+        }
+
     private fun detailViewModel(
         scope: TestScope,
         songsets: FakeSongsetsRepository,
@@ -173,6 +211,33 @@ internal class FakeSongsetsRepository(
 
     override suspend fun reorderItems(songsetId: String, updates: List<ReorderItemRequest>) {
         reorderUpdates = updates.map { it.itemId to it.position }
+    }
+}
+
+internal class RecordingAddSongsetsRepository : FakeSongsetsRepository() {
+    val addedPositions = mutableListOf<Int>()
+
+    override suspend fun addItem(
+        songsetId: String,
+        songId: String,
+        recordingHashPrefix: String?,
+        position: Int,
+    ): SongsetItem {
+        addedPositions += position
+        return super.addItem(songsetId, songId, recordingHashPrefix, position)
+    }
+}
+
+internal class ClobberingSongsetsRepository : FakeSongsetsRepository() {
+    override suspend fun updateItemTransition(
+        songsetId: String,
+        itemId: String,
+        settings: TransitionSettings,
+    ): SongsetItem {
+        // Never complete to keep the optimistic write flagged as in-flight while load() runs.
+        kotlinx.coroutines.CompletableDeferred<Unit>().await()
+        @Suppress("UNREACHABLE_CODE")
+        return super.updateItemTransition(songsetId, itemId, settings)
     }
 }
 

@@ -30,7 +30,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.streamofworship.android.core.config.AppConfig
-import org.streamofworship.android.core.design.SowErrorState
 import org.streamofworship.android.core.design.SowLoadingState
 import org.streamofworship.android.core.network.AuthApi
 import org.streamofworship.android.core.network.SowApiClientFactory
@@ -100,7 +99,10 @@ fun AuthenticatedAppGate(
             }
 
         is AuthState.Error ->
-            if (state.error.statusCode == 401) {
+            // Any auth failure (401, server, network, malformed) routes the user back to
+            // the form so transient backend/network errors during sign-in/up do not strand
+            // them on a generic restore-session error banner.
+            if (mode == AuthScreenMode.Login) {
                 LoginScreen(
                     loading = false,
                     formError = state.error.message,
@@ -108,15 +110,11 @@ fun AuthenticatedAppGate(
                     onRegisterClick = { mode = AuthScreenMode.Register },
                 )
             } else {
-                SowErrorState(
-                    title = "Authentication unavailable",
-                    message = state.error.message,
-                    actionLabel = "Try again",
-                    onAction = authController::restoreSession,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
+                RegisterScreen(
+                    loading = false,
+                    formError = state.error.message,
+                    onSubmit = authController::register,
+                    onLoginClick = { mode = AuthScreenMode.Login },
                 )
             }
 

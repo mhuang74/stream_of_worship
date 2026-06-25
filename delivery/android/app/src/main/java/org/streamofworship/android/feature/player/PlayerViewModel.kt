@@ -267,5 +267,7 @@ private fun PlaybackArtifact.offlineKind(): OfflineArtifactKind =
     }
 
 private fun SignedUrlResponse.isExpired(clock: Clock): Boolean =
-    runCatching { Instant.parse(expiresAt).isBefore(Instant.now(clock)) || Instant.parse(expiresAt) == Instant.now(clock) }
-        .getOrDefault(false)
+    runCatching {
+        val expiry = Instant.parse(expiresAt)
+        expiry.isBefore(Instant.now(clock)) || expiry == Instant.now(clock)
+    }.getOrDefault(true)
