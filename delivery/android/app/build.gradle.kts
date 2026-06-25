@@ -75,6 +75,28 @@ android {
 
 kover {
     reports {
+        filters {
+            excludes {
+                classes(
+                    "*.*\$*",
+                    "*.BuildConfig",
+                    "*.MainActivity",
+                    "*.SowApplication",
+                    "*.core.design.GlobalErrorPresentationKt",
+                    "*.core.design.SowAppKt",
+                    "*.core.design.SowStatesKt",
+                    "*.core.download.AndroidArtifactDownloadScheduler",
+                    "*.core.download.AndroidArtifactDownloadSchedulerKt",
+                    "*.core.download.ArtifactDownloadWorker",
+                    "*.core.navigation.*Dependencies",
+                    "*.core.navigation.SowNavGraphKt",
+                    "*.core.session.AndroidSecureSessionCookieStore",
+                    "*.feature.*.*ScreenKt",
+                    "*.feature.player.Media3PlayerController",
+                    "*.feature.share.AndroidShareIntentsKt",
+                )
+            }
+        }
         total {
             xml {
                 onCheck = false

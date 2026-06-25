@@ -2,7 +2,6 @@
 <resources>
     <style name="Theme.StreamOfWorship" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:colorAccent">#262626</item>
     </style>
 </resources>
