@@ -111,12 +111,13 @@ export function ControllerPlayer({
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [localSongIndex, setLocalSongIndex] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showIosInfo, setShowIosInfo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDiagnosticSheet, setShowDiagnosticSheet] = useState(false);
   const [pendingResume, setPendingResume] = useState<PendingResume | null>(null);
+  const [pendingSeek, setPendingSeek] = useState<number | null>(null);
 
   // Refs to the latest transport forwarding props so effect/handler closures
   // never go stale without forcing re-renders.
@@ -138,9 +139,27 @@ export function ControllerPlayer({
   // paused + muted (audio plays on the receiver); only the controller UI
   // mirrors the receiver so the worship leader sees the right state.
   const isTransportConnected = transport?.isConnected ?? false;
+  const transportCurrentTime = transport?.currentTime;
   const effectiveCurrentTime = isTransportConnected
-    ? transport?.currentTime ?? currentTime
+    ? pendingSeek ?? transportCurrentTime ?? currentTime
     : currentTime;
+  // Chapter index driven by local <video> timeupdate when offline, and by the
+  // receiver's reported currentTime when a Cast transport is connected (the
+  // local video is paused + muted and its timeupdate is suppressed while
+  // active). Derived during render so the song-change effect + LyricJumpList
+  // highlight stay in sync without a setState-in-effect.
+  const currentSongIndex = useMemo(() => {
+    if (isTransportConnected) {
+      const t = transportCurrentTime ?? 0;
+      const idx = chapters.findIndex(
+        (chapter, i) =>
+          t >= chapter.startSeconds &&
+          (i === chapters.length - 1 || t < chapters[i + 1].startSeconds)
+      );
+      if (idx !== -1) return idx;
+    }
+    return localSongIndex;
+  }, [isTransportConnected, transportCurrentTime, chapters, localSongIndex]);
   const effectiveDuration = isTransportConnected
     ? transport?.duration || duration
     : duration;
@@ -152,10 +171,40 @@ export function ControllerPlayer({
 
   const bufferingSinceMs = isTransportConnected ? transport?.bufferingSinceMs ?? null : null;
   const isBuffering = isTransportConnected && transport?.playerState === "buffering";
+  // `nowMs` ticks once per second while the receiver is buffering so the
+  // "actionable buffering" copy flips after BUFFERING_ACTIONABLE_MS without
+  // calling Date.now() during render (which would violate component purity).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isBuffering) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isBuffering]);
   const showActionableBuffering =
     isBuffering &&
     bufferingSinceMs !== null &&
-    Date.now() - bufferingSinceMs > BUFFERING_ACTIONABLE_MS;
+    nowMs - bufferingSinceMs > BUFFERING_ACTIONABLE_MS;
+
+  // Clear the pending seek once the receiver's currentTime catches up to the
+  // target position (within 0.5s). This hands the slider back to the receiver
+  // as the source of truth after a user-initiated seek while connected.
+  useEffect(() => {
+    if (pendingSeek === null || !isTransportConnected) return;
+    const reported = transportCurrentTime ?? 0;
+    if (Math.abs(reported - pendingSeek) < 0.5) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingSeek(null);
+    }
+  }, [pendingSeek, isTransportConnected, transportCurrentTime]);
+
+  // Also clear pending seek when disconnecting so the slider doesn't hold a
+  // stale target across a disconnect→resume transition.
+  useEffect(() => {
+    if (!isTransportConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingSeek(null);
+    }
+  }, [isTransportConnected]);
 
   // Check if iOS and if info toast was already shown
   useEffect(() => {
@@ -163,12 +212,25 @@ export function ControllerPlayer({
 
     const isIOS =
       /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as unknown as { MSStream: boolean }).MSStream;
-    const infoShown = sessionStorage.getItem(IOS_INFO_KEY);
+
+    // Safari private-browsing mode throws QuotaExceededError on sessionStorage
+    // access — treat quota failures as "not shown" silently so the toast path
+    // never surfaces an uncaught exception on iOS.
+    let infoShown: string | null = null;
+    try {
+      infoShown = sessionStorage.getItem(IOS_INFO_KEY);
+    } catch {
+      /* private mode / disabled storage — treat as not shown */
+    }
 
     if (isIOS && !isPresentationActive && !infoShown) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowIosInfo(true);
-      sessionStorage.setItem(IOS_INFO_KEY, "true");
+      try {
+        sessionStorage.setItem(IOS_INFO_KEY, "true");
+      } catch {
+        /* best-effort: never throw from storage access */
+      }
     }
   }, [isPresentationActive]);
 
@@ -191,7 +253,7 @@ export function ControllerPlayer({
             video.currentTime < chapters[i + 1].startSeconds)
       );
       if (newIndex !== -1 && newIndex !== currentSongIndex) {
-        setCurrentSongIndex(newIndex);
+        setLocalSongIndex(newIndex);
       }
     };
 
@@ -308,12 +370,38 @@ export function ControllerPlayer({
         console.warn("handleSeek called with non-finite time:", time);
         return;
       }
-      const upper = effectiveDuration > 0 ? effectiveDuration : time;
-      const clampedTime = clamp(time, 0, upper);
 
       if (isPresentationActive) {
-        // Mirror the seek locally for immediate UI feedback, then forward the
-        // command (debounced 200ms client-side, latest-wins).
+        // While the receiver media is the source of truth, forward the seek
+        // command (debounced 200ms client-side, latest-wins). When the
+        // effective duration is 0 (receiver media not loaded yet), clamp
+        // against the relevant chapter's endSeconds so an out-of-range
+        // positionSeconds is not forwarded to the receiver before its duration
+        // is known — the transport hook re-clamps using its own snapshot on
+        // fire.
+        let upper = effectiveDuration > 0 ? effectiveDuration : time;
+        if (effectiveDuration <= 0) {
+          // Derive a local upper bound from the chapter that contains `time`
+          // so a chapter / lyric-line jump does not forward an unbounded
+          // positionSeconds before the receiver reports its duration.
+          const containingIdx = chapters.findIndex(
+            (ch, i) =>
+              time >= ch.startSeconds &&
+              (i === chapters.length - 1 || time < chapters[i + 1].startSeconds),
+          );
+          const containingEnd =
+            containingIdx >= 0 ? chapters[containingIdx]?.endSeconds : undefined;
+          if (typeof containingEnd === "number" && containingEnd > 0) {
+            upper = containingEnd;
+          }
+        }
+        const clampedTime = clamp(time, 0, upper);
+        // Track the pending seek so the slider mirrors the target position
+        // immediately — without this, effectiveCurrentTime (derived from
+        // transport.currentTime while connected) would show the stale receiver
+        // position until the receiver reports the new time back. The pending
+        // value is cleared once the receiver's currentTime catches up.
+        setPendingSeek(clampedTime);
         setCurrentTime(clampedTime);
         if (seekDebounceRef.current) {
           clearTimeout(seekDebounceRef.current);
@@ -329,10 +417,12 @@ export function ControllerPlayer({
 
       const video = videoRef.current;
       if (!video) return;
-      video.currentTime = clampedTime;
-      setCurrentTime(clampedTime);
+      const localUpper = effectiveDuration > 0 ? effectiveDuration : time;
+      const localClamped = clamp(time, 0, localUpper);
+      video.currentTime = localClamped;
+      setCurrentTime(localClamped);
     },
-    [isPresentationActive, effectiveDuration]
+    [isPresentationActive, effectiveDuration, chapters]
   );
 
   const handleSkipBack = useCallback(() => {
@@ -417,7 +507,23 @@ export function ControllerPlayer({
     [chapters, handleSeek]
   );
 
+  const transportRef = useRef(transport);
+  useEffect(() => {
+    transportRef.current = transport;
+  }, [transport]);
+
   const handleExit = useCallback(() => {
+    // Tear down any active Cast session before navigating away so the TV
+    // receiver does not keep playing audio with no controller attached. The
+    // Presentation API fallback closes its own connection on unmount; the
+    // Cast transport must behave symmetrically here.
+    if (transportRef.current?.isConnected) {
+      try {
+        transportRef.current.stop();
+      } catch {
+        /* best-effort: never block navigation */
+      }
+    }
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {
         // Ignore errors
@@ -545,43 +651,98 @@ export function ControllerPlayer({
       video.setAttribute("muted", "");
       video.pause();
     } else {
+      // On disconnect-resume, also re-sync the local <video>'s `.volume` /
+      // `.muted` from React state. During Cast, the VolumeLevelChanged
+      // listener reflected the receiver's volume into React state but NOT into
+      // the local <video>'s `.volume` property (the volume-change handler
+      // returns early while `isPresentationActive`), so the local element kept
+      // its pre-Cast `.volume` value throughout the whole Cast session. After
+      // disconnect, the on-screen volume slider shows the receiver's last
+      // volume while the actual audio from the phone used the pre-Cast volume
+      // — worship leader could hear unexpectedly loud/quiet audio after
+      // disconnect. Mirror React state onto the element here so they match.
       video.muted = false;
       video.removeAttribute("muted");
+      try {
+        video.volume = volume;
+        video.muted = isMuted;
+      } catch {
+        /* best-effort: reading volume can throw on some platforms */
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPresentationActive]);
 
-  // ── Disconnect → local resume (P0) ──────────────────────────────────────
+  // ─‑ Disconnect → local resume (P0) ──────────────────────────────────────
   // When the presentation transitions active → inactive (transport was
   // previously connected), read transport.resumeProposal and either auto-resume
   // local playback from the extrapolated TV position, or — when the proposal
   // is stale — surface a tap-to-resume prompt without auto-resuming. Never
   // silent: a play() rejection renders a prominent inline tap-to-resume control
   // with the seek already applied.
+  //
+  // Clear any stale pendingResume prompt the moment presentation becomes active
+  // again (reconnect) — otherwise a stale "Tap to resume" prompt rendered on
+  // disconnect would persist on top of an active Cast session, and
+  // handleTapToResume could seek the local (muted, paused) <video> to an
+  // outdated extrapolated TV position while the receiver is the source of
+  // truth.
+  useEffect(() => {
+    if (isPresentationActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingResume(null);
+    }
+  }, [isPresentationActive]);
+
   useEffect(() => {
     const wasActive = wasActiveRef.current;
     wasActiveRef.current = isPresentationActive;
     if (!wasActive || isPresentationActive) return;
 
-    const proposal = transport?.resumeProposal;
-    if (!proposal) return;
+    // The effect supports two transport sources:
+    //   1. Cast: `transport.resumeProposal` populated by the `useCastTransport`
+    //      `IS_CONNECTED_CHANGED → false` listener (extrapolated TV time + stale flag).
+    //   2. Presentation API fallback (dev-only): the sender has no receiver
+    //      status, so no Cast proposal exists. Synthesize one from the local
+    //      `<video>`'s currentTime (frozen at the pre-presentation position
+    //      while the local video was paused + muted during presentation) so
+    //      the worship leader still gets the tap-to-resume prompt on the
+    //      iOS / non-Cast path (P0 disconnect-resume must not be silently
+    //      absent on the Presentation API path).
+    const proposal = transport?.resumeProposal ?? null;
     const video = videoRef.current;
     if (!video) return;
 
-    if (proposal.isStale) {
+    // This effect synchronizes the local <video> element with the transport's
+    // extrapolated resume proposal on disconnect — a documented external-system
+    // sync. The setState calls mirror that external state into React.
+    if (proposal && proposal.isStale) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingResume({ time: proposal.time, isStale: true });
       return;
     }
 
+    // Resolve the resume time: Cast proposal (non-stale), else local video's
+    // frozen currentTime as the Presentation-API fallback.
+    const proposalTime =
+      proposal != null
+        ? proposal.time
+        : Number.isFinite(video.currentTime)
+          ? video.currentTime
+          : 0;
     const dur = Number.isFinite(video.duration) && video.duration > 0
       ? video.duration
       : effectiveDuration;
-    const t = clamp(proposal.time, 0, dur > 0 ? dur : proposal.time);
+    const t = clamp(proposalTime, 0, dur > 0 ? dur : proposalTime);
     try {
       video.currentTime = t;
     } catch {
       /* best-effort */
     }
     setCurrentTime(t);
+    // Mark as stale when synthesized from the local video (we have no idea
+    // where the receiver actually was) so the user is prompted explicitly.
+    const isStale = proposal != null ? proposal.isStale : true;
     setPendingResume(null);
 
     video
@@ -590,7 +751,7 @@ export function ControllerPlayer({
         setIsPlaying(true);
       })
       .catch(() => {
-        setPendingResume({ time: t, isStale: false });
+        setPendingResume({ time: t, isStale });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPresentationActive, transport?.resumeProposal]);
@@ -631,10 +792,32 @@ export function ControllerPlayer({
   }, [currentSongIndex, isPresentationActive, chapters]);
 
   // ── Top-bar derived state ───────────────────────────────────────────────
-  const showCastButton = isCastSupported === true && !isPresentationActive;
+  // The Cast button renders whenever Cast availability is known (rather than
+  // only when `isCastSupported` is true). This is critical: `isSupported` is
+  // only set to true on the full SDK-load-success path, but the diagnostic
+  // bottom sheet must be reachable from the "unavailable" branch (iOS, missing
+  // receiver app id, SDK globals absent, SDK script blocked) — otherwise the
+  // disabled-but-tappable button never renders and the diagnostic UX is dead
+  // code in production. When availability is still "unknown" (SDK load window),
+  // no Cast UI renders to avoid premature taps.
+  const showCastButton = castAvailability !== "unknown" && !isPresentationActive;
+  // Presentation API fallback launch button: rendered when Cast is confirmed
+  // unsupported (not during the SDK load window, where `isCastSupported` is
+  // false but `castAvailability` is still "unknown"). Gating on
+  // `castAvailability !== "unknown"` prevents the fallback button from
+  // rendering during the SDK load window on Android Chrome, where the
+  // Presentation API is also available — which would otherwise let a tap
+  // start a Presentation session that the Cast transport would later
+  // shadow once `isSupported` flips to true.
+  const showPresentationFallbackButton =
+    isCastSupported === false &&
+    castAvailability !== "unknown" &&
+    (presentationFallback?.isSupported ?? false) === true &&
+    !isPresentationActive;
   const castUnavailable = castAvailability === "unavailable";
   const showIphoneFallback =
     isCastSupported === false &&
+    castAvailability !== "unknown" &&
     (presentationFallback?.isSupported ?? false) === false;
 
   const handleCastButtonClick = useCallback(() => {
@@ -746,6 +929,22 @@ export function ControllerPlayer({
                   ) : (
                     <Monitor className="size-5" />
                   )}
+                </Button>
+              )}
+
+              {/* Presentation API fallback Send-to-TV button (dev-only,
+                  iOS / non-Cast browsers). Routes to the controller page's
+                  sender.start() via onSendToTV. */}
+              {showPresentationFallbackButton && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 text-white hover:bg-white/20"
+                  onClick={() => onSendToTVRef.current?.()}
+                  aria-label="Send to TV"
+                  data-testid="presentation-send-to-tv-button"
+                >
+                  <Monitor className="size-5" />
                 </Button>
               )}
 

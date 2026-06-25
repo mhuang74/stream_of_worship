@@ -276,5 +276,21 @@ describe("/api/signed-url", () => {
 
       expect(response.status).toBe(400);
     });
+
+    it("cast=true is scoped to video: audio artefacts keep the default 3600s", async () => {
+      mockRenderJobFindFirst.mockResolvedValue({ id: "job-1", userId: 1 });
+
+      const response = await GET(
+        createMockRequest(
+          "http://localhost:3000/api/signed-url?renderJobId=job-1&fileType=audio&cast=true"
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockGetRenderedAudioSignedUrl).toHaveBeenCalledWith(
+        "job-1",
+        expect.objectContaining({ expiresInSeconds: 3600 })
+      );
+    });
   });
 });

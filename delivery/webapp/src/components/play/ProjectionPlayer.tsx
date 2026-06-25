@@ -118,6 +118,15 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
     video.muted = level === 0;
   }, []);
 
+  // Mute is its own command on the wire (distinct from volume level). On the
+  // Presentation fallback path the receiver `<video>` mute bit is toggled
+  // directly; volume level is preserved for unmute.
+  const handleMute = useCallback((muted: boolean) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = muted;
+  }, []);
+
   const handleSongTitle = useCallback(
     (title: string) => {
       setSongTitle(title);
@@ -131,6 +140,7 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
     onPause: handlePause,
     onSeek: handleSeek,
     onVolume: handleVolume,
+    onMute: handleMute,
     onSongTitle: handleSongTitle,
   });
 

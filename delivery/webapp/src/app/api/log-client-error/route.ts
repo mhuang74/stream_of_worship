@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import { db } from "@/db";
 import { clientErrorLog } from "@/db/schema";
+import {
+  getClientIp,
+  hashIp,
+  enforceRateLimit,
+  __resetRateLimitCacheForTests,
+} from "@/lib/rate-limit";
 
 /**
  * /api/log-client-error — best-effort client-side telemetry sink for the
@@ -14,10 +18,17 @@ import { clientErrorLog } from "@/db/schema";
  *    endpoint works without one (the TV-side/Cast paths often have no user
  *    session). User IDs are NEVER persisted — telemetry is anonymized.
  *  - Rate limited via @upstash/ratelimit (token bucket, 20 req/min per hashed
- *    client IP). 429 when exceeded.
- *  - PII redaction: full signed URLs are never logged — `meta.url` is reduced
- *    to host + path + (expired|fresh). The raw client IP is hashed with a
- *    rotating (daily) salt before persistence.
+ *    client IP). 429 when exceeded. When Upstash is not configured (dev/test
+ *    or a prod misconfig) an in-memory token-bucket fallback applies so a
+ *    missing env var can never silently unlock unbounded writes.
+ *  - PII redaction: full signed URLs are NEVER received — the producer
+ *    (`useCast.reportTransportError`) reduces the raw presigned R2 URL to
+ *    `{ host, path, expired }` on the CLIENT before posting, so the raw URL
+ *    (carrying `X-Amz-Signature` / `X-Amz-Credential` granting 4h R2 access)
+ *    never transits the network. This persistence step stores the
+ *    pre-redacted summary under the field name `urlRedacted` (matching the
+ *    wire contract) — downstream telemetry consumers query `meta.urlRedacted`,
+ *    not `meta.url`. The raw client IP is hashed with a rotating (daily) salt.
  *  - Persistence is best-effort: a DB write failure is swallowed so a
  *    telemetry hiccup can never surface to the user. Returns 202 regardless.
  */
@@ -26,13 +37,26 @@ export const runtime = "nodejs";
 
 const metaSchema = z
   .object({
-    browser: z.string().max(256).optional(),
     platform: z.string().max(64).optional(),
+    browser: z.string().max(128).optional(),
     castAppIdMode: z.enum(["set", "default", "unset"]).optional(),
     transportKind: z.enum(["cast", "presentation", "none"]).optional(),
     mediaSourceKind: z.enum(["songset", "share"]).optional(),
-    urlExpired: z.boolean().optional(),
-    url: z.string().max(2048).optional(),
+    /**
+     * Pre-redacted URL summary computed on the CLIENT before posting. The raw
+     * presigned R2 URL is NEVER transmitted over the network — the producer
+     * (`useCast.reportTransportError` → `redactUrlClientSide`) reduces it to
+     * `{ host, path, expired }` before POSTing. Field name matches the
+     * persistence key (`urlRedacted`) so downstream consumers query a single
+     * field across the wire contract + persistence schema.
+     */
+    urlRedacted: z
+      .object({
+        host: z.string().max(255),
+        path: z.string().max(2048),
+        expired: z.boolean(),
+      })
+      .optional(),
   })
   .strict();
 
@@ -42,78 +66,8 @@ const clientErrorSchema = z.object({
   meta: metaSchema.optional(),
 });
 
-/**
- * Daily-rotating salt for IP hashing. Derived from the current UTC date so all
- * requests within the same UTC day share a salt (allowing per-IP rate-limit
- * keys + per-day aggregation) while preventing long-term linkage across days.
- */
-function dailySalt(now = new Date()): string {
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(now.getUTCDate()).padStart(2, "0");
-  return `sow-ce-${y}${m}${d}`;
-}
-
-async function sha256(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * Reduce a (possibly signed) URL to host + path + (expired|fresh). The query
- * string (which carries the R2 signature/X-Amz-* params) is stripped entirely
- * so a signed URL can never be replayed from a log row.
- */
-function redactUrl(rawUrl: string, urlExpired?: boolean): string {
-  try {
-    const u = new URL(rawUrl);
-    const expiry = urlExpired ? "expired" : "fresh";
-    return `${u.host}${u.pathname} (${expiry})`;
-  } catch {
-    // Not a parseable URL — redact aggressively rather than persist raw input.
-    return "<invalid-url>";
-  }
-}
-
-interface RateLimiter {
-  limit: (id: string) => Promise<{ success: boolean }>;
-}
-
-let cachedLimiter: RateLimiter | null | undefined;
-
-/**
- * Build (or reuse) the Upstash rate limiter. Returns null when Upstash env
- * vars are absent (dev/test) so callers can fall back to a no-op allow-all.
- * Tests inject via vi.mock("@upstash/ratelimit", ...).
- */
-function getLimiter(): RateLimiter | null {
-  if (cachedLimiter !== undefined) return cachedLimiter;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    cachedLimiter = null;
-    return cachedLimiter;
-  }
-  const redis = new Redis({ url, token });
-  cachedLimiter = new Ratelimit({
-    redis,
-    // tokenBucket(refillRate, interval, maxTokens): refill 20 tokens per
-    // minute, bucket cap 20 (allows a single burst of 20, then refills
-    // continuously at 20/min).
-    limiter: Ratelimit.tokenBucket(20, "1 m", 20),
-    prefix: "sow:log-client-error",
-    analytics: false,
-  });
-  return cachedLimiter;
-}
-
-/** Test-only reset of the cached limiter. */
-export function __resetLimiterForTests(): void {
-  cachedLimiter = undefined;
-}
+/** Re-export the shared cache reset under the legacy name for tests. */
+export { __resetRateLimitCacheForTests as __resetLimiterForTests };
 
 export async function POST(request: NextRequest) {
   // 1. Parse body (malformed JSON → 400).
@@ -132,48 +86,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 2. Derive client IP and hash for the rate-limit key + persisted row.
-  const rawIp =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
+  // 2. Derive client IP (platform-trusted; never the spoofable leftmost XFF
+  //    segment) and hash it for the rate-limit key + persisted row.
+  const rawIp = getClientIp(request);
+  const ipHash = await hashIp(rawIp);
 
-  const salt = dailySalt();
-  const ipHash = await sha256(`${salt}:${rawIp}`);
-
-  // 3. Rate limit (20 req/min per hashed IP). When Upstash is not configured
-  //    (dev/local/test) the limiter is null and the request is allowed through.
-  const limiter = getLimiter();
-  if (limiter) {
-    try {
-      const { success } = await limiter.limit(ipHash);
-      if (!success) {
-        return NextResponse.json(
-          { error: "Rate limit exceeded" },
-          { status: 429 }
-        );
-      }
-    } catch {
-      // Upstash hiccup — never block a telemetry POST on infra failure.
-    }
+  // 3. Rate limit (20 req/min per hashed IP). Upstash is used when configured;
+  //    otherwise an in-memory token-bucket fallback applies so a missing env
+  //    var can never silently disable rate limiting.
+  const allowed = await enforceRateLimit(ipHash, "sow:log-client-error", 20);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
-  // 4. Redact PII in meta before persistence.
+  // 4. Persist (best-effort; swallow DB failures so telemetry never surfaces).
+  //    The producer pre-redacts the URL on the client (see `redactUrlClientSide`
+  //    in src/hooks/useCast.ts) so the raw presigned R2 URL never transits the
+  //    network — defense-in-depth against server-side body-capture middleware.
   const meta = parsed.data.meta;
   const redactedMeta =
     meta === undefined
       ? null
       : {
-          browser: meta.browser,
           platform: meta.platform,
+          browser: meta.browser,
           castAppIdMode: meta.castAppIdMode,
           transportKind: meta.transportKind,
           mediaSourceKind: meta.mediaSourceKind,
-          urlExpired: meta.urlExpired,
-          url: meta.url !== undefined ? redactUrl(meta.url, meta.urlExpired) : undefined,
+          urlRedacted: meta.urlRedacted,
         };
 
-  // 5. Persist (best-effort; swallow DB failures so telemetry never surfaces).
   try {
     await db.insert(clientErrorLog).values({
       ipHash,

@@ -31,6 +31,12 @@ vi.mock("@/lib/r2/client", () => ({
   createR2ClientFromEnv: (...args: unknown[]) => mockCreateR2Client(...args),
 }));
 
+vi.mock("@/lib/rate-limit", () => ({
+  getClientIp: () => "203.0.113.10",
+  hashIp: async () => "test-ip-hash",
+  enforceRateLimit: async () => true,
+}));
+
 vi.mock("@/lib/auth", () => ({
   auth: { api: { getSession: vi.fn() } },
 }));

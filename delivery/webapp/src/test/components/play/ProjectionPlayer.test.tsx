@@ -445,12 +445,12 @@ describe("ProjectionPlayer", () => {
     });
 
     it("sends error status when onPlay's video.play() rejects", async () => {
-      // Override play to reject for this test only.
-      Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
-        value: vi.fn().mockRejectedValue(new Error("not allowed")),
-        writable: true,
-        configurable: true,
-      });
+      // Override play to reject for this test only. vi.spyOn is scoped to
+      // a single mock so vi.restoreAllMocks in afterEach cleans it up
+      // automatically without manual prototype restoration.
+      const playSpy = vi
+        .spyOn(window.HTMLMediaElement.prototype, "play")
+        .mockRejectedValueOnce(new Error("not allowed"));
 
       let onPlayCallback: (() => void) | undefined;
       vi.mocked(usePresentationReceiver).mockImplementation((options) => {
@@ -472,12 +472,7 @@ describe("ProjectionPlayer", () => {
         message: "TV projection failed — check connection",
       });
 
-      // Restore the default resolved play mock for subsequent tests.
-      Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
-        value: vi.fn().mockResolvedValue(undefined),
-        writable: true,
-        configurable: true,
-      });
+      playSpy.mockRestore();
     });
   });
 

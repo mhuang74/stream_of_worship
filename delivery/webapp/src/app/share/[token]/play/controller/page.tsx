@@ -119,6 +119,11 @@ export default function ShareControllerPage() {
     onConnected: () => toast.success("Connected to projection screen"),
     onDisconnected: () => toast.info("Disconnected from projection screen"),
     onStartError: (m) => toast.error(m),
+    onStatus: (status) => {
+      if (status.type === "error") {
+        toast.error("TV projection failed — check connection");
+      }
+    },
   });
 
   // Toasts only from transport lifecycle. Cast connection transitions are
@@ -194,7 +199,12 @@ export default function ShareControllerPage() {
       autoFullscreen={false}
       isPresentationActive={isPresentationActive}
       transport={cast}
+      presentationFallback={{
+        isSupported: sender.isSupported,
+        isConnected: sender.isConnected,
+      }}
       isCastSupported={cast.isSupported}
+      castAvailability={cast.availability}
       isCastConnecting={cast.isConnecting}
       onSendToTV={handleSendToTV}
       onSendTransportCommand={handleSendTransportCommand}

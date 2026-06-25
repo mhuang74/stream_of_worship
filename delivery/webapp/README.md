@@ -9,6 +9,7 @@ Web application for rendering worship music transitions with synchronized lyrics
 - PostgreSQL database (Neon recommended)
 - PostgreSQL `pgvector` extension enabled
 - Cloudflare R2 account
+- Upstash Redis account (for client-error telemetry rate limiting; optional — `POST /api/log-client-error` degrades to allow-all when unset)
 
 ## Environment Setup
 
@@ -70,7 +71,7 @@ npx drizzle-kit migrate    # Run pending migrations
 - `POST /api/render-jobs`, `GET /api/render-jobs/[id]`, `DELETE /api/render-jobs/[id]`, `GET /api/render-jobs/[id]/events`, `GET /api/render-jobs/[id]/artifact-sizes`
   Auth required. Render creation, status lookup, cancellation, SSE progress streaming, and artifact size queries.
 - `GET|POST /api/signed-url`
-  Auth required. Signs published source recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`.
+  Auth required. Signs published source recordings by `hashPrefix` or the caller's own render job artifacts by `renderJobId`. Pass `cast=true` to mint the MP4 with the 14400s (4-hour) Cast-playback expiry instead of the default 3600s — use this when handing the presigned URL to a TV receiver. An explicit `expiresInSeconds` (zod-clamped to `[60, 86400]`) still takes precedence over the cast default.
 - `POST /api/transitions/preview`
   Auth required. Generates signed URL for transition audio preview.
 - `GET|DELETE /api/offline/cache`
@@ -82,7 +83,9 @@ npx drizzle-kit migrate    # Run pending migrations
 - `POST /api/share`, `GET /api/share`, `DELETE /api/share/[token]`
   Auth required. Creates, lists, and revokes shares. Active shares are capped at 20 per user.
 - `GET /api/share/[token]`
-  Public. Validates a share token and returns signed playback URLs.
+  Public. Validates a share token and returns signed playback URLs. The MP4 is minted with a 14400s (4-hour) expiry for Cast/share playback; revoked (`revokedAt` set → 410) and expired (`expiresAt < now` → 410) tokens are rejected before minting.
+- `POST /api/log-client-error`
+  Best-effort, anonymized client-side telemetry sink for the Cast/Presentation transport layer (`src/hooks/useCast.ts`). Optional Better Auth session accepted but not required. Zod body schema: `{ message, kind: cast_load|cast_transport|presentation|other, meta? }`. Rate-limited via Upstash Redis token bucket (20 req/min per hashed client IP, 429 when exceeded). PII redaction: no full signed URLs, no user IDs; the raw client IP is hashed with a daily-rotating salt. Returns 202 on success. When Upstash env vars are unset the limiter is null and the endpoint degrades to an allow-all fallback (no throttling — fine for dev/test).
 
 ## Architecture
 

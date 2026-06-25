@@ -60,6 +60,8 @@ vercel env add SOW_R2_ENDPOINT_URL production
 | `SOW_SQS_ENDPOINT_URL` | Server | Leave empty in production |
 | `SOW_RENDER_WORKER_MODE` | Server | Set to `sqs` in production |
 | `SOW_RENDER_WORKER_REST_URL` | Server | Leave empty in production |
+| `UPSTASH_REDIS_REST_URL` | Server | Upstash Redis REST URL for `POST /api/log-client-error` rate limiting (optional; allow-all fallback when unset) |
+| `UPSTASH_REDIS_REST_TOKEN` | Server | Upstash Redis REST token (optional; recommend setting in production) |
 
 **Key points:**
 

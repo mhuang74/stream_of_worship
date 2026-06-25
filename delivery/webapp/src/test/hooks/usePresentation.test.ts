@@ -3,6 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 import {
   usePresentationReceiver,
   validatePresentationCommand,
+  validatePresentationStatus,
 } from "@/hooks/usePresentation";
 
 describe("usePresentationReceiver", () => {
@@ -495,4 +496,33 @@ describe("usePresentationReceiver", () => {
       }).not.toThrow();
     });
   });
+});
+
+describe("validatePresentationStatus", () => {
+  const cases: Array<{ name: string; input: unknown; expected: object | null }> = [
+    { name: "ready", input: { type: "ready" }, expected: { type: "ready" } },
+    { name: "disconnected", input: { type: "disconnected" }, expected: { type: "disconnected" } },
+    {
+      name: "error with message",
+      input: { type: "error", message: "boom" },
+      expected: { type: "error", message: "boom" },
+    },
+    { name: "null", input: null, expected: null },
+    { name: "string", input: "hello", expected: null },
+    { name: "unknown type", input: { type: "bogus" }, expected: null },
+    { name: "missing type", input: {}, expected: null },
+    { name: "error non-string message", input: { type: "error", message: 123 }, expected: null },
+    { name: "error missing message", input: { type: "error" }, expected: null },
+  ];
+
+  for (const { name, input, expected } of cases) {
+    it(`${name} → ${expected === null ? "null" : JSON.stringify(expected)}`, () => {
+      const out = validatePresentationStatus(input);
+      if (expected === null) {
+        expect(out).toBeNull();
+      } else {
+        expect(out).toEqual(expected);
+      }
+    });
+  }
 });

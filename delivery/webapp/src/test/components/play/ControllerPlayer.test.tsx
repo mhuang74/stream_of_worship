@@ -25,13 +25,12 @@ function makeTransport(
 ): CastTransportResult {
   return {
     isSupported: true,
-    isAvailable: true,
+    availability: "available" as const,
     isConnecting: false,
     isConnected: false,
     deviceName: "",
     playerState: "",
     currentTime: 0,
-    lastStatusAtMs: null,
     duration: 420,
     volume: 1,
     isMuted: false,
@@ -417,6 +416,45 @@ describe("ControllerPlayer", () => {
 
       expect(onSendTransportCommand).not.toHaveBeenCalled();
     });
+
+    it("handleVolumeChange emits clamped {type:'volume'} (not mute) while active", async () => {
+      const onSendTransportCommand = vi.fn();
+      const transport = makeTransport({
+        isConnected: true,
+        playerState: "playing",
+        currentTime: 10,
+        volume: 0.5,
+        isMuted: false,
+      });
+
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            transport={transport}
+            onSendTransportCommand={onSendTransportCommand}
+          />
+        );
+      });
+
+      onSendTransportCommand.mockClear();
+
+      const volumeSlider = screen.getByRole("slider", { name: /volume/i });
+      // Out-of-range input (1.5) must be clamped to 1.
+      await act(async () => {
+        fireEvent.change(volumeSlider, { target: { value: "1.5" } });
+      });
+
+      await waitFor(() => {
+        expect(onSendTransportCommand).toHaveBeenCalledWith({
+          type: "volume",
+          level: 1,
+        });
+      });
+      const calls = onSendTransportCommand.mock.calls.map((c) => c[0]);
+      expect(calls.find((c) => c.type === "mute")).toBeUndefined();
+    });
   });
 
   // ── Seek forwarding (skip / prev / jump / scrub) ────────────────────────
@@ -489,6 +527,59 @@ describe("ControllerPlayer", () => {
           positionSeconds: 20,
         });
       });
+    });
+
+    it("rapid scrub inputs collapse to one debounced seek (latest-wins)", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+      try {
+        const onSendTransportCommand = vi.fn();
+        const transport = makeTransport({
+          isConnected: true,
+          playerState: "playing",
+          currentTime: 0,
+          duration: 420,
+        });
+
+        await act(async () => {
+          render(
+            <ControllerPlayer
+              {...defaultProps}
+              isPresentationActive={true}
+              transport={transport}
+              onSendTransportCommand={onSendTransportCommand}
+            />
+          );
+        });
+
+        onSendTransportCommand.mockClear();
+        const scrubBar = screen.getByRole("slider", { name: /seek/i });
+
+        // Three rapid skip-forwards (+10 each) within the debounce window.
+        await act(async () => {
+          fireEvent.keyDown(scrubBar, { key: "ArrowRight" });
+          fireEvent.keyDown(scrubBar, { key: "ArrowRight" });
+          fireEvent.keyDown(scrubBar, { key: "ArrowRight" });
+        });
+        // No transport seek fired yet (debounced).
+        const seekCalls = onSendTransportCommand.mock.calls
+          .map((c) => c[0])
+          .filter((c) => c.type === "seek");
+        expect(seekCalls.length).toBe(0);
+
+        await act(async () => {
+          vi.advanceTimersByTime(200);
+        });
+
+        const seekCallsAfter = onSendTransportCommand.mock.calls
+          .map((c) => c[0])
+          .filter((c) => c.type === "seek");
+        // Exactly one seek (latest-wins). transport.currentTime is static at 0
+        // in the mock, so the last computed target is 0 + 10 = 10.
+        expect(seekCallsAfter.length).toBe(1);
+        expect(seekCallsAfter[0]).toEqual({ type: "seek", positionSeconds: 10 });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -578,16 +669,29 @@ describe("ControllerPlayer", () => {
 
       onSendTransportCommand.mockClear();
 
-      // Simulate a song change by bumping transport.currentTime into song 2
-      // and re-rendering with active state — but currentSongIndex only
-      // advances from local <video> timeupdate (suppressed while active). So
-      // drive it by changing chapters to shift the currentSongIndex derivation
-      // is not possible. Instead, force a re-render with a new currentSongIndex
-      // by seeking through controls (next song → setCurrentTime(180) → local
-      // timeupdate still suppressed). So we directly verify the effect fires
-      // for the initial song on mount (covered above) and that it is a no-op
-      // for Cast (the receiver already has the title via metadata).
-      expect(true).toBe(true);
+      // Drive a song change: bump transport.currentTime into song 2 (start 180)
+      // and re-render. The connected-transport chapter-index effect recomputes
+      // currentSongIndex, which fires the song-change effect with song 2's title.
+      rerender(
+        <ControllerPlayer
+          {...defaultProps}
+          isPresentationActive={true}
+          transport={makeTransport({
+            isConnected: true,
+            playerState: "playing",
+            currentTime: 190,
+            duration: 420,
+          })}
+          onSendTransportCommand={onSendTransportCommand}
+        />
+      );
+
+      await waitFor(() => {
+        expect(onSendTransportCommand).toHaveBeenCalledWith({
+          type: "songTitle",
+          title: "How Great Thou Art",
+        });
+      });
     });
 
     it("does not emit songTitle when not active", async () => {
@@ -787,6 +891,119 @@ describe("ControllerPlayer", () => {
       });
       expect(playMock).toHaveBeenCalled();
     });
+
+    it("clears a stale pendingResume prompt when presentation becomes active again", async () => {
+      const playMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
+        value: playMock,
+        writable: true,
+        configurable: true,
+      });
+
+      const transport = makeTransport({
+        isConnected: true,
+        playerState: "playing",
+        currentTime: 90,
+        duration: 420,
+        resumeProposal: null,
+      });
+
+      const { rerender } = render(
+        <ControllerPlayer
+          {...defaultProps}
+          isPresentationActive={true}
+          transport={transport}
+        />
+      );
+
+      // Disconnect with a stale proposal → stale prompt renders.
+      const disconnected = makeTransport({
+        isConnected: false,
+        playerState: "",
+        currentTime: 90,
+        duration: 420,
+        resumeProposal: { time: 150, isStale: true, lastState: "playing" },
+      });
+
+      await act(async () => {
+        rerender(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={false}
+            transport={disconnected}
+          />
+        );
+      });
+
+      expect(await screen.findByTestId("tap-to-resume")).toBeInTheDocument();
+
+      // Reconnect: presentation becomes active again → stale prompt must clear
+      // so it does not persist on top of an active Cast session.
+      await act(async () => {
+        rerender(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            transport={transport}
+          />
+        );
+      });
+
+      expect(screen.queryByTestId("tap-to-resume")).not.toBeInTheDocument();
+    });
+
+    it("resumes local playback on disconnect when play() resolves (fresh proposal, isStale=false)", async () => {
+      const playMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
+        value: playMock,
+        writable: true,
+        configurable: true,
+      });
+
+      const transport = makeTransport({
+        isConnected: true,
+        playerState: "playing",
+        currentTime: 100,
+        duration: 420,
+        resumeProposal: null,
+      });
+
+      const { rerender } = render(
+        <ControllerPlayer
+          {...defaultProps}
+          isPresentationActive={true}
+          transport={transport}
+        />
+      );
+
+      // Disconnect with a fresh (non-stale) proposal.
+      const disconnected = makeTransport({
+        isConnected: false,
+        playerState: "",
+        currentTime: 100,
+        duration: 420,
+        resumeProposal: { time: 110, isStale: false, lastState: "playing" },
+      });
+
+      await act(async () => {
+        rerender(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={false}
+            transport={disconnected}
+          />
+        );
+      });
+
+      // play() resolved → no tap-to-resume prompt should be present.
+      expect(screen.queryByTestId("tap-to-resume")).not.toBeInTheDocument();
+
+      // The local video should have been seeked to the proposal time.
+      const video = document.querySelector("video") as HTMLVideoElement;
+      expect(video.currentTime).toBe(110);
+      // play() should have been called automatically on the success path.
+      expect(playMock).toHaveBeenCalled();
+    });
   });
 
   // ── Diagnostic bottom sheet (Cast unavailable) ─────────────────────────
@@ -799,8 +1016,9 @@ describe("ControllerPlayer", () => {
           <ControllerPlayer
             {...defaultProps}
             isPresentationActive={false}
-            isCastSupported={true}
+            isCastSupported={false}
             castAvailability="unavailable"
+            presentationFallback={{ isSupported: false }}
             onSendToTV={onSendToTV}
           />
         );
@@ -856,13 +1074,22 @@ describe("ControllerPlayer", () => {
             {...defaultProps}
             isPresentationActive={false}
             isCastSupported={false}
+            castAvailability="unavailable"
             presentationFallback={{ isSupported: false }}
           />
         );
       });
 
       expect(screen.getByTestId("airplay-fallback")).toBeInTheDocument();
-      expect(screen.queryByTestId("cast-button")).not.toBeInTheDocument();
+      // The diagnostic Cast button remains visible (disabled-but-tappable,
+      // opens the bottom sheet) even on iOS where Cast is unsupported — the
+      // reviewer's P0 contract: the sheet must be reachable from the
+      // "unavailable" branch, not dead code in production.
+      expect(screen.getByTestId("cast-button")).toBeInTheDocument();
+      expect(screen.getByTestId("cast-button")).toHaveAttribute(
+        "aria-label",
+        "Cast unavailable",
+      );
     });
 
     it("does not show AirPlay fallback when Cast is supported", async () => {
@@ -872,12 +1099,74 @@ describe("ControllerPlayer", () => {
             {...defaultProps}
             isPresentationActive={false}
             isCastSupported={true}
+            castAvailability="available"
             presentationFallback={{ isSupported: false }}
           />
         );
       });
 
       expect(screen.queryByTestId("airplay-fallback")).not.toBeInTheDocument();
+    });
+
+    it("does not render Presentation fallback or AirPlay fallback during the SDK load window (castAvailability='unknown')", async () => {
+      // During the SDK load window, isCastSupported is false but castAvailability
+      // is "unknown" — neither the Presentation fallback button nor the iPhone
+      // AirPlay fallback should render, because Cast may still become available.
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={false}
+            isCastSupported={false}
+            castAvailability="unknown"
+            presentationFallback={{ isSupported: true }}
+          />
+        );
+      });
+
+      expect(screen.queryByTestId("presentation-send-to-tv-button")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("airplay-fallback")).not.toBeInTheDocument();
+    });
+
+    it("renders the Presentation fallback Send-to-TV button when Cast unsupported + Presentation supported", async () => {
+      const onSendToTV = vi.fn();
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={false}
+            isCastSupported={false}
+            castAvailability="unavailable"
+            presentationFallback={{ isSupported: true }}
+            onSendToTV={onSendToTV}
+          />
+        );
+      });
+
+      const btn = screen.getByTestId("presentation-send-to-tv-button");
+      expect(btn).toBeInTheDocument();
+      expect(screen.queryByTestId("airplay-fallback")).not.toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(btn);
+      });
+      expect(onSendToTV).toHaveBeenCalled();
+    });
+
+    it("hides the Presentation fallback button while presentation is active", async () => {
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            isCastSupported={false}
+            castAvailability="unavailable"
+            presentationFallback={{ isSupported: true, isConnected: true }}
+          />
+        );
+      });
+
+      expect(screen.queryByTestId("presentation-send-to-tv-button")).not.toBeInTheDocument();
     });
   });
 
@@ -1034,6 +1323,60 @@ describe("ControllerPlayer", () => {
 
       expect(exitButton).toBeInTheDocument();
     });
+
+    it("tears down the Cast session on exit when transport is connected", async () => {
+      const stop = vi.fn();
+      const transport = makeTransport({
+        isConnected: true,
+        isSupported: true,
+        availability: "available",
+      });
+      transport.stop = stop;
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            transport={transport}
+          />
+        );
+      });
+
+      const exitButton = screen.getByRole("button", { name: /^back$/i });
+      await act(async () => {
+        fireEvent.click(exitButton);
+      });
+
+      // The connected Cast session must be ended before navigating away so
+      // the TV receiver does not keep playing audio with no controller.
+      expect(stop).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call transport.stop on exit when transport is not connected", async () => {
+      const stop = vi.fn();
+      const transport = makeTransport({
+        isConnected: false,
+        isSupported: true,
+        availability: "available",
+      });
+      transport.stop = stop;
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={false}
+            transport={transport}
+          />
+        );
+      });
+
+      const exitButton = screen.getByRole("button", { name: /^back$/i });
+      await act(async () => {
+        fireEvent.click(exitButton);
+      });
+
+      expect(stop).not.toHaveBeenCalled();
+    });
   });
 
   // ── iOS info toast ────────────────────────────────────────────────────
@@ -1075,6 +1418,32 @@ describe("ControllerPlayer", () => {
 
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} isPresentationActive={true} />);
+      });
+
+      expect(screen.queryByText(/iOS Playback Tips/i)).not.toBeInTheDocument();
+    });
+
+    it("does not show iOS info toast when sessionStorage says already shown", async () => {
+      Object.defineProperty(navigator, "userAgent", {
+        value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+        writable: true,
+        configurable: true,
+      });
+
+      // Simulate the user having already seen + dismissed the toast in a
+      // prior visit — sessionStorage.getItem returns "true".
+      const sessionStorageMock = {
+        getItem: vi.fn().mockReturnValue("true"),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      };
+      Object.defineProperty(window, "sessionStorage", {
+        value: sessionStorageMock,
+        writable: true,
+      });
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
       });
 
       expect(screen.queryByText(/iOS Playback Tips/i)).not.toBeInTheDocument();

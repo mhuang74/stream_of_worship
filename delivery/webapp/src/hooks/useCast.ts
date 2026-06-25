@@ -47,13 +47,16 @@ export interface ResumeProposal {
 
 export interface CastTransportResult {
   isSupported: boolean;
-  isAvailable: boolean;
+  /** Cast availability signal driving the controller diagnostic sheet.
+   * "unknown" until the SDK load settles; "available" when the receiver app
+   * id resolves; "unavailable" when the SDK cannot host Cast (e.g. iOS) or no
+   * receiver app id could be resolved. */
+  availability: "unknown" | "available" | "unavailable";
   isConnecting: boolean;
   isConnected: boolean;
   deviceName: string;
   playerState: string;
   currentTime: number;
-  lastStatusAtMs: number | null;
   duration: number;
   volume: number;
   isMuted: boolean;
@@ -84,13 +87,24 @@ interface ClientErrorPayload {
   message: string;
   kind: "cast_load" | "cast_transport" | "presentation" | "other";
   meta?: {
-    browser?: string;
     platform?: string;
+    browser?: string;
     castAppIdMode?: "set" | "default" | "unset";
     transportKind?: "cast" | "presentation" | "none";
     mediaSourceKind?: "songset" | "share";
-    urlExpired?: boolean;
-    url?: string;
+    /**
+     * Pre-redacted URL summary computed on the CLIENT side before POSTing so
+     * the raw presigned R2 URL (which carries `X-Amz-Signature` /
+     * `X-Amz-Credential` granting 4h of R2 read access) is never transmitted
+     * over the network — even to our own server. Defense-in-depth against any
+     * server-side body-capture middleware (APM/WAF/Vercel request inspector)
+     * that would otherwise persist the unredacted signed URL.
+     */
+    urlRedacted?: {
+      host: string;
+      path: string;
+      expired: boolean;
+    };
   };
 }
 
@@ -117,24 +131,23 @@ function postClientError(payload: ClientErrorPayload): void {
 
 /**
  * Module-level singleton guard so `CastContext.setOptions()` runs at most once
- * per page load even if multiple `useCastTransport` instances mount (e.g. the
- * hook is used in two places, or React strict-mode double-invokes effects).
+ * per (page load × receiver application id). Tracks the applied
+ * `receiverApplicationId` alongside the done-state so a second mount with a
+ * DIFFERENT app id (e.g. a per-route dev/staging receiver) re-runs setOptions
+ * instead of silently inheriting the prior page's options. Without this, a
+ * mount in an SPA navigation session would skip setOptions thinking it already
+ * ran, while the env var may have resolved to a different receiver app id.
  */
-let castContextInitDone = false;
+let castContextInitDone: { receiverAppId: string } | null = null;
 
 /** Reset the singleton guard. Test-only — exported for vi.resetModules paths. */
 export function __resetCastContextInitForTests(): void {
-  castContextInitDone = false;
+  castContextInitDone = null;
 }
 
 const SEEK_DEBOUNCE_MS = 200;
 const STALE_THRESHOLD_SECONDS = 60;
 const STALE_EXTRAPOLATION_CAP_SECONDS = 60;
-
-function detectBrowser(): string {
-  if (typeof navigator === "undefined") return "unknown";
-  return navigator.userAgent || "unknown";
-}
 
 function detectPlatform(): string {
   if (typeof navigator === "undefined") return "unknown";
@@ -147,20 +160,89 @@ function detectPlatform(): string {
   return "unknown";
 }
 
+/** Short browser label derived from navigator.userAgent for telemetry. */
+function detectBrowser(): string {
+  if (typeof navigator === "undefined") return "unknown";
+  const ua = navigator.userAgent;
+  if (/Edg\//i.test(ua)) return "edge";
+  if (/OPR\//i.test(ua)) return "opera";
+  if (/Firefox\//i.test(ua)) return "firefox";
+  if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) return "chrome";
+  if (/Safari\//i.test(ua) && !/Chrome/i.test(ua)) return "safari";
+  return "unknown";
+}
+
+/**
+ * Resolve the Cast receiver app id mode for telemetry. Reflects the same
+ * resolution path used at `setOptions` time: env var wins ("set"), otherwise
+ * the Default Media Receiver constant ("default"), otherwise "unset". The
+ * `${envAppId ? "set" : ...}` form mirrors the runtime fallback at line
+ * ~400 (`envAppId || chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID`).
+ */
+function castAppIdMode(): "set" | "default" | "unset" {
+  const envAppId = process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID;
+  if (envAppId) return "set";
+  if (typeof window !== "undefined" && window.chrome?.cast?.DEFAULT_MEDIA_RECEIVER_APP_ID) {
+    return "default";
+  }
+  return "unset";
+}
+
 function clamp(v: number, min: number, max: number): number {
   if (max < min) return min;
   return Math.max(min, Math.min(v, max));
 }
 
+/** Parse the AWS SigV4 basic-format date (`YYYYMMDDTHHMMSSZ`) → epoch ms. */
+function parseAwsDateMs(s: string): number | null {
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(s);
+  if (!m) return null;
+  return Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`);
+}
+
+/**
+ * Reduce a raw (potentially presigned R2) URL to a PII-safe `{ host, path,
+ * expired }` summary ON THE CLIENT SIDE before posting telemetry. The raw
+ * URL — which may carry signed parameters granting R2 read access for up to
+ * 4 hours — is never transmitted over the network, even to our own server,
+ * so any body-capture middleware cannot leak the credentials.
+ */
+function redactUrlClientSide(
+  raw: string,
+): { host: string; path: string; expired: boolean } | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  let expired = false;
+  const amzDate = parsed.searchParams.get("X-Amz-Date");
+  const amzExpires = parsed.searchParams.get("X-Amz-Expires");
+  const epochExpires = parsed.searchParams.get("expires");
+  if (amzDate && amzExpires) {
+    const amzDateMs = parseAwsDateMs(amzDate);
+    const expiresInSec = Number(amzExpires);
+    if (amzDateMs !== null && Number.isFinite(expiresInSec)) {
+      expired = Date.now() > amzDateMs + expiresInSec * 1000;
+    }
+  } else if (epochExpires) {
+    const n = Number(epochExpires);
+    if (Number.isFinite(n)) {
+      expired = Date.now() > n * 1000;
+    }
+  }
+  return { host: parsed.host, path: parsed.pathname, expired };
+}
+
 export function useCastTransport({ media, onError }: UseCastTransportOptions): CastTransportResult {
   const [isSupported, setIsSupported] = useState(false);
-  const [isAvailable, setIsAvailable] = useState(false);
+  const [availability, setAvailability] = useState<"unknown" | "available" | "unavailable">("unknown");
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [playerState, setPlayerState] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
-  const [lastStatusAtMs, setLastStatusAtMs] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -176,6 +258,12 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onErrorRef = useRef(onError);
   const mediaRef = useRef(media);
+  // True between a `stop()` call and the resulting `IS_CONNECTED_CHANGED →
+  // false` event. Lets the disconnect listener distinguish an explicit
+  // user-initiated stop (skip resumeProposal — the user intended teardown)
+  // from an unexpected receiver disconnect (compute resumeProposal so the
+  // controller UI can offer local resume).
+  const userInitiatedStopRef = useRef(false);
 
   // Synchronous snapshot of receiver-derived state, mirrored from the player
   // on every status event. Read inside disconnect/reconnect logic.
@@ -202,9 +290,7 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   }, [media]);
 
   const touchStatus = useCallback(() => {
-    const now = Date.now();
-    snapshotRef.current.lastStatusAtMs = now;
-    setLastStatusAtMs(now);
+    snapshotRef.current.lastStatusAtMs = Date.now();
   }, []);
 
   const reportTransportError = useCallback(
@@ -212,17 +298,22 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
       setLastError(message);
       onErrorRef.current?.(message);
       const m = mediaRef.current;
+      // Reduce the raw presigned R2 URL to {host, path, expired} ON THE CLIENT
+      // before posting — never transmit the signed URL over the network, even
+      // to our own server (defense-in-depth against body-capture middleware
+      // leaking 4h-valid R2 credentials).
+      const videoUrl = m.videoUrl || undefined;
+      const urlRedacted = videoUrl ? redactUrlClientSide(videoUrl) : undefined;
       postClientError({
         message,
         kind,
         meta: {
-          browser: detectBrowser(),
           platform: detectPlatform(),
-          castAppIdMode: process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID
-            ? "set"
-            : "unset",
+          browser: detectBrowser(),
+          castAppIdMode: castAppIdMode(),
           transportKind: "cast",
           mediaSourceKind: m.source.kind,
+          ...(urlRedacted ? { urlRedacted } : {}),
         },
       });
     },
@@ -296,6 +387,11 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         // Reconnect: UI reconciliation only. Never issue a seek to the
         // receiver — the receiver already knows its own position.
         snapshotRef.current.disconnectedAt = null;
+        // Clear any stale resumeProposal from a prior disconnect so the
+        // controller's disconnect→resume effect doesn't re-fire on the next
+        // disconnect with a stale object reference (identical proposal object
+        // references would cause the effect not to re-run across reconnects).
+        setResumeProposal(null);
         setIsConnected(true);
         setDeviceName(p.displayName || "TV");
         // Refresh derived volume/mute/state on reconnect.
@@ -314,6 +410,15 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         if (snapshotRef.current.bufferingSinceMs !== null) {
           snapshotRef.current.bufferingSinceMs = null;
           setBufferingSinceMs(null);
+        }
+        // An explicit user-initiated `stop()` is a clean teardown — the user
+        // expects no "tap to resume" prompt. Skip the resumeProposal
+        // computation entirely (mirrors the v3 contract that manual stop ≠
+        // disconnect-resume). Clear the ref after handling.
+        if (userInitiatedStopRef.current) {
+          userInitiatedStopRef.current = false;
+          setResumeProposal(null);
+          return;
         }
         // Compute resumeProposal.
         const lastMs = snapshotRef.current.lastStatusAtMs;
@@ -383,14 +488,6 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   useEffect(() => {
     const envAppId = process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID;
 
-    // isSupported requires both a resolvable receiver application id (the env
-    // var) and a browser that can host the Cast Web Sender SDK. When the env
-    // var is missing we short-circuit before attempting any SDK load and leave
-    // `isSupported=false`.
-    if (!envAppId) {
-      return;
-    }
-
     if (typeof window === "undefined") return;
 
     let cancelled = false;
@@ -402,21 +499,29 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         if (cancelled) return;
         if (!isCastSdkSupported()) {
           // SDK script reported loaded but globals are not present — browser
-          // cannot host Cast (e.g. iOS). Leave isSupported=false.
+          // cannot host Cast (e.g. iOS). Leave isSupported=false and mark the
+          // transport unavailable so the diagnostic sheet can surface.
+          setAvailability("unavailable");
           return;
         }
         const ctx = cast.framework.CastContext.getInstance();
-        // Singleton: setOptions runs at most once per page load.
-        if (!castContextInitDone) {
-          castContextInitDone = true;
+        // Resolve the receiver application id. The env var wins; otherwise fall
+        // back to Google's built-in Default Media Receiver constant (the v3
+        // production default). If neither resolves, Cast cannot start.
+        const receiverAppId =
+          envAppId || chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID || "";
+        if (!receiverAppId) {
+          setAvailability("unavailable");
+          return;
+        }
+        // Singleton per receiverApplicationId: setOptions runs at most once per
+        // (page load × app id). A second mount with a different receiver app id
+        // (e.g. per-route dev/staging) re-runs setOptions rather than silently
+        // inheriting the prior page's options.
+        if (!castContextInitDone || castContextInitDone.receiverAppId !== receiverAppId) {
+          castContextInitDone = { receiverAppId };
           ctx.setOptions({
-            receiverApplicationId:
-              envAppId ||
-              (typeof chrome !== "undefined" &&
-              chrome.cast &&
-              chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID
-                ? chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID
-                : envAppId),
+            receiverApplicationId: receiverAppId,
             autoJoinPolicy: chrome.cast.AutoJoinPolicy.TAB_AND_ORIGIN_SCOPED,
             androidReceiverCompatible: true,
           });
@@ -446,10 +551,16 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
 
         snapshotRef.current.isSupported = true;
         setIsSupported(true);
-        setIsAvailable(true);
+        setAvailability("available");
       })
       .catch(() => {
-        // SDK failed to load — leave isSupported=false silently.
+        // SDK script failed to load (blocked, network blip, 5xx). Functionally
+        // equivalent to "Cast cannot be hosted on this browser right now" —
+        // mark unavailable so the diagnostic sheet, Presentation fallback, and
+        // iPhone AirPlay hint can all render instead of stranding the user
+        // with a blank transport surface for the rest of the session.
+        if (cancelled) return;
+        setAvailability("unavailable");
       });
 
     return () => {
@@ -487,10 +598,38 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
     try {
       await ctx.requestSession();
       session = ctx.getCurrentSession();
-    } catch {
-      // User cancelled the device picker or request failed. No dangling
-      // session is created by a cancel — just reset connecting state.
+    } catch (err) {
+      // The Cast SDK rejects `requestSession()` for both user-cancel AND
+      // non-cancel SDK errors (receiver_unavailable, timeout,
+      // session_request_failed, framework not ready). Distinguish by error
+      // code: `cancel` is a no-op reset; everything else is a real failure
+      // that must surface a lastError + onError callback + telemetry POST so
+      // the user is not left staring at a non-responsive Cast button with
+      // zero feedback.
       setIsConnecting(false);
+      const code = (err as { code?: unknown })?.code;
+      if (code === "cancel") {
+        // User dismissed the device picker — no dangling session, no error.
+        return;
+      }
+      const msg =
+        (err as { description?: string; code?: string | number })?.description ||
+        (typeof code === "string" || typeof code === "number" ? String(code) : "") ||
+        "Cast session request failed";
+      setIsConnected(false);
+      setLastError(msg);
+      onErrorRef.current?.(msg);
+      postClientError({
+        message: msg,
+        kind: "cast_load",
+        meta: {
+          platform: detectPlatform(),
+          browser: detectBrowser(),
+          castAppIdMode: castAppIdMode(),
+          transportKind: "cast",
+          mediaSourceKind: mediaRef.current.source.kind,
+        },
+      });
       return;
     }
     if (!session) {
@@ -541,6 +680,9 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   }, [reportTransportError]);
 
   const stop = useCallback(() => {
+    // Mark this as an explicit user-initiated stop so the disconnect listener
+    // skips the resumeProposal computation (manual stop ≠ disconnect-resume).
+    userInitiatedStopRef.current = true;
     const ctx = cast.framework.CastContext.getInstance();
     try {
       ctx.endCurrentSession(true);
@@ -549,6 +691,7 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
     }
     setIsConnected(false);
     setDeviceName("");
+    setResumeProposal(null);
     snapshotRef.current.disconnectedAt = Date.now();
   }, []);
 
@@ -575,8 +718,6 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
       const p = playerRef.current;
       const c = controllerRef.current;
       if (!p || !c) return;
-      const dur = snapshotRef.current.duration;
-      const clamped = dur > 0 ? clamp(seconds, 0, dur) : Math.max(0, seconds);
       // 200ms trailing debounce, latest-wins.
       if (seekTimerRef.current) {
         clearTimeout(seekTimerRef.current);
@@ -585,6 +726,15 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         const player = playerRef.current;
         const controller = controllerRef.current;
         if (!player || !controller) return;
+        // Re-clamp against the latest duration at fire time — the duration
+        // may have been reported by the receiver between the seek call and
+        // the debounce firing (e.g. a chapter jump issued before the media
+        // loaded on the receiver). Without re-clamping, an out-of-range
+        // positionSeconds can be forwarded to the receiver when duration
+        // was 0 at call time.
+        const dur = snapshotRef.current.duration;
+        const clamped =
+          dur > 0 ? clamp(seconds, 0, dur) : Math.max(0, seconds);
         // RemotePlayerController.seek() reads the RemotePlayer.currentTime
         // field, so set it before invoking.
         player.currentTime = clamped;
@@ -638,13 +788,12 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
 
   return {
     isSupported,
-    isAvailable,
+    availability,
     isConnecting,
     isConnected,
     deviceName,
     playerState,
     currentTime,
-    lastStatusAtMs,
     duration,
     volume,
     isMuted,
