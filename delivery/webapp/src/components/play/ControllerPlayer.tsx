@@ -11,9 +11,27 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaSession } from "@/hooks/useMediaSession";
 import type { CastTransportResult } from "@/hooks/useCast";
 import type { PresentationCommand } from "@/types/presentation-api";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, X, Info, Maximize } from "lucide-react";
+import { ArrowLeft, X, Info, Maximize, Monitor, Loader2 } from "lucide-react";
+
+/**
+ * Surface for the dev-only Presentation API sender fallback (used only when
+ * Cast is unsupported, e.g. iOS). The controller page passes the sender hook
+ * result here so the player can render the iPhone AirPlay fallback hint when
+ * neither Cast nor the Presentation fallback is available.
+ */
+export interface PresentationFallback {
+  isSupported: boolean;
+  isConnected?: boolean;
+}
 
 export interface ControllerPlayerProps {
   playerId: string;
@@ -21,31 +39,62 @@ export interface ControllerPlayerProps {
   chapters: Chapter[];
   isPresentationActive?: boolean;
   /**
-   * Unified transport surface (Task 6 interface). When the controller page
-   * mounts `useCastTransport`, it passes the full result here so the player
-   * can reconcile on-phone UI from the receiver media status. The component
-   * body consumes these in Task 6; until then they are accepted but unused so
-   * the wiring is type-safe end-to-end.
+   * Unified Cast transport surface. When the controller page mounts
+   * `useCastTransport`, it passes the full result here so the player can
+   * reconcile on-phone UI from the receiver media status (time, playing state,
+   * volume, mute) while connected, and read `resumeProposal` on disconnect.
    */
   transport?: CastTransportResult;
+  /** Dev-only Presentation API sender (AirPlay fallback hint source). */
+  presentationFallback?: PresentationFallback;
+  /** Whether the Cast Web Sender SDK is supported on this browser. */
   isCastSupported?: boolean;
+  /** Cast device availability signal for the diagnostic bottom sheet UX. */
+  castAvailability?: "unknown" | "available" | "unavailable";
+  /** True while a Cast session request is in flight (spinner on the button). */
   isCastConnecting?: boolean;
+  /** Launch the Cast (or Presentation fallback) device picker. */
   onSendToTV?: () => void;
+  /** Forward a transport command to the active receiver. */
   onSendTransportCommand?: (command: PresentationCommand) => void;
-  onPresentationConnect?: () => void;
-  onPresentationDisconnect?: () => void;
   exitRoute?: string;
   autoFullscreen?: boolean;
   className?: string;
 }
 
 const IOS_INFO_KEY = "sow-ios-info-shown";
+const SEEK_DEBOUNCE_MS = 200;
+const BUFFERING_ACTIONABLE_MS = 15_000;
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.max(min, Math.min(v, max));
+}
+
+interface PendingResume {
+  time: number;
+  isStale: boolean;
+}
 
 export function ControllerPlayer({
   playerId,
   videoSrc,
   chapters,
   isPresentationActive = false,
+  transport,
+  presentationFallback,
+  isCastSupported,
+  castAvailability,
+  isCastConnecting,
+  onSendToTV,
+  onSendTransportCommand,
   exitRoute,
   autoFullscreen = true,
   className,
@@ -54,6 +103,8 @@ export function ControllerPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const seekDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasActiveRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -64,9 +115,47 @@ export function ControllerPlayer({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showIosInfo, setShowIosInfo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showDiagnosticSheet, setShowDiagnosticSheet] = useState(false);
+  const [pendingResume, setPendingResume] = useState<PendingResume | null>(null);
+
+  // Refs to the latest transport forwarding props so effect/handler closures
+  // never go stale without forcing re-renders.
+  const onSendToTVRef = useRef(onSendToTV);
+  useEffect(() => {
+    onSendToTVRef.current = onSendToTV;
+  }, [onSendToTV]);
+  const onSendTransportCommandRef = useRef(onSendTransportCommand);
+  useEffect(() => {
+    onSendTransportCommandRef.current = onSendTransportCommand;
+  }, [onSendTransportCommand]);
 
   // Wake lock hook
   const { isSupported: wakeLockSupported } = useWakeLock();
+
+  // ── Reconcile on-phone UI from Cast status while connected ──────────────
+  // When the transport is connected, the receiver media status is the source
+  // of truth for time / playing / volume / mute. The local <video> stays
+  // paused + muted (audio plays on the receiver); only the controller UI
+  // mirrors the receiver so the worship leader sees the right state.
+  const isTransportConnected = transport?.isConnected ?? false;
+  const effectiveCurrentTime = isTransportConnected
+    ? transport?.currentTime ?? currentTime
+    : currentTime;
+  const effectiveDuration = isTransportConnected
+    ? transport?.duration || duration
+    : duration;
+  const effectiveIsPlaying = isTransportConnected
+    ? transport?.playerState === "playing"
+    : isPlaying;
+  const effectiveVolume = isTransportConnected ? transport?.volume ?? volume : volume;
+  const effectiveIsMuted = isTransportConnected ? transport?.isMuted ?? isMuted : isMuted;
+
+  const bufferingSinceMs = isTransportConnected ? transport?.bufferingSinceMs ?? null : null;
+  const isBuffering = isTransportConnected && transport?.playerState === "buffering";
+  const showActionableBuffering =
+    isBuffering &&
+    bufferingSinceMs !== null &&
+    Date.now() - bufferingSinceMs > BUFFERING_ACTIONABLE_MS;
 
   // Check if iOS and if info toast was already shown
   useEffect(() => {
@@ -89,6 +178,9 @@ export function ControllerPlayer({
     if (!video) return;
 
     const handleTimeUpdate = () => {
+      // While the transport is connected, the receiver is the source of
+      // truth — don't let local timeupdate events fight the mirrored state.
+      if (isPresentationActive) return;
       setCurrentTime(video.currentTime);
 
       // Update current song index based on time
@@ -107,11 +199,17 @@ export function ControllerPlayer({
       setDuration(video.duration);
     };
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => {
+      if (!isPresentationActive) setIsPlaying(true);
+    };
+    const handlePause = () => {
+      if (!isPresentationActive) setIsPlaying(false);
+    };
     const handleVolumeChange = () => {
-      setVolume(video.volume);
-      setIsMuted(video.muted);
+      if (!isPresentationActive) {
+        setVolume(video.volume);
+        setIsMuted(video.muted);
+      }
     };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
@@ -127,7 +225,7 @@ export function ControllerPlayer({
       video.removeEventListener("pause", handlePause);
       video.removeEventListener("volumechange", handleVolumeChange);
     };
-  }, [chapters, currentSongIndex]);
+  }, [chapters, currentSongIndex, isPresentationActive]);
 
   // Auto-hide controls in mirror mode
   const startHideTimer = useCallback(() => {
@@ -175,8 +273,19 @@ export function ControllerPlayer({
     }
   }, [isPlaying, isPresentationActive, startHideTimer]);
 
-  // Control handlers
+  // ── Intent forwarding ───────────────────────────────────────────────────
+  // When the presentation is active, control intents are forwarded to the
+  // receiver as transport commands (guarded by isPresentationActive,
+  // latest-wins during buffering — the transport hook debounces on its side;
+  // client-side seek is also debounced 200ms to batch rapid jumps).
   const handlePlayPause = useCallback(() => {
+    if (isPresentationActive) {
+      const cmd: PresentationCommand = effectiveIsPlaying
+        ? { type: "pause" }
+        : { type: "play" };
+      onSendTransportCommandRef.current?.(cmd);
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
 
@@ -191,32 +300,48 @@ export function ControllerPlayer({
         toast.error("Failed to start playback");
       });
     }
-  }, [isPlaying]);
+  }, [isPresentationActive, effectiveIsPlaying, isPlaying]);
 
   const handleSeek = useCallback(
     (time: number) => {
-      const video = videoRef.current;
-      if (!video) return;
-
-      if (!isFinite(time)) {
+      if (!Number.isFinite(time)) {
         console.warn("handleSeek called with non-finite time:", time);
         return;
       }
+      const upper = effectiveDuration > 0 ? effectiveDuration : time;
+      const clampedTime = clamp(time, 0, upper);
 
-      const clampedTime = Math.max(0, Math.min(duration, time));
+      if (isPresentationActive) {
+        // Mirror the seek locally for immediate UI feedback, then forward the
+        // command (debounced 200ms client-side, latest-wins).
+        setCurrentTime(clampedTime);
+        if (seekDebounceRef.current) {
+          clearTimeout(seekDebounceRef.current);
+        }
+        seekDebounceRef.current = setTimeout(() => {
+          onSendTransportCommandRef.current?.({
+            type: "seek",
+            positionSeconds: clampedTime,
+          });
+        }, SEEK_DEBOUNCE_MS);
+        return;
+      }
+
+      const video = videoRef.current;
+      if (!video) return;
       video.currentTime = clampedTime;
       setCurrentTime(clampedTime);
     },
-    [duration]
+    [isPresentationActive, effectiveDuration]
   );
 
   const handleSkipBack = useCallback(() => {
-    handleSeek(currentTime - 10);
-  }, [currentTime, handleSeek]);
+    handleSeek(effectiveCurrentTime - 10);
+  }, [effectiveCurrentTime, handleSeek]);
 
   const handleSkipForward = useCallback(() => {
-    handleSeek(currentTime + 10);
-  }, [currentTime, handleSeek]);
+    handleSeek(effectiveCurrentTime + 10);
+  }, [effectiveCurrentTime, handleSeek]);
 
   const handlePrevSong = useCallback(() => {
     if (currentSongIndex > 0) {
@@ -236,20 +361,34 @@ export function ControllerPlayer({
     }
   }, [currentSongIndex, chapters, handleSeek]);
 
-  const handleVolumeChange = useCallback((newVolume: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.volume = newVolume;
-    video.muted = newVolume === 0;
-  }, []);
+  const handleVolumeChange = useCallback(
+    (newVolume: number) => {
+      const clamped = clamp(newVolume, 0, 1);
+      if (isPresentationActive) {
+        onSendTransportCommandRef.current?.({ type: "volume", level: clamped });
+        return;
+      }
+      const video = videoRef.current;
+      if (!video) return;
+      video.volume = clamped;
+      video.muted = clamped === 0;
+    },
+    [isPresentationActive]
+  );
 
   const handleToggleMute = useCallback(() => {
+    if (isPresentationActive) {
+      // Mute is a distinct bit on the receiver — never route through volume.
+      onSendTransportCommandRef.current?.({
+        type: "mute",
+        muted: !effectiveIsMuted,
+      });
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
-
     video.muted = !video.muted;
-  }, []);
+  }, [isPresentationActive, effectiveIsMuted]);
 
   const handleJumpToChapter = useCallback(
     (index: number) => {
@@ -291,6 +430,16 @@ export function ControllerPlayer({
     document.documentElement.requestFullscreen().catch(() => {});
   }, []);
 
+  // Cancel any pending debounced seek on unmount.
+  useEffect(() => {
+    return () => {
+      if (seekDebounceRef.current) {
+        clearTimeout(seekDebounceRef.current);
+        seekDebounceRef.current = null;
+      }
+    };
+  }, []);
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onTogglePlayback: handlePlayPause,
@@ -328,19 +477,19 @@ export function ControllerPlayer({
 
   // Update media session playback state
   useEffect(() => {
-    updatePlaybackState(isPlaying ? "playing" : "paused");
-  }, [isPlaying, updatePlaybackState]);
+    updatePlaybackState(effectiveIsPlaying ? "playing" : "paused");
+  }, [effectiveIsPlaying, updatePlaybackState]);
 
   // Update media session position state
   useEffect(() => {
-    if (duration > 0) {
+    if (effectiveDuration > 0) {
       updatePositionState({
-        duration,
-        position: currentTime,
+        duration: effectiveDuration,
+        position: effectiveCurrentTime,
         playbackRate: 1,
       });
     }
-  }, [duration, currentTime, updatePositionState]);
+  }, [effectiveDuration, effectiveCurrentTime, updatePositionState]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -385,7 +534,8 @@ export function ControllerPlayer({
     };
   }, [autoFullscreen]);
 
-  // Mute video when presentation is active (audio plays on receiver)
+  // Mute (+ pause) local video when presentation is active (audio plays on the
+  // receiver). Composes with the disconnect→resume effect below.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -393,11 +543,107 @@ export function ControllerPlayer({
     if (isPresentationActive) {
       video.muted = true;
       video.setAttribute("muted", "");
+      video.pause();
     } else {
       video.muted = false;
       video.removeAttribute("muted");
     }
   }, [isPresentationActive]);
+
+  // ── Disconnect → local resume (P0) ──────────────────────────────────────
+  // When the presentation transitions active → inactive (transport was
+  // previously connected), read transport.resumeProposal and either auto-resume
+  // local playback from the extrapolated TV position, or — when the proposal
+  // is stale — surface a tap-to-resume prompt without auto-resuming. Never
+  // silent: a play() rejection renders a prominent inline tap-to-resume control
+  // with the seek already applied.
+  useEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = isPresentationActive;
+    if (!wasActive || isPresentationActive) return;
+
+    const proposal = transport?.resumeProposal;
+    if (!proposal) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (proposal.isStale) {
+      setPendingResume({ time: proposal.time, isStale: true });
+      return;
+    }
+
+    const dur = Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : effectiveDuration;
+    const t = clamp(proposal.time, 0, dur > 0 ? dur : proposal.time);
+    try {
+      video.currentTime = t;
+    } catch {
+      /* best-effort */
+    }
+    setCurrentTime(t);
+    setPendingResume(null);
+
+    video
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+      })
+      .catch(() => {
+        setPendingResume({ time: t, isStale: false });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPresentationActive, transport?.resumeProposal]);
+
+  const handleTapToResume = useCallback(() => {
+    if (!pendingResume) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const t = pendingResume.time;
+    try {
+      video.currentTime = t;
+    } catch {
+      /* best-effort */
+    }
+    setCurrentTime(t);
+    video
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        setPendingResume(null);
+      })
+      .catch(() => {
+        /* keep the prompt visible */
+      });
+  }, [pendingResume]);
+
+  // ── Song-change effect (keyed on currentSongIndex while active) ─────────
+  // Push the new song title to the receiver. No-op for Cast (the title is set
+  // via MediaInfo.metadata at loadMedia); the Presentation fallback uses it.
+  useEffect(() => {
+    if (!isPresentationActive) return;
+    const chapter = chapters[currentSongIndex];
+    if (!chapter) return;
+    onSendTransportCommandRef.current?.({
+      type: "songTitle",
+      title: chapter.songTitle,
+    });
+  }, [currentSongIndex, isPresentationActive, chapters]);
+
+  // ── Top-bar derived state ───────────────────────────────────────────────
+  const showCastButton = isCastSupported === true && !isPresentationActive;
+  const castUnavailable = castAvailability === "unavailable";
+  const showIphoneFallback =
+    isCastSupported === false &&
+    (presentationFallback?.isSupported ?? false) === false;
+
+  const handleCastButtonClick = useCallback(() => {
+    if (castUnavailable) {
+      setShowDiagnosticSheet(true);
+      return;
+    }
+    onSendToTVRef.current?.();
+  }, [castUnavailable]);
 
   return (
     <div
@@ -445,7 +691,7 @@ export function ControllerPlayer({
             controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
           )}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Button
               variant="ghost"
               size="icon"
@@ -456,13 +702,67 @@ export function ControllerPlayer({
               <ArrowLeft className="size-5" />
             </Button>
 
-            {/* Presentation status */}
-            {isPresentationActive && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-full text-sm">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span>Connected to TV</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Presentation status */}
+              {isPresentationActive && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-full text-sm">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  <span>
+                    Connected to {transport?.deviceName ? transport.deviceName : "TV"}
+                  </span>
+                </div>
+              )}
+
+              {/* Buffering chip (non-blocking; controls stay enabled) */}
+              {isBuffering && (
+                <div
+                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/20 text-amber-300 rounded-full text-xs"
+                  data-testid="buffering-chip"
+                >
+                  <Loader2 className="size-3 animate-spin" />
+                  <span>
+                    {showActionableBuffering
+                      ? "TV is still loading — check Wi-Fi / MP4 reachability / retry Cast."
+                      : "TV is loading…"}
+                  </span>
+                </div>
+              )}
+
+              {/* Cast / Send-to-TV button */}
+              {showCastButton && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "size-10 text-white hover:bg-white/20",
+                    castUnavailable && "opacity-60"
+                  )}
+                  onClick={handleCastButtonClick}
+                  aria-label={castUnavailable ? "Cast unavailable" : "Send to TV"}
+                  data-testid="cast-button"
+                >
+                  {isCastConnecting ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <Monitor className="size-5" />
+                  )}
+                </Button>
+              )}
+
+              {/* iPhone fallback: Cast unsupported and Presentation unsupported */}
+              {showIphoneFallback && (
+                <a
+                  href="/docs#airplay"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 text-white/80 rounded-full text-xs hover:bg-white/20"
+                  data-testid="airplay-fallback"
+                >
+                  <Monitor className="size-3" />
+                  <span>
+                    Use AirPlay to an Apple TV — native iOS app pending
+                  </span>
+                </a>
+              )}
+            </div>
 
             {/* Wake lock indicator */}
             {wakeLockSupported && (
@@ -472,6 +772,25 @@ export function ControllerPlayer({
             )}
           </div>
         </div>
+
+        {/* Tap-to-resume / stale resume prompt (disconnect → local resume) */}
+        {pendingResume && (
+          <button
+            type="button"
+            onClick={handleTapToResume}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-[85] flex items-center gap-2 px-4 py-3 bg-amber-500/90 text-black rounded-lg shadow-lg text-sm font-medium"
+            data-testid="tap-to-resume"
+          >
+            <Info className="size-4 shrink-0" />
+            <span>
+              {pendingResume.isStale
+                ? `Resume from TV position may be stale — tap to resume at ${formatTime(
+                    pendingResume.time
+                  )}`
+                : `Tap to resume at ${formatTime(pendingResume.time)}`}
+            </span>
+          </button>
+        )}
 
         {/* iOS Info Toast */}
         {showIosInfo && (
@@ -535,11 +854,11 @@ export function ControllerPlayer({
         onMouseLeave={startHideTimer}
       >
         <PlaybackControls
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          volume={volume}
-          isMuted={isMuted}
+          isPlaying={effectiveIsPlaying}
+          currentTime={effectiveCurrentTime}
+          duration={effectiveDuration}
+          volume={effectiveVolume}
+          isMuted={effectiveIsMuted}
           currentSongIndex={currentSongIndex}
           totalSongs={chapters.length}
           isPresentationActive={isPresentationActive}
@@ -552,16 +871,37 @@ export function ControllerPlayer({
         />
       </div>
 
-      {/* Lyric Jump List */}
+      {/* Lyric Jump List (hidden while presentation is active) */}
       {!isPresentationActive && (
         <LyricJumpList
           chapters={chapters}
-          currentTime={currentTime}
+          currentTime={effectiveCurrentTime}
           currentSongIndex={currentSongIndex}
           onJumpToChapter={handleJumpToChapter}
           onJumpToLine={handleJumpToLine}
         />
       )}
+
+      {/* Diagnostic bottom sheet (Cast unavailable) */}
+      <Sheet
+        open={showDiagnosticSheet}
+        onOpenChange={setShowDiagnosticSheet}
+      >
+        <SheetContent side="bottom" data-testid="diagnostic-sheet">
+          <SheetHeader>
+            <SheetTitle>Cast unavailable</SheetTitle>
+            <SheetDescription>
+              Chromecast couldn&apos;t be reached. Check the following:
+            </SheetDescription>
+          </SheetHeader>
+          <ol className="list-decimal space-y-2 px-4 pb-6 text-sm text-muted-foreground">
+            <li>Use Android Chrome over HTTPS (the Cast Web Sender SDK requires it).</li>
+            <li>Phone and TV must be on the same Wi-Fi / VLAN (guest and captive-portal networks block discovery).</li>
+            <li>Receiver must be powered on, and dev/staging devices must be whitelisted in the Google Cast SDK Developer Console.</li>
+            <li>Try opening the MP4 URL from this network in a laptop browser to confirm R2 reachability and range-seek.</li>
+          </ol>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
