@@ -6,13 +6,17 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Forward10
@@ -28,6 +32,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -185,6 +191,11 @@ fun PlayerScreen(
             ) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Exit fullscreen")
             }
+            FullscreenPlaybackOverlays(
+                state = state,
+                onRetry = viewModel::retryPlayback,
+                onDismissError = viewModel::dismissPlaybackError,
+            )
         }
         return
     }
@@ -205,6 +216,12 @@ fun PlayerScreen(
         }
         if (state.isLoading) SowLoadingState(label = "Loading playback")
         OfflinePlaybackBanner(state = state, onRetry = { viewModel.load(state.artifact) })
+        SoftwareDecoderWarningBanner(state)
+        PlaybackErrorPanel(
+            error = state.playbackError,
+            onRetry = viewModel::retryPlayback,
+            onDismiss = viewModel::dismissPlaybackError,
+        )
         if (media3Controller != null) {
             AndroidView(
                 factory = {
@@ -288,6 +305,44 @@ fun PlayerScreen(
 }
 
 @Composable
+private fun BoxScope.FullscreenPlaybackOverlays(
+    state: PlayerUiState,
+    onRetry: () -> Unit,
+    onDismissError: () -> Unit,
+) {
+    if (state.softwareDecoderWarning) {
+        SoftwareDecoderWarningBanner(
+            state = state,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+                    .widthIn(max = 520.dp),
+        )
+    }
+    state.playbackError?.let { error ->
+        Surface(
+            modifier =
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp)
+                    .widthIn(max = 520.dp)
+                    .testTag("player-playback-error-overlay"),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            PlaybackErrorContent(
+                error = error,
+                onRetry = onRetry,
+                onDismiss = onDismissError,
+                modifier = Modifier.padding(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun ColumnScope.OfflinePlaybackBanner(
     state: PlayerUiState,
     onRetry: () -> Unit,
@@ -315,5 +370,76 @@ private fun ColumnScope.OfflinePlaybackBanner(
             )
         else ->
             state.message?.let { SowErrorState(title = "Playback", message = it) }
+    }
+}
+
+@Composable
+private fun SoftwareDecoderWarningBanner(
+    state: PlayerUiState,
+    modifier: Modifier = Modifier,
+) {
+    if (!state.softwareDecoderWarning) return
+    Surface(
+        modifier = modifier.fillMaxWidth().testTag("player-software-decoder-warning"),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Text(
+            text = "Video playback is using software decoding. Battery may drain faster.",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun PlaybackErrorPanel(
+    error: PlaybackUiError?,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    error ?: return
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("player-playback-error-panel"),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        PlaybackErrorContent(
+            error = error,
+            onRetry = onRetry,
+            onDismiss = onDismiss,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun PlaybackErrorContent(
+    error: PlaybackUiError,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(error.title, style = MaterialTheme.typography.titleMedium)
+        Text(error.message, style = MaterialTheme.typography.bodyMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.testTag("player-playback-error-dismiss")) {
+                Text("Dismiss")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = onRetry, modifier = Modifier.testTag("player-playback-error-retry")) {
+                Text("Retry")
+            }
+        }
     }
 }

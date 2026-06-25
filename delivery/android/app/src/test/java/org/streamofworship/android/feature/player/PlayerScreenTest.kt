@@ -4,8 +4,10 @@ import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -14,6 +16,7 @@ import androidx.compose.ui.unit.Density
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import org.junit.Rule
@@ -25,6 +28,7 @@ import org.streamofworship.android.data.playback.PlaybackLine
 import org.streamofworship.android.data.playback.PlaybackManifest
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class PlayerScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -237,6 +241,75 @@ class PlayerScreenTest {
         } finally {
             controller.release()
         }
+    }
+
+    @Test
+    fun `playback error panel offers retry and dismiss actions`() {
+        val scope = TestScope()
+        val controller = FakePlayerController(durationMillis = 120_000)
+        val viewModel =
+            PlayerViewModel(
+                renderJobId = "job-1",
+                repository = TwoChapterPlaybackRepository(),
+                controller = controller,
+                scope = scope,
+                tickerMillis = 0,
+            )
+
+        composeRule.setContent {
+            SowTheme {
+                PlayerScreen(viewModel = viewModel, media3Controller = null, onBack = {})
+            }
+        }
+        composeRule.waitForIdle()
+        scope.advanceUntilIdle()
+        composeRule.waitForIdle()
+
+        controller.emit(PlayerEvent.Error("decoder failed", PlaybackErrorKind.Decoder))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("player-playback-error-panel").assertIsDisplayed()
+        composeRule.onNodeWithText("Playback failed").assertIsDisplayed()
+        composeRule.onNodeWithText("The video format is not supported on this device. Older renders may need to be rendered again.").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("player-playback-error-dismiss").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("player-playback-error-panel").assertCountEquals(0)
+
+        controller.emit(PlayerEvent.Error("decoder failed", PlaybackErrorKind.Decoder))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("player-playback-error-retry").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("player-playback-error-panel").assertCountEquals(0)
+    }
+
+    @Test
+    fun `software decoder warning banner is shown`() {
+        val scope = TestScope()
+        val controller = FakePlayerController(durationMillis = 120_000)
+        val viewModel =
+            PlayerViewModel(
+                renderJobId = "job-1",
+                repository = TwoChapterPlaybackRepository(),
+                controller = controller,
+                scope = scope,
+                tickerMillis = 0,
+            )
+
+        composeRule.setContent {
+            SowTheme {
+                PlayerScreen(viewModel = viewModel, media3Controller = null, onBack = {})
+            }
+        }
+        composeRule.waitForIdle()
+        scope.advanceUntilIdle()
+        composeRule.waitForIdle()
+
+        controller.emit(PlayerEvent.VideoDecoderChanged("c2.android.avc.decoder", true))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("player-software-decoder-warning").assertIsDisplayed()
+        composeRule.onNodeWithText("Video playback is using software decoding. Battery may drain faster.").assertIsDisplayed()
     }
 }
 

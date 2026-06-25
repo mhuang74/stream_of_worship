@@ -46,12 +46,26 @@ data class PlayerUiState(
     val isFullscreen: Boolean = false,
     val isLoading: Boolean = false,
     val message: String? = null,
+    val playbackError: PlaybackUiError? = null,
+    val softwareDecoderWarning: Boolean = false,
 ) {
     val currentChapter: PlaybackChapter?
         get() = manifest?.chapterAt(positionMillis)
 
     val currentLine: PlaybackLine?
         get() = manifest?.currentLineAt(positionMillis)
+}
+
+data class PlaybackUiError(
+    val kind: PlaybackErrorKind,
+    val message: String,
+) {
+    val title: String
+        get() =
+            when (kind) {
+                PlaybackErrorKind.Decoder -> "Playback failed"
+                PlaybackErrorKind.Generic -> "Playback"
+            }
 }
 
 class PlayerViewModel(
@@ -71,6 +85,7 @@ class PlayerViewModel(
     private val mutableState = MutableStateFlow(PlayerUiState(artifact = defaultArtifact))
     val uiState: StateFlow<PlayerUiState> = mutableState
     private var ticker: Job? = null
+    private var softwareDecoderWarningDismissal: Job? = null
     private val eventListener =
         PlayerController.PlayerEventListener { event ->
             when (event) {
@@ -79,7 +94,18 @@ class PlayerViewModel(
                     syncFromController()
                 }
                 is PlayerEvent.Error -> {
-                    mutableState.update { it.copy(isLoading = false, message = event.message) }
+                    stopTicker()
+                    mutableState.update {
+                        it.copy(
+                            isLoading = false,
+                            isPlaying = false,
+                            message = null,
+                            playbackError = event.toPlaybackUiError(),
+                        )
+                    }
+                }
+                is PlayerEvent.VideoDecoderChanged -> {
+                    updateSoftwareDecoderWarning(event.softwareDecoderActive)
                 }
                 PlayerEvent.PositionDiscontinuity -> syncFromController()
             }
@@ -117,6 +143,8 @@ class PlayerViewModel(
                     mediaUrl = null,
                     offlineState = OfflinePlaybackState.Unknown,
                     message = null,
+                    playbackError = null,
+                    softwareDecoderWarning = false,
                 )
             }
             val result =
@@ -166,6 +194,7 @@ class PlayerViewModel(
                         offlineState = loaded.offlineState,
                         durationMillis = loaded.manifest?.totalDurationMillis ?: controller.durationMillis,
                         isLoading = false,
+                        playbackError = null,
                         message =
                             when (loaded.offlineState) {
                                 OfflinePlaybackState.ExpiredSignedUrl -> "Playback link expired. Retry to refresh it."
@@ -176,9 +205,45 @@ class PlayerViewModel(
                 }
                 if (loaded.url != null) startTicker()
             }.onFailure { error ->
-                mutableState.update { it.copy(isLoading = false, message = error.statusMessage()) }
+                mutableState.update {
+                    it.copy(
+                        isLoading = false,
+                        message = error.statusMessage(),
+                        playbackError = null,
+                    )
+                }
             }
         }
+    }
+
+    fun retryPlayback() {
+        val state = mutableState.value
+        val url = state.mediaUrl
+        if (url == null) {
+            mutableState.update { it.copy(playbackError = null, message = null, isLoading = true) }
+            load(state.artifact)
+            return
+        }
+
+        val resumePosition = state.positionMillis
+        mutableState.update {
+            it.copy(
+                playbackError = null,
+                message = null,
+                isLoading = false,
+            )
+        }
+        controller.setMedia(url, state.artifact == PlaybackArtifact.Video)
+        if (resumePosition > 0L) {
+            controller.seekTo(resumePosition)
+        }
+        controller.play()
+        syncFromController()
+        startTicker()
+    }
+
+    fun dismissPlaybackError() {
+        mutableState.update { it.copy(playbackError = null) }
     }
 
     fun playPause() {
@@ -280,6 +345,21 @@ class PlayerViewModel(
         ticker = null
     }
 
+    private fun updateSoftwareDecoderWarning(active: Boolean) {
+        softwareDecoderWarningDismissal?.cancel()
+        softwareDecoderWarningDismissal = null
+        if (!active) {
+            mutableState.update { it.copy(softwareDecoderWarning = false) }
+            return
+        }
+        mutableState.update { it.copy(softwareDecoderWarning = true) }
+        softwareDecoderWarningDismissal =
+            launchScope.launch {
+                delay(SOFTWARE_DECODER_WARNING_MILLIS)
+                mutableState.update { it.copy(softwareDecoderWarning = false) }
+            }
+    }
+
     private fun syncFromController() {
         mutableState.update {
             it.copy(
@@ -295,6 +375,7 @@ class PlayerViewModel(
 
     override fun onCleared() {
         stopTicker()
+        softwareDecoderWarningDismissal?.cancel()
         controller.setEventListener(null)
         controller.release()
         super.onCleared()
@@ -306,6 +387,17 @@ private fun Throwable.statusMessage(): String =
         is ApiException -> error.message
         else -> message ?: "Playback failed"
     }
+
+private fun PlayerEvent.Error.toPlaybackUiError(): PlaybackUiError =
+    PlaybackUiError(
+        kind = kind,
+        message =
+            when (kind) {
+                PlaybackErrorKind.Decoder ->
+                    "The video format is not supported on this device. Older renders may need to be rendered again."
+                PlaybackErrorKind.Generic -> message
+            },
+    )
 
 private data class PlaybackLoadResult(
     val url: String?,
@@ -319,6 +411,8 @@ private fun PlaybackArtifact.offlineKind(): OfflineArtifactKind =
         PlaybackArtifact.Video -> OfflineArtifactKind.Video
         PlaybackArtifact.Audio -> OfflineArtifactKind.Audio
     }
+
+private const val SOFTWARE_DECODER_WARNING_MILLIS = 5_000L
 
 private fun SignedUrlResponse.isExpired(clock: Clock): Boolean =
     runCatching {

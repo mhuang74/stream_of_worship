@@ -11,12 +11,15 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.Locale
 
 class Media3PlayerController private constructor(
     internal val player: MediaPlayerFacade,
@@ -125,12 +128,15 @@ internal class DirectPlayerFacade(
     override val playerView: Player,
     private val diagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
 ) : MediaPlayerFacade, PlayerViewHost {
+    private var eventListener: PlayerController.PlayerEventListener? = null
     private var listenerAdapter: Player.Listener? = null
     private val diagnosticListener: Player.Listener? = createVideoDiagnosticListener()
+    private val analyticsListener: AnalyticsListener = createVideoAnalyticsListener()
     override val playerViewState: StateFlow<Player?> = MutableStateFlow(playerView)
 
     init {
         diagnosticListener?.let { playerView.addListener(it) }
+        (playerView as? ExoPlayer)?.addAnalyticsListener(analyticsListener)
     }
 
     override val durationMillis: Long get() = playerView.duration
@@ -164,6 +170,8 @@ internal class DirectPlayerFacade(
     override fun release() {
         listenerAdapter?.let { playerView.removeListener(it) }
         diagnosticListener?.let { playerView.removeListener(it) }
+        (playerView as? ExoPlayer)?.removeAnalyticsListener(analyticsListener)
+        eventListener = null
         listenerAdapter = null
         playerView.release()
     }
@@ -171,6 +179,7 @@ internal class DirectPlayerFacade(
     override fun setEventListener(listener: PlayerController.PlayerEventListener?) {
         listenerAdapter?.let { playerView.removeListener(it) }
         listenerAdapter = null
+        eventListener = listener
         if (listener == null) return
         val adapter =
             object : Player.Listener {
@@ -178,8 +187,8 @@ internal class DirectPlayerFacade(
                     listener.onEvent(PlayerEvent.IsPlayingChanged(isPlaying))
                 }
 
-                override fun onPlayerErrorChanged(error: PlaybackException?) {
-                    error?.let { listener.onEvent(PlayerEvent.Error(it.message ?: "Playback error")) }
+                override fun onPlayerError(error: PlaybackException) {
+                    listener.onEvent(error.toPlayerErrorEvent())
                 }
 
                 override fun onPositionDiscontinuity(
@@ -193,6 +202,28 @@ internal class DirectPlayerFacade(
         playerView.addListener(adapter)
         listenerAdapter = adapter
     }
+
+    @OptIn(UnstableApi::class)
+    private fun createVideoAnalyticsListener(): AnalyticsListener =
+        object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                val softwareDecoder = decoderName.isSoftwareVideoDecoder()
+                SowVideoLogger.debug(diagnostics) {
+                    "videoDecoderInitialized name=$decoderName software=$softwareDecoder"
+                }
+                eventListener?.onEvent(
+                    PlayerEvent.VideoDecoderChanged(
+                        decoderName = decoderName,
+                        softwareDecoderActive = softwareDecoder,
+                    ),
+                )
+            }
+        }
 
     private fun createVideoDiagnosticListener(): Player.Listener? {
         if (!SowVideoLogger.enabled) return null
@@ -225,9 +256,9 @@ internal class DirectPlayerFacade(
                 SowVideoLogger.debug(diagnostics) { "renderedFirstFrame" }
             }
 
-            override fun onPlayerError(error: PlaybackException) {
-                SowVideoLogger.error(diagnostics, error) {
-                    "playerError code=${error.errorCodeName} cause=${error.cause?.javaClass?.name ?: "none"}"
+                override fun onPlayerError(error: PlaybackException) {
+                    SowVideoLogger.error(diagnostics, error) {
+                        "playerError code=${error.errorCodeName} cause=${error.cause?.javaClass?.name ?: "none"}"
                 }
             }
         }
@@ -253,6 +284,27 @@ private fun Format.videoSummary(): String =
         "rotation=$rotationDegrees " +
         "pixelRatio=$pixelWidthHeightRatio " +
         "bitrate=$bitrate"
+
+internal fun String.isSoftwareVideoDecoder(): Boolean {
+    val normalized = lowercase(Locale.US)
+    return normalized.contains("c2.android") ||
+        normalized.contains("omx.google") ||
+        normalized.contains("ffmpeg") ||
+        normalized.contains("software")
+}
+
+private fun PlaybackException.toPlayerErrorEvent(): PlayerEvent.Error =
+    PlayerEvent.Error(
+        message = message ?: "Playback error",
+        kind = if (isDecoderPlaybackError()) PlaybackErrorKind.Decoder else PlaybackErrorKind.Generic,
+    )
+
+private fun PlaybackException.isDecoderPlaybackError(): Boolean =
+    errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
 
 /**
  * Connects to the in-process [SowPlaybackService] session through a [MediaController].
@@ -358,8 +410,8 @@ internal class ServiceMediaControllerFacade(
                     listener.onEvent(PlayerEvent.IsPlayingChanged(isPlaying))
                 }
 
-                override fun onPlayerErrorChanged(error: PlaybackException?) {
-                    listener.onEvent(PlayerEvent.Error(error?.message ?: "Playback error"))
+                override fun onPlayerError(error: PlaybackException) {
+                    listener.onEvent(error.toPlayerErrorEvent())
                 }
 
                 override fun onPositionDiscontinuity(
