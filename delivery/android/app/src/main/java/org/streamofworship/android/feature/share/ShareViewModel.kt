@@ -9,10 +9,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.streamofworship.android.core.download.ArtifactDownloadCoordinator
 import org.streamofworship.android.core.download.ArtifactDownloadRequest
+import org.streamofworship.android.core.download.canonicalTitle
 import org.streamofworship.android.core.network.ApiException
 import org.streamofworship.android.data.offline.OfflineArtifactKind
 import org.streamofworship.android.data.offline.OfflineArtifactMetadata
+import org.streamofworship.android.data.offline.OfflineArtifactStatus
 import org.streamofworship.android.data.playback.PlaybackRepository
+import org.streamofworship.android.data.render.RenderRepository
 
 data class ShareUiState(
     val allowDownload: Boolean = false,
@@ -28,6 +31,7 @@ class ShareViewModel(
     private val renderJobId: String,
     private val shareRepository: ShareRepository,
     private val playbackRepository: PlaybackRepository,
+    private val renderRepository: RenderRepository,
     private val downloadCoordinator: ArtifactDownloadCoordinator? = null,
     private val scope: CoroutineScope? = null,
 ) : ViewModel() {
@@ -52,50 +56,71 @@ class ShareViewModel(
     fun loadDownloadUrls() {
         launchScope.launch {
             mutableState.update { it.copy(isLoading = true, message = null) }
-            runCatching {
-                val audio = playbackRepository.renderedAudioUrl(renderJobId, "attachment")
-                val video = playbackRepository.renderedVideoUrl(renderJobId, "attachment")
-                val audioDownload =
-                    downloadCoordinator?.enqueue(
+            val sizes =
+                runCatching { renderRepository.getArtifactSizes(renderJobId) }
+                    .getOrElse { error ->
+                        mutableState.update { it.copy(isLoading = false, message = error.statusMessage()) }
+                        return@launch
+                    }
+            // Only enqueue the kinds that actually exist for this render job so audio-only or
+            // video-only renders do not fail the entire batch with a 404 on the missing artifact.
+            val pendingKinds = buildList {
+                if (sizes.mp3SizeBytes != null) add(OfflineArtifactKind.Audio)
+                if (sizes.mp4SizeBytes != null) add(OfflineArtifactKind.Video)
+            }
+            val collectedDownloads = mutableMapOf<OfflineArtifactKind, OfflineArtifactMetadata>()
+            val audioUrls = mutableListOf<String>()
+            val videoUrls = mutableListOf<String>()
+            val failures = mutableListOf<String>()
+            // Each kind is enqueued in its own runCatching so a transient failure on one
+            // artifact does not block the other; per-kind errors are surfaced together.
+            pendingKinds.forEach { kind ->
+                runCatching {
+                    val signedUrl =
+                        if (kind == OfflineArtifactKind.Audio) {
+                            playbackRepository.renderedAudioUrl(renderJobId, "attachment")
+                        } else {
+                            playbackRepository.renderedVideoUrl(renderJobId, "attachment")
+                        }
+                    val request =
                         ArtifactDownloadRequest(
                             renderJobId = renderJobId,
-                            kind = OfflineArtifactKind.Audio,
-                            url = audio.url,
-                            expiresAt = audio.expiresAt,
-                            title = "stream-of-worship-$renderJobId-audio",
-                        ),
-                    )
-                val videoDownload =
-                    downloadCoordinator?.enqueue(
-                        ArtifactDownloadRequest(
-                            renderJobId = renderJobId,
-                            kind = OfflineArtifactKind.Video,
-                            url = video.url,
-                            expiresAt = video.expiresAt,
-                            title = "stream-of-worship-$renderJobId-video",
-                        ),
-                    )
-                DownloadUrls(audio.url, video.url, listOfNotNull(audioDownload, videoDownload))
-            }.onSuccess { downloads ->
-                mutableState.update {
-                    it.copy(
-                        isLoading = false,
-                        audioUrl = downloads.audioUrl,
-                        videoUrl = downloads.videoUrl,
-                        downloads = downloads.metadata.associateBy { metadata -> metadata.kind },
-                    )
+                            kind = kind,
+                            url = signedUrl.url,
+                            expiresAt = signedUrl.expiresAt,
+                            title = "",
+                        ).let { it.copy(title = it.canonicalTitle()) }
+                    DownloadOutcome(signedUrl.url, downloadCoordinator?.enqueue(request))
+                }.onSuccess { outcome ->
+                    when (kind) {
+                        OfflineArtifactKind.Audio -> audioUrls += outcome.url
+                        OfflineArtifactKind.Video -> videoUrls += outcome.url
+                        else -> Unit
+                    }
+                    outcome.metadata?.let { collectedDownloads[it.kind] = it }
+                    if (outcome.metadata?.status == OfflineArtifactStatus.Failed) {
+                        failures += "${kind.name}: ${outcome.metadata.failureMessage ?: "download failed"}"
+                    }
+                }.onFailure { error ->
+                    failures += "${kind.name}: ${error.statusMessage()}"
                 }
-            }.onFailure { error ->
-                mutableState.update { it.copy(isLoading = false, message = error.statusMessage()) }
+            }
+            mutableState.update {
+                it.copy(
+                    isLoading = false,
+                    audioUrl = audioUrls.firstOrNull(),
+                    videoUrl = videoUrls.firstOrNull(),
+                    downloads = collectedDownloads,
+                    message = failures.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                )
             }
         }
     }
 }
 
-private data class DownloadUrls(
-    val audioUrl: String,
-    val videoUrl: String,
-    val metadata: List<OfflineArtifactMetadata>,
+private data class DownloadOutcome(
+    val url: String,
+    val metadata: OfflineArtifactMetadata?,
 )
 
 private fun Throwable.statusMessage(): String =

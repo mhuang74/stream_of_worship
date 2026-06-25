@@ -105,5 +105,7 @@ class AuthScreensTest {
         ) = Unit
 
         override fun signOut() = Unit
+
+        override fun onSessionExpired() = Unit
     }
 }

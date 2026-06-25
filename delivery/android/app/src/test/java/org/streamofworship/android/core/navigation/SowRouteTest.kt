@@ -14,7 +14,7 @@ class SowRouteTest {
                 "songsets",
                 "songsets/{songsetId}",
                 "songsets/{songsetId}/render",
-                "songsets/{songsetId}/player/{jobId}/{artifact}",
+                "player/{jobId}/{artifact}",
                 "share/{token}",
                 "settings",
             ),
@@ -37,12 +37,12 @@ class SowRouteTest {
         assertEquals("songsets/set%2F1", SowRoute.SongsetDetail.createRoute("set/1"))
         assertEquals("songsets/set%3F1/render", SowRoute.Render.createRoute("set?1"))
         assertEquals(
-            "songsets/set%231/player/job%2F9/video",
-            SowRoute.Player.createRoute(songsetId = "set#1", jobId = "job/9"),
+            "player/job%2F9/video",
+            SowRoute.Player.createRoute(jobId = "job/9"),
         )
         assertEquals(
-            "songsets/set%231/player/job%2F9/audio",
-            SowRoute.Player.createRoute(songsetId = "set#1", jobId = "job/9", artifact = "audio"),
+            "player/job%2F9/audio",
+            SowRoute.Player.createRoute(jobId = "job/9", artifact = "audio"),
         )
         assertEquals("share/token%252Fraw", SowRoute.Share.createRoute("token%2Fraw"))
     }

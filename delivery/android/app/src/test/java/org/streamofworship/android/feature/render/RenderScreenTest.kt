@@ -36,7 +36,7 @@ class RenderScreenTest {
 
         composeRule.setContent {
             SowTheme {
-                RenderScreen(viewModel = viewModel, onBack = {}, onPlay = { _, _, _ -> }, onDownload = {})
+                RenderScreen(viewModel = viewModel, onBack = {}, onPlay = { _, _ -> }, onDownload = {})
             }
         }
         composeRule.waitForIdle()
@@ -64,7 +64,7 @@ class RenderScreenTest {
             )
         val offlineRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
         val viewModel = RenderViewModel("set-1", FakeRenderSongsetsRepository(), render, offlineRepository, scope)
-        var playRoute: Triple<String, String, PlaybackArtifact>? = null
+        var playRoute: Pair<String, PlaybackArtifact>? = null
         var downloadJob: String? = null
 
         composeRule.setContent {
@@ -72,7 +72,7 @@ class RenderScreenTest {
                 RenderScreen(
                     viewModel = viewModel,
                     onBack = {},
-                    onPlay = { songsetId, jobId, artifact -> playRoute = Triple(songsetId, jobId, artifact) },
+                    onPlay = { jobId, artifact -> playRoute = Pair(jobId, artifact) },
                     onDownload = { downloadJob = it },
                 )
             }
@@ -89,7 +89,7 @@ class RenderScreenTest {
         composeRule.onNodeWithText("Play").performClick()
         composeRule.onNodeWithText("Download").performClick()
 
-        assertEquals(Triple("set-1", "job-1", PlaybackArtifact.Video), playRoute)
+        assertEquals(Pair("job-1", PlaybackArtifact.Video), playRoute)
         assertEquals("job-1", downloadJob)
     }
 }

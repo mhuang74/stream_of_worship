@@ -14,6 +14,7 @@ import org.streamofworship.android.core.download.AndroidArtifactDownloadSchedule
 import org.streamofworship.android.core.download.ArtifactDownloadCoordinator
 import org.streamofworship.android.core.network.SowApiClientFactory
 import org.streamofworship.android.core.session.AndroidSecureSessionCookieStore
+import org.streamofworship.android.core.session.AuthController
 import org.streamofworship.android.data.offline.FileOfflineCacheRepository
 import org.streamofworship.android.data.playback.HttpPlaybackRepository
 import org.streamofworship.android.data.playback.PlaybackApi
@@ -46,6 +47,7 @@ import org.streamofworship.android.feature.songsets.SongsetsListViewModel
 fun SowNavGraph(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    authController: AuthController? = null,
 ) {
     NavHost(
         navController = navController,
@@ -56,7 +58,7 @@ fun SowNavGraph(
             Text("Sign in to continue.")
         }
         composable(SowRoute.Songsets.pattern) {
-            val dependencies = rememberSongsetsDependencies()
+            val dependencies = rememberSongsetsDependencies(authController)
             val viewModel = remember(dependencies.songsetsRepository) {
                 SongsetsListViewModel(dependencies.songsetsRepository)
             }
@@ -69,7 +71,7 @@ fun SowNavGraph(
         }
         composable(SowRoute.SongsetDetail.pattern) { backStackEntry ->
             val songsetId = backStackEntry.arguments?.getString("songsetId").orEmpty()
-            val dependencies = rememberSongsetsDependencies()
+            val dependencies = rememberSongsetsDependencies(authController)
             val viewModel =
                 remember(songsetId, dependencies.songsetsRepository, dependencies.songsRepository) {
                     SongsetDetailViewModel(
@@ -86,7 +88,7 @@ fun SowNavGraph(
         }
         composable(SowRoute.Render.pattern) { backStackEntry ->
             val songsetId = backStackEntry.arguments?.getString("songsetId").orEmpty()
-            val dependencies = rememberSongsetsDependencies()
+            val dependencies = rememberSongsetsDependencies(authController)
             val viewModel =
                 remember(songsetId, dependencies.songsetsRepository, dependencies.renderRepository, dependencies.offlineCacheRepository) {
                     RenderViewModel(
@@ -99,8 +101,8 @@ fun SowNavGraph(
             RenderScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                onPlay = { setId, jobId, artifact ->
-                    navController.navigate(SowRoute.Player.createRoute(setId, jobId, artifact.routeValue))
+                onPlay = { jobId, artifact ->
+                    navController.navigate(SowRoute.Player.createRoute(jobId, artifact.routeValue))
                 },
                 onDownload = { jobId -> navController.navigate(SowRoute.Share.createRoute(jobId)) },
             )
@@ -108,7 +110,7 @@ fun SowNavGraph(
         composable(SowRoute.Player.pattern) { backStackEntry ->
             val jobId = backStackEntry.arguments?.getString("jobId").orEmpty()
             val artifact = backStackEntry.arguments?.getString("artifact").toPlaybackArtifact()
-            val dependencies = rememberSongsetsDependencies()
+            val dependencies = rememberSongsetsDependencies(authController)
             val context = LocalContext.current.applicationContext
             val mediaController = remember(jobId, context) { Media3PlayerController(context) }
             val viewModel =
@@ -125,22 +127,23 @@ fun SowNavGraph(
         }
         composable(SowRoute.Share.pattern) { backStackEntry ->
             val renderJobId = backStackEntry.arguments?.getString("token").orEmpty()
-            val dependencies = rememberSongsetsDependencies()
+            val dependencies = rememberSongsetsDependencies(authController)
             val viewModel =
-                remember(renderJobId, dependencies.shareRepository, dependencies.playbackRepository, dependencies.downloadCoordinator) {
+                remember(renderJobId, dependencies.shareRepository, dependencies.playbackRepository, dependencies.renderRepository, dependencies.downloadCoordinator) {
                     ShareViewModel(
                         renderJobId = renderJobId,
                         shareRepository = dependencies.shareRepository,
                         playbackRepository = dependencies.playbackRepository,
+                        renderRepository = dependencies.renderRepository,
                         downloadCoordinator = dependencies.downloadCoordinator,
                     )
                 }
             ShareScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
         composable(SowRoute.Settings.pattern) {
-            val dependencies = rememberSongsetsDependencies()
+            val dependencies = rememberSongsetsDependencies(authController)
             val viewModel = remember(dependencies.settingsRepository) { SettingsViewModel(dependencies.settingsRepository) }
-            SettingsScreen(viewModel = viewModel)
+            SettingsScreen(viewModel = viewModel, onSignOut = { authController?.signOut() })
         }
     }
 }
@@ -157,14 +160,15 @@ private data class SongsetsDependencies(
 )
 
 @Composable
-private fun rememberSongsetsDependencies(): SongsetsDependencies {
+private fun rememberSongsetsDependencies(authController: AuthController? = null): SongsetsDependencies {
     val context = LocalContext.current.applicationContext
-    return remember(context) {
+    return remember(context, authController) {
         val cookieStore = AndroidSecureSessionCookieStore(context)
         val client =
             SowApiClientFactory.create(
                 config = AppConfig.fromBuildConfig(),
                 cookieStore = cookieStore,
+                onUnauthorized = authController?.let { controller -> { controller.onSessionExpired() } },
             )
         val offlineCacheRepository = FileOfflineCacheRepository(context)
         val downloadCoordinator =

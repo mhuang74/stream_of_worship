@@ -20,12 +20,15 @@ import androidx.navigation.compose.rememberNavController
 import org.streamofworship.android.core.navigation.SowBottomNavDestinations
 import org.streamofworship.android.core.navigation.SowNavGraph
 import org.streamofworship.android.core.navigation.SowRoute
+import org.streamofworship.android.core.session.AuthController
 import org.streamofworship.android.feature.auth.AuthenticatedAppGate
+import org.streamofworship.android.feature.auth.rememberAuthController
 
 @Composable
 fun SowApp() {
     SowTheme {
-        AuthenticatedAppGate {
+        val authController = rememberAuthController()
+        AuthenticatedAppGate(authController = authController) {
             val navController = rememberNavController()
             val backStackEntry by navController.currentBackStackEntryAsState()
             SowShell(
@@ -40,7 +43,11 @@ fun SowApp() {
                     }
                 },
             ) {
-                SowNavGraph(navController = navController, modifier = Modifier.fillMaxSize())
+                SowNavGraph(
+                    navController = navController,
+                    authController = authController,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }

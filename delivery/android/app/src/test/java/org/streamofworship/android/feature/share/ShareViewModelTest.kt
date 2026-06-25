@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -15,6 +16,8 @@ import org.streamofworship.android.core.download.ArtifactDownloadScheduler
 import org.streamofworship.android.data.offline.FileOfflineCacheRepository
 import org.streamofworship.android.data.offline.OfflineArtifactKind
 import org.streamofworship.android.data.offline.OfflineArtifactStatus
+import org.streamofworship.android.data.render.ArtifactSizes
+import org.streamofworship.android.data.render.RenderRepository
 import org.streamofworship.android.feature.player.FakePlaybackRepository
 import androidx.test.ext.junit.runners.AndroidJUnit4
 
@@ -34,6 +37,7 @@ class ShareViewModelTest {
                     renderJobId = "job-1",
                     shareRepository = shareRepository,
                     playbackRepository = FakePlaybackRepository(),
+                    renderRepository = FakeRenderRepository(),
                     downloadCoordinator =
                         ArtifactDownloadCoordinator(
                             cacheRepository = cacheRepository,
@@ -57,6 +61,61 @@ class ShareViewModelTest {
         }
 
     @Test
+    fun `skips missing artifact kind when render produced only one type`() =
+        runTest {
+            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val viewModel =
+                ShareViewModel(
+                    renderJobId = "job-1",
+                    shareRepository = FakeShareRepository(),
+                    playbackRepository = FakePlaybackRepository(),
+                    renderRepository = FakeRenderRepository(mp3SizeBytes = null),
+                    downloadCoordinator =
+                        ArtifactDownloadCoordinator(
+                            cacheRepository = cacheRepository,
+                            scheduler = FakeDownloadScheduler(),
+                        ),
+                    scope = this,
+                )
+
+            viewModel.loadDownloadUrls()
+            advanceUntilIdle()
+
+            assertNull(viewModel.uiState.value.message)
+            assertNull(viewModel.uiState.value.audioUrl)
+            assertEquals("https://r2/video.mp4", viewModel.uiState.value.videoUrl)
+            assertEquals(null, viewModel.uiState.value.downloads[OfflineArtifactKind.Audio])
+            assertEquals(OfflineArtifactStatus.Queued, viewModel.uiState.value.downloads[OfflineArtifactKind.Video]?.status)
+        }
+
+    @Test
+    fun `enqueue failure on one artifact does not block the other`() =
+        runTest {
+            val cacheRepository = FileOfflineCacheRepository(temporaryFolder.newFile("artifacts.json").toPath())
+            val viewModel =
+                ShareViewModel(
+                    renderJobId = "job-1",
+                    shareRepository = FakeShareRepository(),
+                    playbackRepository = FakePlaybackRepository(),
+                    renderRepository = FakeRenderRepository(),
+                    downloadCoordinator =
+                        ArtifactDownloadCoordinator(
+                            cacheRepository = cacheRepository,
+                            scheduler = FailingForKindScheduler(OfflineArtifactKind.Audio),
+                        ),
+                    scope = this,
+                )
+
+            viewModel.loadDownloadUrls()
+            advanceUntilIdle()
+
+            assertEquals("https://r2/video.mp4", viewModel.uiState.value.videoUrl)
+            assertEquals(OfflineArtifactStatus.Queued, viewModel.uiState.value.downloads[OfflineArtifactKind.Video]?.status)
+            assertEquals(OfflineArtifactStatus.Failed, viewModel.uiState.value.downloads[OfflineArtifactKind.Audio]?.status)
+            assertTrue(viewModel.uiState.value.message?.contains("Audio") == true)
+        }
+
+    @Test
     fun `builds android share intent payload`() {
         val intent = buildShareTextIntent("https://app/share/tok")
 
@@ -68,6 +127,32 @@ class ShareViewModelTest {
 
 private class FakeDownloadScheduler : ArtifactDownloadScheduler {
     override suspend fun enqueue(request: ArtifactDownloadRequest): Long = 99L
+}
+
+private class FailingForKindScheduler(
+    private val failingKind: OfflineArtifactKind,
+) : ArtifactDownloadScheduler {
+    override suspend fun enqueue(request: ArtifactDownloadRequest): Long {
+        if (request.kind == failingKind) error("cannot enqueue ${request.kind}")
+        return 99L
+    }
+}
+
+private class FakeRenderRepository(
+    private val mp3SizeBytes: Long? = 1024L,
+    private val mp4SizeBytes: Long? = 2048L,
+) : RenderRepository {
+    override suspend fun createRenderJob(
+        songsetId: String,
+        config: org.streamofworship.android.data.render.RenderFormConfig,
+    ) = throw UnsupportedOperationException()
+
+    override suspend fun getRenderJob(id: String) = throw UnsupportedOperationException()
+
+    override suspend fun cancelRenderJob(id: String) = throw UnsupportedOperationException()
+
+    override suspend fun getArtifactSizes(id: String): ArtifactSizes =
+        ArtifactSizes(renderJobId = id, mp3SizeBytes = mp3SizeBytes, mp4SizeBytes = mp4SizeBytes)
 }
 
 private class FakeShareRepository : ShareRepository {
