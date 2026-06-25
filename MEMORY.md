@@ -8,6 +8,11 @@
   lists Android as a delivery component, and current implementation status
   records the Android app as a standalone Kotlin/Jetpack Compose client of the
   existing webapp JSON APIs.
+- Addressed PR #116 follow-up review feedback for Android: replacement render
+  confirmation now reruns validation before enqueueing, failed songset deletes
+  restore the prior server total for paginated lists, and blank descriptions send
+  an explicit clearing value. Added focused ViewModel regressions and refreshed
+  graphify output.
 
 ## 2026-06-20
 

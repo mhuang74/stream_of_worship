@@ -74,6 +74,24 @@ class RenderViewModelTest {
         }
 
     @Test
+    fun `previous render confirmation validates before submit`() =
+        runTest {
+            val previous = detail().copy(lastCompletedRenderJobId = "old-job")
+            val render = FakeRenderRepository()
+            val viewModel = viewModel(this, songsets = FakeRenderSongsetsRepository(previous), render = render)
+            viewModel.load()
+            advanceUntilIdle()
+
+            viewModel.updateConfig(RenderFormConfig(audioEnabled = false, videoEnabled = false))
+            viewModel.confirmPreviousRenderAndStart()
+            advanceUntilIdle()
+
+            assertEquals(0, render.createCalls)
+            assertTrue(viewModel.uiState.value.requiresPreviousRenderConfirmation)
+            assertEquals("Select audio, video, or both.", viewModel.uiState.value.validationMessage)
+        }
+
+    @Test
     fun `active conflict starts polling existing job`() =
         runTest {
             val render =
