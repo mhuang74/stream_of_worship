@@ -136,6 +136,8 @@ class VideoEngine:
             "23",
             "-b:v",
             bitrate,
+            "-movflags",
+            "+faststart",
         ]
 
     def generate_video(
