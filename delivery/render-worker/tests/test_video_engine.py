@@ -167,13 +167,35 @@ class TestGetVideoCodecArgs:
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
         args = engine.get_video_codec_args()
-        assert args == ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-b:v", "8000k"]
+        assert args == [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+            "-b:v",
+            "8000k",
+            "-movflags",
+            "+faststart",
+        ]
 
     def test_custom_bitrate(self):
         fetcher = MockAssetFetcher()
         engine = VideoEngine(fetcher)
         args = engine.get_video_codec_args("5000k")
-        assert args == ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-b:v", "5000k"]
+        assert args == [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+            "-b:v",
+            "5000k",
+            "-movflags",
+            "+faststart",
+        ]
 
     def test_low_bitrate(self):
         fetcher = MockAssetFetcher()
@@ -181,6 +203,15 @@ class TestGetVideoCodecArgs:
         args = engine.get_video_codec_args("2000k")
         assert "-b:v" in args
         assert "2000k" in args
+
+    def test_faststart_flag_present(self):
+        fetcher = MockAssetFetcher()
+        engine = VideoEngine(fetcher)
+        args = engine.get_video_codec_args()
+        assert "-movflags" in args
+        idx = args.index("-movflags")
+        assert idx + 1 < len(args)
+        assert args[idx + 1] == "+faststart"
 
 
 class TestGenerateBlankVideo:
