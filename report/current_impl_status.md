@@ -1,5 +1,23 @@
 # Current Implementation Status
 
+## 2026-06-25
+
+- Completed the native Android delivery app implementation under `delivery/android`.
+- The Android app is a standalone Kotlin/Jetpack Compose Gradle project that uses the existing Next.js webapp JSON APIs for Better Auth sessions, songsets, song search, render jobs, signed URL playback, sharing, settings, and offline artifact downloads.
+- Android does not connect directly to PostgreSQL, Cloudflare R2, or AWS SQS; those remain owned by the webapp, render worker, and backing services.
+- The Android implementation includes focused JVM/Robolectric coverage for config, API clients, auth/session handling, songset workflows, render polling, playback/share/settings, offline download state, and UI behavior.
+- Acceptance validation completed in the Android project with unit tests, Kover coverage, lint, debug assembly, and graphify refresh.
+- Added `delivery/android/README.md` with prerequisites, API base URL setup, emulator and physical-device networking notes, Better Auth/local-origin troubleshooting, signed URL playback notes, offline download notes, and release build guidance.
+
+Canonical Android commands:
+
+```bash
+cd delivery/android && ./gradlew testDebugUnitTest koverXmlReport
+cd delivery/android && ./gradlew lintDebug
+cd delivery/android && ./gradlew assembleDebug
+cd delivery/android && ./gradlew assembleRelease -Psow.apiBaseUrl.release=https://app.example.com
+```
+
 ## 2026-06-23
 
 - Completed the ops/delivery/lab repository reorganization from `specs/ops-delivery-lab-reorganization-v2.md`.
