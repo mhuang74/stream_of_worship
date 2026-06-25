@@ -9,6 +9,8 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class Media3PlayerController private constructor(
     internal val player: MediaPlayerFacade,
@@ -19,12 +21,17 @@ class Media3PlayerController private constructor(
 
     internal constructor(fakePlayer: MediaPlayerFacade, @Suppress("UNUSED_PARAMETER") forTest: Unit = Unit) : this(fakePlayer)
 
+    private val playerViewHost = player as? PlayerViewHost
+
     /**
      * Underlying [Player] suitable for a [androidx.media3.ui.PlayerView] (e.g. for video
      * rendering). Null until the service-bound controller is connected, or for fake facades.
      */
     val playerView: Player?
-        get() = (player as? PlayerViewHost)?.playerView
+        get() = playerViewHost?.playerView
+
+    val playerViewState: StateFlow<Player?> =
+        playerViewHost?.playerViewState ?: MutableStateFlow(null)
 
     override val durationMillis: Long
         get() = player.durationMillis.takeIf { it > 0 } ?: 0L
@@ -88,6 +95,8 @@ internal interface MediaPlayerFacade {
 
 internal interface PlayerViewHost {
     val playerView: Player?
+
+    val playerViewState: StateFlow<Player?>
 }
 
 /**
@@ -98,6 +107,7 @@ internal class DirectPlayerFacade(
     override val playerView: Player,
 ) : MediaPlayerFacade, PlayerViewHost {
     private var listenerAdapter: Player.Listener? = null
+    override val playerViewState: StateFlow<Player?> = MutableStateFlow(playerView)
 
     override val durationMillis: Long get() = playerView.duration
 
@@ -176,13 +186,29 @@ internal class ServiceMediaControllerFacade(
         MediaController.Builder(appContext, sessionToken).buildAsync()
     private var boundController: MediaController? = null
     private var listenerAdapter: Player.Listener? = null
+    private val pendingCommands = ArrayDeque<(MediaController) -> Unit>()
+    private val lock = Any()
+    private var released = false
+    override val playerViewState = MutableStateFlow<Player?>(null)
 
     init {
         controllerFuture.addListener(
             {
-                boundController =
-                    runCatching { controllerFuture.get() }.getOrNull()
-                listenerAdapter?.let { boundController?.addListener(it) }
+                val controller = runCatching { controllerFuture.get() }.getOrNull()
+                val commands =
+                    synchronized(lock) {
+                        if (released || controller == null) {
+                            emptyList()
+                        } else {
+                            boundController = controller
+                            listenerAdapter?.let { controller.addListener(it) }
+                            playerViewState.value = controller
+                            pendingCommands.toList().also { pendingCommands.clear() }
+                        }
+                    }
+                if (controller != null) {
+                    commands.forEach { it(controller) }
+                }
             },
             MoreExecutors.directExecutor(),
         )
@@ -201,35 +227,45 @@ internal class ServiceMediaControllerFacade(
         get() = boundController?.isPlaying ?: false
 
     override fun setMedia(url: String) {
-        boundController?.setMediaItem(MediaItem.fromUri(url))
+        runWhenBound { it.setMediaItem(MediaItem.fromUri(url)) }
     }
 
     override fun prepare() {
-        boundController?.prepare()
+        runWhenBound { it.prepare() }
     }
 
     override fun play() {
-        boundController?.play()
+        runWhenBound { it.play() }
     }
 
     override fun pause() {
-        boundController?.pause()
+        runWhenBound { it.pause() }
     }
 
     override fun seekTo(positionMillis: Long) {
-        boundController?.seekTo(positionMillis)
+        runWhenBound { it.seekTo(positionMillis) }
     }
 
     override fun release() {
+        synchronized(lock) {
+            released = true
+            listenerAdapter?.let { boundController?.removeListener(it) }
+            pendingCommands.clear()
+            boundController = null
+            listenerAdapter = null
+            playerViewState.value = null
+        }
         MediaController.releaseFuture(controllerFuture)
-        boundController = null
-        listenerAdapter = null
     }
 
     override fun setEventListener(listener: PlayerController.PlayerEventListener?) {
-        listenerAdapter?.let { boundController?.removeListener(it) }
-        listenerAdapter = null
-        if (listener == null) return
+        val previous = listenerAdapter
+        val controller = boundController
+        previous?.let { controller?.removeListener(it) }
+        if (listener == null) {
+            listenerAdapter = null
+            return
+        }
         val adapter =
             object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -248,7 +284,22 @@ internal class ServiceMediaControllerFacade(
                     listener.onEvent(PlayerEvent.PositionDiscontinuity)
                 }
             }
-        boundController?.addListener(adapter)
-        listenerAdapter = adapter
+        synchronized(lock) {
+            listenerAdapter = adapter
+            boundController?.addListener(adapter)
+        }
+    }
+
+    private fun runWhenBound(command: (MediaController) -> Unit) {
+        val controller =
+            synchronized(lock) {
+                if (released) return
+                boundController
+                    ?: run {
+                        pendingCommands += command
+                        return
+                    }
+            }
+        command(controller)
     }
 }
