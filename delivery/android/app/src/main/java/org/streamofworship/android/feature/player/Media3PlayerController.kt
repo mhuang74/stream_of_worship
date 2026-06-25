@@ -132,7 +132,8 @@ internal class DirectPlayerFacade(
     private var listenerAdapter: Player.Listener? = null
     private val diagnosticListener: Player.Listener? = createVideoDiagnosticListener()
     private val analyticsListener: AnalyticsListener = createVideoAnalyticsListener()
-    override val playerViewState: StateFlow<Player?> = MutableStateFlow(playerView)
+    private val mutablePlayerViewState: MutableStateFlow<Player?> = MutableStateFlow(playerView)
+    override val playerViewState: StateFlow<Player?> = mutablePlayerViewState
 
     init {
         diagnosticListener?.let { playerView.addListener(it) }
@@ -174,6 +175,7 @@ internal class DirectPlayerFacade(
         eventListener = null
         listenerAdapter = null
         playerView.release()
+        mutablePlayerViewState.value = null
     }
 
     override fun setEventListener(listener: PlayerController.PlayerEventListener?) {
