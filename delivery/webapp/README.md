@@ -19,7 +19,7 @@ Copy `.env.example` to `.env.local` and configure:
 - `SOW_AWS_REGION`, `SOW_SQS_QUEUE_URL`, `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY` — AWS SQS credentials for render job queue
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` — Better Auth configuration
 - `NEXT_PUBLIC_BASE_URL` — Base URL of the app (for share links)
-- `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` — (optional) Google Cast SDK receiver app ID
+- `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` — (optional) Google Cast Web Sender SDK receiver app ID. Omit to use Google's Default Media Receiver, which is the only supported v3 Cast mode (lyrics are baked into the MP4, so no custom Cast receiver UI is required). See the "Google Cast SDK Setup" section below.
 
 See `.env.production.example` for a full description of every variable.
 
@@ -52,7 +52,7 @@ npx drizzle-kit migrate    # Run pending migrations
 | `/songsets/[id]` | Songset detail |
 | `/songsets/[id]/render` | Render configuration |
 | `/songsets/[id]/play` | Playback view |
-| `/songsets/[id]/play/controller` | Controller player (Presentation API) |
+| `/songsets/[id]/play/controller` | Controller player (Cast + Presentation API fallback) |
 | `/songsets/[id]/play/projection` | Second-screen lyrics projection |
 | `/share/[token]` | Public shared player |
 | `/share/[token]/play/audio` | Shared audio playback |
@@ -181,25 +181,116 @@ Preview deployments are enabled for all branches via `vercel.json`:
 ```
 Each preview branch gets its own URL (e.g. `your-app-git-branch-name.vercel.app`).
 
-To use Cast features in a preview deployment, register a separate Cast receiver
-app ID pointing to the preview URL. See `.env.production.example` for details.
+Preview deployments share the production environment variables unless preview-scoped values are configured. Cast features in a preview deployment use the Default Media Receiver (no per-environment registration required); set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` only if you need a custom receiver ID pointing at the preview URL.
 
 ### Google Cast SDK Setup
 
+v3 uses Google's **Default Media Receiver** as the only supported Cast mode. The
+lyrics are baked into the rendered MP4 (rendered by the Python worker with
+H.264 + AAC + `+faststart`), so the receiver needs no custom UI — it streams a
+single MP4 from R2 directly. A Presentation API browser-projection fallback is
+retained for developer-only second-screen testing; **production guidance is
+Cast on Android/Chrome or AirPlay to Apple TV**.
+
 1. Go to [https://cast.google.com/publish](https://cast.google.com/publish).
-2. Register a **Custom Receiver** for each environment:
-   - **Dev**: your ngrok or local tunnel URL + `/songsets/<songset-id>/play/projection`
-   - **Staging/Preview**: `https://your-app-preview.vercel.app/songsets/<songset-id>/play/projection`
-   - **Production**: `https://your-app.vercel.app/songsets/<songset-id>/play/projection`
-3. Copy the generated 8-character App ID and set it as `NEXT_PUBLIC_CAST_RECEIVER_APP_ID`
-   in the matching Vercel environment.
+2. Register your **Cast test devices** by serial number under
+   **Device registration**. Only whitelisted devices can cast during dev/staging.
+3. Set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` to the 8-character Default Media
+   Receiver ID from Google's published Default Receiver constant (per
+   environment, for dev / staging / prod), **or** leave it unset: when unset,
+   the Web Sender SDK falls back to Google's built-in Default Media Receiver
+   constant.
+4. Production launch gate: submit the receiver for Cast review via the Cast SDK
+   Developer Console → your app → **Submit for Approval**. Approvals typically
+   take 2–4 weeks. Until approved, only whitelisted devices work.
 
-For public share playback, the receiver route is `/share/<token>/play/projection`.
+#### Cast playback constraints (v3)
 
-#### Production Cast approval
+- **Receiver fetches the MP4 directly from R2** — the TV receiver only hits R2,
+  never the webapp. The logged-in phone mints a presigned R2 URL (4-hour expiry
+  for cast/share playback via the `cast=true` flag on `/api/signed-url`, or via
+  `/api/share/[token]`) and hands the URL to the TV. Phone + Chromecast must be
+  on the same LAN.
+- **4-hour signed URL expiry** — `/api/signed-url?cast=true` and
+  `/api/share/[token]` mint the MP4 at 14400s. This covers a full worship set
+  plus setup slack; services longer than ~3h40m require a deliberate
+  stop/re-cast before the URL expires (latest-wins buffering keeps the current
+  session running while a new URL is minted).
+- **MP4 must be H.264 + AAC + `+faststart`** — enforced by the render worker
+  (`video_engine.get_video_codec_args()` appends `-movflags +faststart`) and
+  verified by the `test_mp4_cast_compatibility.py` ffprobe pipeline test
+  (asserts H.264, AAC, and `moov` atom precedes `mdat`). R2 must respond with
+  `Content-Type: video/mp4` and honor range requests.
+- **Receiver fetches only R2** — the TV never authenticates against the webapp;
+  the phone's session owns the render job (songset path) or uses the public
+  share token (share path).
+- **iPhone web does not support Chromecast** — the Web Sender SDK is
+  Android-Chrome-only. iPhones display an AirPlay-to-Apple-TV hint with a link
+  to docs; native iOS sender app is future work.
+- **Phone + Chromecast same LAN** — guest / captive-portal Wi-Fi may block
+  discovery. Verify the receiver is discoverable on the same Wi-Fi/VLAN and is
+  whitelisted in the Cast SDK Developer Console for dev/staging.
+- **Pre-service network test (mandatory)** — before a live service, open the
+  signed MP4 URL in a laptop browser on the same Wi-Fi/VLAN as the Chromecast
+  and verify range-seek (forward/back 10s, reload). A failure means R2 is
+  unreachable from that network and the Cast will show a black screen.
+- **Presentation API = dev-only fallback** — the W3C Presentation API fallback
+  (`src/hooks/usePresentation.ts`) opens a second browser screen with the
+  controller's `/play/projection` route. It is intended only for
+  developer/browser-projection debugging; do not rely on it for live service.
 
-Google requires review before a Cast receiver app can be used by the general public.
-Submit via the Cast SDK Developer Console → your app → **Submit for Approval**.
-Review typically takes 2–4 weeks. Until approved, only **whitelisted Cast devices**
-(registered in the console by serial number) can use the receiver.
-Dev and staging IDs are approved immediately and require no review.
+#### Legacy / future custom receiver
+
+A **Custom Receiver** (separately registered receiver app ID pointing at
+`/songsets/[id]/play/projection` or `/share/[token]/play/projection`) is **not
+required for v3** and is only relevant if lyrics stop being baked into the MP4
+and a custom on-receiver UI is reintroduced. To register one:
+
+1. In the Cast SDK Developer Console, click **Add New Application** →
+   **Custom Receiver**.
+2. Enter the receiver URL:
+   - Dev: `http://localhost:8080/songsets/<songset-id>/play/projection`
+   - Staging/Preview: `https://your-app-preview.vercel.app/songsets/<songset-id>/play/projection`
+   - Production: `https://your-app.vercel.app/songsets/<songset-id>/play/projection`
+3. Save the generated App ID and set it as `NEXT_PUBLIC_CAST_RECEIVER_APP_ID`
+   in the matching environment.
+
+Set the env var per environment, or omit it entirely and the Web Sender SDK uses
+Google's Default Media Receiver constant.
+
+See the Live-Service Go/No-Go Checklist below before any first live use.
+
+### Live-Service Go/No-Go Checklist
+
+Required before the first live use, on the same TV + network class used in
+service. All items must pass.
+
+1. **Network topology** — phone + TV on the same Wi-Fi/VLAN; no captive portal
+   / guest isolation between them.
+2. **Receiver discoverability** — TV/Chromecast discoverable from the phone on
+   the same network + whitelisted in the Cast SDK Developer Console for
+   dev/staging.
+3. **Signed URL range-seek** — open the MP4 URL from a laptop browser on the
+   same network and verify seek (forward/back 10s) + reload succeed. Failure ⇒
+   R2 unreachable from that network ⇒ Cast black screen.
+4. **MP4 compatibility on real TV** — freshly rendered MP4 (post-faststart)
+   starts quickly on the TV, supports 10s range seek, chapter jump, lyric-line
+   jump; `ffprobe` pipeline test passes (H.264 / AAC / moov-at-front).
+5. **Transport on real TV** — play/pause, volume, mute (the mute bit, not a
+   volume-zero command), chapter jump, lyric-line jump all driven from the
+   phone.
+6. **Disconnect resume** — resumes local playback from the extrapolated TV
+   position; audio un-mutes; tap-to-resume renders if `video.play()` rejects.
+   Verify by backgrounding the phone during cast, then disconnecting.
+7. **Stale signaling** — when receiver status was silent for >60s before
+   disconnect, the "Resume from TV position may be stale — tap to resume at
+   \<time\>" prompt renders instead of silent auto-resume.
+8. **Diagnostic UX** — on a no-Cast-devices network, tapping the disabled Cast
+   button opens the bottom sheet with the 4 diagnostic lines (Android Chrome
+   on HTTPS; same Wi-Fi/VLAN; receiver powered on + whitelisted; try opening
+   the MP4 URL from this network).
+9. **Rehearsal** — service-length rehearsal (≥60 min) on the same TV/network
+   class with no URL expiry or receiver stalls.
+10. **Telemetry** — `POST /api/log-client-error` is reachable from the phone,
+    rate-limited (20 req/min per IP), and persists structured anonymized rows
+    for one simulated `loadMedia` failure.

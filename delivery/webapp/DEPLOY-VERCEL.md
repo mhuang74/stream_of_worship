@@ -52,7 +52,7 @@ vercel env add SOW_R2_ENDPOINT_URL production
 | `BETTER_AUTH_SECRET` | Server | 32+ char random secret (`openssl rand -base64 32`) |
 | `BETTER_AUTH_URL` | Server | Deployed app URL (e.g. `https://your-app.vercel.app`) |
 | `NEXT_PUBLIC_BASE_URL` | Client | Same as `BETTER_AUTH_URL` (embedded in client bundle) |
-| `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` | Client | Google Cast receiver app ID (optional) |
+| `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` | Client | Google Cast receiver app ID. Leave unset to use Google's Default Media Receiver (the v3 default). One per environment, or empty. |
 | `SOW_AWS_REGION` | Server | AWS region for SQS (e.g. `us-east-1`) |
 | `SOW_SQS_QUEUE_URL` | Server | SQS queue URL for render jobs |
 | `SOW_AWS_ACCESS_KEY_ID` | Server | AWS IAM access key (SQS SendMessage) |
@@ -151,10 +151,46 @@ After the first successful deploy, verify each subsystem:
 2. Check Vercel function logs for SQS `SendMessage` success.
 3. Verify the Lambda render worker picks up and processes the job.
 
-### Google Cast (Optional)
+### Google Cast (Default Media Receiver — v3)
 
-1. If `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` is set, open a songset's projection page on a Cast-compatible device.
-2. The projection page URL must match the receiver URL registered in the [Cast Developer Console](https://cast.google.com/publish).
+v3 uses Google's **Default Media Receiver** as the only supported Cast mode.
+Lyrics are baked into the rendered MP4 (H.264 + AAC + `+faststart`), so no
+custom on-receiver UI is required.
+
+1. In the [Cast SDK Developer Console](https://cast.google.com/publish),
+   register your Cast test devices by serial number under
+   **Device registration**. Only whitelisted devices can cast during
+   dev/staging.
+2. Set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` to the per-environment app ID,
+   **or** leave it unset to fall back to Google's built-in Default Media
+   Receiver constant. One ID per environment (dev / staging / prod); the
+   env var is the operator's responsibility, set in Vercel Project Settings →
+   Environment Variables.
+3. The logged-in phone mints a presigned R2 URL with a 4-hour expiry for Cast
+   playback. `POST /api/signed-url?cast=true` (songset ownership path,
+   session-required) or `/api/share/[token]` (public share path) mint the MP4
+   at 14400s; the TV receiver fetches the MP4 directly from R2 and never hits
+   the webapp. Services longer than ~3h40m require a deliberate stop/re-cast
+   before URL expiry.
+4. Cast review (production launch gate): submit the receiver via the Cast SDK
+   Developer Console → your app → **Submit for Approval** (2–4 weeks). Until
+   approved, only whitelisted devices work.
+
+#### Rendered MP4 requirements (enforced by the render worker)
+
+The render worker (`delivery/render-worker/`) emits H.264 + AAC + `+faststart`
+MP4s (`video_engine.get_video_codec_args()` appends `-movflags +faststart`),
+placing the `moov` atom at the front so TV hardware can start decoding before
+the full file is fetched. The `test_mp4_cast_compatibility.py` ffprobe pipeline
+test asserts: video codec `h264`, audio codec `aac`, `moov` precedes `mdat`,
+upload `content_type` remains `video/mp4`. R2 must respond with
+`Content-Type: video/mp4` and honor range requests.
+
+#### See the Live-Service Go/No-Go Checklist (in `README.md`) before first live use.
+
+Runbook reminder: phone + TV on the same Wi-Fi/VLAN; receiver fetches MP4
+directly from R2 (logged-in phone mints the URL); iPhone web does not support
+Chromecast — use AirPlay to Apple TV instead.
 
 ## Step 5: Custom Domain (Optional)
 
