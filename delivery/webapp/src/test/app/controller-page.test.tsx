@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import ControllerPage from "@/app/songsets/[id]/play/controller/page";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import type { CastTransportResult, CastMedia } from "@/hooks/useCast";
 
 // Mock next/navigation
 const mockPush = vi.fn();
@@ -9,39 +9,192 @@ const mockPush = vi.fn();
 const mockRouterInstance = { push: mockPush };
 vi.mock("next/navigation", () => ({
   useRouter: () => mockRouterInstance,
-  useParams: () => ({ id: "test-songset" }),
+  useParams: () => ({ id: "test-songset", token: "share-tok" }),
 }));
 
-// Mock sonner toast
+// Mock sonner toast (hoisted so the factory can reference the mocks).
+const {
+  toastError,
+  toastSuccess,
+  toastInfo,
+} = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastInfo: vi.fn(),
+}));
 vi.mock("sonner", () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
+    success: toastSuccess,
+    error: toastError,
+    info: toastInfo,
   },
 }));
 
-// Mock ControllerPlayer component
-vi.mock("@/components/play/ControllerPlayer", () => ({
-  ControllerPlayer: (props: {
-    songsetId: string;
-    videoSrc: string;
-    chapters: unknown[];
-    isPresentationActive: boolean;
-  }) => (
-    <div data-testid="controller-player">
-      <div data-testid="video-src">{props.videoSrc}</div>
-      <div data-testid="chapters-count">{props.chapters.length}</div>
-      <div data-testid="presentation-active">
-        {props.isPresentationActive ? "true" : "false"}
-      </div>
-    </div>
-  ),
+import ControllerPage from "@/app/songsets/[id]/play/controller/page";
+import ShareControllerPage from "@/app/share/[token]/play/controller/page";
+
+// --- Transport hook mocks -------------------------------------------------
+
+function makeTransport(overrides: Partial<CastTransportResult> = {}): CastTransportResult {
+  return {
+    isSupported: true,
+    isAvailable: true,
+    isConnecting: false,
+    isConnected: false,
+    deviceName: "",
+    playerState: "",
+    currentTime: 0,
+    lastStatusAtMs: null,
+    duration: 0,
+    volume: 1,
+    isMuted: false,
+    bufferingSinceMs: null,
+    lastError: null,
+    resumeProposal: null,
+    start: vi.fn(),
+    stop: vi.fn(),
+    play: vi.fn(),
+    pause: vi.fn(),
+    seek: vi.fn(),
+    setVolume: vi.fn(),
+    setMuted: vi.fn(),
+    onError: vi.fn(),
+    ...overrides,
+  };
+}
+
+function makeSender(overrides: Partial<{
+  isSupported: boolean;
+  isConnected: boolean;
+  start: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+}> = {}) {
+  return {
+    isSupported: true,
+    isConnected: false,
+    start: vi.fn(),
+    send: vi.fn(),
+    ...overrides,
+  };
+}
+
+const castTransportMock = vi.fn();
+const presentationSenderMock = vi.fn();
+
+vi.mock("@/hooks/useCast", () => ({
+  useCastTransport: (opts: unknown) => castTransportMock(opts),
 }));
 
-describe("ControllerPage", () => {
+vi.mock("@/hooks/usePresentation", () => ({
+  usePresentationSender: (opts: unknown) => presentationSenderMock(opts),
+}));
+
+// --- ControllerPlayer mock (captures the unified transport props) ---------
+
+interface CapturedControllerProps {
+  playerId: string;
+  videoSrc: string;
+  chapters: unknown[];
+  isPresentationActive: boolean;
+  transport?: CastTransportResult;
+  isCastSupported?: boolean;
+  isCastConnecting?: boolean;
+  onSendToTV?: () => void;
+  onSendTransportCommand?: (cmd: unknown) => void;
+  exitRoute?: string;
+  autoFullscreen?: boolean;
+}
+
+let lastControllerProps: CapturedControllerProps | null = null;
+vi.mock("@/components/play/ControllerPlayer", () => ({
+  ControllerPlayer: (props: CapturedControllerProps) => {
+    lastControllerProps = props;
+    return (
+      <div data-testid="controller-player">
+        <div data-testid="video-src">{props.videoSrc}</div>
+        <div data-testid="chapters-count">{props.chapters.length}</div>
+        <div data-testid="presentation-active">
+          {props.isPresentationActive ? "true" : "false"}
+        </div>
+        <div data-testid="cast-supported">
+          {props.isCastSupported ? "true" : "false"}
+        </div>
+        <div data-testid="cast-connecting">
+          {props.isCastConnecting ? "true" : "false"}
+        </div>
+        <button
+          data-testid="send-to-tv"
+          onClick={() => props.onSendToTV?.()}
+        >
+          send
+        </button>
+        <button
+          data-testid="send-cmd"
+          onClick={() => props.onSendTransportCommand?.({ type: "play" })}
+        >
+          cmd
+        </button>
+      </div>
+    );
+  },
+}));
+
+// --- Fixtures --------------------------------------------------------------
+
+const SONGSET_RESPONSE = {
+  id: "test-songset",
+  name: "Test Songset",
+  renderState: "fresh",
+  latestRenderJobId: "job-1",
+  lastFailedRenderJobId: null,
+  lastCompletedRenderJobId: "job-1",
+};
+
+const RENDER_JOB_RESPONSE = {
+  id: "job-1",
+  status: "completed",
+  mp4R2Key: "videos/test.mp4",
+  chaptersR2Key: null,
+};
+
+const SIGNED_URL_RESPONSE = {
+  url: "https://r2.example.com/videos/test.mp4",
+};
+
+// Shared success fetch chain for the songset controller.
+function songsetSuccessFetches() {
+  global.fetch = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(SONGSET_RESPONSE),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(RENDER_JOB_RESPONSE),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(SIGNED_URL_RESPONSE),
+    });
+}
+
+const SHARE_RESPONSE = {
+  token: "share-tok",
+  shareType: "songset",
+  songset: { id: "ss-1", name: "Shared Set Name" },
+  playback: {
+    mp4Url: "https://r2.example.com/share/video.mp4",
+    chaptersUrl: null,
+  },
+};
+
+describe("ControllerPage (songset)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lastControllerProps = null;
+    castTransportMock.mockImplementation(() => makeTransport());
+    presentationSenderMock.mockImplementation(() => makeSender());
   });
 
   describe("loading state", () => {
@@ -73,13 +226,10 @@ describe("ControllerPage", () => {
         ok: true,
         json: () =>
           Promise.resolve({
-            id: "test-songset",
-            name: "Test Songset",
+            ...SONGSET_RESPONSE,
             renderState: "unrendered",
-              latestRenderJobId: null,
-              lastFailedRenderJobId: null,
-              lastCompletedRenderJobId: null,
-            }),
+            latestRenderJobId: null,
+          }),
       });
 
       render(<ControllerPage />);
@@ -96,25 +246,12 @@ describe("ControllerPage", () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "test-songset",
-              name: "Test Songset",
-              renderState: "fresh",
-              latestRenderJobId: "job-1",
-              lastFailedRenderJobId: null,
-              lastCompletedRenderJobId: "job-1",
-            }),
+          json: () => Promise.resolve(SONGSET_RESPONSE),
         })
         .mockResolvedValueOnce({
           ok: true,
           json: () =>
-            Promise.resolve({
-              id: "job-1",
-              status: "completed",
-              mp4R2Key: null,
-              chaptersR2Key: null,
-            }),
+            Promise.resolve({ ...RENDER_JOB_RESPONSE, mp4R2Key: null }),
         });
 
       render(<ControllerPage />);
@@ -142,37 +279,7 @@ describe("ControllerPage", () => {
 
   describe("success state", () => {
     it("renders ControllerPlayer when data loaded", async () => {
-      global.fetch = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "test-songset",
-              name: "Test Songset",
-              renderState: "fresh",
-              latestRenderJobId: "job-1",
-              lastFailedRenderJobId: null,
-              lastCompletedRenderJobId: "job-1",
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "job-1",
-              status: "completed",
-              mp4R2Key: "videos/test.mp4",
-              chaptersR2Key: null,
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              url: "https://r2.example.com/videos/test.mp4",
-            }),
-        });
+      songsetSuccessFetches();
 
       render(<ControllerPage />);
 
@@ -182,37 +289,7 @@ describe("ControllerPage", () => {
     });
 
     it("passes video URL to ControllerPlayer", async () => {
-      global.fetch = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "test-songset",
-              name: "Test Songset",
-              renderState: "fresh",
-              latestRenderJobId: "job-1",
-              lastFailedRenderJobId: null,
-              lastCompletedRenderJobId: "job-1",
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "job-1",
-              status: "completed",
-              mp4R2Key: "videos/test.mp4",
-              chaptersR2Key: null,
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              url: "https://r2.example.com/videos/test.mp4",
-            }),
-        });
+      songsetSuccessFetches();
 
       render(<ControllerPage />);
 
@@ -228,32 +305,16 @@ describe("ControllerPage", () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "test-songset",
-              name: "Test Songset",
-              renderState: "fresh",
-              latestRenderJobId: "job-1",
-              lastFailedRenderJobId: null,
-              lastCompletedRenderJobId: "job-1",
-            }),
+          json: () => Promise.resolve(SONGSET_RESPONSE),
         })
         .mockResolvedValueOnce({
           ok: true,
           json: () =>
-            Promise.resolve({
-              id: "job-1",
-              status: "completed",
-              mp4R2Key: "videos/test.mp4",
-              chaptersR2Key: "chapters/test.json",
-            }),
+            Promise.resolve({ ...RENDER_JOB_RESPONSE, chaptersR2Key: "chapters/test.json" }),
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: () =>
-            Promise.resolve({
-              url: "https://r2.example.com/videos/test.mp4",
-            }),
+          json: () => Promise.resolve(SIGNED_URL_RESPONSE),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -294,91 +355,281 @@ describe("ControllerPage", () => {
     });
   });
 
-  describe("presentation API messages", () => {
-    beforeEach(() => {
-      global.fetch = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "test-songset",
-              name: "Test Songset",
-              renderState: "fresh",
-              latestRenderJobId: "job-1",
-              lastFailedRenderJobId: null,
-              lastCompletedRenderJobId: "job-1",
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: "job-1",
-              status: "completed",
-              mp4R2Key: "videos/test.mp4",
-              chaptersR2Key: null,
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              url: "https://r2.example.com/videos/test.mp4",
-            }),
-        });
-    });
+  describe("transport wiring", () => {
+    it("passes correct presentationUrl to usePresentationSender", async () => {
+      songsetSuccessFetches();
 
-    it("listens for presentation messages", async () => {
       render(<ControllerPage />);
 
       await waitFor(() => {
         expect(screen.getByTestId("controller-player")).toBeInTheDocument();
       });
 
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          data: { type: "presentation", action: "connected" },
-        })
+      const senderOpts = presentationSenderMock.mock.calls[0][0] as {
+        presentationUrl: string;
+      };
+      expect(senderOpts.presentationUrl).toBe(
+        "/songsets/test-songset/play/projection"
       );
-
-      await waitFor(() => {
-        expect(screen.getByTestId("presentation-active")).toHaveTextContent(
-          "true"
-        );
-      });
     });
 
-    it("handles presentation disconnected message", async () => {
+    it("passes correct media payload to useCastTransport", async () => {
+      songsetSuccessFetches();
+
       render(<ControllerPage />);
 
       await waitFor(() => {
         expect(screen.getByTestId("controller-player")).toBeInTheDocument();
       });
 
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          data: { type: "presentation", action: "connected" },
-        })
+      // The hook is called on every render; the last call carries the loaded
+      // videoUrl + songset name.
+      const lastCall =
+        castTransportMock.mock.calls[castTransportMock.mock.calls.length - 1][0] as {
+          media: CastMedia;
+        };
+      expect(lastCall.media.videoUrl).toBe("https://r2.example.com/videos/test.mp4");
+      expect(lastCall.media.title).toBe("Test Songset");
+      expect(lastCall.media.source).toEqual({
+        kind: "songset",
+        idOrToken: "test-songset",
+      });
+      expect(lastCall.media.startSeconds).toBe(0);
+    });
+
+    it("cast.isConnected drives ControllerPlayer.isPresentationActive", async () => {
+      songsetSuccessFetches();
+      castTransportMock.mockImplementation(() =>
+        makeTransport({ isConnected: true, deviceName: "Living Room TV" })
       );
 
+      render(<ControllerPage />);
+
       await waitFor(() => {
-        expect(screen.getByTestId("presentation-active")).toHaveTextContent(
-          "true"
-        );
+        expect(screen.getByTestId("presentation-active")).toHaveTextContent("true");
+      });
+    });
+
+    it("isPresentationActive is false when neither cast nor sender connected", async () => {
+      songsetSuccessFetches();
+      castTransportMock.mockImplementation(() => makeTransport({ isSupported: true }));
+      presentationSenderMock.mockImplementation(() => makeSender({ isConnected: false }));
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
       });
 
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          data: { type: "presentation", action: "disconnected" },
-        })
+      expect(screen.getByTestId("presentation-active")).toHaveTextContent("false");
+    });
+
+    it("prefers Cast (cast.start) when cast.isSupported=true", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({ isSupported: true });
+      castTransportMock.mockImplementation(() => transport);
+      const sender = makeSender({ isSupported: true });
+      presentationSenderMock.mockImplementation(() => sender);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByTestId("send-to-tv").click();
+      });
+
+      expect(transport.start).toHaveBeenCalled();
+      expect(sender.start).not.toHaveBeenCalled();
+    });
+
+    it("Presentation fallback (sender.start) only when !cast.isSupported", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({ isSupported: false });
+      castTransportMock.mockImplementation(() => transport);
+      const sender = makeSender({ isSupported: true });
+      presentationSenderMock.mockImplementation(() => sender);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByTestId("send-to-tv").click();
+      });
+
+      expect(sender.start).toHaveBeenCalled();
+      expect(transport.start).not.toHaveBeenCalled();
+    });
+
+    it("forwards transport command via Cast when supported", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({ isSupported: true });
+      castTransportMock.mockImplementation(() => transport);
+      const sender = makeSender();
+      presentationSenderMock.mockImplementation(() => sender);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByTestId("send-cmd").click();
+      });
+
+      expect(transport.play).toHaveBeenCalled();
+      expect(sender.send).not.toHaveBeenCalled();
+    });
+
+    it("forwards transport command via sender fallback when !cast.isSupported", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({ isSupported: false });
+      castTransportMock.mockImplementation(() => transport);
+      const sender = makeSender({ isSupported: true });
+      presentationSenderMock.mockImplementation(() => sender);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByTestId("send-cmd").click();
+      });
+
+      expect(sender.send).toHaveBeenCalledWith({ type: "play" });
+      expect(transport.play).not.toHaveBeenCalled();
+    });
+
+    it("cast.onError triggers a toast", async () => {
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      const opts = castTransportMock.mock.calls[0][0] as { onError: (m: string) => void };
+      opts.onError("receiver rejected media");
+
+      expect(toastError).toHaveBeenCalledWith("receiver rejected media");
+    });
+
+    it("toasts on cast connect lifecycle transition", async () => {
+      songsetSuccessFetches();
+      castTransportMock.mockImplementation(() =>
+        makeTransport({ isConnected: true, deviceName: "Living Room TV" })
       );
 
+      render(<ControllerPage />);
+
       await waitFor(() => {
-        expect(screen.getByTestId("presentation-active")).toHaveTextContent(
-          "false"
-        );
+        expect(toastSuccess).toHaveBeenCalledWith("Connected to Living Room TV");
       });
+    });
+
+    it("passes transport + isCastSupported to ControllerPlayer", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({
+        isSupported: true,
+        isConnecting: true,
+        deviceName: "TV",
+      });
+      castTransportMock.mockImplementation(() => transport);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(lastControllerProps?.transport).toBe(transport);
+      expect(lastControllerProps?.isCastSupported).toBe(true);
+      expect(lastControllerProps?.isCastConnecting).toBe(true);
+    });
+  });
+});
+
+describe("ShareControllerPage (share token)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lastControllerProps = null;
+    castTransportMock.mockImplementation(() => makeTransport());
+    presentationSenderMock.mockImplementation(() => makeSender());
+  });
+
+  function shareSuccessFetches() {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(SHARE_RESPONSE),
+    });
+  }
+
+  it("renders ControllerPlayer when share data loaded", async () => {
+    shareSuccessFetches();
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+  });
+
+  it("passes token-derived presentationUrl to usePresentationSender", async () => {
+    shareSuccessFetches();
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+
+    const senderOpts = presentationSenderMock.mock.calls[0][0] as {
+      presentationUrl: string;
+    };
+    expect(senderOpts.presentationUrl).toBe("/share/share-tok/play/projection");
+  });
+
+  it("passes token-derived media payload to useCastTransport", async () => {
+    shareSuccessFetches();
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+
+    const lastCall =
+      castTransportMock.mock.calls[castTransportMock.mock.calls.length - 1][0] as {
+        media: CastMedia;
+      };
+    expect(lastCall.media.videoUrl).toBe("https://r2.example.com/share/video.mp4");
+    expect(lastCall.media.title).toBe("Shared Set Name");
+    expect(lastCall.media.source).toEqual({
+      kind: "share",
+      idOrToken: "share-tok",
+    });
+    expect(lastCall.media.startSeconds).toBe(0);
+  });
+
+  it("caster.isConnected drives isPresentationActive", async () => {
+    shareSuccessFetches();
+    castTransportMock.mockImplementation(() =>
+      makeTransport({ isConnected: true, deviceName: "TV" })
+    );
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("presentation-active")).toHaveTextContent("true");
     });
   });
 });
