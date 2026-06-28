@@ -325,6 +325,7 @@ class LRCEditorScreen(Screen[None]):
                 id="row-edit-input",
                 placeholder="Edit selected cell",
                 select_on_focus=False,
+                compact=True,
             )
             yield StatusIndicator()
         yield GroupedFooter()
