@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isProjectionRoute } from "@/lib/routes";
 
 export function Header() {
   const pathname = usePathname();
 
-  if (pathname?.startsWith("/share/")) {
+  if (pathname?.startsWith("/share/") || isProjectionRoute(pathname)) {
     return null;
   }
 

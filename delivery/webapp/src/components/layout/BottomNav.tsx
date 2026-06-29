@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isProjectionRoute } from "@/lib/routes";
 
 const navItems = [
   { href: "/songsets", label: "Songsets" },
@@ -11,7 +12,11 @@ const navItems = [
 export function BottomNav() {
   const pathname = usePathname();
 
-  if (pathname?.includes("/play/controller") || pathname?.startsWith("/share/")) {
+  if (
+    pathname?.includes("/play/controller") ||
+    pathname?.startsWith("/share/") ||
+    isProjectionRoute(pathname)
+  ) {
     return null;
   }
 

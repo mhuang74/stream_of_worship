@@ -1,8 +1,18 @@
 import { render, screen } from "@testing-library/react";
 import { Header } from "@/components/layout/Header";
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+
+const mockPathname = vi.hoisted(() => vi.fn(() => "/songsets"));
+
+vi.mock("next/navigation", () => ({
+  usePathname: mockPathname,
+}));
 
 describe("Header", () => {
+  beforeEach(() => {
+    mockPathname.mockReturnValue("/songsets");
+  });
+
   it("renders the app name", () => {
     render(<Header />);
     expect(screen.getByText("Stream of Worship")).toBeInTheDocument();
@@ -20,5 +30,13 @@ describe("Header", () => {
     const settingsLink = screen.getByRole("link", { name: "Settings" });
     expect(songsetsLink).toHaveAttribute("href", "/songsets");
     expect(settingsLink).toHaveAttribute("href", "/settings");
+  });
+
+  it("does not render on projection routes", () => {
+    mockPathname.mockReturnValue("/songsets/test/play/projection");
+
+    render(<Header />);
+
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
   });
 });
