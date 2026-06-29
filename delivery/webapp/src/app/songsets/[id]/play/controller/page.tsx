@@ -228,6 +228,14 @@ export default function ControllerPage() {
     [cast, sender],
   );
 
+  const handleStopPresentation = useCallback(() => {
+    if (cast.isConnected) {
+      cast.stop();
+    } else if (!cast.isSupported && sender.isConnected) {
+      sender.stop();
+    }
+  }, [cast, sender]);
+
   if (isLoading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
@@ -273,6 +281,7 @@ export default function ControllerPage() {
       castAvailability={cast.availability}
       isCastConnecting={cast.isConnecting}
       onSendToTV={handleSendToTV}
+      onStopPresentation={handleStopPresentation}
       onSendTransportCommand={handleSendTransportCommand}
     />
   );

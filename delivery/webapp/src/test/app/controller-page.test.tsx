@@ -66,12 +66,14 @@ function makeSender(overrides: Partial<{
   isSupported: boolean;
   isConnected: boolean;
   start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     isSupported: true,
     isConnected: false,
     start: vi.fn(),
+    stop: vi.fn(),
     send: vi.fn(),
     ...overrides,
   };
@@ -101,6 +103,7 @@ interface CapturedControllerProps {
   isCastSupported?: boolean;
   isCastConnecting?: boolean;
   onSendToTV?: () => void;
+  onStopPresentation?: () => void;
   onSendTransportCommand?: (cmd: unknown) => void;
   exitRoute?: string;
   autoFullscreen?: boolean;
@@ -137,6 +140,12 @@ vi.mock("@/components/play/ControllerPlayer", () => ({
           onClick={() => props.onSendTransportCommand?.({ type: "play" })}
         >
           cmd
+        </button>
+        <button
+          data-testid="stop-presentation"
+          onClick={() => props.onStopPresentation?.()}
+        >
+          stop
         </button>
       </div>
     );
@@ -540,6 +549,49 @@ describe("ControllerPage (songset)", () => {
       expect(transport.play).not.toHaveBeenCalled();
     });
 
+    it("passes onStopPresentation and stops Cast when Cast is active", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({ isSupported: true, isConnected: true });
+      castTransportMock.mockImplementation(() => transport);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(lastControllerProps?.onStopPresentation).toEqual(expect.any(Function));
+
+      await act(async () => {
+        screen.getByTestId("stop-presentation").click();
+      });
+
+      expect(transport.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it("passes onStopPresentation and stops sender fallback when fallback is active", async () => {
+      songsetSuccessFetches();
+      const transport = makeTransport({ isSupported: false, isConnected: false });
+      castTransportMock.mockImplementation(() => transport);
+      const sender = makeSender({ isSupported: true, isConnected: true });
+      presentationSenderMock.mockImplementation(() => sender);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(lastControllerProps?.onStopPresentation).toEqual(expect.any(Function));
+
+      await act(async () => {
+        screen.getByTestId("stop-presentation").click();
+      });
+
+      expect(sender.stop).toHaveBeenCalledTimes(1);
+      expect(transport.stop).not.toHaveBeenCalled();
+    });
+
     it("cast.onError triggers a toast", async () => {
       songsetSuccessFetches();
 
@@ -733,5 +785,48 @@ describe("ShareControllerPage (share token)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("presentation-active")).toHaveTextContent("true");
     });
+  });
+
+  it("passes onStopPresentation and stops Cast when Cast is active", async () => {
+    shareSuccessFetches();
+    const transport = makeTransport({ isSupported: true, isConnected: true });
+    castTransportMock.mockImplementation(() => transport);
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+
+    expect(lastControllerProps?.onStopPresentation).toEqual(expect.any(Function));
+
+    await act(async () => {
+      screen.getByTestId("stop-presentation").click();
+    });
+
+    expect(transport.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes onStopPresentation and stops sender fallback when fallback is active", async () => {
+    shareSuccessFetches();
+    const transport = makeTransport({ isSupported: false, isConnected: false });
+    castTransportMock.mockImplementation(() => transport);
+    const sender = makeSender({ isSupported: true, isConnected: true });
+    presentationSenderMock.mockImplementation(() => sender);
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+
+    expect(lastControllerProps?.onStopPresentation).toEqual(expect.any(Function));
+
+    await act(async () => {
+      screen.getByTestId("stop-presentation").click();
+    });
+
+    expect(sender.stop).toHaveBeenCalledTimes(1);
+    expect(transport.stop).not.toHaveBeenCalled();
   });
 });
