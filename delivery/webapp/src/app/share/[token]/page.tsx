@@ -116,7 +116,7 @@ export default function SharePage() {
   const handlePlay = () => {
     if (!shareData?.playback.mp4Url && !shareData?.playback.mp3Url) return;
     setIsStarting(true);
-    router.replace(
+    router.push(
       shareData.playback.mp4Url
         ? `/share/${token}/play/controller`
         : `/share/${token}/play/audio`
