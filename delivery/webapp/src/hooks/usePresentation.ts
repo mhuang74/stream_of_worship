@@ -91,6 +91,34 @@ export function validatePresentationStatus(raw: unknown): PresentationStatus | n
       if (typeof message !== "string") return null;
       return { type: "error", message };
     }
+    case "media": {
+      const currentTime = obj.currentTime;
+      const duration = obj.duration;
+      const playerState = obj.playerState;
+      const volume = obj.volume;
+      if (typeof currentTime !== "number" || !Number.isFinite(currentTime) || currentTime < 0) {
+        return null;
+      }
+      if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
+        return null;
+      }
+      if (
+        playerState !== "playing" &&
+        playerState !== "paused" &&
+        playerState !== "buffering"
+      ) {
+        return null;
+      }
+      if (typeof volume !== "number" || !Number.isFinite(volume)) return null;
+      return {
+        type: "media",
+        currentTime,
+        duration,
+        playerState,
+        volume: clamp(volume, 0, 1),
+        isMuted: Boolean(obj.isMuted),
+      };
+    }
     default:
       return null;
   }

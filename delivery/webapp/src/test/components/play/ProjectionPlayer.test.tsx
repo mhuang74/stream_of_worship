@@ -61,6 +61,16 @@ describe("ProjectionPlayer", () => {
       writable: true,
       configurable: true,
     });
+    Object.defineProperty(window.HTMLMediaElement.prototype, "currentTime", {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(window.HTMLMediaElement.prototype, "duration", {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
 
     // Mock navigator.wakeLock
     Object.defineProperty(navigator, "wakeLock", {
@@ -429,6 +439,36 @@ describe("ProjectionPlayer", () => {
       expect(sendStatusMock).toHaveBeenCalledWith({ type: "ready" });
     });
 
+    it("sends media status on loadedmetadata", async () => {
+      await act(async () => {
+        render(<ProjectionPlayer {...defaultProps} />);
+      });
+
+      const video = document.querySelector("video") as HTMLVideoElement;
+      video.currentTime = 25;
+      Object.defineProperty(video, "duration", {
+        value: 240,
+        writable: true,
+        configurable: true,
+      });
+      video.volume = 0.7;
+      video.muted = true;
+
+      sendStatusMock.mockClear();
+      await act(async () => {
+        video.dispatchEvent(new Event("loadedmetadata"));
+      });
+
+      expect(sendStatusMock).toHaveBeenCalledWith({
+        type: "media",
+        currentTime: 25,
+        duration: 240,
+        playerState: "paused",
+        volume: 0.7,
+        isMuted: true,
+      });
+    });
+
     it("sends ready status on canplay", async () => {
       await act(async () => {
         render(<ProjectionPlayer {...defaultProps} />);
@@ -473,6 +513,43 @@ describe("ProjectionPlayer", () => {
       });
 
       playSpy.mockRestore();
+    });
+
+    it("sends media status on timeupdate, seeked, and volumechange", async () => {
+      await act(async () => {
+        render(<ProjectionPlayer {...defaultProps} />);
+      });
+
+      const video = document.querySelector("video") as HTMLVideoElement;
+      Object.defineProperty(video, "duration", {
+        value: 240,
+        writable: true,
+        configurable: true,
+      });
+
+      sendStatusMock.mockClear();
+      video.currentTime = 32;
+      await act(async () => {
+        video.dispatchEvent(new Event("timeupdate"));
+      });
+      video.currentTime = 48;
+      await act(async () => {
+        video.dispatchEvent(new Event("seeked"));
+      });
+      video.volume = 0.5;
+      await act(async () => {
+        video.dispatchEvent(new Event("volumechange"));
+      });
+
+      expect(sendStatusMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "media", currentTime: 32 }),
+      );
+      expect(sendStatusMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "media", currentTime: 48 }),
+      );
+      expect(sendStatusMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "media", volume: 0.5 }),
+      );
     });
   });
 

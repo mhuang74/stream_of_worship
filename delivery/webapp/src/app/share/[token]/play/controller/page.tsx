@@ -6,7 +6,7 @@ import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { useCastTransport, type CastMedia } from "@/hooks/useCast";
 import { usePresentationSender } from "@/hooks/usePresentation";
 import { dispatchCast } from "@/lib/cast/dispatch";
-import type { PresentationCommand } from "@/types/presentation-api";
+import type { PresentationCommand, PresentationMediaStatus } from "@/types/presentation-api";
 import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { Loader2 } from "lucide-react";
@@ -22,6 +22,8 @@ export default function ShareControllerPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [presentationMediaStatus, setPresentationMediaStatus] =
+    useState<PresentationMediaStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,11 +119,16 @@ export default function ShareControllerPage() {
   const sender = usePresentationSender({
     presentationUrl,
     onConnected: () => toast.success("Connected to projection screen"),
-    onDisconnected: () => toast.info("Disconnected from projection screen"),
+    onDisconnected: () => {
+      setPresentationMediaStatus(null);
+      toast.info("Disconnected from projection screen");
+    },
     onStartError: (m) => toast.error(m),
     onStatus: (status) => {
       if (status.type === "error") {
         toast.error("TV projection failed — check connection");
+      } else if (status.type === "media") {
+        setPresentationMediaStatus(status);
       }
     },
   });
@@ -203,6 +210,7 @@ export default function ShareControllerPage() {
         isSupported: sender.isSupported,
         isConnected: sender.isConnected,
       }}
+      presentationMediaStatus={presentationMediaStatus}
       isCastSupported={cast.isSupported}
       castAvailability={cast.availability}
       isCastConnecting={cast.isConnecting}

@@ -10,7 +10,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaSession } from "@/hooks/useMediaSession";
 import type { CastTransportResult } from "@/hooks/useCast";
-import type { PresentationCommand } from "@/types/presentation-api";
+import type { PresentationCommand, PresentationMediaStatus } from "@/types/presentation-api";
 import {
   Sheet,
   SheetContent,
@@ -47,6 +47,8 @@ export interface ControllerPlayerProps {
   transport?: CastTransportResult;
   /** Dev-only Presentation API sender (AirPlay fallback hint source). */
   presentationFallback?: PresentationFallback;
+  /** Receiver media status from the dev-only Presentation API fallback. */
+  presentationMediaStatus?: PresentationMediaStatus | null;
   /** Whether the Cast Web Sender SDK is supported on this browser. */
   isCastSupported?: boolean;
   /** Cast device availability signal for the diagnostic bottom sheet UX. */
@@ -90,6 +92,7 @@ export function ControllerPlayer({
   isPresentationActive = false,
   transport,
   presentationFallback,
+  presentationMediaStatus,
   isCastSupported,
   castAvailability,
   isCastConnecting,
@@ -138,10 +141,15 @@ export function ControllerPlayer({
   // of truth for time / playing / volume / mute. The local <video> stays
   // paused + muted (audio plays on the receiver); only the controller UI
   // mirrors the receiver so the worship leader sees the right state.
-  const isTransportConnected = transport?.isConnected ?? false;
-  const transportCurrentTime = transport?.currentTime;
-  const effectiveCurrentTime = isTransportConnected
-    ? pendingSeek ?? transportCurrentTime ?? currentTime
+  const isCastTransportConnected = transport?.isConnected ?? false;
+  const isPresentationFallbackConnected =
+    isPresentationActive && !isCastTransportConnected && (presentationFallback?.isConnected ?? true);
+  const isRemotePlaybackActive = isCastTransportConnected || isPresentationFallbackConnected;
+  const receiverCurrentTime = isCastTransportConnected
+    ? transport?.currentTime
+    : presentationMediaStatus?.currentTime;
+  const effectiveCurrentTime = isRemotePlaybackActive
+    ? pendingSeek ?? receiverCurrentTime ?? currentTime
     : currentTime;
   // Chapter index driven by local <video> timeupdate when offline, and by the
   // receiver's reported currentTime when a Cast transport is connected (the
@@ -149,8 +157,8 @@ export function ControllerPlayer({
   // active). Derived during render so the song-change effect + LyricJumpList
   // highlight stay in sync without a setState-in-effect.
   const currentSongIndex = useMemo(() => {
-    if (isTransportConnected) {
-      const t = transportCurrentTime ?? 0;
+    if (isRemotePlaybackActive) {
+      const t = effectiveCurrentTime;
       const idx = chapters.findIndex(
         (chapter, i) =>
           t >= chapter.startSeconds &&
@@ -159,18 +167,30 @@ export function ControllerPlayer({
       if (idx !== -1) return idx;
     }
     return localSongIndex;
-  }, [isTransportConnected, transportCurrentTime, chapters, localSongIndex]);
-  const effectiveDuration = isTransportConnected
+  }, [isRemotePlaybackActive, effectiveCurrentTime, chapters, localSongIndex]);
+  const effectiveDuration = isCastTransportConnected
     ? transport?.duration || duration
-    : duration;
-  const effectiveIsPlaying = isTransportConnected
+    : isPresentationFallbackConnected
+      ? presentationMediaStatus?.duration || duration
+      : duration;
+  const effectiveIsPlaying = isCastTransportConnected
     ? transport?.playerState === "playing"
-    : isPlaying;
-  const effectiveVolume = isTransportConnected ? transport?.volume ?? volume : volume;
-  const effectiveIsMuted = isTransportConnected ? transport?.isMuted ?? isMuted : isMuted;
+    : isPresentationFallbackConnected
+      ? presentationMediaStatus?.playerState === "playing"
+      : isPlaying;
+  const effectiveVolume = isCastTransportConnected
+    ? transport?.volume ?? volume
+    : isPresentationFallbackConnected
+      ? presentationMediaStatus?.volume ?? volume
+      : volume;
+  const effectiveIsMuted = isCastTransportConnected
+    ? transport?.isMuted ?? isMuted
+    : isPresentationFallbackConnected
+      ? presentationMediaStatus?.isMuted ?? isMuted
+      : isMuted;
 
-  const bufferingSinceMs = isTransportConnected ? transport?.bufferingSinceMs ?? null : null;
-  const isBuffering = isTransportConnected && transport?.playerState === "buffering";
+  const bufferingSinceMs = isCastTransportConnected ? transport?.bufferingSinceMs ?? null : null;
+  const isBuffering = isCastTransportConnected && transport?.playerState === "buffering";
   // `nowMs` ticks once per second while the receiver is buffering so the
   // "actionable buffering" copy flips after BUFFERING_ACTIONABLE_MS without
   // calling Date.now() during render (which would violate component purity).
@@ -189,22 +209,22 @@ export function ControllerPlayer({
   // target position (within 0.5s). This hands the slider back to the receiver
   // as the source of truth after a user-initiated seek while connected.
   useEffect(() => {
-    if (pendingSeek === null || !isTransportConnected) return;
-    const reported = transportCurrentTime ?? 0;
+    if (pendingSeek === null || !isRemotePlaybackActive) return;
+    const reported = receiverCurrentTime ?? 0;
     if (Math.abs(reported - pendingSeek) < 0.5) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingSeek(null);
     }
-  }, [pendingSeek, isTransportConnected, transportCurrentTime]);
+  }, [pendingSeek, isRemotePlaybackActive, receiverCurrentTime]);
 
   // Also clear pending seek when disconnecting so the slider doesn't hold a
   // stale target across a disconnect→resume transition.
   useEffect(() => {
-    if (!isTransportConnected) {
+    if (!isRemotePlaybackActive) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingSeek(null);
     }
-  }, [isTransportConnected]);
+  }, [isRemotePlaybackActive]);
 
   // Check if iOS and if info toast was already shown
   useEffect(() => {
@@ -1070,16 +1090,13 @@ export function ControllerPlayer({
         />
       </div>
 
-      {/* Lyric Jump List (hidden while presentation is active) */}
-      {!isPresentationActive && (
-        <LyricJumpList
-          chapters={chapters}
-          currentTime={effectiveCurrentTime}
-          currentSongIndex={currentSongIndex}
-          onJumpToChapter={handleJumpToChapter}
-          onJumpToLine={handleJumpToLine}
-        />
-      )}
+      <LyricJumpList
+        chapters={chapters}
+        currentTime={effectiveCurrentTime}
+        currentSongIndex={currentSongIndex}
+        onJumpToChapter={handleJumpToChapter}
+        onJumpToLine={handleJumpToLine}
+      />
 
       {/* Diagnostic bottom sheet (Cast unavailable) */}
       <Sheet

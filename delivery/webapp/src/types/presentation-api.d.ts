@@ -22,7 +22,17 @@ export type PresentationCommand =
 export type PresentationStatus =
   | { type: "ready" }
   | { type: "disconnected" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | PresentationMediaStatus;
+
+export interface PresentationMediaStatus {
+  type: "media";
+  currentTime: number;
+  duration: number;
+  playerState: "playing" | "paused" | "buffering";
+  volume: number;
+  isMuted: boolean;
+}
 
 // ── Ambient W3C Presentation API global surface ────────────────────────────
 // Declared inside `declare global` because this `.d.ts` is a module (it

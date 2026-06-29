@@ -97,6 +97,7 @@ interface CapturedControllerProps {
   isPresentationActive: boolean;
   transport?: CastTransportResult;
   presentationFallback?: { isSupported: boolean; isConnected?: boolean };
+  presentationMediaStatus?: unknown;
   isCastSupported?: boolean;
   isCastConnecting?: boolean;
   onSendToTV?: () => void;
@@ -623,6 +624,38 @@ describe("ControllerPage (songset)", () => {
       senderOpts.onStatus({ type: "error", message: "TV projection failed — check connection" });
 
       expect(toastError).toHaveBeenCalledWith("TV projection failed — check connection");
+    });
+
+    it("passes Presentation API media status to ControllerPlayer", async () => {
+      songsetSuccessFetches();
+      castTransportMock.mockImplementation(() => makeTransport({ isSupported: false }));
+      presentationSenderMock.mockImplementation(() =>
+        makeSender({ isSupported: true, isConnected: true }),
+      );
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      const mediaStatus = {
+        type: "media",
+        currentTime: 190,
+        duration: 420,
+        playerState: "playing",
+        volume: 0.8,
+        isMuted: false,
+      };
+      const senderOpts = presentationSenderMock.mock.calls[0][0] as {
+        onStatus: (status: typeof mediaStatus) => void;
+      };
+
+      await act(async () => {
+        senderOpts.onStatus(mediaStatus);
+      });
+
+      expect(lastControllerProps?.presentationMediaStatus).toEqual(mediaStatus);
     });
   });
 });
