@@ -508,18 +508,6 @@ export function ControllerPlayer({
     video.muted = !video.muted;
   }, [isPresentationActive, effectiveIsMuted]);
 
-  const handleJumpToChapter = useCallback(
-    (index: number) => {
-      if (index >= 0 && index < chapters.length) {
-        const chapter = chapters[index];
-        if (chapter) {
-          handleSeek(chapter.startSeconds);
-        }
-      }
-    },
-    [chapters, handleSeek]
-  );
-
   const handleJumpToLine = useCallback(
     (chapterIndex: number, lineIndex: number) => {
       if (chapterIndex >= 0 && chapterIndex < chapters.length) {
@@ -1056,8 +1044,8 @@ export function ControllerPlayer({
               <div className="flex-1">
                 <p className="font-medium">iOS Playback Tips</p>
                 <p className="text-sm text-white/80 mt-1">
-                  Tap the screen to show controls. Use the lyric list at the
-                  bottom to jump between songs.
+                  Tap the screen to show controls. Open the lyric list and tap
+                  a line to jump to that moment.
                 </p>
               </div>
               <Button
@@ -1131,7 +1119,6 @@ export function ControllerPlayer({
         chapters={chapters}
         currentTime={effectiveCurrentTime}
         currentSongIndex={currentSongIndex}
-        onJumpToChapter={handleJumpToChapter}
         onJumpToLine={handleJumpToLine}
       />
 
