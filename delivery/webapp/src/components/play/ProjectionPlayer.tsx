@@ -113,7 +113,9 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
   }, [buildMediaStatus]);
 
   const handlePlay = useCallback(() => {
-    videoRef.current?.play().then(sendMediaStatus).catch(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.play().then(sendMediaStatus).catch(() => {
       sendStatusRef.current?.({
         type: "error",
         message: "TV projection failed — check connection",
