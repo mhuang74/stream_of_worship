@@ -1,3 +1,16 @@
+## 2026-06-29
+
+- Updated Worship Playback lyrics pullup title behavior: song title clicks now
+  expand that song's lyrics instead of seeking, while lyric line clicks remain
+  the only jump action. The expanded song follows the current playback song
+  until the user explicitly browses another song during the open pullup session;
+  current-song and current-line highlighting stay tied to actual playback.
+  Removed the unused `onJumpToChapter` path from `ControllerPlayer`, updated
+  iOS helper copy, refreshed focused `LyricJumpList` / `ControllerPlayer`
+  coverage, and refreshed graphify output. Focused tests and lint pass; the
+  full webapp test command is still blocked by missing `@upstash/ratelimit` in
+  `src/lib/rate-limit.ts`.
+
 ## 2026-06-25
 
 - Shipped Consolidated Chromecast Projection v3 (`.dex/plan.md`, tasks 1-12).

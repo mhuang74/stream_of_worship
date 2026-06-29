@@ -12,7 +12,6 @@ export interface LyricJumpListProps {
   chapters: Chapter[];
   currentTime: number;
   currentSongIndex: number;
-  onJumpToChapter: (index: number) => void;
   onJumpToLine: (chapterIndex: number, lineIndex: number) => void;
   className?: string;
 }
@@ -21,11 +20,13 @@ export function LyricJumpList({
   chapters,
   currentTime,
   currentSongIndex,
-  onJumpToChapter,
   onJumpToLine,
   className,
 }: LyricJumpListProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [explicitExpandedChapterIndex, setExplicitExpandedChapterIndex] = useState<number | null>(
+    null
+  );
   const [contentInteractive, setContentInteractive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [startY, setStartY] = useState(0);
@@ -35,6 +36,7 @@ export function LyricJumpList({
   const lastToggleTimeRef = useRef(0);
 
   const isSwipeEnabled = isIOS();
+  const expandedChapterIndex = explicitExpandedChapterIndex ?? currentSongIndex;
 
   useEffect(() => {
     if (isOpen) {
@@ -45,8 +47,18 @@ export function LyricJumpList({
 
   const handleToggle = useCallback(() => {
     setContentInteractive(false);
+    setExplicitExpandedChapterIndex(null);
     setIsOpen((prev) => !prev);
   }, []);
+
+  const handleChapterExpand = useCallback(
+    (chapterIndex: number) => {
+      setExplicitExpandedChapterIndex(
+        chapterIndex === currentSongIndex ? null : chapterIndex
+      );
+    },
+    [currentSongIndex]
+  );
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent | React.MouseEvent) => {
@@ -194,6 +206,7 @@ export function LyricJumpList({
           <div className="p-4 space-y-4">
             {chapters.map((chapter, chapterIndex) => {
               const isCurrentChapter = chapterIndex === currentSongIndex;
+              const isExpandedChapter = chapterIndex === expandedChapterIndex;
               const currentLineIndex = isCurrentChapter
                 ? getCurrentLineIndex(chapter)
                 : -1;
@@ -209,7 +222,8 @@ export function LyricJumpList({
                   {/* Chapter header */}
                   <button
                     className="w-full flex items-center gap-3 p-3 text-left hover:bg-white/5 transition-colors"
-                    onClick={() => onJumpToChapter(chapterIndex)}
+                    onClick={() => handleChapterExpand(chapterIndex)}
+                    aria-expanded={isExpandedChapter}
                   >
                     <div
                       className={cn(
@@ -236,7 +250,7 @@ export function LyricJumpList({
                   </button>
 
                   {/* Lines */}
-                  {isCurrentChapter && chapter.lines.length > 0 && (
+                  {isExpandedChapter && chapter.lines.length > 0 && (
                     <div className="px-3 pb-3">
                       <div className="space-y-1">
                         {chapter.lines.map((line, lineIndex) => {
@@ -281,6 +295,7 @@ export function LyricJumpList({
           className="fixed inset-0 bg-black/50 z-40"
           onClick={() => {
             setContentInteractive(false);
+            setExplicitExpandedChapterIndex(null);
             setIsOpen(false);
           }}
           role="button"
@@ -289,6 +304,7 @@ export function LyricJumpList({
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === "Escape") {
               setContentInteractive(false);
+              setExplicitExpandedChapterIndex(null);
               setIsOpen(false);
             }
           }}

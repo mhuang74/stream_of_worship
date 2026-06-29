@@ -719,11 +719,9 @@ describe("ControllerPlayer", () => {
     });
   });
 
-  // ── Jump-to-chapter / jump-to-lyric (local seek via LyricJumpList) ──────
+  // ── Lyric pullup expansion / jump-to-lyric ─────────────────────────────
   describe("jump list seek", () => {
-    it("jump-to-chapter emits a local seek (LyricJumpList, not active)", async () => {
-      // When not active, the LyricJumpList is rendered; clicking a chapter
-      // seeks the local <video> (a seek, no transport command).
+    it("song title expands without seeking (LyricJumpList, not active)", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} isPresentationActive={false} />);
       });
@@ -731,23 +729,21 @@ describe("ControllerPlayer", () => {
       const video = document.querySelector("video") as HTMLVideoElement;
       video.currentTime = 0;
 
-      // Open the lyric list handle and click a chapter.
       const handle = screen.getByText(/lyrics/i);
       await act(async () => {
         fireEvent.click(handle);
       });
 
-      // Find a chapter button by its song title.
       const chapterButton = await screen.findByText("How Great Thou Art");
       await act(async () => {
         fireEvent.click(chapterButton);
       });
 
-      // Local video should have been seeked to chapter 1 start (180).
-      expect(video.currentTime).toBe(180);
+      expect(video.currentTime).toBe(0);
+      expect(await screen.findByText("O Lord my God")).toBeInTheDocument();
     });
 
-    it("jump-to-lyric emits a local seek (LyricJumpList, not active)", async () => {
+    it("expanded non-current lyric emits a local seek (LyricJumpList, not active)", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} isPresentationActive={false} />);
       });
@@ -760,21 +756,20 @@ describe("ControllerPlayer", () => {
         fireEvent.click(handle);
       });
 
-      // Expand chapter 0 then click its second lyric line (startSeconds=20).
-      const chapterHeader = await screen.findByText("Amazing Grace");
+      const chapterHeader = await screen.findByText("How Great Thou Art");
       await act(async () => {
         fireEvent.click(chapterHeader);
       });
 
-      const line = await screen.findByText("That saved a wretch like me");
+      const line = await screen.findByText("When I in awesome wonder");
       await act(async () => {
         fireEvent.click(line);
       });
 
-      expect(video.currentTime).toBe(20);
+      expect(video.currentTime).toBe(200);
     });
 
-    it("jump-to-lyric emits a Presentation API seek while active", async () => {
+    it("expanded non-current lyric emits a Presentation API seek while active", async () => {
       const onSendTransportCommand = vi.fn();
 
       await act(async () => {
@@ -803,13 +798,17 @@ describe("ControllerPlayer", () => {
       });
 
       await act(async () => {
-        fireEvent.click(await screen.findByText("That saved a wretch like me"));
+        fireEvent.click(await screen.findByText("How Great Thou Art"));
+      });
+
+      await act(async () => {
+        fireEvent.click(await screen.findByText("When I in awesome wonder"));
       });
 
       await waitFor(() => {
         expect(onSendTransportCommand).toHaveBeenCalledWith({
           type: "seek",
-          positionSeconds: 20,
+          positionSeconds: 200,
         });
       });
     });
