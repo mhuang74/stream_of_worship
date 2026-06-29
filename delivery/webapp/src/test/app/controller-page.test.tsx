@@ -4,9 +4,10 @@ import type { CastTransportResult, CastMedia } from "@/hooks/useCast";
 
 // Mock next/navigation
 const mockPush = vi.fn();
+const mockReplace = vi.fn();
 // Use a stable object so useRouter() returns the same reference on every render,
 // preventing useEffect([songsetId, router]) from re-running on each re-render.
-const mockRouterInstance = { push: mockPush };
+const mockRouterInstance = { push: mockPush, replace: mockReplace };
 vi.mock("next/navigation", () => ({
   useRouter: () => mockRouterInstance,
   useParams: () => ({ id: "test-songset", token: "share-tok" }),
@@ -32,6 +33,7 @@ vi.mock("sonner", () => ({
 
 import ControllerPage from "@/app/songsets/[id]/play/controller/page";
 import ShareControllerPage from "@/app/share/[token]/play/controller/page";
+import SharePage from "@/app/share/[token]/page";
 
 // --- Transport hook mocks -------------------------------------------------
 
@@ -737,7 +739,7 @@ describe("ShareControllerPage (share token)", () => {
     });
   });
 
-  it("passes token-derived presentationUrl to usePresentationSender", async () => {
+  it("passes token-derived presentationUrl with ?v=&t= to usePresentationSender", async () => {
     shareSuccessFetches();
 
     render(<ShareControllerPage />);
@@ -746,10 +748,32 @@ describe("ShareControllerPage (share token)", () => {
       expect(screen.getByTestId("controller-player")).toBeInTheDocument();
     });
 
-    const senderOpts = presentationSenderMock.mock.calls[0][0] as {
+    // Use the last call since the hook re-runs when videoUrl/shareName load
+    const lastSenderCall = presentationSenderMock.mock.calls[
+      presentationSenderMock.mock.calls.length - 1
+    ];
+    const senderOpts = lastSenderCall[0] as {
       presentationUrl: string;
     };
-    expect(senderOpts.presentationUrl).toBe("/share/share-tok/play/projection");
+    // The controller builds a URL with the presigned R2 URL (v) and the
+    // songset name (t) so the receiver can boot without calling any API.
+    expect(senderOpts.presentationUrl).toContain("/share/share-tok/play/projection?");
+    expect(senderOpts.presentationUrl).toContain(
+      "v=https%3A%2F%2Fr2.example.com%2Fshare%2Fvideo.mp4"
+    );
+    expect(senderOpts.presentationUrl).toContain("t=Shared+Set+Name");
+  });
+
+  it("does not pass autoFullscreen (defaults to true, matching songsets)", async () => {
+    shareSuccessFetches();
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+
+    expect(lastControllerProps?.autoFullscreen).toBeUndefined();
   });
 
   it("passes token-derived media payload to useCastTransport", async () => {
@@ -828,5 +852,61 @@ describe("ShareControllerPage (share token)", () => {
 
     expect(sender.stop).toHaveBeenCalledTimes(1);
     expect(transport.stop).not.toHaveBeenCalled();
+  });
+});
+
+describe("SharePage (share landing — entry navigation)", () => {
+  const videoShareResponse = {
+    token: "share-tok",
+    shareType: "songset" as const,
+    songset: {
+      id: "ss-1",
+      name: "Shared Set Name",
+      description: null,
+      totalDurationSeconds: 600,
+      renderState: "fresh" as const,
+      latestRenderJobId: "job-1",
+      lastCompletedRenderJobId: "job-1",
+    },
+    items: [],
+    playback: {
+      selectedRenderJobId: "job-1",
+      isStale: false,
+      staleStatus: null,
+      mp3Url: null,
+      mp4Url: "https://r2.example.com/share/video.mp4",
+      chaptersUrl: null,
+      mp3SizeBytes: null,
+      mp4SizeBytes: null,
+    },
+    allowDownload: false,
+    createdAt: new Date().toISOString(),
+    expiresAt: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(mockPush).mockClear();
+    vi.mocked(mockReplace).mockClear();
+  });
+
+  it("uses router.replace (not push) so Back always lands on /share/[token]", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(videoShareResponse),
+    });
+
+    render(<SharePage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("play-button")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTestId("play-button").click();
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith("/share/share-tok/play/controller");
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

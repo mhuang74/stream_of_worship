@@ -100,7 +100,15 @@ export default function ShareControllerPage() {
   // Cast + Presentation transport wiring (same shape as the songset
   // controller). Cast is preferred; the Presentation API fallback runs only
   // when `!cast.isSupported`.
-  const presentationUrl = `/share/${token}/play/projection`;
+  const presentationUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (videoUrl) params.set("v", videoUrl);
+    if (shareName) params.set("t", shareName);
+    const qs = params.toString();
+    return qs
+      ? `/share/${token}/play/projection?${qs}`
+      : `/share/${token}/play/projection`;
+  }, [token, videoUrl, shareName]);
   const media = useMemo<CastMedia>(
     () => ({
       videoUrl: videoUrl ?? "",
@@ -211,7 +219,6 @@ export default function ShareControllerPage() {
       videoSrc={videoUrl}
       chapters={chapters}
       exitRoute={`/share/${token}`}
-      autoFullscreen={false}
       isPresentationActive={isPresentationActive}
       transport={cast}
       presentationFallback={{

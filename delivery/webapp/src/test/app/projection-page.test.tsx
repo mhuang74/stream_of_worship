@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import ProjectionPage from "@/app/songsets/[id]/play/projection/page";
+import ShareProjectionPage from "@/app/share/[token]/play/projection/page";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: "test-songset" }),
+  useParams: () => ({ id: "test-songset", token: "share-tok" }),
   useRouter: () => ({
     push: vi.fn(),
   }),
@@ -283,6 +284,96 @@ describe("ProjectionPage", () => {
           "Morning Worship"
         );
       });
+    });
+  });
+});
+
+describe("ShareProjectionPage (share token)", () => {
+  const mockShareResponse = {
+    token: "share-tok",
+    shareType: "songset",
+    songset: { id: "ss-1", name: "Shared Set Name" },
+    playback: {
+      mp4Url: "https://r2.example.com/share/video.mp4",
+      chaptersUrl: null,
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Ensure clean location.search for direct-navigation tests
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "" },
+      writable: true,
+    });
+  });
+
+  describe("query-param handoff (receiver context)", () => {
+    beforeEach(() => {
+      // Simulate the URL the share controller builds:
+      // /share/.../projection?v=<presignedUrl>&t=<songsetName>
+      const url = new URL(
+        "https://localhost:8080/share/share-tok/play/projection"
+      );
+      url.searchParams.set("v", "https://r2.example.com/share/video.mp4");
+      url.searchParams.set("t", "Shared Set Name");
+      Object.defineProperty(window, "location", {
+        value: { ...window.location, search: url.search },
+        writable: true,
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, "location", {
+        value: { ...window.location, search: "" },
+        writable: true,
+      });
+    });
+
+    it("uses the v param as the video URL without fetching /api/share", async () => {
+      const fetchSpy = vi.fn();
+      global.fetch = fetchSpy;
+
+      render(<ShareProjectionPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(
+          "https://r2.example.com/share/video.mp4"
+        );
+      });
+      // No API calls should fire — the controller passed the presigned URL.
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("uses the t param as the song title", async () => {
+      global.fetch = vi.fn();
+
+      render(<ShareProjectionPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("initial-title")).toHaveTextContent(
+          "Shared Set Name"
+        );
+      });
+    });
+  });
+
+  describe("direct-navigation fallback", () => {
+    it("fetches /api/share/{token} when no query params present", async () => {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockShareResponse),
+      });
+
+      render(<ShareProjectionPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(
+          "https://r2.example.com/share/video.mp4"
+        );
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith("/api/share/share-tok");
     });
   });
 });
