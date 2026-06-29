@@ -892,7 +892,7 @@ describe("SharePage (share landing — entry navigation)", () => {
     vi.mocked(mockReplace).mockClear();
   });
 
-  it("uses router.replace (not push) so Back always lands on /share/[token]", async () => {
+  it("uses router.push so Back returns to /share/[token]", async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(videoShareResponse),
@@ -908,7 +908,7 @@ describe("SharePage (share landing — entry navigation)", () => {
       screen.getByTestId("play-button").click();
     });
 
-    expect(mockReplace).toHaveBeenCalledWith("/share/share-tok/play/controller");
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/share/share-tok/play/controller");
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });
