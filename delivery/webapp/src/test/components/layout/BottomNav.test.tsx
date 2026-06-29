@@ -1,12 +1,18 @@
 import { render, screen } from "@testing-library/react";
 import { BottomNav } from "@/components/layout/BottomNav";
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+
+const mockPathname = vi.hoisted(() => vi.fn(() => "/songsets"));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/songsets",
+  usePathname: mockPathname,
 }));
 
 describe("BottomNav", () => {
+  beforeEach(() => {
+    mockPathname.mockReturnValue("/songsets");
+  });
+
   it("renders navigation links", () => {
     render(<BottomNav />);
     expect(screen.getByRole("link", { name: "Songsets" })).toBeInTheDocument();
@@ -23,5 +29,13 @@ describe("BottomNav", () => {
     render(<BottomNav />);
     const songsetsLink = screen.getByRole("link", { name: "Songsets" });
     expect(songsetsLink).toHaveClass("text-primary");
+  });
+
+  it("does not render on projection routes", () => {
+    mockPathname.mockReturnValue("/songsets/test/play/projection");
+
+    render(<BottomNav />);
+
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 });
