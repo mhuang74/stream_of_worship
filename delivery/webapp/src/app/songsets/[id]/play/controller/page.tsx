@@ -150,15 +150,16 @@ export default function ControllerPage() {
   // the title overlay. When `videoUrl` is not yet loaded the URL falls back
   // to the bare path; the controller's render guards prevent `handleSendToTV`
   // from running before data is ready.
+  const songsetName = songset?.name;
   const presentationUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (videoUrl) params.set("v", videoUrl);
-    if (songset?.name) params.set("t", songset.name);
+    if (songsetName) params.set("t", songsetName);
     const qs = params.toString();
     return qs
       ? `/songsets/${songsetId}/play/projection?${qs}`
       : `/songsets/${songsetId}/play/projection`;
-  }, [songsetId, videoUrl, songset]);
+  }, [songsetId, videoUrl, songsetName]);
   const media = useMemo<CastMedia>(
     () => ({
       videoUrl: videoUrl ?? "",

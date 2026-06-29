@@ -53,9 +53,10 @@ export function LyricJumpList({
 
   const handleChapterExpand = useCallback(
     (chapterIndex: number) => {
-      setExplicitExpandedChapterIndex(
-        chapterIndex === currentSongIndex ? null : chapterIndex
-      );
+      setExplicitExpandedChapterIndex((prev) => {
+        const currentExpanded = prev ?? currentSongIndex;
+        return chapterIndex === currentExpanded ? null : chapterIndex;
+      });
     },
     [currentSongIndex]
   );
