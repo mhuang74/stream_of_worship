@@ -19,6 +19,13 @@ export async function proxy(request: NextRequest) {
   const session = await auth.api.getSession({ headers: request.headers });
 
   if (!session) {
+    // API routes should return a JSON 401, not an HTML redirect. Non-browser
+    // clients (Cast receivers, Android app, curl) cannot follow or parse the
+    // /login HTML redirect and fail with JSON parse errors like
+    // "invalid token '<'". Browser requests still get the redirect for UX.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
