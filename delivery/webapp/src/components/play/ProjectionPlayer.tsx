@@ -92,31 +92,54 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
   // ref that the hook result writes to on mount.
   const sendStatusRef = useRef<((status: PresentationStatus) => void) | null>(null);
 
+  const buildMediaStatus = useCallback((video: HTMLVideoElement): PresentationStatus => {
+    const currentTime =
+      Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : 0;
+    const duration = Number.isFinite(video.duration) && video.duration >= 0 ? video.duration : 0;
+    return {
+      type: "media",
+      currentTime,
+      duration,
+      playerState: video.paused ? "paused" : "playing",
+      volume: Math.max(0, Math.min(1, video.volume)),
+      isMuted: video.muted,
+    };
+  }, []);
+
+  const sendMediaStatus = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    sendStatusRef.current?.(buildMediaStatus(video));
+  }, [buildMediaStatus]);
+
   const handlePlay = useCallback(() => {
-    videoRef.current?.play().catch(() => {
+    videoRef.current?.play().then(sendMediaStatus).catch(() => {
       sendStatusRef.current?.({
         type: "error",
         message: "TV projection failed — check connection",
       });
     });
-  }, []);
+  }, [sendMediaStatus]);
 
   const handlePause = useCallback(() => {
     videoRef.current?.pause();
-  }, []);
+    sendMediaStatus();
+  }, [sendMediaStatus]);
 
   const handleSeek = useCallback((positionSeconds: number) => {
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = positionSeconds;
-  }, []);
+    sendMediaStatus();
+  }, [sendMediaStatus]);
 
   const handleVolume = useCallback((level: number) => {
     const video = videoRef.current;
     if (!video) return;
     video.volume = Math.max(0, Math.min(1, level));
     video.muted = level === 0;
-  }, []);
+    sendMediaStatus();
+  }, [sendMediaStatus]);
 
   // Mute is its own command on the wire (distinct from volume level). On the
   // Presentation fallback path the receiver `<video>` mute bit is toggled
@@ -125,7 +148,8 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
     const video = videoRef.current;
     if (!video) return;
     video.muted = muted;
-  }, []);
+    sendMediaStatus();
+  }, [sendMediaStatus]);
 
   const handleSongTitle = useCallback(
     (title: string) => {
@@ -158,11 +182,13 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
   // "TV projection failed — check connection" toast.
   const handleLoadedMetadata = useCallback(() => {
     sendStatus({ type: "ready" });
-  }, [sendStatus]);
+    sendMediaStatus();
+  }, [sendStatus, sendMediaStatus]);
 
   const handleCanPlay = useCallback(() => {
     sendStatus({ type: "ready" });
-  }, [sendStatus]);
+    sendMediaStatus();
+  }, [sendStatus, sendMediaStatus]);
 
   return (
     <div className="fixed inset-0 bg-black" data-testid="projection-player">
@@ -175,6 +201,11 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
         aria-label="Projection video"
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
+        onTimeUpdate={sendMediaStatus}
+        onPlay={sendMediaStatus}
+        onPause={sendMediaStatus}
+        onSeeked={sendMediaStatus}
+        onVolumeChange={sendMediaStatus}
       />
 
       {/* Song title overlay at top edge */}

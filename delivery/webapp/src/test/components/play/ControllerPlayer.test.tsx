@@ -251,13 +251,12 @@ describe("ControllerPlayer", () => {
       expect(video).not.toHaveAttribute("muted");
     });
 
-    it("hides LyricJumpList when active", async () => {
+    it("renders LyricJumpList when active", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} isPresentationActive={true} />);
       });
 
-      // The LyricJumpList handle is not rendered while active.
-      expect(screen.queryByText(/lyrics/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
     });
   });
 
@@ -493,6 +492,95 @@ describe("ControllerPlayer", () => {
       });
     });
 
+    it("enables previous song immediately after a Presentation API next-song seek", async () => {
+      const onSendTransportCommand = vi.fn();
+
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            presentationFallback={{ isSupported: true, isConnected: true }}
+            presentationMediaStatus={{
+              type: "media",
+              currentTime: 10,
+              duration: 420,
+              playerState: "playing",
+              volume: 1,
+              isMuted: false,
+            }}
+            onSendTransportCommand={onSendTransportCommand}
+          />
+        );
+      });
+
+      onSendTransportCommand.mockClear();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /next song/i }));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("2/2")).toBeInTheDocument();
+      });
+      expect(screen.getByRole("button", { name: /previous song/i })).not.toBeDisabled();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /previous song/i }));
+      });
+
+      await waitFor(() => {
+        const seekCalls = onSendTransportCommand.mock.calls
+          .map((c) => c[0])
+          .filter((c) => c.type === "seek");
+        expect(seekCalls).toEqual([{ type: "seek", positionSeconds: 0 }]);
+      });
+    });
+
+    it("Presentation API ] then [ jumps back to song 1", async () => {
+      const onSendTransportCommand = vi.fn();
+
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            presentationFallback={{ isSupported: true, isConnected: true }}
+            presentationMediaStatus={{
+              type: "media",
+              currentTime: 10,
+              duration: 420,
+              playerState: "playing",
+              volume: 1,
+              isMuted: false,
+            }}
+            onSendTransportCommand={onSendTransportCommand}
+          />
+        );
+      });
+
+      onSendTransportCommand.mockClear();
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "]" });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("2/2")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "[" });
+      });
+
+      await waitFor(() => {
+        expect(onSendTransportCommand).toHaveBeenCalledWith({
+          type: "seek",
+          positionSeconds: 0,
+        });
+      });
+    });
+
     it("skip-forward emits a seek debounced 200ms", async () => {
       const onSendTransportCommand = vi.fn();
       const transport = makeTransport({
@@ -636,6 +724,46 @@ describe("ControllerPlayer", () => {
       });
 
       expect(video.currentTime).toBe(20);
+    });
+
+    it("jump-to-lyric emits a Presentation API seek while active", async () => {
+      const onSendTransportCommand = vi.fn();
+
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            presentationFallback={{ isSupported: true, isConnected: true }}
+            presentationMediaStatus={{
+              type: "media",
+              currentTime: 10,
+              duration: 420,
+              playerState: "playing",
+              volume: 1,
+              isMuted: false,
+            }}
+            onSendTransportCommand={onSendTransportCommand}
+          />
+        );
+      });
+
+      onSendTransportCommand.mockClear();
+
+      await act(async () => {
+        fireEvent.click(screen.getByText(/lyrics/i));
+      });
+
+      await act(async () => {
+        fireEvent.click(await screen.findByText("That saved a wretch like me"));
+      });
+
+      await waitFor(() => {
+        expect(onSendTransportCommand).toHaveBeenCalledWith({
+          type: "seek",
+          positionSeconds: 20,
+        });
+      });
     });
   });
 
