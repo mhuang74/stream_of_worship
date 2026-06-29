@@ -21,6 +21,23 @@ export default function ShareProjectionPage() {
         setIsLoading(true);
         setError(null);
 
+        // Receiver context (opened via PresentationRequest) does not share the
+        // sender's session cookies. The sender (controller) passes the
+        // presigned R2 URL via the `v` query param so the receiver can boot
+        // without calling any API. `t` carries the songset name for the title
+        // overlay. Fall back to the public /api/share/{token} fetch only when
+        // the params are absent (direct navigation).
+        const searchParams = new URLSearchParams(window.location.search);
+        const passedVideoUrl = searchParams.get("v");
+        const passedTitle = searchParams.get("t") ?? undefined;
+
+        if (passedVideoUrl) {
+          if (cancelled) return;
+          setVideoUrl(passedVideoUrl);
+          setSongTitle(passedTitle);
+          return;
+        }
+
         const res = await fetch(`/api/share/${token}`);
 
         if (!res.ok) {
