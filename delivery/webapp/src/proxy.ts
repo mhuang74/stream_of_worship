@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/login", "/register", "/api/auth", "/share", "/api/share"];
-
+// Allow projection pages — matched by suffix to cover both songset and
+// share projection routes.
 function isPublicPath(pathname: string) {
+  if (pathname.endsWith("/play/projection")) return true;
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
