@@ -141,7 +141,22 @@ export default function ControllerPage() {
   // Presentation API sender is retained as a fallback used only when the Cast
   // SDK is unavailable (e.g. iOS) — `sender.send` / `sender.start` are never
   // invoked when `cast.isSupported` is true.
-  const presentationUrl = `/songsets/${songsetId}/play/projection`;
+  // Build the projection receiver URL. The controller mints a 4-hour signed
+  // R2 URL with `cast=true` and passes it via the `v` query param so the
+  // receiver (a Presentation-API context with no session cookies) can boot
+  // without calling any authenticated API. `t` carries the songset name for
+  // the title overlay. When `videoUrl` is not yet loaded the URL falls back
+  // to the bare path; the controller's render guards prevent `handleSendToTV`
+  // from running before data is ready.
+  const presentationUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (videoUrl) params.set("v", videoUrl);
+    if (songset?.name) params.set("t", songset.name);
+    const qs = params.toString();
+    return qs
+      ? `/songsets/${songsetId}/play/projection?${qs}`
+      : `/songsets/${songsetId}/play/projection`;
+  }, [songsetId, videoUrl, songset]);
   const media = useMemo<CastMedia>(
     () => ({
       videoUrl: videoUrl ?? "",

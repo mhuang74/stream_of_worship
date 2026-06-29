@@ -233,4 +233,56 @@ describe("ProjectionPage", () => {
       expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     });
   });
+
+  describe("query-param handoff (receiver context)", () => {
+    beforeEach(() => {
+      // Simulate the URL the controller builds:
+      // /songsets/.../projection?v=<signedUrl>&t=<title>
+      const url = new URL(
+        "https://localhost:8080/songsets/test-songset/play/projection"
+      );
+      url.searchParams.set("v", "https://cdn.example.com/video.mp4?signature=abc");
+      url.searchParams.set("t", "Morning Worship");
+      Object.defineProperty(window, "location", {
+        value: { ...window.location, search: url.search },
+        writable: true,
+      });
+    });
+
+    afterEach(() => {
+      // Restore jsdom default location so subsequent suites exercise the
+      // authenticated fallback path (`window.location.search === ""`).
+      Object.defineProperty(window, "location", {
+        value: { ...window.location, search: "" },
+        writable: true,
+      });
+    });
+
+    it("uses the v param as the video URL without fetching", async () => {
+      const fetchSpy = vi.fn();
+      global.fetch = fetchSpy;
+
+      render(<ProjectionPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(
+          "https://cdn.example.com/video.mp4?signature=abc"
+        );
+      });
+      // No authenticated API calls should fire
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("uses the t param as the initial song title", async () => {
+      global.fetch = vi.fn();
+
+      render(<ProjectionPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("initial-title")).toHaveTextContent(
+          "Morning Worship"
+        );
+      });
+    });
+  });
 });

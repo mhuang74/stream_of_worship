@@ -21,6 +21,25 @@ export default function ProjectionPage() {
         setIsLoading(true);
         setError(null);
 
+        // Receiver context (opened via PresentationRequest) does not share the
+        // sender's session cookies, so it cannot call the authenticated songset
+        // / render-job / signed-url APIs. The sender (controller) mints a
+        // 4-hour signed R2 URL and passes it via the `v` query param; `t`
+        // carries the songset name for the title overlay. Fall back to the
+        // authenticated fetch path only when the params are absent (direct
+        // navigation).
+        const searchParams = new URLSearchParams(window.location.search);
+        const passedVideoUrl = searchParams.get("v");
+        const passedTitle = searchParams.get("t") ?? undefined;
+
+        if (passedVideoUrl) {
+          if (cancelled) return;
+          setVideoUrl(passedVideoUrl);
+          setInitialTitle(passedTitle);
+          return;
+        }
+
+        // --- authenticated fallback (direct navigation by a logged-in user) ---
         const songsetResponse = await fetch(`/api/songsets/${songsetId}`);
         if (!songsetResponse.ok) {
           if (songsetResponse.status === 401) {

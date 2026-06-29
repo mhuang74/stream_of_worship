@@ -546,7 +546,15 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
           ctx.setOptions({
             receiverApplicationId: receiverAppId,
             autoJoinPolicy: chrome.cast.AutoJoinPolicy.TAB_AND_ORIGIN_SCOPED,
-            androidReceiverCompatible: true,
+            // androidReceiverCompatible is intentionally omitted. That flag
+            // enables Cast Connect (native Android TV receiver app), which SOW
+            // does not have — it uses Google's Default Media Receiver. With the
+            // flag set, AndroidTV attempts the Cast Connect launch path, falls
+            // back to loading the webapp projection page in a WebView, and the
+            // page's unauthenticated API fetches hit proxy.ts's redirect to
+            // /login (HTML), producing "invalid token '<'" JSON parse errors.
+            // Omitting the flag makes AndroidTV use the Default Media Receiver
+            // path (MP4 from R2 via loadMedia), identical to Chromecast dongles.
           });
         }
         const player = new cast.framework.RemotePlayer();
