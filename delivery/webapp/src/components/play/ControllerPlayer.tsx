@@ -897,18 +897,6 @@ export function ControllerPlayer({
           }}
         />
 
-        {!isFullscreen && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="fixed top-4 left-4 z-[80] size-10 text-white hover:bg-white/20"
-            onClick={handleReenterFullscreen}
-            aria-label="Re-enter fullscreen"
-          >
-            <Maximize className="size-5" />
-          </Button>
-        )}
-
         {/* Top bar */}
         <div
           className={cn(
@@ -917,15 +905,29 @@ export function ControllerPlayer({
           )}
         >
           <div className="flex items-center justify-between gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-10 text-white hover:bg-white/20"
-              onClick={handleExit}
-              aria-label="Back"
-            >
-              <ArrowLeft className="size-5" />
-            </Button>
+            <div className="flex items-center gap-2" data-testid="playback-left-actions">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-10 text-white hover:bg-white/20"
+                onClick={handleExit}
+                aria-label="Back"
+              >
+                <ArrowLeft className="size-5" />
+              </Button>
+
+              {!isFullscreen && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 text-white hover:bg-white/20"
+                  onClick={handleReenterFullscreen}
+                  aria-label="Re-enter fullscreen"
+                >
+                  <Maximize className="size-5" />
+                </Button>
+              )}
+            </div>
 
             <div className="flex items-center gap-2">
               {/* Presentation status */}
