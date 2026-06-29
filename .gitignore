@@ -301,3 +301,5 @@ delivery/render-worker/secrets/
 # custom agent harness
 .planning/
 .dex/
+.vercel/
+.env.local
