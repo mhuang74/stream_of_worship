@@ -38,6 +38,7 @@ interface ShareData {
     mp3Url: string | null;
     mp4Url: string | null;
     chaptersUrl: string | null;
+    chaptersData: unknown;
     mp3SizeBytes: number | null;
     mp4SizeBytes: number | null;
   };

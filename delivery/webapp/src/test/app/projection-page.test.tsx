@@ -296,6 +296,7 @@ describe("ShareProjectionPage (share token)", () => {
     playback: {
       mp4Url: "https://r2.example.com/share/video.mp4",
       chaptersUrl: null,
+      chaptersData: null,
     },
   };
 

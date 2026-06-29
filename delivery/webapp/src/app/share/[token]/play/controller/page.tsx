@@ -61,18 +61,14 @@ export default function ShareControllerPage() {
           setShareName(data.songset.name);
         }
 
-        if (data.playback?.chaptersUrl) {
+        if (data.playback?.chaptersData) {
           try {
-            const chaptersRes = await fetch(data.playback.chaptersUrl);
-            if (chaptersRes.ok) {
-              const chaptersData = await chaptersRes.json();
-              const manifest = normalizeChaptersManifest(chaptersData);
-              if (!cancelled) {
-                setChapters(manifest.chapters);
-              }
+            const manifest = normalizeChaptersManifest(data.playback.chaptersData);
+            if (!cancelled) {
+              setChapters(manifest.chapters);
             }
           } catch (e) {
-            console.error("Failed to load chapters:", e);
+            console.error("Failed to parse chapters:", e);
           }
         }
       } catch (err) {
