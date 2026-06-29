@@ -113,6 +113,7 @@ export async function GET(
     let mp3Url: string | null = null;
     let mp4Url: string | null = null;
     let chaptersUrl: string | null = null;
+    let chaptersData: unknown = null;
     let mp3SizeBytes: number | null = null;
     let mp4SizeBytes: number | null = null;
 
@@ -121,7 +122,10 @@ export async function GET(
         const r2Client = createR2ClientFromEnv();
         // The share MP4 is intended for Cast / TV-share playback: the receiver
         // fetches it directly from R2 for up to 4h (full set + setup slack).
-        // MP3/chapters stay on the default 1h window since they are phone-only.
+        // MP3 stays on the default 1h window since it is phone-only.
+        // Chapters JSON is fetched server-side and inlined in the response so
+        // the browser never makes a cross-origin fetch to R2 (which would fail
+        // due to CORS — R2 buckets are not configured for browser fetches).
         const mp3Expires = DEFAULT_EXPIRES_IN_SECONDS;
         const mp4Expires = CAST_PLAYBACK_EXPIRES_IN_SECONDS;
 
@@ -144,6 +148,19 @@ export async function GET(
         chaptersUrl = chaptersResult?.url ?? null;
         mp3SizeBytes = mp3Size;
         mp4SizeBytes = mp4Size;
+
+        // Fetch chapters JSON server-side to avoid CORS failures when the
+        // browser tries to fetch the presigned R2 URL directly.
+        if (chaptersResult?.url) {
+          try {
+            const chaptersRes = await fetch(chaptersResult.url);
+            if (chaptersRes.ok) {
+              chaptersData = await chaptersRes.json();
+            }
+          } catch (e) {
+            console.error("share/[token]: chapters fetch failure", { token, error: e });
+          }
+        }
       } catch (e) {
         // R2 not configured or error. Surface the root cause so an operator
         // can distinguish "no render job" (content-side) from "R2 unreachable
@@ -176,6 +193,7 @@ export async function GET(
           mp3Url,
           mp4Url,
           chaptersUrl,
+          chaptersData,
           mp3SizeBytes,
           mp4SizeBytes,
         },

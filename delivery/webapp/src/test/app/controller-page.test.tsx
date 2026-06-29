@@ -201,6 +201,7 @@ const SHARE_RESPONSE = {
   playback: {
     mp4Url: "https://r2.example.com/share/video.mp4",
     chaptersUrl: null,
+    chaptersData: null,
   },
 };
 
@@ -876,6 +877,7 @@ describe("SharePage (share landing — entry navigation)", () => {
       mp3Url: null,
       mp4Url: "https://r2.example.com/share/video.mp4",
       chaptersUrl: null,
+      chaptersData: null,
       mp3SizeBytes: null,
       mp4SizeBytes: null,
     },

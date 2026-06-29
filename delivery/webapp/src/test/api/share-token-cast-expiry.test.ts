@@ -101,6 +101,12 @@ describe("/api/share/[token] cast expiry", () => {
     mockGetObjectSize.mockResolvedValue(50 * 1024 * 1024);
     mockGetSongsetPublicView.mockResolvedValue(songsetPublicView);
     mockFindFirstJob.mockResolvedValue(completedJob);
+    // The route now fetches chapters JSON server-side via the presigned URL.
+    // Mock global.fetch so it doesn't hit the network for the fake R2 URL.
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ chapters: [], totalDurationSeconds: 0 }),
+    });
   });
 
   it("mints the MP4 with 14400s (Cast playback) expiry", async () => {
