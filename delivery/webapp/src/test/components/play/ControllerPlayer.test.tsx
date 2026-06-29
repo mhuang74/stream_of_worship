@@ -182,6 +182,20 @@ describe("ControllerPlayer", () => {
       expect(screen.getByRole("button", { name: /^back$/i })).toBeInTheDocument();
     });
 
+    it("renders back and fullscreen controls as separate top-left actions", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const leftActions = screen.getByTestId("playback-left-actions");
+      const backButton = screen.getByRole("button", { name: /^back$/i });
+      const fullscreenButton = screen.getByRole("button", { name: /re-enter fullscreen/i });
+
+      expect(leftActions).toContainElement(backButton);
+      expect(leftActions).toContainElement(fullscreenButton);
+      expect(backButton).not.toBe(fullscreenButton);
+    });
+
     it("renders lyric jump list handle", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);
