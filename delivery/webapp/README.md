@@ -28,11 +28,36 @@ See `.env.production.example` for a full description of every variable.
 
 ```bash
 pnpm dev          # Start dev server on http://localhost:8080
+pnpm dev:https    # Start dev server on https://localhost:8080 (self-signed cert) — REQUIRED for Cast testing
 pnpm test         # Run tests
 pnpm test:watch   # Run tests in watch mode
 pnpm lint         # Lint code
 pnpm build        # Production build
 ```
+
+#### Local Cast testing requires HTTPS
+
+The Google Cast Web Sender SDK framework (`window.cast.framework`) refuses to
+initialize on non-HTTPS origins — only the low-level `chrome.cast.*` namespace
+loads over HTTP. On plain `pnpm dev` (HTTP localhost), `isCastSdkSupported()`
+returns `false`, the in-page Cast button falls back to the W3C Presentation API
+or browser-level tab mirroring, and either fallback loads a SOW webapp page on
+the TV — which then bounces to `/login` because the TV has no Better Auth
+session cookie. **This is dev-only noise and never reproduces on HTTPS
+production.**
+
+To test the real Cast flow locally:
+
+```bash
+pnpm dev:https
+# Open https://localhost:8080/... and accept the self-signed cert warning once.
+```
+
+On HTTPS, `cast.framework.*` initializes, the in-page Cast button routes
+through `cast.start()` → real Cast session → Default Media Receiver on the TV
+→ MP4 playback from R2 directly. The SOW webapp is never loaded by the TV.
+HTTP localhost (`pnpm dev`) is fine for everything except integrations
+requiring a fully-initialized Cast framework.
 
 ## Database Migrations
 
