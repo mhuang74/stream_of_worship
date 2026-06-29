@@ -175,6 +175,78 @@ describe("usePresentationSender", () => {
     expect(result.current.isConnected).toBe(false);
   });
 
+  it("stop() calls connection.terminate()", async () => {
+    const conn = setPresentationRequest();
+    const { result } = renderHook(() =>
+      usePresentationSender({ presentationUrl: "/songsets/1/play/projection" }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => {
+      result.current.stop();
+    });
+
+    expect(conn.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it("stop() clears isConnected", async () => {
+    setPresentationRequest();
+    const { result } = renderHook(() =>
+      usePresentationSender({ presentationUrl: "/songsets/1/play/projection" }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => {
+      result.current.stop();
+    });
+
+    expect(result.current.isConnected).toBe(false);
+  });
+
+  it("stop() is a no-op before start()", () => {
+    setPresentationRequest();
+    const { result } = renderHook(() =>
+      usePresentationSender({ presentationUrl: "/songsets/1/play/projection" }),
+    );
+
+    act(() => {
+      result.current.stop();
+    });
+
+    expect(result.current.isConnected).toBe(false);
+  });
+
+  it("close/terminate events after stop() do not double-fire onDisconnected", async () => {
+    const conn = setPresentationRequest();
+    const onDisconnected = vi.fn();
+    const { result } = renderHook(() =>
+      usePresentationSender({
+        presentationUrl: "/songsets/1/play/projection",
+        onDisconnected,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => {
+      result.current.stop();
+    });
+
+    const closeHandlers = conn.listeners.get("close");
+    const terminateHandlers = conn.listeners.get("terminate");
+    act(() => {
+      for (const handler of closeHandlers ?? []) handler({});
+      for (const handler of terminateHandlers ?? []) handler({});
+    });
+
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+  });
+
   it("send() clamps volume.level to [0,1] on the wire", async () => {
     const conn = setPresentationRequest();
     const { result } = renderHook(() =>

@@ -228,6 +228,40 @@ describe("ControllerPlayer", () => {
       expect(screen.queryByText(/connected to tv/i)).not.toBeInTheDocument();
     });
 
+    it("shows close button only while presentation is active", async () => {
+      const { rerender } = render(
+        <ControllerPlayer {...defaultProps} isPresentationActive={false} />
+      );
+
+      expect(screen.queryByTestId("presentation-close-button")).not.toBeInTheDocument();
+
+      await act(async () => {
+        rerender(<ControllerPlayer {...defaultProps} isPresentationActive={true} />);
+      });
+
+      expect(screen.getByTestId("presentation-close-button")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /close tv view/i })).toBeInTheDocument();
+    });
+
+    it("clicking the close button calls onStopPresentation", async () => {
+      const onStopPresentation = vi.fn();
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            onStopPresentation={onStopPresentation}
+          />
+        );
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("presentation-close-button"));
+      });
+
+      expect(onStopPresentation).toHaveBeenCalledTimes(1);
+    });
+
     it("mutes + pauses local video when presentation is active", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} isPresentationActive={true} />);
@@ -1477,6 +1511,26 @@ describe("ControllerPlayer", () => {
 
       // The connected Cast session must be ended before navigating away so
       // the TV receiver does not keep playing audio with no controller.
+      expect(stop).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses onStopPresentation on exit when presentation is active", async () => {
+      const stop = vi.fn();
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            onStopPresentation={stop}
+          />
+        );
+      });
+
+      const exitButton = screen.getByRole("button", { name: /^back$/i });
+      await act(async () => {
+        fireEvent.click(exitButton);
+      });
+
       expect(stop).toHaveBeenCalledTimes(1);
     });
 

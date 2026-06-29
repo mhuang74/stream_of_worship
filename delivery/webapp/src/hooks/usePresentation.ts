@@ -287,6 +287,7 @@ export interface UsePresentationSenderResult {
   isSupported: boolean;
   isConnected: boolean;
   start: () => Promise<void>;
+  stop: () => void;
   send: (command: PresentationCommand) => void;
 }
 
@@ -382,6 +383,19 @@ export function usePresentationSender(
     }
   }, []);
 
+  const stop = useCallback(() => {
+    const conn = connectionRef.current;
+    if (!conn) return;
+    connectionRef.current = null;
+    setIsConnected(false);
+    optionsRef.current.onDisconnected?.();
+    try {
+      conn.terminate();
+    } catch {
+      /* best-effort: never throw from a stop path */
+    }
+  }, []);
+
   // Close the connection on unmount.
   useEffect(() => {
     return () => {
@@ -395,5 +409,5 @@ export function usePresentationSender(
     };
   }, []);
 
-  return { isSupported, isConnected, start, send };
+  return { isSupported, isConnected, start, stop, send };
 }

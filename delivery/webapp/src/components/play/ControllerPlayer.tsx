@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, X, Info, Maximize, Monitor, Loader2 } from "lucide-react";
+import { ArrowLeft, X, Info, Maximize, Monitor, MonitorOff, Loader2 } from "lucide-react";
 
 /**
  * Surface for the dev-only Presentation API sender fallback (used only when
@@ -57,6 +57,8 @@ export interface ControllerPlayerProps {
   isCastConnecting?: boolean;
   /** Launch the Cast (or Presentation fallback) device picker. */
   onSendToTV?: () => void;
+  /** Stop the active Cast or Presentation fallback session. */
+  onStopPresentation?: () => void;
   /** Forward a transport command to the active receiver. */
   onSendTransportCommand?: (command: PresentationCommand) => void;
   exitRoute?: string;
@@ -97,6 +99,7 @@ export function ControllerPlayer({
   castAvailability,
   isCastConnecting,
   onSendToTV,
+  onStopPresentation,
   onSendTransportCommand,
   exitRoute,
   autoFullscreen = true,
@@ -108,6 +111,7 @@ export function ControllerPlayer({
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const seekDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasActiveRef = useRef(false);
+  const suppressNextResumeRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -128,6 +132,10 @@ export function ControllerPlayer({
   useEffect(() => {
     onSendToTVRef.current = onSendToTV;
   }, [onSendToTV]);
+  const onStopPresentationRef = useRef(onStopPresentation);
+  useEffect(() => {
+    onStopPresentationRef.current = onStopPresentation;
+  }, [onStopPresentation]);
   const onSendTransportCommandRef = useRef(onSendTransportCommand);
   useEffect(() => {
     onSendTransportCommandRef.current = onSendTransportCommand;
@@ -532,12 +540,21 @@ export function ControllerPlayer({
     transportRef.current = transport;
   }, [transport]);
 
+  const handleStopPresentation = useCallback(() => {
+    suppressNextResumeRef.current = true;
+    onStopPresentationRef.current?.();
+  }, []);
+
   const handleExit = useCallback(() => {
-    // Tear down any active Cast session before navigating away so the TV
-    // receiver does not keep playing audio with no controller attached. The
-    // Presentation API fallback closes its own connection on unmount; the
-    // Cast transport must behave symmetrically here.
-    if (transportRef.current?.isConnected) {
+    // Tear down any active remote session before navigating away so the TV
+    // receiver does not keep playing audio with no controller attached.
+    if (isPresentationActive && onStopPresentationRef.current) {
+      try {
+        handleStopPresentation();
+      } catch {
+        /* best-effort: never block navigation */
+      }
+    } else if (transportRef.current?.isConnected) {
       try {
         transportRef.current.stop();
       } catch {
@@ -550,7 +567,7 @@ export function ControllerPlayer({
       });
     }
     router.push(exitRoute ?? `/songsets/${playerId}/play`);
-  }, [router, playerId, exitRoute]);
+  }, [router, playerId, exitRoute, isPresentationActive, handleStopPresentation]);
 
   const handleReenterFullscreen = useCallback(() => {
     document.documentElement.requestFullscreen().catch(() => {});
@@ -718,6 +735,11 @@ export function ControllerPlayer({
     const wasActive = wasActiveRef.current;
     wasActiveRef.current = isPresentationActive;
     if (!wasActive || isPresentationActive) return;
+    if (suppressNextResumeRef.current) {
+      suppressNextResumeRef.current = false;
+      setPendingResume(null);
+      return;
+    }
 
     // The effect supports two transport sources:
     //   1. Cast: `transport.resumeProposal` populated by the `useCastTransport`
@@ -914,6 +936,19 @@ export function ControllerPlayer({
                     Connected to {transport?.deviceName ? transport.deviceName : "TV"}
                   </span>
                 </div>
+              )}
+
+              {isPresentationActive && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 text-white hover:bg-white/20"
+                  onClick={handleStopPresentation}
+                  aria-label="Close TV view"
+                  data-testid="presentation-close-button"
+                >
+                  <MonitorOff className="size-5" />
+                </Button>
               )}
 
               {/* Buffering chip (non-blocking; controls stay enabled) */}
