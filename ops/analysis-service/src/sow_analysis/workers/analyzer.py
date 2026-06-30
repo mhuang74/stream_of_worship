@@ -218,18 +218,24 @@ async def analyze_audio_fast(
             logger.info(f"Cache hit for fast analysis result: {content_hash[:16]}...")
             return cached
 
-    # Load audio
+    loop = asyncio.get_event_loop()
+
+    # Load audio (blocking — run in executor)
     logger.info(f"Loading audio file for fast analysis: {audio_path}")
     load_start = time.time()
-    y, sr = librosa.load(str(audio_path), sr=sample_rate, mono=True)
-    duration = librosa.get_duration(y=y, sr=sr)
+
+    def _load_audio():
+        y, sr = librosa.load(str(audio_path), sr=sample_rate, mono=True)
+        duration = librosa.get_duration(y=y, sr=sr)
+        return y, sr, duration
+
+    y, sr, duration = await loop.run_in_executor(None, _load_audio)
     load_elapsed = time.time() - load_start
     logger.info(f"Audio loaded in {load_elapsed:.2f}s - Duration: {duration:.2f}s")
 
     # Tempo via librosa.beat.tempo
     logger.info("Estimating tempo...")
     tempo_start = time.time()
-    loop = asyncio.get_event_loop()
 
     def _compute_tempo() -> float:
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
@@ -242,15 +248,15 @@ async def analyze_audio_fast(
     tempo_elapsed = time.time() - tempo_start
     logger.info(f"Tempo estimation completed in {tempo_elapsed:.2f}s - {bpm:.1f} BPM")
 
-    # Key detection with librosa
+    # Key detection with librosa (blocking — run in executor)
     logger.info("Detecting musical key...")
     key_start = time.time()
-    mode, key, key_confidence = detect_key(y, sr)
+    mode, key, key_confidence = await loop.run_in_executor(None, detect_key, y, sr)
     key_elapsed = time.time() - key_start
     logger.info(f"Key detection completed in {key_elapsed:.2f}s - Detected: {key} {mode}")
 
-    # Loudness
-    loudness_db = compute_loudness(y)
+    # Loudness (blocking — run in executor)
+    loudness_db = await loop.run_in_executor(None, compute_loudness, y)
 
     total_elapsed = time.time() - load_start
     logger.info(f"Total fast analysis time: {total_elapsed:.2f}s")
