@@ -220,17 +220,20 @@ single MP4 from R2 directly. A Presentation API browser-projection fallback is
 retained for developer-only second-screen testing; **production guidance is
 Cast on Android/Chrome or AirPlay to Apple TV**.
 
-1. Go to [https://cast.google.com/publish](https://cast.google.com/publish).
-2. Register your **Cast test devices** by serial number under
-   **Device registration**. Only whitelisted devices can cast during dev/staging.
-3. Set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` to the 8-character Default Media
-   Receiver ID from Google's published Default Receiver constant (per
-   environment, for dev / staging / prod), **or** leave it unset: when unset,
-   the Web Sender SDK falls back to Google's built-in Default Media Receiver
+1. Leave `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` unset for the supported v3 path.
+   The Web Sender SDK then uses Google's built-in Default Media Receiver
    constant.
-4. Production launch gate: submit the receiver for Cast review via the Cast SDK
-   Developer Console → your app → **Submit for Approval**. Approvals typically
-   take 2–4 weeks. Until approved, only whitelisted devices work.
+2. Set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` only when intentionally testing a
+   custom receiver app ID from [https://cast.google.com/publish](https://cast.google.com/publish).
+   Whitespace-only values are ignored by the app, but a real custom ID always
+   wins over the Default Media Receiver.
+3. For a custom receiver only, register Cast test devices by serial number under
+   **Device registration**. Until that custom receiver is approved, only
+   whitelisted devices can launch it.
+4. Custom receiver production launch gate: submit the receiver for Cast review
+   via the Cast SDK Developer Console → your app → **Submit for Approval**.
+   Approvals typically take 2–4 weeks. This is not required for the Default
+   Media Receiver path.
 
 #### Cast playback constraints (v3)
 

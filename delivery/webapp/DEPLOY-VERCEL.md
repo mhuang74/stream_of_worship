@@ -159,24 +159,24 @@ v3 uses Google's **Default Media Receiver** as the only supported Cast mode.
 Lyrics are baked into the rendered MP4 (H.264 + AAC + `+faststart`), so no
 custom on-receiver UI is required.
 
-1. In the [Cast SDK Developer Console](https://cast.google.com/publish),
-   register your Cast test devices by serial number under
-   **Device registration**. Only whitelisted devices can cast during
-   dev/staging.
-2. Set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` to the per-environment app ID,
-   **or** leave it unset to fall back to Google's built-in Default Media
-   Receiver constant. One ID per environment (dev / staging / prod); the
-   env var is the operator's responsibility, set in Vercel Project Settings →
-   Environment Variables.
+1. Leave `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` unset for the supported v3 path.
+   The Web Sender SDK falls back to Google's built-in Default Media Receiver
+   constant.
+2. Set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` only when intentionally testing a
+   custom receiver app ID from the [Cast SDK Developer Console](https://cast.google.com/publish).
+   The env var is the operator's responsibility, set in Vercel Project
+   Settings → Environment Variables. Whitespace-only values are ignored by the
+   app, but a real custom ID always wins over the Default Media Receiver.
 3. The logged-in phone mints a presigned R2 URL with a 4-hour expiry for Cast
    playback. `POST /api/signed-url?cast=true` (songset ownership path,
    session-required) or `/api/share/[token]` (public share path) mint the MP4
    at 14400s; the TV receiver fetches the MP4 directly from R2 and never hits
    the webapp. Services longer than ~3h40m require a deliberate stop/re-cast
    before URL expiry.
-4. Cast review (production launch gate): submit the receiver via the Cast SDK
-   Developer Console → your app → **Submit for Approval** (2–4 weeks). Until
-   approved, only whitelisted devices work.
+4. Custom receiver only: register Cast test devices by serial number under
+   **Device registration**. Until a custom receiver is approved, only
+   whitelisted devices can launch it. This is not required for the Default
+   Media Receiver path.
 
 #### Rendered MP4 requirements (enforced by the render worker)
 

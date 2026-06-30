@@ -90,6 +90,9 @@ interface ClientErrorPayload {
     platform?: string;
     browser?: string;
     castAppIdMode?: "set" | "default" | "unset";
+    castErrorCode?: string;
+    castState?: string;
+    sessionState?: string;
     transportKind?: "cast" | "presentation" | "none";
     mediaSourceKind?: "songset" | "share";
     /**
@@ -149,6 +152,58 @@ const SEEK_DEBOUNCE_MS = 200;
 const STALE_THRESHOLD_SECONDS = 60;
 const STALE_EXTRAPOLATION_CAP_SECONDS = 60;
 
+function configuredCastReceiverAppId(): string {
+  return process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID?.trim() ?? "";
+}
+
+function defaultCastReceiverAppId(): string {
+  if (typeof window === "undefined") return "";
+  return window.chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID ?? "";
+}
+
+function resolveCastReceiverAppId(): {
+  receiverAppId: string;
+  mode: "set" | "default" | "unset";
+} {
+  const envAppId = configuredCastReceiverAppId();
+  if (envAppId) return { receiverAppId: envAppId, mode: "set" };
+  const defaultAppId = defaultCastReceiverAppId();
+  if (defaultAppId) return { receiverAppId: defaultAppId, mode: "default" };
+  return { receiverAppId: "", mode: "unset" };
+}
+
+function formatCastRequestError(err: unknown): { message: string; code?: string } {
+  const rawCode = (err as { code?: unknown })?.code;
+  const code =
+    typeof rawCode === "string" || typeof rawCode === "number" ? String(rawCode) : undefined;
+  const description = (err as { description?: unknown })?.description;
+  const message = (err as { message?: unknown })?.message;
+  const primary =
+    (typeof description === "string" && description.trim()) ||
+    (typeof message === "string" && message.trim()) ||
+    "Cast session request failed";
+  if (!code || primary.toLowerCase().includes(code.toLowerCase())) {
+    return { message: primary, code };
+  }
+  return { message: `${primary} (${code})`, code };
+}
+
+function safeGetCastState(ctx: cast.framework.CastContext): string | undefined {
+  try {
+    return String(ctx.getCastState());
+  } catch {
+    return undefined;
+  }
+}
+
+function safeGetSessionState(ctx: cast.framework.CastContext): string | undefined {
+  try {
+    return String(ctx.getSessionState());
+  } catch {
+    return undefined;
+  }
+}
+
 function detectPlatform(): string {
   if (typeof navigator === "undefined") return "unknown";
   const ua = navigator.userAgent;
@@ -180,15 +235,7 @@ function detectBrowser(): string {
  * ~400 (`envAppId || chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID`).
  */
 function castAppIdMode(): "set" | "default" | "unset" {
-  const envAppId = process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID;
-  if (envAppId) return "set";
-  if (
-    typeof window !== "undefined" &&
-    window.chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID
-  ) {
-    return "default";
-  }
-  return "unset";
+  return resolveCastReceiverAppId().mode;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -512,8 +559,6 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   // Init effect: load SDK, setOptions once, create player+controller, attach
   // listeners. Runs once per mount.
   useEffect(() => {
-    const envAppId = process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID;
-
     if (typeof window === "undefined") return;
 
     let cancelled = false;
@@ -534,8 +579,7 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         // Resolve the receiver application id. The env var wins; otherwise fall
         // back to Google's built-in Default Media Receiver constant (the v3
         // production default). If neither resolves, Cast cannot start.
-        const receiverAppId =
-          envAppId || chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID || "";
+        const { receiverAppId } = resolveCastReceiverAppId();
         if (!receiverAppId) {
           setAvailability("unavailable");
           return;
@@ -650,10 +694,7 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         // User dismissed the device picker — no dangling session, no error.
         return;
       }
-      const msg =
-        (err as { description?: string; code?: string | number })?.description ||
-        (typeof code === "string" || typeof code === "number" ? String(code) : "") ||
-        "Cast session request failed";
+      const { message: msg, code: castErrorCode } = formatCastRequestError(err);
       setIsConnected(false);
       setLastError(msg);
       onErrorRef.current?.(msg);
@@ -664,6 +705,9 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
           platform: detectPlatform(),
           browser: detectBrowser(),
           castAppIdMode: castAppIdMode(),
+          castErrorCode,
+          castState: safeGetCastState(ctx),
+          sessionState: safeGetSessionState(ctx),
           transportKind: "cast",
           mediaSourceKind: mediaRef.current.source.kind,
         },

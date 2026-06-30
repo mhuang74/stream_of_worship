@@ -1,5 +1,13 @@
 ## 2026-06-30
 
+- Followed up Cast `session_request_failed` debugging: receiver env app IDs are
+  now trimmed before resolving the Default Media Receiver fallback, and Cast
+  session-request errors surface the SDK code plus CastContext/session state in
+  client telemetry. Docs now say to leave `NEXT_PUBLIC_CAST_RECEIVER_APP_ID`
+  unset for the supported Default Media Receiver path and reserve custom
+  receiver registration/device whitelisting for intentional custom receiver
+  testing. Verified focused Cast tests, full webapp tests, lint, build, and
+  refreshed graphify output.
 - Fixed Cast discovery initialization for the web playback controller by loading
   the Google Cast sender SDK with `loadCastFramework=1` and resolving the
   Default Media Receiver from `chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID`.

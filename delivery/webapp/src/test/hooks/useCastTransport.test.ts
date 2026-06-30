@@ -6,7 +6,7 @@ import type { CastMedia } from "@/hooks/useCast";
 // captured listener handlers so tests can invoke them and assert on calls.
 function setupCastSdkMock(opts?: {
   loadMedia?: "success" | "error";
-  requestSession?: "resolve" | "reject";
+  requestSession?: "resolve" | "reject" | "receiver_unavailable" | "session_request_failed";
   player?: Partial<Record<string, unknown>>;
 }) {
   const ctx = {
@@ -24,14 +24,20 @@ function setupCastSdkMock(opts?: {
           description: "No Cast devices found",
         });
       }
+      if (opts?.requestSession === "session_request_failed") {
+        return Promise.reject({
+          code: "session_request_failed",
+          description: "Cast session request failed",
+        });
+      }
       return Promise.resolve();
     }),
     endCurrentSession: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     getCurrentSession: vi.fn(),
-    getCastState: vi.fn(),
-    getSessionState: vi.fn(),
+    getCastState: vi.fn(() => "NOT_CONNECTED"),
+    getSessionState: vi.fn(() => "NO_SESSION"),
   };
 
   const player: Record<string, unknown> = {
@@ -242,6 +248,20 @@ describe("useCastTransport", () => {
       vi.unstubAllEnvs();
     });
 
+    it("trims blank env app id before falling back to the Default Media Receiver constant", async () => {
+      vi.stubEnv("NEXT_PUBLIC_CAST_RECEIVER_APP_ID", "   ");
+      const mock = setupCastSdkMock();
+      const mod = await freshModule();
+      const { result } = renderHook(() => mod.useCastTransport({ media: MEDIA }));
+      await act(async () => {
+        window.__onGCastApiAvailable?.(true);
+      });
+      await waitFor(() => expect(result.current.isSupported).toBe(true));
+      expect(mock.ctx.setOptions).toHaveBeenCalledTimes(1);
+      expect(mock.ctx.setOptions.mock.calls[0][0].receiverApplicationId).toBe("DEFAULT");
+      vi.unstubAllEnvs();
+    });
+
     it("returns isSupported=false when SDK is unavailable (globals not present)", async () => {
       // SDK script loaded callback fires with true but globals never set.
       const mod = await freshModule();
@@ -373,15 +393,41 @@ describe("useCastTransport", () => {
       // No session was created — endCurrentSession not called.
       expect(ctx.endCurrentSession).not.toHaveBeenCalled();
       // Non-cancel errors must surface to the user, not be swallowed.
-      expect(result.current.lastError).toBe("No Cast devices found");
-      expect(onError).toHaveBeenCalledWith("No Cast devices found");
+      expect(result.current.lastError).toBe("No Cast devices found (receiver_unavailable)");
+      expect(onError).toHaveBeenCalledWith("No Cast devices found (receiver_unavailable)");
       const post = fetchSpy.mock.calls.find(
         (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
       );
       expect(post).toBeTruthy();
       const body = JSON.parse(String(post?.[1]?.body));
       expect(body.kind).toBe("cast_load");
-      expect(body.message).toBe("No Cast devices found");
+      expect(body.message).toBe("No Cast devices found (receiver_unavailable)");
+      expect(body.meta.castErrorCode).toBe("receiver_unavailable");
+      expect(body.meta.castAppIdMode).toBe("set");
+      expect(body.meta.castState).toBe("NOT_CONNECTED");
+      expect(body.meta.sessionState).toBe("NO_SESSION");
+    });
+
+    it("requestSession session_request_failed includes the raw SDK code in the surfaced message", async () => {
+      const onError = vi.fn();
+      const { result } = await mountHook(
+        { media: MEDIA, onError },
+        { requestSession: "session_request_failed" },
+      );
+      fetchSpy.mockClear();
+      await act(async () => {
+        await result.current.start();
+      });
+      const expected = "Cast session request failed (session_request_failed)";
+      expect(result.current.lastError).toBe(expected);
+      expect(onError).toHaveBeenCalledWith(expected);
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body.message).toBe(expected);
+      expect(body.meta.castErrorCode).toBe("session_request_failed");
     });
 
     it("loadMedia failure → endCurrentSession called, isConnected=false, lastError set, onError fired; retry emits a fresh requestSession", async () => {
