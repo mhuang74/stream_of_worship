@@ -269,7 +269,7 @@ The fastest end-to-end test:
    - TV launches the Default Media Receiver and starts fetching the MP4
      from R2.
    - Phone shows toast `Connected to <device name>`.
-7. **Walk the functional matrix** (Section 8.
+7. **Walk the functional matrix** (Section 8).
 
 ### If the Cast button never appears
 
