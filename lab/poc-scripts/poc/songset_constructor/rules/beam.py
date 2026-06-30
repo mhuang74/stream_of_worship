@@ -1,0 +1,143 @@
+"""Deterministic beam search for songset candidates."""
+
+from __future__ import annotations
+
+from itertools import combinations
+from typing import Iterable
+
+from poc.songset_constructor.config import RunConfig
+from poc.songset_constructor.models import ScoreBreakdown, SongCandidate, SongsetProposal, TransitionCandidate
+
+from .fitness import score
+from .hard_constraints import validate
+from .proposals import draft_from_candidates, proposal_from_draft, rank_proposals
+
+
+def _template(songs: int) -> tuple[int, ...]:
+    return (1, 3, 4, 5) if songs == 4 else (1, 2, 3, 4, 5)
+
+
+def compute_fan_out(
+    pool: list[SongCandidate],
+    matrix: dict[tuple[str, str], TransitionCandidate],
+) -> list[SongCandidate]:
+    updated = []
+    for candidate in pool:
+        fan_out = 0
+        for other in pool:
+            if candidate.recording_hash_prefix == other.recording_hash_prefix:
+                continue
+            transition = matrix.get((candidate.recording_hash_prefix, other.recording_hash_prefix))
+            if transition and transition.cfd <= 2 and transition.bpm_delta <= 20:
+                fan_out += 1
+        updated.append(candidate.model_copy(update={"fan_out": fan_out, "is_dead_end": fan_out == 0}))
+    return updated
+
+
+def _candidate_sort_key(candidate: SongCandidate) -> tuple:
+    return (
+        candidate.is_dead_end,
+        candidate.phase,
+        -(candidate.tempo_bpm or 0),
+        candidate.recording_hash_prefix,
+    )
+
+
+def _phase_score(candidate: SongCandidate, target_phase: int) -> int:
+    return abs((candidate.phase or 3) - target_phase)
+
+
+def _sequences(pool: list[SongCandidate], songs: int, width: int = 8) -> Iterable[list[SongCandidate]]:
+    target = _template(songs)
+    by_hash = {candidate.recording_hash_prefix: candidate for candidate in pool}
+    beams: list[list[SongCandidate]] = [[]]
+    for position, target_phase in enumerate(target, start=1):
+        expanded: list[list[SongCandidate]] = []
+        for beam in beams:
+            used = {candidate.song_id for candidate in beam}
+            for candidate in pool:
+                if candidate.song_id in used:
+                    continue
+                if position == 1 and candidate.phase != 1:
+                    continue
+                if position == len(target) and candidate.phase not in {4, 5}:
+                    continue
+                if beam and candidate.phase < beam[-1].phase - 1:
+                    continue
+                if candidate.is_dead_end and position != len(target):
+                    continue
+                expanded.append([*beam, by_hash[candidate.recording_hash_prefix]])
+        expanded.sort(
+            key=lambda seq: (
+                sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
+                sum(abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0)) for index in range(len(seq) - 1)),
+                tuple(item.recording_hash_prefix for item in seq),
+            )
+        )
+        beams = expanded[: max(width, 1)]
+        if not beams:
+            return
+    yield from beams
+
+
+def _proposal_for_sequence(
+    sequence: list[SongCandidate],
+    config: RunConfig,
+    matrix: dict[tuple[str, str], TransitionCandidate],
+    *,
+    warnings: list[str] | None = None,
+) -> SongsetProposal:
+    draft = draft_from_candidates(sequence, rationale="Deterministic beam seed.")
+    placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
+    proposal = proposal_from_draft(draft, sequence, placeholder, llm_origin=False, warnings=warnings)
+    return proposal.model_copy(update={"score": score(proposal, config, matrix)})
+
+
+def search(
+    pool: list[SongCandidate],
+    config: RunConfig,
+    matrix: dict[tuple[str, str], TransitionCandidate],
+    *,
+    width: int = 8,
+) -> list[SongsetProposal]:
+    sorted_pool = sorted(pool, key=_candidate_sort_key)
+    proposals: list[SongsetProposal] = []
+    for sequence in _sequences(sorted_pool, config.songs, width=width):
+        proposal = _proposal_for_sequence(sequence, config, matrix)
+        if validate(proposal, config, matrix).passed:
+            proposals.append(proposal)
+    if not proposals and config.songs == 5:
+        compact_config = RunConfig(**{**config.to_dict(), "songs": 4})
+        for sequence in _sequences(sorted_pool, 4, width=width):
+            proposal = _proposal_for_sequence(
+                sequence,
+                compact_config,
+                matrix,
+                warnings=["fell_back_to_4_song_template"],
+            )
+            if validate(proposal, compact_config, matrix).passed:
+                proposals.append(proposal)
+    if not proposals:
+        for sequence in _sequences(sorted_pool, config.songs, width=max(width * 2, 16)):
+            proposal = _proposal_for_sequence(
+                sequence,
+                config,
+                matrix,
+                warnings=["relaxed_H4_H5"],
+            )
+            if validate(proposal, config, matrix, relax_h4=True, relax_h5=True).passed:
+                proposals.append(proposal)
+    return rank_proposals(proposals, pool, config.top_k)
+
+
+def exhaustive_fallback(
+    pool: list[SongCandidate],
+    config: RunConfig,
+    matrix: dict[tuple[str, str], TransitionCandidate],
+) -> list[SongsetProposal]:
+    proposals = []
+    for sequence in combinations(pool, config.songs):
+        proposal = _proposal_for_sequence(list(sequence), config, matrix)
+        if validate(proposal, config, matrix).passed:
+            proposals.append(proposal)
+    return rank_proposals(proposals, pool, config.top_k)

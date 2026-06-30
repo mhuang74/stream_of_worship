@@ -1,0 +1,31 @@
+# Songset Constructor POC
+
+Build ranked Chinese worship songset proposal artifacts from read-only catalog data.
+
+## Run
+
+```bash
+uv run --project lab/poc-scripts --extra songset_constructor \
+  python lab/poc-scripts/construct_songset_agent.py construct --no-llm
+```
+
+Agentic mode additionally requires `SOW_LLM_API_KEY` and `SOW_LLM_MODEL`; `SOW_LLM_BASE_URL` is supported for an OpenAI-compatible gateway.
+
+## Output
+
+Each run writes `proposals.json`, `proposal_report.md`, `candidate_pool.csv`, and `graph_trace.jsonl` under the selected `--output-dir`.
+
+## Theme Anchors
+
+Regenerate anchors only with a working embedding gateway:
+
+```bash
+uv run --project lab/poc-scripts --extra songset_constructor \
+  python -m poc.songset_constructor.regen_theme_anchors
+```
+
+The fixture must contain real 1536-dimensional `text-embedding-3-small` vectors.
+
+## Read-Only Guarantee
+
+The POC uses `ReadOnlyClient` and only issues bounded `SELECT` queries. It does not import `SongsetClient`, does not write `songsets` or `songset_items`, and does not run schema migrations.
