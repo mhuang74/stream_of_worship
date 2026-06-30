@@ -4,6 +4,8 @@ import pytest
 from sow_analysis.models import (
     AnalyzeJobRequest,
     AnalyzeOptions,
+    FastAnalyzeJobRequest,
+    FastAnalyzeOptions,
     JobResponse,
     JobResult,
     JobStatus,
@@ -188,3 +190,41 @@ class TestJobType:
         """Test enum values."""
         assert JobType.ANALYZE == "analyze"
         assert JobType.LRC == "lrc"
+        assert JobType.FAST_ANALYZE == "fast_analyze"
+
+
+class TestFastAnalyzeOptions:
+    """Test FastAnalyzeOptions model."""
+
+    def test_default_values(self):
+        opts = FastAnalyzeOptions()
+        assert opts.force is False
+        assert opts.sample_rate == 22050
+        assert opts.hop_length == 4096
+
+    def test_custom_values(self):
+        opts = FastAnalyzeOptions(force=True, sample_rate=44100, hop_length=512)
+        assert opts.force is True
+        assert opts.sample_rate == 44100
+        assert opts.hop_length == 512
+
+
+class TestFastAnalyzeJobRequest:
+    """Test FastAnalyzeJobRequest model."""
+
+    def test_required_fields(self):
+        req = FastAnalyzeJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123",
+        )
+        assert req.audio_url == "s3://bucket/hash/audio.mp3"
+        assert req.content_hash == "abc123"
+        assert req.options.force is False
+
+    def test_with_custom_options(self):
+        req = FastAnalyzeJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123",
+            options=FastAnalyzeOptions(force=True),
+        )
+        assert req.options.force is True

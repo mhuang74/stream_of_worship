@@ -57,6 +57,9 @@ class JobStore:
         # Check if we need to migrate from old schema (without 'forced_alignment' job type)
         await self._migrate_forced_alignment_type()
 
+        # Check if we need to migrate from old schema (without 'fast_analyze' job type)
+        await self._migrate_fast_analyze_type()
+
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -76,7 +79,7 @@ class JobStore:
                 content_hash    TEXT NOT NULL,
 
                 CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
-                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment'))
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -308,6 +311,76 @@ class JobStore:
             logger.error(f"Database migration for forced_alignment type failed: {e}")
             raise
 
+    async def _migrate_fast_analyze_type(self) -> None:
+        """Migrate old schema to support 'fast_analyze' job type."""
+        if not self._db:
+            return
+
+        try:
+            async with self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                async with self._db.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if not row:
+                        return
+
+                    schema = row[0]
+                    if "'fast_analyze'" in schema:
+                        return
+
+                    logger.warning(
+                        "Migrating database schema to support FAST_ANALYZE job type"
+                    )
+
+                    await self._db.executescript(
+                        """
+                        DROP TABLE IF EXISTS jobs_old;
+
+                        ALTER TABLE jobs RENAME TO jobs_old;
+
+                        CREATE TABLE jobs (
+                            id              TEXT PRIMARY KEY,
+                            type            TEXT NOT NULL,
+                            status          TEXT NOT NULL DEFAULT 'queued',
+                            progress        REAL NOT NULL DEFAULT 0.0,
+                            stage           TEXT NOT NULL DEFAULT '',
+                            error_message   TEXT,
+
+                            request_json    TEXT NOT NULL,
+                            result_json     TEXT,
+
+                            created_at      TEXT NOT NULL,
+                            updated_at      TEXT NOT NULL,
+
+                            content_hash    TEXT NOT NULL,
+
+                            CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
+                            CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
+                        );
+
+                        INSERT INTO jobs SELECT * FROM jobs_old;
+
+                        CREATE INDEX idx_jobs_status ON jobs(status);
+                        CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                        CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+
+                        DROP TABLE jobs_old;
+                        """
+                    )
+                    await self._db.commit()
+                    logger.info("Database migration for fast_analyze type complete")
+
+        except Exception as e:
+            logger.error(f"Database migration for fast_analyze type failed: {e}")
+            raise
+
     async def insert_job(self, job: Job) -> None:
         """Insert a new job record.
 
@@ -418,6 +491,10 @@ class JobStore:
             request = EmbeddingJobRequest.model_validate_json(request_json)
         elif job_type == JobType.FORCED_ALIGNMENT:
             request = ForcedAlignmentJobRequest.model_validate_json(request_json)
+        elif job_type == JobType.FAST_ANALYZE:
+            from ..models import FastAnalyzeJobRequest
+
+            request = FastAnalyzeJobRequest.model_validate_json(request_json)
         else:
             raise ValueError(f"Unknown job type: {job_type}")
 

@@ -26,6 +26,7 @@ class JobType(str, Enum):
     STEM_SEPARATION = "stem_separation"
     EMBEDDING = "embedding"
     FORCED_ALIGNMENT = "forced_alignment"
+    FAST_ANALYZE = "fast_analyze"
 
 
 class AnalyzeOptions(BaseModel):
@@ -42,6 +43,28 @@ class AnalyzeJobRequest(BaseModel):
     audio_url: str
     content_hash: str
     options: AnalyzeOptions = Field(default_factory=AnalyzeOptions)
+
+
+class FastAnalyzeOptions(BaseModel):
+    """Options for fast analysis jobs (librosa-only, no allin1/stems)."""
+
+    force: bool = False
+    sample_rate: int = 22050
+    hop_length: int = 4096
+
+
+class FastAnalyzeJobRequest(BaseModel):
+    """Request to submit a fast analysis job.
+
+    Produces only the fast-tier subset: duration_seconds, tempo_bpm,
+    musical_key, musical_mode, key_confidence, loudness_db.
+    Full-only fields (beats, downbeats, sections, embeddings_shape, stems_url)
+    are absent/None on the result.
+    """
+
+    audio_url: str
+    content_hash: str
+    options: FastAnalyzeOptions = Field(default_factory=FastAnalyzeOptions)
 
 
 class LrcOptions(BaseModel):
@@ -211,6 +234,7 @@ class Job:
         StemSeparationJobRequest,
         EmbeddingJobRequest,
         ForcedAlignmentJobRequest,
+        FastAnalyzeJobRequest,
     ]
     result: Optional[Union[JobResult, EmbeddingJobResult]] = None
     error_message: Optional[str] = None

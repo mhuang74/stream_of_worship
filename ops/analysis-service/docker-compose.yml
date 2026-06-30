@@ -50,6 +50,8 @@ x-common-env: &common-env
   # Forced Aligner Configuration (Qwen3ForcedAligner-0.6B, runs in-process)
   SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH:-Qwen/Qwen3-ForcedAligner-0.6B}
   SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
+  # Fast Analysis (librosa-only) Concurrency
+  SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
 
 # Define common GPU configuration using YAML anchor
 x-gpu-deploy: &gpu-deploy

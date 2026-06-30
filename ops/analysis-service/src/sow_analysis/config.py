@@ -28,6 +28,24 @@ class Settings(BaseSettings):
         1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
     )
 
+    # Fast analysis (librosa-only) concurrency. CPU/memory heavy; distinct from
+    # SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS. Default is cgroup-aware on Linux.
+    # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
+    SOW_FAST_ANALYZE_MAX_CONCURRENT: int = 0
+
+    @field_validator("SOW_FAST_ANALYZE_MAX_CONCURRENT")
+    @classmethod
+    def _validate_fast_analyze_concurrent(cls, v: int) -> int:
+        """Compute cgroup-aware default when not explicitly configured (<=0)."""
+        if v > 0:
+            return v
+        import os
+
+        try:
+            return min(4, max(1, len(os.sched_getaffinity(0)) // 2))
+        except (AttributeError, OSError):  # macOS / unsupported
+            return 1
+
     @field_validator("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS")
     @classmethod
     def _validate_concurrent_jobs(cls, v: int) -> int:

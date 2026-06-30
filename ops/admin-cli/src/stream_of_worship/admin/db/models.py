@@ -327,12 +327,30 @@ class Recording:
 
     @property
     def has_analysis(self) -> bool:
-        """Check if analysis is complete.
+        """Check if analysis is complete (fast or full).
+
+        Returns:
+            True if analysis_status is 'partial' or 'completed'.
+        """
+        return self.analysis_status in ("partial", "completed")
+
+    @property
+    def has_full_analysis(self) -> bool:
+        """Check if full analysis is complete.
 
         Returns:
             True if analysis_status is 'completed'.
         """
         return self.analysis_status == "completed"
+
+    @property
+    def has_fast_analysis(self) -> bool:
+        """Check if at least fast analysis is complete.
+
+        Returns:
+            True if analysis_status is 'partial' or 'completed'.
+        """
+        return self.analysis_status in ("partial", "completed")
 
     @property
     def has_lrc(self) -> bool:

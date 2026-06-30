@@ -152,5 +152,69 @@ class TestWhisperPhraseDataclass:
         assert phrases[1].text == "World"
 
 
+class TestFastAnalyzeCache:
+    """Tests for fast analysis result caching."""
+
+    def test_save_and_get_fast_analyze_result(self):
+        """Test saving and retrieving fast analysis result."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "a" * 64
+            result = {
+                "duration_seconds": 180.5,
+                "tempo_bpm": 120.0,
+                "musical_key": "C",
+                "musical_mode": "major",
+                "key_confidence": 0.85,
+                "loudness_db": -12.3,
+            }
+
+            assert cache_manager.get_fast_analyze_result(content_hash) is None
+
+            cache_file = cache_manager.save_fast_analyze_result(content_hash, result)
+            assert cache_file.exists()
+            assert cache_file.name.endswith("_fast.json")
+
+            cached = cache_manager.get_fast_analyze_result(content_hash)
+            assert cached is not None
+            assert cached["tempo_bpm"] == 120.0
+            assert cached["musical_key"] == "C"
+
+    def test_fast_cache_distinct_from_full(self):
+        """Fast cache must not overwrite the full-tier cache."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "b" * 64
+            full_result = {"tempo_bpm": 100.0, "beats": [1.0, 2.0]}
+            fast_result = {"tempo_bpm": 120.0}
+
+            cache_manager.save_analysis_result(content_hash, full_result)
+            cache_manager.save_fast_analyze_result(content_hash, fast_result)
+
+            full_cached = cache_manager.get_analysis_result(content_hash)
+            fast_cached = cache_manager.get_fast_analyze_result(content_hash)
+
+            assert full_cached["tempo_bpm"] == 100.0
+            assert fast_cached["tempo_bpm"] == 120.0
+
+    def test_fast_cache_corrupt_json_falls_back_to_miss(self):
+        """Corrupt fast cache JSON should be deleted and treated as a miss."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "c" * 64
+            hash_prefix = content_hash[:32]
+            cache_file = cache_dir / f"{hash_prefix}_fast.json"
+            cache_file.write_text("{invalid json")
+
+            assert cache_manager.get_fast_analyze_result(content_hash) is None
+            assert not cache_file.exists()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
