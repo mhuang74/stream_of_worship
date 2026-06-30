@@ -257,6 +257,73 @@ class AnalysisClient:
                 )
             raise AnalysisServiceError(f"Analysis submission failed: {e}")
 
+    def submit_fast_analysis(
+        self,
+        audio_url: str,
+        content_hash: str,
+        force: bool = False,
+        sample_rate: int = 22050,
+        hop_length: int = 4096,
+    ) -> JobInfo:
+        """Submit an audio file for fast analysis (librosa-only).
+
+        Produces only the fast-tier subset: duration, tempo, key, mode, key
+        confidence, loudness. Full-only fields (beats, downbeats, sections,
+        embeddings_shape, stems_url) will be None/absent on the result.
+
+        Args:
+            audio_url: R2 URL of the audio file
+            content_hash: SHA-256 hash of the audio content
+            force: Whether to force re-analysis (bypass cache)
+            sample_rate: Target sample rate for librosa
+            hop_length: Hop length for tempo estimation
+
+        Returns:
+            JobInfo for the submitted job
+
+        Raises:
+            AnalysisServiceError: If submission fails
+        """
+        payload = {
+            "audio_url": audio_url,
+            "content_hash": content_hash,
+            "options": {
+                "force": force,
+                "sample_rate": sample_rate,
+                "hop_length": hop_length,
+            },
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/fast-analyze",
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid API key", status_code=401
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_job_response(data)
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e.response, "status_code"):
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Fast analysis submission failed (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Fast analysis submission failed: {e}")
+
     def submit_lrc(
         self,
         audio_url: str,

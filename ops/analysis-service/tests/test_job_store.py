@@ -12,6 +12,8 @@ from sow_analysis.models import (
     AnalyzeOptions,
     EmbeddingJobRequest,
     EmbeddingJobResult,
+    FastAnalyzeJobRequest,
+    FastAnalyzeOptions,
     Job,
     JobStatus,
     JobType,
@@ -100,6 +102,54 @@ async def test_insert_and_get_analyze_job(job_store: JobStore) -> None:
     assert isinstance(retrieved.request, AnalyzeJobRequest)
     assert retrieved.request.audio_url == "s3://test-bucket/audio.mp3"
     assert retrieved.request.options.generate_stems
+
+
+@pytest.mark.asyncio
+async def test_insert_and_get_fast_analyze_job(job_store: JobStore) -> None:
+    """Test round-trip for fast_analyze job."""
+    request = FastAnalyzeJobRequest(
+        audio_url="s3://test-bucket/audio.mp3",
+        content_hash="fast123",
+        options=FastAnalyzeOptions(force=True, sample_rate=44100),
+    )
+
+    job = Job(
+        id="job_fast_test",
+        type=JobType.FAST_ANALYZE,
+        status=JobStatus.QUEUED,
+        request=request,
+    )
+
+    await job_store.insert_job(job)
+
+    retrieved = await job_store.get_job("job_fast_test")
+    assert retrieved is not None
+    assert retrieved.id == "job_fast_test"
+    assert retrieved.type == JobType.FAST_ANALYZE
+    assert retrieved.status == JobStatus.QUEUED
+    assert isinstance(retrieved.request, FastAnalyzeJobRequest)
+    assert retrieved.request.audio_url == "s3://test-bucket/audio.mp3"
+    assert retrieved.request.options.force is True
+    assert retrieved.request.options.sample_rate == 44100
+
+
+@pytest.mark.asyncio
+async def test_fast_analyze_migration_accepts_type(job_store: JobStore) -> None:
+    """Verify the CHECK constraint accepts 'fast_analyze' after initialize()."""
+    request = FastAnalyzeJobRequest(
+        audio_url="s3://test-bucket/audio.mp3",
+        content_hash="mig123",
+    )
+    job = Job(
+        id="job_mig_test",
+        type=JobType.FAST_ANALYZE,
+        status=JobStatus.QUEUED,
+        request=request,
+    )
+    await job_store.insert_job(job)
+    retrieved = await job_store.get_job("job_mig_test")
+    assert retrieved is not None
+    assert retrieved.type == JobType.FAST_ANALYZE
 
 
 @pytest.mark.asyncio

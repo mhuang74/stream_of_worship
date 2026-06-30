@@ -131,6 +131,34 @@ class TestJobsEndpoints:
 
         assert response.status_code == 401
 
+    def test_submit_fast_analysis_job(self, client, mock_job_queue):
+        """Test submitting fast analysis job."""
+        response = client.post(
+            "/api/v1/jobs/fast-analyze",
+            json={
+                "audio_url": "s3://bucket/hash/audio.mp3",
+                "content_hash": "abc123",
+            },
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job_abc123"
+        assert data["status"] == "queued"
+
+    def test_submit_fast_analysis_job_no_auth(self, client):
+        """Test submitting fast analysis without auth fails."""
+        response = client.post(
+            "/api/v1/jobs/fast-analyze",
+            json={
+                "audio_url": "s3://bucket/hash/audio.mp3",
+                "content_hash": "abc123",
+            },
+        )
+
+        assert response.status_code == 401
+
     def test_submit_analysis_job_wrong_auth(self, client):
         """Test submitting with wrong auth fails."""
         response = client.post(

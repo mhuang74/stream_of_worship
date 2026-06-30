@@ -10,6 +10,7 @@ from ..models import (
     AnalyzeJobRequest,
     EmbeddingJobRequest,
     EmbeddingJobResult,
+    FastAnalyzeJobRequest,
     ForcedAlignmentJobRequest,
     JobResponse,
     JobStatus,
@@ -163,6 +164,31 @@ async def submit_analysis_job(
         raise HTTPException(500, "Job queue not initialized")
 
     job = await job_queue.submit(JobType.ANALYZE, request)
+    return job_to_response(job)
+
+
+@router.post("/jobs/fast-analyze", response_model=JobResponse)
+async def submit_fast_analysis_job(
+    request: FastAnalyzeJobRequest,
+    api_key: str = Depends(verify_api_key),
+) -> JobResponse:
+    """Submit audio for fast analysis (librosa-only).
+
+    Produces only the fast-tier subset: duration, tempo, key, mode, key
+    confidence, loudness. Full-only fields (beats, sections, embeddings,
+    stems) are absent on the result.
+
+    Args:
+        request: Fast analysis job request
+        api_key: Validated API key
+
+    Returns:
+        Job response with status
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    job = await job_queue.submit(JobType.FAST_ANALYZE, request)
     return job_to_response(job)
 
 

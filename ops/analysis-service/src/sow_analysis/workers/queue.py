@@ -64,6 +64,7 @@ from ..models import (
     AnalyzeJobRequest,
     EmbeddingJobRequest,
     EmbeddingJobResult,
+    FastAnalyzeJobRequest,
     ForcedAlignmentJobRequest,
     Job,
     JobResult,
@@ -79,10 +80,11 @@ from ..storage.r2 import R2Client
 
 # Optional imports for heavy dependencies
 try:
-    from .analyzer import analyze_audio
+    from .analyzer import analyze_audio, analyze_audio_fast
     from .separator import separate_stems
 except ImportError:
     analyze_audio = None
+    analyze_audio_fast = None
     separate_stems = None
 
 # Optional LRC imports - require whisper and openai
@@ -165,6 +167,10 @@ class JobQueue:
         self._dashscope_asr_semaphore = asyncio.Semaphore(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)
         # Separate semaphore for embedding jobs (external API, no GPU needed)
         self._embedding_semaphore = asyncio.Semaphore(5)
+        # Separate semaphore for fast analysis (librosa-only, CPU/memory heavy).
+        # Distinct from _local_model_semaphore (allin1/demucs) so fast and full
+        # analysis do not coordinate; operator sizes both together.
+        self._fast_analyze_semaphore = asyncio.Semaphore(settings.SOW_FAST_ANALYZE_MAX_CONCURRENT)
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
@@ -265,6 +271,7 @@ class JobQueue:
             StemSeparationJobRequest,
             EmbeddingJobRequest,
             ForcedAlignmentJobRequest,
+            FastAnalyzeJobRequest,
         ],
     ) -> Job:
         """Submit a new job to the queue.
@@ -399,6 +406,11 @@ class JobQueue:
             # Forced alignment: semaphore acquired inside _process_forced_alignment_job()
             # only around the align() call, not the entire job (prevents deadlock with stem separation)
             await self._process_forced_alignment_job(job)
+        elif job.type == JobType.FAST_ANALYZE:
+            # Fast analysis (librosa-only) uses its own semaphore, distinct from
+            # _local_model_semaphore (allin1/demucs) so the two do not coordinate.
+            async with self._fast_analyze_semaphore:
+                await self._process_fast_analyze_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -580,6 +592,150 @@ class JobQueue:
             logger.error(f"Analysis job failed: {e}")
 
             # Persist failure to database
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", stage="error", error_message=str(e)
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+
+        finally:
+            job.updated_at = datetime.now(timezone.utc)
+
+    async def _process_fast_analyze_job(self, job: Job) -> None:
+        """Process a fast analysis job (librosa-only).
+
+        Produces only the fast-tier subset: duration_seconds, tempo_bpm,
+        musical_key, musical_mode, key_confidence, loudness_db. Does NOT
+        upload to R2 and does NOT touch the full-tier {hash_prefix}.json cache.
+
+        Args:
+            job: Job to process
+        """
+        set_job_id(job.id)
+        job_start_time = time.time()
+        logger.info(f"Starting fast analysis job for audio: {job.request.audio_url}")
+
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "downloading"
+        job.progress = 0.1
+
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="downloading", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        request = job.request
+        if not isinstance(request, FastAnalyzeJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for fast analysis job"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        # Check if fast analysis dependency is available
+        if analyze_audio_fast is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "Fast analysis dependency not available (librosa)"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="Fast analysis dependency not available (librosa)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        try:
+            # Validate R2 client configuration before attempting audio fetch
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+
+            if not self.r2_client:
+                raise RuntimeError(
+                    "R2 client not configured; cannot download audio for fast analysis"
+                )
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                audio_path = temp_path / "audio.mp3"
+
+                logger.info("Downloading audio from R2 for fast analysis...")
+                download_start = time.time()
+                await self.r2_client.download_audio(request.audio_url, audio_path)
+                download_elapsed = time.time() - download_start
+                logger.info(f"Audio download completed in {download_elapsed:.2f}s")
+
+                # Guard for truncated downloads
+                if not audio_path.exists() or audio_path.stat().st_size == 0:
+                    raise RuntimeError("Downloaded audio file is missing or empty")
+
+                job.stage = "analyzing"
+                job.progress = 0.3
+                try:
+                    await self.job_store.update_job(
+                        job.id, stage="analyzing", progress=0.3
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
+                analysis_result = await analyze_audio_fast(
+                    audio_path,
+                    self.cache_manager,
+                    request.content_hash,
+                    sample_rate=request.options.sample_rate,
+                    hop_length=request.options.hop_length,
+                    force=request.options.force,
+                )
+
+                # Build job result (fast subset only; full-only fields stay None)
+                job.result = JobResult(
+                    duration_seconds=analysis_result.get("duration_seconds"),
+                    tempo_bpm=analysis_result.get("tempo_bpm"),
+                    musical_key=analysis_result.get("musical_key"),
+                    musical_mode=analysis_result.get("musical_mode"),
+                    key_confidence=analysis_result.get("key_confidence"),
+                    loudness_db=analysis_result.get("loudness_db"),
+                )
+
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+
+                total_elapsed = time.time() - job_start_time
+                logger.info(f"Fast analysis job completed in {total_elapsed:.2f}s")
+
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="completed",
+                        progress=1.0,
+                        stage="complete",
+                        result_json=job.result.model_dump_json() if job.result else None,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "error"
+            logger.error(f"Fast analysis job failed: {e}")
+
             try:
                 await self.job_store.update_job(
                     job.id, status="failed", stage="error", error_message=str(e)
@@ -1794,6 +1950,7 @@ class JobQueue:
             JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
             JobType.EMBEDDING: {status: 0 for status in JobStatus},
             JobType.FORCED_ALIGNMENT: {status: 0 for status in JobStatus},
+            JobType.FAST_ANALYZE: {status: 0 for status in JobStatus},
         }
 
         # Track wait times for queued and processing jobs
@@ -1802,12 +1959,14 @@ class JobQueue:
             JobType.LRC: [],
             JobType.STEM_SEPARATION: [],
             JobType.FORCED_ALIGNMENT: [],
+            JobType.FAST_ANALYZE: [],
         }
         processing_durations: Dict[JobType, list] = {
             JobType.ANALYZE: [],
             JobType.LRC: [],
             JobType.STEM_SEPARATION: [],
             JobType.FORCED_ALIGNMENT: [],
+            JobType.FAST_ANALYZE: [],
         }
 
         has_reportable_jobs = False
@@ -1836,6 +1995,7 @@ class JobQueue:
         lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]}"
         stem_stats = f"queued:{stats[JobType.STEM_SEPARATION][JobStatus.QUEUED]},processing:{stats[JobType.STEM_SEPARATION][JobStatus.PROCESSING]},completed:{stats[JobType.STEM_SEPARATION][JobStatus.COMPLETED]},failed:{stats[JobType.STEM_SEPARATION][JobStatus.FAILED]}"
         fa_stats = f"queued:{stats[JobType.FORCED_ALIGNMENT][JobStatus.QUEUED]},processing:{stats[JobType.FORCED_ALIGNMENT][JobStatus.PROCESSING]},completed:{stats[JobType.FORCED_ALIGNMENT][JobStatus.COMPLETED]},failed:{stats[JobType.FORCED_ALIGNMENT][JobStatus.FAILED]}"
+        fast_stats = f"queued:{stats[JobType.FAST_ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.FAST_ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.FAST_ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.FAST_ANALYZE][JobStatus.FAILED]}"
 
         wait_time_str = ""
         if queued_wait_times[JobType.ANALYZE]:
@@ -1858,6 +2018,11 @@ class JobQueue:
             if len(queued_wait_times[JobType.FORCED_ALIGNMENT]) > 3:
                 waits += f",...+{len(queued_wait_times[JobType.FORCED_ALIGNMENT]) - 3}more"
             wait_time_str += f" FA queued=[{waits}]"
+        if queued_wait_times[JobType.FAST_ANALYZE]:
+            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.FAST_ANALYZE][:3])
+            if len(queued_wait_times[JobType.FAST_ANALYZE]) > 3:
+                waits += f",...+{len(queued_wait_times[JobType.FAST_ANALYZE]) - 3}more"
+            wait_time_str += f" FAST queued=[{waits}]"
         if processing_durations[JobType.ANALYZE]:
             avg_dur = sum(processing_durations[JobType.ANALYZE]) / len(
                 processing_durations[JobType.ANALYZE]
@@ -1878,9 +2043,14 @@ class JobQueue:
                 processing_durations[JobType.FORCED_ALIGNMENT]
             )
             wait_time_str += f" FA processing={avg_dur:.0f}s"
+        if processing_durations[JobType.FAST_ANALYZE]:
+            avg_dur = sum(processing_durations[JobType.FAST_ANALYZE]) / len(
+                processing_durations[JobType.FAST_ANALYZE]
+            )
+            wait_time_str += f" FAST processing={avg_dur:.0f}s"
 
         logger.info(
-            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] STEM[{stem_stats}] FA[{fa_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
+            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] STEM[{stem_stats}] FA[{fa_stats}] FAST[{fast_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
         )
 
     async def _periodic_logging_loop(self) -> None:

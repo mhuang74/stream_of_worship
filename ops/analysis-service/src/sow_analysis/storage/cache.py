@@ -1,7 +1,9 @@
 """Local disk cache for analysis results."""
 
 import json
+import os
 import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -74,6 +76,61 @@ class CacheManager:
         cache_file = self.cache_dir / f"{hash_prefix}.json"
 
         cache_file.write_text(json.dumps(result, indent=2))
+        return cache_file
+
+    def get_fast_analyze_result(self, content_hash: str) -> Optional[dict]:
+        """Check if fast analysis result exists in cache.
+
+        Distinct from the full-tier {hash_prefix}.json cache. Fast results are
+        stored as {hash_prefix}_fast.json and never overwrite the full cache.
+
+        Args:
+            content_hash: Full SHA-256 content hash
+
+        Returns:
+            Cached fast result dict or None (also None on corrupt JSON)
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        cache_file = self.cache_dir / f"{hash_prefix}_fast.json"
+
+        if cache_file.exists():
+            try:
+                return json.loads(cache_file.read_text())
+            except (json.JSONDecodeError, IOError):
+                # Corrupt cache: delete and treat as miss
+                try:
+                    cache_file.unlink()
+                except OSError:
+                    pass
+                return None
+        return None
+
+    def save_fast_analyze_result(self, content_hash: str, result: dict) -> Path:
+        """Save fast analysis result to cache atomically.
+
+        Uses a NamedTemporaryFile in the same directory followed by os.replace
+        so a mid-write reader sees either the old or new file, never a partial.
+
+        Args:
+            content_hash: Full SHA-256 content hash
+            result: Fast analysis result dictionary
+
+        Returns:
+            Path to saved cache file
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        cache_file = self.cache_dir / f"{hash_prefix}_fast.json"
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=str(cache_file.parent),
+            prefix=f".{cache_file.stem}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp.write(json.dumps(result, indent=2))
+            tmp_path = Path(tmp.name)
+        os.replace(str(tmp_path), str(cache_file))
         return cache_file
 
     def save_stems(self, content_hash: str, source_stems_dir: Path) -> Path:

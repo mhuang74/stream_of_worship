@@ -13,9 +13,9 @@ import tempfile
 import termios
 import time
 import tty
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 import typer
 from botocore.exceptions import ClientError
@@ -4226,10 +4226,20 @@ def batch(
     ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (pipe-friendly)"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
-    skip_download: bool = typer.Option(
-        False, "--skip-download", help="Skip download step (assume audio already on R2)"
+    download: bool = typer.Option(False, "--download", help="Run the download step"),
+    lrc: bool = typer.Option(False, "--lrc", help="Run the LRC step"),
+    analyze: bool = typer.Option(False, "--analyze", help="Run the analysis step"),
+    embedding: bool = typer.Option(False, "--embedding", help="Run the embedding step"),
+    all_steps: bool = typer.Option(False, "--all-steps", help="Run all steps in order"),
+    analysis_tier: str = typer.Option(
+        "fast", "--analysis-tier", help="Analysis tier: fast (default) or full"
     ),
-    skip_lrc: bool = typer.Option(False, "--skip-lrc", help="Skip LRC step"),
+    force: bool = typer.Option(
+        False, "--force", help="Force re-run of a single step (requires exactly one step flag)"
+    ),
+    resume: Optional[Path] = typer.Option(
+        None, "--resume", help="Resume from a manifest file (skip submission, only re-poll)"
+    ),
     stale_after: int = typer.Option(
         120,
         "--stale-after",
@@ -4238,23 +4248,20 @@ def batch(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be processed without executing"
     ),
-    force_lrc: bool = typer.Option(
-        False,
-        "--force-lrc",
-        help="Force re-generate LRC from scratch (skip R2 check and existing job reuse)",
-    ),
     format: str = typer.Option("rich", "--format", help="Output format (rich, json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Batch process songs: download audio and generate LRC.
+    """Batch process songs: download audio, generate LRC, analyze, and embed.
 
-    Processes multiple songs end-to-end: downloads audio (if needed),
-    submits LRC jobs, polls for completion, and prints summary stats.
-    Uses submit-all-then-poll with hybrid polling (service-first, R2-fallback).
+    Each phase is gated strictly by its step flag: --download, --lrc,
+    --analyze, --embedding, or --all-steps. No phase runs as a side effect
+    of another.
 
     Examples:
-        sow-admin audio batch --album "敬拜精选"
-        sow-admin audio list --lrc-status failed --format ids | sow-admin audio batch --stdin
+        sow-admin audio batch --analysis-status incomplete --analyze \\
+            --analysis-tier fast --limit 500
+        sow-admin audio batch --all-steps
+        sow-admin audio batch --resume ~/.local/share/sow-admin/batch/2026-06-30T0215_manifest.json
     """
     # Validate format
     if format not in ("rich", "json"):
@@ -4276,12 +4283,102 @@ def batch(
         )
         raise typer.Exit(1)
 
-    valid_analysis_statuses = {"pending", "processing", "completed", "failed", "incomplete"}
+    valid_analysis_statuses = {
+        "pending",
+        "processing",
+        "partial",
+        "completed",
+        "failed",
+        "incomplete",
+    }
     if analysis_status and analysis_status not in valid_analysis_statuses:
         console.print(
-            f"[red]Invalid analysis status: {analysis_status}. Must be one of: {', '.join(valid_analysis_statuses)}[/red]"
+            f"[red]Invalid analysis status: {analysis_status}. Must be one of: "
+            f"{', '.join(sorted(valid_analysis_statuses))}[/red]"
         )
         raise typer.Exit(1)
+
+    # Validate analysis tier
+    if analysis_tier not in ("fast", "full"):
+        console.print(
+            f"[red]Invalid analysis tier: {analysis_tier}. Must be 'fast' or 'full'[/red]"
+        )
+        raise typer.Exit(1)
+
+    # --resume mutual exclusivity
+    if resume is not None:
+        resume_conflicts = [
+            ("--album", album),
+            ("--song", song),
+            ("--lrc-status", lrc_status),
+            ("--download-status", download_status),
+            ("--analysis-status", analysis_status),
+            ("--stdin", stdin),
+            ("--limit", limit),
+            ("--download", download),
+            ("--lrc", lrc),
+            ("--analyze", analyze),
+            ("--embedding", embedding),
+            ("--all-steps", all_steps),
+            ("--force", force),
+        ]
+        for flag_name, flag_val in resume_conflicts:
+            if flag_val:
+                console.print(
+                    f"[red]--resume is mutually exclusive with {flag_name}.[/red]"
+                )
+                raise typer.Exit(1)
+
+    # Resolve selected steps
+    step_flags = {
+        "download": download,
+        "lrc": lrc,
+        "analyze": analyze,
+        "embedding": embedding,
+    }
+    selected_steps: List[str] = [s for s, v in step_flags.items() if v]
+
+    if all_steps:
+        selected_steps = ["download", "lrc", "analyze", "embedding"]
+    elif not selected_steps and resume is None:
+        console.print(
+            "[red]No step flags selected. Specify at least one of "
+            "--download, --lrc, --analyze, --embedding, or --all-steps.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Force scoping
+    if force:
+        if all_steps:
+            console.print(
+                "[red]--force with --all-steps is not supported. Cascading overrides "
+                "across download/LRC/analysis/embedding are unsafe; specify exactly "
+                "one step flag alongside --force.[/red]"
+            )
+            raise typer.Exit(1)
+        if len(selected_steps) != 1:
+            console.print(
+                "[red]--force requires exactly one step flag "
+                "(--download, --lrc, --analyze, or --embedding).[/red]"
+            )
+            raise typer.Exit(1)
+        if "download" in selected_steps:
+            console.print(
+                "[red]--force --download is not supported. Re-download changes "
+                "content_hash/hash_prefix and orphans downstream R2 artifacts. "
+                "Use the two-step soft-delete + purge workflow:[/red]\n"
+                "  sow-admin audio delete --recording --hash-prefix <old>\n"
+                "  sow-admin maintenance purge-soft-deletes --entity recordings "
+                "--hash-prefix <old> --confirm\n"
+                "  sow-admin audio batch --song <song_id> --download"
+            )
+            raise typer.Exit(1)
+
+    # Warn if analysis tier given without analyze step
+    if analysis_tier and "analyze" not in selected_steps and resume is None:
+        console.print(
+            f"[yellow]--analysis-tier {analysis_tier} ignored (no --analyze step selected).[/yellow]"
+        )
 
     # Load config
     try:
@@ -4292,7 +4389,42 @@ def batch(
 
     db_client = get_db_client(config)
 
-    # Resolve song IDs to process
+    # --resume path: skip selection, re-poll manifest
+    if resume is not None:
+        manifest_data = _load_manifest(resume)
+        if manifest_data is None:
+            console.print(f"[red]Could not read manifest: {resume}[/red]")
+            raise typer.Exit(1)
+
+        try:
+            r2_client = R2Client(
+                bucket=config.r2_bucket,
+                endpoint_url=config.r2_endpoint_url,
+                region=config.r2_region,
+            )
+        except ValueError as e:
+            console.print(f"[red]R2 configuration error: {e}[/red]")
+            raise typer.Exit(1)
+
+        try:
+            analysis_client = AnalysisClient(config.analysis_url)
+        except ValueError as e:
+            console.print(f"[red]Analysis service not configured: {e}[/red]")
+            raise typer.Exit(1)
+
+        results = _resume_from_manifest(
+            manifest_data=manifest_data,
+            manifest_path=resume,
+            db_client=db_client,
+            r2_client=r2_client,
+            analysis_client=analysis_client,
+            stale_after_minutes=stale_after,
+            console=console,
+        )
+        _print_stats(results, db_client, console, format)
+        return
+
+    # Normal path: resolve song IDs
     song_ids = _resolve_song_ids(
         db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
     )
@@ -4301,7 +4433,14 @@ def batch(
         raise typer.Exit(0)
 
     if dry_run:
-        _print_dry_run(db_client, song_ids)
+        _print_dry_run_v4(
+            db_client,
+            song_ids,
+            selected_steps,
+            force,
+            analysis_tier,
+            stale_after,
+        )
         return
 
     # Initialize R2 and Analysis clients
@@ -4327,15 +4466,24 @@ def batch(
         r2_client=r2_client,
         analysis_client=analysis_client,
         song_ids=song_ids,
-        skip_download=skip_download,
-        skip_lrc=skip_lrc,
-        force_lrc=force_lrc,
+        selected_steps=selected_steps,
+        force=force,
+        analysis_tier=analysis_tier,
         stale_after_minutes=stale_after,
         console=console,
     )
 
     # Print final stats
     _print_stats(results, db_client, console, format)
+
+    # Exit nonzero if any selected step has a failure
+    failed_any = any(
+        results.get(sid, {}).get(step) == "failed"
+        for sid in song_ids
+        for step in selected_steps
+    )
+    if failed_any:
+        raise typer.Exit(1)
 
 
 def _resolve_song_ids(
@@ -4375,6 +4523,7 @@ def _resolve_song_ids(
         status=analysis_status,
         lrc_status=lrc_status,
         limit=None,
+        sort_by="created",
     )
 
     for recording, song_title, album_name, album_series in rows:
@@ -4436,6 +4585,54 @@ def _print_dry_run(db_client: DatabaseClient, song_ids: list[str]) -> None:
             console.print(f"  [red]•[/red] {song_id} (song not found)")
 
     console.print(f"\n[dim]Total: {len(song_ids)} song(s)[/dim]")
+
+
+def _print_dry_run_v4(
+    db_client: DatabaseClient,
+    song_ids: list[str],
+    selected_steps: List[str],
+    force: bool,
+    analysis_tier: str,
+    stale_after: int,
+) -> None:
+    """Print dry run information for the v4 batch command.
+
+    Args:
+        db_client: Database client
+        song_ids: List of song IDs to show
+        selected_steps: Steps that will run
+        force: Whether force is set
+        analysis_tier: fast or full
+        stale_after: Staleness threshold in minutes
+    """
+    batch_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M") + "_batch"
+    console.print("[cyan]Dry run mode[/cyan]")
+    console.print()
+    console.print(f"[dim]Batch ID:[/dim] {batch_id}")
+    console.print(f"[dim]Selected steps:[/dim] {', '.join(selected_steps)}")
+    console.print(f"[dim]Force:[/dim] {force}")
+    if "analyze" in selected_steps:
+        console.print(f"[dim]Analysis tier:[/dim] {analysis_tier}")
+    console.print(f"[dim]Stale after:[/dim] {stale_after} minutes")
+    console.print(f"[dim]Ordering:[/dim] recordings.created_at ASC, hash_prefix ASC")
+    console.print(f"[dim]Count:[/dim] {len(song_ids)} song(s)")
+    console.print()
+
+    for song_id in song_ids:
+        song = db_client.get_song(song_id)
+        recording = db_client.get_recording_by_song_id(song_id)
+
+        if song and recording:
+            console.print(f"  [cyan]•[/cyan] {song.title} ({recording.hash_prefix})")
+            console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
+            console.print(f"    [dim]Download:[/dim] {recording.download_status}")
+            console.print(f"    [dim]LRC:[/dim] {recording.lrc_status}")
+            console.print(f"    [dim]Analysis:[/dim] {recording.analysis_status}")
+        elif song:
+            console.print(f"  [yellow]•[/yellow] {song.title} (no recording - will download)")
+            console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
+        else:
+            console.print(f"  [red]•[/red] {song_id} (song not found)")
 
 
 import re
@@ -4663,227 +4860,555 @@ def _download_if_needed(
         return {"download": "failed", "error": str(e)}
 
 
+def _get_manifest_dir() -> Path:
+    """Get the manifest directory (XDG-aware, overridable via env)."""
+    env_dir = os.environ.get("SOW_BATCH_MANIFEST_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return Path.home() / ".local" / "share" / "sow-admin" / "batch"
+
+
+def _write_manifest(
+    batch_id: str,
+    results: dict,
+    manifest_dir: Path,
+    selected_steps: List[str],
+    analysis_tier: str,
+    stale_after_minutes: int,
+    started_at: str,
+    manifest_entries: List[dict],
+) -> Optional[Path]:
+    """Write (or rewrite) the batch manifest to disk.
+
+    Args:
+        batch_id: Batch identifier
+        results: In-memory results dict
+        manifest_dir: Directory for manifest files
+        selected_steps: Steps selected for this batch
+        analysis_tier: fast or full
+        stale_after_minutes: Staleness threshold
+        started_at: ISO timestamp of batch start
+        manifest_entries: Per-(song_id, step, tier) manifest rows
+
+    Returns:
+        Path to the manifest file, or None on failure
+    """
+    try:
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = manifest_dir / f"{batch_id}_manifest.json"
+        manifest = {
+            "batch_id": batch_id,
+            "started_at": started_at,
+            "selected_steps": selected_steps,
+            "analysis_tier": analysis_tier,
+            "stale_after_minutes": stale_after_minutes,
+            "songs": manifest_entries,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+        return manifest_path
+    except OSError as e:
+        logger.warning(f"Failed to write manifest: {e}")
+        return None
+
+
+def _load_manifest(manifest_path: Path) -> Optional[dict]:
+    """Load a manifest from disk.
+
+    Args:
+        manifest_path: Path to the manifest file
+
+    Returns:
+        Parsed manifest dict, or None on failure
+    """
+    try:
+        return json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load manifest {manifest_path}: {e}")
+        return None
+
+
 def _process_batch(
     db_client: DatabaseClient,
     r2_client: R2Client,
     analysis_client: AnalysisClient,
     song_ids: list[str],
-    skip_download: bool,
-    skip_lrc: bool,
-    force_lrc: bool,
+    selected_steps: List[str],
+    force: bool,
+    analysis_tier: str,
     stale_after_minutes: int,
     console: Console,
 ) -> dict:
-    """Process all songs in batch.
+    """Process all songs in batch with strictly gated phases.
+
+    Each phase runs only if its step is in selected_steps. No phase runs as
+    a side effect of another. Phases run sequentially: download → LRC →
+    analysis → embedding.
 
     Args:
         db_client: Database client
         r2_client: R2 client
         analysis_client: Analysis service client
         song_ids: List of song IDs to process
-        skip_download: Skip download step
-        skip_lrc: Skip LRC step
-        force_lrc: Force re-generate LRC (skip R2 check and existing job reuse)
+        selected_steps: Steps to run (download/lrc/analyze/embedding)
+        force: Force re-run of the single selected step
+        analysis_tier: fast or full
         stale_after_minutes: Staleness threshold for processing jobs
         console: Rich console
 
     Returns:
         Dict with results for each song
     """
-    results = {}
+    results: Dict[str, dict] = {sid: {} for sid in song_ids}
 
-    # Phase 1: Download (if needed)
-    if not skip_download:
-        console.print("[cyan]Phase 1: Downloading audio[/cyan]")
-        downloaded_count = 0
-        skipped_count = 0
-        failed_count = 0
+    batch_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M") + "_batch"
+    started_at = datetime.now(timezone.utc).isoformat()
+    manifest_dir = _get_manifest_dir()
+    manifest_entries: List[dict] = []
 
-        for i, song_id in enumerate(song_ids, 1):
-            console.print(f"[{i}/{len(song_ids)}] {song_id}...")
+    def _flush_manifest() -> Optional[Path]:
+        return _write_manifest(
+            batch_id,
+            results,
+            manifest_dir,
+            selected_steps,
+            analysis_tier,
+            stale_after_minutes,
+            started_at,
+            manifest_entries,
+        )
 
-            recording = db_client.get_recording_by_song_id(song_id)
-            if not recording:
-                song = db_client.get_song(song_id)
-                if not song:
-                    console.print("  [red]✗ Song not found in database[/red]")
-                    results[song_id] = {
-                        "download": "failed",
-                        "error": "Song not found",
-                    }
-                    failed_count += 1
-                    continue
+    def _add_manifest_entry(
+        song_id: str,
+        hash_prefix: str,
+        step: str,
+        tier: str,
+        job_id: Optional[str],
+        status: str,
+        attempts: int = 1,
+        previous_job_id: Optional[str] = None,
+        error_class: Optional[str] = None,
+        error_message: Optional[str] = None,
+        submitted_at: Optional[str] = None,
+        completed_at: Optional[str] = None,
+    ) -> None:
+        entry = {
+            "song_id": song_id,
+            "hash_prefix": hash_prefix,
+            "step": step,
+            "tier": tier,
+            "job_id": job_id,
+            "status": status,
+            "attempts": attempts,
+            "previous_job_id": previous_job_id,
+            "error_class": error_class,
+            "error_message": error_message,
+            "submitted_at": submitted_at,
+            "completed_at": completed_at,
+        }
+        # Dedup by (song_id, step, tier): overwrite prior entry
+        for i, existing in enumerate(manifest_entries):
+            if (
+                existing["song_id"] == song_id
+                and existing["step"] == step
+                and existing["tier"] == tier
+            ):
+                manifest_entries[i] = entry
+                return
+        manifest_entries.append(entry)
 
-                recording, error = _download_and_create_recording(
-                    song_id, song, db_client, r2_client, console
-                )
+    try:
+        # Phase 1: Download
+        if "download" in selected_steps:
+            console.print("[cyan]Phase 1: Downloading audio[/cyan]")
+            downloaded_count = 0
+            skipped_count = 0
+            failed_count = 0
+
+            for i, song_id in enumerate(song_ids, 1):
+                console.print(f"[{i}/{len(song_ids)}] {song_id}...")
+
+                recording = db_client.get_recording_by_song_id(song_id)
                 if not recording:
-                    results[song_id] = {
-                        "download": "failed",
-                        "error": error,
-                    }
-                    failed_count += 1
-                    continue
+                    song = db_client.get_song(song_id)
+                    if not song:
+                        console.print("  [red]✗ Song not found in database[/red]")
+                        results[song_id]["download"] = "failed"
+                        results[song_id]["error"] = "Song not found"
+                        failed_count += 1
+                        continue
 
-                results[song_id] = {"download": "completed"}
-                downloaded_count += 1
-                continue
-
-            result = _download_if_needed(song_id, recording, db_client, r2_client, console)
-            results[song_id] = result
-
-            if result["download"] == "completed":
-                downloaded_count += 1
-            elif result["download"] == "skipped_r2":
-                skip_reason = result.get("skip_reason", "audio on R2")
-                console.print(f"  [yellow]→ skipped: {skip_reason}[/yellow]")
-                skipped_count += 1
-            else:
-                failed_count += 1
-
-        console.print(f"  [green]Downloaded: {downloaded_count}[/green]")
-        console.print(f"  [dim]Skipped: {skipped_count}[/dim]")
-        console.print(f"  [red]Failed: {failed_count}[/red]")
-        console.print()
-
-    # Phase 2: Submit LRC jobs
-    active_jobs = {}  # song_id -> job_id
-    if not skip_lrc:
-        console.print("[cyan]Phase 2: Submitting LRC jobs[/cyan]")
-
-        for song_id in song_ids:
-            # Skip if download failed
-            if results.get(song_id, {}).get("download") == "failed":
-                console.print(f"  [yellow]→ {song_id} (skipped: download failed)[/yellow]")
-                continue
-
-            # Skip if LRC already completed (from previous run or R2 check)
-            if results.get(song_id, {}).get("lrc") == "completed":
-                console.print(f"  [yellow]→ {song_id} (skipped: LRC completed)[/yellow]")
-                continue
-
-            recording = db_client.get_recording_by_song_id(song_id)
-            if not recording:
-                console.print(f"  [yellow]→ {song_id} (skipped: no recording)[/yellow]")
-                continue
-
-            # Get song for lyrics
-            song = db_client.get_song(song_id)
-            if not song or not song.lyrics_raw:
-                console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
-                continue
-
-            # Check if R2 already has LRC (skip when force_lrc)
-            if not force_lrc:
-                lrc_url = r2_client.lrc_exists(recording.hash_prefix)
-                if lrc_url:
-                    db_client.update_recording_lrc(
-                        recording.hash_prefix,
-                        lrc_url,
-                        visibility_status="review",
+                    recording, error = _download_and_create_recording(
+                        song_id, song, db_client, r2_client, console
                     )
-                    results[song_id] = results.get(song_id, {})
-                    results[song_id]["lrc"] = "completed"
-                    results[song_id]["lrc_source"] = "r2_preexisting"
-                    console.print(f"  [yellow]→ {song_id} (skipped: LRC on R2)[/yellow]")
+                    if not recording:
+                        results[song_id]["download"] = "failed"
+                        results[song_id]["error"] = error
+                        failed_count += 1
+                        continue
+
+                    results[song_id]["download"] = "completed"
+                    downloaded_count += 1
                     continue
 
-            # Check for existing processing job (not stale) - skip when force_lrc
-            if not force_lrc and recording.lrc_status == "processing" and recording.lrc_job_id:
-                from datetime import datetime, timezone, timedelta
+                result = _download_if_needed(song_id, recording, db_client, r2_client, console)
+                results[song_id].update(result)
 
-                updated_at = (
-                    datetime.fromisoformat(recording.updated_at) if recording.updated_at else None
+                if result["download"] == "completed":
+                    downloaded_count += 1
+                elif result["download"] == "skipped_r2":
+                    skip_reason = result.get("skip_reason", "audio on R2")
+                    console.print(f"  [yellow]→ skipped: {skip_reason}[/yellow]")
+                    skipped_count += 1
+                else:
+                    failed_count += 1
+
+            console.print(f"  [green]Downloaded: {downloaded_count}[/green]")
+            console.print(f"  [dim]Skipped: {skipped_count}[/dim]")
+            console.print(f"  [red]Failed: {failed_count}[/red]")
+            console.print()
+            _flush_manifest()
+
+        # Phase 2: LRC submit + poll
+        if "lrc" in selected_steps:
+            console.print("[cyan]Phase 2: Submitting LRC jobs[/cyan]")
+            active_lrc_jobs: Dict[str, str] = {}  # song_id -> job_id
+
+            for song_id in song_ids:
+                if results.get(song_id, {}).get("download") == "failed":
+                    console.print(f"  [yellow]→ {song_id} (skipped: download failed)[/yellow]")
+                    continue
+
+                if results.get(song_id, {}).get("lrc") == "completed":
+                    console.print(f"  [yellow]→ {song_id} (skipped: LRC completed)[/yellow]")
+                    continue
+
+                recording = db_client.get_recording_by_song_id(song_id)
+                if not recording:
+                    console.print(f"  [yellow]→ {song_id} (skipped: no recording)[/yellow]")
+                    continue
+
+                song = db_client.get_song(song_id)
+                if not song or not song.lyrics_raw:
+                    console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
+                    continue
+
+                # Check R2 (skip when force)
+                if not force:
+                    lrc_url = r2_client.lrc_exists(recording.hash_prefix)
+                    if lrc_url:
+                        db_client.update_recording_lrc(
+                            recording.hash_prefix,
+                            lrc_url,
+                            visibility_status="review",
+                        )
+                        results[song_id]["lrc"] = "completed"
+                        results[song_id]["lrc_source"] = "r2_preexisting"
+                        console.print(f"  [yellow]→ {song_id} (skipped: LRC on R2)[/yellow]")
+                        continue
+
+                # Reuse non-stale processing job (skip when force)
+                if not force and recording.lrc_status == "processing" and recording.lrc_job_id:
+                    updated_at = (
+                        datetime.fromisoformat(recording.updated_at)
+                        if recording.updated_at
+                        else None
+                    )
+                    if updated_at:
+                        if updated_at.tzinfo is None:
+                            updated_at = updated_at.replace(tzinfo=timezone.utc)
+                        staleness = datetime.now(timezone.utc) - updated_at
+                        if staleness < timedelta(minutes=stale_after_minutes):
+                            active_lrc_jobs[song_id] = recording.lrc_job_id
+                            console.print(
+                                f"  [yellow]→ {song_id} (reusing job: {recording.lrc_job_id})[/yellow]"
+                            )
+                            continue
+
+                # Submit new job
+                try:
+                    youtube_url = recording.youtube_url or ""
+                    job = analysis_client.submit_lrc(
+                        audio_url=recording.r2_audio_url,
+                        content_hash=recording.content_hash,
+                        lyrics_text=song.lyrics_raw,
+                        song_title=song.title,
+                        whisper_model="large-v3",
+                        language="auto",
+                        use_vocals_stem=True,
+                        force=force,
+                        force_whisper=False,
+                        youtube_url=youtube_url,
+                        use_qwen3_asr=True,
+                        force_qwen3_asr=False,
+                    )
+
+                    db_client.update_recording_status(
+                        hash_prefix=recording.hash_prefix,
+                        lrc_status="processing",
+                        lrc_job_id=job.job_id,
+                    )
+
+                    active_lrc_jobs[song_id] = job.job_id
+                    _add_manifest_entry(
+                        song_id,
+                        recording.hash_prefix,
+                        "lrc",
+                        "lrc",
+                        job.job_id,
+                        "submitted",
+                        submitted_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                    console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+
+                except AnalysisServiceError as e:
+                    console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+                    results[song_id]["lrc"] = "failed"
+                    results[song_id]["lrc_error"] = str(e)
+                    _add_manifest_entry(
+                        song_id,
+                        recording.hash_prefix if recording else "",
+                        "lrc",
+                        "lrc",
+                        None,
+                        "failed",
+                        error_class=type(e).__name__,
+                        error_message=str(e),
+                    )
+
+            console.print(f"  Submitted: {len(active_lrc_jobs)} job(s)")
+            console.print()
+            _flush_manifest()
+
+            # Poll LRC jobs
+            if active_lrc_jobs:
+                console.print("[cyan]Phase 2: Polling LRC jobs[/cyan]")
+                _poll_all_jobs(
+                    active_jobs=active_lrc_jobs,
+                    results=results,
+                    db_client=db_client,
+                    analysis_client=analysis_client,
+                    r2_client=r2_client,
+                    force_lrc=force,
+                    stale_after_minutes=stale_after_minutes,
+                    console=console,
+                    manifest_entries=manifest_entries,
+                    _add_manifest_entry=_add_manifest_entry,
                 )
-                if updated_at:
-                    if updated_at.tzinfo is None:
-                        updated_at = updated_at.replace(tzinfo=timezone.utc)
-                    staleness = datetime.now(timezone.utc) - updated_at
-                    if staleness < timedelta(minutes=stale_after_minutes):
-                        active_jobs[song_id] = recording.lrc_job_id
+                _flush_manifest()
+
+        # Phase 3: Analysis submit + poll
+        if "analyze" in selected_steps:
+            console.print(f"[cyan]Phase 3: Submitting analysis jobs (tier: {analysis_tier})[/cyan]")
+            active_analysis_jobs: Dict[str, str] = {}  # song_id -> job_id
+
+            for song_id in song_ids:
+                if results.get(song_id, {}).get("download") == "failed":
+                    console.print(f"  [yellow]→ {song_id} (skipped: download failed)[/yellow]")
+                    continue
+
+                recording = db_client.get_recording_by_song_id(song_id)
+                if not recording or not recording.r2_audio_url:
+                    console.print(f"  [yellow]→ {song_id} (skipped: no recording/audio)[/yellow]")
+                    continue
+
+                # Non-force skip logic
+                if not force:
+                    if analysis_tier == "fast" and recording.analysis_status in (
+                        "partial",
+                        "completed",
+                    ):
                         console.print(
-                            f"  [yellow]→ {song_id} (reusing job: {recording.lrc_job_id})[/yellow]"
+                            f"  [yellow]→ {song_id} (skipped: analysis {recording.analysis_status})[/yellow]"
+                        )
+                        continue
+                    if analysis_tier == "full" and recording.analysis_status == "completed":
+                        console.print(
+                            f"  [yellow]→ {song_id} (skipped: analysis completed)[/yellow]"
                         )
                         continue
 
-            # Submit new job
-            try:
-                youtube_url = recording.youtube_url or ""
+                # Reuse non-stale processing job (skip when force)
+                if (
+                    not force
+                    and recording.analysis_status == "processing"
+                    and recording.analysis_job_id
+                ):
+                    updated_at = (
+                        datetime.fromisoformat(recording.updated_at)
+                        if recording.updated_at
+                        else None
+                    )
+                    if updated_at:
+                        if updated_at.tzinfo is None:
+                            updated_at = updated_at.replace(tzinfo=timezone.utc)
+                        staleness = datetime.now(timezone.utc) - updated_at
+                        if staleness < timedelta(minutes=stale_after_minutes):
+                            active_analysis_jobs[song_id] = recording.analysis_job_id
+                            console.print(
+                                f"  [yellow]→ {song_id} (reusing job: {recording.analysis_job_id})[/yellow]"
+                            )
+                            continue
 
-                job = analysis_client.submit_lrc(
-                    audio_url=recording.r2_audio_url,
-                    content_hash=recording.content_hash,
-                    lyrics_text=song.lyrics_raw,
-                    song_title=song.title,
-                    whisper_model="large-v3",
-                    language="auto",
-                    use_vocals_stem=True,
-                    force=force_lrc,
-                    force_whisper=False,
-                    youtube_url=youtube_url,
-                    use_qwen3_asr=True,
-                    force_qwen3_asr=False,
+                # Submit new job
+                try:
+                    if analysis_tier == "fast":
+                        job = analysis_client.submit_fast_analysis(
+                            audio_url=recording.r2_audio_url,
+                            content_hash=recording.content_hash,
+                            force=force,
+                        )
+                    else:
+                        job = analysis_client.submit_analysis(
+                            audio_url=recording.r2_audio_url,
+                            content_hash=recording.content_hash,
+                            generate_stems=False,
+                            force=force,
+                        )
+
+                    db_client.update_recording_status(
+                        hash_prefix=recording.hash_prefix,
+                        analysis_status="processing",
+                        analysis_job_id=job.job_id,
+                    )
+
+                    active_analysis_jobs[song_id] = job.job_id
+                    _add_manifest_entry(
+                        song_id,
+                        recording.hash_prefix,
+                        "analyze",
+                        analysis_tier,
+                        job.job_id,
+                        "submitted",
+                        submitted_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                    console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+
+                except AnalysisServiceError as e:
+                    console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+                    results[song_id]["analyze"] = "failed"
+                    results[song_id]["analyze_error"] = str(e)
+                    _add_manifest_entry(
+                        song_id,
+                        recording.hash_prefix if recording else "",
+                        "analyze",
+                        analysis_tier,
+                        None,
+                        "failed",
+                        error_class=type(e).__name__,
+                        error_message=str(e),
+                    )
+
+            console.print(f"  Submitted: {len(active_analysis_jobs)} job(s)")
+            console.print()
+            _flush_manifest()
+
+            # Poll analysis jobs
+            if active_analysis_jobs:
+                console.print("[cyan]Phase 3: Polling analysis jobs[/cyan]")
+                _poll_analysis_jobs(
+                    active_jobs=active_analysis_jobs,
+                    results=results,
+                    db_client=db_client,
+                    analysis_client=analysis_client,
+                    analysis_tier=analysis_tier,
+                    stale_after_minutes=stale_after_minutes,
+                    console=console,
+                    manifest_entries=manifest_entries,
+                    _add_manifest_entry=_add_manifest_entry,
                 )
+                _flush_manifest()
 
-                db_client.update_recording_status(
-                    hash_prefix=recording.hash_prefix,
-                    lrc_status="processing",
-                    lrc_job_id=job.job_id,
+        # Phase 4: Embedding submit + poll
+        if "embedding" in selected_steps:
+            console.print("[cyan]Phase 4: Submitting embedding jobs[/cyan]")
+            active_embedding_jobs: Dict[str, str] = {}  # song_id -> job_id
+
+            for song_id in song_ids:
+                if results.get(song_id, {}).get("download") == "failed":
+                    console.print(f"  [yellow]→ {song_id} (skipped: download failed)[/yellow]")
+                    continue
+
+                song = db_client.get_song(song_id)
+                if not song or not song.lyrics_raw:
+                    console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
+                    continue
+
+                recording = db_client.get_recording_by_song_id(song_id)
+                hash_prefix = recording.hash_prefix if recording else ""
+
+                # Non-force: skip if content hash matches
+                if not force:
+                    existing_hash = db_client.get_embedding_content_hash(song_id)
+                    lyrics_list = song.lyrics_list
+                    current_hash = _compute_content_hash(
+                        song.title, song.composer or "", song.lyrics_raw or "", lyrics_list
+                    )
+                    if existing_hash == current_hash:
+                        console.print(
+                            f"  [dim]→ {song_id} (skipped: embedding up-to-date)[/dim]"
+                        )
+                        results[song_id]["embedding"] = "skipped"
+                        continue
+
+                try:
+                    job_info = analysis_client.submit_embedding(
+                        song_id=song.id,
+                        title=song.title,
+                        composer=song.composer or "",
+                        lyrics_raw=song.lyrics_raw or "",
+                        lyrics_lines=song.lyrics_list,
+                    )
+                    active_embedding_jobs[song_id] = job_info.job_id
+                    _add_manifest_entry(
+                        song_id,
+                        hash_prefix,
+                        "embedding",
+                        "embedding",
+                        job_info.job_id,
+                        "submitted",
+                        submitted_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                    console.print(f"  [green]→ {song_id} (submitted: {job_info.job_id})[/green]")
+                except Exception as e:
+                    console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+                    results[song_id]["embedding"] = "failed"
+                    results[song_id]["embedding_error"] = str(e)
+                    _add_manifest_entry(
+                        song_id,
+                        hash_prefix,
+                        "embedding",
+                        "embedding",
+                        None,
+                        "failed",
+                        error_class=type(e).__name__,
+                        error_message=str(e),
+                    )
+
+            console.print(f"  Submitted: {len(active_embedding_jobs)} job(s)")
+            console.print()
+            _flush_manifest()
+
+            # Poll embedding jobs
+            if active_embedding_jobs:
+                console.print("[cyan]Phase 4: Polling embedding jobs[/cyan]")
+                _poll_embedding_jobs(
+                    active_jobs=active_embedding_jobs,
+                    results=results,
+                    db_client=db_client,
+                    analysis_client=analysis_client,
+                    stale_after_minutes=stale_after_minutes,
+                    console=console,
+                    manifest_entries=manifest_entries,
+                    _add_manifest_entry=_add_manifest_entry,
                 )
+                _flush_manifest()
 
-                active_jobs[song_id] = job.job_id
-                console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Batch interrupted. Flushing manifest...[/yellow]")
+        _flush_manifest()
+        raise
 
-            except AnalysisServiceError as e:
-                console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
-                results[song_id] = results.get(song_id, {})
-                results[song_id]["lrc"] = "failed"
-                results[song_id]["lrc_error"] = str(e)
-
-        console.print(f"  Submitted: {len(active_jobs)} job(s)")
-        console.print()
-
-    # Phase 3: Poll all jobs
-    if active_jobs and not skip_lrc:
-        console.print("[cyan]Phase 3: Polling LRC jobs[/cyan]")
-        _poll_all_jobs(
-            active_jobs=active_jobs,
-            results=results,
-            db_client=db_client,
-            analysis_client=analysis_client,
-            r2_client=r2_client,
-            force_lrc=force_lrc,
-            stale_after_minutes=stale_after_minutes,
-            console=console,
-        )
-
-    # Phase 3.5: Submit embedding jobs for songs without embeddings
-    embedding_job_ids: list[str] = []
-    songs_needing_embedding = []
-    for song_id in song_ids:
-        if results.get(song_id, {}).get("download") == "failed":
-            continue
-        existing_hash = db_client.get_embedding_content_hash(song_id)
-        if existing_hash is None:
-            song = db_client.get_song(song_id)
-            if song and song.lyrics_raw:
-                songs_needing_embedding.append(song)
-
-    if songs_needing_embedding:
-        console.print(
-            f"[cyan]Phase 3.5: Submitting {len(songs_needing_embedding)} embedding jobs[/cyan]"
-        )
-        for song in songs_needing_embedding:
-            jid = _submit_embedding_single(song, analysis_client, db_client, console, force=False)
-            if jid:
-                embedding_job_ids.append(jid)
-
-        if embedding_job_ids:
-            console.print(f"  Submitted {len(embedding_job_ids)} embedding jobs")
-            console.print("  (Use 'sow-admin audio embed --all --wait' to poll results)")
-        console.print()
-
-    # Phase 4: Print stats (done by caller)
+    _flush_manifest()
     return results
 
 
@@ -4896,8 +5421,10 @@ def _poll_all_jobs(
     force_lrc: bool,
     stale_after_minutes: int,
     console: Console,
+    manifest_entries: Optional[List[dict]] = None,
+    _add_manifest_entry: Optional[Any] = None,
 ) -> None:
-    """Poll all active jobs until terminal state or Ctrl+C.
+    """Poll all active LRC jobs until terminal state or Ctrl+C.
 
     Args:
         active_jobs: Dict of song_id -> job_id
@@ -4908,6 +5435,8 @@ def _poll_all_jobs(
         force_lrc: Force re-generate LRC on resubmit
         stale_after_minutes: Staleness threshold
         console: Rich console
+        manifest_entries: Optional manifest rows list to update
+        _add_manifest_entry: Optional callback to add/update a manifest row
     """
     poll_interval = 30.0
     last_completion_time = time.time()
@@ -4959,6 +5488,17 @@ def _poll_all_jobs(
                             del active_jobs[song_id]
                             any_completed_this_cycle = True
 
+                            if _add_manifest_entry:
+                                _add_manifest_entry(
+                                    song_id,
+                                    recording.hash_prefix,
+                                    "lrc",
+                                    "lrc",
+                                    job_id,
+                                    "completed",
+                                    completed_at=datetime.now(timezone.utc).isoformat(),
+                                )
+
                             # Get song for display
                             song = db_client.get_song(song_id)
                             song_name = song.title if song else song_id
@@ -4972,14 +5512,31 @@ def _poll_all_jobs(
                             continue
 
                     elif job.status == "failed":
+                        # FIX: fetch recording here — previously only assigned in
+                        # completed/404 branches, causing a NameError on direct
+                        # failed status from the service.
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        hash_prefix = recording.hash_prefix if recording else ""
                         db_client.update_recording_status(
-                            hash_prefix=recording.hash_prefix,
+                            hash_prefix=hash_prefix,
                             lrc_status="failed",
                         )
                         results[song_id]["lrc"] = "failed"
                         results[song_id]["lrc_error"] = job.error_message or "Unknown error"
                         del active_jobs[song_id]
                         any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            _add_manifest_entry(
+                                song_id,
+                                hash_prefix,
+                                "lrc",
+                                "lrc",
+                                job_id,
+                                "failed",
+                                error_message=job.error_message or "Unknown error",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
 
                         song = db_client.get_song(song_id)
                         song_name = song.title if song else song_id
@@ -5002,6 +5559,17 @@ def _poll_all_jobs(
                             results[song_id]["lrc"] = "completed"
                             del active_jobs[song_id]
                             any_completed_this_cycle = True
+
+                            if _add_manifest_entry:
+                                _add_manifest_entry(
+                                    song_id,
+                                    recording.hash_prefix,
+                                    "lrc",
+                                    "lrc",
+                                    job_id,
+                                    "completed",
+                                    completed_at=datetime.now(timezone.utc).isoformat(),
+                                )
 
                             song = db_client.get_song(song_id)
                             song_name = song.title if song else song_id
@@ -5064,6 +5632,17 @@ def _poll_all_jobs(
                                         lrc_status="processing",
                                         lrc_job_id=new_job.job_id,
                                     )
+                                    if _add_manifest_entry:
+                                        _add_manifest_entry(
+                                            song_id,
+                                            recording.hash_prefix,
+                                            "lrc",
+                                            "lrc",
+                                            new_job.job_id,
+                                            "submitted",
+                                            previous_job_id=job_id,
+                                            submitted_at=datetime.now(timezone.utc).isoformat(),
+                                        )
                                     active_jobs[song_id] = new_job.job_id
                                     resubmit_counts[song_id] = resubmit_count + 1
                                     job_timing[song_id] = (time.time(), 0)
@@ -5201,6 +5780,658 @@ def _reconcile_on_interrupt(
     )
 
 
+def _is_retryable_poll_error(e: Exception) -> bool:
+    """Whether a polling failure should be retried once (transient)."""
+    if isinstance(e, AnalysisServiceError):
+        return e.status_code in {502, 503, 504}
+    import requests as _requests
+
+    return isinstance(e, (_requests.exceptions.ConnectError, _requests.exceptions.TimeoutException))
+
+
+def _poll_analysis_jobs(
+    active_jobs: Dict[str, str],
+    results: dict,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    analysis_tier: str,
+    stale_after_minutes: int,
+    console: Console,
+    manifest_entries: Optional[List[dict]] = None,
+    _add_manifest_entry: Optional[Any] = None,
+) -> None:
+    """Poll active analysis jobs until terminal state or Ctrl+C.
+
+    Separate from the LRC poll loop so failure modes are not coupled. On
+    Ctrl+C, probes final service state once; active/non-responsive jobs are
+    left in analysis_status='processing' for --resume.
+
+    Args:
+        active_jobs: Dict of song_id -> job_id
+        results: Results dict to update
+        db_client: Database client
+        analysis_client: Analysis service client
+        analysis_tier: fast or full
+        stale_after_minutes: Staleness threshold
+        console: Rich console
+        manifest_entries: Optional manifest rows list
+        _add_manifest_entry: Optional manifest callback
+    """
+    poll_interval = 30.0
+    last_completion_time = time.time()
+    stale_warning_seconds = stale_after_minutes * 60
+    batch_start_time = time.time()
+    retried: set = set()
+
+    try:
+        while active_jobs:
+            any_completed_this_cycle = False
+
+            for song_id in list(active_jobs.keys()):
+                job_id = active_jobs[song_id]
+                try:
+                    job = analysis_client.get_job(job_id)
+
+                    if job.status == "completed":
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        if not recording:
+                            console.print(f"  [red]✗ {song_id}: recording vanished[/red]")
+                            results[song_id]["analyze"] = "failed"
+                            del active_jobs[song_id]
+                            any_completed_this_cycle = True
+                            continue
+
+                        if job.result:
+                            result = job.result
+                            status_to_set = "partial" if analysis_tier == "fast" else "completed"
+                            db_client.update_recording_analysis(
+                                hash_prefix=recording.hash_prefix,
+                                duration_seconds=result.duration_seconds,
+                                tempo_bpm=result.tempo_bpm,
+                                musical_key=result.musical_key,
+                                musical_mode=result.musical_mode,
+                                key_confidence=result.key_confidence,
+                                loudness_db=result.loudness_db,
+                                beats=(
+                                    json.dumps(result.beats)
+                                    if analysis_tier == "full" and result.beats
+                                    else None
+                                ),
+                                downbeats=(
+                                    json.dumps(result.downbeats)
+                                    if analysis_tier == "full" and result.downbeats
+                                    else None
+                                ),
+                                sections=(
+                                    json.dumps(result.sections)
+                                    if analysis_tier == "full" and result.sections
+                                    else None
+                                ),
+                                embeddings_shape=(
+                                    json.dumps(result.embeddings_shape)
+                                    if analysis_tier == "full" and result.embeddings_shape
+                                    else None
+                                ),
+                                r2_stems_url=result.stems_url,
+                                analysis_status=status_to_set,
+                            )
+
+                        results[song_id]["analyze"] = "completed"
+                        results[song_id]["analysis_tier"] = analysis_tier
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            _add_manifest_entry(
+                                song_id,
+                                recording.hash_prefix,
+                                "analyze",
+                                analysis_tier,
+                                job_id,
+                                "completed",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        song = db_client.get_song(song_id)
+                        song_name = song.title if song else song_id
+                        console.print(
+                            f"  [green]✓[/green] {song_name} — analysis completed ({analysis_tier})"
+                        )
+
+                    elif job.status == "failed":
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        hash_prefix = recording.hash_prefix if recording else ""
+                        db_client.update_recording_status(
+                            hash_prefix=hash_prefix,
+                            analysis_status="failed",
+                        )
+                        results[song_id]["analyze"] = "failed"
+                        results[song_id]["analyze_error"] = job.error_message or "Unknown error"
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            _add_manifest_entry(
+                                song_id,
+                                hash_prefix,
+                                "analyze",
+                                analysis_tier,
+                                job_id,
+                                "failed",
+                                error_message=job.error_message or "Unknown error",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        song = db_client.get_song(song_id)
+                        song_name = song.title if song else song_id
+                        console.print(
+                            f"  [red]✗[/red] {song_name} — analysis failed: "
+                            f"{job.error_message or 'Unknown error'}"
+                        )
+
+                except AnalysisServiceError as e:
+                    if e.status_code == 404:
+                        # Job lost — NO R2 fallback for analysis. Mark failed.
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        hash_prefix = recording.hash_prefix if recording else ""
+                        db_client.update_recording_status(
+                            hash_prefix=hash_prefix,
+                            analysis_status="failed",
+                        )
+                        results[song_id]["analyze"] = "failed"
+                        results[song_id]["analyze_error"] = "Job lost (404)"
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            _add_manifest_entry(
+                                song_id,
+                                hash_prefix,
+                                "analyze",
+                                analysis_tier,
+                                job_id,
+                                "failed",
+                                error_message="Job lost (404)",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        console.print(f"  [red]✗ {song_id}: analysis job lost (404)[/red]")
+                    elif song_id not in retried and _is_retryable_poll_error(e):
+                        retried.add(song_id)
+                        console.print(
+                            f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
+                        )
+                    else:
+                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                except Exception as e:
+                    if song_id not in retried and _is_retryable_poll_error(e):
+                        retried.add(song_id)
+                        console.print(
+                            f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
+                        )
+                    else:
+                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+
+            if any_completed_this_cycle:
+                last_completion_time = time.time()
+
+            elapsed_since_completion = time.time() - last_completion_time
+            if elapsed_since_completion > stale_warning_seconds and active_jobs:
+                hours = int(elapsed_since_completion // 3600)
+                mins = int((elapsed_since_completion % 3600) // 60)
+                console.print(
+                    f"[yellow]⚠ WARNING: No analysis jobs completed in {hours}h {mins}m.[/yellow]"
+                )
+                last_completion_time = time.time()
+
+            if active_jobs:
+                completed = sum(1 for r in results.values() if r.get("analyze") == "completed")
+                failed = sum(1 for r in results.values() if r.get("analyze") == "failed")
+                elapsed = time.time() - batch_start_time
+                console.print(
+                    f"⏳ Polling {len(active_jobs)} analysis job(s)... "
+                    f"{completed} completed, {failed} failed "
+                    f"(elapsed: {int(elapsed // 60)}m {int(elapsed % 60)}s)"
+                )
+                time.sleep(poll_interval)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Analysis poll interrupted. Probing final state...[/yellow]")
+        for song_id, job_id in list(active_jobs.items()):
+            try:
+                job = analysis_client.get_job(job_id)
+                if job.status == "failed":
+                    recording = db_client.get_recording_by_song_id(song_id)
+                    if recording:
+                        db_client.update_recording_status(
+                            hash_prefix=recording.hash_prefix,
+                            analysis_status="failed",
+                        )
+                    results[song_id]["analyze"] = "failed"
+                    results[song_id]["analyze_error"] = job.error_message or "Unknown error"
+                    del active_jobs[song_id]
+                    console.print(f"  [red]✗ {song_id}: confirmed failed[/red]")
+                else:
+                    console.print(
+                        f"  [yellow]→ {song_id}: left in processing (resume with --resume)[/yellow]"
+                    )
+            except Exception:
+                console.print(
+                    f"  [yellow]→ {song_id}: left in processing (resume with --resume)[/yellow]"
+                )
+
+
+def _poll_embedding_jobs(
+    active_jobs: Dict[str, str],
+    results: dict,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    stale_after_minutes: int,
+    console: Console,
+    manifest_entries: Optional[List[dict]] = None,
+    _add_manifest_entry: Optional[Any] = None,
+) -> None:
+    """Poll active embedding jobs until terminal state or Ctrl+C.
+
+    No R2 fallback (embeddings have no R2 artifact). On Ctrl+C, probes final
+    service state once; active jobs left for --resume.
+
+    Args:
+        active_jobs: Dict of song_id -> job_id
+        results: Results dict to update
+        db_client: Database client
+        analysis_client: Analysis service client
+        stale_after_minutes: Staleness threshold
+        console: Rich console
+        manifest_entries: Optional manifest rows list
+        _add_manifest_entry: Optional manifest callback
+    """
+    poll_interval = 30.0
+    last_completion_time = time.time()
+    stale_warning_seconds = stale_after_minutes * 60
+    batch_start_time = time.time()
+    retried: set = set()
+
+    try:
+        while active_jobs:
+            any_completed_this_cycle = False
+
+            for song_id in list(active_jobs.keys()):
+                job_id = active_jobs[song_id]
+                try:
+                    job = analysis_client.get_job(job_id)
+
+                    if job.status == "completed":
+                        if job.result and hasattr(job.result, "embedding"):
+                            _write_embedding_result(job, db_client, console)
+                        results[song_id]["embedding"] = "completed"
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            recording = db_client.get_recording_by_song_id(song_id)
+                            _add_manifest_entry(
+                                song_id,
+                                recording.hash_prefix if recording else "",
+                                "embedding",
+                                "embedding",
+                                job_id,
+                                "completed",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        song = db_client.get_song(song_id)
+                        song_name = song.title if song else song_id
+                        console.print(
+                            f"  [green]✓[/green] {song_name} — embedding completed"
+                        )
+
+                    elif job.status == "failed":
+                        results[song_id]["embedding"] = "failed"
+                        results[song_id]["embedding_error"] = (
+                            job.error_message or "Unknown error"
+                        )
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            recording = db_client.get_recording_by_song_id(song_id)
+                            _add_manifest_entry(
+                                song_id,
+                                recording.hash_prefix if recording else "",
+                                "embedding",
+                                "embedding",
+                                job_id,
+                                "failed",
+                                error_message=job.error_message or "Unknown error",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        song = db_client.get_song(song_id)
+                        song_name = song.title if song else song_id
+                        console.print(
+                            f"  [red]✗[/red] {song_name} — embedding failed: "
+                            f"{job.error_message or 'Unknown error'}"
+                        )
+
+                except AnalysisServiceError as e:
+                    if e.status_code == 404:
+                        results[song_id]["embedding"] = "failed"
+                        results[song_id]["embedding_error"] = "Job lost (404)"
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            recording = db_client.get_recording_by_song_id(song_id)
+                            _add_manifest_entry(
+                                song_id,
+                                recording.hash_prefix if recording else "",
+                                "embedding",
+                                "embedding",
+                                job_id,
+                                "failed",
+                                error_message="Job lost (404)",
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+                        console.print(f"  [red]✗ {song_id}: embedding job lost (404)[/red]")
+                    elif song_id not in retried and _is_retryable_poll_error(e):
+                        retried.add(song_id)
+                        console.print(
+                            f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
+                        )
+                    else:
+                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                except Exception as e:
+                    if song_id not in retried and _is_retryable_poll_error(e):
+                        retried.add(song_id)
+                        console.print(
+                            f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
+                        )
+                    else:
+                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+
+            if any_completed_this_cycle:
+                last_completion_time = time.time()
+
+            elapsed_since_completion = time.time() - last_completion_time
+            if elapsed_since_completion > stale_warning_seconds and active_jobs:
+                hours = int(elapsed_since_completion // 3600)
+                mins = int((elapsed_since_completion % 3600) // 60)
+                console.print(
+                    f"[yellow]⚠ WARNING: No embedding jobs completed in {hours}h {mins}m.[/yellow]"
+                )
+                last_completion_time = time.time()
+
+            if active_jobs:
+                completed = sum(1 for r in results.values() if r.get("embedding") == "completed")
+                failed = sum(1 for r in results.values() if r.get("embedding") == "failed")
+                elapsed = time.time() - batch_start_time
+                console.print(
+                    f"⏳ Polling {len(active_jobs)} embedding job(s)... "
+                    f"{completed} completed, {failed} failed "
+                    f"(elapsed: {int(elapsed // 60)}m {int(elapsed % 60)}s)"
+                )
+                time.sleep(poll_interval)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Embedding poll interrupted. Probing final state...[/yellow]")
+        for song_id, job_id in list(active_jobs.items()):
+            try:
+                job = analysis_client.get_job(job_id)
+                if job.status == "failed":
+                    results[song_id]["embedding"] = "failed"
+                    results[song_id]["embedding_error"] = (
+                        job.error_message or "Unknown error"
+                    )
+                    del active_jobs[song_id]
+                    console.print(f"  [red]✗ {song_id}: confirmed failed[/red]")
+                else:
+                    console.print(
+                        f"  [yellow]→ {song_id}: left in processing (resume with --resume)[/yellow]"
+                    )
+            except Exception:
+                console.print(
+                    f"  [yellow]→ {song_id}: left in processing (resume with --resume)[/yellow]"
+                )
+
+
+def _resume_from_manifest(
+    manifest_data: dict,
+    manifest_path: Path,
+    db_client: DatabaseClient,
+    r2_client: R2Client,
+    analysis_client: AnalysisClient,
+    stale_after_minutes: int,
+    console: Console,
+) -> dict:
+    """Resume a batch from a manifest file.
+
+    Re-polls entries with status 'submitted' or 'processing'. Skips
+    'completed'/'failed'/'abandoned' entries. On a completed entry, applies
+    the result writeback to the DB identically to a non-resume run.
+
+    Args:
+        manifest_data: Parsed manifest dict
+        manifest_path: Path to the manifest file
+        db_client: Database client
+        r2_client: R2 client
+        analysis_client: Analysis service client
+        stale_after_minutes: Staleness threshold
+        console: Rich console
+
+    Returns:
+        Results dict
+    """
+    songs = manifest_data.get("songs", [])
+    results: Dict[str, dict] = {}
+    manifest_entries: List[dict] = list(songs)
+
+    def _add_manifest_entry(
+        song_id: str,
+        hash_prefix: str,
+        step: str,
+        tier: str,
+        job_id: Optional[str],
+        status: str,
+        **kwargs,
+    ) -> None:
+        entry = {
+            "song_id": song_id,
+            "hash_prefix": hash_prefix,
+            "step": step,
+            "tier": tier,
+            "job_id": job_id,
+            "status": status,
+            **kwargs,
+        }
+        for i, existing in enumerate(manifest_entries):
+            if (
+                existing["song_id"] == song_id
+                and existing["step"] == step
+                and existing["tier"] == tier
+            ):
+                manifest_entries[i] = {**existing, **entry}
+                return
+        manifest_entries.append(entry)
+
+    # Partition entries
+    active_lrc: Dict[str, str] = {}
+    active_analysis: Dict[str, str] = {}
+    active_embedding: Dict[str, str] = {}
+    skipped = 0
+
+    for entry in songs:
+        song_id = entry["song_id"]
+        step = entry["step"]
+        tier = entry["tier"]
+        job_id = entry.get("job_id")
+        status = entry.get("status", "")
+        hash_prefix = entry.get("hash_prefix", "")
+
+        results.setdefault(song_id, {})
+
+        if status in ("completed", "failed", "abandoned"):
+            skipped += 1
+            # Apply writeback for completed entries (idempotent)
+            if status == "completed":
+                _apply_manifest_writeback(
+                    song_id, step, tier, job_id, hash_prefix,
+                    db_client, analysis_client, console,
+                )
+            continue
+
+        if not job_id:
+            skipped += 1
+            continue
+
+        if step == "lrc":
+            active_lrc[song_id] = job_id
+        elif step == "analyze":
+            active_analysis[song_id] = job_id
+        elif step == "embedding":
+            active_embedding[song_id] = job_id
+
+    if skipped:
+        console.print(f"[dim]Skipped {skipped} terminal entries from manifest.[/dim]")
+
+    batch_id = manifest_data.get("batch_id", manifest_path.stem)
+    started_at = manifest_data.get("started_at", "")
+    selected_steps = manifest_data.get("selected_steps", [])
+    analysis_tier = manifest_data.get("analysis_tier", "fast")
+
+    def _flush() -> None:
+        manifest = {
+            "batch_id": batch_id,
+            "started_at": started_at,
+            "selected_steps": selected_steps,
+            "analysis_tier": analysis_tier,
+            "stale_after_minutes": stale_after_minutes,
+            "songs": manifest_entries,
+        }
+        try:
+            manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+        except OSError as e:
+            logger.warning(f"Failed to flush manifest on resume: {e}")
+
+    try:
+        if active_lrc:
+            console.print(f"[cyan]Resume: polling {len(active_lrc)} LRC jobs[/cyan]")
+            _poll_all_jobs(
+                active_jobs=active_lrc,
+                results=results,
+                db_client=db_client,
+                analysis_client=analysis_client,
+                r2_client=r2_client,
+                force_lrc=False,
+                stale_after_minutes=stale_after_minutes,
+                console=console,
+                manifest_entries=manifest_entries,
+                _add_manifest_entry=_add_manifest_entry,
+            )
+            _flush()
+
+        if active_analysis:
+            console.print(f"[cyan]Resume: polling {len(active_analysis)} analysis jobs[/cyan]")
+            _poll_analysis_jobs(
+                active_jobs=active_analysis,
+                results=results,
+                db_client=db_client,
+                analysis_client=analysis_client,
+                analysis_tier=analysis_tier,
+                stale_after_minutes=stale_after_minutes,
+                console=console,
+                manifest_entries=manifest_entries,
+                _add_manifest_entry=_add_manifest_entry,
+            )
+            _flush()
+
+        if active_embedding:
+            console.print(f"[cyan]Resume: polling {len(active_embedding)} embedding jobs[/cyan]")
+            _poll_embedding_jobs(
+                active_jobs=active_embedding,
+                results=results,
+                db_client=db_client,
+                analysis_client=analysis_client,
+                stale_after_minutes=stale_after_minutes,
+                console=console,
+                manifest_entries=manifest_entries,
+                _add_manifest_entry=_add_manifest_entry,
+            )
+            _flush()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Resume interrupted. Flushing manifest...[/yellow]")
+        _flush()
+        raise
+
+    _flush()
+    return results
+
+
+def _apply_manifest_writeback(
+    song_id: str,
+    step: str,
+    tier: str,
+    job_id: Optional[str],
+    hash_prefix: str,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    console: Console,
+) -> None:
+    """Apply idempotent DB writeback for a completed manifest entry on resume."""
+    try:
+        if not job_id:
+            return
+        job = analysis_client.get_job(job_id)
+        if job.status != "completed":
+            return
+
+        if step == "lrc":
+            # LRC writeback is R2-driven; skip if no R2 URL in result
+            pass
+        elif step == "analyze":
+            recording = db_client.get_recording_by_song_id(song_id)
+            if not recording or not job.result:
+                return
+            result = job.result
+            status_to_set = "partial" if tier == "fast" else "completed"
+            db_client.update_recording_analysis(
+                hash_prefix=recording.hash_prefix,
+                duration_seconds=result.duration_seconds,
+                tempo_bpm=result.tempo_bpm,
+                musical_key=result.musical_key,
+                musical_mode=result.musical_mode,
+                key_confidence=result.key_confidence,
+                loudness_db=result.loudness_db,
+                beats=(
+                    json.dumps(result.beats)
+                    if tier == "full" and result.beats
+                    else None
+                ),
+                downbeats=(
+                    json.dumps(result.downbeats)
+                    if tier == "full" and result.downbeats
+                    else None
+                ),
+                sections=(
+                    json.dumps(result.sections)
+                    if tier == "full" and result.sections
+                    else None
+                ),
+                embeddings_shape=(
+                    json.dumps(result.embeddings_shape)
+                    if tier == "full" and result.embeddings_shape
+                    else None
+                ),
+                r2_stems_url=result.stems_url,
+                analysis_status=status_to_set,
+            )
+        elif step == "embedding":
+            if job.result and hasattr(job.result, "embedding"):
+                _write_embedding_result(job, db_client, console)
+    except Exception as e:
+        logger.warning(f"Manifest writeback failed for {song_id}/{step}: {e}")
+
+
 def _print_progress(
     active_jobs: dict,
     results: dict,
@@ -5331,6 +6562,34 @@ def _print_stats(
             ]
         )
 
+    # Analysis stats
+    analysis_completed = sum(1 for r in results.values() if r.get("analyze") == "completed")
+    analysis_failed = sum(1 for r in results.values() if r.get("analyze") == "failed")
+    if analysis_completed or analysis_failed:
+        lines.extend(
+            [
+                f"│ {'':<30} {'':>18} │",
+                f"│ {'Analysis:':<30} {'':>18} │",
+                f"│ {'  Completed:':<30} {analysis_completed:>18} │",
+                f"│ {'  Failed:':<30} {analysis_failed:>18} │",
+            ]
+        )
+
+    # Embedding stats
+    embedding_completed = sum(1 for r in results.values() if r.get("embedding") == "completed")
+    embedding_failed = sum(1 for r in results.values() if r.get("embedding") == "failed")
+    embedding_skipped = sum(1 for r in results.values() if r.get("embedding") == "skipped")
+    if embedding_completed or embedding_failed or embedding_skipped:
+        lines.extend(
+            [
+                f"│ {'':<30} {'':>18} │",
+                f"│ {'Embedding:':<30} {'':>18} │",
+                f"│ {'  Completed:':<30} {embedding_completed:>18} │",
+                f"│ {'  Failed:':<30} {embedding_failed:>18} │",
+                f"│ {'  Skipped:':<30} {embedding_skipped:>18} │",
+            ]
+        )
+
     lines.append("╰" + "─" * 52 + "╯")
 
     console.print("\n".join(lines))
@@ -5353,6 +6612,32 @@ def _print_stats(
     if failed_lrcs:
         console.print("\n[bold red]Failed LRC:[/bold red]")
         for song_id, error in failed_lrcs:
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  - {song_name}: {error}")
+
+    # Print failed analysis
+    failed_analysis = [
+        (song_id, r.get("analyze_error"))
+        for song_id, r in results.items()
+        if r.get("analyze") == "failed"
+    ]
+    if failed_analysis:
+        console.print("\n[bold red]Failed analysis:[/bold red]")
+        for song_id, error in failed_analysis:
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  - {song_name}: {error}")
+
+    # Print failed embeddings
+    failed_embeddings = [
+        (song_id, r.get("embedding_error"))
+        for song_id, r in results.items()
+        if r.get("embedding") == "failed"
+    ]
+    if failed_embeddings:
+        console.print("\n[bold red]Failed embedding:[/bold red]")
+        for song_id, error in failed_embeddings:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
             console.print(f"  - {song_name}: {error}")

@@ -769,8 +769,11 @@ class DatabaseClient:
             query += " AND (s.deleted_at IS NULL OR s.id IS NULL)"
 
         if status:
-            query += " AND r.analysis_status = %s"
-            params.append(status)
+            if status == "incomplete":
+                query += " AND r.analysis_status IN ('pending', 'processing', 'failed')"
+            else:
+                query += " AND r.analysis_status = %s"
+                params.append(status)
 
         if visibility:
             query += " AND r.visibility_status = %s"
@@ -792,6 +795,7 @@ class DatabaseClient:
             "series": "s.album_series ASC NULLS LAST, s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
             "title": "s.title ASC NULLS LAST",
             "imported": "r.imported_at DESC",
+            "created": "r.created_at ASC NULLS LAST, r.hash_prefix ASC",
         }
         query += f" ORDER BY {order_map.get(sort_by, 'r.imported_at DESC')}"
 
@@ -905,6 +909,7 @@ class DatabaseClient:
         sections: Optional[str] = None,
         embeddings_shape: Optional[str] = None,
         r2_stems_url: Optional[str] = None,
+        analysis_status: Optional[str] = None,
     ) -> None:
         """Update recording with analysis results.
 
@@ -921,45 +926,82 @@ class DatabaseClient:
             sections: JSON array of sections.
             embeddings_shape: JSON array of dimensions.
             r2_stems_url: R2 URL for stems directory.
+            analysis_status: Override the analysis_status column. If None
+                (default), preserves the existing behavior of setting
+                'completed'. If 'partial', only fast-tier columns are written
+                and full-only columns (beats, downbeats, sections,
+                embeddings_shape, r2_stems_url) are PRESERVED (not nulled).
+                If 'completed', all columns are written as today.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
 
-            sql = """
-                UPDATE recordings SET
-                    duration_seconds = %s,
-                    tempo_bpm = %s,
-                    musical_key = %s,
-                    musical_mode = %s,
-                    key_confidence = %s,
-                    loudness_db = %s,
-                    beats = %s,
-                    downbeats = %s,
-                    sections = %s,
-                    embeddings_shape = %s,
-                    r2_stems_url = COALESCE(%s, r2_stems_url),
-                    analysis_status = 'completed',
-                    updated_at = NOW()
-                WHERE hash_prefix = %s
-            """
+            # Resolve the effective analysis_status
+            effective_status = analysis_status if analysis_status is not None else "completed"
 
-            cursor.execute(
-                sql,
-                (
-                    duration_seconds,
-                    tempo_bpm,
-                    musical_key,
-                    musical_mode,
-                    key_confidence,
-                    loudness_db,
-                    beats,
-                    downbeats,
-                    sections,
-                    embeddings_shape,
-                    r2_stems_url,
-                    hash_prefix,
-                ),
-            )
+            if effective_status == "partial":
+                # Fast-tier only: preserve full-only columns on disk by
+                # omitting them from the UPDATE entirely (data-loss protection).
+                sql = """
+                    UPDATE recordings SET
+                        duration_seconds = %s,
+                        tempo_bpm = %s,
+                        musical_key = %s,
+                        musical_mode = %s,
+                        key_confidence = %s,
+                        loudness_db = %s,
+                        analysis_status = 'partial',
+                        updated_at = NOW()
+                    WHERE hash_prefix = %s
+                """
+                cursor.execute(
+                    sql,
+                    (
+                        duration_seconds,
+                        tempo_bpm,
+                        musical_key,
+                        musical_mode,
+                        key_confidence,
+                        loudness_db,
+                        hash_prefix,
+                    ),
+                )
+            else:
+                # Full tier: update all columns, set 'completed'
+                sql = """
+                    UPDATE recordings SET
+                        duration_seconds = %s,
+                        tempo_bpm = %s,
+                        musical_key = %s,
+                        musical_mode = %s,
+                        key_confidence = %s,
+                        loudness_db = %s,
+                        beats = %s,
+                        downbeats = %s,
+                        sections = %s,
+                        embeddings_shape = %s,
+                        r2_stems_url = COALESCE(%s, r2_stems_url),
+                        analysis_status = 'completed',
+                        updated_at = NOW()
+                    WHERE hash_prefix = %s
+                """
+                cursor.execute(
+                    sql,
+                    (
+                        duration_seconds,
+                        tempo_bpm,
+                        musical_key,
+                        musical_mode,
+                        key_confidence,
+                        loudness_db,
+                        beats,
+                        downbeats,
+                        sections,
+                        embeddings_shape,
+                        r2_stems_url,
+                        hash_prefix,
+                    ),
+                )
 
     def update_recording_lrc(
         self,

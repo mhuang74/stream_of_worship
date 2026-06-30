@@ -180,3 +180,92 @@ async def analyze_audio(
     cache_manager.save_analysis_result(content_hash, analysis_result)
 
     return analysis_result
+
+
+async def analyze_audio_fast(
+    audio_path: Path,
+    cache_manager: CacheManager,
+    content_hash: str,
+    sample_rate: int = 22050,
+    hop_length: int = 4096,
+    force: bool = False,
+) -> dict:
+    """Fast audio analysis using librosa only (no allin1, no stems).
+
+    Produces only the fast-tier subset: duration_seconds, tempo_bpm,
+    musical_key, musical_mode, key_confidence, loudness_db.
+
+    Key/BPM algorithms:
+      - tempo: librosa.beat.tempo over a onset strength envelope
+      - key:   Krumhansl-Schmuckler via librosa.feature.chroma_cqt
+      - loudness: RMS-based dB
+
+    Args:
+        audio_path: Path to audio file
+        cache_manager: Cache manager instance
+        content_hash: SHA-256 hash of audio content for cache key
+        sample_rate: Target sample rate for librosa.load (default 22050)
+        hop_length: Hop length for onset/tempo estimation (default 4096)
+        force: Bypass cache
+
+    Returns:
+        Dictionary with the fast-tier analysis fields
+    """
+    # Check cache first (unless force)
+    if not force:
+        cached = cache_manager.get_fast_analyze_result(content_hash)
+        if cached:
+            logger.info(f"Cache hit for fast analysis result: {content_hash[:16]}...")
+            return cached
+
+    # Load audio
+    logger.info(f"Loading audio file for fast analysis: {audio_path}")
+    load_start = time.time()
+    y, sr = librosa.load(str(audio_path), sr=sample_rate, mono=True)
+    duration = librosa.get_duration(y=y, sr=sr)
+    load_elapsed = time.time() - load_start
+    logger.info(f"Audio loaded in {load_elapsed:.2f}s - Duration: {duration:.2f}s")
+
+    # Tempo via librosa.beat.tempo
+    logger.info("Estimating tempo...")
+    tempo_start = time.time()
+    loop = asyncio.get_event_loop()
+
+    def _compute_tempo() -> float:
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
+        if hasattr(tempo, "__iter__"):
+            tempo = float(tempo[0])
+        return float(tempo)
+
+    bpm = await loop.run_in_executor(None, _compute_tempo)
+    tempo_elapsed = time.time() - tempo_start
+    logger.info(f"Tempo estimation completed in {tempo_elapsed:.2f}s - {bpm:.1f} BPM")
+
+    # Key detection with librosa
+    logger.info("Detecting musical key...")
+    key_start = time.time()
+    mode, key, key_confidence = detect_key(y, sr)
+    key_elapsed = time.time() - key_start
+    logger.info(f"Key detection completed in {key_elapsed:.2f}s - Detected: {key} {mode}")
+
+    # Loudness
+    loudness_db = compute_loudness(y)
+
+    total_elapsed = time.time() - load_start
+    logger.info(f"Total fast analysis time: {total_elapsed:.2f}s")
+
+    # Build result (fast subset only)
+    analysis_result = {
+        "duration_seconds": duration,
+        "tempo_bpm": bpm,
+        "musical_key": key,
+        "musical_mode": mode,
+        "key_confidence": key_confidence,
+        "loudness_db": loudness_db,
+    }
+
+    # Save to cache (distinct from full-tier cache)
+    cache_manager.save_fast_analyze_result(content_hash, analysis_result)
+
+    return analysis_result
