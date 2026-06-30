@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import aiosqlite
 import pytest
 from pytest_mock import MockerFixture
 
@@ -150,6 +151,61 @@ async def test_fast_analyze_migration_accepts_type(job_store: JobStore) -> None:
     retrieved = await job_store.get_job("job_mig_test")
     assert retrieved is not None
     assert retrieved.type == JobType.FAST_ANALYZE
+
+
+@pytest.mark.asyncio
+async def test_fast_analyze_migration_recreates_indexes(temp_db_path: Path) -> None:
+    """Verify migrated indexes are attached to the recreated jobs table."""
+    async with aiosqlite.connect(temp_db_path) as db:
+        await db.executescript(
+            """
+            CREATE TABLE jobs (
+                id              TEXT PRIMARY KEY,
+                type            TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'queued',
+                progress        REAL NOT NULL DEFAULT 0.0,
+                stage           TEXT NOT NULL DEFAULT '',
+                error_message   TEXT,
+                request_json    TEXT NOT NULL,
+                result_json     TEXT,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                content_hash    TEXT NOT NULL,
+                CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment'))
+            );
+            CREATE INDEX idx_jobs_status ON jobs(status);
+            CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+            CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+            """
+        )
+        await db.commit()
+
+    store = JobStore(temp_db_path)
+    await store.initialize()
+    try:
+        assert store._db is not None
+        async with store._db.execute(
+            """
+            SELECT name, tbl_name
+            FROM sqlite_master
+            WHERE type='index' AND name IN (
+                'idx_jobs_status',
+                'idx_jobs_content_hash',
+                'idx_jobs_created_at'
+            )
+            ORDER BY name
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        await store.close()
+
+    assert rows == [
+        ("idx_jobs_content_hash", "jobs"),
+        ("idx_jobs_created_at", "jobs"),
+        ("idx_jobs_status", "jobs"),
+    ]
 
 
 @pytest.mark.asyncio
