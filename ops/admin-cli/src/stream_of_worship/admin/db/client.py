@@ -693,7 +693,10 @@ class DatabaseClient:
 
         if status:
             if status == "incomplete":
-                query += " AND analysis_status IN ('pending', 'processing', 'failed')"
+                query += (
+                    " AND (analysis_status IN ('pending', 'processing', 'failed')"
+                    " OR analysis_status IS NULL)"
+                )
             else:
                 query += " AND analysis_status = %s"
                 params.append(status)
@@ -770,7 +773,10 @@ class DatabaseClient:
 
         if status:
             if status == "incomplete":
-                query += " AND r.analysis_status IN ('pending', 'processing', 'failed')"
+                query += (
+                    " AND (r.analysis_status IN ('pending', 'processing', 'failed')"
+                    " OR r.analysis_status IS NULL)"
+                )
             else:
                 query += " AND r.analysis_status = %s"
                 params.append(status)

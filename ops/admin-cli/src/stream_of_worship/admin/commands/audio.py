@@ -4422,6 +4422,13 @@ def batch(
             console=console,
         )
         _print_stats(results, db_client, console, format)
+
+        # Exit nonzero if any step has a failure
+        failed_any = any(
+            v == "failed" for r in results.values() for v in r.values()
+        )
+        if failed_any:
+            raise typer.Exit(1)
         return
 
     # Normal path: resolve song IDs
@@ -5841,9 +5848,28 @@ def _poll_analysis_jobs(
                             any_completed_this_cycle = True
                             continue
 
+                        # Guard against tier mismatch: a fast_analyze job
+                        # polled in a full-tier run (or vice versa) would
+                        # write the wrong columns. Derive the effective
+                        # tier from the job type, not just the CLI flag.
+                        effective_tier = (
+                            "fast"
+                            if job.job_type == "fast_analyze"
+                            else "full"
+                        )
+                        if effective_tier != analysis_tier:
+                            console.print(
+                                f"  [yellow]→ {song_id}: job type "
+                                f"'{job.job_type}' does not match requested "
+                                f"tier '{analysis_tier}', treating as "
+                                f"'{effective_tier}'[/yellow]"
+                            )
+
                         if job.result:
                             result = job.result
-                            status_to_set = "partial" if analysis_tier == "fast" else "completed"
+                            status_to_set = (
+                                "partial" if effective_tier == "fast" else "completed"
+                            )
                             db_client.update_recording_analysis(
                                 hash_prefix=recording.hash_prefix,
                                 duration_seconds=result.duration_seconds,
@@ -5854,22 +5880,22 @@ def _poll_analysis_jobs(
                                 loudness_db=result.loudness_db,
                                 beats=(
                                     json.dumps(result.beats)
-                                    if analysis_tier == "full" and result.beats
+                                    if effective_tier == "full" and result.beats
                                     else None
                                 ),
                                 downbeats=(
                                     json.dumps(result.downbeats)
-                                    if analysis_tier == "full" and result.downbeats
+                                    if effective_tier == "full" and result.downbeats
                                     else None
                                 ),
                                 sections=(
                                     json.dumps(result.sections)
-                                    if analysis_tier == "full" and result.sections
+                                    if effective_tier == "full" and result.sections
                                     else None
                                 ),
                                 embeddings_shape=(
                                     json.dumps(result.embeddings_shape)
-                                    if analysis_tier == "full" and result.embeddings_shape
+                                    if effective_tier == "full" and result.embeddings_shape
                                     else None
                                 ),
                                 r2_stems_url=result.stems_url,
@@ -5877,7 +5903,7 @@ def _poll_analysis_jobs(
                             )
 
                         results[song_id]["analyze"] = "completed"
-                        results[song_id]["analysis_tier"] = analysis_tier
+                        results[song_id]["analysis_tier"] = effective_tier
                         del active_jobs[song_id]
                         any_completed_this_cycle = True
 
@@ -5886,7 +5912,7 @@ def _poll_analysis_jobs(
                                 song_id,
                                 recording.hash_prefix,
                                 "analyze",
-                                analysis_tier,
+                                effective_tier,
                                 job_id,
                                 "completed",
                                 completed_at=datetime.now(timezone.utc).isoformat(),
@@ -5895,7 +5921,7 @@ def _poll_analysis_jobs(
                         song = db_client.get_song(song_id)
                         song_name = song.title if song else song_id
                         console.print(
-                            f"  [green]✓[/green] {song_name} — analysis completed ({analysis_tier})"
+                            f"  [green]✓[/green] {song_name} — analysis completed ({effective_tier})"
                         )
 
                     elif job.status == "failed":
@@ -5962,7 +5988,33 @@ def _poll_analysis_jobs(
                             f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
                         )
                     else:
-                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                        # Non-retryable error: mark failed to avoid infinite loop
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        hash_prefix = recording.hash_prefix if recording else ""
+                        db_client.update_recording_status(
+                            hash_prefix=hash_prefix,
+                            analysis_status="failed",
+                        )
+                        results[song_id]["analyze"] = "failed"
+                        results[song_id]["analyze_error"] = str(e)
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            _add_manifest_entry(
+                                song_id,
+                                hash_prefix,
+                                "analyze",
+                                analysis_tier,
+                                job_id,
+                                "failed",
+                                error_message=str(e),
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        console.print(
+                            f"  [red]✗ {song_id}: analysis poll error: {e}[/red]"
+                        )
                 except Exception as e:
                     if song_id not in retried and _is_retryable_poll_error(e):
                         retried.add(song_id)
@@ -5970,7 +6022,33 @@ def _poll_analysis_jobs(
                             f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
                         )
                     else:
-                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                        # Non-retryable error: mark failed to avoid infinite loop
+                        recording = db_client.get_recording_by_song_id(song_id)
+                        hash_prefix = recording.hash_prefix if recording else ""
+                        db_client.update_recording_status(
+                            hash_prefix=hash_prefix,
+                            analysis_status="failed",
+                        )
+                        results[song_id]["analyze"] = "failed"
+                        results[song_id]["analyze_error"] = str(e)
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            _add_manifest_entry(
+                                song_id,
+                                hash_prefix,
+                                "analyze",
+                                analysis_tier,
+                                job_id,
+                                "failed",
+                                error_message=str(e),
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        console.print(
+                            f"  [red]✗ {song_id}: analysis poll error: {e}[/red]"
+                        )
 
             if any_completed_this_cycle:
                 last_completion_time = time.time()
@@ -6140,7 +6218,28 @@ def _poll_embedding_jobs(
                             f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
                         )
                     else:
-                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                        # Non-retryable error: mark failed to avoid infinite loop
+                        results[song_id]["embedding"] = "failed"
+                        results[song_id]["embedding_error"] = str(e)
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            recording = db_client.get_recording_by_song_id(song_id)
+                            _add_manifest_entry(
+                                song_id,
+                                recording.hash_prefix if recording else "",
+                                "embedding",
+                                "embedding",
+                                job_id,
+                                "failed",
+                                error_message=str(e),
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        console.print(
+                            f"  [red]✗ {song_id}: embedding poll error: {e}[/red]"
+                        )
                 except Exception as e:
                     if song_id not in retried and _is_retryable_poll_error(e):
                         retried.add(song_id)
@@ -6148,7 +6247,28 @@ def _poll_embedding_jobs(
                             f"  [yellow]→ {song_id}: transient poll error, retrying once...[/yellow]"
                         )
                     else:
-                        console.print(f"  [yellow]→ Error polling {job_id}: {e}[/yellow]")
+                        # Non-retryable error: mark failed to avoid infinite loop
+                        results[song_id]["embedding"] = "failed"
+                        results[song_id]["embedding_error"] = str(e)
+                        del active_jobs[song_id]
+                        any_completed_this_cycle = True
+
+                        if _add_manifest_entry:
+                            recording = db_client.get_recording_by_song_id(song_id)
+                            _add_manifest_entry(
+                                song_id,
+                                recording.hash_prefix if recording else "",
+                                "embedding",
+                                "embedding",
+                                job_id,
+                                "failed",
+                                error_message=str(e),
+                                completed_at=datetime.now(timezone.utc).isoformat(),
+                            )
+
+                        console.print(
+                            f"  [red]✗ {song_id}: embedding poll error: {e}[/red]"
+                        )
 
             if any_completed_this_cycle:
                 last_completion_time = time.time()
@@ -6393,7 +6513,11 @@ def _apply_manifest_writeback(
             if not recording or not job.result:
                 return
             result = job.result
-            status_to_set = "partial" if tier == "fast" else "completed"
+            # Derive effective tier from job type to guard against mismatch
+            effective_tier = (
+                "fast" if job.job_type == "fast_analyze" else "full"
+            )
+            status_to_set = "partial" if effective_tier == "fast" else "completed"
             db_client.update_recording_analysis(
                 hash_prefix=recording.hash_prefix,
                 duration_seconds=result.duration_seconds,
@@ -6404,22 +6528,22 @@ def _apply_manifest_writeback(
                 loudness_db=result.loudness_db,
                 beats=(
                     json.dumps(result.beats)
-                    if tier == "full" and result.beats
+                    if effective_tier == "full" and result.beats
                     else None
                 ),
                 downbeats=(
                     json.dumps(result.downbeats)
-                    if tier == "full" and result.downbeats
+                    if effective_tier == "full" and result.downbeats
                     else None
                 ),
                 sections=(
                     json.dumps(result.sections)
-                    if tier == "full" and result.sections
+                    if effective_tier == "full" and result.sections
                     else None
                 ),
                 embeddings_shape=(
                     json.dumps(result.embeddings_shape)
-                    if tier == "full" and result.embeddings_shape
+                    if effective_tier == "full" and result.embeddings_shape
                     else None
                 ),
                 r2_stems_url=result.stems_url,
