@@ -30,7 +30,7 @@ FROM songs s
 JOIN recordings r ON s.id = r.song_id
 LEFT JOIN song_embedding se ON se.song_id = s.id
 WHERE r.visibility_status = 'published'
-  AND r.analysis_status = 'completed'
+  AND r.analysis_status IN ('completed', 'partial')
   AND r.lrc_status = 'completed'
   AND r.deleted_at IS NULL
   AND s.deleted_at IS NULL

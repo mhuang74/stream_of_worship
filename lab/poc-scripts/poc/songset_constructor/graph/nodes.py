@@ -142,11 +142,13 @@ def validate_score(state: ConstructorState) -> dict:
         return {"feedback": ValidationFeedback(passed=False, errors=["No current draft."]), "trace": _trace(state, "validate_score", "validation", {"passed": False})}
     proposal = _draft_to_proposal(state, draft)
     feedback = validate(proposal, state["config"], state.get("transition_matrix", {}))
-    return {
+    update = {
         "feedback": feedback,
-        "beam_candidates": [proposal],
         "trace": _trace(state, "validate_score", "validation", {"passed": feedback.passed, "violated": feedback.violated}),
     }
+    if feedback.passed:
+        update["beam_candidates"] = [proposal]
+    return update
 
 
 def llm_refine(state: ConstructorState) -> dict:
