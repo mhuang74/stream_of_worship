@@ -433,15 +433,20 @@ service. All items must pass. (Tracked as `README.md:266-299`.)
 
 ## 11. Production deployment gate
 
-For dev/staging: **only** the device whitelist is required (Section 2.1).
-No Google review. The Default Media Receiver works with whitelisted
-devices.
+For the v3 default path, leave `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` blank and
+use Google's Default Media Receiver. No Cast SDK Developer Console app
+registration, Google review, or production approval is required for this
+path.
 
-For public production launch: the Cast app must be **submitted for
-approval** via the Cast SDK Developer Console → your app → **Submit for
-Approval**. Approval typically takes 2–4 weeks (Google's current SLA is
-closer to 1–2 weeks; budget conservatively). Until approved, only
-whitelisted devices work.
+Only when a custom/styled receiver app ID is configured:
+
+- Dev/staging: **only** the device whitelist is required (Section 2.1). No
+  Google review.
+- Public production launch: the Cast app must be **submitted for approval**
+  via the Cast SDK Developer Console → your app → **Submit for Approval**.
+  Approval typically takes 2–4 weeks (Google's current SLA is closer to
+  1–2 weeks; budget conservatively). Until approved, only whitelisted
+  devices can launch that registered receiver app.
 
 Env vars per environment (one app ID per environment when a custom
 receiver is used; blank to use the Default Media Receiver):
