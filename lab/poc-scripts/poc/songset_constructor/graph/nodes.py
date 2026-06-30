@@ -126,7 +126,7 @@ def llm_plan(state: ConstructorState) -> dict:
     return {
         "current_draft": draft,
         "llm_drafts": [draft],
-        "trace": _trace(state, "llm_plan", "llm_call", {"repairs": repairs}),
+        "trace": _trace(state, "llm_plan", "llm_call", {"prompt": prompt, "repairs": repairs}),
     }
 
 
@@ -169,7 +169,7 @@ def llm_refine(state: ConstructorState) -> dict:
         "current_draft": draft,
         "llm_drafts": [draft],
         "iterations": iteration,
-        "trace": [event("llm_refine", "llm_call", {"repairs": repairs}, iteration)],
+        "trace": [event("llm_refine", "llm_call", {"prompt": prompt, "repairs": repairs}, iteration)],
     }
 
 
@@ -200,7 +200,15 @@ def llm_judge(state: ConstructorState) -> dict:
         key = tuple(item.recording_hash_prefix for item in proposal.items)
         reason, judge_score = reasons.get(key, (None, None))
         proposals.append(proposal.model_copy(update={"judge_reason": reason, "judge_score": judge_score}))
-    return {"final_proposals": proposals, "trace": _trace(state, "llm_judge", "llm_call", {"rankings": len(reasons)})}
+    return {
+        "final_proposals": proposals,
+        "trace": _trace(
+            state,
+            "llm_judge",
+            "llm_call",
+            {"prompt": prompt, "rankings": len(reasons)},
+        ),
+    }
 
 
 def optional_review(state: ConstructorState) -> dict:

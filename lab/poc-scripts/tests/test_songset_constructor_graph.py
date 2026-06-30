@@ -1,6 +1,6 @@
 from poc.songset_constructor.config import RunConfig
 from poc.songset_constructor.graph.builder import build_graph
-from poc.songset_constructor.graph.nodes import route_after_beam, route_validation, validate_score
+from poc.songset_constructor.graph.nodes import llm_plan, route_after_beam, route_validation, validate_score
 from poc.songset_constructor.models import DraftItem, SongsetDraft, ValidationFeedback
 from poc.songset_constructor.rules.transitions import recommend_transition
 
@@ -67,3 +67,35 @@ def test_invalid_llm_draft_is_not_added_to_ranked_candidates(synthetic_pool):
     )
     assert update["feedback"].passed is False
     assert "beam_candidates" not in update
+
+
+def test_llm_plan_trace_records_full_prompt(synthetic_pool):
+    class FakePlanner:
+        prompt = None
+
+        def invoke(self, prompt):
+            self.prompt = prompt
+            return SongsetDraft(
+                items=[
+                    DraftItem(position=1, recording_hash_prefix="h001"),
+                    DraftItem(position=2, recording_hash_prefix="h002"),
+                    DraftItem(position=3, recording_hash_prefix="h003"),
+                    DraftItem(position=4, recording_hash_prefix="h004"),
+                    DraftItem(position=5, recording_hash_prefix="h005"),
+                ]
+            )
+
+    planner = FakePlanner()
+    update = llm_plan(
+        {
+            "config": RunConfig(no_llm=False, llm_model="fake"),
+            "pool": synthetic_pool,
+            "llm": planner,
+            "iterations": 0,
+        }
+    )
+
+    prompt = update["trace"][0]["data"]["prompt"]
+    assert prompt == planner.prompt
+    assert "Select a 5-song Chinese worship set using only these hash prefixes." in prompt
+    assert "h001: 赞美主" in prompt
