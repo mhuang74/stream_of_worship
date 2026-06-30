@@ -367,11 +367,11 @@ class JobStore:
 
                         INSERT INTO jobs SELECT * FROM jobs_old;
 
-                        CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-                        CREATE INDEX IF NOT EXISTS idx_jobs_content_hash ON jobs(content_hash);
-                        CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
-
                         DROP TABLE jobs_old;
+
+                        CREATE INDEX idx_jobs_status ON jobs(status);
+                        CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                        CREATE INDEX idx_jobs_created_at ON jobs(created_at);
                         """
                     )
                     await self._db.commit()
