@@ -725,7 +725,7 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         title: m.title,
         metadataType: chrome.cast.media.MetadataType.GENERIC,
       };
-      mediaInfo.streamType = chrome.cast.StreamType.BUFFERED;
+      mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
       const loadRequest = new chrome.cast.media.LoadRequest(mediaInfo);
       loadRequest.currentTime = m.startSeconds ?? 0;
       await new Promise<void>((resolve, reject) => {

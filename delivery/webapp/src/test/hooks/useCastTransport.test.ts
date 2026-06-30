@@ -136,7 +136,6 @@ function setupCastSdkMock(opts?: {
   (window as unknown as { chrome: unknown }).chrome = {
     cast: {
       AutoJoinPolicy: { TAB_AND_ORIGIN_SCOPED: "tab_and_origin_scoped" },
-      StreamType: { BUFFERED: "buffered" },
       media: {
         DEFAULT_MEDIA_RECEIVER_APP_ID: "DEFAULT",
         MediaInfo: function MediaInfo(this: unknown, contentId: string, contentType: string) {
@@ -152,6 +151,7 @@ function setupCastSdkMock(opts?: {
           this.currentTime = 0;
         },
         MetadataType: { GENERIC: 0 },
+        StreamType: { BUFFERED: "buffered" },
         GenericMediaMetadata: function GenericMediaMetadata() {},
       },
     },
@@ -355,6 +355,11 @@ describe("useCastTransport", () => {
       expect(result.current.deviceName).toBe(player.displayName);
       expect(result.current.isConnecting).toBe(false);
       expect(session.loadMedia).toHaveBeenCalledTimes(1);
+      // Guards against the StreamType namespace regression: the real SDK exposes
+      // StreamType under chrome.cast.media, not chrome.cast. If this assertion
+      // breaks, the call site in useCast.ts has reverted to the wrong namespace.
+      const loadRequest = session.loadMedia.mock.calls[0][0];
+      expect(loadRequest.media.streamType).toBe("buffered");
     });
 
     it("requestSession cancel → isConnecting=false, no session leak, no telemetry POST", async () => {

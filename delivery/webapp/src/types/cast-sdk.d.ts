@@ -38,12 +38,6 @@ declare namespace chrome.cast {
     AUDIO_IN = "audio_in",
   }
 
-  export enum StreamType {
-    BUFFERED = "buffered",
-    LIVE = "live",
-    OTHER = "other",
-  }
-
   /** Structured error passed to Cast SDK failure callbacks. */
   export interface Error {
     code: string;
@@ -73,13 +67,20 @@ declare namespace chrome.cast {
       AUDIOBOOK_CHAPTER = 5,
     }
 
+    /** Stream type hint used by MediaInfo.streamType. */
+    export enum StreamType {
+      BUFFERED = "buffered",
+      LIVE = "live",
+      OTHER = "other",
+    }
+
     /** Description of the media the receiver should load. */
     export class MediaInfo {
       constructor(contentId: string, contentType: string);
       contentId: string;
       contentType: string;
       metadata?: GenericMediaMetadata & { metadataType?: MetadataType };
-      streamType?: StreamType | string;
+      streamType?: media.StreamType | string;
       duration?: number | null;
       customData?: Record<string, unknown> | null;
       textTrackStyle?: unknown;
