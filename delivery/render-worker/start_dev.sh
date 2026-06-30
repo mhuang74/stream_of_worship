@@ -11,7 +11,6 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NO_START=false
 REBUILD=false
 COMPOSE_UP_ARGS=()
@@ -34,8 +33,8 @@ echo -e "${GREEN}=== Render Worker Development Startup ===${NC}"
 echo ""
 
 # Check if docker compose is available
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}Error: Docker is not installed${NC}"
+if ! docker compose version &> /dev/null; then
+    echo -e "${RED}Error: Docker Compose (v2) is not installed or available${NC}"
     exit 1
 fi
 
@@ -45,9 +44,14 @@ if [[ ! -f "/opt/sow/.env" ]]; then
     echo -e "Copy from .env.example and configure your environment variables:"
     echo -e "  cp $SCRIPT_DIR/.env.example /opt/sow/.env"
     echo ""
-    read -p "Continue anyway? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [ -t 0 ]; then
+        read -p "Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: Non-interactive shell and .env file is missing. Exiting.${NC}"
         exit 1
     fi
 fi
