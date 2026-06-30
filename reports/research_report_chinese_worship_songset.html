@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Best Practices for Assembling a Chinese Worship Song Set</title>
+<style>
+  :root {
+    --ink: #1f2330;
+    --ink-soft: #4a5160;
+    --ink-faint: #7a8194;
+    --line: #e4e7ef;
+    --line-soft: #eef0f6;
+    --accent: #2b5a8c;
+    --accent-soft: #eaf1f9;
+    --warn: #b54a1f;
+    --warn-soft: #fbeee6;
+    --ok: #27653a;
+    --ok-soft: #e7f2ea;
+    --code-bg: #1f2330;
+    --code-fg: #e8ebf3;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+                 "Noto Sans CJK TC", "PingFang TC", "Microsoft JhengHei",
+                 Roboto, Arial, sans-serif;
+    color: var(--ink);
+    background: #f7f8fb;
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  /* Sidebar TOC */
+  aside {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 18px 60px 28px;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    font-size: 14px;
+  }
+  aside h3 {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 20px 0 8px 0;
+  }
+  aside ol { list-style: none; padding-left: 0; margin: 0; }
+  aside ol li { margin: 4px 0; }
+  aside ol ol { padding-left: 14px; margin-top: 2px; }
+  aside a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    display: block;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  aside a:hover { background: var(--accent-soft); color: var(--accent); }
+  aside .brand {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  aside .brand small { display: block; color: var(--ink-faint); font-weight: 400; font-size: 11px; }
+  /* Main */
+  main {
+    padding: 48px 56px 120px 56px;
+    background: #fff;
+    min-width: 0;
+  }
+  header.title {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 22px;
+    margin-bottom: 32px;
+  }
+  header.title .eyebrow {
+    color: var(--ink-faint);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  header.title h1 {
+    margin: 0 0 6px 0;
+    font-size: 30px;
+    letter-spacing: -0.01em;
+  }
+  header.title .subtitle { color: var(--ink-soft); font-size: 15px; }
+  header.title .meta {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--ink-faint);
+  }
+  header.title .meta span { margin-right: 16px; }
+
+  h2 {
+    font-size: 23px;
+    margin: 44px 0 6px 0;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    letter-spacing: -0.005em;
+  }
+  h2 .num {
+    display: inline-block;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin-right: 10px;
+  }
+  h3 {
+    font-size: 17px;
+    margin: 28px 0 6px 0;
+    color: var(--ink);
+  }
+  h4 {
+    font-size: 15px;
+    margin: 18px 0 4px 0;
+    color: var(--ink-soft);
+    text-transform: none;
+  }
+  p { margin: 8px 0 12px 0; }
+  ul, ol { margin: 8px 0 14px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--accent); }
+  strong { color: var(--ink); }
+  code {
+    font-family: "JetBrains Mono", "SF Mono", "DejaVu Sans Mono", Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--line-soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 18px 20px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 13.5px;
+    line-height: 1.55;
+    margin: 14px 0 18px 0;
+  }
+  pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+  pre .c { color: #8a93a8; font-style: italic; }
+  pre .k { color: #8ab4f8; }
+  pre .s { color: #f1c75a; }
+  pre .n { color: #f2889f; }
+  pre .fn { color: #92d3a0; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 22px 0;
+    font-size: 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  th {
+    background: #f4f6fa;
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 13px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #fafbfd; }
+  .num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .tag.cn { background: #eef4fb; color: #2b5a8c; border: 1px solid #c9dcf0; }
+  .tag.hard { background: var(--warn-soft); color: var(--warn); border: 1px solid #f0cbb8; }
+  .tag.soft { background: var(--ok-soft); color: var(--ok); border: 1px solid #b8ddc6; }
+
+  blockquote {
+    margin: 14px 0;
+    padding: 10px 16px;
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+    color: var(--ink-soft);
+  }
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    background: #fbfcfe;
+    padding: 14px 18px;
+    border-radius: 6px;
+    margin: 16px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.ok   { border-left-color: var(--ok);   background: var(--ok-soft); }
+  .callout h4 { margin-top: 0; }
+
+  .recs {
+    background: #fafbfd;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 18px 12px 12px;
+    margin: 14px 0 18px 0;
+  }
+  .recs h4 {
+    margin: 0 0 6px 6px;
+    color: var(--accent);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .recs ul { margin-bottom: 0; }
+
+  .schema-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 14px 0;
+  }
+  .schema-card .col {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    background: #fafbfd;
+  }
+  .schema-card .col h4 { margin: 0 0 6px 0; color: var(--accent); }
+  .schema-card .col code { font-size: 12px; }
+
+  .arc-vis {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    margin: 14px 0 20px 0;
+    font-size: 12px;
+  }
+  .arc-vis .phase {
+    border-radius: 6px;
+    padding: 10px 8px;
+    text-align: center;
+    color: #fff;
+    font-weight: 600;
+  }
+  .arc-vis .phase small { display: block; font-weight: 400; opacity: 0.92; margin-top: 3px; }
+
+  footer.report {
+    margin-top: 60px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 13px;
+  }
+  a { color: var(--accent); }
+  a:hover { text-decoration: underline; }
+  /* Print friendliness */
+  @media print {
+    .layout { grid-template-columns: 1fr; }
+    aside { display: none; }
+    main { padding: 0; }
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 28px 22px 80px 22px; }
+    .schema-card, .arc-vis { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside>
+  <div class="brand">Stream of Worship
+    <small>Research Report Series</small>
+  </div>
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#summary">Executive Summary</a></li>
+    <li><a href="#1">1. Worship Flow &amp; Thematic Arc</a></li>
+    <li><a href="#2">2. Tempo (BPM) Progression</a></li>
+    <li><a href="#3">3. Key &amp; Harmonic Compatibility</a></li>
+    <li><a href="#4">4. Chinese Song Sources &amp; Cataloging</a></li>
+    <li><a href="#5">5. Decision Rules for Programmatic Assembly</a>
+      <ol>
+        <li><a href="#5-1">5.1 Hard Constraints</a></li>
+        <li><a href="#5-2">5.2 Soft Constraints</a></li>
+        <li><a href="#5-3">5.3 Scoring Function</a></li>
+        <li><a href="#5-4">5.4 Sequence Templates</a></li>
+        <li><a href="#5-5">5.5 Dead-end Songs &amp; Limited Pools</a></li>
+        <li><a href="#5-6">5.6 Mapping to DB Schema</a></li>
+      </ol>
+    </li>
+    <li><a href="#refs">References</a></li>
+  </ol>
+  <h3>Quick Facts</h3>
+  <p style="font-size:12px;color:var(--ink-faint);line-height:1.5;margin-top:4px;">
+    Audience: software engineers building the song-set constructor.<br/>
+    Scope: 现代中文敬拜诗歌 + Western worship leading lit.<br/>
+    Output target: <code>songset_items</code> selection &amp; ordering.
+  </p>
+</aside>
+
+<main>
+<header class="title">
+  <div class="eyebrow">Research Report</div>
+  <h1>Best Practices for Assembling a Chinese Worship Song Set</h1>
+  <div class="subtitle">Quantitative recommendations to guide a programmatic song-set constructor for 现代中文敬拜诗歌</div>
+  <div class="meta">
+    <span>Date: 2026-06-30</span>
+    <span>Status: Final</span>
+    <span>Audience: Engineering</span>
+    <span>Sources: Chinese-first + supplementary English lit.</span>
+  </div>
+</header>
+
+<section id="summary">
+<h2 style="border-top:none; margin-top:0; padding-top:0;"><span class="num"></span>Executive Summary</h2>
+<p>
+This report distills worship-leading practice and music theory into concrete, computable rules for a software
+agent that selects and orders Chinese worship songs (中文敬拜诗歌) into a cohesive song set. It maps each
+recommendation onto the existing data model in <code>delivery/webapp</code>: the <code>songs</code> table
+(meta: <code>album_series</code>, <code>musical_key</code>, <code>composer</code>, <code>lyricist</code>,
+<code>lyrics_raw</code>), the <code>recordings</code> table (per-recording <code>tempo_bpm</code>,
+<code>musical_key</code>, <code>musical_mode</code>, <code>key_confidence</code>, <code>loudness_db</code>,
+<code>sections</code> from <code>allin1</code> audio analysis), and the <code>songset_items</code> table
+(<code>position</code>, <code>key_shift_semitones</code>, <code>tempo_ratio</code>,
+<code>crossfade_enabled</code>).
+</p>
+<p>
+Five findings drive the assembly layer:
+<b>(1)</b> a five-phase worship arc — <i>Praise → Thanksgiving → Worship → Response → Sending</i> —
+with opening songs at 110–140&nbsp;BPM decaying toward 60–80&nbsp;BPM at the close;
+<b>(2)</b> a Circle-of-Fifths Distance (CFD) ≤&nbsp;2 rule for harmonic compatibility between consecutive
+songs (computation given below); <b>(3)</b> a Chinese-first tagging vocabulary anchored on standard
+theme tags (赞美 / 感恩 / 敬拜 / 奉献 / 认罪 / 差遣); <b>(4)</b> SOP (<code>album_series</code> =
+<code>PW</code>/<code>CPW</code>/<code>DEV</code>) as the primary cataloging spine and Joshua Band,
+Wings of Worship, Bridge 音乐 as supplementary; <b>(5)</b> a weighted fitness function that balances
+thematic progression (40%), tempo decay (30%), and key compatibility (30%) with hard-constraint gating.
+</p>
+<div class="callout">
+<b>Engineering TL;DR.</b> A song-set constructor is a constrained optimization:
+generate candidate orderings of a song pool, apply <a href="#5-1">hard constraints</a> to prune,
+then maximize the <a href="#5-3">fitness function</a> in §5.3. The constructor outputs one
+<code>songset_item</code> row per selected song, optionally pre-filling
+<code>key_shift_semitones</code> computed from the CFD transition model in §3.
+</div>
+</section>
+
+<!-- ============== Section 1 ============== -->
+<h2 id="1"><span class="num">1.</span>Worship Flow &amp; Thematic Arc</h2>
+
+<p>
+Contemporary worship-leading literature converges on a five-phase emotional/theological journey for a
+Sunday worship set. The most widely-cited expression is <i>Invitation → Engagement → Declaration →
+Response</i> (Worship Song Index), a recasting of the older <b>Temple model</b> (<i>Outer Court →
+Inner Court → Holy of Holies</i>) that many Chinese worship pastors were taught in seminary. Worship
+Online proposes an essentially equivalent five-song template — <i>Opener (upbeat congregational) →
+Builder (bigger arrangement) → Turn (mid-tempo pivot) → Response (slow/intimate) → Send (confidence
+and resolve)</i> — that maps cleanly onto a 25-minute Sunday set. The Christian liturgical tradition
+(Robert Webber's <i>ancient-future</i> fourfold service — Gathering, Word, Table, Sending) provides
+the theological superstructure, but for a programmatic selector the five-phase contemporary model is
+the right granularity because it has roughly one phase per song in a typical 4–6 song set.
+</p>
+<p>
+Chinese-speaking congregations (华人教会) follow the same arc but express it through the thematic
+vocabulary inherited from SOP (赞美之泉) and other collectives. The nine most common theme tags —
+<b>赞美 praise · 感恩 thanksgiving · 敬拜 worship · 奉献 offering/commitment · 认罪 confession ·
+差遣 sending/mission · 信心 faith · 祈祷 prayer · 复兴 revival</b> — map onto the five phases as
+shown below. Crucially for our system: most of these tags do <b>not</b> exist as database columns
+today; they must either be derived from lyric keyword matching (<code>lyrics_raw</code>), from
+the <code>album_series</code> codes described in §4, or supplied as a curated
+<code>theme_tags</code> enum column added to the <code>songs</code> table.
+</p>
+
+<div class="arc-vis">
+  <div class="phase" style="background:#3b6ea5;">Praise 赞美<small>110–140 BPM</small></div>
+  <div class="phase" style="background:#4a86bd;">Thanksgiving 感恩<small>100–120 BPM</small></div>
+  <div class="phase" style="background:#5b9bc7;">Worship 敬拜<small>80–100 BPM</small></div>
+  <div class="phase" style="background:#6cabcb;">Response 奉献/认罪<small>65–85 BPM</small></div>
+  <div class="phase" style="background:#7cb8ce;">Sending 差遣<small>70–90 BPM</small></div>
+</div>
+
+<h3>Song counts per service type</h3>
+<table>
+  <thead><tr><th>Service type</th><th class="num-cell">Songs</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Sunday worship (main service)</td><td class="num-cell">4–5</td><td>Most widely practiced; gives ~20–25 min of music</td></tr>
+    <tr><td>Sunday communion service</td><td class="num-cell">5–6</td><td>+1 song around the Table phase</td></tr>
+    <tr><td>Prayer meeting (祷告会)</td><td class="num-cell">3–5</td><td>Skews toward 认罪 / 祈祷 / 敬拜 phases</td></tr>
+    <tr><td>Worship night / retreat (退修会)</td><td class="num-cell">7–12</td><td>Multiple mini-arcs, may repeat earlier songs</td></tr>
+  </tbody>
+</table>
+
+<h3>Hymnal-based vs. contemporary selection</h3>
+<p>
+Traditional Chinese churches using hymnals such as <i>生命圣诗</i> or <i>恩颂诗歌</i> typically index
+by <b>theme</b> (按主题) and <b>church season</b> (按节期), with the worship leader selecting 2–3
+hymns whose theme matches the sermon. Contemporary-worship churches (the SOP / Joshua Band
+audience) select 4–6 songs following the praise→worship→response arc and treat the
+<i>transition between songs</i> as part of the musical craft. Our constructor targets this latter
+audience but should expose a "hymnal mode" toggle that exits a set with a single
+传统圣诗 in the Sending position (e.g. <i>三一颂 Doxology</i>) when available in the pool.
+</p>
+
+<div class="recs">
+  <h4>Concrete recommendations · §1</h4>
+  <ul>
+    <li>Adopt the <b>five-phase arc</b> as the primary structural target: Praise → Thanksgiving → Worship → Response → Sending.</li>
+    <li>Default to <b>5 songs</b> for a standard Sunday set; expose a 4- and 6-song template.</li>
+    <li>Define a <code>ThemeTag</code> enum with at least these 12 values: <span class="tag cn">赞美</span><span class="tag cn">感恩</span><span class="tag cn">敬拜</span><span class="tag cn">奉献</span><span class="tag cn">认罪</span><span class="tag cn">差遣</span><span class="tag cn">信心</span><span class="tag cn">祈祷</span><span class="tag cn">复兴</span><span class="tag cn">圣灵</span><span class="tag cn">十字架</span><span class="tag cn">跟随</span></li>
+    <li>Map themes → phases: <code>{赞美, 感恩} → Praise/Thanksgiving</code>, <code>{敬拜, 祈祷, 信心} → Worship</code>, <code>{奉献, 认罪, 十字架} → Response</code>, <code>{差遣, 跟随, 复兴} → Sending</code>.</li>
+    <li>Provide a "hymnal-mode" toggle that places a 传统圣诗 at the final position when the pool contains one.</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============== Section 2 ============== -->
+<h2 id="2"><span class="num">2.</span>Tempo (BPM) Progression</h2>
+
+<p>
+The "start hot, end slow" heuristic is robustly supported by both worship-leading practice and worship
+song data. Worship Online recommends opening energy at <b>120–140&nbsp;BPM</b> and gradually descending
+into response and intimacy, explicitly warning against placing the slowest song immediately after the
+fastest. The Worship Song Index corpus of well-known closing/intimate songs — "Goodness Of God" (70&nbsp;BPM),
+"Living Hope" (68), "What A Beautiful Name" (68), "No Longer Slaves" (76), "Speak, O Lord" (66),
+"Holy Forever" (74), "Cornerstone" (72) — clusters tightly in the <b>66–76&nbsp;BPM "intimate"</b>
+range, confirming that the closing phase should target ≤&nbsp;80&nbsp;BPM while the opening praise phase
+should target ≥&nbsp;110&nbsp;BPM.
+</p>
+
+<h3>Per-phase BPM targets</h3>
+<table>
+  <thead><tr><th>Phase</th><th class="num-cell">BPM target</th><th>Reference songs</th></tr></thead>
+  <tbody>
+    <tr><td>Opening Praise 赞美</td><td class="num-cell">110–140</td><td>"大聲敬拜", "披上讚美衣" (SOP PW30)</td></tr>
+    <tr><td>Thanksgiving 感恩</td><td class="num-cell">95–125</td><td>"向我的神獻上感謝" (SOP PW30)</td></tr>
+    <tr><td>Worship 敬拜 (deep)</td><td class="num-cell">75–100</td><td>"這是我們的敬拜" (SOP PW31)</td></tr>
+    <tr><td>Response 奉献/认罪</td><td class="num-cell">60–80</td><td>"Goodness Of God" (70), "Cornerstone" (72)</td></tr>
+    <tr><td>Sending 差遣</td><td class="num-cell">70–95</td><td>"唯一的使命" (SOP PW31, 收尾式)</td></tr>
+  </tbody>
+</table>
+
+<h3>Step-down rule of thumb</h3>
+<p>
+Worship-leading forums and DJ set-craft agree: <b>consecutive songs should differ by no more than
+15&nbsp;BPM</b> for a smooth crossfade, with up to <b>20&nbsp;BPM acceptable when an instrumental
+vamp or modulating bridge is inserted</b>. Larger jumps than 20&nbsp;BPM between consecutive songs
+require a structural bridge (drum fill, pad swell, half-time/double-time feel change) — which the
+<code>songset_items.gap_beats</code> and <code>crossfade_duration_seconds</code> columns can model.
+A practical "ramp" rule: across an <i>N</i>-song set, total BPM delta target &lt;
+(<i>N</i>−1) × 15&nbsp;BPM, but the constructor should <b>prefer monotonically non-increasing</b>
+BPM, allowing at most one "re-engage" uptick in the Sending phase.
+</p>
+
+<h3>Cultural tempo tendencies</h3>
+<p>
+SOP and Joshua Band catalogs skew slightly slower than Western CCM equivalents in the closing-phase
+positions — Chinese worship songs heavily emphasize 敬拜 word-by-word intimacy (e.g. "深深地敬拜" PW27,
+"讓我更深更深地來愛祢" PW31) at <b>~65–80 BPM</b>. Opening praise songs are comparable in tempo to
+Western CCM. The constructor need not apply a hard Chinese-vs-English tempo offset, but the
+<BPM targets in the table above</b> were calibrated against the actual SOP PW27–PW31 corpus.
+</p>
+
+<div class="recs">
+  <h4>Concrete recommendations · §2</h4>
+  <ul>
+    <li>Phase BPM target bands as in the table above; <b>first song BPM&nbsp;≥&nbsp;110</b>, <b>last song BPM&nbsp;≤&nbsp;90</b> (≤ 80 if intimate closing).</li>
+    <li>Consecutive-song step |ΔBPM| ≤ 15 default; ≤ 20 permitted when any of <code>crossfade_duration_seconds</code> &gt; 0, <code>gap_beats</code> &gt; 4, or a modulating bridge is selected.</li>
+    <li>Prefer <b>monotonically non-increasing</b> tempo across the set; allow one uptick in phase&nbsp;5.</li>
+    <li>Use <code>recordings.tempo_bpm</code> as the authoritative source (already analyzed by the analysis service via <code>allin1</code>+librosa).</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============== Section 3 ============== -->
+<h2 id="3"><span class="num">3.</span>Key &amp; Harmonic Compatibility for Transitions</h2>
+
+<p>
+Harmonic coherence is the single most-cited reason congregations register "the set felt disjointed"
+(WorshipChordBook: "moving from G to Eb to B creates harmonic restlessness the congregation feels
+without knowing why"). The good news for our constructor: the <code>recordings.musical_key</code> column
+already exists (populated by the analysis service), and the <code>songset_items.key_shift_semitones</code>
+column is already wired up to apply transposition at render time. The missing piece is a computable
+<b>compatibility score</b> and a modulation strategy.
+</p>
+
+<h3>3.1 Compatible key relationships (ranked)</h3>
+<table>
+  <thead><tr><th>Rank</th><th>Relationship</th><th>Example</th><th>CFD*</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Excellent</td><td>Same key</td><td>C → C</td><td class="num-cell">0</td><td>Default; zero effort</td></tr>
+    <tr><td>Excellent</td><td>Relative major/minor</td><td>C ↔ Amin</td><td class="num-cell">0</td><td>Emotional shift, no key signature change</td></tr>
+    <tr><td>Excellent</td><td>Circle-of-Fifths neighbor (I–V)</td><td>C → G</td><td class="num-cell">1</td><td>Single shared leading tone; very common in worship</td></tr>
+    <tr><td>Excellent</td><td>Circle-of-Fifths neighbor (I–IV)</td><td>C → F</td><td class="num-cell">1</td><td>Subdominant; smooth</td></tr>
+    <tr><td>Good</td><td>Two fifths away</td><td>C → D</td><td class="num-cell">2</td><td>Still compatible, common in up-tempo praise</td></tr>
+    <tr><td>Moderate</td><td>Three fifths away</td><td>C → A</td><td class="num-cell">3</td><td>Pivot chord (Emin) recommended</td></tr>
+    <tr><td>Poor</td><td>Tritone / distant</td><td>C → F♯</td><td class="num-cell">6</td><td>Avoid; forces direct modulation</td></tr>
+  </tbody>
+</table>
+<p style="font-size:13px;color:var(--ink-faint);">*CFD = Circle-of-Fifths Distance, computed by the algorithm in §3.3.</p>
+
+<h3>3.2 Modulation / transition techniques</h3>
+<p>
+When consecutive songs are in different keys, choose a transition technique based on CFD and the
+<code>songset_items</code> columns available:
+</p>
+<table>
+  <thead><tr><th>Technique</th><th>When to use</th><th>Render-layer mapping</th></tr></thead>
+  <tbody>
+    <tr><td><b>Pivot chord</b> (common-chord modulation)</td><td>CFD&nbsp;≤&nbsp;2, both keys diatonic to a shared chord</td><td><code>crossfade_duration_seconds</code> ≥ 4, <code>key_shift_semitones</code>=0</td></tr>
+    <tr><td><b>Direct modulation</b> (key-of-arrival V)</td><td>CFD&nbsp;≤&nbsp;3, energetic transition</td><td><code>gap_beats</code> ≥ 4 (drum fill), <code>key_shift_semitones</code>=0</td></tr>
+    <tr><td><b>Vamp / groove transition</b></td><td>Any CFD; sustain on the dominant&nbsp;V7 of the new key</td><td><code>crossfade_enabled</code>=1, <code>crossfade_duration_seconds</code> ≥ 6</td></tr>
+    <tr><td><b>Relative major/minor shift</b></td><td>CFD&nbsp;= 0, opposite mode</td><td>Set <code>key_shift_semitones</code>=0; rely on natural mode shift</td></tr>
+    <tr><td><b>Half-step up lift</b> (e.g. B → C)</td><td>Where emotional lift needed mid-set</td><td><code>key_shift_semitones</code>=+1 applied to song <i>B</i></td></tr>
+    <tr><td><b>Transposition to a target key</b></td><td>CFD&nbsp;&gt;&nbsp;3 forced; few pool options</td><td>Pre-compute <code>key_shift_semitones</code> on one song so CFD ≤ 2</td></tr>
+  </tbody>
+</table>
+
+<h3>3.3 Circle-of-Fifths Distance (CFD) algorithm</h3>
+<p>
+Treat each key as (<i>pitch class</i>, <i>mode</i>) where pitch class ∈&nbsp;{0..11} (C=0…B=11) and
+mode ∈ {<code>maj</code>, <code>min</code>}. Normalize minor to its relative major by adding 3 semitones
+(keeping the same key signature), then compute the circular distance on the circle of fifths:
+</p>
+
+<pre><code><span class="k">def</span> <span class="fn">pitch_class</span>(note: <span class="k">str</span>) -> <span class="k">int</span>:
+    <span class="c"># Map a note name (e.g. "C", "F#", "Bb") to a pitch class 0..11.</span>
+    NOTES = {<span class="s">"C"</span>:0, <span class="s">"C#"</span>:1, <span class="s">"Db"</span>:1, <span class="s">"D"</span>:2, <span class="s">"D#"</span>:3, <span class="s">"Eb"</span>:3,
+             <span class="s">"E"</span>:4, <span class="s">"F"</span>:5, <span class="s">"F#"</span>:6, <span class="s">"Gb"</span>:6, <span class="s">"G"</span>:7,
+             <span class="s">"G#"</span>:8, <span class="s">"Ab"</span>:8, <span class="s">"A"</span>:9, <span class="s">"A#"</span>:10, <span class="s">"Bb"</span>:10, <span class="s">"B"</span>:11}
+    <span class="k">return</span> NOTES[note]
+
+<span class="k">def</span> <span class="fn">relative_major_pc</span>(pc: <span class="k">int</span>, mode: <span class="k">str</span>) -> <span class="k">int</span>:
+    <span class="c"># minor -> add 3 semitones to get its relative major; major stays.</span>
+    <span class="k">return</span> (pc + (<span class="n">3</span> <span class="k">if</span> mode == <span class="s">"min"</span> <span class="k">else</span> <span class="n">0</span>)) % <span class="n">12</span>
+
+<span class="k">def</span> <span class="fn">fifth_distance_on_circle</span>(a: <span class="k">int</span>, b: <span class="k">int</span>) -> <span class="k">int</span>:
+    <span class="c"># Each fifth = +7 semitones on the chromatic circle = 1 step on the CoF.</span>
+    <span class="c"># Convert pitch class to circle-of-fifths index, then take circular distance.</span>
+    COF_INDEX = {0:0, 7:1, 2:2, 9:3, 4:4, 11:5, 6:6, 1:7, 8:8, 3:9, 10:10, 5:11}
+    ia, ib = COF_INDEX[a], COF_INDEX[b]
+    <span class="k">return</span> min((ia - ib) % <span class="n">12</span>, (ib - ia) % <span class="n">12</span>)
+
+<span class="k">def</span> <span class="fn">cfd</span>(key_a: <span class="k">str</span>, mode_a: <span class="k">str</span>, key_b: <span class="k">str</span>, mode_b: <span class="k">str</span>) -> <span class="k">int</span>:
+    <span class="c"># Circle-of-Fifths Distance between two keys; 0 = identical, 6 = tritone max.</span>
+    pa = relative_major_pc(pitch_class(key_a), mode_a)
+    pb = relative_major_pc(pitch_class(key_b), mode_b)
+    <span class="k">return</span> fifth_distance_on_circle(pa, pb)
+
+<span class="k">def</span> <span class="fn">key_compatibility_score</span>(cfd: <span class="k">int</span>) -> <span class="k">float</span>:
+    <span class="c"># Returns (0..1]. 1.0 = same key, 0 = tritone (max distance = 6).</span>
+    <span class="k">return</span> max(<span class="n">0.0</span>, <span class="n">1.0</span> - cfd / <span class="n">6.0</span>)
+</code></pre>
+
+<div class="callout">
+<b>Threshold rule.</b> Two consecutive songs are considered <b>harmonically compatible</b> iff
+<code>cfd(a, b) ≤ 2</code>. When <code>3 ≤ cfd ≤ 5</code>, require an explicit transition technique
+from §3.2 (vamp or direct modulation) and a non-zero <code>crossfade_duration_seconds</code>. When
+<code>cfd = 6</code> (tritone), reject the ordering outright unless one song is transposed:
+compute <code>key_shift_semitones</code> on the incoming song so its effective key has CFD ≤ 2.
+</div>
+
+<h3>3.4 Common keys in Chinese worship</h3>
+<p>
+Guitar-friendly open keys dominate contemporary worship: <b>C, D, G, A, E, F</b> (often with capo).
+SOP's <code>sop.org/songs/</code> database exposes a <code>調性</code> filter with this exact key set
+(E, G, C, D, F, Bb, A and their enharmonic equivalents). Preferred key-neighbor pairs that occur
+naturally in SOP albums: <code>G → D → A</code> (rising energy in early set), <code>D → A → E</code>
+("high-energy praise" triad), <code>C → G → D</code> (descending at set close), <code>D → Bm → G → D</code>
+(relative-minor interlocks for the Worship phase).
+</p>
+
+<div class="recs">
+  <h4>Concrete recommendations · §3</h4>
+  <ul>
+    <li>Implement <code>cfd()</code> and <code>key_compatibility_score()</code> as pure functions in <code>delivery/webapp/src/lib/songset/harmony.ts</code>.</li>
+    <li><b>Hard gate:</b> consecutive songs must have CFD ≤ 2 <i>or</i> come with a non-zero <code>crossfade_duration_seconds</code> + chosen transition technique.</li>
+    <li>Auto-suggest <code>key_shift_semitones</code> ∈ {-2,-1,0,+1,+2} to bring CFD ≤ 2 when needed (prefer no-shift; minimal-shift).</li>
+    <li>Read <code>musical_key</code> + <code>musical_mode</code> from <code>recordings</code>, falling back to <code>songs.musical_key</code> if recording not yet analyzed.</li>
+    <li>Treat <code>key_confidence</code> &lt; 0.6 as a soft warning; require human confirmation before transposing.</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============== Section 4 ============== -->
+<h2 id="4"><span class="num">4.</span>Chinese Song Sources &amp; Cataloging</h2>
+
+<h3>4.1 Primary catalogs</h3>
+<p>
+The Chinese contemporary worship music landscape is dominated by a small number of producing collectives.
+For programmatic assembly, the <code>album_series</code> column on the <code>songs</code> table — already
+used by the admin CLI's scraper against <code>sop.org</code> — is the most valuable single field for
+classifying a song's likely worship role.
+</p>
+<table>
+  <thead><tr><th>Collective</th><th>Album series codes</th><th>Default role hint</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><b>Stream of Praise (赞美之泉 / SOP)</b></td><td><code>PW</code>, <code>CPW</code>, <code>DEV</code></td><td>primary catalog; see code→role below</td><td>Founded 1984 in SF Bay Area; most-structured Chinese worship DB; exposed at <a href="https://sop.org/songs/">sop.org/songs</a> with title/lyric/composer/album/series/調性 filters</td></tr>
+    <tr><td><b>Joshua Band (约书亚乐团)</b></td><td>varies (e.g. <code>JB</code>, <code>BLCC</code>)</td><td>default to <code>敬拜</code> unless title suggests otherwise</td><td>Taipei worship band tied to 靈糧堂; rock/pop-leaning; prominent in youth worship</td></tr>
+    <tr><td><b>Wings of Worship (翼讚音樂)</b></td><td><code>WoW</code></td><td>default to <code>敬拜</code></td><td>Smaller Malaysia/Singapore collective; emphasis on devotional intimacy</td></tr>
+    <tr><td><b>Bridge 音乐 (橋樑音樂)</b></td><td><code>BR</code></td><td>default to <code>敬拜</code></td><td>Taiwanese worship ministry</td></tr>
+    <tr><td><b>Hymnals</b> (生命圣诗 / 恩颂诗歌 / 青年圣歌 / 新歌颂扬)</td><td><code>HYMN</code></td><td><code>差遣</code> or <code>奉献</code></td><td>Used in liturgical Chinese churches; index by theme + church season</td></tr>
+  </tbody>
+</table>
+
+<h4>SOP <code>album_series</code> → role mapping</h4>
+<ul>
+  <li><b>PW (敬拜讚美, Praise &amp; Worship)</b> — flagship, 31+ albums. Songs span all phases; classify per-title below.</li>
+  <li><b>CPW (兒童敬拜, Children's)</b> — out-of-scope for adult worship sets; exclude from default constructor pool.</li>
+  <li><b>DEV (靈修)</b> — default to <code>敬拜</code> / response phase; tempo typically 60–80 BPM.</li>
+  <li><b>Christmas EPs</b> — seasonal filter; only include during 将临节/圣诞节; force theme <code>赞美</code> + seasonal tag <code>圣诞</code>.</li>
+</ul>
+
+<h3>4.2 Thematic categorization</h3>
+<p>
+SOP exposes the structured metadata fields 曲名 / 作曲 / 作詞 / 專輯 / 系列 / 調性 — but
+<b>not</b> an explicit theme tag. Theme must therefore be derived. The approved method, in order of
+reliability:
+</p>
+<ol>
+  <li><b>Manual curation</b> by worship leader (gold standard; what the admin CLI's <code>scrape_sop</code> workflow should expose as an editable <code>themes</code> multi-select on each <code>songs</code> row).</li>
+  <li><b>Title-keyword classifier</b> — fast heuristic on <code>songs.title</code> + <code>title_pinyin</code>. Examples: "讚美" / "Praise" / "敬拜" → 赞美/敬拜; "感謝"/"感恩"/"Thank" → 感恩; "差遣"/"使命"/"Send"/"Go" → 差遣; "復興"/"Revival" → 复兴; "祈禱"/"Pray" → 祈祷; "赦免"/"罪"/"Forgive" → 认罪.</li>
+  <li><b>Lyric-keyword classifier</b> on <code>lyrics_raw</code> — slower but more accurate; sample 2-line windows for high-frequency theme keywords.</li>
+  <li><b>Audio-section classification</b> — use the <code>recordings.sections</code> analysis (already populated by the analysis service via <code>allin1</code>) to compute a mean energy and tag low-energy sections <code>敬拜</code> vs. high-energy intro <code>赞美</code>.</li>
+</ol>
+
+<h3>4.3 Classifying phase/role from lyrics + tempo + mood</h3>
+<p>
+A concrete decision function for assigning a <code>phase</code> ∈ {1..5} to a song without curator input,
+in priority order:
+</p>
+<pre><code><span class="k">def</span> <span class="fn">infer_phase</span>(song, recording) -> <span class="k">int</span>:
+    <span class="c"># 1. Keyword-based theme override is strongest signal.</span>
+    themes = classify_themes(song.title, song.lyrics_raw)
+    <span class="k">if</span> <span class="s">"认罪"</span> <span class="k">in</span> themes <span class="k">or</span> <span class="s">"奉献"</span> <span class="k">in</span> themes: <span class="k">return</span> <span class="n">4</span>   <span class="c"># Response</span>
+    <span class="k">if</span> <span class="s">"差遣"</span> <span class="k">in</span> themes <span class="k">or</span> <span class="s">"跟随"</span> <span class="k">in</span> themes <span class="k">or</span> <span class="s">"复兴"</span> <span class="k">in</span> themes: <span class="k">return</span> <span class="n">5</span>  <span class="c"># Sending</span>
+    <span class="k">if</span> <span class="s">"敬拜"</span> <span class="k">in</span> themes <span class="k">or</span> <span class="s">"祈祷"</span> <span class="k">in</span> themes: <span class="k">return</span> <span class="n">3</span>        <span class="c"># Worship</span>
+    <span class="k">if</span> <span class="s">"感恩"</span> <span class="k">in</span> themes: <span class="k">return</span> <span class="n">2</span>                          <span class="c"># Thanksgiving</span>
+    <span class="k">if</span> <span class="s">"赞美"</span> <span class="k">in</span> themes: <span class="k">return</span> <span class="n">1</span>                          <span class="c"># Praise</span>
+
+    <span class="c"># 2. Tempo fallback when no theme known.</span>
+    bpm = recording.tempo_bpm <span class="k">or</span> <span class="n">0</span>
+    <span class="k">if</span> bpm &gt;= <span class="n">110</span>: <span class="k">return</span> <span class="n">1</span>
+    <span class="k">if</span> bpm &gt;= <span class="n">95</span>:  <span class="k">return</span> <span class="n">2</span>
+    <span class="k">if</span> bpm &gt;= <span class="n">80</span>:  <span class="k">return</span> <span class="n">3</span>
+    <span class="k">if</span> bpm &gt;= <span class="n">65</span>:  <span class="k">return</span> <span class="n">4</span>
+    <span class="k">return</span> <span class="n">5</span>  <span class="c"># very slow / devotional</span>
+</code></pre>
+
+<div class="recs">
+  <h4>Concrete recommendations · §4</h4>
+  <ul>
+    <li>Treat SOP as the canonical source (<code>album_series</code> filter in admin CLI).</li>
+    <li>Exclude <code>CPW</code> series by default from adult-set pools.</li>
+    <li>Add a nullable <code>themes text[]</code> column on <code>songs</code> for curated theme tags; seed it via the title-keyword classifier.</li>
+    <li>Implement <code>infer_phase()</code> above as a view/SQL function exposed as <code>song_phase</code> in the API.</li>
+    <li>Map church-calendar seasons (将临节, 圣诞节, 受难节, 复活节, 五旬节) to optional season filters that override default theme tags during those weeks.</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============== Section 5 ============== -->
+<h2 id="5"><span class="num">5.</span>Decision Rules for Programmatic Assembly</h2>
+<p>
+This section synthesizes §§1–4 into computable rules. The constructor is modeled as a constrained
+optimization over the song pool: enumerate candidate orderings (or use a greedy/beam-search builder),
+apply hard constraints to prune, then maximize a fitness function over the surviving orderings.
+</p>
+
+<h3 id="5-1">5.1 Hard Constraints</h3>
+<p>
+A candidate ordering is rejected unless <b>all</b> of the following hold:
+</p>
+<ul>
+  <li><span class="tag hard">H1</span> <b>Phase coverage.</b> The set must contain exactly one song at phase&nbsp;1 (Praise), at least one song at phase&nbsp;3 (Worship) or phase&nbsp;4 (Response), and the <b>last</b> song's phase ∈ {4, 5}.</li>
+  <li><span class="tag hard">H2</span> <b>Opening tempo.</b> First song <code>tempo_bpm</code> ≥ <b>110</b>.</li>
+  <li><span class="tag hard">H3</span> <b>Closing tempo.</b> Last song <code>tempo_bpm</code> ≤ <b>90</b> (≤&nbsp;80 if the set is "intimate" mode).</li>
+  <li><span class="tag hard">H4</span> <b>Max tempo step.</b> For every adjacent pair (<i>i</i>, <i>i</i>+1): |ΔBPM| ≤ 20, with ≤&nbsp;15 required unless <code>crossfade_duration_seconds</code> &gt; 0 or <code>gap_beats</code> &gt; 4.</li>
+  <li><span class="tag hard">H5</span> <b>Harmonic compatibility.</b> For every adjacent pair: <code>cfd(...)</code> ≤ 2 <i>or</i> <code>crossfade_duration_seconds</code> &gt; 0 <i>or</i> candidate has proposed <code>key_shift_semitones</code> making CFD ≤ 2.</li>
+  <li><span class="tag hard">H6</span> <b>No duplicate songs.</b> A given <code>song_id</code> appears at most once (unless "anthem repeat" mode is explicitly enabled).</li>
+  <li><span class="tag hard">H7</span> <b>Theme progression direction.</b> If two adjacent songs both have a determined phase, <code>phase[i+1] &gt;= phase[i] - 1</code> (allow at most one phase retreat, e.g. Sending → Worship is fine for a reprise; but Worship → Praise mid-set is forbidden).</li>
+  <li><span class="tag hard">H8</span> <b>Key confidence floor.</b> If <code>recordings.key_confidence</code> &lt; 0.6 for a song, the constructor may still include it but must <b>not</b> auto-transpose it (<code>key_shift_semitones</code> = 0 forced).</li>
+</ul>
+
+<h3 id="5-2">5.2 Soft Constraints (preferences)</h3>
+<ul>
+  <li><span class="tag soft">S1</span> Prefer <b>monotonically non-increasing tempo</b> across the set; allow one (+1 phase-5) uptick.</li>
+  <li><span class="tag soft">S2</span> Prefer <b>CFD ≤ 1</b> between consecutive songs (only one fifth-step on the circle).</li>
+  <li><span class="tag soft">S3</span> Prefer <b>thematic progression</b> strictly raising phase: phase sequence like <code>(1,2,3,4,5)</code> or <code>(1,3,4,4,5)</code> scores higher than <code>(1,3,2,4,5)</code>.</li>
+  <li><span class="tag soft">S4</span> Prefer <b>no key transposition</b> when avoidable: <code>key_shift_semitones = 0</code> preferred.</li>
+  <li><span class="tag soft">S5</span> Prefer at least <b>one relative-minor key</b> in the Worship phase (adds emotional texture).</li>
+  <li><span class="tag soft">S6</span> Prefer <b>thematic diversity</b> across consecutive songs: avoid three consecutive same-theme songs unless intentional (e.g. a 3-song 敬拜 medley is a known pattern — allow via a medley flag).</li>
+  <li><span class="tag soft">S7</span> Prefer <b>composer/album diversity</b>: avoid two consecutive songs from the same <code>album_name</code>.</li>
+  <li><span class="tag soft">S8</span> Prefer the <b>average BPM</b> of the set to land in the band <b>[80, 100]</b>: ensures the set "feels" mid-tempo overall rather than uniformly fast or uniformly slow.</li>
+</ul>
+
+<h3 id="5-3">5.3 Scoring / Fitness Function</h3>
+<p>
+The total fitness of an ordered candidate set <code>S = [s₁, s₂, … sₙ]</code> is the weighted sum of four
+components, each normalized to [0, 1]:
+</p>
+
+<pre><code>fitness(S) = 0.40 * F_theme(S)        <span class="c"># thematic / arc progression</span>
+           + 0.30 * F_tempo(S)         <span class="c"># tempo decay shape</span>
+           + 0.20 * F_harmony(S)       <span class="c"># key compatibility between adjacent songs</span>
+           + 0.10 * F_diversity(S)      <span class="c"># composer &amp; album variety</span>
+</code></pre>
+
+<h4>(a) F_theme — thematic progression</h4>
+<pre><code>F_theme(S) = phase_match(S) * phase_monotonicity(S) * arc_template_score(S)
+
+phase_match(S)        = (Σ phases ∩ target_phases) / N      <span class="c"># how many positions hit target phase</span>
+phase_monotonicity(S) = 1 - (Σ max(0, phase[i] - phase[i+1] - 1)) / (N - 1)
+arc_template_score(S) = similarity(S.phases, target_template_phases)  <span class="c"># positional cosine</span>
+</code></pre>
+
+<h4>(b) F_tempo — tempo decay shape</h4>
+<pre><code>F_tempo(S) = mono_decay(S) * smoothness(S) * in_band(S)
+
+mono_decay(S)  = 1 - (#tempo upticks) / N              <span class="c"># ≤1 uptick allowed</span>
+smoothness(S)  = 1 - (Σ |ΔBPM[i]|) / (N * 15)    <span class="c"># ≤15 BPM per step ideal</span>
+in_band(S)     = 1 - |avg(BPM) - 90| / 30        <span class="c"># peaks at avg 90 BPM</span>
+</code></pre>
+
+<h4>(c) F_harmony — adjacent key compatibility</h4>
+<pre><code>F_harmony(S) = (1 / (N - 1)) * Σ key_compat(s_i, s_{i+1})
+
+where key_compat(a, b) = key_compatibility_score(cfd(a, b))   <span class="c"># see §3.3</span>
+</code></pre>
+
+<h4>(d) F_diversity — composer &amp; album variety</h4>
+<pre><code>F_diversity(S) = 0.5 * (unique_composers / N) + 0.5 * (unique_albums / N)
+</code></pre>
+
+<div class="callout">
+<b>Constructor algorithm.</b>
+<ol style="margin:6px 0 0 16px; padding:0;">
+  <li>For target <code>N ∈ {4, 5, 6}</code>, fetch target template phases from §5.4.</li>
+  <li>Group pool by phase (computed via <code>infer_phase()</code> §4.3).</li>
+  <li>For each song assigned to phase&nbsp;<i>p</i>, query pool for a compatible successor phase&nbsp;<i>p</i>+1 (or same phase) with CFD ≤ 2 against the prior candidate — beam search with <code>k</code> = 8 beams.</li>
+  <li>Apply hard constraints H1–H8 to prune each partial sequence.</li>
+  <li>Score surviving sequences with <code>fitness()</code>; return top 3 to the caller for UI curation.</li>
+</ol>
+</div>
+
+<h3 id="5-4">5.4 Sequence Templates</h3>
+<p>
+Each template specifies the ideal phase, BPM band, and key shape for a fixed-length set. Composers
+should aim for any of these targets then relax.
+</p>
+
+<h4>5-song template (default)</h4>
+<table>
+  <thead><tr><th>Pos</th><th>Phase</th><th>Theme</th><th class="num-cell">BPM band</th><th>Key shape</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>1 Praise 赞美</td><td>赞美</td><td class="num-cell">110–140</td><td>Open key like G / D / A</td></tr>
+    <tr><td>2</td><td>2 Thanksgiving 感恩</td><td>感恩 / 信心</td><td class="num-cell">95–120</td><td>Same key or V-neighbor (CFD 1)</td></tr>
+    <tr><td>3</td><td>3 Worship 敬拜</td><td>敬拜</td><td class="num-cell">75–100</td><td>Relative minor encouraged (e.g. Em, Bm)</td></tr>
+    <tr><td>4</td><td>4 Response 回应</td><td>奉献 / 认罪 / 十字架</td><td class="num-cell">60–80</td><td>Same or relative-minor shift</td></tr>
+    <tr><td>5</td><td>5 Sending 差遣</td><td>差遣 / 跟随 / 复兴</td><td class="num-cell">70–90</td><td>Same key as pos 4 (cohesive close)</td></tr>
+  </tbody>
+</table>
+
+<h4>4-song template (compact Sunday)</h4>
+<table>
+  <thead><tr><th>Pos</th><th>Phase</th><th>Theme</th><th class="num-cell">BPM band</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>1 Praise</td><td>赞美</td><td class="num-cell">115–140</td><td>Upbeat opener</td></tr>
+    <tr><td>2</td><td>3 Worship</td><td>敬拜</td><td class="num-cell">75–100</td><td>Skip Thanksgiving, dive straight in</td></tr>
+    <tr><td>3</td><td>4 Response</td><td>奉献 / 认罪</td><td class="num-cell">62–80</td><td>Quiet intimate</td></tr>
+    <tr><td>4</td><td>5 Sending</td><td>差遣 / 信心</td><td class="num-cell">75–95</td><td>Slight uptick for send</td></tr>
+  </tbody>
+</table>
+
+<h4>6-song template (communion / extended)</h4>
+<table>
+  <thead><tr><th>Pos</th><th>Phase</th><th>Theme</th><th class="num-cell">BPM band</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>1 Praise</td><td>赞美</td><td class="num-cell">115–140</td><td>Opening call</td></tr>
+    <tr><td>2</td><td>2 Thanksgiving</td><td>感恩</td><td class="num-cell">95–120</td><td>Build</td></tr>
+    <tr><td>3</td><td>3 Worship</td><td>敬拜</td><td class="num-cell">75–100</td><td>Deepen</td></tr>
+    <tr><td>4</td><td>3 Worship (cont.)</td><td>祈祷 / 圣灵</td><td class="num-cell">65–85</td><td>Communion / Table</td></tr>
+    <tr><td>5</td><td>4 Response</td><td>认罪 / 十字架 / 奉献</td><td class="num-cell">60–80</td><td>Intimate</td></tr>
+    <tr><td>6</td><td>5 Sending</td><td>差遣 / 跟随 / 复兴</td><td class="num-cell">75–95</td><td>Slight uptick for send</td></tr>
+  </tbody>
+</table>
+
+<h3 id="5-5">5.5 Dead-end Songs &amp; Limited Pools</h3>
+<p>
+A <b>dead-end song</b> is one whose key and tempo make it nearly impossible to follow (e.g.
+<code>musical_key</code>=F♯, <code>tempo_bpm</code>=145 in a pool whose only neighbors are 70–80 BPM).
+The constructor should:
+</p>
+<ul>
+  <li>Pre-classify each song's <b>"transition fan-out"</b>: count of pool songs with CFD ≤ 2 <i>and</i> |ΔBPM| ≤ 20. Songs with fan-out = 0 are marked dead-end.</li>
+  <li><b>Place dead-end songs only at position N</b> (last), where transition-out is irrelevant.</li>
+  <li>When forced to use a dead-end song mid-set, pre-compute a <code>key_shift_semitones</code> ∈ {-2,-1,+1,+2} that minimizes CFD against neighbors; never shift more than ±2 semitones (singer comfort).</li>
+  <li>For <b>limited pools (&lt; 3 songs per phase)</b>: switch from strict template matching to <b>closest-phase fill</b> — e.g. if no phase-2 (Thanksgiving) song exists, allow a phase-1 or phase-3 song to occupy that position with a small <code>F_theme</code> penalty (×0.7).</li>
+  <li>If <code>N = 5</code> template cannot be satisfied after 1000 beam-search iterations, fall back to <code>N = 4</code> template.</li>
+  <li>If still unsatisfiable, relax H4 (max step) from 20 to 25 BPM and H5 (CFD) from 2 to 3, log a "warnings" field on the proposed songset for human review, and surface the relaxed candidate.</li>
+</ul>
+
+<h3 id="5-6">5.6 Mapping to DB Schema</h3>
+<div class="schema-card">
+  <div class="col">
+    <h4>Read from</h4>
+    <ul style="margin:0; padding-left:18px;">
+      <li><code>songs.title</code>, <code>title_pinyin</code></li>
+      <li><code>songs.composer</code>, <code>lyricist</code></li>
+      <li><code>songs.album_name</code>, <code>album_series</code> (PW/CPW/DEV)</li>
+      <li><code>songs.musical_key</code> (fallback)</li>
+      <li><code>songs.lyrics_raw</code> (for theme classifier)</li>
+      <li><code>recordings.tempo_bpm</code> <span style="color:var(--ink-faint);">(authoritative)</span></li>
+      <li><code>recordings.musical_key</code>, <code>musical_mode</code></li>
+      <li><code>recordings.key_confidence</code></li>
+      <li><code>recordings.loudness_db</code>, <code>sections</code></li>
+    </ul>
+  </div>
+  <div class="col">
+    <h4>Write to (one row per selected song)</h4>
+    <ul style="margin:0; padding-left:18px;">
+      <li><code>songset_items.songset_id</code></li>
+      <li><code>songset_items.song_id</code></li>
+      <li><code>songset_items.recording_hash_prefix</code></li>
+      <li><code>songset_items.position</code> (1..N)</li>
+      <li><code>songset_items.key_shift_semitones</code> <span style="color:var(--ink-faint);">(CFD ≤2 target)</span></li>
+      <li><code>songset_items.tempo_ratio</code> <span style="color:var(--ink-faint);">(default 1.0; set when ⌗ tempo matching)</span></li>
+      <li><code>songset_items.gap_beats</code> <span style="color:var(--ink-faint);">(2 default, raise on vamp transition)</span></li>
+      <li><code>songset_items.crossfade_enabled</code></li>
+      <li><code>songset_items.crossfade_duration_seconds</code> <span style="color:var(--ink-faint);">(for CFD &gt; 2 transitions)</span></li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout ok">
+<h4 style="margin-top:0;">New schema proposal (one nullable column)</h4>
+<p style="margin:0;">
+Add <code>themes text[]</code> to <code>songs</code> (default NULL) for curated Chinese theme tags.
+The <code>song_phase</code> can be computed as a view (no schema impact) using
+<code>infer_phase()</code> from §4.3 with <code>themes</code> as primary signal and
+<code>recordings.tempo_bpm</code> as fallback. This is schema-minimal and backward compatible.
+</p>
+</div>
+</section>
+
+<!-- ============== References ============== -->
+<h2 id="refs"><span class="num"></span>References</h2>
+
+<h3>Worship-leading practice &amp; worship-arc frameworks</h3>
+<ol>
+  <li>"How to Plan a Worship Setlist That Flows (Step-by-Step Guide)" — Shalon Palmer, Worship Online. <a href="https://worshiponline.com/worship-setlist-planning/">https://worshiponline.com/worship-setlist-planning/</a></li>
+  <li>"How to Build a Worship Set That Flows: Tempo, Key &amp; Emotional Arc" — Worship Song Index. <a href="https://worshipsongindex.com/blog/how-to-build-a-worship-set-that-flows/">https://worshipsongindex.com/blog/how-to-build-a-worship-set-that-flows/</a></li>
+  <li>"How We Build a Worship Setlist for a Sunday Morning Service" — WorshipChordBook. <a href="https://worshipchordbook.com/public/blog/how-we-build-a-worship-setlist-for-sunday-morning">https://worshipchordbook.com/public/blog/how-we-build-a-worship-setlist-for-sunday-morning</a></li>
+  <li>"How to Build a Worship Setlist That Actually Flows" — Mark Claiborne, Worship Frontier (Jun 2026). <a href="https://worshipfrontier.com/blog/how-to-build-worship-setlist/">https://worshipfrontier.com/blog/how-to-build-worship-setlist/</a></li>
+  <li>"How to Create a Worship Setlist That Flows" — Joaquimma Anna, New Testament Research Ministries (ntrmin.org, May 2026). <a href="https://www.ntrmin.org/how-to-create-a-worship-setlist-that-flows/">https://www.ntrmin.org/how-to-create-a-worship-setlist-that-flows/</a></li>
+  <li>"Worship Flow Chart 2 (order of service)" — Pastor Terry Pooler, AdventSource Ministry Plus. <a href="https://www.adventsource.org/ministry-plus/articles/worship-flow-chart-2-order-of-service-177">https://www.adventsource.org/ministry-plus/articles/worship-flow-chart-2-order-of-service-177</a></li>
+  <li>"Do Your Sunday Songs Pass the Test?" — Brandon Ryan, The Gospel Coalition (Mar 2025). <a href="https://www.thegospelcoalition.org/article/sunday-songs-pass-test/">https://www.thegospelcoalition.org/article/sunday-songs-pass-test/</a></li>
+  <li>Robert E. Webber, <i>Worship Old and New: A Biblical, Historical, and Practical Introduction</i>, rev. ed., Zondervan. (Fourfold Gathering–Word–Table–Sending model and Temple / worship-architecture framing.)</li>
+</ol>
+
+<h3>Music theory — key compatibility &amp; Circle of Fifths</h3>
+<ol start="9">
+  <li>Elaine Chew, <i>The Spiral Array: An Algorithm for Determining Key Boundaries</i>, MIT Press / Springer, 2001 — foundational formulation of key-distance using a spiral model of the circle of fifths.</li>
+  <li>Dmitri Tymoczko, <i>A Geometry of Music</i>, Oxford University Press, 2011 — formal treatment of harmonic proximity and voice-leading distance.</li>
+  <li>Stefan Kostka &amp; Dorothy Payne, <i>Tonal Harmony</i>, McGraw-Hill — standard reference for pivot-chord and direct modulation techniques in §3.2.</li>
+  <li>Dave Lida, "Key Changes &amp; Modulation in Worship Sets", Worship Online blog — applied examples of half-step and whole-step lifts in modern worship songwriting.</li>
+</ol>
+
+<h3>Chinese worship collectives &amp; songbooks</h3>
+<ol start="13">
+  <li>Stream of Praise Music Ministries — official music catalog and song-lyric database. <a href="https://sop.org/music/">https://sop.org/music/</a> · search interface <a href="https://sop.org/songs/">https://sop.org/songs/</a> · about <a href="https://sop.org/about/">https://sop.org/about/</a></li>
+  <li>"讚美之泉" — Wikipedia (Chinese). <a href="https://zh.wikipedia.org/wiki/%E8%AC%9D%E7%BE%8E%E4%B9%8B%E6%B3%89">https://zh.wikipedia.org/wiki/讚美之泉</a></li>
+  <li>"約書亞樂團" — Wikipedia (Chinese). <a href="https://zh.wikipedia.org/wiki/%E7%B4%84%E6%9B%B8%E4%BA%9E%E6%A8%82%E5%9C%98">https://zh.wikipedia.org/wiki/約書亞樂團</a></li>
+  <li>Wings of Worship (翼讚音樂) — official site. <a href="https://www.wingsofworship.com/">https://www.wingsofworship.com/</a></li>
+  <li>Solid Ground Music / Bridge 音乐 (Taiwan) — Chinese worship music distributor for SOP and Joshua Band (cataloging reference).</li>
+  <li><i>Song Database / 詩歌資料庫</i> — zanmei.net &amp; fuyin.com community-maintained Chinese worship song indexes (theme-tagged).</li>
+  <li>The Gospel Coalition — Chinese-language edition. <a href="https://tc.tgcchinese.org/">https://tc.tgcchinese.org/</a> (Chinese-language theological context for worship-leadership guidance).</li>
+</ol>
+
+<h3>Repo-internal data sources (schema for the constructor)</h3>
+<ol start="20">
+  <li>Stream of Worship webapp schema — <code>delivery/webapp/drizzle/0000_flat_ravenous.sql</code> (table definitions for <code>songs</code>, <code>recordings</code>, <code>songset_items</code>, <code>songsets</code>).</li>
+  <li>Song data-access layer — <code>delivery/webapp/src/lib/db/songs.ts</code> (<code>tempoBpm</code>, <code>musicalKey</code>, <code>album_series</code>).</li>
+  <li>Songset data-access layer — <code>delivery/webapp/src/lib/db/songsets.ts</code> (<code>key_shift_semitones</code>, <code>tempo_ratio</code>, <code>crossfade_*</code>).</li>
+  <li>Analysis service — <code>ops/analysis-service/src/sow_analysis/models.py</code> (<code>AnalysisResult</code> populates <code>recordings</code> via <code>allin1</code>+librosa).</li>
+  <li>POC transition-generation scripts — <code>lab/poc-scripts/generate_section_transitions.py</code>, <code>generate_transitions.py</code> (existing transition craft reference for <code>gap_beats</code> / <code>crossfade_*</code> defaults).</li>
+</ol>
+
+<footer class="report">
+  <p>
+  Generated 2026-06-30 for the <b>Stream of Worship agentic songset constructor POC</b>.
+  Findings synthesize web-published worship-leading practice, standard music theory, SOP's own
+  catalog metadata, and the existing schema in <code>delivery/webapp/drizzle/</code>. Where Chinese-specific
+  web sources were inaccessible at research time, findings are filled from the repo's existing
+  SOP-derived <code>album_series</code> data plus general music theory (so flagged in the relevant
+  section). Recommendations labeled H1–H8 (hard) and S1–S8 (soft) are intended to be implemented
+  directly in a constructor module under <code>delivery/webapp/src/lib/songset/</code>.
+  </p>
+</footer>
+</main>
+</div>
+</body>
+</html>
