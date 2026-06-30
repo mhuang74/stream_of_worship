@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from time import perf_counter
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -13,6 +14,107 @@ from poc.songset_constructor.graph.builder import build_graph
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
 console = Console()
+
+
+SUMMARY_KEYS = (
+    "pool_size",
+    "dropped",
+    "transitions",
+    "candidates",
+    "passed",
+    "violated",
+    "proposals",
+)
+
+
+def _format_trace_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (list, tuple, set)):
+        return str(len(value))
+    return str(value)
+
+
+def _stop_details(result: Any) -> str:
+    if not isinstance(result, dict):
+        return ""
+    trace = result.get("trace") or []
+    if not trace:
+        return ""
+    data = trace[-1].get("data") if isinstance(trace[-1], dict) else None
+    if not isinstance(data, dict):
+        return ""
+    parts = [
+        f"{key}={_format_trace_value(data[key])}"
+        for key in SUMMARY_KEYS
+        if key in data and data[key] is not None
+    ]
+    return " " + " ".join(parts) if parts else ""
+
+
+def _prompt_from_result(result: Any) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    trace = result.get("trace") or []
+    if not trace:
+        return None
+    data = trace[-1].get("data") if isinstance(trace[-1], dict) else None
+    if not isinstance(data, dict):
+        return None
+    prompt = data.get("prompt")
+    return prompt if isinstance(prompt, str) and prompt else None
+
+
+def _print_prompt(node_name: str, prompt: str) -> None:
+    console.print(f"prompt {node_name}")
+    console.print(prompt)
+    console.print(f"end prompt {node_name}")
+
+
+def _run_graph_with_traces(graph: Any, input_value: Any, graph_config: dict) -> dict:
+    started_at: dict[str, float] = {}
+    latest_values: dict[str, Any] = {}
+    interrupts = []
+
+    for chunk in graph.stream(input_value, graph_config, stream_mode="debug"):
+        if not isinstance(chunk, dict):
+            continue
+        payload = chunk.get("payload") or {}
+        event_type = chunk.get("type")
+
+        if event_type == "checkpoint":
+            values = payload.get("values")
+            if isinstance(values, dict):
+                latest_values = values
+            continue
+
+        if event_type == "task":
+            name = payload.get("name")
+            task_id = payload.get("id")
+            if name and task_id:
+                started_at[task_id] = perf_counter()
+                console.print(f"start {name}")
+            continue
+
+        if event_type != "task_result":
+            continue
+
+        name = payload.get("name")
+        task_id = payload.get("id")
+        if name and task_id:
+            elapsed = perf_counter() - started_at.pop(task_id, perf_counter())
+            node_result = payload.get("result")
+            prompt = _prompt_from_result(node_result)
+            if prompt:
+                _print_prompt(name, prompt)
+            details = _stop_details(node_result)
+            console.print(f"stop {name} in {elapsed:.2f}s{details}")
+        interrupts = payload.get("interrupts") or interrupts
+
+    result = dict(latest_values)
+    if interrupts:
+        result["__interrupt__"] = interrupts
+    return result
 
 
 @app.command()
@@ -62,14 +164,14 @@ def construct(
     graph_config = {"configurable": {"thread_id": config.thread_id}}
 
     try:
-        result = graph.invoke(initial_state, graph_config)
+        result = _run_graph_with_traces(graph, initial_state, graph_config)
         while "__interrupt__" in result:
             payload = result["__interrupt__"][0].value
             console.print(payload)
             action = typer.prompt("Review action (approve/reject)", default="approve")
             from langgraph.types import Command
 
-            result = graph.invoke(Command(resume={"action": action}), graph_config)
+            result = _run_graph_with_traces(graph, Command(resume={"action": action}), graph_config)
     except Exception as exc:
         console.print(f"[red]Run failed:[/red] {exc}")
         raise typer.Exit(1) from exc
