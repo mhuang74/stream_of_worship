@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from poc.songset_constructor.graph import run_constructor
+from langchain_core.prompts import ChatPromptTemplate
+
+from poc.songset_constructor.graph import _format_llm_prompt_trace, run_constructor
 from poc.songset_constructor.models import ConstructorConfig, LlmDraft, SongCandidate
 
 
@@ -70,3 +72,36 @@ def test_fixture_loader_honors_cpw_exclusion() -> None:
     config = ConstructorConfig(include_cpw=False)
     pool = fixture_pool(config)
     assert all("CPW" not in (song.album_series or "") for song in pool)
+
+
+def test_llm_prompt_trace_formats_full_rendered_messages() -> None:
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You assemble Chinese worship songsets."),
+            ("human", "Need {songs} songs. Pool JSON: {pool}. Prior drafts/feedback: {feedback}."),
+        ]
+    )
+    messages = prompt.format_messages(
+        songs=5,
+        pool=[
+            {
+                "hash": "h1",
+                "title": "赞美之歌",
+                "bpm": 124,
+                "key": "C",
+                "mode": "major",
+                "themes": ["praise"],
+                "phase": "Praise",
+            }
+        ],
+        feedback=["Unknown recording hashes: nope"],
+    )
+
+    trace = _format_llm_prompt_trace(messages)
+
+    assert "[SYSTEM]" in trace
+    assert "You assemble Chinese worship songsets." in trace
+    assert "[HUMAN]" in trace
+    assert "Need 5 songs." in trace
+    assert "赞美之歌" in trace
+    assert "Unknown recording hashes: nope" in trace

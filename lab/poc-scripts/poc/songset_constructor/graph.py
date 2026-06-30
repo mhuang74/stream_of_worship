@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import random
+import threading
+import time
+from collections import Counter
 from collections.abc import Iterator
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -12,6 +17,13 @@ from typing import Any
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+
+logger = logging.getLogger(__name__)
+
+POOL_SAMPLE_SIZE = 10
+LLM_POOL_SLICE = 15
+LLM_MAX_CONCURRENCY = int(os.environ.get("SOW_LLM_MAX_CONCURRENCY", "1"))
+_llm_concurrency_sem = threading.Semaphore(LLM_MAX_CONCURRENCY)
 
 try:
     from langgraph.checkpoint.memory import InMemorySaver
@@ -142,7 +154,14 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
     if missing:
         raise RuntimeError(f"Missing LLM configuration: {', '.join(missing)}")
 
-    llm = ChatOpenAI(api_key=api_key, base_url=base_url, model=model, temperature=0.2)
+    llm = ChatOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        temperature=0.2,
+        timeout=120,
+        max_retries=0,
+    )
     structured = llm.with_structured_output(LlmDraft)
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -157,8 +176,17 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
             ),
         ]
     )
+    chain = prompt | structured
 
     def planner(state: ConstructorState) -> list[LlmDraft]:
+        pool_slice = state.pool[:LLM_POOL_SLICE]
+        logger.info(
+            "llm_plan: pool has %d songs, sending first %d to LLM (slice=state.pool[:%d])",
+            len(state.pool),
+            len(pool_slice),
+            LLM_POOL_SLICE,
+        )
+        _log_pool_sample("llm_plan", pool_slice)
         pool_summary = [
             {
                 "hash": song.recording_hash_prefix,
@@ -169,16 +197,43 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
                 "themes": song.inferred_themes,
                 "phase": song.phase,
             }
-            for song in state.pool[:80]
+            for song in pool_slice
         ]
-        draft = (prompt | structured).invoke(
-            {
-                "songs": state.config.songs,
-                "pool": pool_summary,
-                "feedback": state.validation_feedback[-10:],
-            }
-        )
-        return [draft]
+        max_attempts = 20
+        last_exc: Exception | None = None
+        prompt_vars = {
+            "songs": state.config.songs,
+            "pool": pool_summary,
+            "feedback": state.validation_feedback[-10:],
+        }
+        for attempt_num in range(1, max_attempts + 1):
+            try:
+                logger.info(
+                    "llm_plan prompt sent to LLM:\n%s",
+                    _format_llm_prompt_trace(prompt.format_messages(**prompt_vars)),
+                )
+                with _llm_concurrency_sem:
+                    draft = chain.invoke(prompt_vars)
+                return [draft]
+            except Exception as exc:
+                last_exc = exc
+                is_timeout = "timed out" in str(exc).lower() or "timeout" in str(exc).lower()
+                if is_timeout:
+                    wait_s = 120.0
+                else:
+                    base_delay = _extract_retry_after(exc)
+                    wait_s = min(base_delay * (2 ** (attempt_num - 1)), 30.0)
+                logger.warning(
+                    "llm_plan attempt %d/%d failed (%s): %s — waiting %.1fs",
+                    attempt_num,
+                    max_attempts,
+                    "timeout" if is_timeout else "error",
+                    exc,
+                    wait_s,
+                )
+                if attempt_num < max_attempts:
+                    time.sleep(wait_s)
+        raise last_exc  # type: ignore[misc]
 
     return planner
 
@@ -189,15 +244,24 @@ def load_catalog(
 ) -> ConstructorState:
     pool = loader(state.config)
     state.pool = pool
+    _log_pool_sample("load_catalog", pool)
     return state
 
 
 def enrich_pool(state: ConstructorState) -> ConstructorState:
+    before = len(state.pool)
     state.pool = [
         enrich_candidate(song)
         for song in state.pool
         if song.bpm > 0 and song.musical_key
     ]
+    dropped = before - len(state.pool)
+    logger.info(
+        "enrich_pool: kept %d songs, dropped %d (bpm<=0 or missing key)",
+        len(state.pool),
+        dropped,
+    )
+    _log_pool_sample("enrich_pool", state.pool)
     return state
 
 
@@ -304,6 +368,74 @@ def write_artifacts(state: ConstructorState, output_dir: Path) -> ConstructorSta
 def _default_catalog_loader(config: ConstructorConfig) -> list[SongCandidate]:
     with load_connection_provider() as provider:
         return fetch_catalog(provider, config)
+
+
+def _extract_retry_after(exc: Exception) -> float:
+    """Extract retry_after (seconds) from an openai RateLimitError or similar."""
+    retry_after = getattr(exc, "retry_after", None)
+    if isinstance(retry_after, (int, float)):
+        return float(retry_after)
+    response = getattr(exc, "response", None)
+    if response is not None:
+        header = getattr(response, "headers", {})
+        if isinstance(header, dict):
+            ra = header.get("retry-after") or header.get("Retry-After")
+            if ra:
+                try:
+                    return float(ra)
+                except (TypeError, ValueError):
+                    pass
+    body = getattr(exc, "body", None) or {}
+    if isinstance(body, dict):
+        retry_after_val = body.get("retry_after")
+        if isinstance(retry_after_val, (int, float)):
+            return float(retry_after_val)
+        strategy = body.get("retry_strategy") or {}
+        if isinstance(strategy, dict):
+            suggested = strategy.get("suggested_initial_delay_s")
+            if isinstance(suggested, (int, float)):
+                return float(suggested)
+    return 2.0
+
+
+def _format_llm_prompt_trace(messages: list[Any]) -> str:
+    blocks = []
+    for message in messages:
+        role = str(getattr(message, "type", message.__class__.__name__)).upper()
+        content = getattr(message, "content", "")
+        if not isinstance(content, str):
+            content = repr(content)
+        blocks.append(f"[{role}]\n{content}")
+    return "\n\n".join(blocks)
+
+
+def _log_pool_sample(node: str, pool: list[SongCandidate]) -> None:
+    if not pool:
+        logger.info("%s: pool is empty", node)
+        return
+    sample = random.sample(pool, min(POOL_SAMPLE_SIZE, len(pool)))
+    logger.info("%s: pool size=%d, sampling %d random songs:", node, len(pool), len(sample))
+    for song in sample:
+        logger.info(
+            "  - hash=%s title=%r bpm=%.1f key=%s mode=%s phase=%s themes=%s "
+            "source: album=%r series=%r composer=%r",
+            song.recording_hash_prefix,
+            song.title,
+            song.bpm,
+            song.musical_key,
+            song.musical_mode,
+            song.phase,
+            song.inferred_themes,
+            song.album_name,
+            song.album_series,
+            song.composer,
+        )
+    series_counts: Counter[str] = Counter(song.album_series or "(none)" for song in pool)
+    logger.info(
+        "%s: pool source breakdown by album_series: %s",
+        node,
+        dict(series_counts),
+    )
 
 
 def _trace_node(name: str, fn: GraphNode) -> GraphNode:

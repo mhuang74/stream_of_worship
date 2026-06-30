@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import psycopg.rows
@@ -10,6 +11,8 @@ from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.db.connection import ConnectionProvider
 
 from .models import ConstructorConfig, SongCandidate
+
+logger = logging.getLogger(__name__)
 
 
 CATALOG_QUERY = """
@@ -46,26 +49,38 @@ def load_connection_provider() -> ConnectionProvider:
 def fetch_catalog(provider: ConnectionProvider, config: ConstructorConfig) -> list[SongCandidate]:
     query = CATALOG_QUERY
     params: list[Any] = []
+    filters: list[str] = []
     if not config.include_cpw:
         query += " AND COALESCE(s.album_series, '') NOT ILIKE %s"
         params.append("%CPW%")
+        filters.append("exclude CPW")
     if not config.include_dev:
         query += " AND COALESCE(s.album_series, '') NOT ILIKE %s"
         params.append("%DEV%")
+        filters.append("exclude DEV")
     if config.album_series:
         query += " AND COALESCE(s.album_series, '') ILIKE %s"
         params.append(f"%{config.album_series}%")
+        filters.append(f"album_series~{config.album_series}")
     if config.season:
         query += " AND (s.title ILIKE %s OR s.album_name ILIKE %s OR s.lyrics_raw ILIKE %s)"
         season = f"%{config.season}%"
         params.extend([season, season, season])
+        filters.append(f"season~{config.season}")
     query += " ORDER BY r.imported_at DESC LIMIT %s"
     params.append(config.pool_limit)
+
+    logger.info(
+        "fetch_catalog: pool_limit=%d, filters=[%s]",
+        config.pool_limit,
+        ", ".join(filters) if filters else "none",
+    )
 
     conn = provider.get_connection()
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
         cursor.execute(query, params)
         rows = cursor.fetchall()
+    logger.info("fetch_catalog: query returned %d rows", len(rows))
     return [_row_to_candidate(row) for row in rows]
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -39,7 +40,13 @@ def main(
     interactive_review: bool = typer.Option(False, "--interactive-review"),
     resume_thread_id: str | None = typer.Option(None, "--resume-thread-id"),
     llm_model: str | None = typer.Option(None, "--llm-model"),
+    verbose: bool = typer.Option(True, "--verbose/--quiet", help="Enable debug traces."),
 ) -> None:
+    if verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
     config = ConstructorConfig(
         songs=songs,
         top_k=top_k,
