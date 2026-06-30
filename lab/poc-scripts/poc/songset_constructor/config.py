@@ -7,14 +7,28 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 VALID_SEASONS = {"advent", "christmas", "lent", "easter", "pentecost"}
 DEFAULT_ALBUM_SERIES = ("PW", "DEV")
+DEFAULT_ENV_FILE = Path("/opt/sow/.env")
 
 
 def default_output_dir() -> Path:
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return Path(__file__).resolve().parents[2] / "output" / "songset_constructor" / run_id
+
+
+def load_runtime_env(env_file: Path | None = None) -> Path | None:
+    configured = env_file or os.environ.get("SOW_ENV_FILE")
+    candidate = Path(configured) if configured else DEFAULT_ENV_FILE
+    if not candidate.exists():
+        if configured:
+            raise ValueError(f"Configured env file does not exist: {candidate}")
+        return None
+    load_dotenv(candidate, override=False)
+    return candidate
 
 
 @dataclass(slots=True)
@@ -34,8 +48,10 @@ class RunConfig:
     llm_judge: bool = False
     llm_model: str | None = None
     thread_id: str | None = None
+    env_file: Path | None = None
 
     def __post_init__(self) -> None:
+        self.env_file = load_runtime_env(self.env_file)
         if self.songs not in {4, 5}:
             raise ValueError("--songs supports only 4 or 5 for this POC")
         if self.top_k < 1:
@@ -64,7 +80,10 @@ class RunConfig:
             missing.append("SOW_LLM_MODEL or --llm-model")
         if missing:
             raise RuntimeError(
-                "Agentic mode requires LLM configuration: " + ", ".join(missing)
+                "Agentic mode requires LLM configuration: "
+                + ", ".join(missing)
+                + ". If you sourced a .env file in the shell, export its values with "
+                "`set -a; source /opt/sow/.env; set +a`, or pass --env-file."
             )
 
     def to_dict(self) -> dict[str, object]:
@@ -84,4 +103,5 @@ class RunConfig:
             "llm_judge": self.llm_judge,
             "llm_model": self.llm_model,
             "thread_id": self.thread_id,
+            "env_file": str(self.env_file) if self.env_file else None,
         }

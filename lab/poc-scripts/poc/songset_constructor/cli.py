@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from poc.songset_constructor.config import RunConfig
+from poc.songset_constructor.config import RunConfig, default_output_dir
 from poc.songset_constructor.graph.builder import build_graph
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
@@ -31,6 +31,7 @@ def construct(
     no_llm: Annotated[bool, typer.Option("--no-llm/--llm")] = False,
     llm_judge: Annotated[bool, typer.Option("--llm-judge/--no-llm-judge")] = False,
     llm_model: Annotated[str | None, typer.Option("--llm-model")] = None,
+    env_file: Annotated[Path | None, typer.Option("--env-file")] = None,
 ) -> None:
     """Construct Chinese worship songset proposal artifacts."""
     try:
@@ -38,7 +39,7 @@ def construct(
             songs=songs,
             top_k=top_k,
             pool_limit=pool_limit,
-            output_dir=output_dir or RunConfig().output_dir,
+            output_dir=output_dir or default_output_dir(),
             album_series=album_series or ["PW", "DEV"],
             include_cpw=include_cpw,
             intimate=intimate,
@@ -49,6 +50,7 @@ def construct(
             no_llm=no_llm,
             llm_judge=llm_judge,
             llm_model=llm_model,
+            env_file=env_file,
         )
         config.validate_environment()
     except Exception as exc:
