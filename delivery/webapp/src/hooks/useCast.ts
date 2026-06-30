@@ -177,12 +177,15 @@ function detectBrowser(): string {
  * resolution path used at `setOptions` time: env var wins ("set"), otherwise
  * the Default Media Receiver constant ("default"), otherwise "unset". The
  * `${envAppId ? "set" : ...}` form mirrors the runtime fallback at line
- * ~400 (`envAppId || chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID`).
+ * ~400 (`envAppId || chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID`).
  */
 function castAppIdMode(): "set" | "default" | "unset" {
   const envAppId = process.env.NEXT_PUBLIC_CAST_RECEIVER_APP_ID;
   if (envAppId) return "set";
-  if (typeof window !== "undefined" && window.chrome?.cast?.DEFAULT_MEDIA_RECEIVER_APP_ID) {
+  if (
+    typeof window !== "undefined" &&
+    window.chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID
+  ) {
     return "default";
   }
   return "unset";
@@ -532,7 +535,7 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
         // back to Google's built-in Default Media Receiver constant (the v3
         // production default). If neither resolves, Cast cannot start.
         const receiverAppId =
-          envAppId || chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID || "";
+          envAppId || chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID || "";
         if (!receiverAppId) {
           setAvailability("unavailable");
           return;

@@ -35,7 +35,7 @@ describe("loadCastSdk", () => {
     const p3 = loadCastSdk();
     const scripts = Array.from(document.head.querySelectorAll("script")).map((s) => s.src);
     expect(scripts).toEqual([
-      "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js",
+      "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1",
     ]);
     // Fire the global callback so the promises settle (no unhandled rejection).
     window.__onGCastApiAvailable?.(true);

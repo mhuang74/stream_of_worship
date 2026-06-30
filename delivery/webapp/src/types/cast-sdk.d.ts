@@ -1,7 +1,7 @@
 // Ambient Google Cast Web Sender SDK global surface.
 //
 // Loaded by `src/lib/cast/loader.ts` via the external
-// https://www.gstatic.com/cv/js/sender/v1/cast_sender.js script, which sets
+// https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1 script, which sets
 // `window.chrome.cast` and `window.cast.framework`. This file declares the
 // narrow subset used by `src/hooks/useCast.ts` (Task 3) and the dispatcher:
 //
@@ -25,9 +25,6 @@ declare namespace chrome.cast {
   export const VERSION: number;
   /** True after the Cast SDK script finishes loading and globalizes this ns. */
   export const isAvailable: boolean;
-  /** Google Default Media Receiver application id (used when no custom id set). */
-  export const DEFAULT_MEDIA_RECEIVER_APP_ID: string;
-
   export enum AutoJoinPolicy {
     ORIGIN_SCOPED = "origin_scoped",
     TAB_AND_ORIGIN_SCOPED = "tab_and_origin_scoped",
@@ -55,6 +52,9 @@ declare namespace chrome.cast {
   }
 
   export namespace media {
+    /** Google Default Media Receiver application id (used when no custom id set). */
+    export const DEFAULT_MEDIA_RECEIVER_APP_ID: string;
+
     /** Plain metadata used for the `title` shown in the receiver UI. */
     export class GenericMediaMetadata {
       title?: string;

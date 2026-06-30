@@ -1,3 +1,12 @@
+## 2026-06-30
+
+- Fixed Cast discovery initialization for the web playback controller by loading
+  the Google Cast sender SDK with `loadCastFramework=1` and resolving the
+  Default Media Receiver from `chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID`.
+  Updated the Cast SDK ambient types and hook/loader tests to match Chrome's
+  real namespace, refreshed graphify output, and verified `pnpm --filter
+  sow-webapp test`, `lint`, and `build` pass.
+
 ## 2026-06-29
 
 - Updated Worship Playback lyrics pullup title behavior: song title clicks now

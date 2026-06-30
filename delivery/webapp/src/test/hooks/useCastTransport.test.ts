@@ -129,10 +129,10 @@ function setupCastSdkMock(opts?: {
   (window as unknown as { cast: unknown }).cast = { framework };
   (window as unknown as { chrome: unknown }).chrome = {
     cast: {
-      DEFAULT_MEDIA_RECEIVER_APP_ID: "DEFAULT",
       AutoJoinPolicy: { TAB_AND_ORIGIN_SCOPED: "tab_and_origin_scoped" },
       StreamType: { BUFFERED: "buffered" },
       media: {
+        DEFAULT_MEDIA_RECEIVER_APP_ID: "DEFAULT",
         MediaInfo: function MediaInfo(this: unknown, contentId: string, contentType: string) {
           // @ts-expect-error test mock constructor
           this.contentId = contentId;
@@ -885,7 +885,7 @@ describe("useCastTransport", () => {
       );
       expect(post).toBeTruthy();
       const body = JSON.parse(String(post?.[1]?.body));
-      // env unset + chrome.cast.DEFAULT_MEDIA_RECEIVER_APP_ID present in the
+      // env unset + chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID present in the
       // SDK mock → mode is "default" (not "unset").
       expect(body.meta.castAppIdMode).toBe("default");
     });

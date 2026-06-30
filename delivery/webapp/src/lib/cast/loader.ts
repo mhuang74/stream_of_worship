@@ -1,7 +1,7 @@
 // Google Cast Web Sender SDK loader.
 //
 // The SDK is provided as an external script
-// (https://www.gstatic.com/cv/js/sender/v1/cast_sender.js) that, once fetched,
+// (https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1) that, once fetched,
 // invokes a globally-named callback `window.__onGCastApiAvailable(loaded)`
 // with `loaded===true` on success. This module wraps that contract with a
 // ref-counted singleton injection and an unmount-safe Promise surface so that
@@ -14,7 +14,8 @@ declare global {
   }
 }
 
-const CAST_SENDER_URL = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js";
+const CAST_SENDER_URL =
+  "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
 
 /**
  * Hard ceiling on how long `loadCastSdk()` will wait for the gstatic sender
