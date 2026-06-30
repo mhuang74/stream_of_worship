@@ -6497,10 +6497,29 @@ def _apply_manifest_writeback(
     analysis_client: AnalysisClient,
     console: Console,
 ) -> None:
-    """Apply idempotent DB writeback for a completed manifest entry on resume."""
+    """Apply idempotent DB writeback for a completed manifest entry on resume.
+
+    Checks the DB first to skip the HTTP call if the result is already written.
+    """
     try:
         if not job_id:
             return
+
+        # DB-first short-circuit: skip HTTP if already written
+        recording = db_client.get_recording_by_song_id(song_id)
+        if recording:
+            if step == "analyze" and recording.analysis_status in (
+                "partial",
+                "completed",
+            ):
+                return
+            if step == "lrc" and recording.lrc_status == "completed":
+                return
+            if step == "embedding":
+                existing_hash = db_client.get_embedding_content_hash(song_id)
+                if existing_hash:
+                    return
+
         job = analysis_client.get_job(job_id)
         if job.status != "completed":
             return
@@ -6509,7 +6528,6 @@ def _apply_manifest_writeback(
             # LRC writeback is R2-driven; skip if no R2 URL in result
             pass
         elif step == "analyze":
-            recording = db_client.get_recording_by_song_id(song_id)
             if not recording or not job.result:
                 return
             result = job.result
