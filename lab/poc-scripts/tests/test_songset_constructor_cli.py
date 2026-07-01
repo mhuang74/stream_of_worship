@@ -245,3 +245,23 @@ def test_debug_trace_prints_full_llm_prompt(monkeypatch):
     assert "FULL PROMPT LINE 1\nFULL PROMPT LINE 2" in rendered
     assert "end prompt llm_plan" in rendered
     assert "stop llm_plan in " in rendered
+
+
+def test_cli_relax_h3_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+            "--relax-h3-bpm",
+            "110",
+        ],
+    )
+
+    assert result.exit_code == 0

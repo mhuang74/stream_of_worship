@@ -43,10 +43,11 @@ def role_eligibility_counts(
     config: RunConfig,
     matrix: dict[tuple[str, str], TransitionCandidate],
 ) -> dict[str, int]:
-    closing_limit = 80 if config.intimate else 90
+    closing_limit = config.closing_limit
+    opening_floor = config.opening_floor
     return {
         "valid_openers_h2": sum(
-            1 for candidate in pool if candidate.phase == 1 and (candidate.tempo_bpm or 0) >= 110
+            1 for candidate in pool if candidate.phase == 1 and (candidate.tempo_bpm or 0) >= opening_floor
         ),
         "valid_closers_h3": sum(
             1
