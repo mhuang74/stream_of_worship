@@ -142,7 +142,7 @@ def construct(
             top_k=top_k,
             pool_limit=pool_limit,
             output_dir=output_dir or default_output_dir(),
-            album_series=album_series or ["PW", "DEV"],
+            album_series=album_series,
             include_cpw=include_cpw,
             intimate=intimate,
             hymnal_mode=hymnal_mode,
