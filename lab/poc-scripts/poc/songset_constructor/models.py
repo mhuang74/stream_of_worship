@@ -24,6 +24,7 @@ class ConstructorConfig(BaseModel):
     interactive_review: bool = False
     resume_thread_id: str | None = None
     llm_model: str | None = None
+    no_llm: bool = False
 
 
 class SongCandidate(BaseModel):

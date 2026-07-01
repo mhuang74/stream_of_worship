@@ -40,6 +40,11 @@ def main(
     interactive_review: bool = typer.Option(False, "--interactive-review"),
     resume_thread_id: str | None = typer.Option(None, "--resume-thread-id"),
     llm_model: str | None = typer.Option(None, "--llm-model"),
+    no_llm: bool = typer.Option(
+        False,
+        "--no-llm/--llm",
+        help="Use deterministic beam proposals without calling the LLM.",
+    ),
     verbose: bool = typer.Option(True, "--verbose/--quiet", help="Enable debug traces."),
 ) -> None:
     if verbose:
@@ -61,6 +66,7 @@ def main(
         interactive_review=interactive_review,
         resume_thread_id=resume_thread_id,
         llm_model=llm_model,
+        no_llm=no_llm,
     )
     state = run_constructor(config)
     console.print(f"Wrote {len(state.final_proposals)} proposal(s) to {output_dir}")

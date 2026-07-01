@@ -25,7 +25,7 @@ LLM_POOL_SLICE = 15
 LLM_MAX_CONCURRENCY = int(os.environ.get("SOW_LLM_MAX_CONCURRENCY", "1"))
 _llm_concurrency_sem = threading.Semaphore(LLM_MAX_CONCURRENCY)
 LLM_TIMEOUT = float(os.environ.get("SOW_LLM_TIMEOUT", "30"))
-LLM_MAX_ATTEMPTS = int(os.environ.get("SOW_LLM_MAX_ATTEMPTS", "5"))
+LLM_MAX_ATTEMPTS = int(os.environ.get("SOW_LLM_MAX_ATTEMPTS", "1"))
 LLM_MAX_BACKOFF_S = 30.0
 
 try:
@@ -69,7 +69,7 @@ def build_graph(
     checkpointer: Any | None = None,
 ) -> Any:
     loader = catalog_loader or _default_catalog_loader
-    llm_planner = planner or build_llm_planner(config)
+    llm_planner = None if config.no_llm else planner or build_llm_planner(config)
     run_output_dir = output_dir or Path(config.output_dir)
 
     graph = StateGraph(ConstructorState)
@@ -80,12 +80,7 @@ def build_graph(
         _trace_node("build_transition_matrix", build_transition_matrix),
     )
     graph.add_node("beam_seed_candidates", _trace_node("beam_seed_candidates", seed_candidates))
-    graph.add_node("llm_plan", _trace_node("llm_plan", lambda s: llm_plan(s, llm_planner)))
     graph.add_node("validate_score", _trace_node("validate_score", validate_score))
-    graph.add_node(
-        "llm_refine",
-        _trace_node("llm_refine", lambda s: llm_plan(s, llm_planner, refine=True)),
-    )
     graph.add_node("optional_review", _trace_node("optional_review", optional_review))
     graph.add_node(
         "write_artifacts",
@@ -95,14 +90,24 @@ def build_graph(
     graph.add_edge("load_catalog", "enrich_pool")
     graph.add_edge("enrich_pool", "build_transition_matrix")
     graph.add_edge("build_transition_matrix", "beam_seed_candidates")
-    graph.add_edge("beam_seed_candidates", "llm_plan")
-    graph.add_edge("llm_plan", "validate_score")
-    graph.add_conditional_edges(
-        "validate_score",
-        should_refine,
-        {"refine": "llm_refine", "review": "optional_review"},
-    )
-    graph.add_edge("llm_refine", "validate_score")
+    if config.no_llm:
+        graph.add_edge("beam_seed_candidates", "validate_score")
+        graph.add_edge("validate_score", "optional_review")
+    else:
+        assert llm_planner is not None
+        graph.add_node("llm_plan", _trace_node("llm_plan", lambda s: llm_plan(s, llm_planner)))
+        graph.add_node(
+            "llm_refine",
+            _trace_node("llm_refine", lambda s: llm_plan(s, llm_planner, refine=True)),
+        )
+        graph.add_edge("beam_seed_candidates", "llm_plan")
+        graph.add_edge("llm_plan", "validate_score")
+        graph.add_conditional_edges(
+            "validate_score",
+            should_refine,
+            {"refine": "llm_refine", "review": "optional_review"},
+        )
+        graph.add_edge("llm_refine", "validate_score")
     graph.add_edge("optional_review", "write_artifacts")
     graph.add_edge("write_artifacts", END)
     return graph.compile(checkpointer=checkpointer or InMemorySaver())
@@ -220,19 +225,20 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
                 return [draft]
             except Exception as exc:
                 last_exc = exc
-                is_timeout = "timed out" in str(exc).lower() or "timeout" in str(exc).lower()
+                if not _is_retryable_rate_limit(exc) or attempt_num >= max_attempts:
+                    raise
                 base_delay = _extract_retry_after(exc)
                 wait_s = min(base_delay * (2 ** (attempt_num - 1)), LLM_MAX_BACKOFF_S)
+                wait_s += random.uniform(0.0, min(1.0, wait_s * 0.1))
                 logger.warning(
-                    "llm_plan attempt %d/%d failed (%s): %s — waiting %.1fs",
+                    "llm_plan attempt %d/%d hit provider rate limit (%s): %s; waiting %.1fs",
                     attempt_num,
                     max_attempts,
-                    "timeout" if is_timeout else "error",
+                    _rate_limit_reason(exc),
                     exc,
                     wait_s,
                 )
-                if attempt_num < max_attempts:
-                    time.sleep(wait_s)
+                time.sleep(wait_s)
         raise last_exc  # type: ignore[misc]
 
     return planner
@@ -331,7 +337,7 @@ def validate_score(state: ConstructorState) -> ConstructorState:
         key=lambda p: p.score_breakdown.total,
         reverse=True,
     )[: state.config.top_k]
-    if state.llm_drafts and not valid_draft_seen and state.iteration < 3:
+    if state.llm_drafts and not valid and not valid_draft_seen and state.iteration < 3:
         state.final_proposals = []
     return state
 
@@ -396,6 +402,31 @@ def _extract_retry_after(exc: Exception) -> float:
             if isinstance(suggested, (int, float)):
                 return float(suggested)
     return 2.0
+
+
+def _is_retryable_rate_limit(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    if status_code == 429 or getattr(response, "status_code", None) == 429:
+        return True
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        code = str(body.get("code") or body.get("type") or "")
+        if "rate" in code.lower() or "concurrent_budget_exceeded" in code:
+            return True
+    message = str(exc).lower()
+    return "rate limit" in message or "429" in message or "concurrent_budget_exceeded" in message
+
+
+def _rate_limit_reason(exc: Exception) -> str:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        code = body.get("code") or body.get("type")
+        if code:
+            return str(code)
+    if "concurrent_budget_exceeded" in str(exc):
+        return "account-level concurrent_budget_exceeded"
+    return "429"
 
 
 def _format_llm_prompt_trace(messages: list[Any]) -> str:

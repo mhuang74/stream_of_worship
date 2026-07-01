@@ -91,7 +91,11 @@ songset_constructor = [
     "rich>=15.0.0",
     "typer>=0.26.8",
 ]
-test = ["pytest>=7.4.0", "pytest-mock>=3.12.0"]
+test = [
+    "pypinyin>=0.52.0",
+    "pytest>=7.4.0",
+    "pytest-mock>=3.12.0",
+]
 
 [tool.uv.sources]
 stream-of-worship = { path = "../../ops/admin-cli" }

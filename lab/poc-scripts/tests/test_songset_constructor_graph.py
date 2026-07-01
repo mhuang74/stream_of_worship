@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
+from typer.testing import CliRunner
 
+from poc.songset_constructor import cli as cli_mod
 from poc.songset_constructor import graph as graph_mod
 from poc.songset_constructor.graph import _format_llm_prompt_trace, build_llm_planner, run_constructor
 from poc.songset_constructor.models import ConstructorConfig, ConstructorState, LlmDraft, SongCandidate
@@ -54,21 +56,55 @@ class RepairingPlanner:
         return [LlmDraft(recording_hashes=["h1", "h2", "h3", "h4", "h5"], rationale="repaired")]
 
 
-def test_graph_refines_invalid_llm_draft_and_writes_artifacts(tmp_path: Path) -> None:
+def test_graph_preserves_valid_beams_when_llm_draft_is_invalid(tmp_path: Path) -> None:
     planner = RepairingPlanner()
     config = ConstructorConfig(output_dir=str(tmp_path), songs=5, top_k=2)
 
     state = run_constructor(config, catalog_loader=fixture_pool, planner=planner)
 
-    assert planner.calls == 2
+    assert planner.calls == 1
     assert state.final_proposals
-    assert state.final_proposals[0].items[-1].recording_hash_prefix == "h5"
     assert (tmp_path / "proposals.json").exists()
     assert (tmp_path / "proposal_report.md").exists()
     assert (tmp_path / "candidate_pool.csv").exists()
     assert (tmp_path / "graph_trace.jsonl").exists()
     proposals = json.loads((tmp_path / "proposals.json").read_text(encoding="utf-8"))
     assert proposals[0]["items"][0]["song_id"] == "s1"
+
+
+def test_no_llm_writes_artifacts_without_constructing_chat_openai(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_chat_openai(**_kwargs):
+        raise AssertionError("ChatOpenAI should not be constructed for no_llm runs")
+
+    monkeypatch.setattr(graph_mod, "ChatOpenAI", fail_chat_openai)
+
+    config = ConstructorConfig(output_dir=str(tmp_path), songs=5, top_k=2, no_llm=True)
+    state = run_constructor(config, catalog_loader=fixture_pool)
+
+    assert state.final_proposals
+    assert "llm_plan" not in {event["node"] for event in state.trace}
+    assert (tmp_path / "proposals.json").exists()
+
+
+def test_cli_exposes_no_llm_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, ConstructorConfig] = {}
+
+    def fake_run_constructor(config: ConstructorConfig) -> ConstructorState:
+        captured["config"] = config
+        return ConstructorState(config=config)
+
+    monkeypatch.setattr(cli_mod, "run_constructor", fake_run_constructor)
+
+    result = CliRunner().invoke(
+        cli_mod.app,
+        ["--no-llm", "--output-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0
+    assert captured["config"].no_llm is True
 
 
 def test_fixture_loader_honors_cpw_exclusion() -> None:
@@ -120,27 +156,52 @@ class _TimeoutRunnable:
 class _FakeChatOpenAI:
     """Stand-in for ChatOpenAI used by build_llm_planner during tests."""
 
+    calls = 0
+
     def __init__(self, **_kwargs):
         pass
 
     def with_structured_output(self, _schema):
         return RunnableLambda(self._raise_timeout)
 
-    @staticmethod
-    def _raise_timeout(_input):
+    @classmethod
+    def _raise_timeout(cls, _input):
+        cls.calls += 1
         raise TimeoutError("Request timed out.")
 
 
-def test_llm_planner_retry_uses_short_backoff_and_caps_attempts(
+class _RetryableRateLimitError(Exception):
+    status_code = 429
+    body = {"code": "concurrent_budget_exceeded", "retry_after": 3}
+
+
+class _RateLimitedChatOpenAI:
+    calls = 0
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def with_structured_output(self, _schema):
+        return RunnableLambda(self._raise_rate_limit)
+
+    @classmethod
+    def _raise_rate_limit(cls, _input):
+        cls.calls += 1
+        raise _RetryableRateLimitError("concurrent_budget_exceeded")
+
+
+def test_llm_planner_does_not_outer_retry_non_rate_limit_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
     monkeypatch.setenv("SOW_LLM_BASE_URL", "https://example.test")
     monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
     monkeypatch.setattr(graph_mod, "ChatOpenAI", _FakeChatOpenAI)
+    _FakeChatOpenAI.calls = 0
 
     sleeps: list[float] = []
     monkeypatch.setattr(graph_mod.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(graph_mod, "LLM_MAX_ATTEMPTS", 5)
 
     config = ConstructorConfig(songs=5, top_k=2)
     planner = build_llm_planner(config)
@@ -149,8 +210,30 @@ def test_llm_planner_retry_uses_short_backoff_and_caps_attempts(
     with pytest.raises(TimeoutError):
         planner(state)
 
-    expected_attempts = graph_mod.LLM_MAX_ATTEMPTS
-    assert len(sleeps) == expected_attempts - 1
-    assert all(w <= graph_mod.LLM_MAX_BACKOFF_S for w in sleeps)
-    assert all(w < 120.0 for w in sleeps)
-    assert sleeps == [2.0, 4.0, 8.0, 16.0]
+    assert _FakeChatOpenAI.calls == 1
+    assert sleeps == []
+
+
+def test_llm_planner_rate_limit_retry_respects_outer_attempt_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("SOW_LLM_BASE_URL", "https://example.test")
+    monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
+    monkeypatch.setattr(graph_mod, "ChatOpenAI", _RateLimitedChatOpenAI)
+    monkeypatch.setattr(graph_mod, "LLM_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(graph_mod.random, "uniform", lambda _start, _stop: 0.0)
+    _RateLimitedChatOpenAI.calls = 0
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(graph_mod.time, "sleep", lambda s: sleeps.append(s))
+
+    config = ConstructorConfig(songs=5, top_k=2)
+    planner = build_llm_planner(config)
+    state = ConstructorState(config=config)
+
+    with pytest.raises(_RetryableRateLimitError):
+        planner(state)
+
+    assert _RateLimitedChatOpenAI.calls == 2
+    assert sleeps == [3.0]
