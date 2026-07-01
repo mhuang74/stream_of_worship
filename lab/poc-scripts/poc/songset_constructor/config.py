@@ -49,6 +49,10 @@ class RunConfig:
     llm_model: str | None = None
     thread_id: str | None = None
     env_file: Path | None = None
+    relax_h3_bpm: int | None = None
+    relax_h2_bpm: int | None = None
+    relax_h1: bool = True
+    auto_relax: bool = True
 
     def __post_init__(self) -> None:
         self.env_file = load_runtime_env(self.env_file)
@@ -61,6 +65,10 @@ class RunConfig:
         if self.season and self.season not in VALID_SEASONS:
             allowed = ", ".join(sorted(VALID_SEASONS))
             raise ValueError(f"--season must be one of: {allowed}")
+        if self.relax_h3_bpm is not None and self.relax_h3_bpm < 0:
+            raise ValueError("--relax-h3-bpm must be >= 0")
+        if self.relax_h2_bpm is not None and self.relax_h2_bpm < 0:
+            raise ValueError("--relax-h2-bpm must be >= 0")
         self.output_dir = Path(self.output_dir)
         self.album_series = list(dict.fromkeys(self.album_series or DEFAULT_ALBUM_SERIES))
         if self.include_cpw and "CPW" not in self.album_series:
@@ -69,6 +77,18 @@ class RunConfig:
         if not self.thread_id:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             self.thread_id = self.resume_thread_id or f"songset-{stamp}-{self.songs}s-top{self.top_k}"
+
+    @property
+    def closing_limit(self) -> int:
+        if self.relax_h3_bpm is not None:
+            return self.relax_h3_bpm
+        return 80 if self.intimate else 90
+
+    @property
+    def opening_floor(self) -> int:
+        if self.relax_h2_bpm is not None:
+            return self.relax_h2_bpm
+        return 110
 
     def validate_environment(self) -> None:
         if self.no_llm:
@@ -104,4 +124,8 @@ class RunConfig:
             "llm_model": self.llm_model,
             "thread_id": self.thread_id,
             "env_file": str(self.env_file) if self.env_file else None,
+            "relax_h3_bpm": self.relax_h3_bpm,
+            "relax_h2_bpm": self.relax_h2_bpm,
+            "relax_h1": self.relax_h1,
+            "auto_relax": self.auto_relax,
         }

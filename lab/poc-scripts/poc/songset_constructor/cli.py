@@ -309,6 +309,10 @@ def construct(
     llm_judge: Annotated[bool, typer.Option("--llm-judge/--no-llm-judge")] = False,
     llm_model: Annotated[str | None, typer.Option("--llm-model")] = None,
     env_file: Annotated[Path | None, typer.Option("--env-file")] = None,
+    relax_h3_bpm: Annotated[int | None, typer.Option("--relax-h3-bpm", min=0)] = None,
+    relax_h2_bpm: Annotated[int | None, typer.Option("--relax-h2-bpm", min=0)] = None,
+    relax_h1: Annotated[bool, typer.Option("--relax-h1/--no-relax-h1")] = True,
+    auto_relax: Annotated[bool, typer.Option("--auto-relax/--no-auto-relax")] = True,
 ) -> None:
     """Construct Chinese worship songset proposal artifacts."""
     try:
@@ -328,6 +332,10 @@ def construct(
             llm_judge=llm_judge,
             llm_model=llm_model,
             env_file=env_file,
+            relax_h3_bpm=relax_h3_bpm,
+            relax_h2_bpm=relax_h2_bpm,
+            relax_h1=relax_h1,
+            auto_relax=auto_relax,
         )
         config.validate_environment()
     except Exception as exc:

@@ -127,6 +127,53 @@ def search(
             )
             if validate(proposal, config, matrix, relax_h4=True, relax_h5=True).passed:
                 proposals.append(proposal)
+    if config.auto_relax and not proposals:
+        relaxed_config = RunConfig(
+            **{
+                **config.to_dict(),
+                "relax_h3_bpm": config.relax_h3_bpm
+                if config.relax_h3_bpm is not None
+                else (100 if config.intimate else 120),
+                "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
+            }
+        )
+        for sequence in _sequences(sorted_pool, config.songs, width=max(width * 2, 16)):
+            proposal = _proposal_for_sequence(
+                sequence,
+                relaxed_config,
+                matrix,
+                warnings=["relaxed_H2_H3", "relaxed_H4_H5"],
+            )
+            if validate(
+                proposal, relaxed_config, matrix, relax_h4=True, relax_h5=True
+            ).passed:
+                proposals.append(proposal)
+    if config.auto_relax and config.relax_h1 and not proposals:
+        relaxed_config = RunConfig(
+            **{
+                **config.to_dict(),
+                "relax_h3_bpm": config.relax_h3_bpm
+                if config.relax_h3_bpm is not None
+                else (100 if config.intimate else 120),
+                "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
+            }
+        )
+        for sequence in _sequences(sorted_pool, config.songs, width=max(width * 2, 16)):
+            proposal = _proposal_for_sequence(
+                sequence,
+                relaxed_config,
+                matrix,
+                warnings=["relaxed_H1", "relaxed_H2_H3", "relaxed_H4_H5"],
+            )
+            if validate(
+                proposal,
+                relaxed_config,
+                matrix,
+                relax_h4=True,
+                relax_h5=True,
+                relax_h1=True,
+            ).passed:
+                proposals.append(proposal)
     return rank_proposals(proposals, pool, config.top_k)
 
 

@@ -100,3 +100,101 @@ def test_diagnostics_counts_hard_rule_rejections():
     assert diagnostics["hard_rule_rejections"]["H2"] == 1
     assert diagnostics["hard_rule_rejections"]["H3"] == 1
     assert diagnostics["hard_rule_rejections"]["H5"] == 3
+
+
+def _candidate(
+    song_id,
+    title,
+    hash_prefix,
+    bpm,
+    key,
+    mode,
+    phase,
+    composer="Z",
+    key_confidence=0.9,
+    themes=None,
+):
+    return SongCandidate(
+        song_id=song_id,
+        title=title,
+        recording_hash_prefix=hash_prefix,
+        tempo_bpm=bpm,
+        musical_key=key,
+        musical_mode=mode,
+        key_confidence=key_confidence,
+        phase=phase,
+        themes=themes or {title: 1},
+        composer=composer,
+    )
+
+
+def _loud_closer_pool():
+    return [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 112, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 100, "A", "maj", 3),
+        _candidate("c1", "LoudCloser1", "c1", 95, "E", "min", 4),
+        _candidate("c2", "LoudCloser2", "c2", 105, "B", "min", 5),
+    ]
+
+
+def test_relax_h3_raises_ceiling_allows_loud_closer():
+    pool = _loud_closer_pool()
+    matrix = _matrix(pool)
+    pool = compute_fan_out(pool, matrix)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    assert search(pool, strict_config, matrix) == []
+
+    relaxed_config = RunConfig(no_llm=True)
+    proposals = search(pool, relaxed_config, matrix)
+    assert proposals
+    assert any("relaxed_H2_H3" in p.hard_constraint_warnings for p in proposals)
+
+
+def test_relax_h2_lowers_floor_allows_slow_opener():
+    pool = [
+        _candidate("o1", "SlowOpener", "o1", 95, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 95, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 80, "E", "min", 4),
+        _candidate("c2", "Closer2", "c2", 78, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    pool = compute_fan_out(pool, matrix)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    assert search(pool, strict_config, matrix) == []
+
+    relaxed_config = RunConfig(no_llm=True)
+    proposals = search(pool, relaxed_config, matrix)
+    assert proposals
+    assert any("relaxed_H2_H3" in p.hard_constraint_warnings for p in proposals)
+
+
+def test_relax_h1_skips_redundant_phase1_requirement():
+    pool = [
+        _candidate("o1", "Opener1", "o1", 124, "C", "maj", 1),
+        _candidate("o2", "Opener2", "o2", 112, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 4),
+        _candidate("c1", "Closer1", "c1", 88, "A", "maj", 5),
+    ]
+    matrix = _matrix(pool)
+    pool = compute_fan_out(pool, matrix)
+
+    strict_config = RunConfig(songs=4, no_llm=True, auto_relax=False)
+    assert search(pool, strict_config, matrix) == []
+
+    relaxed_config = RunConfig(songs=4, no_llm=True)
+    proposals = search(pool, relaxed_config, matrix)
+    assert proposals
+    assert any("relaxed_H1" in p.hard_constraint_warnings for p in proposals)
+
+
+def test_no_auto_relax_keeps_strict_only():
+    pool = _loud_closer_pool()
+    matrix = _matrix(pool)
+    pool = compute_fan_out(pool, matrix)
+
+    config = RunConfig(no_llm=True, auto_relax=False)
+    assert search(pool, config, matrix) == []

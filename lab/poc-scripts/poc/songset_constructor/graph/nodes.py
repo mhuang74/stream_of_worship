@@ -195,7 +195,12 @@ def validate_score(state: ConstructorState) -> dict:
             ),
         }
     proposal = _draft_to_proposal(state, draft)
-    feedback = validate(proposal, state["config"], state.get("transition_matrix", {}))
+    feedback = validate(
+        proposal,
+        state["config"],
+        state.get("transition_matrix", {}),
+        relax_h1=state["config"].relax_h1,
+    )
     update = {
         "feedback": feedback,
         "trace": _trace(
