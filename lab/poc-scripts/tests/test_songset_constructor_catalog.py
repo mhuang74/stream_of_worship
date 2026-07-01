@@ -60,3 +60,16 @@ def test_fetch_catalog_excludes_cpw_by_default() -> None:
     assert result[0].recording_hash_prefix == "abc123"
     assert "NOT ILIKE" in provider.cursor.query
     assert "%CPW%" in provider.cursor.params
+
+
+def test_fetch_catalog_requires_lrc_review_or_published_and_active_rows() -> None:
+    provider = FakeProvider()
+    fetch_catalog(provider, ConstructorConfig(pool_limit=10))
+
+    query = provider.cursor.query
+    assert "s.deleted_at IS NULL" in query
+    assert "r.deleted_at IS NULL" in query
+    assert "r.lrc_status = 'completed'" in query
+    assert "r.r2_lrc_url IS NOT NULL" in query
+    assert "r.visibility_status IN ('review', 'published')" in query
+    assert "r.analysis_status = 'completed'" not in query

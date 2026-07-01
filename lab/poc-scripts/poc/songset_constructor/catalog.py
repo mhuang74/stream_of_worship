@@ -34,8 +34,9 @@ FROM songs s
 JOIN recordings r ON r.song_id = s.id
 WHERE s.deleted_at IS NULL
   AND r.deleted_at IS NULL
-  AND r.analysis_status = 'completed'
-  AND r.visibility_status = 'published'
+  AND r.lrc_status = 'completed'
+  AND r.r2_lrc_url IS NOT NULL
+  AND r.visibility_status IN ('review', 'published')
   AND r.tempo_bpm IS NOT NULL
   AND COALESCE(r.musical_key, s.musical_key) IS NOT NULL
 """
