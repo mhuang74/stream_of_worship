@@ -24,6 +24,9 @@ POOL_SAMPLE_SIZE = 10
 LLM_POOL_SLICE = 15
 LLM_MAX_CONCURRENCY = int(os.environ.get("SOW_LLM_MAX_CONCURRENCY", "1"))
 _llm_concurrency_sem = threading.Semaphore(LLM_MAX_CONCURRENCY)
+LLM_TIMEOUT = float(os.environ.get("SOW_LLM_TIMEOUT", "30"))
+LLM_MAX_ATTEMPTS = int(os.environ.get("SOW_LLM_MAX_ATTEMPTS", "5"))
+LLM_MAX_BACKOFF_S = 30.0
 
 try:
     from langgraph.checkpoint.memory import InMemorySaver
@@ -159,8 +162,8 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
         base_url=base_url,
         model=model,
         temperature=0.2,
-        timeout=120,
-        max_retries=0,
+        timeout=LLM_TIMEOUT,
+        max_retries=2,
     )
     structured = llm.with_structured_output(LlmDraft)
     prompt = ChatPromptTemplate.from_messages(
@@ -199,7 +202,7 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
             }
             for song in pool_slice
         ]
-        max_attempts = 20
+        max_attempts = LLM_MAX_ATTEMPTS
         last_exc: Exception | None = None
         prompt_vars = {
             "songs": state.config.songs,
@@ -218,11 +221,8 @@ def build_llm_planner(config: ConstructorConfig) -> Planner:
             except Exception as exc:
                 last_exc = exc
                 is_timeout = "timed out" in str(exc).lower() or "timeout" in str(exc).lower()
-                if is_timeout:
-                    wait_s = 120.0
-                else:
-                    base_delay = _extract_retry_after(exc)
-                    wait_s = min(base_delay * (2 ** (attempt_num - 1)), 30.0)
+                base_delay = _extract_retry_after(exc)
+                wait_s = min(base_delay * (2 ** (attempt_num - 1)), LLM_MAX_BACKOFF_S)
                 logger.warning(
                     "llm_plan attempt %d/%d failed (%s): %s — waiting %.1fs",
                     attempt_num,

@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda
 
-from poc.songset_constructor.graph import _format_llm_prompt_trace, run_constructor
-from poc.songset_constructor.models import ConstructorConfig, LlmDraft, SongCandidate
+from poc.songset_constructor import graph as graph_mod
+from poc.songset_constructor.graph import _format_llm_prompt_trace, build_llm_planner, run_constructor
+from poc.songset_constructor.models import ConstructorConfig, ConstructorState, LlmDraft, SongCandidate
 
 
 def fixture_pool(config: ConstructorConfig) -> list[SongCandidate]:
@@ -105,3 +108,49 @@ def test_llm_prompt_trace_formats_full_rendered_messages() -> None:
     assert "Need 5 songs." in trace
     assert "赞美之歌" in trace
     assert "Unknown recording hashes: nope" in trace
+
+
+class _TimeoutRunnable:
+    """Fake runnable whose invoke always raises a timeout-like exception."""
+
+    def invoke(self, _vars):
+        raise TimeoutError("Request timed out.")
+
+
+class _FakeChatOpenAI:
+    """Stand-in for ChatOpenAI used by build_llm_planner during tests."""
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def with_structured_output(self, _schema):
+        return RunnableLambda(self._raise_timeout)
+
+    @staticmethod
+    def _raise_timeout(_input):
+        raise TimeoutError("Request timed out.")
+
+
+def test_llm_planner_retry_uses_short_backoff_and_caps_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("SOW_LLM_BASE_URL", "https://example.test")
+    monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
+    monkeypatch.setattr(graph_mod, "ChatOpenAI", _FakeChatOpenAI)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(graph_mod.time, "sleep", lambda s: sleeps.append(s))
+
+    config = ConstructorConfig(songs=5, top_k=2)
+    planner = build_llm_planner(config)
+    state = ConstructorState(config=config)
+
+    with pytest.raises(TimeoutError):
+        planner(state)
+
+    expected_attempts = graph_mod.LLM_MAX_ATTEMPTS
+    assert len(sleeps) == expected_attempts - 1
+    assert all(w <= graph_mod.LLM_MAX_BACKOFF_S for w in sleeps)
+    assert all(w < 120.0 for w in sleeps)
+    assert sleeps == [2.0, 4.0, 8.0, 16.0]
