@@ -9,13 +9,23 @@ from langgraph.types import interrupt
 from poc.songset_constructor.artifacts.trace import event
 from poc.songset_constructor.artifacts.writer import write_artifacts as write_output_artifacts
 from poc.songset_constructor.db import fetch_catalog_pool
-from poc.songset_constructor.models import JudgeRanking, ScoreBreakdown, SongsetDraft, SongsetProposal, ValidationFeedback
+from poc.songset_constructor.models import (
+    JudgeRanking,
+    ScoreBreakdown,
+    SongsetDraft,
+    SongsetProposal,
+    ValidationFeedback,
+)
 from poc.songset_constructor.rules.beam import compute_fan_out, search
 from poc.songset_constructor.rules.fitness import score
 from poc.songset_constructor.rules.hard_constraints import validate
 from poc.songset_constructor.rules.phases import apply_seasonal_bias, fuse_themes, infer_phase
 from poc.songset_constructor.rules.proposals import proposal_from_draft, rank_proposals
-from poc.songset_constructor.rules.themes import classify_embedding_themes, classify_lyrics_themes, classify_title_themes
+from poc.songset_constructor.rules.themes import (
+    classify_embedding_themes,
+    classify_lyrics_themes,
+    classify_title_themes,
+)
 from poc.songset_constructor.rules.transitions import recommend_transition
 from poc.songset_constructor.rules.embeddings import load_theme_anchors
 from poc.songset_constructor.graph.llm import build_chat_model, structured
@@ -58,7 +68,12 @@ def enrich_pool(state: ConstructorState) -> dict:
                 }
             )
         )
-    return {"pool": enriched, "trace": _trace(state, "enrich_pool", "exit", {"pool_size": len(enriched), "dropped": dropped})}
+    return {
+        "pool": enriched,
+        "trace": _trace(
+            state, "enrich_pool", "exit", {"pool_size": len(enriched), "dropped": dropped}
+        ),
+    }
 
 
 def build_transition_matrix(state: ConstructorState) -> dict:
@@ -107,7 +122,9 @@ def _coerce_known_hashes(draft: SongsetDraft, known: set[str]) -> tuple[SongsetD
             continue
         replacement = get_close_matches(item.recording_hash_prefix, known, n=1)
         if replacement:
-            repairs.append(f"Replaced hallucinated hash {item.recording_hash_prefix} with {replacement[0]}.")
+            repairs.append(
+                f"Replaced hallucinated hash {item.recording_hash_prefix} with {replacement[0]}."
+            )
             items.append(item.model_copy(update={"recording_hash_prefix": replacement[0]}))
     return draft.model_copy(update={"items": items}), repairs
 
@@ -115,7 +132,9 @@ def _coerce_known_hashes(draft: SongsetDraft, known: set[str]) -> tuple[SongsetD
 def llm_plan(state: ConstructorState) -> dict:
     config = state["config"]
     injected = state.get("llm")
-    planner = injected if injected is not None else structured(build_chat_model(config), SongsetDraft)
+    planner = (
+        injected if injected is not None else structured(build_chat_model(config), SongsetDraft)
+    )
     prompt = (
         f"Select a {config.songs}-song Chinese worship set using only these hash prefixes.\n"
         f"Return exactly {config.songs} items.\n\n{_pool_prompt(state)}"
@@ -133,18 +152,44 @@ def llm_plan(state: ConstructorState) -> dict:
 def _draft_to_proposal(state: ConstructorState, draft: SongsetDraft) -> SongsetProposal:
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
     proposal = proposal_from_draft(draft, state.get("pool", []), placeholder, llm_origin=True)
-    return proposal.model_copy(update={"score": score(proposal, state["config"], state.get("transition_matrix", {}))})
+    return proposal.model_copy(
+        update={"score": score(proposal, state["config"], state.get("transition_matrix", {}))}
+    )
 
 
 def validate_score(state: ConstructorState) -> dict:
     draft = state.get("current_draft")
     if draft is None:
-        return {"feedback": ValidationFeedback(passed=False, errors=["No current draft."]), "trace": _trace(state, "validate_score", "validation", {"passed": False})}
+        feedback = ValidationFeedback(passed=False, errors=["No current draft."])
+        return {
+            "feedback": feedback,
+            "trace": _trace(
+                state,
+                "validate_score",
+                "validation",
+                {
+                    "passed": False,
+                    "violated": feedback.violated,
+                    "errors": feedback.errors,
+                    "repair_hints": feedback.repair_hints,
+                },
+            ),
+        }
     proposal = _draft_to_proposal(state, draft)
     feedback = validate(proposal, state["config"], state.get("transition_matrix", {}))
     update = {
         "feedback": feedback,
-        "trace": _trace(state, "validate_score", "validation", {"passed": feedback.passed, "violated": feedback.violated}),
+        "trace": _trace(
+            state,
+            "validate_score",
+            "validation",
+            {
+                "passed": feedback.passed,
+                "violated": feedback.violated,
+                "errors": feedback.errors,
+                "repair_hints": feedback.repair_hints,
+            },
+        ),
     }
     if feedback.passed:
         update["beam_candidates"] = [proposal]
@@ -154,7 +199,9 @@ def validate_score(state: ConstructorState) -> dict:
 def llm_refine(state: ConstructorState) -> dict:
     config = state["config"]
     injected = state.get("llm")
-    refiner = injected if injected is not None else structured(build_chat_model(config), SongsetDraft)
+    refiner = (
+        injected if injected is not None else structured(build_chat_model(config), SongsetDraft)
+    )
     feedback = state.get("feedback")
     prompt = (
         f"Repair this {config.songs}-song draft using only known hash prefixes.\n"
@@ -169,7 +216,9 @@ def llm_refine(state: ConstructorState) -> dict:
         "current_draft": draft,
         "llm_drafts": [draft],
         "iterations": iteration,
-        "trace": [event("llm_refine", "llm_call", {"prompt": prompt, "repairs": repairs}, iteration)],
+        "trace": [
+            event("llm_refine", "llm_call", {"prompt": prompt, "repairs": repairs}, iteration)
+        ],
     }
 
 
@@ -179,7 +228,10 @@ def finalize_rank_node(state: ConstructorState) -> dict:
         state.get("pool", []),
         state["config"].top_k,
     )
-    return {"final_proposals": proposals, "trace": _trace(state, "finalize_rank", "exit", {"proposals": len(proposals)})}
+    return {
+        "final_proposals": proposals,
+        "trace": _trace(state, "finalize_rank", "exit", {"proposals": len(proposals)}),
+    }
 
 
 def llm_judge(state: ConstructorState) -> dict:
@@ -199,7 +251,9 @@ def llm_judge(state: ConstructorState) -> dict:
     for proposal in state.get("final_proposals", []):
         key = tuple(item.recording_hash_prefix for item in proposal.items)
         reason, judge_score = reasons.get(key, (None, None))
-        proposals.append(proposal.model_copy(update={"judge_reason": reason, "judge_score": judge_score}))
+        proposals.append(
+            proposal.model_copy(update={"judge_reason": reason, "judge_score": judge_score})
+        )
     return {
         "final_proposals": proposals,
         "trace": _trace(
@@ -220,9 +274,19 @@ def optional_review(state: ConstructorState) -> dict:
         current = state.get("current_draft")
         edits = decision.get("edits", {})
         if current and "items" in edits:
-            current = SongsetDraft.model_validate({"items": edits["items"], "rationale": edits.get("rationale", current.rationale)})
-        return {"edits": decision, "current_draft": current, "trace": _trace(state, "optional_review", "resume", {"action": "edit"})}
-    return {"approved": action == "approve", "edits": decision, "trace": _trace(state, "optional_review", "resume", {"action": action})}
+            current = SongsetDraft.model_validate(
+                {"items": edits["items"], "rationale": edits.get("rationale", current.rationale)}
+            )
+        return {
+            "edits": decision,
+            "current_draft": current,
+            "trace": _trace(state, "optional_review", "resume", {"action": "edit"}),
+        }
+    return {
+        "approved": action == "approve",
+        "edits": decision,
+        "trace": _trace(state, "optional_review", "resume", {"action": action}),
+    }
 
 
 def write_artifacts(state: ConstructorState) -> dict:
