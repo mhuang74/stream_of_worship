@@ -12,6 +12,7 @@ from rich.console import Console
 from poc.songset_constructor.config import RunConfig, default_output_dir
 from poc.songset_constructor.graph.builder import build_graph
 from poc.songset_constructor.graph.llm import build_chat_model
+from poc.songset_constructor.rules.diagnostics import diagnostic_lines
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
 console = Console()
@@ -105,13 +106,33 @@ def _latest_trace_data(result: Any, node: str) -> dict[str, Any]:
     return {}
 
 
-def _fallback_no_results_summary(result: Any) -> str:
-    load_data = _latest_trace_data(result, "load_catalog")
-    enrich_data = _latest_trace_data(result, "enrich_pool")
-    transition_data = _latest_trace_data(result, "build_transition_matrix")
-    beam_data = _latest_trace_data(result, "beam_seed_candidates")
-    rank_data = _latest_trace_data(result, "finalize_rank")
-    validation_data = _latest_trace_data(result, "validate_score")
+def _trace_data_by_node(result: Any) -> dict[str, dict[str, Any]]:
+    return {
+        node: _latest_trace_data(result, node)
+        for node in (
+            "load_catalog",
+            "enrich_pool",
+            "build_transition_matrix",
+            "beam_seed_candidates",
+            "finalize_rank",
+            "validate_score",
+        )
+    }
+
+
+def _rule_drop_diagnostics_text(config: RunConfig, result: Any) -> str:
+    lines = diagnostic_lines(config, _trace_data_by_node(result))
+    return "\n".join(f"- {line}" for line in lines)
+
+
+def _fallback_no_results_summary(config: RunConfig, result: Any) -> str:
+    trace_data = _trace_data_by_node(result)
+    load_data = trace_data["load_catalog"]
+    enrich_data = trace_data["enrich_pool"]
+    transition_data = trace_data["build_transition_matrix"]
+    beam_data = trace_data["beam_seed_candidates"]
+    rank_data = trace_data["finalize_rank"]
+    validation_data = trace_data["validate_score"]
 
     reasons = []
     pool_size = load_data.get("pool_size")
@@ -127,6 +148,8 @@ def _fallback_no_results_summary(result: Any) -> str:
         reasons.append("all loaded songs were dropped during enrichment")
     elif dropped:
         reasons.append(f"{dropped} loaded songs lacked enough tempo/key metadata for enrichment")
+    for line in diagnostic_lines(config, trace_data):
+        reasons.append(line)
     if transitions == 0 and enriched_size:
         reasons.append("no compatible transitions survived the transition rules")
     if candidates == 0:
@@ -148,15 +171,21 @@ def _fallback_no_results_summary(result: Any) -> str:
 
 def _llm_no_results_summary(config: RunConfig, result: Any) -> str:
     if config.no_llm:
-        return _fallback_no_results_summary(result)
+        return _fallback_no_results_summary(config, result)
+
+    diagnostics = _rule_drop_diagnostics_text(config, result) or "- none"
 
     prompt = (
         "Write a succinct, clear, but detailed user-facing summary explaining why the "
         "songset constructor produced no results. Use only the facts below. Mention the "
-        "construction stages that matter, avoid speculation, and keep it to 3-5 sentences.\n\n"
+        "construction stages that matter, avoid speculation, and keep it to 3-5 sentences. "
+        "When the candidate count is below the requested song count, mention any majority "
+        "or all-candidate drop rule shown in Rule-drop diagnostics.\n\n"
         f"Run configuration: {config.to_dict()}\n\n"
         "Trace events:\n" + "\n".join(_event_lines(result)) + "\n\n"
-        f"Fallback diagnosis: {_fallback_no_results_summary(result)}"
+        "Rule-drop diagnostics:\n"
+        f"{diagnostics}\n\n"
+        f"Fallback diagnosis: {_fallback_no_results_summary(config, result)}"
     )
     chat = build_chat_model(config)
     response = chat.invoke(prompt)
@@ -164,14 +193,14 @@ def _llm_no_results_summary(config: RunConfig, result: Any) -> str:
     if isinstance(content, list):
         content = " ".join(str(part) for part in content)
     summary = str(content).strip()
-    return summary or _fallback_no_results_summary(result)
+    return summary or _fallback_no_results_summary(config, result)
 
 
 def _print_no_results_summary(config: RunConfig, result: Any) -> None:
     try:
         summary = _llm_no_results_summary(config, result)
     except Exception as exc:
-        summary = f"{_fallback_no_results_summary(result)} LLM summary failed: {exc}"
+        summary = f"{_fallback_no_results_summary(config, result)} LLM summary failed: {exc}"
     console.print("[yellow]No artifacts were written; no valid proposals were generated.[/yellow]")
     console.print(summary)
 

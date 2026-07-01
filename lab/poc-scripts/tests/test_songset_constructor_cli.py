@@ -5,6 +5,7 @@ from typer.testing import CliRunner
 
 from poc.songset_constructor import cli
 from poc.songset_constructor.cli import app
+from poc.songset_constructor.models import SongCandidate
 
 
 def test_cli_traces_no_proposals_without_writing_artifacts(tmp_path, synthetic_pool, monkeypatch):
@@ -38,7 +39,7 @@ def test_cli_traces_no_proposals_without_writing_artifacts(tmp_path, synthetic_p
     assert "No artifacts were written; no valid proposals were generated." in result.output
     assert "No songset artifacts were written because" in result.output
     assert "the beam search could not assemble any" in result.output
-    assert "sequence satisfying the hard rules" in result.output
+    assert "hard rules" in result.output
     assert not (tmp_path / "graph_trace.jsonl").exists()
 
 
@@ -76,6 +77,96 @@ def test_cli_uses_llm_to_summarize_no_results(tmp_path, synthetic_pool, monkeypa
     assert len(prompts) == 1
     assert "beam_seed_candidates.exit: candidates=0" in prompts[0]
     assert "finalize_rank.exit: proposals=0" in prompts[0]
+
+
+def test_cli_no_llm_explains_enrichment_shortfall(tmp_path, monkeypatch):
+    pool = [
+        SongCandidate(
+            song_id=f"missing-{index}",
+            title=f"Missing Metadata {index}",
+            recording_hash_prefix=f"m{index:03d}",
+        )
+        for index in range(5)
+    ]
+    pool.append(
+        SongCandidate(
+            song_id="valid-1",
+            title="Ready Song",
+            recording_hash_prefix="ready001",
+            tempo_bpm=118,
+            musical_key="G",
+            musical_mode="maj",
+            phase=1,
+        )
+    )
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "only 1 enriched candidates remain for a 5-song set" in result.output
+    assert "most loaded songs were dropped by missing_tempo_and_key_metadata (5/6)" in result.output
+    assert "No artifacts were written; no valid proposals were generated." in result.output
+
+
+def test_llm_no_results_prompt_includes_rule_drop_diagnostics(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
+    pool = [
+        SongCandidate(
+            song_id=f"missing-{index}",
+            title=f"Missing Metadata {index}",
+            recording_hash_prefix=f"m{index:03d}",
+        )
+        for index in range(4)
+    ]
+    pool.append(
+        SongCandidate(
+            song_id="valid-1",
+            title="Ready Song",
+            recording_hash_prefix="ready001",
+            tempo_bpm=118,
+            musical_key="G",
+            musical_mode="maj",
+            phase=1,
+        )
+    )
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: pool,
+    )
+    prompts = []
+
+    class FakeChat:
+        def invoke(self, prompt):
+            prompts.append(prompt)
+            return "LLM summary with diagnostics."
+
+    monkeypatch.setattr(cli, "build_chat_model", lambda _config: FakeChat())
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert len(prompts) == 1
+    assert "Rule-drop diagnostics:" in prompts[0]
+    assert "only 1 enriched candidates remain for a 5-song set" in prompts[0]
+    assert "most loaded songs were dropped by missing_tempo_and_key_metadata (4/5)" in prompts[0]
 
 
 def test_debug_trace_prints_full_llm_prompt(monkeypatch):

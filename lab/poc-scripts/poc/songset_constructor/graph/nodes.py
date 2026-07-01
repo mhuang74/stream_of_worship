@@ -17,6 +17,7 @@ from poc.songset_constructor.models import (
     ValidationFeedback,
 )
 from poc.songset_constructor.rules.beam import compute_fan_out, search
+from poc.songset_constructor.rules.diagnostics import beam_diagnostics, enrichment_drop_diagnostics
 from poc.songset_constructor.rules.fitness import score
 from poc.songset_constructor.rules.hard_constraints import validate
 from poc.songset_constructor.rules.phases import apply_seasonal_bias, fuse_themes, infer_phase
@@ -47,6 +48,7 @@ def enrich_pool(state: ConstructorState) -> dict:
     anchors = load_theme_anchors()
     enriched = []
     dropped = 0
+    drop_diagnostics = enrichment_drop_diagnostics(state.get("pool", []))
     for candidate in state.get("pool", []):
         if candidate.tempo_bpm is None and candidate.musical_key is None:
             dropped += 1
@@ -71,7 +73,14 @@ def enrich_pool(state: ConstructorState) -> dict:
     return {
         "pool": enriched,
         "trace": _trace(
-            state, "enrich_pool", "exit", {"pool_size": len(enriched), "dropped": dropped}
+            state,
+            "enrich_pool",
+            "exit",
+            {
+                "pool_size": len(enriched),
+                "dropped": dropped,
+                **drop_diagnostics,
+            },
         ),
     }
 
@@ -96,9 +105,19 @@ def build_transition_matrix(state: ConstructorState) -> dict:
 
 def beam_seed_candidates(state: ConstructorState) -> dict:
     proposals = search(state.get("pool", []), state["config"], state.get("transition_matrix", {}))
+    diagnostics = (
+        beam_diagnostics(state.get("pool", []), state["config"], state.get("transition_matrix", {}))
+        if not proposals
+        else {}
+    )
     return {
         "beam_candidates": proposals,
-        "trace": _trace(state, "beam_seed_candidates", "exit", {"candidates": len(proposals)}),
+        "trace": _trace(
+            state,
+            "beam_seed_candidates",
+            "exit",
+            {"candidates": len(proposals), **diagnostics},
+        ),
     }
 
 
