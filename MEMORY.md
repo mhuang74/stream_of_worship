@@ -1,3 +1,9 @@
+## 2026-07-01
+
+- Updated the lab songset constructor LLM defaults: timeout now defaults to
+  300 seconds, max retries to 2, and max attempts to 4 while preserving the
+  existing `SOW_LLM_*` environment overrides.
+
 ## 2026-06-29
 
 - Updated Worship Playback lyrics pullup title behavior: song title clicks now

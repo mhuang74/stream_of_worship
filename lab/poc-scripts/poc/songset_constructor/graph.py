@@ -24,9 +24,9 @@ POOL_SAMPLE_SIZE = 10
 LLM_POOL_SLICE = 15
 LLM_MAX_CONCURRENCY = int(os.environ.get("SOW_LLM_MAX_CONCURRENCY", "1"))
 _llm_concurrency_sem = threading.Semaphore(LLM_MAX_CONCURRENCY)
-LLM_TIMEOUT = float(os.environ.get("SOW_LLM_TIMEOUT", "30"))
-LLM_MAX_RETRIES = int(os.environ.get("SOW_LLM_MAX_RETRIES", "0"))
-LLM_MAX_ATTEMPTS = int(os.environ.get("SOW_LLM_MAX_ATTEMPTS", "1"))
+LLM_TIMEOUT = float(os.environ.get("SOW_LLM_TIMEOUT", "300"))
+LLM_MAX_RETRIES = int(os.environ.get("SOW_LLM_MAX_RETRIES", "2"))
+LLM_MAX_ATTEMPTS = int(os.environ.get("SOW_LLM_MAX_ATTEMPTS", "4"))
 LLM_MAX_BACKOFF_S = 30.0
 
 try:
