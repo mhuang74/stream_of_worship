@@ -35,6 +35,21 @@ def validate(
     phases = [item.phase for item in proposal.items]
     bpms = [item.bpm for item in proposal.items]
 
+    # H0: Cardinality — the proposal must have exactly the requested song count.
+    if len(proposal.items) != config.songs:
+        failures.append((
+            "H0",
+            f"Proposal has {len(proposal.items)} songs but {config.songs} were requested.",
+            "Add or remove songs to match the requested count.",
+        ))
+        # Return early to avoid IndexError on empty/short proposals.
+        return ValidationFeedback(
+            passed=False,
+            violated=[code for code, _, _ in failures],
+            errors=[message for _, message, _ in failures],
+            repair_hints=[hint for _, _, hint in failures],
+        )
+
     if relax_h1:
         h1_failed = phases[-1] not in {4, 5}
     else:

@@ -10,6 +10,7 @@ from poc.songset_constructor.artifacts.trace import event
 from poc.songset_constructor.artifacts.writer import write_artifacts as write_output_artifacts
 from poc.songset_constructor.db import fetch_catalog_pool
 from poc.songset_constructor.models import (
+    DraftItem,
     JudgeRanking,
     ScoreBreakdown,
     SongsetDraft,
@@ -297,6 +298,25 @@ def optional_review(state: ConstructorState) -> dict:
     if action == "edit":
         current = state.get("current_draft")
         edits = decision.get("edits", {})
+        if not current and proposals:
+            # Seed current_draft from the top proposal so --no-llm
+            # interactive-review edits have a base to apply to.
+            top_proposal = proposals[0]
+            current = SongsetDraft(
+                items=[
+                    DraftItem(
+                        position=i,
+                        recording_hash_prefix=item.recording_hash_prefix,
+                        key_shift_semitones=item.key_shift_semitones,
+                        crossfade_enabled=item.crossfade_enabled,
+                        crossfade_duration_seconds=item.crossfade_duration_seconds,
+                        gap_beats=item.gap_beats,
+                        tempo_ratio=item.tempo_ratio,
+                    )
+                    for i, item in enumerate(top_proposal.items, start=1)
+                ],
+                rationale=top_proposal.rationale,
+            )
         if current and "items" in edits:
             current = SongsetDraft.model_validate(
                 {"items": edits["items"], "rationale": edits.get("rationale", current.rationale)}

@@ -72,7 +72,15 @@ class RunConfig:
         self.output_dir = Path(self.output_dir)
         self.album_series = list(dict.fromkeys(self.album_series or DEFAULT_ALBUM_SERIES))
         if self.include_cpw and "CPW" not in self.album_series:
-            self.album_series.append("CPW")
+            # Only append CPW when a restrictive default list is present.
+            # When album_series is empty (meaning "no filter"), appending CPW
+            # would narrow the pool to only CPW rows.
+            if self.album_series:
+                self.album_series.append("CPW")
+        if self.hymnal_mode and "HYMN" not in self.album_series:
+            # Ensure HYMN candidates are in the pool when hymnal mode is set.
+            if self.album_series:
+                self.album_series.append("HYMN")
         self.llm_model = self.llm_model or os.environ.get("SOW_LLM_MODEL")
         if not self.thread_id:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -91,6 +99,12 @@ class RunConfig:
         return 110
 
     def validate_environment(self) -> None:
+        if self.no_llm and self.llm_judge:
+            raise RuntimeError(
+                "--no-llm cannot be combined with --llm-judge: the judge "
+                "requires an LLM model. Either enable LLM (--llm) or disable "
+                "the judge (--no-llm-judge)."
+            )
         if self.no_llm:
             return
         missing = []

@@ -88,6 +88,29 @@ def _proposal_for_sequence(
     warnings: list[str] | None = None,
 ) -> SongsetProposal:
     draft = draft_from_candidates(sequence, rationale="Deterministic beam seed.")
+    # Apply transition matrix recommendations onto each right-hand draft item
+    # so the emitted artifact carries the vamp/crossfade/transposition settings
+    # that made the pair musically acceptable.
+    if len(draft.items) > 1:
+        updated_items = [draft.items[0]]
+        for left, right in zip(draft.items, draft.items[1:]):
+            transition = matrix.get(
+                (left.recording_hash_prefix, right.recording_hash_prefix)
+            )
+            if transition:
+                updated_items.append(
+                    right.model_copy(
+                        update={
+                            "key_shift_semitones": transition.suggested_key_shift,
+                            "crossfade_enabled": transition.crossfade_enabled,
+                            "crossfade_duration_seconds": transition.crossfade_duration_seconds,
+                            "gap_beats": transition.gap_beats,
+                        }
+                    )
+                )
+            else:
+                updated_items.append(right)
+        draft = draft.model_copy(update={"items": updated_items})
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
     proposal = proposal_from_draft(draft, sequence, placeholder, llm_origin=False, warnings=warnings)
     return proposal.model_copy(update={"score": score(proposal, config, matrix)})

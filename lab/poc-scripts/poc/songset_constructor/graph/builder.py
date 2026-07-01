@@ -54,7 +54,7 @@ def build_graph(config: RunConfig):
     builder.add_conditional_edges(
         "validate_score",
         route_validation,
-        {"Accepted": "finalize_rank", "Refine": "llm_refine", "Rejected": END},
+        {"Accepted": "finalize_rank", "Refine": "llm_refine", "Rejected": "finalize_rank"},
     )
     builder.add_edge("llm_refine", "validate_score")
     builder.add_conditional_edges(
