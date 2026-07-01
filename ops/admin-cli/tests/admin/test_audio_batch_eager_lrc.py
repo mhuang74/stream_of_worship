@@ -1,10 +1,11 @@
 """Tests for the eager download→LRC handoff in ``_process_batch``.
 
 When both ``--download`` and ``--lrc`` are selected, the LRC job for a song
-is submitted as soon as that song's download completes, so the slow LRC step
-overlaps with remaining downloads instead of waiting for the whole download
-phase to finish. These tests verify the interleaving, the no-double-submit
-guard in Phase 2, and that the LRC-only (no-download) path is unchanged.
+is submitted as soon as that song's download completes (inside the download
+worker thread), so the slow LRC step overlaps with remaining downloads
+instead of waiting for the whole download phase to finish. These tests
+verify the eager submission, the no-double-submit guard, and that the
+LRC-only (no-download) path is unchanged.
 """
 
 from dataclasses import dataclass
@@ -15,7 +16,8 @@ from rich.console import Console
 
 from stream_of_worship.admin.commands.audio import _process_batch, _submit_lrc_for_song
 from stream_of_worship.admin.db.models import Recording, Song
-from stream_of_worship.admin.services.analysis import AnalysisServiceError, JobInfo
+from stream_of_worship.admin.services.analysis import AnalysisResult, JobInfo
+from stream_of_worship.admin.services.analysis import AnalysisServiceError
 
 
 def _make_song(song_id: str, title: str = "Test Song") -> Song:
@@ -45,6 +47,16 @@ def _make_recording(song_id: str, hash_prefix: str = "abc123def456") -> Recordin
     )
 
 
+def _completed_lrc_job(job_id: str = "job-x") -> JobInfo:
+    return JobInfo(
+        job_id=job_id,
+        status="completed",
+        job_type="lrc",
+        progress=1.0,
+        result=AnalysisResult(lrc_url="https://r2/lrc.lrc", lrc_source="whisper_asr"),
+    )
+
+
 @pytest.fixture
 def stubs(tmp_path):
     """Return a bundle of mocks and patches for exercising _process_batch."""
@@ -52,8 +64,11 @@ def stubs(tmp_path):
     analysis_client = MagicMock()
     r2_client = MagicMock()
 
-    # R2 never has a preexisting LRC by default
+    # R2 never has a preexisting LRC by default; but _confirm_r2_lrc finds one
     r2_client.lrc_exists.return_value = None
+
+    # get_job returns a completed LRC job so the loop terminates quickly
+    analysis_client.get_job.return_value = _completed_lrc_job()
 
     # submit_lrc returns a distinct job id per call
     counter = {"n": 0}
@@ -64,6 +79,13 @@ def stubs(tmp_path):
 
     analysis_client.submit_lrc.side_effect = _submit_lrc
 
+    # Patch _init_download_worker so _worker_state.db is the mock db_client
+    def _fake_init(database_url):
+        import stream_of_worship.admin.commands.audio as audio_mod
+
+        audio_mod._worker_state.db = db_client
+        audio_mod._worker_state.provider = MagicMock()
+
     patches = [
         patch(
             "stream_of_worship.admin.commands.audio._get_manifest_dir",
@@ -73,7 +95,14 @@ def stubs(tmp_path):
             "stream_of_worship.admin.commands.audio._write_manifest",
             return_value=tmp_path / "manifest.json",
         ),
-        patch("stream_of_worship.admin.commands.audio._poll_all_jobs"),
+        patch(
+            "stream_of_worship.admin.commands.audio._init_download_worker",
+            side_effect=_fake_init,
+        ),
+        patch(
+            "stream_of_worship.admin.commands.audio._confirm_r2_lrc",
+            return_value="https://r2/lrc.lrc",
+        ),
     ]
     for p in patches:
         p.start()
@@ -90,16 +119,14 @@ def stubs(tmp_path):
 
 
 class TestEagerLrcHandoff:
-    """Eager submission during the download loop."""
+    """Eager submission during the download loop (threaded)."""
 
-    def test_lrc_submitted_interleaved_with_downloads(self, stubs):
-        """submit_lrc is called right after each download, before the next."""
+    def test_lrc_submitted_by_download_worker(self, stubs):
+        """submit_lrc is called by the download worker for each song."""
         song_ids = ["s1", "s2", "s3"]
-        events: list[str] = []
         created: dict = {}  # song_id -> recording, populated by download
 
         def _download_and_create_recording(song_id, song, db, r2, console):
-            events.append(f"download:{song_id}")
             rec = _make_recording(song_id)
             created[song_id] = rec
             return rec, None
@@ -110,12 +137,6 @@ class TestEagerLrcHandoff:
             lambda sid: created.get(sid)
         )
         stubs["db_client"].get_song.side_effect = lambda sid: _make_song(sid)
-
-        def _submit_side_effect(**kwargs):
-            events.append("submit")
-            return JobInfo(job_id="job-x", status="queued", job_type="lrc")
-
-        stubs["analysis_client"].submit_lrc.side_effect = _submit_side_effect
 
         with patch(
             "stream_of_worship.admin.commands.audio._download_and_create_recording",
@@ -131,17 +152,15 @@ class TestEagerLrcHandoff:
                 analysis_tier="fast",
                 stale_after_minutes=120,
                 console=Console(quiet=True),
+                database_url="postgresql://test",
+                download_concurrency=1,
             )
 
-        # Interleaving: each submit immediately follows its download
-        assert events == [
-            "download:s1", "submit",
-            "download:s2", "submit",
-            "download:s3", "submit",
-        ], f"events were not interleaved: {events}"
+        # One submit per song (eager, from the download worker)
+        assert stubs["analysis_client"].submit_lrc.call_count == len(song_ids)
 
-    def test_phase2_does_not_resubmit_eagerly_submitted(self, stubs):
-        """Phase 2 must skip songs already submitted during downloads."""
+    def test_no_double_submit_from_main_loop(self, stubs):
+        """The main loop must not re-submit LRC for songs already submitted by workers."""
         song_ids = ["s1", "s2"]
         created: dict = {}
 
@@ -169,9 +188,11 @@ class TestEagerLrcHandoff:
                 analysis_tier="fast",
                 stale_after_minutes=120,
                 console=Console(quiet=True),
+                database_url="postgresql://test",
+                download_concurrency=1,
             )
 
-        # Exactly one submit per song (eager), none re-submitted in Phase 2
+        # Exactly one submit per song (eager), none re-submitted by the main loop
         assert stubs["analysis_client"].submit_lrc.call_count == len(song_ids)
 
     def test_skipped_r2_recording_also_eager_submits(self, stubs):
@@ -195,6 +216,8 @@ class TestEagerLrcHandoff:
                 analysis_tier="fast",
                 stale_after_minutes=120,
                 console=Console(quiet=True),
+                database_url="postgresql://test",
+                download_concurrency=1,
             )
 
         assert stubs["analysis_client"].submit_lrc.call_count == 1
@@ -219,6 +242,8 @@ class TestEagerLrcHandoff:
                 analysis_tier="fast",
                 stale_after_minutes=120,
                 console=Console(quiet=True),
+                database_url="postgresql://test",
+                download_concurrency=1,
             )
 
         stubs["analysis_client"].submit_lrc.assert_not_called()
@@ -227,7 +252,7 @@ class TestEagerLrcHandoff:
 class TestLrcOnlyPath:
     """--lrc without --download must behave as before (no eager calls)."""
 
-    def test_lrc_only_submits_in_phase2_not_eager(self, stubs):
+    def test_lrc_only_submits_via_advance_song(self, stubs):
         song_ids = ["s1", "s2"]
         recs = {sid: _make_recording(sid) for sid in song_ids}
         stubs["db_client"].get_recording_by_song_id.side_effect = lambda sid: recs[sid]
@@ -243,9 +268,11 @@ class TestLrcOnlyPath:
             analysis_tier="fast",
             stale_after_minutes=120,
             console=Console(quiet=True),
+            database_url="postgresql://test",
+            download_concurrency=1,
         )
 
-        # One submit per song, all from Phase 2 (no download phase ran)
+        # One submit per song, all from _advance_song (no download phase ran)
         assert stubs["analysis_client"].submit_lrc.call_count == len(song_ids)
 
 

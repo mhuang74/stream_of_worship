@@ -180,29 +180,36 @@ def test_status_reconcile_lrc_on_r2_forces_review_visibility():
     )
 
 
-def test_poll_all_jobs_completion_forces_review_visibility():
+def test_handle_lrc_completion_forces_review_visibility():
     db_client = MagicMock()
     db_client.get_recording_by_song_id.return_value = _recording()
     db_client.get_song.return_value = _song()
 
     analysis_client = MagicMock()
-    analysis_client.get_job.return_value = _completed_lrc_job()
 
     r2_client = MagicMock()
     r2_client.lrc_exists.return_value = "s3://bucket/abc123def456/lyrics.lrc"
 
     results = {"song_1": {}}
-    audio._poll_all_jobs(
-        active_jobs={"song_1": "lrc-job-1"},
-        results=results,
-        db_client=db_client,
-        analysis_client=analysis_client,
-        r2_client=r2_client,
-        force_lrc=False,
-        stale_after_minutes=60,
-        console=_console(),
-    )
+    resubmit_counts = {}
 
+    with patch.object(audio, "_confirm_r2_lrc", return_value="s3://bucket/abc123def456/lyrics.lrc"):
+        is_terminal, _ = audio._handle_lrc_completion(
+            song_id="song_1",
+            job_id="lrc-job-1",
+            job=_completed_lrc_job(),
+            db_client=db_client,
+            analysis_client=analysis_client,
+            r2_client=r2_client,
+            force=False,
+            stale_after_minutes=60,
+            console=_console(),
+            results=results,
+            _add_manifest_entry=lambda *a, **k: None,
+            resubmit_counts=resubmit_counts,
+        )
+
+    assert is_terminal is True
     db_client.update_recording_lrc.assert_called_once_with(
         "abc123def456",
         "s3://bucket/abc123def456/lyrics.lrc",
