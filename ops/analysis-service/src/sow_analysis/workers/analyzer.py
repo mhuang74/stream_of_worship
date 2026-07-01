@@ -69,6 +69,8 @@ async def analyze_audio(
     audio_path: Path,
     cache_manager: CacheManager,
     content_hash: str,
+    *,
+    force: bool = False,
 ) -> dict:
     """Analyze audio file using allin1 + librosa.
 
@@ -91,11 +93,12 @@ async def analyze_audio(
     """
     import allin1
 
-    # Check cache first
-    cached = cache_manager.get_analysis_result(content_hash)
-    if cached:
-        logger.info(f"Cache hit for analysis result: {content_hash[:16]}...")
-        return cached
+    # Check cache first (unless force)
+    if not force:
+        cached = cache_manager.get_analysis_result(content_hash)
+        if cached:
+            logger.info(f"Cache hit for analysis result: {content_hash[:16]}...")
+            return cached
 
     # Load audio
     logger.info(f"Loading audio file: {audio_path}")

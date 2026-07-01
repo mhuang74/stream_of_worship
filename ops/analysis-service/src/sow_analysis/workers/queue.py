@@ -410,6 +410,11 @@ class JobQueue:
             # Fast analysis (librosa-only) uses its own semaphore, distinct from
             # _local_model_semaphore (allin1/demucs) so the two do not coordinate.
             async with self._fast_analyze_semaphore:
+                # Re-check cancellation after acquiring the semaphore — a job
+                # may have been cancelled while queued behind it.
+                latest = self._jobs.get(job.id, job)
+                if latest.status == JobStatus.CANCELLED:
+                    return
                 await self._process_fast_analyze_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
@@ -512,6 +517,7 @@ class JobQueue:
                     audio_path,
                     self.cache_manager,
                     request.content_hash,
+                    force=request.options.force,
                 )
 
                 job.progress = 0.6
