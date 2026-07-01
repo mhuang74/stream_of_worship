@@ -167,6 +167,43 @@ def test_llm_no_results_prompt_includes_rule_drop_diagnostics(tmp_path, monkeypa
     assert "Rule-drop diagnostics:" in prompts[0]
     assert "only 1 enriched candidates remain for a 5-song set" in prompts[0]
     assert "most loaded songs were dropped by missing_tempo_and_key_metadata (4/5)" in prompts[0]
+    assert "Hard rule reference:" in prompts[0]
+
+
+def test_llm_no_results_prompt_includes_rule_descriptions(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.search",
+        lambda _pool, _config, _transition_matrix: [],
+    )
+    prompts = []
+
+    class FakeChat:
+        def invoke(self, prompt):
+            prompts.append(prompt)
+            return "LLM summary: H2 requires a phase-1 opener >= 110 BPM; no openers qualify."
+
+    monkeypatch.setattr(cli, "build_chat_model", lambda _config: FakeChat())
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert len(prompts) == 1
+    assert "Hard rule reference:" in prompts[0]
+    assert "H4: Tempo jump" in prompts[0]
+    assert "no songs in the pool satisfy it" in prompts[0]
+    assert "LLM summary: H2 requires" in result.output
 
 
 def test_debug_trace_prints_full_llm_prompt(monkeypatch):

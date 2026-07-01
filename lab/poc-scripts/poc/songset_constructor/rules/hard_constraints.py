@@ -5,6 +5,20 @@ from __future__ import annotations
 from poc.songset_constructor.config import RunConfig
 from poc.songset_constructor.models import SongsetProposal, TransitionCandidate, ValidationFeedback
 
+RULE_DESCRIPTIONS: dict[str, str] = {
+    "H1": "Phase coverage: the set must include exactly one phase-1 opener, at least one phase 3/4 "
+    "worship/response song, and end on a phase 4/5 closer.",
+    "H2": "Opening tempo: the first song must be phase 1 with tempo >= 110 BPM (a strong opener).",
+    "H3": "Closing tempo: the last song must be phase 4/5 with tempo <= 90 BPM (80 BPM in intimate "
+    "mode) — a calm closer.",
+    "H4": "Tempo jump: adjacent songs' BPM delta must stay <= 20 (15 without crossfade/gap; 25 if relaxed).",
+    "H5": "Circle-of-fifths distance: adjacent keys must be within CFD 2 (3 if relaxed) unless the next "
+    "song is transposed to match the suggested shift.",
+    "H6": "Uniqueness: no duplicate song IDs allowed in the set.",
+    "H7": "Phase arc: phase may drop by at most 1 between adjacent songs (no sharp backwards worship arc).",
+    "H8": "Key confidence: songs with key confidence < 0.6 cannot be transposed (key_shift must stay 0).",
+}
+
 
 def validate(
     proposal: SongsetProposal,

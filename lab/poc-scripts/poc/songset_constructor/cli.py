@@ -13,6 +13,7 @@ from poc.songset_constructor.config import RunConfig, default_output_dir
 from poc.songset_constructor.graph.builder import build_graph
 from poc.songset_constructor.graph.llm import build_chat_model
 from poc.songset_constructor.rules.diagnostics import diagnostic_lines
+from poc.songset_constructor.rules.hard_constraints import RULE_DESCRIPTIONS
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
 console = Console()
@@ -125,6 +126,39 @@ def _rule_drop_diagnostics_text(config: RunConfig, result: Any) -> str:
     return "\n".join(f"- {line}" for line in lines)
 
 
+_ROLE_TO_RULE: dict[str, str] = {
+    "valid_openers_h2": "H2",
+    "valid_closers_h3": "H3",
+    "phase_1_candidates_h1": "H1",
+    "phase_3_or_4_candidates_h1": "H1",
+    "phase_4_or_5_candidates_h1": "H1",
+    "compatible_transitions_h5": "H5",
+}
+
+
+def _relevant_rule_codes(config: RunConfig, result: Any) -> set[str]:
+    trace_data = _trace_data_by_node(result)
+    beam_data = trace_data["beam_seed_candidates"]
+    codes: set[str] = set()
+    rejections = beam_data.get("hard_rule_rejections") or {}
+    if isinstance(rejections, dict):
+        codes.update(str(code) for code in rejections)
+    role = beam_data.get("role_eligibility") or {}
+    if isinstance(role, dict):
+        for key, value in role.items():
+            if value == 0 and key in _ROLE_TO_RULE:
+                codes.add(_ROLE_TO_RULE[key])
+    return codes
+
+
+def _rule_reference_text(config: RunConfig, result: Any) -> str:
+    codes = sorted(_relevant_rule_codes(config, result))
+    if not codes:
+        codes = sorted(RULE_DESCRIPTIONS)
+    lines = [f"- {code}: {RULE_DESCRIPTIONS[code]}" for code in codes]
+    return "\n".join(lines)
+
+
 def _fallback_no_results_summary(config: RunConfig, result: Any) -> str:
     trace_data = _trace_data_by_node(result)
     load_data = trace_data["load_catalog"]
@@ -174,17 +208,22 @@ def _llm_no_results_summary(config: RunConfig, result: Any) -> str:
         return _fallback_no_results_summary(config, result)
 
     diagnostics = _rule_drop_diagnostics_text(config, result) or "- none"
+    rule_reference = _rule_reference_text(config, result)
 
     prompt = (
         "Write a succinct, clear, but detailed user-facing summary explaining why the "
         "songset constructor produced no results. Use only the facts below. Mention the "
         "construction stages that matter, avoid speculation, and keep it to 3-5 sentences. "
         "When the candidate count is below the requested song count, mention any majority "
-        "or all-candidate drop rule shown in Rule-drop diagnostics.\n\n"
+        "or all-candidate drop rule shown in Rule-drop diagnostics. When you cite a Hard rule "
+        "code (H1-H8), briefly explain what the rule requires and, where the role-eligibility "
+        "counts are zero, note that no songs in the pool satisfy it.\n\n"
         f"Run configuration: {config.to_dict()}\n\n"
         "Trace events:\n" + "\n".join(_event_lines(result)) + "\n\n"
         "Rule-drop diagnostics:\n"
         f"{diagnostics}\n\n"
+        "Hard rule reference:\n"
+        f"{rule_reference}\n\n"
         f"Fallback diagnosis: {_fallback_no_results_summary(config, result)}"
     )
     chat = build_chat_model(config)
