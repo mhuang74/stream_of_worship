@@ -1276,35 +1276,38 @@ def list_recordings(
         table.add_column("Album", style="yellow")
         table.add_column("Song Title", style="green")
         table.add_column("Visibility", justify="center")
-        table.add_column("Size", style="magenta", justify="right")
-        table.add_column("LRC", justify="center")
         table.add_column("Duration", style="cyan", no_wrap=True)
+        table.add_column("Key", style="cyan", no_wrap=True)
+        table.add_column("BPM", style="magenta", justify="right", no_wrap=True)
         table.add_column("Song ID", style="dim", no_wrap=True)
         table.add_column("Filename", style="yellow")
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
 
         for rec, song_title, album_name, _album_series in enriched:
             song_id = rec.song_id or "-"
-            size_str = _format_size_mb(rec.file_size_bytes) if rec.file_size_bytes else "-- MB"
 
             # Visibility status with visual indicator
             visibility_text = _colorize_visibility(rec.visibility_status)
-
-            # LRC status
-            lrc_text = _colorize_status(rec.lrc_status)
 
             # Format duration if available (from analysis results)
             duration_str = (
                 _format_duration(rec.duration_seconds) if rec.duration_seconds else "--:--"
             )
 
+            # Musical key (combine key + mode, e.g. "C Major")
+            key_parts = [p for p in (rec.musical_key, rec.musical_mode) if p]
+            key_str = " ".join(key_parts) if key_parts else "--"
+
+            # BPM rounded to nearest integer
+            bpm_str = str(round(rec.tempo_bpm)) if rec.tempo_bpm is not None else "--"
+
             table.add_row(
                 album_name or "-",
                 song_title or "-",
                 visibility_text,
-                size_str,
-                lrc_text,
                 duration_str,
+                key_str,
+                bpm_str,
                 song_id,
                 rec.original_filename,
                 rec.hash_prefix,
