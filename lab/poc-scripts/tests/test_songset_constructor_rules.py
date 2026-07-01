@@ -1,6 +1,7 @@
 from poc.songset_constructor.config import RunConfig
-from poc.songset_constructor.models import ScoreBreakdown
+from poc.songset_constructor.models import ScoreBreakdown, SongCandidate
 from poc.songset_constructor.rules.beam import compute_fan_out, search
+from poc.songset_constructor.rules.diagnostics import hard_rule_rejection_counts
 from poc.songset_constructor.rules.fitness import score
 from poc.songset_constructor.rules.hard_constraints import validate
 from poc.songset_constructor.rules.phases import fuse_themes, infer_phase
@@ -50,3 +51,52 @@ def test_beam_search_is_deterministic(synthetic_pool):
     second = search(pool, config, matrix)
     assert [p.model_dump() for p in first] == [p.model_dump() for p in second]
     assert first
+
+
+def test_diagnostics_counts_hard_rule_rejections():
+    sequence = [
+        SongCandidate(
+            song_id="s1",
+            title="Soft Opener",
+            recording_hash_prefix="d001",
+            tempo_bpm=100,
+            musical_key="C",
+            musical_mode="maj",
+            phase=1,
+        ),
+        SongCandidate(
+            song_id="s2",
+            title="Middle",
+            recording_hash_prefix="d002",
+            tempo_bpm=95,
+            musical_key="F#",
+            musical_mode="maj",
+            phase=3,
+        ),
+        SongCandidate(
+            song_id="s3",
+            title="Response",
+            recording_hash_prefix="d003",
+            tempo_bpm=80,
+            musical_key="C",
+            musical_mode="maj",
+            phase=4,
+        ),
+        SongCandidate(
+            song_id="s4",
+            title="Loud Closer",
+            recording_hash_prefix="d004",
+            tempo_bpm=100,
+            musical_key="F#",
+            musical_mode="maj",
+            phase=5,
+        ),
+    ]
+
+    diagnostics = hard_rule_rejection_counts([sequence], RunConfig(songs=4, no_llm=True), {})
+
+    assert diagnostics["generated_sequences"] == 1
+    assert diagnostics["rejected_sequences"] == 1
+    assert diagnostics["hard_rule_rejections"]["H2"] == 1
+    assert diagnostics["hard_rule_rejections"]["H3"] == 1
+    assert diagnostics["hard_rule_rejections"]["H5"] == 3
