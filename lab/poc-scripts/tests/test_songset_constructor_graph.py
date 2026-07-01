@@ -157,9 +157,10 @@ class _FakeChatOpenAI:
     """Stand-in for ChatOpenAI used by build_llm_planner during tests."""
 
     calls = 0
+    init_kwargs: dict = {}
 
-    def __init__(self, **_kwargs):
-        pass
+    def __init__(self, **kwargs):
+        self.__class__.init_kwargs = kwargs
 
     def with_structured_output(self, _schema):
         return RunnableLambda(self._raise_timeout)
@@ -198,6 +199,7 @@ def test_llm_planner_does_not_outer_retry_non_rate_limit_errors(
     monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
     monkeypatch.setattr(graph_mod, "ChatOpenAI", _FakeChatOpenAI)
     _FakeChatOpenAI.calls = 0
+    _FakeChatOpenAI.init_kwargs = {}
 
     sleeps: list[float] = []
     monkeypatch.setattr(graph_mod.time, "sleep", lambda s: sleeps.append(s))
@@ -211,7 +213,24 @@ def test_llm_planner_does_not_outer_retry_non_rate_limit_errors(
         planner(state)
 
     assert _FakeChatOpenAI.calls == 1
+    assert _FakeChatOpenAI.init_kwargs["timeout"] == graph_mod.LLM_TIMEOUT
+    assert _FakeChatOpenAI.init_kwargs["max_retries"] == 0
     assert sleeps == []
+
+
+def test_llm_planner_honors_configured_openai_retry_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("SOW_LLM_BASE_URL", "https://example.test")
+    monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
+    monkeypatch.setattr(graph_mod, "ChatOpenAI", _FakeChatOpenAI)
+    monkeypatch.setattr(graph_mod, "LLM_MAX_RETRIES", 2)
+    _FakeChatOpenAI.init_kwargs = {}
+
+    build_llm_planner(ConstructorConfig(songs=5, top_k=2))
+
+    assert _FakeChatOpenAI.init_kwargs["max_retries"] == 2
 
 
 def test_llm_planner_rate_limit_retry_respects_outer_attempt_count(
