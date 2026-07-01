@@ -29,12 +29,11 @@ SELECT {SONG_COLUMNS_FOR_JOIN},
 FROM songs s
 JOIN recordings r ON s.id = r.song_id
 LEFT JOIN song_embedding se ON se.song_id = s.id
-WHERE r.visibility_status = 'published'
-  AND r.analysis_status IN ('completed', 'partial')
-  AND r.lrc_status = 'completed'
+WHERE r.visibility_status IN ('published', 'review')
+  AND (r.lrc_status = 'completed' OR r.r2_lrc_url IS NOT NULL)
   AND r.deleted_at IS NULL
   AND s.deleted_at IS NULL
-  AND s.album_series = ANY(%s)
+  AND (cardinality(%s::text[]) = 0 OR s.album_series = ANY(%s))
 ORDER BY s.title
 LIMIT %s
 """
@@ -91,7 +90,7 @@ def fetch_catalog_pool(
     db_client = client or build_read_client()
     try:
         cursor = db_client.connection.cursor()
-        cursor.execute(POOL_QUERY, (config.album_series, config.pool_limit))
+        cursor.execute(POOL_QUERY, (config.album_series, config.album_series, config.pool_limit))
         pool = [_candidate_from_row(tuple(row)) for row in cursor.fetchall()]
         line_embeddings = fetch_line_embeddings([candidate.song_id for candidate in pool], client=db_client)
         return [

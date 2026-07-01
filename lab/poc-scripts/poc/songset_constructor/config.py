@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 
 VALID_SEASONS = {"advent", "christmas", "lent", "easter", "pentecost"}
-DEFAULT_ALBUM_SERIES = ("PW", "DEV")
+DEFAULT_ALBUM_SERIES: tuple[str, ...] = ()
 DEFAULT_ENV_FILE = Path("/opt/sow/.env")
 
 
