@@ -53,6 +53,7 @@ from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
     OFFICIAL_LYRICS_SUFFIX,
     YouTubeDownloader,
+    _extract_chinese_title_from_youtube,
 )
 
 console = Console()
@@ -740,6 +741,7 @@ def import_youtube_audio_for_song(
         )
 
     downloader = YouTubeDownloader()
+    is_direct_url = bool(youtube_url)
     if youtube_url:
         search_or_url = youtube_url
         console.print(f"[dim]Using provided URL: {youtube_url}[/dim]")
@@ -758,34 +760,45 @@ def import_youtube_audio_for_song(
 
     console.print("[cyan]Previewing video...[/cyan]")
     try:
-        video_info = downloader.preview_video(search_or_url)
+        if is_direct_url:
+            video_info = downloader.preview_video(search_or_url)
+        else:
+            video_info = downloader.preview_video(
+                search_or_url, max_results=5, song_title=song.title
+            )
     except RuntimeError as e:
         console.print(f"[red]Failed to preview video: {e}[/red]")
         raise typer.Exit(1)
 
     if video_info is None:
-        console.print("[red]No results found.[/red]")
-        console.print("[dim]Try using --url to provide a direct YouTube URL.[/dim]")
-        raise typer.Exit(1)
+        if is_direct_url:
+            console.print("[red]No results found.[/red]")
+            console.print("[dim]Try using --url to provide a direct YouTube URL.[/dim]")
+            raise typer.Exit(1)
+        console.print("[yellow]No matching title found in top 5 results.[/yellow]")
+        video_info = None
 
-    _display_video_preview(video_info, console)
+    if video_info is not None:
+        _display_video_preview(video_info, console)
 
-    video_title = video_info.get("title") if video_info else None
-    chinese_title = _extract_chinese_title_from_youtube(video_title)
-    if chinese_title and chinese_title != song.title:
-        console.print(
-            f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
-        )
-        console.print(
-            "[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]"
-        )
+        video_title = video_info.get("title") if video_info else None
+        if is_direct_url:
+            chinese_title = _extract_chinese_title_from_youtube(video_title)
+            if chinese_title and chinese_title != song.title:
+                console.print(
+                    f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+                )
+                console.print(
+                    "[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]"
+                )
 
     download_confirmed = skip_video_confirm
-    if not skip_video_confirm:
+    if not skip_video_confirm and video_info is not None:
         download_confirmed = _prompt_confirmation("Download this video?")
 
     if not download_confirmed:
-        console.print("[yellow]Auto-selected video rejected.[/yellow]")
+        if video_info is not None:
+            console.print("[yellow]Auto-selected video rejected.[/yellow]")
         manual_url = _prompt_manual_url()
         if not manual_url:
             console.print("[yellow]Download cancelled.[/yellow]")
@@ -816,13 +829,16 @@ def import_youtube_audio_for_song(
             raise typer.Exit(0)
 
         search_or_url = manual_url
+        is_direct_url = True
 
     console.print("[cyan]Downloading audio from YouTube...[/cyan]")
     try:
         if search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
             audio_path = downloader.download_by_url(search_or_url)
         else:
-            audio_path = downloader.download(search_or_url)
+            audio_path = downloader.download(
+                search_or_url, max_results=5, song_title=song.title
+            )
     except RuntimeError as e:
         console.print(f"[red]Download failed: {e}[/red]")
         raise typer.Exit(1)
@@ -4681,33 +4697,6 @@ def _print_dry_run_v4(
             console.print(f"  [red]•[/red] {song_id}")
 
 
-import re
-
-
-def _extract_chinese_title_from_youtube(video_title: Optional[str]) -> Optional[str]:
-    """Extract the Chinese title from YouTube video title format.
-
-    YouTube MV titles are typically formatted as:
-    "【一生敬拜祢 All the Days of My Life】官方歌詞版MV ..."
-
-    This function extracts the Chinese portion from the first bracketed segment.
-
-    Args:
-        video_title: YouTube video title
-
-    Returns:
-        Chinese title or None if not found
-    """
-    if not video_title:
-        return None
-
-    match = re.match(r"【([^】\s]+)", video_title)
-    if match:
-        return match.group(1)
-
-    return None
-
-
 def _download_and_create_recording(
     song_id: str,
     song: Song,
@@ -4742,21 +4731,20 @@ def _download_and_create_recording(
         )
 
         console.print(f"  Downloading from YouTube...")
-        audio_path, youtube_url, video_title = downloader.download_with_info(query)
-
-        chinese_title = _extract_chinese_title_from_youtube(video_title)
-        if chinese_title and chinese_title != song.title:
-            console.print(
-                f"  [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+        try:
+            audio_path, youtube_url, video_title = downloader.download_with_info(
+                query, max_results=5, song_title=song.title
             )
-            console.print(
-                f"  [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
-            )
-            audio_path.unlink(missing_ok=True)
-            return (
-                None,
-                f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'",
-            )
+        except RuntimeError as e:
+            if "No matching title found" in str(e):
+                console.print(
+                    f"  [yellow]⚠ No matching title in top 5 search results for '{song.title}'[/yellow]"
+                )
+                console.print(
+                    f"  [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
+                )
+                return None, "no matching title in top 5 search results"
+            raise
 
         file_size = audio_path.stat().st_size
         console.print(f"  [dim]Downloaded: {audio_path.name} ({_format_size_mb(file_size)})[/dim]")
@@ -4864,22 +4852,24 @@ def _download_if_needed(
         )
 
         console.print(f"[{song_id}] Downloading audio from YouTube...")
-        audio_path, youtube_url, video_title = downloader.download_with_info(query)
-
-        chinese_title = _extract_chinese_title_from_youtube(video_title)
-        if chinese_title and chinese_title != song.title:
-            console.print(
-                f"[{song_id}] [yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+        try:
+            audio_path, youtube_url, video_title = downloader.download_with_info(
+                query, max_results=5, song_title=song.title
             )
-            console.print(
-                f"[{song_id}] [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
-            )
-            audio_path.unlink(missing_ok=True)
-            db_client.update_recording_download(hash_prefix, "failed")
-            return {
-                "download": "failed",
-                "error": f"title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'",
-            }
+        except RuntimeError as e:
+            if "No matching title found" in str(e):
+                console.print(
+                    f"[{song_id}] [yellow]⚠ No matching title in top 5 search results for '{song.title}'[/yellow]"
+                )
+                console.print(
+                    f"[{song_id}] [yellow]  Use 'sow_admin audio download {song_id} --youtube-url <url>' to manually specify the correct video.[/yellow]"
+                )
+                db_client.update_recording_download(hash_prefix, "failed")
+                return {
+                    "download": "failed",
+                    "error": "no matching title in top 5 search results",
+                }
+            raise
 
         content_hash = compute_file_hash(audio_path)
         prefix = get_hash_prefix(content_hash)
@@ -7049,7 +7039,7 @@ def _print_stats(
         for song_id, error in failed_downloads:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
-            console.print(f"  - {song_name}: {error}")
+            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
 
     # Print failed LRCs
     failed_lrcs = [
@@ -7060,7 +7050,7 @@ def _print_stats(
         for song_id, error in failed_lrcs:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
-            console.print(f"  - {song_name}: {error}")
+            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
 
     # Print failed analysis
     failed_analysis = [
@@ -7073,7 +7063,7 @@ def _print_stats(
         for song_id, error in failed_analysis:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
-            console.print(f"  - {song_name}: {error}")
+            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
 
     # Print failed embeddings
     failed_embeddings = [
@@ -7086,7 +7076,7 @@ def _print_stats(
         for song_id, error in failed_embeddings:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
-            console.print(f"  - {song_name}: {error}")
+            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
 
 
 @app.command("probe")
