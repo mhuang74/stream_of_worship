@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Music, Clock, Disc, Plus, Check, Play, Pause, Loader2 } from "lucide-react";
+import { Music, Clock, Disc, Plus, Check, BadgeCheck, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -20,6 +20,7 @@ export interface SongCardData {
     durationSeconds: number | null;
     tempoBpm: number | null;
     musicalKey: string | null;
+    visibilityStatus: string | null;
   }[];
 }
 
@@ -61,6 +62,9 @@ export function SongCard({
   const tempo = primaryRecording?.tempoBpm;
   const recordingKey = primaryRecording?.musicalKey || song.musicalKey;
   const artist = song.composer || song.lyricist || "Unknown Artist";
+  const isVerified = song.recordings.some(
+    (r) => r.visibilityStatus === "published"
+  );
 
   const handleAdd = async () => {
     if (isAdded || isAdding || disabled || !onAdd) return;
@@ -104,8 +108,15 @@ export function SongCard({
 
           {/* Song info */}
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate" data-testid="song-title">
-              {song.title}
+            <h4 className="font-medium text-sm truncate flex items-center gap-1" data-testid="song-title">
+              <span className="truncate">{song.title}</span>
+              {isVerified && (
+                <BadgeCheck
+                  className="size-3.5 text-emerald-600 shrink-0"
+                  data-testid="verified-badge"
+                  aria-label="Verified"
+                />
+              )}
             </h4>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
               <Music className="size-3" />
@@ -126,7 +137,7 @@ export function SongCard({
                 </Badge>
               )}
               {tempo && (
-                <span data-testid="song-tempo">{tempo} BPM</span>
+                <span data-testid="song-tempo">{Math.round(tempo)} BPM</span>
               )}
               {song.albumName && (
                 <span className="truncate hidden sm:inline" data-testid="song-album">

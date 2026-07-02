@@ -17,6 +17,7 @@ describe("SongCard", () => {
         durationSeconds: 180,
         tempoBpm: 120,
         musicalKey: "G",
+        visibilityStatus: "published",
       },
     ],
   };
@@ -103,6 +104,69 @@ describe("SongCard", () => {
       };
       renderCard({ song: songWithDifferentKeys });
       expect(screen.getByTestId("song-key")).toHaveTextContent("F");
+    });
+  });
+
+  describe("verified badge", () => {
+    it("shows verified badge when recording is published", () => {
+      renderCard();
+      expect(screen.getByTestId("verified-badge")).toBeInTheDocument();
+    });
+
+    it("does not show verified badge when recording is review", () => {
+      renderCard({
+        song: {
+          ...mockSong,
+          recordings: [
+            { ...mockSong.recordings[0], visibilityStatus: "review" },
+          ],
+        },
+      });
+      expect(screen.queryByTestId("verified-badge")).not.toBeInTheDocument();
+    });
+
+    it("does not show verified badge when recordings is empty", () => {
+      renderCard({ song: mockSongNoRecording });
+      expect(screen.queryByTestId("verified-badge")).not.toBeInTheDocument();
+    });
+
+    it("shows verified badge when any recording is published (mixed statuses)", () => {
+      renderCard({
+        song: {
+          ...mockSong,
+          recordings: [
+            { ...mockSong.recordings[0], visibilityStatus: "review" },
+            { ...mockSong.recordings[0], visibilityStatus: "published" },
+          ],
+        },
+      });
+      expect(screen.getByTestId("verified-badge")).toBeInTheDocument();
+    });
+  });
+
+  describe("BPM rounding", () => {
+    it("rounds fractional BPM to nearest integer", () => {
+      renderCard({
+        song: {
+          ...mockSong,
+          recordings: [
+            { ...mockSong.recordings[0], tempoBpm: 127.97 },
+          ],
+        },
+      });
+      expect(screen.getByTestId("song-tempo")).toHaveTextContent("128 BPM");
+    });
+
+    it("rounds down fractional BPM", () => {
+      renderCard({
+        song: {
+          ...mockSong,
+          recordings: [
+            { ...mockSong.recordings[0], tempoBpm: 120.3 },
+          ],
+        },
+      });
+      expect(screen.getByTestId("song-tempo")).toHaveTextContent("120 BPM");
     });
   });
 

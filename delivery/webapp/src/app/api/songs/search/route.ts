@@ -28,7 +28,11 @@ export async function GET(request: NextRequest) {
     );
     const offset = parseInt(searchParams.get("offset") ?? "0");
 
-    const visibilityStatus = searchParams.get("visibilityStatus") ?? "published";
+    // Default to published + review for browse; respect explicit client override
+    const visibilityParam = searchParams.get("visibilityStatus");
+    const visibilityStatus: string | string[] = visibilityParam
+      ? visibilityParam
+      : ["published", "review"];
 
     const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus);
 

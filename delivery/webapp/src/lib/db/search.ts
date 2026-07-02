@@ -7,7 +7,7 @@ export async function fullTextSearchSongs(
   query: string,
   limit: number = 50,
   offset: number = 0,
-  visibilityStatus?: string
+  visibilityStatus?: string | string[]
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const tsQuery = sql`plainto_tsquery('simple', ${query})`;
   const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
@@ -26,15 +26,38 @@ export async function fullTextSearchSongs(
   ];
 
   if (visibilityStatus && visibilityStatus !== "all") {
-    whereConditions.push(
-      sql`exists (
-        select 1
-        from recordings
-        where recordings.song_id = ${songs.id}
-          and recordings.visibility_status = ${visibilityStatus}
-          and recordings.deleted_at IS NULL
-      )`
-    );
+    if (Array.isArray(visibilityStatus)) {
+      if (visibilityStatus.length > 0) {
+        whereConditions.push(
+          sql`exists (
+            select 1
+            from recordings
+            where recordings.song_id = ${songs.id}
+              and recordings.visibility_status = ANY(${sql`ARRAY[${sql.join(visibilityStatus.map(s => sql`${s}`), sql`, `)}]::text[]`})
+              and recordings.deleted_at IS NULL
+          )`
+        );
+      } else {
+        whereConditions.push(
+          sql`exists (
+            select 1
+            from recordings
+            where recordings.song_id = ${songs.id}
+              and recordings.deleted_at IS NULL
+          )`
+        );
+      }
+    } else {
+      whereConditions.push(
+        sql`exists (
+          select 1
+          from recordings
+          where recordings.song_id = ${songs.id}
+            and recordings.visibility_status = ${visibilityStatus}
+            and recordings.deleted_at IS NULL
+        )`
+      );
+    }
   } else {
     whereConditions.push(
       sql`exists (
@@ -64,10 +87,16 @@ export async function fullTextSearchSongs(
     offset,
     with: {
       recordings: {
-        where: (recordings, { and, eq, isNull }) => {
+        where: (recordings, { and, eq, isNull, inArray }) => {
           const conditions = [isNull(recordings.deletedAt)];
           if (visibilityStatus && visibilityStatus !== "all") {
-            conditions.push(eq(recordings.visibilityStatus, visibilityStatus));
+            if (Array.isArray(visibilityStatus)) {
+              if (visibilityStatus.length > 0) {
+                conditions.push(inArray(recordings.visibilityStatus, visibilityStatus));
+              }
+            } else {
+              conditions.push(eq(recordings.visibilityStatus, visibilityStatus));
+            }
           }
           return and(...conditions);
         },

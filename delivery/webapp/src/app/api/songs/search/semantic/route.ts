@@ -48,7 +48,12 @@ export async function POST(request: NextRequest) {
     }
 
     const overfetchLimit = limit * 2;
-    const songs = await semanticSearchSongs(queryEmbedding, QUERY_MODEL, overfetchLimit);
+    const songs = await semanticSearchSongs(
+      queryEmbedding,
+      QUERY_MODEL,
+      overfetchLimit,
+      ["published", "review"],
+    );
 
     const snippets = await findTopMatchingLines(
       queryEmbedding,

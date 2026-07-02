@@ -174,7 +174,7 @@ describe("GET /api/songs", () => {
     );
   });
 
-  it("defaults to published visibility status", async () => {
+  it("defaults to published + review visibility status", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
@@ -190,7 +190,7 @@ describe("GET /api/songs", () => {
     expect(listSongs).toHaveBeenCalledWith(
       50,
       0,
-      expect.objectContaining({ visibilityStatus: "published" })
+      expect.objectContaining({ visibilityStatus: ["published", "review"] })
     );
   });
 
