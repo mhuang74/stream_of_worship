@@ -193,7 +193,7 @@ function DesktopLayout({
               <p className="text-xs text-muted-foreground">
                 {fromSong.key && `Key: ${fromSong.key}`}
                 {fromSong.key && fromSong.tempoBpm && " • "}
-                {fromSong.tempoBpm && `${fromSong.tempoBpm} BPM`}
+                {fromSong.tempoBpm && `${Math.round(fromSong.tempoBpm)} BPM`}
               </p>
             </div>
           )}
@@ -205,7 +205,7 @@ function DesktopLayout({
               <p className="text-xs text-muted-foreground">
                 {toSong.key && `Key: ${toSong.key}`}
                 {toSong.key && toSong.tempoBpm && " • "}
-                {toSong.tempoBpm && `${toSong.tempoBpm} BPM`}
+                {toSong.tempoBpm && `${Math.round(toSong.tempoBpm)} BPM`}
               </p>
             </div>
           )}

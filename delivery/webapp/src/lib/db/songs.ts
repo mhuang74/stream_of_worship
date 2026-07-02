@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { recordings, songs } from "@/db/schema";
-import { eq, desc, and, or, ilike, sql, isNull } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql, isNull, inArray } from "drizzle-orm";
 
 export interface SongWithRecordings {
   id: string;
@@ -43,12 +43,25 @@ export interface ListSongsFilters {
   albumSeries?: string;
   composer?: string;
   lyricist?: string;
-  visibilityStatus?: string;
+  visibilityStatus?: string | string[];
 }
 
-function buildPublishedRecordingExistsClause(visibilityStatus?: string) {
+function buildPublishedRecordingExistsClause(
+  visibilityStatus?: string | string[]
+) {
   if (!visibilityStatus || visibilityStatus === "all") {
     return undefined;
+  }
+
+  if (Array.isArray(visibilityStatus)) {
+    if (visibilityStatus.length === 0) return undefined;
+    return sql`exists (
+      select 1
+      from recordings
+      where recordings.song_id = ${songs.id}
+        and recordings.visibility_status = ANY(${sql`ARRAY[${sql.join(visibilityStatus.map(s => sql`${s}`), sql`, `)}]::text[]`})
+        and recordings.deleted_at IS NULL
+    )`;
   }
 
   return sql`exists (
@@ -58,6 +71,18 @@ function buildPublishedRecordingExistsClause(visibilityStatus?: string) {
       and recordings.visibility_status = ${visibilityStatus}
       and recordings.deleted_at IS NULL
   )`;
+}
+
+function recordingVisibilityPredicate(
+  visibilityStatus?: string | string[],
+  recordingsAlias = recordings
+) {
+  if (!visibilityStatus || visibilityStatus === "all") return undefined;
+  if (Array.isArray(visibilityStatus)) {
+    if (visibilityStatus.length === 0) return undefined;
+    return inArray(recordingsAlias.visibilityStatus, visibilityStatus);
+  }
+  return eq(recordingsAlias.visibilityStatus, visibilityStatus);
 }
 
 function buildSongWhereClause(
@@ -110,9 +135,8 @@ export async function listSongs(
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const whereClause = buildSongWhereClause(filters);
   const recordingWhereConditions = [];
-  if (filters?.visibilityStatus && filters.visibilityStatus !== "all") {
-    recordingWhereConditions.push(eq(recordings.visibilityStatus, filters.visibilityStatus));
-  }
+  const visPredicate = recordingVisibilityPredicate(filters?.visibilityStatus);
+  if (visPredicate) recordingWhereConditions.push(visPredicate);
   recordingWhereConditions.push(isNull(recordings.deletedAt));
   const recordingWhereClause = recordingWhereConditions.length > 0
     ? and(...recordingWhereConditions)
@@ -236,13 +260,12 @@ export async function searchSongs(
   query: string,
   limit: number = 50,
   offset: number = 0,
-  visibilityStatus?: string
+  visibilityStatus?: string | string[]
 ): Promise<SearchSongsResult> {
   const whereClause = buildSongWhereClause({ visibilityStatus }, query);
   const recordingWhereConditions = [];
-  if (visibilityStatus && visibilityStatus !== "all") {
-    recordingWhereConditions.push(eq(recordings.visibilityStatus, visibilityStatus));
-  }
+  const visPredicate = recordingVisibilityPredicate(visibilityStatus);
+  if (visPredicate) recordingWhereConditions.push(visPredicate);
   recordingWhereConditions.push(isNull(recordings.deletedAt));
   const recordingWhereClause = recordingWhereConditions.length > 0
     ? and(...recordingWhereConditions)
@@ -301,7 +324,13 @@ export async function getAlbums(): Promise<string[]> {
   const result = await db
     .selectDistinct({ albumName: songs.albumName })
     .from(songs)
-    .where(sql`${songs.albumName} IS NOT NULL`)
+    .where(sql`${songs.albumName} IS NOT NULL
+      AND exists (
+        select 1 from recordings
+        where recordings.song_id = ${songs.id}
+          and recordings.visibility_status IN ('published', 'review')
+          and recordings.deleted_at IS NULL
+      )`)
     .orderBy(songs.albumName);
 
   return result.map((r) => r.albumName).filter((name): name is string => name !== null);
@@ -334,6 +363,7 @@ export async function semanticSearchSongs(
   embedding: number[],
   expectedModelVersion: string,
   limit: number = 20,
+  visibilityStatuses: string[] = ["published", "review"],
 ): Promise<SemanticSearchResult[]> {
   const vectorStr = validateEmbedding(embedding);
 
@@ -367,7 +397,7 @@ export async function semanticSearchSongs(
       FROM song_embedding se
       JOIN songs s ON se.song_id = s.id
       JOIN recordings r ON r.song_id = s.id
-        AND r.visibility_status = 'published'
+        AND r.visibility_status = ANY(${sql`ARRAY[${sql.join(visibilityStatuses.map(s => sql`${s}`), sql`, `)}]::text[]`})
         AND r.deleted_at IS NULL
       WHERE s.deleted_at IS NULL
         AND se.model_version = ${expectedModelVersion}

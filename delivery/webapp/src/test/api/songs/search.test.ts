@@ -135,7 +135,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, "published");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, ["published", "review"]);
   });
 
   it("caps limit at 100", async () => {
@@ -153,10 +153,10 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, "published");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, ["published", "review"]);
   });
 
-  it("defaults to published visibility status", async () => {
+  it("defaults to published + review visibility status", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
@@ -169,7 +169,7 @@ describe("GET /api/songs/search", () => {
     const request = createMockRequest("http://localhost:3000/api/songs/search?q=test");
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "published");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"]);
   });
 
   it("allows overriding visibility status", async () => {

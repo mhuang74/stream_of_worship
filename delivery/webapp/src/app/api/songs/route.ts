@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       albumSeries?: string;
       composer?: string;
       lyricist?: string;
-      visibilityStatus?: string;
+      visibilityStatus?: string | string[];
     } = {};
 
     const albumName = searchParams.get("albumName");
@@ -40,8 +40,11 @@ export async function GET(request: NextRequest) {
     const lyricist = searchParams.get("lyricist");
     if (lyricist) filters.lyricist = lyricist;
 
-    // Default to published only for app users
-    const visibilityStatus = searchParams.get("visibilityStatus") ?? "published";
+    // Default to published + review for browse; respect explicit client override
+    const visibilityParam = searchParams.get("visibilityStatus");
+    const visibilityStatus: string | string[] = visibilityParam
+      ? visibilityParam
+      : ["published", "review"];
     filters.visibilityStatus = visibilityStatus;
 
     const result = await listSongs(limit, offset, filters);

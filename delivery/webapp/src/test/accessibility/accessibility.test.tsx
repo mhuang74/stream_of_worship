@@ -232,6 +232,7 @@ const mockSongCard = {
       durationSeconds: 180,
       tempoBpm: 120,
       musicalKey: "G",
+      visibilityStatus: "published",
     },
   ],
 };
