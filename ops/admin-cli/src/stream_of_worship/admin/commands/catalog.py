@@ -121,7 +121,9 @@ def _show_proposed_song(song: Song, *, heading: str) -> None:
         preview = "\n".join(lyrics[:12])
         if len(lyrics) > 12:
             preview += "\n..."
-        console.print(Panel(preview, title=f"Lyrics Preview ({len(lyrics)} lines)", border_style="cyan"))
+        console.print(
+            Panel(preview, title=f"Lyrics Preview ({len(lyrics)} lines)", border_style="cyan")
+        )
     else:
         console.print(Panel("[dim]No lyrics[/dim]", title="Lyrics Preview", border_style="dim"))
 
@@ -241,7 +243,9 @@ def scrape_catalog(
     if not dry_run:
         console.print(f"[cyan]Saving {len(songs)} songs to database...[/cyan]")
         saved_count, elapsed = scraper.save_songs(songs)
-        console.print(f"[green]Successfully saved {saved_count}/{len(songs)} songs in {elapsed:.2f}s[/green]")
+        console.print(
+            f"[green]Successfully saved {saved_count}/{len(songs)} songs in {elapsed:.2f}s[/green]"
+        )
     else:
         console.print("[yellow]Dry run - no songs saved[/yellow]")
 
@@ -513,8 +517,12 @@ def restore_song(
         for recording in held_recordings:
             table.add_row(recording.hash_prefix, recording.visibility_status or "-")
         console.print(table)
-    console.print(f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status review")
-    console.print(f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status published")
+    console.print(
+        f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status review"
+    )
+    console.print(
+        f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status published"
+    )
 
 
 @app.command("list")
@@ -523,7 +531,7 @@ def list_songs(
         None,
         "--album",
         "-a",
-        help="Filter by album name",
+        help="Filter by album name (substring, case-insensitive; matches album_name or album_series)",
     ),
     key: Optional[str] = typer.Option(
         None,
@@ -636,7 +644,12 @@ def list_songs(
                 songs = [song for song in songs if song.musical_key == key]
             order_map = {
                 "album": lambda s: (s.album_name or "", s.title, s.id),
-                "series": lambda s: (_extract_series_sort_key(s.album_series), s.album_name or "", s.title, s.id),
+                "series": lambda s: (
+                    _extract_series_sort_key(s.album_series),
+                    s.album_name or "",
+                    s.title,
+                    s.id,
+                ),
                 "title": lambda s: (s.title, s.id),
                 "id": lambda s: (s.id,),
             }
@@ -659,7 +672,14 @@ def list_songs(
 
     # Re-sort by series number in memory (SQL sort is lexicographic on album_series text)
     if sort == "series":
-        songs.sort(key=lambda s: (_extract_series_sort_key(s.album_series), s.album_name or "", s.title, s.id))
+        songs.sort(
+            key=lambda s: (
+                _extract_series_sort_key(s.album_series),
+                s.album_name or "",
+                s.title,
+                s.id,
+            )
+        )
 
     if not songs:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
@@ -824,11 +844,13 @@ def show_song(
     info_lines.append(f"[cyan]Source:[/cyan] {song.source_url}")
     info_lines.append(f"[cyan]Scraped:[/cyan] {song.scraped_at}")
 
-    console.print(Panel.fit(
-        "\n".join(info_lines),
-        title=f"Song: {song.title}",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            "\n".join(info_lines),
+            title=f"Song: {song.title}",
+            border_style="green",
+        )
+    )
 
     # Recording panel
     recording = db_client.get_recording_by_song_id(song_id)
@@ -867,24 +889,30 @@ def show_song(
             lrc_text = f"[dim]{recording.lrc_status}[/dim]"
         recording_lines.append(f"[cyan]LRC:[/cyan] {lrc_text}")
 
-        console.print(Panel.fit(
-            "\n".join(recording_lines),
-            title="Recording",
-            border_style="green",
-        ))
+        console.print(
+            Panel.fit(
+                "\n".join(recording_lines),
+                title="Recording",
+                border_style="green",
+            )
+        )
 
     # Lyrics panel
     lyrics_list = song.lyrics_list
     if lyrics_list:
         lyrics_text = Text("\n".join(lyrics_list))
-        console.print(Panel(
-            lyrics_text,
-            title=f"Lyrics ({len(lyrics_list)} lines)",
-            border_style="cyan",
-        ))
+        console.print(
+            Panel(
+                lyrics_text,
+                title=f"Lyrics ({len(lyrics_list)} lines)",
+                border_style="cyan",
+            )
+        )
     else:
-        console.print(Panel(
-            "[dim]No lyrics available[/dim]",
-            title="Lyrics",
-            border_style="dim",
-        ))
+        console.print(
+            Panel(
+                "[dim]No lyrics available[/dim]",
+                title="Lyrics",
+                border_style="dim",
+            )
+        )
