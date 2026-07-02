@@ -56,15 +56,18 @@ export function SongCard({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Get the first recording for display
-  const primaryRecording = song.recordings[0];
+  // Prefer published recording as primary; fall back to first
+  const publishedRecording = song.recordings.find(
+    (r) => r.visibilityStatus === "published"
+  );
+  const primaryRecording = publishedRecording ?? song.recordings[0];
   const duration = primaryRecording?.durationSeconds;
   const tempo = primaryRecording?.tempoBpm;
   const recordingKey = primaryRecording?.musicalKey || song.musicalKey;
   const artist = song.composer || song.lyricist || "Unknown Artist";
-  const isVerified = song.recordings.some(
+  const isVerified = song.recordings?.some(
     (r) => r.visibilityStatus === "published"
-  );
+  ) ?? false;
 
   const handleAdd = async () => {
     if (isAdded || isAdding || disabled || !onAdd) return;

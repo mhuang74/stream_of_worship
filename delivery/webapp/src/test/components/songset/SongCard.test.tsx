@@ -142,6 +142,32 @@ describe("SongCard", () => {
       });
       expect(screen.getByTestId("verified-badge")).toBeInTheDocument();
     });
+
+    it("prefers published recording as primary when mixed statuses", () => {
+      renderCard({
+        song: {
+          ...mockSong,
+          recordings: [
+            {
+              ...mockSong.recordings[0],
+              contentHash: "review-hash",
+              hashPrefix: "rev",
+              musicalKey: "D",
+              visibilityStatus: "review",
+            },
+            {
+              ...mockSong.recordings[0],
+              contentHash: "published-hash",
+              hashPrefix: "pub",
+              musicalKey: "E",
+              visibilityStatus: "published",
+            },
+          ],
+        },
+      });
+      // Should use the published recording's key, not the review one
+      expect(screen.getByTestId("song-key")).toHaveTextContent("E");
+    });
   });
 
   describe("BPM rounding", () => {

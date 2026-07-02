@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     // Default to published + review for browse; respect explicit client override
     const visibilityParam = searchParams.get("visibilityStatus");
     const visibilityStatus: string | string[] = visibilityParam
-      ? visibilityParam
+      ? (visibilityParam.includes(",") ? visibilityParam.split(",") : visibilityParam)
       : ["published", "review"];
     filters.visibilityStatus = visibilityStatus;
 

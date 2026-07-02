@@ -190,6 +190,24 @@ describe("GET /api/songs/search", () => {
     expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "all");
   });
 
+  it("parses comma-separated visibility statuses", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&visibilityStatus=published,review"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"]);
+  });
+
   it("returns 500 on error", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
