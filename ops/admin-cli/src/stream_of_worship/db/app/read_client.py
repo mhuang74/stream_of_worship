@@ -185,19 +185,19 @@ class ReadOnlyClient:
         deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
 
         if field == "title":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE %s OR title_pinyin LIKE %s)"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title ILIKE %s OR title_pinyin ILIKE %s)"
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE %s"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw ILIKE %s"
             params = [search_pattern]
         elif field == "composer":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE %s OR lyricist LIKE %s)"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer ILIKE %s OR lyricist ILIKE %s)"
             params = [search_pattern, search_pattern]
         else:  # all
             sql = f"""
                 SELECT * FROM songs WHERE {deleted_clause}(
-                title LIKE %s OR title_pinyin LIKE %s OR
-                lyrics_raw LIKE %s OR composer LIKE %s OR lyricist LIKE %s)
+                title ILIKE %s OR title_pinyin ILIKE %s OR
+                lyrics_raw ILIKE %s OR composer ILIKE %s OR lyricist ILIKE %s)
             """
             params = [search_pattern] * 5
 

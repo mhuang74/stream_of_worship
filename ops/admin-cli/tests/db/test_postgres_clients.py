@@ -119,6 +119,14 @@ class TestDatabaseClient:
         assert len(album_songs) == 1
         assert album_songs[0].title == "Song A"
 
+        # Partial, case-insensitive album match (ILIKE %s)
+        partial_songs = admin_client.list_songs(album="album 1")
+        assert len(partial_songs) == 1
+        assert partial_songs[0].title == "Song A"
+
+        partial_songs = admin_client.list_songs(album="bum")
+        assert {s.title for s in partial_songs} == {"Song A", "Song B"}
+
         key_songs = admin_client.list_songs(key="D")
         assert len(key_songs) == 1
         assert key_songs[0].title == "Song B"
