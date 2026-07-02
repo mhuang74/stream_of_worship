@@ -1177,7 +1177,7 @@ def list_recordings(
         None,
         "--album",
         "-a",
-        help="Filter by album name",
+        help="Filter by album name (substring, case-insensitive; matches album_name or album_series)",
     ),
     lrc: Optional[str] = typer.Option(
         None,
@@ -4221,7 +4221,11 @@ def playback_audio(
 
 @app.command("batch")
 def batch(
-    album: Optional[str] = typer.Option(None, "--album", help="Filter by album name (exact match)"),
+    album: Optional[str] = typer.Option(
+        None,
+        "--album",
+        help="Filter by album name (substring, case-insensitive; matches album_name or album_series)",
+    ),
     song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
     lrc_status: Optional[str] = typer.Option(None, "--lrc-status", help="Filter by LRC status"),
     download_status: Optional[str] = typer.Option(
@@ -4514,7 +4518,8 @@ def _resolve_song_ids(
 
     Args:
         db_client: Database client
-        album: Filter by album name (exact match)
+        album: Filter by album name (substring, case-insensitive;
+            matches album_name or album_series)
         song: Filter by song name (partial match, case-insensitive)
         lrc_status: Filter by LRC status
         download_status: Filter by download status
@@ -4536,6 +4541,7 @@ def _resolve_song_ids(
     rows = db_client.list_recordings_with_songs(
         status=analysis_status,
         lrc_status=lrc_status,
+        album=album,
         limit=None,
         sort_by="created",
     )
@@ -4545,9 +4551,6 @@ def _resolve_song_ids(
             continue
 
         if download_status and recording.download_status != download_status:
-            continue
-
-        if album and album_name != album:
             continue
 
         if song and (not song_title or song.lower() not in song_title.lower()):
@@ -4628,25 +4631,54 @@ def _print_dry_run_v4(
     if "analyze" in selected_steps:
         console.print(f"[dim]Analysis tier:[/dim] {analysis_tier}")
     console.print(f"[dim]Stale after:[/dim] {stale_after} minutes")
-    console.print(f"[dim]Ordering:[/dim] recordings.created_at ASC, hash_prefix ASC")
-    console.print(f"[dim]Count:[/dim] {len(song_ids)} song(s)")
-    console.print()
+    console.print(
+        "[dim]Ordering:[/dim] recordings.created_at ASC, hash_prefix ASC; "
+        "unrecorded by album, title"
+    )
+
+    with_recording: list[tuple] = []
+    missing: list[tuple] = []
+    not_found: list[str] = []
 
     for song_id in song_ids:
         song = db_client.get_song(song_id)
         recording = db_client.get_recording_by_song_id(song_id)
 
         if song and recording:
+            with_recording.append((song, recording))
+        elif song:
+            missing.append((song,))
+        else:
+            not_found.append(song_id)
+
+    total = len(song_ids)
+    console.print(
+        f"[dim]Count:[/dim] {total} song(s)  "
+        f"({len(with_recording)} with recording, {len(missing)} missing)"
+    )
+    console.print()
+
+    if with_recording:
+        console.print(f"[cyan]With recording ({len(with_recording)}):[/cyan]")
+        for song, recording in with_recording:
             console.print(f"  [cyan]•[/cyan] {song.title} ({recording.hash_prefix})")
             console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
             console.print(f"    [dim]Download:[/dim] {recording.download_status}")
             console.print(f"    [dim]LRC:[/dim] {recording.lrc_status}")
             console.print(f"    [dim]Analysis:[/dim] {recording.analysis_status}")
-        elif song:
-            console.print(f"  [yellow]•[/yellow] {song.title} (no recording - will download)")
+        console.print()
+
+    if missing:
+        console.print(f"[yellow]Missing recording — will download ({len(missing)}):[/yellow]")
+        for (song,) in missing:
+            console.print(f"  [yellow]•[/yellow] {song.title}")
             console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
-        else:
-            console.print(f"  [red]•[/red] {song_id} (song not found)")
+        console.print()
+
+    if not_found:
+        console.print(f"[red]Song not found ({len(not_found)}):[/red]")
+        for song_id in not_found:
+            console.print(f"  [red]•[/red] {song_id}")
 
 
 import re
@@ -7134,7 +7166,11 @@ def probe(
 
 @app.command("probe-batch")
 def probe_batch(
-    album: Optional[str] = typer.Option(None, "--album", help="Filter by album name"),
+    album: Optional[str] = typer.Option(
+        None,
+        "--album",
+        help="Filter by album name (substring, case-insensitive; matches album_name or album_series)",
+    ),
     song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
     analysis_status: Optional[str] = typer.Option(
         None, "--analysis-status", help="Filter by analysis status"
@@ -7176,13 +7212,9 @@ def probe_batch(
             recordings = recordings[:limit]
 
     if album:
-        recordings = [
-            r
-            for r in recordings
-            if r.song_id
-            and db_client.get_song(r.song_id)
-            and album.lower() in (db_client.get_song(r.song_id).album_name or "").lower()
-        ]
+        matching_songs = db_client.list_songs(album=album, include_deleted=False)
+        allowed_song_ids = {s.id for s in matching_songs}
+        recordings = [r for r in recordings if r.song_id in allowed_song_ids]
 
     if song:
         recordings = [
