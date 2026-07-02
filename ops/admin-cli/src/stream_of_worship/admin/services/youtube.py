@@ -53,6 +53,57 @@ def _youtube_extractor_args() -> dict[str, Any]:
     }
 
 
+def _extract_chinese_title_from_youtube(video_title: Optional[str]) -> Optional[str]:
+    """Extract the Chinese title from YouTube video title format.
+
+    YouTube MV titles are typically formatted as:
+    "【一生敬拜祢 All the Days of My Life】官方歌詞版MV ..."
+
+    This function extracts the Chinese portion from the first bracketed segment.
+
+    Args:
+        video_title: YouTube video title
+
+    Returns:
+        Chinese title or None if not found
+    """
+    if not video_title:
+        return None
+
+    match = re.match(r"【([^】\s]+)", video_title)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def _select_best_candidate(
+    entries: list[dict[str, Any]],
+    song_title: str,
+) -> Optional[dict[str, Any]]:
+    """Select the first entry whose Chinese title exactly matches ``song_title``.
+
+    Iterates through YouTube search result entries in relevance order and
+    returns the first whose extracted Chinese title (from the ``【...```
+    bracket) equals ``song_title`` exactly.
+
+    Args:
+        entries: List of yt-dlp entry dicts (may contain ``None`` items).
+        song_title: Expected song title to match against.
+
+    Returns:
+        The matched entry dict, or ``None`` if no candidate matches.
+    """
+    for entry in entries:
+        if entry is None:
+            continue
+        video_title = entry.get("title")
+        chinese_title = _extract_chinese_title_from_youtube(video_title)
+        if chinese_title is not None and chinese_title == song_title:
+            return entry
+    return None
+
+
 def extract_video_id(url: str) -> str | None:
     """Extract a YouTube video ID from a supported URL."""
     if "youtu.be/" in url:
@@ -260,13 +311,25 @@ class YouTubeDownloader:
             parts.append(suffix)
         return " ".join(parts)
 
-    def preview_video(self, query: str) -> Optional[dict[str, Any]]:
+    def preview_video(
+        self,
+        query: str,
+        max_results: int = 1,
+        song_title: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
         """Preview a YouTube video without downloading.
 
         Uses yt-dlp to extract metadata for the top search result.
 
         Args:
             query: YouTube search query or direct URL
+            max_results: Maximum number of search results to scan. When
+                greater than 1 and ``song_title`` is provided, the top N
+                results are scanned for a title match. Defaults to 1 for
+                backward compatibility.
+            song_title: Expected song title. When provided alongside
+                ``max_results > 1``, candidates are filtered by exact title
+                match and the first match is returned.
 
         Returns:
             Dict with video info (id, title, duration, webpage_url) or None if not found
@@ -281,16 +344,34 @@ class YouTubeDownloader:
             "extractor_args": _youtube_extractor_args(),
         }
 
+        is_url = query.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be"))
+        use_multi_candidate = (
+            song_title is not None and max_results > 1 and not is_url
+        )
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Determine if this is a direct URL or search query
-                if query.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
+                if is_url:
                     info = ydl.extract_info(query, download=False)
+                elif use_multi_candidate:
+                    info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
                 else:
                     info = ydl.extract_info(f"ytsearch1:{query}", download=False)
 
                 if info is None:
                     return None
+
+                if use_multi_candidate:
+                    entries = info.get("entries") or []
+                    matched = _select_best_candidate(entries, song_title)
+                    if matched is None:
+                        return None
+                    return {
+                        "id": matched.get("id"),
+                        "title": matched.get("title"),
+                        "duration": matched.get("duration"),
+                        "webpage_url": matched.get("webpage_url"),
+                    }
 
                 # Handle ytsearch response structure (results in entries[0])
                 if "entries" in info and info["entries"]:
@@ -359,21 +440,40 @@ class YouTubeDownloader:
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
 
-    def download(self, query: str) -> Path:
+    def download(
+        self,
+        query: str,
+        max_results: int = 1,
+        song_title: Optional[str] = None,
+    ) -> Path:
         """Download audio from YouTube by search query.
 
         Searches YouTube for *query*, downloads the top result, and
         post-processes it to MP3 at 192 kbps.
 
+        When ``song_title`` is provided alongside ``max_results > 1``, a
+        two-phase approach is used: first metadata for the top N results is
+        extracted (without downloading), the first candidate whose Chinese
+        title matches ``song_title`` is selected, and that video is
+        downloaded by its URL. If no candidate matches, a ``RuntimeError`` is
+        raised.
+
         Args:
             query: YouTube search query string
+            max_results: Maximum number of search results to scan when
+                ``song_title`` is provided. Defaults to 1.
+            song_title: Expected song title for candidate matching.
 
         Returns:
             Path to the downloaded audio file
 
         Raises:
-            RuntimeError: If no results are found or the download fails
+            RuntimeError: If no results are found, no candidate matches, or
+                the download fails
         """
+        if song_title is not None and max_results > 1:
+            return self._download_with_match(query, max_results, song_title)
+
         ydl_opts = {
             "format": "bestaudio/best",
             "postprocessors": [
@@ -418,20 +518,39 @@ class YouTubeDownloader:
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
 
-    def download_with_info(self, query: str) -> tuple[Path, Optional[str], Optional[str]]:
+    def download_with_info(
+        self,
+        query: str,
+        max_results: int = 1,
+        song_title: Optional[str] = None,
+    ) -> tuple[Path, Optional[str], Optional[str]]:
         """Download audio from YouTube by search query and return path + webpage_url + video_title.
 
         Same as download() but also returns the YouTube URL and video title for the downloaded video.
 
+        When ``song_title`` is provided alongside ``max_results > 1``, a
+        two-phase approach is used: first metadata for the top N results is
+        extracted (without downloading), the first candidate whose Chinese
+        title matches ``song_title`` is selected, and that video is
+        downloaded by its URL. If no candidate matches, a ``RuntimeError`` is
+        raised.
+
         Args:
             query: YouTube search query string
+            max_results: Maximum number of search results to scan when
+                ``song_title`` is provided. Defaults to 1.
+            song_title: Expected song title for candidate matching.
 
         Returns:
             Tuple of (Path to downloaded audio file, YouTube webpage_url or None, video title or None)
 
         Raises:
-            RuntimeError: If no results are found or the download fails
+            RuntimeError: If no results are found, no candidate matches, or
+                the download fails
         """
+        if song_title is not None and max_results > 1:
+            return self._download_with_match_info(query, max_results, song_title)
+
         ydl_opts = {
             "format": "bestaudio/best",
             "postprocessors": [
@@ -481,3 +600,109 @@ class YouTubeDownloader:
                 )
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
+
+    def _scan_for_match(
+        self,
+        query: str,
+        max_results: int,
+        song_title: str,
+    ) -> dict[str, Any]:
+        """Extract metadata for the top N search results and pick the best match.
+
+        Phase 1 of the two-phase download: fetches candidate metadata
+        without downloading audio, then selects the first entry whose
+        Chinese title exactly matches ``song_title``.
+
+        Args:
+            query: YouTube search query string
+            max_results: Maximum number of results to scan
+            song_title: Expected song title
+
+        Returns:
+            The matched entry dict.
+
+        Raises:
+            RuntimeError: If extraction fails or no candidate matches.
+        """
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "quiet": True,
+            "extractor_args": _youtube_extractor_args(),
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(
+                    f"ytsearch{max_results}:{query}", download=False
+                )
+        except yt_dlp.utils.DownloadError as e:
+            raise RuntimeError(f"Failed to scan search results: {e}") from e
+
+        if info is None:
+            raise RuntimeError(
+                f"No matching title found in top {max_results} results for query: {query}"
+            )
+
+        entries = info.get("entries") or []
+        matched = _select_best_candidate(entries, song_title)
+        if matched is None:
+            raise RuntimeError(
+                f"No matching title found in top {max_results} results for query: {query}"
+            )
+        return matched
+
+    def _download_with_match(
+        self,
+        query: str,
+        max_results: int,
+        song_title: str,
+    ) -> Path:
+        """Two-phase download: scan candidates, then download the matched URL.
+
+        Args:
+            query: YouTube search query string
+            max_results: Maximum number of results to scan
+            song_title: Expected song title
+
+        Returns:
+            Path to the downloaded audio file
+
+        Raises:
+            RuntimeError: If no candidate matches or the download fails
+        """
+        matched = self._scan_for_match(query, max_results, song_title)
+        url = matched.get("webpage_url")
+        if not url:
+            raise RuntimeError(
+                f"Matched candidate has no webpage_url for query: {query}"
+            )
+        return self.download_by_url(url)
+
+    def _download_with_match_info(
+        self,
+        query: str,
+        max_results: int,
+        song_title: str,
+    ) -> tuple[Path, Optional[str], Optional[str]]:
+        """Two-phase download with info: scan, then download the matched URL.
+
+        Args:
+            query: YouTube search query string
+            max_results: Maximum number of results to scan
+            song_title: Expected song title
+
+        Returns:
+            Tuple of (Path, webpage_url, video_title) from the matched candidate
+
+        Raises:
+            RuntimeError: If no candidate matches or the download fails
+        """
+        matched = self._scan_for_match(query, max_results, song_title)
+        url = matched.get("webpage_url")
+        if not url:
+            raise RuntimeError(
+                f"Matched candidate has no webpage_url for query: {query}"
+            )
+        path = self.download_by_url(url)
+        return path, url, matched.get("title")
