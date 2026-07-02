@@ -382,8 +382,8 @@ class DatabaseClient:
             query += " AND deleted_at IS NULL"
 
         if album:
-            query += " AND album_name = %s"
-            params.append(album)
+            query += " AND (album_name ILIKE %s OR album_series ILIKE %s)"
+            params.extend([f"%{album}%", f"%{album}%"])
 
         if key:
             query += " AND musical_key = %s"
@@ -459,26 +459,26 @@ class DatabaseClient:
 
         if field == "title":
             sql = (
-                f"SELECT * FROM songs WHERE {deleted_clause}(title LIKE %s OR title_pinyin LIKE %s)"
+                f"SELECT * FROM songs WHERE {deleted_clause}(title ILIKE %s OR title_pinyin ILIKE %s)"
             )
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw LIKE %s"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw ILIKE %s"
             params = [search_pattern]
         elif field == "composer":
             sql = (
-                f"SELECT * FROM songs WHERE {deleted_clause}(composer LIKE %s OR lyricist LIKE %s)"
+                f"SELECT * FROM songs WHERE {deleted_clause}(composer ILIKE %s OR lyricist ILIKE %s)"
             )
             params = [search_pattern, search_pattern]
         elif field == "album":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name LIKE %s OR album_series LIKE %s)"
+            sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name ILIKE %s OR album_series ILIKE %s)"
             params = [search_pattern, search_pattern]
         else:  # all
             sql = f"""
                 SELECT * FROM songs WHERE {deleted_clause}(
-                title LIKE %s OR title_pinyin LIKE %s OR
-                lyrics_raw LIKE %s OR composer LIKE %s OR lyricist LIKE %s OR
-                album_name LIKE %s OR album_series LIKE %s)
+                title ILIKE %s OR title_pinyin ILIKE %s OR
+                lyrics_raw ILIKE %s OR composer ILIKE %s OR lyricist ILIKE %s OR
+                album_name ILIKE %s OR album_series ILIKE %s)
             """
             params = [search_pattern] * 7
 
@@ -793,8 +793,8 @@ class DatabaseClient:
                 params.append(lrc_status)
 
         if album:
-            query += " AND s.album_name LIKE %s"
-            params.append(f"%{album}%")
+            query += " AND (s.album_name ILIKE %s OR s.album_series ILIKE %s)"
+            params.extend([f"%{album}%", f"%{album}%"])
 
         order_map = {
             "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",

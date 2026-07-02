@@ -625,7 +625,13 @@ def list_songs(
         if deleted:
             songs = db_client.list_deleted_songs()
             if album:
-                songs = [song for song in songs if song.album_name == album]
+                al = album.lower()
+                songs = [
+                    s
+                    for s in songs
+                    if (s.album_name and al in s.album_name.lower())
+                    or (s.album_series and al in s.album_series.lower())
+                ]
             if key:
                 songs = [song for song in songs if song.musical_key == key]
             order_map = {
