@@ -4,6 +4,7 @@ Provides search-based audio downloading from YouTube using song metadata
 (title, composer, album) assembled into a search query.
 """
 
+import os
 import re
 import tempfile
 from dataclasses import dataclass
@@ -45,12 +46,21 @@ class TranscriptDraft:
     lines: list[str]
 
 
-def _youtube_extractor_args() -> dict[str, Any]:
-    return {
-        "youtube": {
-            "remote_components": "ejs:github",
-        }
-    }
+def _youtube_proxy_opts() -> dict[str, Any]:
+    """Read SOW_YOUTUBE_PROXY / SOW_YOUTUBE_PROXY_RETRIES env vars.
+
+    Returns ydl_opts keys: ``proxy`` (only if set, non-empty) and optionally
+    ``retries``. Returns an empty dict if neither is set, letting yt-dlp
+    fall back to its own defaults (or system ``HTTPS_PROXY`` env var).
+    """
+    opts: dict[str, Any] = {}
+    proxy = os.environ.get("SOW_YOUTUBE_PROXY", "").strip()
+    if proxy:
+        opts["proxy"] = proxy
+    retries_env = os.environ.get("SOW_YOUTUBE_PROXY_RETRIES", "").strip()
+    if retries_env.isdigit():
+        opts["retries"] = int(retries_env)
+    return opts
 
 
 def _extract_chinese_title_from_youtube(video_title: Optional[str]) -> Optional[str]:
@@ -124,7 +134,9 @@ def extract_video_metadata(url: str) -> YouTubeVideoMetadata:
     ydl_opts = {
         "noplaylist": True,
         "quiet": True,
-        "extractor_args": _youtube_extractor_args(),
+        "no_warnings": True,
+        "remote_components": ["ejs:github"],
+        **_youtube_proxy_opts(),
     }
 
     try:
@@ -341,7 +353,9 @@ class YouTubeDownloader:
             "format": "bestaudio/best",
             "noplaylist": True,
             "quiet": True,
-            "extractor_args": _youtube_extractor_args(),
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+            **_youtube_proxy_opts(),
         }
 
         is_url = query.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be"))
@@ -412,7 +426,9 @@ class YouTubeDownloader:
             "outtmpl": str(self.output_dir / "%(title)s.%(ext)s"),
             "noplaylist": True,
             "quiet": True,
-            "extractor_args": _youtube_extractor_args(),
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+            **_youtube_proxy_opts(),
         }
 
         try:
@@ -487,7 +503,9 @@ class YouTubeDownloader:
             "noplaylist": True,
             "default_search": "ytsearch1",
             "quiet": True,
-            "extractor_args": _youtube_extractor_args(),
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+            **_youtube_proxy_opts(),
         }
 
         try:
@@ -564,7 +582,9 @@ class YouTubeDownloader:
             "noplaylist": True,
             "default_search": "ytsearch1",
             "quiet": True,
-            "extractor_args": _youtube_extractor_args(),
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+            **_youtube_proxy_opts(),
         }
 
         try:
@@ -628,7 +648,9 @@ class YouTubeDownloader:
             "format": "bestaudio/best",
             "noplaylist": True,
             "quiet": True,
-            "extractor_args": _youtube_extractor_args(),
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+            **_youtube_proxy_opts(),
         }
 
         try:

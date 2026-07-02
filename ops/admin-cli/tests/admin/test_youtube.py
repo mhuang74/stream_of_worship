@@ -170,8 +170,56 @@ class TestDownload:
         assert opts["format"] == "bestaudio/best"
         assert opts["noplaylist"] is True
         assert opts["quiet"] is True
+        assert opts["no_warnings"] is True
+        assert opts["remote_components"] == ["ejs:github"]
+        assert "proxy" not in opts
+        assert "retries" not in opts
         assert opts["postprocessors"][0]["key"] == "FFmpegExtractAudio"
         assert opts["postprocessors"][0]["preferredcodec"] == "mp3"
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_passes_proxy_opts_when_env_set(self, mock_ydl_class, tmp_path, monkeypatch):
+        """YoutubeDL is constructed with proxy/retries when SOW_YOUTUBE_PROXY env vars are set."""
+        mp3_file = tmp_path / "Song.mp3"
+        mp3_file.write_bytes(b"data")
+
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {"title": "Song", "ext": "webm"}
+        mock_ydl.prepare_filename.return_value = str(tmp_path / "Song.webm")
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://user:pass@host:10003")
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY_RETRIES", "3")
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        downloader.download("query")
+
+        opts = mock_ydl_class.call_args[0][0]
+        assert opts["proxy"] == "http://user:pass@host:10003"
+        assert opts["retries"] == 3
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_omits_proxy_opts_when_env_unset(self, mock_ydl_class, tmp_path, monkeypatch):
+        """No proxy/retries keys when SOW_YOUTUBE_PROXY env vars are unset."""
+        mp3_file = tmp_path / "Song.mp3"
+        mp3_file.write_bytes(b"data")
+
+        mock_ydl = MagicMock()
+        mock_ydl.extract_info.return_value = {"title": "Song", "ext": "webm"}
+        mock_ydl.prepare_filename.return_value = str(tmp_path / "Song.webm")
+        mock_ydl_class.return_value.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+        monkeypatch.delenv("SOW_YOUTUBE_PROXY_RETRIES", raising=False)
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        downloader.download("query")
+
+        opts = mock_ydl_class.call_args[0][0]
+        assert "proxy" not in opts
+        assert "retries" not in opts
 
 
 class TestBuildSearchQueryWithSuffix:
