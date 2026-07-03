@@ -3,6 +3,11 @@ import { recordings, songs } from "@/db/schema";
 import { eq, desc, and, or, ilike, sql, isNull, inArray } from "drizzle-orm";
 import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 import { parseMusicalKey } from "@/lib/music/key";
+import {
+  buildKeyRegex,
+  buildBpmPredicate,
+} from "./search-helpers";
+import type { BpmBandKey } from "@/lib/constants";
 
 export interface SongWithRecordings {
   id: string;
@@ -147,6 +152,8 @@ export interface ListSongsFilters {
   composer?: string;
   lyricist?: string;
   visibilityStatus?: string | string[];
+  keys?: string[];
+  bpmRange?: BpmBandKey;
 }
 
 function buildPublishedRecordingExistsClause(
@@ -219,6 +226,31 @@ function buildSongWhereClause(
   }
   if (filters?.lyricist) {
     whereConditions.push(eq(songs.lyricist, filters.lyricist));
+  }
+
+  if (filters?.keys && filters.keys.length > 0) {
+    const keyRegex = buildKeyRegex(filters.keys);
+    whereConditions.push(
+      sql`exists (
+        select 1 from recordings r2
+        where r2.song_id = ${songs.id}
+          and r2.deleted_at IS NULL
+          and r2.musical_key ~* ${keyRegex}
+      )`
+    );
+  }
+
+  if (filters?.bpmRange) {
+    const bpmPredicate = buildBpmPredicate(filters.bpmRange);
+    whereConditions.push(
+      sql`exists (
+        select 1 from recordings r3
+        where r3.song_id = ${songs.id}
+          and r3.deleted_at IS NULL
+          and r3.tempo_bpm IS NOT NULL
+          and ${bpmPredicate}
+      )`
+    );
   }
 
   const publishedRecordingsClause = buildPublishedRecordingExistsClause(

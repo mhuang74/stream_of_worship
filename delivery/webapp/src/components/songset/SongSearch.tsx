@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -10,11 +12,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X, Loader2 } from "lucide-react";
+import { Search, X, Loader2, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  PITCH_CLASSES,
+  BPM_BANDS,
+  BPM_BAND_KEYS,
+  type BpmBandKey,
+} from "@/lib/constants";
+import type { StructuredSearchCriteria } from "./search/types";
 
 interface SongSearchProps {
   onSearch: (query: string, albumFilter?: string) => void;
+  onAdvancedSearch?: (criteria: StructuredSearchCriteria) => void;
   albums: string[];
   isLoading?: boolean;
   className?: string;
@@ -25,6 +35,7 @@ interface SongSearchProps {
 
 export function SongSearch({
   onSearch,
+  onAdvancedSearch,
   albums,
   isLoading = false,
   className,
@@ -35,16 +46,38 @@ export function SongSearch({
   const [query, setQuery] = useState(initialQuery ?? "");
   const [selectedAlbum, setSelectedAlbum] = useState<string>("all");
   const [isSearching, setIsSearching] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [selectedBpm, setSelectedBpm] = useState<BpmBandKey | undefined>();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const initialSearchTriggered = useRef(false);
+
+  const hasAdvancedFilters =
+    selectedKeys.length > 0 || selectedBpm !== undefined;
+
+  const triggerSearch = useCallback(
+    (searchQuery: string, albumFilter?: string) => {
+      const album = albumFilter === "all" ? undefined : albumFilter;
+      if (showAdvanced && hasAdvancedFilters && onAdvancedSearch) {
+        onAdvancedSearch({
+          query: searchQuery.trim() || undefined,
+          keys: selectedKeys.length > 0 ? selectedKeys : undefined,
+          bpmRange: selectedBpm,
+        });
+      } else {
+        onSearch(searchQuery, album);
+      }
+    },
+    [showAdvanced, hasAdvancedFilters, onAdvancedSearch, selectedKeys, selectedBpm, onSearch]
+  );
 
   useEffect(() => {
     if (initialQuery && initialQuery.trim() && !initialSearchTriggered.current) {
       initialSearchTriggered.current = true;
       setIsSearching(true);
-      onSearch(initialQuery, undefined);
+      triggerSearch(initialQuery, undefined);
     }
-  }, [initialQuery, onSearch]);
+  }, [initialQuery, triggerSearch]);
 
   // Debounced search handler
   const debouncedSearch = useCallback(
@@ -54,12 +87,11 @@ export function SongSearch({
       }
 
       debounceTimerRef.current = setTimeout(() => {
-        const album = albumFilter === "all" ? undefined : albumFilter;
-        onSearch(searchQuery, album);
+        triggerSearch(searchQuery, albumFilter);
         setIsSearching(false);
       }, debounceMs);
     },
-    [onSearch, debounceMs]
+    [triggerSearch, debounceMs]
   );
 
   // Handle query change
@@ -98,6 +130,29 @@ export function SongSearch({
       }
     };
   }, []);
+
+  const toggleKey = useCallback((key: string) => {
+    setSelectedKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  }, []);
+
+  const toggleBpm = useCallback((band: BpmBandKey) => {
+    setSelectedBpm((prev) => (prev === band ? undefined : band));
+  }, []);
+
+  const handleApplyFilters = useCallback(() => {
+    setIsSearching(true);
+    triggerSearch(query, selectedAlbum);
+    setIsSearching(false);
+  }, [triggerSearch, query, selectedAlbum]);
+
+  const handleClearFilters = useCallback(() => {
+    setSelectedKeys([]);
+    setSelectedBpm(undefined);
+    setIsSearching(true);
+    debouncedSearch(query, selectedAlbum);
+  }, [debouncedSearch, query, selectedAlbum]);
 
   const showClearButton = query.length > 0;
   const showLoadingIndicator = isLoading || isSearching;
@@ -158,6 +213,123 @@ export function SongSearch({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      )}
+
+      {/* Advanced filters toggle */}
+      {onAdvancedSearch && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 w-fit"
+          onClick={() => setShowAdvanced((prev) => !prev)}
+          aria-expanded={showAdvanced}
+          aria-controls="advanced-filters-panel"
+          data-testid="advanced-filters-toggle"
+        >
+          <SlidersHorizontal className="size-3.5" />
+          Advanced filters
+          {hasAdvancedFilters && (
+            <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
+              {selectedKeys.length + (selectedBpm ? 1 : 0)}
+            </Badge>
+          )}
+        </Button>
+      )}
+
+      {/* Collapsible advanced filters panel */}
+      {showAdvanced && onAdvancedSearch && (
+        <div
+          id="advanced-filters-panel"
+          className="border rounded-md p-3 space-y-4"
+          data-testid="advanced-filters-panel"
+        >
+          {/* Musical Key chips */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Musical Key</Label>
+            <div
+              className="flex flex-wrap gap-1.5"
+              data-testid="advanced-key-chips"
+              role="group"
+              aria-label="Musical key filters"
+            >
+              {PITCH_CLASSES.map((key) => {
+                const isSelected = selectedKeys.includes(key);
+                return (
+                  <Button
+                    key={key}
+                    type="button"
+                    variant={isSelected ? "default" : "outline"}
+                    size="xs"
+                    className="rounded-full px-2.5"
+                    aria-pressed={isSelected}
+                    onClick={() => toggleKey(key)}
+                    data-testid={`key-chip-${key.replace("#", "sharp")}`}
+                  >
+                    {key}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* BPM Range chips */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">BPM Range</Label>
+            <div
+              className="flex flex-wrap gap-1.5"
+              data-testid="advanced-bpm-chips"
+              role="group"
+              aria-label="BPM range filters"
+            >
+              {BPM_BAND_KEYS.map((band) => {
+                const isSelected = selectedBpm === band;
+                const config = BPM_BANDS[band];
+                let rangeText: string;
+                if ("max" in config && !("min" in config)) {
+                  rangeText = `< ${config.max}`;
+                } else if ("min" in config && "max" in config) {
+                  rangeText = `${config.min}–${config.max}`;
+                } else {
+                  rangeText = `≥ ${config.min}`;
+                }
+                return (
+                  <Button
+                    key={band}
+                    type="button"
+                    variant={isSelected ? "default" : "outline"}
+                    size="xs"
+                    className="rounded-full px-2.5"
+                    aria-pressed={isSelected}
+                    onClick={() => toggleBpm(band)}
+                    data-testid={`bpm-chip-${band}`}
+                  >
+                    {config.label} ({rangeText})
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleApplyFilters}
+              data-testid="advanced-apply-button"
+            >
+              Apply filters
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              disabled={!hasAdvancedFilters}
+              data-testid="advanced-clear-button"
+            >
+              Clear all
+            </Button>
+          </div>
         </div>
       )}
     </div>

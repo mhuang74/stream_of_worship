@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { SongSearch } from "./SongSearch";
 import { SongCard, SongCardData } from "./SongCard";
 import { SemanticSearch } from "@/components/search/SemanticSearch";
+import type { StructuredSearchCriteria } from "./search/types";
 import { Loader2, Music, AlertCircle, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ export function BrowseSheet({
   const [query, setQuery] = useState("");
   const [initialSearchQuery, setInitialSearchQuery] = useState<string | undefined>();
   const [albumFilter, setAlbumFilter] = useState<string | undefined>();
+  const [activeFilters, setActiveFilters] = useState<StructuredSearchCriteria | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [albums, setAlbums] = useState<string[]>([]);
@@ -78,9 +80,14 @@ export function BrowseSheet({
 
   // Search function
   const handleSearch = useCallback(
-    async (searchQuery: string, album?: string) => {
+    async (
+      searchQuery: string,
+      album?: string,
+      advanced?: StructuredSearchCriteria
+    ) => {
       setQuery(searchQuery);
       setAlbumFilter(album);
+      setActiveFilters(advanced);
       setIsLoading(true);
       setError(null);
 
@@ -91,6 +98,12 @@ export function BrowseSheet({
         }
         if (album && album !== "all") {
           params.set("albumName", album);
+        }
+        if (advanced?.keys?.length) {
+          params.set("keys", advanced.keys.join(","));
+        }
+        if (advanced?.bpmRange) {
+          params.set("bpmRange", advanced.bpmRange);
         }
         params.set("limit", "50");
 
@@ -130,6 +143,7 @@ export function BrowseSheet({
       const timeoutId = setTimeout(() => {
         setQuery("");
         setAlbumFilter(undefined);
+        setActiveFilters(undefined);
         setResults([]);
         setTotalCount(0);
         setError(null);
@@ -328,6 +342,9 @@ export function BrowseSheet({
               <div className="px-1 pb-4">
                 <SongSearch
                   onSearch={handleSearch}
+                  onAdvancedSearch={(criteria) =>
+                    handleSearch(criteria.query ?? "", albumFilter, criteria)
+                  }
                   albums={albums}
                   isLoading={isLoading || isLoadingAlbums}
                   initialQuery={initialSearchQuery}
@@ -344,7 +361,7 @@ export function BrowseSheet({
                       variant="outline"
                       size="sm"
                       className="mt-4"
-                      onClick={() => handleSearch(query, albumFilter)}
+                      onClick={() => handleSearch(query, albumFilter, activeFilters)}
                     >
                       Retry
                     </Button>
@@ -365,7 +382,19 @@ export function BrowseSheet({
                       No songs found for &quot;{query}&quot;
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Try a different search term
+                      {activeFilters?.keys?.length || activeFilters?.bpmRange
+                        ? "Try adjusting your filters or search term"
+                        : "Try a different search term"}
+                    </p>
+                  </div>
+                )}
+
+                {!error && !isLoading && results.length === 0 && !query && (activeFilters?.keys?.length || activeFilters?.bpmRange) && (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Music className="size-8 text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">No songs match your filters</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Try removing some filters to see more results
                     </p>
                   </div>
                 )}

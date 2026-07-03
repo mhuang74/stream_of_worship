@@ -54,3 +54,28 @@ export function normalizeFontFamily(value: unknown): FontFamilyValue {
     ? (value as FontFamilyValue)
     : "noto_serif_tc";
 }
+
+export const PITCH_CLASSES = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+] as const;
+export type PitchClass = (typeof PITCH_CLASSES)[number];
+
+export const BPM_BANDS = {
+  slow: { label: "Slow", max: 90 },
+  moderate: { label: "Moderate", min: 90, max: 120 },
+  fast: { label: "Fast", min: 120 },
+} as const;
+
+export const BPM_BAND_KEYS = ["slow", "moderate", "fast"] as const;
+export type BpmBandKey = (typeof BPM_BAND_KEYS)[number];

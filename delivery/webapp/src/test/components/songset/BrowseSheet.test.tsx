@@ -344,6 +344,93 @@ describe("BrowseSheet", () => {
     });
   });
 
+  describe("advanced filters", () => {
+    it("renders advanced filters toggle", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+    });
+
+    it("opens advanced panel when toggle is clicked", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
+      });
+    });
+
+    it("renders results after applying advanced filters", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("advanced-apply-button"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("keys=D")
+        );
+      });
+    });
+
+    it("renders results after applying BPM filter", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+      fireEvent.click(screen.getByTestId("advanced-apply-button"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("bpmRange=slow")
+        );
+      });
+    });
+
+    it("shows filter-specific empty state when no results match filters", async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/songs/albums") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ albums: mockAlbums }),
+          });
+        }
+        if (url.includes("/api/songs")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ songs: [], total: 0 }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      });
+
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("advanced-apply-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText(/no songs match your filters/i)).toBeInTheDocument();
+      });
+    });
+  });
+
   describe("play functionality", () => {
     it("renders song cards with play buttons", async () => {
       renderSheet();

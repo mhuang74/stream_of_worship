@@ -176,4 +176,80 @@ describe("fullTextSearchSongs", () => {
 
     expect(mockFindMany).toHaveBeenCalled();
   });
+
+  it("accepts keys filter option without throwing", async () => {
+    const mockFindMany = vi.fn().mockResolvedValue([]);
+    const mockSelect = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ count: 0 }]),
+      }),
+    });
+
+    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
+    (db.query.songs.findMany as ReturnType<typeof vi.fn>) = mockFindMany;
+
+    await fullTextSearchSongs("test", 50, 0, "published", {
+      keys: ["D", "A"],
+    });
+
+    expect(mockFindMany).toHaveBeenCalled();
+  });
+
+  it("accepts bpmRange filter option without throwing", async () => {
+    const mockFindMany = vi.fn().mockResolvedValue([]);
+    const mockSelect = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ count: 0 }]),
+      }),
+    });
+
+    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
+    (db.query.songs.findMany as ReturnType<typeof vi.fn>) = mockFindMany;
+
+    await fullTextSearchSongs("test", 50, 0, "published", {
+      bpmRange: "slow",
+    });
+
+    expect(mockFindMany).toHaveBeenCalled();
+  });
+
+  it("accepts combined keys + bpmRange filters", async () => {
+    const mockFindMany = vi.fn().mockResolvedValue([]);
+    const mockSelect = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ count: 0 }]),
+      }),
+    });
+
+    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
+    (db.query.songs.findMany as ReturnType<typeof vi.fn>) = mockFindMany;
+
+    await fullTextSearchSongs("test", 50, 0, "published", {
+      keys: ["D", "A"],
+      bpmRange: "fast",
+    });
+
+    expect(mockFindMany).toHaveBeenCalled();
+  });
+
+  it("orders alphabetically when query is empty but filters are active", async () => {
+    const mockFindMany = vi.fn().mockResolvedValue([]);
+    const mockSelect = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ count: 0 }]),
+      }),
+    });
+
+    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
+    (db.query.songs.findMany as ReturnType<typeof vi.fn>) = mockFindMany;
+
+    await fullTextSearchSongs("", 50, 0, "published", {
+      keys: ["C"],
+      bpmRange: "slow",
+    });
+
+    expect(mockFindMany).toHaveBeenCalled();
+    const callArgs = mockFindMany.mock.calls[0][0];
+    expect(callArgs.orderBy).toBeDefined();
+  });
 });

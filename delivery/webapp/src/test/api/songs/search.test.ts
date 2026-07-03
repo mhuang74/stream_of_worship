@@ -135,7 +135,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, ["published", "review"]);
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, ["published", "review"], { keys: undefined, bpmRange: undefined });
   });
 
   it("caps limit at 100", async () => {
@@ -153,7 +153,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, ["published", "review"]);
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
   });
 
   it("defaults to published + review visibility status", async () => {
@@ -169,7 +169,7 @@ describe("GET /api/songs/search", () => {
     const request = createMockRequest("http://localhost:3000/api/songs/search?q=test");
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"]);
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
   });
 
   it("allows overriding visibility status", async () => {
@@ -187,7 +187,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "all");
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "all", { keys: undefined, bpmRange: undefined });
   });
 
   it("parses comma-separated visibility statuses", async () => {
@@ -205,7 +205,97 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"]);
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
+  });
+
+  it("parses keys filter param", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&keys=D,A"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: undefined });
+  });
+
+  it("parses bpmRange filter param", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&bpmRange=slow"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: "slow" });
+  });
+
+  it("parses combined keys + bpmRange filters (AND semantics)", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&keys=D,A&bpmRange=fast"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: "fast" });
+  });
+
+  it("filters out invalid pitch classes from keys param", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&keys=D,H,Db"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D"], bpmRange: undefined });
+  });
+
+  it("ignores invalid bpmRange value", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&bpmRange=medium"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
   });
 
   it("returns 500 on error", async () => {
