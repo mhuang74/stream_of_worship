@@ -4,9 +4,10 @@ import { listSongs } from "@/lib/db/songs";
 import {
   parseAlbumFilterParams,
   parseKeysParam,
-  parseBpmRangeParam,
+  parseBpmRangeParams,
 } from "@/lib/db/search-helpers";
 import type { AlbumFilter } from "@/lib/search/album-filter";
+import type { BpmBandKey } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
       lyricist?: string;
       visibilityStatus?: string | string[];
       keys?: string[];
-      bpmRange?: "slow" | "moderate" | "fast";
+      bpmRange?: BpmBandKey[];
     } = {};
 
     const { albumFilters, albumNames } = parseAlbumFilterParams(searchParams);
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
     const keys = parseKeysParam(searchParams.get("keys"));
     if (keys) filters.keys = keys;
 
-    const bpmRange = parseBpmRangeParam(searchParams.get("bpmRange"));
+    const bpmRange = parseBpmRangeParams(searchParams.getAll("bpmRange"));
     if (bpmRange) filters.bpmRange = bpmRange;
 
     // Default to published + review for browse; respect explicit client override

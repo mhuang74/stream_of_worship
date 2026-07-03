@@ -133,6 +133,13 @@ export function buildBpmPredicate(bpmRange: BpmBandKey, alias: string = "r"): SQ
   }
 }
 
+export function buildBpmPredicates(bpmRanges: BpmBandKey[], alias: string = "r"): SQL | undefined {
+  if (!bpmRanges || bpmRanges.length === 0) return undefined;
+  const predicates = bpmRanges.map((band) => buildBpmPredicate(band, alias));
+  if (predicates.length === 1) return predicates[0];
+  return sql`(${sql.join(predicates, sql` OR `)})`;
+}
+
 export function buildVisibilityCondition(
   visibilityStatus: string | string[] | undefined,
   alias: string
@@ -171,6 +178,15 @@ export function parseBpmRangeParam(
   if (!bpmRangeParam) return undefined;
   if (!isValidBpmBand(bpmRangeParam)) return undefined;
   return bpmRangeParam;
+}
+
+export function parseBpmRangeParams(
+  bpmRangeParams: string[]
+): BpmBandKey[] | undefined {
+  const bands = bpmRangeParams
+    .filter((value) => isValidBpmBand(value));
+  if (bands.length === 0) return undefined;
+  return Array.from(new Set(bands)) as BpmBandKey[];
 }
 
 export function parseAlbumValues(values: string[]): string[] | undefined {

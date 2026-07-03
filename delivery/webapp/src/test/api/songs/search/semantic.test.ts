@@ -171,7 +171,7 @@ describe("POST /api/songs/search/semantic", () => {
       query: "test",
       albums: [" Hymns ", "", "Hymns", "Worship"],
       keys: ["D", "H"],
-      bpmRange: "slow",
+      bpmRange: ["slow"],
     }));
 
     expect(semanticSearchSongs).toHaveBeenCalledWith(
@@ -179,7 +179,7 @@ describe("POST /api/songs/search/semantic", () => {
       "text-embedding-3-small",
       40,
       ["published", "review"],
-      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: "slow" }
+      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: ["slow"] }
     );
   });
 
@@ -197,7 +197,7 @@ describe("POST /api/songs/search/semantic", () => {
         { albumName: "", albumSeries: "Ignored" },
       ],
       keys: ["D"],
-      bpmRange: "slow",
+      bpmRange: ["slow"],
     }));
 
     expect(semanticSearchSongs).toHaveBeenCalledWith(
@@ -212,7 +212,7 @@ describe("POST /api/songs/search/semantic", () => {
         ],
         albums: undefined,
         keys: ["D"],
-        bpmRange: "slow",
+        bpmRange: ["slow"],
       }
     );
   });

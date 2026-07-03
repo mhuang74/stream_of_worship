@@ -138,10 +138,18 @@ describe("BrowseSheet", () => {
     fireEvent.click(screen.getByTestId(testId));
   };
 
-  const selectKeyAndBpm = () => {
-    fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-    fireEvent.click(screen.getByTestId("key-chip-D"));
-    fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+  const selectKeyAndBpm = async () => {
+    fireEvent.click(screen.getByTestId("key-filter"));
+    await waitFor(() => {
+      expect(screen.getByTestId("key-option-D")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("key-option-D"));
+
+    fireEvent.click(screen.getByTestId("bpm-filter"));
+    await waitFor(() => {
+      expect(screen.getByTestId("bpm-option-slow")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("bpm-option-slow"));
   };
 
   const expectBefore = (before: Element, after: Element) => {
@@ -164,7 +172,7 @@ describe("BrowseSheet", () => {
 
     fireEvent.change(screen.getByTestId("search-input"), { target: { value: "grace" } });
     await selectAlbum();
-    selectKeyAndBpm();
+    await selectKeyAndBpm();
 
     expect(songFetchCalls()).toHaveLength(0);
 
@@ -192,7 +200,7 @@ describe("BrowseSheet", () => {
     await waitForAlbums();
 
     await selectAlbum();
-    selectKeyAndBpm();
+    await selectKeyAndBpm();
     fireEvent.click(screen.getByTestId("search-button"));
 
     await waitFor(() => {
@@ -214,7 +222,7 @@ describe("BrowseSheet", () => {
       target: { value: "songs about grace" },
     });
     await selectAlbum();
-    selectKeyAndBpm();
+    await selectKeyAndBpm();
 
     expect(songFetchCalls()).toHaveLength(0);
 
@@ -244,7 +252,7 @@ describe("BrowseSheet", () => {
     await waitForAlbums();
 
     await selectAlbum();
-    selectKeyAndBpm();
+    await selectKeyAndBpm();
     fireEvent.click(screen.getByTestId("describe-mode-tab"));
     fireEvent.change(screen.getByTestId("semantic-search-input"), {
       target: { value: "songs about grace" },
@@ -261,7 +269,7 @@ describe("BrowseSheet", () => {
             limit: 20,
             albums: [hymnsFilter],
             keys: ["D"],
-            bpmRange: "slow",
+            bpmRange: ["slow"],
           }),
         })
       );

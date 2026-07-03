@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
+import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 
 type SearchMode = "keyword" | "describe";
@@ -74,7 +75,7 @@ export function BrowseSheet({
   const [keywordQuery, setKeywordQuery] = useState("");
   const [selectedAlbums, setSelectedAlbums] = useState<AlbumFilter[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const [selectedBpm, setSelectedBpm] = useState<StructuredSearchCriteria["bpmRange"]>();
+  const [selectedBpm, setSelectedBpm] = useState<BpmBandKey[]>([]);
   const [activeFilters, setActiveFilters] = useState<StructuredSearchCriteria | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -140,8 +141,10 @@ export function BrowseSheet({
         if (nextFilters.keys?.length) {
           params.set("keys", nextFilters.keys.join(","));
         }
-        if (nextFilters.bpmRange) {
-          params.set("bpmRange", nextFilters.bpmRange);
+        if (nextFilters.bpmRange?.length) {
+          for (const band of nextFilters.bpmRange) {
+            params.append("bpmRange", band);
+          }
         }
         params.set("limit", "50");
 
@@ -227,7 +230,7 @@ export function BrowseSheet({
   const handleKeywordSubmit = useCallback(() => {
     const normalizedAlbums = selectedAlbums.length > 0 ? selectedAlbums : undefined;
     const hasAdvancedFilters =
-      selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm !== undefined;
+      selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm.length > 0;
 
     handleSearch(
       keywordQuery,
@@ -236,7 +239,7 @@ export function BrowseSheet({
         ? {
             query: keywordQuery.trim() || undefined,
             keys: selectedKeys.length > 0 ? selectedKeys : undefined,
-            bpmRange: selectedBpm,
+            bpmRange: selectedBpm.length > 0 ? selectedBpm : undefined,
             albums: normalizedAlbums,
           }
         : undefined
@@ -336,7 +339,7 @@ export function BrowseSheet({
       onClearFilters={() => {
         setSelectedAlbums([]);
         setSelectedKeys([]);
-        setSelectedBpm(undefined);
+        setSelectedBpm([]);
       }}
       isLoading={isLoading || isLoadingAlbums}
       className="px-1"
@@ -376,7 +379,7 @@ export function BrowseSheet({
         setKeywordQuery("");
         setSelectedAlbums([]);
         setSelectedKeys([]);
-        setSelectedBpm(undefined);
+        setSelectedBpm([]);
         setActiveFilters(undefined);
         setResults([]);
         setTotalCount(0);

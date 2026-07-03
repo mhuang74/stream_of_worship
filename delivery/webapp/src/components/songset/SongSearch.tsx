@@ -20,7 +20,7 @@ interface SongSearchProps {
   onQueryChange?: (query: string) => void;
   selectedAlbums?: AlbumFilter[];
   selectedKeys?: string[];
-  selectedBpm?: BpmBandKey;
+  selectedBpm?: BpmBandKey[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
 }
@@ -53,7 +53,7 @@ export function SongSearch({
   );
 
   const hasAdvancedFilters =
-    selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm !== undefined;
+    selectedAlbums.length > 0 || selectedKeys.length > 0 || (selectedBpm?.length ?? 0) > 0;
 
   const triggerSearch = useCallback(
     () => {
@@ -62,7 +62,7 @@ export function SongSearch({
         onAdvancedSearch({
           query: query.trim() || undefined,
           keys: selectedKeys.length > 0 ? selectedKeys : undefined,
-          bpmRange: selectedBpm,
+          bpmRange: selectedBpm && selectedBpm.length > 0 ? selectedBpm : undefined,
           albums: normalizedAlbums,
         });
       } else {

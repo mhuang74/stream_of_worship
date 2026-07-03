@@ -233,7 +233,7 @@ describe("fullTextSearchSongs", () => {
     (db.query.songs.findMany as ReturnType<typeof vi.fn>) = mockFindMany;
 
     await fullTextSearchSongs("test", 50, 0, "published", {
-      bpmRange: "slow",
+      bpmRange: ["slow"],
     });
 
     expect(mockFindMany).toHaveBeenCalled();
@@ -252,7 +252,7 @@ describe("fullTextSearchSongs", () => {
 
     await fullTextSearchSongs("test", 50, 0, "published", {
       keys: ["D", "A"],
-      bpmRange: "fast",
+      bpmRange: ["fast"],
     });
 
     expect(mockFindMany).toHaveBeenCalled();
@@ -271,7 +271,7 @@ describe("fullTextSearchSongs", () => {
 
     await fullTextSearchSongs("", 50, 0, "published", {
       keys: ["C"],
-      bpmRange: "slow",
+      bpmRange: ["slow"],
     });
 
     expect(mockFindMany).toHaveBeenCalled();

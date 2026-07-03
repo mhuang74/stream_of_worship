@@ -11,6 +11,7 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
+import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
 
 interface SemanticSearchResult extends SongCardData {
@@ -106,11 +107,11 @@ export function useSemanticSearch({
           limit: number;
           albums?: AlbumFilter[];
           keys?: string[];
-          bpmRange?: StructuredSearchCriteria["bpmRange"];
+          bpmRange?: BpmBandKey[];
         } = { query: trimmed, limit: 20 };
         if (albums.length > 0) body.albums = albums;
         if (keys.length > 0) body.keys = keys;
-        if (bpmRange) body.bpmRange = bpmRange;
+        if (bpmRange && bpmRange.length > 0) body.bpmRange = bpmRange;
 
         response = await fetch("/api/songs/search/semantic", {
           method: "POST",
@@ -127,8 +128,10 @@ export function useSemanticSearch({
         if (keys.length > 0) {
           params.set("keys", keys.join(","));
         }
-        if (bpmRange) {
-          params.set("bpmRange", bpmRange);
+        if (bpmRange && bpmRange.length > 0) {
+          for (const band of bpmRange) {
+            params.append("bpmRange", band);
+          }
         }
         params.set("limit", "50");
 
