@@ -223,7 +223,7 @@ export function SongSearch({
   const showLoadingIndicator = isLoading || isSearching;
 
   return (
-    <div className={cn("space-y-3", className)} data-testid="song-search">
+    <div className={cn("space-y-2", className)} data-testid="song-search">
       {/* Search input */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
@@ -294,7 +294,7 @@ export function SongSearch({
       {showAdvanced && onAdvancedSearch && (
         <div
           id="advanced-filters-panel"
-          className="border rounded-md p-3 space-y-4"
+          className="border rounded-md p-2.5 space-y-3"
           data-testid="advanced-filters-panel"
         >
           {/* Musical Key chips */}

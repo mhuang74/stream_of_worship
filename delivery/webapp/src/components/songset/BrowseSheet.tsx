@@ -6,7 +6,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { SongSearch } from "./SongSearch";
@@ -319,15 +318,12 @@ export function BrowseSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className={cn("data-[side=bottom]:!h-[85vh] sm:data-[side=bottom]:!h-[75vh] overflow-hidden", className)}>
-        <SheetHeader className="pb-4">
+      <SheetContent side="bottom" className={cn("data-[side=bottom]:!h-[85vh] sm:data-[side=bottom]:!h-[90vh] overflow-hidden", className)}>
+        <SheetHeader className="pb-2">
           <SheetTitle>Search Songs</SheetTitle>
-          <SheetDescription>
-            Search and add songs to your songset
-          </SheetDescription>
         </SheetHeader>
 
-        <div className={cn("flex flex-col h-full min-h-0", currentTrack ? "pb-28" : "pb-8")}>
+        <div className={cn("flex flex-col h-full min-h-0", currentTrack ? "pb-28 sm:pb-20" : "pb-8")}>
           {/* Mode tabs */}
           <div className="flex gap-1 pb-4 border-b mb-4" role="tablist" aria-label="Search mode">
             <Button
@@ -438,7 +434,7 @@ export function BrowseSheet({
                 )}
 
                 {!error && results.length > 0 && (
-                  <div className="space-y-2 pb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-4">
                     {results.map((song) => (
                       <SongCard
                         key={song.id}

@@ -96,7 +96,7 @@ export function SongCard({
       onMouseLeave={() => setIsHovered(false)}
       data-testid="song-card"
     >
-      <CardContent className="p-3">
+      <CardContent className="p-2.5">
         <div className="flex items-start gap-3">
           {/* Album art placeholder */}
           <div
