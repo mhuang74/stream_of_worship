@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useId } from "react";
 import {
   DndContext,
   closestCenter,
@@ -285,6 +285,7 @@ export function SongList({
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
+  const dndContextId = useId();
 
   useEffect(() => {
     if (!confirmingItemId || isRemoving) return;
@@ -427,6 +428,7 @@ export function SongList({
 
   return (
     <DndContext
+      id={dndContextId}
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
