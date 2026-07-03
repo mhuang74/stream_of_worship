@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { songs } from "@/db/schema";
-import { sql, and, isNull, or, ilike, inArray } from "drizzle-orm";
+import { sql, and, eq, isNull, or, ilike, inArray } from "drizzle-orm";
 import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
 import {
   buildEffectiveKeyPredicate,
@@ -8,9 +8,11 @@ import {
   buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
+import type { AlbumFilter } from "@/lib/search/album-filter";
 
 export interface FullTextSearchOptions {
   albums?: string[];
+  albumFilters?: AlbumFilter[];
   keys?: string[];
   bpmRange?: BpmBandKey;
 }
@@ -38,7 +40,20 @@ export async function fullTextSearchSongs(
     isNull(songs.deletedAt),
   ];
 
-  if (options?.albums?.length) {
+  if (options?.albumFilters?.length) {
+    whereConditions.push(
+      or(
+        ...options.albumFilters.map((album) =>
+          and(
+            eq(songs.albumName, album.albumName),
+            album.albumSeries === null
+              ? isNull(songs.albumSeries)
+              : eq(songs.albumSeries, album.albumSeries)
+          )
+        )
+      )
+    );
+  } else if (options?.albums?.length) {
     whereConditions.push(inArray(songs.albumName, options.albums));
   }
 

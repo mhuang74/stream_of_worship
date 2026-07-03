@@ -7,9 +7,10 @@ import { Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type BpmBandKey } from "@/lib/constants";
 import type { StructuredSearchCriteria } from "./search/types";
+import type { AlbumFilter } from "@/lib/search/album-filter";
 
 interface SongSearchProps {
-  onSearch: (query: string, albumFilters?: string[]) => void;
+  onSearch: (query: string, albumFilters?: AlbumFilter[]) => void;
   onAdvancedSearch?: (criteria: StructuredSearchCriteria) => void;
   isLoading?: boolean;
   className?: string;
@@ -17,9 +18,11 @@ interface SongSearchProps {
   initialQuery?: string;
   query?: string;
   onQueryChange?: (query: string) => void;
-  selectedAlbums?: string[];
+  selectedAlbums?: AlbumFilter[];
   selectedKeys?: string[];
   selectedBpm?: BpmBandKey;
+  searchButtonClassName?: string;
+  showSearchButton?: boolean;
 }
 
 export function SongSearch({
@@ -34,6 +37,8 @@ export function SongSearch({
   selectedAlbums = [],
   selectedKeys = [],
   selectedBpm,
+  searchButtonClassName,
+  showSearchButton = true,
 }: SongSearchProps) {
   const [internalQuery, setInternalQuery] = useState(initialQuery ?? "");
 
@@ -129,17 +134,19 @@ export function SongSearch({
             <span className="sr-only" role="status" aria-live="polite">Searching...</span>
           )}
         </div>
-        <Button
-          type="button"
-          onClick={triggerSearch}
-          disabled={isLoading}
-          className="shrink-0 gap-1.5"
-          data-testid="search-button"
-          aria-label={isLoading ? "Searching songs" : "Run song search"}
-        >
-          {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-          Search
-        </Button>
+        {showSearchButton && (
+          <Button
+            type="button"
+            onClick={triggerSearch}
+            disabled={isLoading}
+            className={cn("shrink-0 gap-1.5", searchButtonClassName)}
+            data-testid="search-button"
+            aria-label={isLoading ? "Searching songs" : "Run song search"}
+          >
+            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+            Search
+          </Button>
+        )}
       </div>
 
       <p className="text-xs text-muted-foreground px-1" data-testid="keyword-help-text">

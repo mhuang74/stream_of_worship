@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { listSongs } from "@/lib/db/songs";
 import {
-  parseAlbumNameParams,
+  parseAlbumFilterParams,
   parseKeysParam,
   parseBpmRangeParam,
 } from "@/lib/db/search-helpers";
+import type { AlbumFilter } from "@/lib/search/album-filter";
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     // Parse filters
     const filters: {
       albumNames?: string[];
+      albumFilters?: AlbumFilter[];
       albumSeries?: string;
       composer?: string;
       lyricist?: string;
@@ -35,11 +37,12 @@ export async function GET(request: NextRequest) {
       bpmRange?: "slow" | "moderate" | "fast";
     } = {};
 
-    const albumNames = parseAlbumNameParams(searchParams);
+    const { albumFilters, albumNames } = parseAlbumFilterParams(searchParams);
+    if (albumFilters) filters.albumFilters = albumFilters;
     if (albumNames) filters.albumNames = albumNames;
 
     const albumSeries = searchParams.get("albumSeries");
-    if (albumSeries) filters.albumSeries = albumSeries;
+    if (albumSeries && !albumFilters) filters.albumSeries = albumSeries;
 
     const composer = searchParams.get("composer");
     if (composer) filters.composer = composer;

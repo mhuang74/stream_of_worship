@@ -7,16 +7,23 @@ import {
   rrfRerank,
 } from "@/lib/db/songs";
 import {
+  parseAlbumFilterValues,
   parseAlbumValues,
   parseBpmRangeParam,
   parseKeysParam,
 } from "@/lib/db/search-helpers";
 import { z } from "zod";
+import type { AlbumFilter } from "@/lib/search/album-filter";
+
+const AlbumFilterSchema = z.object({
+  albumName: z.string(),
+  albumSeries: z.string().nullable().optional(),
+});
 
 const RequestSchema = z.object({
   query: z.string().min(1, "query must not be empty"),
   limit: z.number().int().min(1).max(50).default(20),
-  albums: z.array(z.string()).optional(),
+  albums: z.array(z.union([z.string(), AlbumFilterSchema])).optional(),
   keys: z.array(z.string()).optional(),
   bpmRange: z.string().optional(),
 });
@@ -44,11 +51,18 @@ export async function POST(request: NextRequest) {
     }
 
     const { query, limit } = parsed.data;
-    const albums = parseAlbumValues(parsed.data.albums ?? []);
+    const albumValues = parsed.data.albums ?? [];
+    const albumFilters = parseAlbumFilterValues(
+      albumValues.filter((album): album is AlbumFilter => typeof album !== "string").map((album) => ({
+        albumName: album.albumName,
+        albumSeries: album.albumSeries ?? null,
+      }))
+    );
+    const albums = parseAlbumValues(albumValues.filter((album): album is string => typeof album === "string"));
     const keys = parseKeysParam(parsed.data.keys?.join(",") ?? null);
     const bpmRange = parseBpmRangeParam(parsed.data.bpmRange ?? null);
-    const semanticOptions = albums || keys || bpmRange
-      ? { albums, keys, bpmRange }
+    const semanticOptions = albumFilters || albums || keys || bpmRange
+      ? { albumFilters, albums, keys, bpmRange }
       : undefined;
 
     let queryEmbedding: number[];

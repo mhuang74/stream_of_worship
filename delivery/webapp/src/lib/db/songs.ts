@@ -9,6 +9,7 @@ import {
   buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
+import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 
 export interface SongWithRecordings {
   id: string;
@@ -150,6 +151,7 @@ export interface SongDetail extends SongWithRecordings {
 export interface ListSongsFilters {
   albumName?: string;
   albumNames?: string[];
+  albumFilters?: AlbumFilter[];
   albumSeries?: string;
   composer?: string;
   lyricist?: string;
@@ -222,6 +224,20 @@ function buildSongWhereClause(
   }
   if (filters?.albumNames?.length) {
     whereConditions.push(inArray(songs.albumName, filters.albumNames));
+  }
+  if (filters?.albumFilters?.length) {
+    whereConditions.push(
+      or(
+        ...filters.albumFilters.map((album) =>
+          and(
+            eq(songs.albumName, album.albumName),
+            album.albumSeries === null
+              ? isNull(songs.albumSeries)
+              : eq(songs.albumSeries, album.albumSeries)
+          )
+        )
+      )
+    );
   }
   if (filters?.albumSeries) {
     whereConditions.push(eq(songs.albumSeries, filters.albumSeries));
@@ -390,9 +406,13 @@ export async function searchSongs(
   return { songs: songsWithRecordings, total };
 }
 
-export async function getAlbums(): Promise<string[]> {
+export async function getAlbums(): Promise<AlbumOption[]> {
   const result = await db
-    .selectDistinct({ albumName: songs.albumName })
+    .select({
+      albumName: songs.albumName,
+      albumSeries: songs.albumSeries,
+      songCount: sql<number>`count(*)`,
+    })
     .from(songs)
     .where(sql`${songs.albumName} IS NOT NULL
       AND exists (
@@ -401,9 +421,16 @@ export async function getAlbums(): Promise<string[]> {
           and recordings.visibility_status IN ('published', 'review')
           and recordings.deleted_at IS NULL
       )`)
-    .orderBy(songs.albumName);
+    .groupBy(songs.albumName, songs.albumSeries)
+    .orderBy(songs.albumName, songs.albumSeries);
 
-  return result.map((r) => r.albumName).filter((name): name is string => name !== null);
+  return result
+    .filter((row): row is typeof row & { albumName: string } => row.albumName !== null)
+    .map((row) => ({
+      albumName: row.albumName,
+      albumSeries: row.albumSeries,
+      songCount: Number(row.songCount),
+    }));
 }
 
 export interface SemanticSearchResult extends SongWithRecordings {
@@ -416,6 +443,7 @@ export interface SemanticSearchResult extends SongWithRecordings {
 
 export interface SemanticSearchOptions {
   albums?: string[];
+  albumFilters?: AlbumFilter[];
   keys?: string[];
   bpmRange?: BpmBandKey;
 }
@@ -443,7 +471,16 @@ export async function semanticSearchSongs(
   options?: SemanticSearchOptions,
 ): Promise<SemanticSearchResult[]> {
   const vectorStr = validateEmbedding(embedding);
-  const albumFilter = options?.albums?.length
+  const albumFilter = options?.albumFilters?.length
+    ? sql`AND (${sql.join(
+        options.albumFilters.map((album) =>
+          album.albumSeries === null
+            ? sql`(s.album_name = ${album.albumName} AND s.album_series IS NULL)`
+            : sql`(s.album_name = ${album.albumName} AND s.album_series = ${album.albumSeries})`
+        ),
+        sql` OR `
+      )})`
+    : options?.albums?.length
     ? sql`AND s.album_name = ANY(${sql`ARRAY[${sql.join(options.albums.map(a => sql`${a}`), sql`, `)}]::text[]`})`
     : sql``;
   const keyFilter = options?.keys?.length
