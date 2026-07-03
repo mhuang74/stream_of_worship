@@ -2,12 +2,18 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SongList, SongListItem } from "@/components/songset/SongList";
 
+// Captured DndContext id values across renders, for hydration-stability assertions.
+const capturedDndContextIds: string[] = [];
+
 // Mock dnd-kit
 vi.mock("@dnd-kit/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@dnd-kit/core")>();
   return {
     ...actual,
-    DndContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    DndContext: ({ id, children }: { id?: string; children: React.ReactNode }) => {
+      if (id) capturedDndContextIds.push(id);
+      return <div data-testid="dnd-context" data-id={id}>{children}</div>;
+    },
     useSensor: vi.fn(() => ({})),
     useSensors: vi.fn(() => []),
     closestCenter: vi.fn(),
@@ -221,6 +227,21 @@ describe("SongList", () => {
       renderList({ readOnly: true });
       const dragHandles = screen.queryAllByRole("button", { name: /drag to reorder/i });
       expect(dragHandles.length).toBe(0);
+    });
+
+    it("passes a non-empty stable id to DndContext (hydration-safe)", () => {
+      capturedDndContextIds.length = 0;
+      const { rerender } = renderList();
+
+      const dndContext = screen.getByTestId("dnd-context");
+      const firstId = dndContext.getAttribute("data-id");
+      expect(firstId).toBeTruthy();
+      expect(capturedDndContextIds[0]).toBe(firstId);
+
+      // Re-rendering the same component instance must produce the same id,
+      // mirroring the SSR/hydration invariant that React's useId guarantees.
+      rerender(<SongList {...defaultProps} />);
+      expect(capturedDndContextIds[1]).toBe(firstId);
     });
   });
 
