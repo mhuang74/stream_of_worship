@@ -87,15 +87,102 @@ def _extract_chinese_title_from_youtube(video_title: Optional[str]) -> Optional[
     return None
 
 
+def _extract_bracket_content(video_title: Optional[str]) -> Optional[str]:
+    """Extract the full content of the first ``【…】`` bracket.
+
+    Unlike :func:`_extract_chinese_title_from_youtube` (which stops at the
+    first whitespace), this captures the entire bracket content up to the
+    closing ``】``. For ``【Holy, Holy 聖潔榮耀主】...`` it returns
+    ``Holy, Holy 聖潔榮耀主``.
+
+    Args:
+        video_title: YouTube video title
+
+    Returns:
+        Full bracket content, or ``None`` when there is no ``【`` bracket.
+    """
+    if not video_title:
+        return None
+
+    match = re.match(r"【([^】]+)", video_title)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def _normalize_for_match(s: str) -> str:
+    """Normalize a string for substring matching.
+
+    Lowercases, collapses all whitespace sequences to a single space, and
+    strips leading/trailing whitespace.
+    """
+    return re.sub(r"\s+", " ", s.strip()).lower()
+
+
+def _titles_match(song_title: str, video_title: Optional[str]) -> bool:
+    """Unified bracket-aware matcher supporting both catalog conventions.
+
+    Supports two catalog title conventions paired with the YouTube
+    ``【…】`` bracket format:
+
+    - **Convention 2** — catalog ``English [Chinese]`` (e.g.
+      ``Holy, Holy [聖潔榮耀主]``) paired with a YouTube bracket like
+      ``【Holy, Holy 聖潔榮耀主】...``. Matches when every Chinese segment
+      and the English part are substrings of the bracket content, subject
+      to a length heuristic that blocks medleys/compilations.
+    - **Convention 1 / English-only** — catalog has no ``[]`` (e.g.
+      ``一生敬拜祢`` or ``Amazing Grace``). Matches when the normalized
+      catalog title is a substring of the bracket content.
+
+    When the video title has no ``【`` bracket, falls back to a normalized
+    raw-title equality compare.
+
+    Args:
+        song_title: Catalog song title (may contain ``[Chinese]`` segments).
+        video_title: YouTube video title (may contain a ``【…】`` bracket).
+
+    Returns:
+        ``True`` when the titles match under the rules above.
+    """
+    if not video_title:
+        return False
+
+    chinese_segments = re.findall(r"\[([^\]]+)\]", song_title)
+    catalog_without_brackets = re.sub(r"\s*\[([^\]]+)\]\s*", r"\1 ", song_title)
+    catalog_without_brackets = re.sub(r"\s+", " ", catalog_without_brackets).strip()
+
+    bracket = _extract_bracket_content(video_title)
+    if bracket is None:
+        return _normalize_for_match(song_title) == _normalize_for_match(video_title)
+
+    n_bracket = _normalize_for_match(bracket)
+    n_catalog = _normalize_for_match(catalog_without_brackets)
+
+    if chinese_segments:
+        if len(n_bracket) > len(n_catalog) * 1.5:
+            return False
+        english_part = re.sub(r"\s*\[[^\]]+\]\s*", " ", song_title).strip()
+        n_english = _normalize_for_match(english_part)
+        if n_english and n_english not in n_bracket:
+            return False
+        for segment in chinese_segments:
+            if _normalize_for_match(segment) not in n_bracket:
+                return False
+        return True
+
+    return n_catalog in n_bracket
+
+
 def _select_best_candidate(
     entries: list[dict[str, Any]],
     song_title: str,
 ) -> Optional[dict[str, Any]]:
-    """Select the first entry whose Chinese title exactly matches ``song_title``.
+    """Select the first entry whose title matches ``song_title``.
 
     Iterates through YouTube search result entries in relevance order and
-    returns the first whose extracted Chinese title (from the ``【...```
-    bracket) equals ``song_title`` exactly.
+    returns the first whose title matches ``song_title`` under the
+    bracket-aware :func:`_titles_match` rules.
 
     Args:
         entries: List of yt-dlp entry dicts (may contain ``None`` items).
@@ -108,8 +195,7 @@ def _select_best_candidate(
         if entry is None:
             continue
         video_title = entry.get("title")
-        chinese_title = _extract_chinese_title_from_youtube(video_title)
-        if chinese_title is not None and chinese_title == song_title:
+        if _titles_match(song_title, video_title):
             return entry
     return None
 
@@ -305,6 +391,12 @@ class YouTubeDownloader:
     ) -> str:
         """Build a YouTube search query from song metadata.
 
+        The ``title`` is normalized before joining: any ``[...]`` segments
+        are replaced with their bare contents (space-separated) and
+        internal whitespace is collapsed. This prevents literal ``[]``
+        characters (used in catalog titles like ``Holy, Holy [聖潔榮耀主]``)
+        from leaking into the YouTube search query.
+
         Args:
             title: Song title (required)
             composer: Composer / artist name
@@ -314,7 +406,10 @@ class YouTubeDownloader:
         Returns:
             Space-joined search query string
         """
-        parts = [title]
+        normalized_title = re.sub(r"\[([^\]]*)\]", r"\1", title)
+        normalized_title = re.sub(r"\s+", " ", normalized_title).strip()
+
+        parts = [normalized_title]
         if composer:
             parts.append(composer)
         if album:
