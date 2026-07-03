@@ -286,6 +286,7 @@ describe("SongSearch", () => {
         query: undefined,
         keys: ["D", "A"],
         bpmRange: "slow",
+        album: undefined,
       });
     });
 
@@ -338,6 +339,7 @@ describe("SongSearch", () => {
           query: "amazing",
           keys: ["D"],
           bpmRange: undefined,
+          album: undefined,
         });
       });
     });

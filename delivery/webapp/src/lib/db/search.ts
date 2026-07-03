@@ -5,6 +5,7 @@ import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
 import {
   buildKeyRegex,
   buildBpmPredicate,
+  buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
 
@@ -36,26 +37,30 @@ export async function fullTextSearchSongs(
     isNull(songs.deletedAt),
   ];
 
-  if (options?.keys && options.keys.length > 0) {
+  if (options?.keys && (options.keys?.length ?? 0) > 0) {
     const keyRegex = buildKeyRegex(options.keys);
+    const visCond = buildVisibilityCondition(visibilityStatus, "r2");
     whereConditions.push(
       sql`exists (
         select 1 from recordings r2
         where r2.song_id = ${songs.id}
           and r2.deleted_at IS NULL
+          ${visCond ? sql`and ${visCond}` : sql``}
           and r2.musical_key ~* ${keyRegex}
       )`
     );
   }
 
   if (options?.bpmRange) {
-    const bpmPredicate = buildBpmPredicate(options.bpmRange);
+    const bpmPredicate = buildBpmPredicate(options.bpmRange, "r3");
+    const visCond = buildVisibilityCondition(visibilityStatus, "r3");
     whereConditions.push(
       sql`exists (
         select 1 from recordings r3
         where r3.song_id = ${songs.id}
           and r3.deleted_at IS NULL
           and r3.tempo_bpm IS NOT NULL
+          ${visCond ? sql`and ${visCond}` : sql``}
           and ${bpmPredicate}
       )`
     );

@@ -3,18 +3,32 @@ import { PITCH_CLASSES, BPM_BAND_KEYS, type BpmBandKey } from "@/lib/constants";
 
 export function buildKeyRegex(keys: string[]): string {
   const escaped = keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return `^(${escaped.join("|")})(maj|major|minor|min)?\\b`;
+  return `^(${escaped.join("|")})(maj|major|minor|min)?(?!\\w)`;
 }
 
-export function buildBpmPredicate(bpmRange: BpmBandKey): SQL {
+export function buildBpmPredicate(bpmRange: BpmBandKey, alias: string = "r"): SQL {
+  const col = sql.raw(`${alias}.tempo_bpm`);
   switch (bpmRange) {
     case "slow":
-      return sql`r.tempo_bpm < 90`;
+      return sql`${col} < 90`;
     case "moderate":
-      return sql`r.tempo_bpm >= 90 AND r.tempo_bpm < 120`;
+      return sql`${col} >= 90 AND ${col} < 120`;
     case "fast":
-      return sql`r.tempo_bpm >= 120`;
+      return sql`${col} >= 120`;
   }
+}
+
+export function buildVisibilityCondition(
+  visibilityStatus: string | string[] | undefined,
+  alias: string
+): SQL | undefined {
+  if (!visibilityStatus || visibilityStatus === "all") return undefined;
+  const col = sql.raw(`${alias}.visibility_status`);
+  if (Array.isArray(visibilityStatus)) {
+    if (visibilityStatus.length === 0) return undefined;
+    return sql`${col} = ANY(${sql`ARRAY[${sql.join(visibilityStatus.map(s => sql`${s}`), sql`, `)}]::text[]`})`;
+  }
+  return sql`${col} = ${visibilityStatus}`;
 }
 
 export function isValidPitchClass(value: string): boolean {
