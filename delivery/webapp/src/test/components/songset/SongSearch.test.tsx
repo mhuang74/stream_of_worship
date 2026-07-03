@@ -168,4 +168,193 @@ describe("SongSearch", () => {
       expect(screen.getByLabelText(/clear search/i)).toBeInTheDocument();
     });
   });
+
+  describe("advanced filters", () => {
+    const mockOnAdvancedSearch = vi.fn();
+
+    const renderWithAdvanced = (props = {}) => {
+      return renderSearch({
+        onAdvancedSearch: mockOnAdvancedSearch,
+        ...props,
+      });
+    };
+
+    beforeEach(() => {
+      mockOnAdvancedSearch.mockClear();
+    });
+
+    it("does not render advanced toggle when onAdvancedSearch is not provided", () => {
+      renderSearch();
+      expect(screen.queryByTestId("advanced-filters-toggle")).not.toBeInTheDocument();
+    });
+
+    it("renders advanced toggle when onAdvancedSearch is provided", () => {
+      renderWithAdvanced();
+      expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+    });
+
+    it("does not show advanced panel by default", () => {
+      renderWithAdvanced();
+      expect(screen.queryByTestId("advanced-filters-panel")).not.toBeInTheDocument();
+    });
+
+    it("shows advanced panel when toggle is clicked", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
+    });
+
+    it("hides advanced panel when toggle is clicked again", () => {
+      renderWithAdvanced();
+      const toggle = screen.getByTestId("advanced-filters-toggle");
+      fireEvent.click(toggle);
+      fireEvent.click(toggle);
+      expect(screen.queryByTestId("advanced-filters-panel")).not.toBeInTheDocument();
+    });
+
+    it("renders all 12 pitch class chips", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      expect(screen.getByTestId("key-chip-C")).toBeInTheDocument();
+      expect(screen.getByTestId("key-chip-D")).toBeInTheDocument();
+      expect(screen.getByTestId("key-chip-A")).toBeInTheDocument();
+      expect(screen.getByTestId("key-chip-B")).toBeInTheDocument();
+    });
+
+    it("renders 3 BPM band chips", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      expect(screen.getByTestId("bpm-chip-slow")).toBeInTheDocument();
+      expect(screen.getByTestId("bpm-chip-moderate")).toBeInTheDocument();
+      expect(screen.getByTestId("bpm-chip-fast")).toBeInTheDocument();
+    });
+
+    it("toggles key chip selection (multi-select)", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      const keyD = screen.getByTestId("key-chip-D");
+      const keyA = screen.getByTestId("key-chip-A");
+
+      expect(keyD).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(keyD);
+      expect(keyD).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(keyA);
+      expect(keyA).toHaveAttribute("aria-pressed", "true");
+      expect(keyD).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("toggles BPM chip selection (single-select)", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      const slow = screen.getByTestId("bpm-chip-slow");
+      const fast = screen.getByTestId("bpm-chip-fast");
+
+      fireEvent.click(slow);
+      expect(slow).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(fast);
+      expect(fast).toHaveAttribute("aria-pressed", "true");
+      expect(slow).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("deselects BPM chip when clicked again", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      const slow = screen.getByTestId("bpm-chip-slow");
+      fireEvent.click(slow);
+      expect(slow).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(slow);
+      expect(slow).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("calls onAdvancedSearch with criteria when Apply is clicked", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("key-chip-A"));
+      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+
+      fireEvent.click(screen.getByTestId("advanced-apply-button"));
+
+      expect(mockOnAdvancedSearch).toHaveBeenCalledWith({
+        query: undefined,
+        keys: ["D", "A"],
+        bpmRange: "slow",
+      });
+    });
+
+    it("clears all filters when Clear all is clicked", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+
+      expect(screen.getByTestId("key-chip-D")).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByTestId("bpm-chip-slow")).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(screen.getByTestId("advanced-clear-button"));
+
+      expect(screen.getByTestId("key-chip-D")).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByTestId("bpm-chip-slow")).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("Clear all button is disabled when no filters active", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      expect(screen.getByTestId("advanced-clear-button")).toBeDisabled();
+    });
+
+    it("shows active filter count badge on toggle", () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+
+      // Collapse panel
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      const toggle = screen.getByTestId("advanced-filters-toggle");
+      expect(toggle.textContent).toContain("2");
+    });
+
+    it("uses onAdvancedSearch for debounced keyword search when filters are active", async () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+
+      vi.advanceTimersByTime(150);
+
+      await waitFor(() => {
+        expect(mockOnAdvancedSearch).toHaveBeenCalledWith({
+          query: "amazing",
+          keys: ["D"],
+          bpmRange: undefined,
+        });
+      });
+    });
+
+    it("falls back to onSearch when advanced panel is open but no filters active", async () => {
+      renderWithAdvanced();
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+
+      vi.advanceTimersByTime(150);
+
+      await waitFor(() => {
+        expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
+        expect(mockOnAdvancedSearch).not.toHaveBeenCalled();
+      });
+    });
+  });
 });

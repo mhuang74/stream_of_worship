@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fullTextSearchSongs } from "@/lib/db/search";
+import { parseKeysParam, parseBpmRangeParam } from "@/lib/db/search-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +35,13 @@ export async function GET(request: NextRequest) {
       ? (visibilityParam.includes(",") ? visibilityParam.split(",") : visibilityParam)
       : ["published", "review"];
 
-    const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus);
+    const keys = parseKeysParam(searchParams.get("keys"));
+    const bpmRange = parseBpmRangeParam(searchParams.get("bpmRange"));
+
+    const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus, {
+      keys,
+      bpmRange,
+    });
 
     return NextResponse.json(result);
   } catch (error) {

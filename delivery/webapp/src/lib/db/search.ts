@@ -2,12 +2,23 @@ import { db } from "@/db";
 import { songs } from "@/db/schema";
 import { sql, and, isNull, or, ilike } from "drizzle-orm";
 import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
+import {
+  buildKeyRegex,
+  buildBpmPredicate,
+} from "./search-helpers";
+import type { BpmBandKey } from "@/lib/constants";
+
+export interface FullTextSearchOptions {
+  keys?: string[];
+  bpmRange?: BpmBandKey;
+}
 
 export async function fullTextSearchSongs(
   query: string,
   limit: number = 50,
   offset: number = 0,
-  visibilityStatus?: string | string[]
+  visibilityStatus?: string | string[],
+  options?: FullTextSearchOptions
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const tsQuery = sql`plainto_tsquery('simple', ${query})`;
   const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
@@ -24,6 +35,31 @@ export async function fullTextSearchSongs(
     ),
     isNull(songs.deletedAt),
   ];
+
+  if (options?.keys && options.keys.length > 0) {
+    const keyRegex = buildKeyRegex(options.keys);
+    whereConditions.push(
+      sql`exists (
+        select 1 from recordings r2
+        where r2.song_id = ${songs.id}
+          and r2.deleted_at IS NULL
+          and r2.musical_key ~* ${keyRegex}
+      )`
+    );
+  }
+
+  if (options?.bpmRange) {
+    const bpmPredicate = buildBpmPredicate(options.bpmRange);
+    whereConditions.push(
+      sql`exists (
+        select 1 from recordings r3
+        where r3.song_id = ${songs.id}
+          and r3.deleted_at IS NULL
+          and r3.tempo_bpm IS NOT NULL
+          and ${bpmPredicate}
+      )`
+    );
+  }
 
   if (visibilityStatus && visibilityStatus !== "all") {
     if (Array.isArray(visibilityStatus)) {
@@ -80,9 +116,9 @@ export async function fullTextSearchSongs(
 
   const result = await db.query.songs.findMany({
     where: whereClause,
-    orderBy: [
-      sql`ts_rank_cd(${songs.searchVector}, ${tsQuery}) DESC`,
-    ],
+    orderBy: query.trim()
+      ? [sql`ts_rank_cd(${songs.searchVector}, ${tsQuery}) DESC`]
+      : [sql`lower(${songs.title}) ASC`],
     limit,
     offset,
     with: {

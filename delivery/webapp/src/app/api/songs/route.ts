@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { listSongs } from "@/lib/db/songs";
+import { parseKeysParam, parseBpmRangeParam } from "@/lib/db/search-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,6 +27,8 @@ export async function GET(request: NextRequest) {
       composer?: string;
       lyricist?: string;
       visibilityStatus?: string | string[];
+      keys?: string[];
+      bpmRange?: "slow" | "moderate" | "fast";
     } = {};
 
     const albumName = searchParams.get("albumName");
@@ -39,6 +42,12 @@ export async function GET(request: NextRequest) {
 
     const lyricist = searchParams.get("lyricist");
     if (lyricist) filters.lyricist = lyricist;
+
+    const keys = parseKeysParam(searchParams.get("keys"));
+    if (keys) filters.keys = keys;
+
+    const bpmRange = parseBpmRangeParam(searchParams.get("bpmRange"));
+    if (bpmRange) filters.bpmRange = bpmRange;
 
     // Default to published + review for browse; respect explicit client override
     const visibilityParam = searchParams.get("visibilityStatus");
