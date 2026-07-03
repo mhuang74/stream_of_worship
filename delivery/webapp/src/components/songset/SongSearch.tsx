@@ -63,6 +63,7 @@ export function SongSearch({
           query: searchQuery.trim() || undefined,
           keys: selectedKeys.length > 0 ? selectedKeys : undefined,
           bpmRange: selectedBpm,
+          album,
         });
       } else {
         onSearch(searchQuery, album);
@@ -151,8 +152,10 @@ export function SongSearch({
     setSelectedKeys([]);
     setSelectedBpm(undefined);
     setIsSearching(true);
-    debouncedSearch(query, selectedAlbum);
-  }, [debouncedSearch, query, selectedAlbum]);
+    const album = selectedAlbum === "all" ? undefined : selectedAlbum;
+    onSearch(query, album);
+    setIsSearching(false);
+  }, [query, selectedAlbum, onSearch]);
 
   const showClearButton = query.length > 0;
   const showLoadingIndicator = isLoading || isSearching;

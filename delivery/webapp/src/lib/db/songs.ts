@@ -6,6 +6,7 @@ import { parseMusicalKey } from "@/lib/music/key";
 import {
   buildKeyRegex,
   buildBpmPredicate,
+  buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
 
@@ -228,26 +229,30 @@ function buildSongWhereClause(
     whereConditions.push(eq(songs.lyricist, filters.lyricist));
   }
 
-  if (filters?.keys && filters.keys.length > 0) {
+  if (filters?.keys && (filters.keys?.length ?? 0) > 0) {
     const keyRegex = buildKeyRegex(filters.keys);
+    const visCond = buildVisibilityCondition(filters?.visibilityStatus, "r2");
     whereConditions.push(
       sql`exists (
         select 1 from recordings r2
         where r2.song_id = ${songs.id}
           and r2.deleted_at IS NULL
+          ${visCond ? sql`and ${visCond}` : sql``}
           and r2.musical_key ~* ${keyRegex}
       )`
     );
   }
 
   if (filters?.bpmRange) {
-    const bpmPredicate = buildBpmPredicate(filters.bpmRange);
+    const bpmPredicate = buildBpmPredicate(filters.bpmRange, "r3");
+    const visCond = buildVisibilityCondition(filters?.visibilityStatus, "r3");
     whereConditions.push(
       sql`exists (
         select 1 from recordings r3
         where r3.song_id = ${songs.id}
           and r3.deleted_at IS NULL
           and r3.tempo_bpm IS NOT NULL
+          ${visCond ? sql`and ${visCond}` : sql``}
           and ${bpmPredicate}
       )`
     );

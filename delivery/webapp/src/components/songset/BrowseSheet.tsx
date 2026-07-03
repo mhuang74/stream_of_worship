@@ -343,7 +343,7 @@ export function BrowseSheet({
                 <SongSearch
                   onSearch={handleSearch}
                   onAdvancedSearch={(criteria) =>
-                    handleSearch(criteria.query ?? "", albumFilter, criteria)
+                    handleSearch(criteria.query ?? "", criteria.album, criteria)
                   }
                   albums={albums}
                   isLoading={isLoading || isLoadingAlbums}
