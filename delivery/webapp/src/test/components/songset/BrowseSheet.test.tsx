@@ -326,7 +326,7 @@ describe("BrowseSheet", () => {
     it("renders browse and describe mode tabs", async () => {
       renderSheet();
       await waitFor(() => {
-        expect(screen.getByTestId("browse-mode-tab")).toBeInTheDocument();
+        expect(screen.getByTestId("keyword-mode-tab")).toBeInTheDocument();
         expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
       });
     });
@@ -364,7 +364,7 @@ describe("BrowseSheet", () => {
         expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId("browse-mode-tab"));
+      fireEvent.click(screen.getByTestId("keyword-mode-tab"));
       await waitFor(() => {
         expect(screen.getByTestId("search-input")).toBeInTheDocument();
       });
@@ -666,6 +666,231 @@ describe("BrowseSheet", () => {
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith("No audio available for this song");
+      });
+    });
+  });
+
+  describe("sheet description and help text", () => {
+    it("renders sheet description", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(
+          screen.getByText("Search the catalog and add songs to your songset")
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("renders keyword help text in keyword mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("keyword-help-text")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("keyword-help-text").textContent).toContain("奇异恩典");
+    });
+
+    it("renders describe help text in describe mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("describe-help-text")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("describe-help-text").textContent).toContain("关于神的恩典");
+    });
+  });
+
+  describe("shared filter visibility in describe mode", () => {
+    it("renders album filter in describe mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("album-filter")).toBeInTheDocument();
+    });
+
+    it("renders advanced filters toggle in describe mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+    });
+
+    it("can open advanced filters panel in describe mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("filter persistence across mode switch", () => {
+    it("filter selections persist across mode switch", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
+      });
+
+      // Select albums
+      fireEvent.click(screen.getByTestId("album-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+      fireEvent.click(screen.getByTestId("album-option-Worship"));
+
+      // Open advanced panel and select key + BPM
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+
+      // Switch to Describe
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+      });
+
+      // Switch back to Keyword
+      fireEvent.click(screen.getByTestId("keyword-mode-tab"));
+      await waitFor(() => {
+        expect(screen.getByTestId("search-input")).toBeInTheDocument();
+      });
+
+      // Assert selections preserved
+      expect(screen.getByTestId("album-filter").textContent).toContain("2");
+      expect(screen.getByTestId("key-chip-D")).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByTestId("bpm-chip-slow")).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  describe("describe mode filter behavior", () => {
+    it("does not auto-search on filter change in describe mode", async () => {
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+      });
+
+      const fetchCountBefore = mockFetch.mock.calls.filter(
+        (call) => typeof call[0] === "string" && call[0].includes("/api/songs/search/semantic")
+      ).length;
+
+      // Select an album (filter change)
+      fireEvent.click(screen.getByTestId("album-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+
+      const fetchCountAfter = mockFetch.mock.calls.filter(
+        (call) => typeof call[0] === "string" && call[0].includes("/api/songs/search/semantic")
+      ).length;
+
+      expect(fetchCountAfter).toBe(fetchCountBefore);
+    });
+
+    it("sends selected filters in semantic body", async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/songs/albums") {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ albums: mockAlbums }),
+          });
+        }
+        if (url.includes("/api/songs/search/semantic")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ songs: [], total: 0 }),
+          });
+        }
+        if (url.includes("/api/songs")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ songs: mockSongs, total: mockSongs.length }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      });
+
+      renderSheet();
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
+      });
+
+      // Select albums + key + BPM in keyword mode (filters are shared)
+      fireEvent.click(screen.getByTestId("album-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+      fireEvent.click(screen.getByTestId("album-option-Worship"));
+
+      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+      await waitFor(() => {
+        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+
+      // Switch to Describe
+      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+      await waitFor(() => {
+        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
+      });
+
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/songs/search/semantic",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({
+              query: "grace",
+              limit: 20,
+              albums: ["Hymns", "Worship"],
+              keys: ["D"],
+              bpmRange: "slow",
+            }),
+          })
+        );
       });
     });
   });
