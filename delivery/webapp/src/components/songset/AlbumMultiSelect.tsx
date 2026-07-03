@@ -51,7 +51,7 @@ export function AlbumMultiSelect({
   };
 
   const clearAlbums = () => onSelectedAlbumsChange([]);
-  const summary = selectedAlbums.slice(0, 2).map(formatAlbumLabel).join(", ");
+  const summary = selectedAlbums.slice(0, 2).map((album) => album.albumName).join(", ");
   const overflowCount = Math.max(0, selectedAlbums.length - 2);
   const triggerText =
     selectedAlbums.length === 0
@@ -106,7 +106,10 @@ export function AlbumMultiSelect({
       </DropdownMenu>
 
       {selectedAlbums.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <div
+          className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+          data-testid="album-selected-summary"
+        >
           <span className="truncate max-w-[18rem]">{summary}</span>
           {overflowCount > 0 && <span>+{overflowCount} more</span>}
           <Button

@@ -95,6 +95,14 @@ describe("SharedFilters", () => {
       fireEvent.click(screen.getByTestId(hymnsOptionTestId));
       expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([]);
     });
+
+    it("shows only album names in the selected summary", () => {
+      renderFilters({ selectedAlbums: [hymns] });
+
+      const summary = screen.getByTestId("album-selected-summary");
+      expect(summary).toHaveTextContent("Hymns");
+      expect(summary).not.toHaveTextContent("Classic");
+    });
   });
 
   describe("key chips", () => {
