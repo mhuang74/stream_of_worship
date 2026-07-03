@@ -45,11 +45,15 @@ export function BpmRangeMultiSelect({
 
   const clearBpm = () => onSelectedBpmChange([]);
 
+  const sortedBpm = [...selectedBpm].sort(
+    (a, b) => BPM_BAND_KEYS.indexOf(a) - BPM_BAND_KEYS.indexOf(b)
+  );
+
   let triggerText: string;
-  if (selectedBpm.length === 0) {
+  if (sortedBpm.length === 0) {
     triggerText = "All BPM Ranges";
   } else {
-    triggerText = selectedBpm.map((band) => BPM_BANDS[band].label).join(", ");
+    triggerText = sortedBpm.map((band) => BPM_BANDS[band].label).join(", ");
   }
 
   return (
@@ -85,6 +89,7 @@ export function BpmRangeMultiSelect({
                 key={band}
                 checked={selectedSet.has(band)}
                 onCheckedChange={() => toggleBpm(band)}
+                onSelect={(e) => e.preventDefault()}
                 data-testid={`bpm-option-${band}`}
               >
                 {BPM_BANDS[band].label} ({formatBpmBandRangeText(band)})

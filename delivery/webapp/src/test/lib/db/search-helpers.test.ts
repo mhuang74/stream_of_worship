@@ -282,4 +282,16 @@ describe("parseBpmRangeParams", () => {
   it("returns undefined when all invalid", () => {
     expect(parseBpmRangeParams(["medium", "unknown"])).toBeUndefined();
   });
+
+  it("parses comma-separated values within a single param", () => {
+    expect(parseBpmRangeParams(["slow,fast"])).toEqual(["slow", "fast"]);
+  });
+
+  it("trims whitespace around comma-separated values", () => {
+    expect(parseBpmRangeParams([" slow , fast "])).toEqual(["slow", "fast"]);
+  });
+
+  it("filters invalid entries within comma-separated values", () => {
+    expect(parseBpmRangeParams(["slow,medium,fast"])).toEqual(["slow", "fast"]);
+  });
 });

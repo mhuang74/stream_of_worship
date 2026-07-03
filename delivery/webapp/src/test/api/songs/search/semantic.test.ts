@@ -262,4 +262,21 @@ describe("POST /api/songs/search/semantic", () => {
       ["published", "review"]
     );
   });
+
+  it("accepts legacy single-string bpmRange payload", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
+    vi.mocked(semanticSearchSongs).mockResolvedValue([]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
+
+    await POST(makeRequest({ query: "test", bpmRange: "slow" }));
+
+    expect(semanticSearchSongs).toHaveBeenCalledWith(
+      mockEmbedding,
+      "text-embedding-3-small",
+      40,
+      ["published", "review"],
+      { albums: undefined, albumFilters: undefined, keys: undefined, bpmRange: ["slow"] }
+    );
+  });
 });
