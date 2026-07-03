@@ -53,7 +53,8 @@ from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
     OFFICIAL_LYRICS_SUFFIX,
     YouTubeDownloader,
-    _extract_chinese_title_from_youtube,
+    _extract_bracket_content,
+    _titles_match,
 )
 
 console = Console()
@@ -783,10 +784,10 @@ def import_youtube_audio_for_song(
 
         video_title = video_info.get("title") if video_info else None
         if is_direct_url:
-            chinese_title = _extract_chinese_title_from_youtube(video_title)
-            if chinese_title and chinese_title != song.title:
+            bracket_content = _extract_bracket_content(video_title) or video_title
+            if bracket_content and not _titles_match(song.title, video_title):
                 console.print(
-                    f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+                    f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{bracket_content}' from video '{video_title}'[/yellow]"
                 )
                 console.print(
                     "[yellow]  This may be the wrong video. Consider using --url to specify the correct video.[/yellow]"
@@ -817,10 +818,10 @@ def import_youtube_audio_for_song(
 
         _display_video_preview(video_info, console)
         video_title = video_info.get("title") if video_info else None
-        chinese_title = _extract_chinese_title_from_youtube(video_title)
-        if chinese_title and chinese_title != song.title:
+        bracket_content = _extract_bracket_content(video_title) or video_title
+        if bracket_content and not _titles_match(song.title, video_title):
             console.print(
-                f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{chinese_title}' from video '{video_title}'[/yellow]"
+                f"[yellow]⚠ Title mismatch: expected '{song.title}', got '{bracket_content}' from video '{video_title}'[/yellow]"
             )
             console.print("[yellow]  This may be the wrong video.[/yellow]")
 

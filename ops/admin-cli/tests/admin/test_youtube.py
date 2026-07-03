@@ -9,8 +9,10 @@ import yt_dlp
 
 from stream_of_worship.admin.services.youtube import (
     YouTubeDownloader,
+    _extract_bracket_content,
     _extract_chinese_title_from_youtube,
     _select_best_candidate,
+    _titles_match,
     derive_song_defaults,
     extract_video_id,
     extract_video_metadata,
@@ -72,6 +74,24 @@ class TestBuildSearchQuery:
             "將天敞開", composer="游智婷", album="敬拜讚美15"
         )
         assert result == "將天敞開 游智婷 敬拜讚美15"
+
+    def test_strips_brackets_from_title(self, downloader):
+        result = downloader.build_search_query("Holy, Holy [聖潔榮耀主]")
+        assert result == "Holy, Holy 聖潔榮耀主"
+        assert "[" not in result
+        assert "]" not in result
+
+    def test_strips_multiple_bracket_segments(self, downloader):
+        result = downloader.build_search_query("A [B] C [D]")
+        assert result == "A B C D"
+
+    def test_unmatched_bracket_left_unchanged(self, downloader):
+        result = downloader.build_search_query("A [B")
+        assert result == "A [B"
+
+    def test_empty_brackets_stripped(self, downloader):
+        result = downloader.build_search_query("Song [] Title")
+        assert result == "Song Title"
 
 
 class TestDownload:
@@ -563,6 +583,83 @@ class TestExtractChineseTitle:
         assert _extract_chinese_title_from_youtube("【愛】MV") == "愛"
 
 
+class TestExtractBracketContent:
+    """Tests for _extract_bracket_content."""
+
+    def test_extracts_full_bracket_content(self):
+        title = "【Holy, Holy 聖潔榮耀主】官方歌詞版MV"
+        assert _extract_bracket_content(title) == "Holy, Holy 聖潔榮耀主"
+
+    def test_extracts_single_token(self):
+        assert _extract_bracket_content("【一生敬拜祢】MV") == "一生敬拜祢"
+
+    def test_returns_none_when_no_brackets(self):
+        assert _extract_bracket_content("Some Video Title") is None
+
+    def test_returns_none_for_empty_string(self):
+        assert _extract_bracket_content("") is None
+
+    def test_returns_none_for_none(self):
+        assert _extract_bracket_content(None) is None
+
+
+class TestTitlesMatch:
+    """Tests for the _titles_match bracket-aware matcher."""
+
+    def test_convention2_match_user_case(self):
+        song = "Holy, Holy [聖潔榮耀主]"
+        video = "【Holy, Holy 聖潔榮耀主】官方歌詞版MV (Official Lyrics MV) - 讚美之泉敬拜讚美 (30)"
+        assert _titles_match(song, video) is True
+
+    def test_convention2_non_match_wrong_chinese(self):
+        song = "Holy, Holy [聖潔榮耀主]"
+        video = "【Holy, Holy 另一首歌】MV"
+        assert _titles_match(song, video) is False
+
+    def test_convention2_overmatch_blocked_by_length(self):
+        song = "Here I Am [我在這裡]"
+        video = "【Here I Am to Worship 我在這裡 And Dwell Here Forever】MV"
+        assert _titles_match(song, video) is False
+
+    def test_convention1_chinese_match(self):
+        song = "一生敬拜祢"
+        video = "【一生敬拜祢 All the Days of My Life】官方歌詞版MV"
+        assert _titles_match(song, video) is True
+
+    def test_convention1_chinese_non_match(self):
+        song = "一生敬拜祢"
+        video = "【另一首 All the Days】MV"
+        assert _titles_match(song, video) is False
+
+    def test_english_only_match(self):
+        song = "Amazing Grace"
+        video = "【Amazing Grace Official MV】"
+        assert _titles_match(song, video) is True
+
+    def test_english_only_blocked_by_length(self):
+        song = "Amazing Grace"
+        video = "【A very long medley of twenty unrelated worship songs】MV"
+        assert _titles_match(song, video) is False
+
+    def test_bracketless_video_falls_back_to_raw_compare(self):
+        song = "Amazing Grace"
+        video = "Amazing Grace"
+        assert _titles_match(song, video) is True
+
+    def test_bracketless_video_raw_compare_non_match(self):
+        song = "Amazing Grace"
+        video = "Some Other Song"
+        assert _titles_match(song, video) is False
+
+    def test_multiple_bracket_segments_in_catalog(self):
+        song = "A B [X] C [Y]"
+        video = "【A B C X Y】MV"
+        assert _titles_match(song, video) is True
+
+    def test_none_video_title(self):
+        assert _titles_match("Song", None) is False
+
+
 class TestSelectBestCandidate:
     """Tests for the _select_best_candidate helper."""
 
@@ -602,8 +699,17 @@ class TestSelectBestCandidate:
         assert _select_best_candidate([], "目標歌曲") is None
 
     def test_exact_match_only(self):
-        entries = [{"title": "【目標歌曲相似】MV", "webpage_url": "url1"}]
+        entries = [{"title": "【完全不同的歌】MV", "webpage_url": "url1"}]
         assert _select_best_candidate(entries, "目標歌曲") is None
+
+    def test_convention2_bracketed_catalog_matches(self):
+        entries = [
+            {"title": "【另一首】Wrong MV", "webpage_url": "url1"},
+            {"title": "【Holy, Holy 聖潔榮耀主】Official MV", "webpage_url": "url2"},
+        ]
+        result = _select_best_candidate(entries, "Holy, Holy [聖潔榮耀主]")
+        assert result is not None
+        assert result["webpage_url"] == "url2"
 
 
 class TestPreviewVideoMultiCandidate:
