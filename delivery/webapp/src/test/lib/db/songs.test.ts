@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { findTopMatchingLines, rrfRerank, SemanticSearchResult } from "@/lib/db/songs";
+import {
+  findTopMatchingLines,
+  listSongs,
+  rrfRerank,
+  semanticSearchSongs,
+  SemanticSearchResult,
+} from "@/lib/db/songs";
 import { db } from "@/db";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 vi.mock("@/db", () => ({
   db: {
     execute: vi.fn(),
+    query: {
+      songs: {
+        findMany: vi.fn(),
+      },
+    },
+    select: vi.fn(),
   },
 }));
 
@@ -67,6 +79,65 @@ describe("findTopMatchingLines", () => {
     await expect(
       findTopMatchingLines(nanEmbedding, ["song-1"])
     ).rejects.toThrow("Invalid embedding");
+  });
+});
+
+describe("semanticSearchSongs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("filters by effective catalog key before recording-key fallback", async () => {
+    vi.mocked(db.execute).mockResolvedValue({
+      rows: [],
+    } as unknown as Awaited<ReturnType<typeof db.execute>>);
+
+    await semanticSearchSongs(
+      NON_ZERO_EMBEDDING,
+      "text-embedding-3-small",
+      20,
+      ["published", "review"],
+      { keys: ["A"] }
+    );
+
+    const callArgs = vi.mocked(db.execute).mock.calls[0][0];
+    const query = dialect.sqlToQuery(callArgs);
+    expect(query.sql).toContain("s.musical_key");
+    expect(query.sql).toContain("s.musical_key_start_pitch_class");
+    expect(query.sql).toContain("s.musical_key_end_pitch_class");
+    expect(query.sql).toContain("r.musical_key");
+    expect(query.sql).toContain("NOT (");
+    expect(query.params).toContain(9);
+  });
+});
+
+describe("listSongs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("filters keys by effective catalog key before recording-key fallback", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, {
+      visibilityStatus: ["published", "review"],
+      keys: ["A"],
+    });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const query = dialect.sqlToQuery(findManyArgs.where);
+    expect(query.sql).toContain("songs.musical_key");
+    expect(query.sql).toContain("songs.musical_key_start_pitch_class");
+    expect(query.sql).toContain("songs.musical_key_end_pitch_class");
+    expect(query.sql).toContain("r2.musical_key");
+    expect(query.sql).toContain("NOT (");
+    expect(query.params).toContain(9);
   });
 });
 

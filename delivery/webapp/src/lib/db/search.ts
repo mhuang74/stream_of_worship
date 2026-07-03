@@ -3,7 +3,7 @@ import { songs } from "@/db/schema";
 import { sql, and, isNull, or, ilike, inArray } from "drizzle-orm";
 import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
 import {
-  buildKeyRegex,
+  buildEffectiveKeyPredicate,
   buildBpmPredicate,
   buildVisibilityCondition,
 } from "./search-helpers";
@@ -43,7 +43,6 @@ export async function fullTextSearchSongs(
   }
 
   if (options?.keys && (options.keys?.length ?? 0) > 0) {
-    const keyRegex = buildKeyRegex(options.keys);
     const visCond = buildVisibilityCondition(visibilityStatus, "r2");
     whereConditions.push(
       sql`exists (
@@ -51,7 +50,7 @@ export async function fullTextSearchSongs(
         where r2.song_id = ${songs.id}
           and r2.deleted_at IS NULL
           ${visCond ? sql`and ${visCond}` : sql``}
-          and r2.musical_key ~* ${keyRegex}
+          and ${buildEffectiveKeyPredicate(options.keys, "songs", "r2")}
       )`
     );
   }

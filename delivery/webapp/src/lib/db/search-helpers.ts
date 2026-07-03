@@ -1,9 +1,120 @@
 import { sql, type SQL } from "drizzle-orm";
 import { PITCH_CLASSES, BPM_BAND_KEYS, type BpmBandKey } from "@/lib/constants";
+import { parseMusicalKey } from "@/lib/music/key";
+
+const ENHARMONIC_ROOTS_BY_PITCH_CLASS: Record<number, string[]> = {
+  0: ["C", "B#", "B♯"],
+  1: ["C#", "C♯", "Db", "D♭"],
+  2: ["D"],
+  3: ["D#", "D♯", "Eb", "E♭"],
+  4: ["E", "Fb", "F♭"],
+  5: ["F", "E#", "E♯"],
+  6: ["F#", "F♯", "Gb", "G♭"],
+  7: ["G"],
+  8: ["G#", "G♯", "Ab", "A♭"],
+  9: ["A"],
+  10: ["A#", "A♯", "Bb", "B♭"],
+  11: ["B", "Cb", "C♭"],
+};
 
 export function buildKeyRegex(keys: string[]): string {
   const escaped = keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return `^(${escaped.join("|")})(maj|major|minor|min)?(?!\\w)`;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function selectedPitchClasses(keys: string[]): number[] {
+  const pitchClasses = keys
+    .map((key) => parseMusicalKey(key).pitchClass)
+    .filter((pitchClass): pitchClass is number => pitchClass != null);
+  return Array.from(new Set(pitchClasses));
+}
+
+function buildRootTokenRegexForPitchClasses(pitchClasses: number[]): string {
+  const roots = pitchClasses.flatMap(
+    (pitchClass) => ENHARMONIC_ROOTS_BY_PITCH_CLASS[pitchClass] ?? []
+  );
+  const escapedRoots = Array.from(new Set(roots)).map(escapeRegex);
+  return `(?:${escapedRoots.join("|")})`;
+}
+
+export function buildKeyTokenRegex(keys: string[]): string {
+  const pitchClasses = selectedPitchClasses(keys);
+  if (pitchClasses.length === 0) return "(?!)";
+  const rootToken = buildRootTokenRegexForPitchClasses(pitchClasses);
+  return String.raw`^\s*${rootToken}(?:\s*(?:maj|major|minor|min|m|小調|大調))?\s*(?:$|-|→|~)`;
+}
+
+export function buildCatalogKeyTokenRegex(keys: string[]): string {
+  const pitchClasses = selectedPitchClasses(keys);
+  if (pitchClasses.length === 0) return "(?!)";
+  const rootToken = buildRootTokenRegexForPitchClasses(pitchClasses);
+  return String.raw`(?:^|\s*(?:-|→|~)\s*)${rootToken}(?:\s*(?:maj|major|minor|min|m|小調|大調))?\s*(?:$|-|→|~)`;
+}
+
+export function displayedKeyPitchClasses(value: string | null | undefined): number[] | null {
+  const parsed = parseMusicalKey(value);
+  if (parsed.status === "missing") return [];
+  if (parsed.status === "unparseable") return null;
+  const pitchClasses = [parsed.startPitchClass, parsed.endPitchClass].filter(
+    (pitchClass): pitchClass is number => pitchClass != null
+  );
+  return Array.from(new Set(pitchClasses));
+}
+
+export function effectiveKeyMatchesFilter(input: {
+  catalogKey?: string | null;
+  recordingKey?: string | null;
+  keys: string[];
+}): boolean {
+  const selected = selectedPitchClasses(input.keys);
+  if (selected.length === 0) return false;
+
+  const catalogPitchClasses = displayedKeyPitchClasses(input.catalogKey);
+  if (catalogPitchClasses === null) return false;
+  if (catalogPitchClasses.length > 0) {
+    return catalogPitchClasses.some((pitchClass) => selected.includes(pitchClass));
+  }
+
+  const recordingPitchClasses = displayedKeyPitchClasses(input.recordingKey);
+  if (!recordingPitchClasses) return false;
+  return recordingPitchClasses.some((pitchClass) => selected.includes(pitchClass));
+}
+
+export function buildRecordingKeyPredicate(keys: string[], recordingAlias: string): SQL {
+  const col = sql.raw(`${recordingAlias}.musical_key`);
+  return sql`${col} ~* ${buildKeyTokenRegex(keys)}`;
+}
+
+export function buildEffectiveKeyPredicate(
+  keys: string[],
+  songAlias: string,
+  recordingAlias: string
+): SQL {
+  const pitchClasses = selectedPitchClasses(keys);
+  if (pitchClasses.length === 0) return sql`false`;
+
+  const catalogKey = sql.raw(`${songAlias}.musical_key`);
+  const catalogStartPitchClass = sql.raw(`${songAlias}.musical_key_start_pitch_class`);
+  const catalogEndPitchClass = sql.raw(`${songAlias}.musical_key_end_pitch_class`);
+  const catalogPresent = sql`${catalogKey} IS NOT NULL AND btrim(${catalogKey}) <> ''`;
+  const catalogPitchClassArray = sql`ARRAY[${sql.join(
+    pitchClasses.map((pitchClass) => sql`${pitchClass}`),
+    sql`, `
+  )}]::int[]`;
+  const catalogPitchClassMatch = sql`(
+    ${catalogStartPitchClass} = ANY(${catalogPitchClassArray})
+    OR ${catalogEndPitchClass} = ANY(${catalogPitchClassArray})
+    OR ${catalogKey} ~* ${buildCatalogKeyTokenRegex(keys)}
+  )`;
+
+  return sql`(
+    (${catalogPresent} AND ${catalogPitchClassMatch})
+    OR (NOT (${catalogPresent}) AND ${buildRecordingKeyPredicate(keys, recordingAlias)})
+  )`;
 }
 
 export function buildBpmPredicate(bpmRange: BpmBandKey, alias: string = "r"): SQL {
