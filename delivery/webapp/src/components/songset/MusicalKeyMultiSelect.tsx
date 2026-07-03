@@ -40,15 +40,19 @@ export function MusicalKeyMultiSelect({
 
   const clearKeys = () => onSelectedKeysChange([]);
 
+  const sortedKeys = [...selectedKeys].sort(
+    (a, b) => PITCH_CLASSES.indexOf(a) - PITCH_CLASSES.indexOf(b)
+  );
+
   let triggerText: string;
-  if (selectedKeys.length === 0) {
+  if (sortedKeys.length === 0) {
     triggerText = "All Musical Keys";
-  } else if (selectedKeys.length === 1) {
-    triggerText = selectedKeys[0];
-  } else if (selectedKeys.length === 2) {
-    triggerText = selectedKeys.join(", ");
+  } else if (sortedKeys.length === 1) {
+    triggerText = sortedKeys[0];
+  } else if (sortedKeys.length === 2) {
+    triggerText = sortedKeys.join(", ");
   } else {
-    triggerText = `${selectedKeys.slice(0, 2).join(", ")}, +${selectedKeys.length - 2}`;
+    triggerText = `${sortedKeys.slice(0, 2).join(", ")}, +${sortedKeys.length - 2}`;
   }
 
   return (
@@ -84,6 +88,7 @@ export function MusicalKeyMultiSelect({
                 key={key}
                 checked={selectedSet.has(key)}
                 onCheckedChange={() => toggleKey(key)}
+                onSelect={(e) => e.preventDefault()}
                 data-testid={`key-option-${key.replace("#", "sharp")}`}
               >
                 {key}

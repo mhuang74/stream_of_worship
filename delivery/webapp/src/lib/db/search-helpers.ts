@@ -184,9 +184,11 @@ export function parseBpmRangeParams(
   bpmRangeParams: string[]
 ): BpmBandKey[] | undefined {
   const bands = bpmRangeParams
-    .filter((value) => isValidBpmBand(value));
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value): value is BpmBandKey => isValidBpmBand(value));
   if (bands.length === 0) return undefined;
-  return Array.from(new Set(bands)) as BpmBandKey[];
+  return Array.from(new Set(bands));
 }
 
 export function parseAlbumValues(values: string[]): string[] | undefined {
