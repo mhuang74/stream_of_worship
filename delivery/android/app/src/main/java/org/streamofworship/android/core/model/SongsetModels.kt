@@ -59,6 +59,11 @@ data class SongsetItemSong(
     val lyricist: String? = null,
     val albumName: String? = null,
     val musicalKey: String? = null,
+    val effectiveKey: String? = null,
+    val effectiveKeySource: String? = null,
+    val effectiveKeyStartRoot: String? = null,
+    val effectiveKeyEndRoot: String? = null,
+    val effectiveKeyMode: String? = null,
 )
 
 @Serializable
@@ -67,6 +72,11 @@ data class SongsetItemRecording(
     val durationSeconds: Double? = null,
     val tempoBpm: Double? = null,
     val musicalKey: String? = null,
+    val effectiveKey: String? = null,
+    val effectiveKeySource: String? = null,
+    val effectiveKeyStartRoot: String? = null,
+    val effectiveKeyEndRoot: String? = null,
+    val effectiveKeyMode: String? = null,
     val r2AudioUrl: String? = null,
 )
 

@@ -38,6 +38,9 @@ export interface SongListItem {
     lyricist: string | null;
     albumName: string | null;
     musicalKey: string | null;
+    effectiveKey?: string | null;
+    effectiveKeyStartPitchClass?: number | null;
+    effectiveKeyEndPitchClass?: number | null;
   } | null;
   recording: {
     contentHash: string;
@@ -45,6 +48,9 @@ export interface SongListItem {
     durationSeconds: number | null;
     tempoBpm: number | null;
     musicalKey: string | null;
+    effectiveKey?: string | null;
+    effectiveKeyStartPitchClass?: number | null;
+    effectiveKeyEndPitchClass?: number | null;
   } | null;
   gapBeats: number;
   crossfadeEnabled: number;
@@ -210,8 +216,8 @@ function SortableSongItem({
                     {formatDuration(item.recording.durationSeconds)}
                   </span>
                 )}
-                {item.song?.musicalKey && (
-                  <span>• {item.song.musicalKey}</span>
+                {(item.song?.effectiveKey ?? item.song?.musicalKey) && (
+                  <span>• {item.song?.effectiveKey ?? item.song?.musicalKey}</span>
                 )}
               </div>
             </div>

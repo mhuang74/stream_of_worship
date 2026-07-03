@@ -12,6 +12,7 @@ import { eq, and, desc, gt, sql, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 import { sanitizeRenderErrorMessage } from "@/lib/render/error-message";
+import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
 
@@ -26,6 +27,14 @@ export interface PublicSongsetItem {
   durationSeconds: number | null;
   tempoBpm: number | null;
   recordingMusicalKey: string | null;
+  effectiveKey: string | null;
+  effectiveKeySource: EffectiveKey["source"];
+  effectiveKeyStartRoot: string | null;
+  effectiveKeyEndRoot: string | null;
+  effectiveKeyMode: EffectiveKey["mode"];
+  effectiveKeyStartPitchClass: number | null;
+  effectiveKeyEndPitchClass: number | null;
+  keyWarning: EffectiveKey["warning"];
 }
 
 export interface SongsetPublicView {
@@ -59,6 +68,10 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
       durationSeconds: recordings.durationSeconds,
       tempoBpm: recordings.tempoBpm,
       recordingMusicalKey: recordings.musicalKey,
+      recordingMusicalMode: recordings.musicalMode,
+      keyConfidence: recordings.keyConfidence,
+      keyScoreMargin: recordings.keyScoreMargin,
+      keyWindowAgreement: recordings.keyWindowAgreement,
       recordingDeletedAt: recordings.deletedAt,
     })
     .from(songsetItems)
@@ -70,17 +83,18 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
   const publicItems: PublicSongsetItem[] = items
     .filter((item) => !item.recordingDeletedAt)
     .map((item) => ({
-    id: item.id,
-    position: item.position,
-    songTitle: item.songTitle,
-    composer: item.composer,
-    lyricist: item.lyricist,
-    albumName: item.albumName,
-    songMusicalKey: item.songMusicalKey,
-    durationSeconds: item.durationSeconds,
-    tempoBpm: item.tempoBpm,
-    recordingMusicalKey: item.recordingMusicalKey,
-  }));
+      id: item.id,
+      position: item.position,
+      songTitle: item.songTitle,
+      composer: item.composer,
+      lyricist: item.lyricist,
+      albumName: item.albumName,
+      songMusicalKey: item.songMusicalKey,
+      durationSeconds: item.durationSeconds,
+      tempoBpm: item.tempoBpm,
+      recordingMusicalKey: item.recordingMusicalKey,
+      ...effectiveKeyFields(item),
+    }));
 
   const totalDurationSeconds = items.reduce(
     (sum, item) => sum + (item.durationSeconds ?? 0),
@@ -123,6 +137,14 @@ export interface SongsetItemRecording {
   durationSeconds: number | null;
   tempoBpm: number | null;
   musicalKey: string | null;
+  effectiveKey: string | null;
+  effectiveKeySource: EffectiveKey["source"];
+  effectiveKeyStartRoot: string | null;
+  effectiveKeyEndRoot: string | null;
+  effectiveKeyMode: EffectiveKey["mode"];
+  effectiveKeyStartPitchClass: number | null;
+  effectiveKeyEndPitchClass: number | null;
+  keyWarning: EffectiveKey["warning"];
   r2AudioUrl: string | null;
 }
 
@@ -144,6 +166,14 @@ export interface SongsetItemDetail {
     lyricist: string | null;
     albumName: string | null;
     musicalKey: string | null;
+    effectiveKey: string | null;
+    effectiveKeySource: EffectiveKey["source"];
+    effectiveKeyStartRoot: string | null;
+    effectiveKeyEndRoot: string | null;
+    effectiveKeyMode: EffectiveKey["mode"];
+    effectiveKeyStartPitchClass: number | null;
+    effectiveKeyEndPitchClass: number | null;
+    keyWarning: EffectiveKey["warning"];
   } | null;
   recording: SongsetItemRecording | null;
 }
@@ -191,6 +221,35 @@ export interface RenderPageData {
   } | null;
   latestJob: RenderJobSummary | null;
   previousCompletedJob: RenderJobSummary | null;
+}
+
+function effectiveKeyFields(input: {
+  songMusicalKey?: string | null;
+  recordingMusicalKey?: string | null;
+  recordingMusicalMode?: string | null;
+  keyConfidence?: number | null;
+  keyScoreMargin?: number | null;
+  keyWindowAgreement?: number | null;
+}) {
+  const effective = getEffectiveKey({
+    catalogKey: input.songMusicalKey,
+    detectedKey: input.recordingMusicalKey,
+    detectedMode: input.recordingMusicalMode,
+    detectedConfidence: input.keyConfidence,
+    detectedMargin: input.keyScoreMargin,
+    detectedWindowAgreement: input.keyWindowAgreement,
+  });
+
+  return {
+    effectiveKey: effective.display,
+    effectiveKeySource: effective.source,
+    effectiveKeyStartRoot: effective.startRoot,
+    effectiveKeyEndRoot: effective.endRoot,
+    effectiveKeyMode: effective.mode,
+    effectiveKeyStartPitchClass: effective.startPitchClass,
+    effectiveKeyEndPitchClass: effective.endPitchClass,
+    keyWarning: effective.warning,
+  };
 }
 
 async function timePageLoad<T>(label: string, fn: () => Promise<T>): Promise<T> {
@@ -399,6 +458,10 @@ export async function getSongsetEditorData(
         durationSeconds: recordings.durationSeconds,
         tempoBpm: recordings.tempoBpm,
         recordingMusicalKey: recordings.musicalKey,
+        recordingMusicalMode: recordings.musicalMode,
+        keyConfidence: recordings.keyConfidence,
+        keyScoreMargin: recordings.keyScoreMargin,
+        keyWindowAgreement: recordings.keyWindowAgreement,
         r2AudioUrl: recordings.r2AudioUrl,
         recordingDeletedAt: recordings.deletedAt,
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
@@ -435,6 +498,10 @@ export async function getSongsetEditorData(
         recordings.durationSeconds,
         recordings.tempoBpm,
         recordings.musicalKey,
+        recordings.musicalMode,
+        recordings.keyConfidence,
+        recordings.keyScoreMargin,
+        recordings.keyWindowAgreement,
         recordings.r2AudioUrl,
         recordings.deletedAt
       )
@@ -465,6 +532,7 @@ export async function getSongsetEditorData(
             lyricist: item.lyricist,
             albumName: item.albumName,
             musicalKey: item.songMusicalKey,
+            ...effectiveKeyFields(item),
           }
         : null,
       recording: item.recordingContentHash
@@ -473,6 +541,7 @@ export async function getSongsetEditorData(
             durationSeconds: item.durationSeconds,
             tempoBpm: item.tempoBpm,
             musicalKey: item.recordingMusicalKey,
+            ...effectiveKeyFields(item),
             r2AudioUrl: item.r2AudioUrl,
           }
         : null,
@@ -702,37 +771,49 @@ export async function getSongset(
 
   const items: SongsetItemDetail[] = sortedItems
     .filter((item) => !item.recording?.deletedAt)
-    .map((item) => ({
-    id: item.id,
-    songId: item.songId,
-    recordingHashPrefix: item.recordingHashPrefix,
-    position: item.position,
-    gapBeats: item.gapBeats ?? null,
-    crossfadeEnabled: item.crossfadeEnabled ?? null,
-    crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
-    keyShiftSemitones: item.keyShiftSemitones ?? null,
-    tempoRatio: item.tempoRatio ?? null,
-    markedLineCount: item.recording?.lyricMarks.length ?? 0,
-    song: item.song
-      ? {
-          id: item.song.id,
-          title: item.song.title,
-          composer: item.song.composer,
-          lyricist: item.song.lyricist,
-          albumName: item.song.albumName,
-          musicalKey: item.song.musicalKey,
-        }
-      : null,
-    recording: item.recording
-      ? {
-          contentHash: item.recording.contentHash,
-          durationSeconds: item.recording.durationSeconds,
-          tempoBpm: item.recording.tempoBpm,
-          musicalKey: item.recording.musicalKey,
-          r2AudioUrl: item.recording.r2AudioUrl,
-        }
-      : null,
-  }));
+    .map((item) => {
+      const keyFields = effectiveKeyFields({
+        songMusicalKey: item.song?.musicalKey,
+        recordingMusicalKey: item.recording?.musicalKey,
+        recordingMusicalMode: item.recording?.musicalMode,
+        keyConfidence: item.recording?.keyConfidence,
+        keyScoreMargin: item.recording?.keyScoreMargin,
+        keyWindowAgreement: item.recording?.keyWindowAgreement,
+      });
+      return {
+        id: item.id,
+        songId: item.songId,
+        recordingHashPrefix: item.recordingHashPrefix,
+        position: item.position,
+        gapBeats: item.gapBeats ?? null,
+        crossfadeEnabled: item.crossfadeEnabled ?? null,
+        crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
+        keyShiftSemitones: item.keyShiftSemitones ?? null,
+        tempoRatio: item.tempoRatio ?? null,
+        markedLineCount: item.recording?.lyricMarks.length ?? 0,
+        song: item.song
+          ? {
+              id: item.song.id,
+              title: item.song.title,
+              composer: item.song.composer,
+              lyricist: item.song.lyricist,
+              albumName: item.song.albumName,
+              musicalKey: item.song.musicalKey,
+              ...keyFields,
+            }
+          : null,
+        recording: item.recording
+          ? {
+              contentHash: item.recording.contentHash,
+              durationSeconds: item.recording.durationSeconds,
+              tempoBpm: item.recording.tempoBpm,
+              musicalKey: item.recording.musicalKey,
+              ...keyFields,
+              r2AudioUrl: item.recording.r2AudioUrl,
+            }
+          : null,
+      };
+    });
 
   const renderState = await computeRenderState(id);
 
@@ -899,6 +980,15 @@ export async function addSongsetItem(
 
   if (!item) return null;
 
+  const keyFields = effectiveKeyFields({
+    songMusicalKey: item.song?.musicalKey,
+    recordingMusicalKey: item.recording?.musicalKey,
+    recordingMusicalMode: item.recording?.musicalMode,
+    keyConfidence: item.recording?.keyConfidence,
+    keyScoreMargin: item.recording?.keyScoreMargin,
+    keyWindowAgreement: item.recording?.keyWindowAgreement,
+  });
+
   return {
     id: item.id,
     songId: item.songId,
@@ -918,6 +1008,7 @@ export async function addSongsetItem(
           lyricist: item.song.lyricist,
           albumName: item.song.albumName,
           musicalKey: item.song.musicalKey,
+          ...keyFields,
         }
       : null,
     recording: item.recording
@@ -926,6 +1017,7 @@ export async function addSongsetItem(
           durationSeconds: item.recording.durationSeconds,
           tempoBpm: item.recording.tempoBpm,
           musicalKey: item.recording.musicalKey,
+          ...keyFields,
           r2AudioUrl: item.recording.r2AudioUrl,
         }
       : null,
@@ -974,6 +1066,15 @@ export async function updateSongsetItem(
 
   if (!updated) return null;
 
+  const keyFields = effectiveKeyFields({
+    songMusicalKey: updated.song?.musicalKey,
+    recordingMusicalKey: updated.recording?.musicalKey,
+    recordingMusicalMode: updated.recording?.musicalMode,
+    keyConfidence: updated.recording?.keyConfidence,
+    keyScoreMargin: updated.recording?.keyScoreMargin,
+    keyWindowAgreement: updated.recording?.keyWindowAgreement,
+  });
+
   return {
     id: updated.id,
     songId: updated.songId,
@@ -993,6 +1094,7 @@ export async function updateSongsetItem(
           lyricist: updated.song.lyricist,
           albumName: updated.song.albumName,
           musicalKey: updated.song.musicalKey,
+          ...keyFields,
         }
       : null,
     recording: updated.recording
@@ -1001,6 +1103,7 @@ export async function updateSongsetItem(
           durationSeconds: updated.recording.durationSeconds,
           tempoBpm: updated.recording.tempoBpm,
           musicalKey: updated.recording.musicalKey,
+          ...keyFields,
           r2AudioUrl: updated.recording.r2AudioUrl,
         }
       : null,

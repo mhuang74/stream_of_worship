@@ -14,12 +14,18 @@ export interface SongCardData {
   lyricist: string | null;
   albumName: string | null;
   musicalKey: string | null;
+  effectiveKey?: string | null;
+  effectiveKeyStartRoot?: string | null;
+  effectiveKeyEndRoot?: string | null;
   recordings: {
     contentHash: string;
     hashPrefix: string;
     durationSeconds: number | null;
     tempoBpm: number | null;
     musicalKey: string | null;
+    effectiveKey?: string | null;
+    effectiveKeyStartRoot?: string | null;
+    effectiveKeyEndRoot?: string | null;
     visibilityStatus: string | null;
   }[];
 }
@@ -63,7 +69,13 @@ export function SongCard({
   const primaryRecording = publishedRecording ?? song.recordings[0];
   const duration = primaryRecording?.durationSeconds;
   const tempo = primaryRecording?.tempoBpm;
-  const recordingKey = primaryRecording?.musicalKey || song.musicalKey;
+  const effectiveKeyDisplay =
+    primaryRecording?.effectiveKeyStartRoot &&
+    primaryRecording.effectiveKeyEndRoot &&
+    primaryRecording.effectiveKeyStartRoot !== primaryRecording.effectiveKeyEndRoot
+      ? `${primaryRecording.effectiveKeyStartRoot} → ${primaryRecording.effectiveKeyEndRoot}`
+      : primaryRecording?.effectiveKey ?? song.effectiveKey;
+  const recordingKey = effectiveKeyDisplay || primaryRecording?.musicalKey || song.musicalKey;
   const artist = song.composer || song.lyricist || "Unknown Artist";
   const isVerified = song.recordings?.some(
     (r) => r.visibilityStatus === "published"

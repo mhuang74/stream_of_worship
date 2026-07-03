@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
+    KEY_ALGORITHM_VERSION: str = "ks_segment_vote_v1"
     SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = (
         1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
     )

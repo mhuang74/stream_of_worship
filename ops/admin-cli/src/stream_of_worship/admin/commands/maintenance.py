@@ -3,6 +3,7 @@
 import json
 import logging as _stdlogging
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -40,12 +41,14 @@ from stream_of_worship.admin.services.r2_backup import (
     verify_archive,
     write_backup,
 )
+from stream_of_worship.music.key import parse_musical_key
 
 console = Console()
 app = typer.Typer(help="Safe catalog and storage maintenance")
 
 ENTITY_VALUES = {"all", "songs", "recordings"}
 FORMAT_VALUES = {"table", "json", "ids"}
+BATCH_SIZE = 500
 
 
 def _load_clients(config_path: Optional[Path]) -> tuple[AdminConfig, DatabaseClient]:
@@ -132,6 +135,104 @@ def _print_manifest(rows: list[dict], format_: str) -> None:
     for row in rows:
         table.add_row(*(str(row.get(key, "")) for key in keys))
     console.print(table)
+
+
+def _normalize_song_key_rows(rows: list[tuple[str, Optional[str]]]) -> list[tuple]:
+    normalized = []
+    for song_id, musical_key in rows:
+        parsed = parse_musical_key(musical_key)
+        normalized.append(
+            (
+                song_id,
+                parsed.root,
+                parsed.mode,
+                parsed.start_root,
+                parsed.end_root,
+                parsed.start_pitch_class,
+                parsed.end_pitch_class,
+                parsed.status,
+            )
+        )
+    return normalized
+
+
+def _update_key_normalization_batch(db_client: DatabaseClient, rows: list[tuple]) -> int:
+    placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
+    params = [value for row in rows for value in row]
+    sql = f"""
+        UPDATE songs AS s
+        SET
+            musical_key_root = v.musical_key_root,
+            musical_key_mode = v.musical_key_mode,
+            musical_key_start_root = v.musical_key_start_root,
+            musical_key_end_root = v.musical_key_end_root,
+            musical_key_start_pitch_class = v.musical_key_start_pitch_class,
+            musical_key_end_pitch_class = v.musical_key_end_pitch_class,
+            musical_key_parse_status = v.musical_key_parse_status
+        FROM (VALUES {placeholders}) AS v(
+            id,
+            musical_key_root,
+            musical_key_mode,
+            musical_key_start_root,
+            musical_key_end_root,
+            musical_key_start_pitch_class,
+            musical_key_end_pitch_class,
+            musical_key_parse_status
+        )
+        WHERE s.id = v.id
+          AND (
+            s.musical_key_root IS DISTINCT FROM v.musical_key_root OR
+            s.musical_key_mode IS DISTINCT FROM v.musical_key_mode OR
+            s.musical_key_start_root IS DISTINCT FROM v.musical_key_start_root OR
+            s.musical_key_end_root IS DISTINCT FROM v.musical_key_end_root OR
+            s.musical_key_start_pitch_class IS DISTINCT FROM v.musical_key_start_pitch_class OR
+            s.musical_key_end_pitch_class IS DISTINCT FROM v.musical_key_end_pitch_class OR
+            s.musical_key_parse_status IS DISTINCT FROM v.musical_key_parse_status
+          )
+    """
+    with db_client.transaction() as conn:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        return cursor.rowcount
+
+
+@app.command("backfill-key-normalization")
+def backfill_key_normalization(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print parse counts without writing"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Backfill normalized catalog key fields on active songs."""
+    _, db_client = _load_clients(config_path)
+    cursor = db_client.connection.cursor()
+    cursor.execute(
+        """
+        SELECT id, musical_key
+        FROM songs
+        WHERE deleted_at IS NULL
+        ORDER BY id
+        """
+    )
+    rows = [(row[0], row[1]) for row in cursor.fetchall()]
+    counts = {"missing": 0, "ok": 0, "range": 0, "unparseable": 0}
+    for _, musical_key in rows:
+        counts[parse_musical_key(musical_key).status] += 1
+
+    console.print(
+        "Key normalization: "
+        f"missing={counts['missing']} ok={counts['ok']} "
+        f"range={counts['range']} unparseable={counts['unparseable']}"
+    )
+    if dry_run:
+        return
+
+    updated = 0
+    normalized = _normalize_song_key_rows(rows)
+    for index in range(0, len(normalized), BATCH_SIZE):
+        updated += _update_key_normalization_batch(db_client, normalized[index:index + BATCH_SIZE])
+        if index + BATCH_SIZE < len(normalized):
+            time.sleep(0.1)
+
+    console.print(f"[green]Updated {updated} song row(s).[/green]")
 
 
 def _selected_soft_deleted_songs(

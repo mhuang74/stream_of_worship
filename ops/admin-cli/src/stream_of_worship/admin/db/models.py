@@ -47,6 +47,13 @@ class Song:
     album_name: Optional[str] = None
     album_series: Optional[str] = None
     musical_key: Optional[str] = None
+    musical_key_root: Optional[str] = None
+    musical_key_mode: Optional[str] = None
+    musical_key_start_root: Optional[str] = None
+    musical_key_end_root: Optional[str] = None
+    musical_key_start_pitch_class: Optional[int] = None
+    musical_key_end_pitch_class: Optional[int] = None
+    musical_key_parse_status: Optional[str] = None
     lyrics_raw: Optional[str] = None
     lyrics_lines: Optional[str] = None
     sections: Optional[str] = None
@@ -71,6 +78,7 @@ class Song:
             - 17 columns: with deleted_at at index 16
         """
         row_len = len(row)
+        new_schema = row_len >= 24
         return cls(
             id=row[0],
             title=row[1],
@@ -80,15 +88,22 @@ class Song:
             album_name=row[5],
             album_series=row[6],
             musical_key=row[7],
-            lyrics_raw=row[8],
-            lyrics_lines=row[9],
-            sections=row[10],
-            source_url=row[11],
-            table_row_number=row[12],
-            scraped_at=_to_str(row[13]),
-            created_at=_to_str(row[14]),
-            updated_at=_to_str(row[15]),
-            deleted_at=_to_str(row[16]) if row_len > 16 else None,
+            musical_key_root=row[8] if new_schema else None,
+            musical_key_mode=row[9] if new_schema else None,
+            musical_key_start_root=row[10] if new_schema else None,
+            musical_key_end_root=row[11] if new_schema else None,
+            musical_key_start_pitch_class=row[12] if new_schema else None,
+            musical_key_end_pitch_class=row[13] if new_schema else None,
+            musical_key_parse_status=row[14] if new_schema else None,
+            lyrics_raw=row[15] if new_schema else row[8],
+            lyrics_lines=row[16] if new_schema else row[9],
+            sections=row[17] if new_schema else row[10],
+            source_url=row[18] if new_schema else row[11],
+            table_row_number=row[19] if new_schema else row[12],
+            scraped_at=_to_str(row[20] if new_schema else row[13]),
+            created_at=_to_str(row[21] if new_schema else row[14]),
+            updated_at=_to_str(row[22] if new_schema else row[15]),
+            deleted_at=_to_str(row[23] if new_schema else row[16] if row_len > 16 else None),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -106,6 +121,13 @@ class Song:
             "album_name": self.album_name,
             "album_series": self.album_series,
             "musical_key": self.musical_key,
+            "musical_key_root": self.musical_key_root,
+            "musical_key_mode": self.musical_key_mode,
+            "musical_key_start_root": self.musical_key_start_root,
+            "musical_key_end_root": self.musical_key_end_root,
+            "musical_key_start_pitch_class": self.musical_key_start_pitch_class,
+            "musical_key_end_pitch_class": self.musical_key_end_pitch_class,
+            "musical_key_parse_status": self.musical_key_parse_status,
             "lyrics_raw": self.lyrics_raw,
             "lyrics_lines": self.lyrics_lines,
             "sections": self.sections,
@@ -181,6 +203,11 @@ class Recording:
     musical_key: Optional[str] = None
     musical_mode: Optional[str] = None
     key_confidence: Optional[float] = None
+    key_algorithm_version: Optional[str] = None
+    key_score_margin: Optional[float] = None
+    key_window_agreement: Optional[float] = None
+    key_candidates: Optional[str] = None
+    key_detected_at: Optional[str] = None
     loudness_db: Optional[float] = None
     beats: Optional[str] = None
     downbeats: Optional[str] = None
@@ -216,7 +243,30 @@ class Recording:
         """
         row_len = len(row)
 
-        if row_len >= 29:
+        if row_len >= 34:
+            key_algorithm_version = row[14]
+            key_score_margin = row[15]
+            key_window_agreement = row[16]
+            key_candidates = row[17]
+            key_detected_at = row[18]
+            loudness_index = 19
+            created_at = row[28]
+            updated_at = row[29]
+            youtube_url = row[30]
+            visibility_status = row[31]
+            download_status = row[32]
+            deleted_at = row[33]
+        else:
+            key_algorithm_version = None
+            key_score_margin = None
+            key_window_agreement = None
+            key_candidates = None
+            key_detected_at = None
+            loudness_index = 14
+
+        if row_len >= 34:
+            pass
+        elif row_len >= 29:
             created_at = row[23]
             updated_at = row[24]
             youtube_url = row[25]
@@ -271,15 +321,20 @@ class Recording:
             musical_key=row[11],
             musical_mode=row[12],
             key_confidence=row[13],
-            loudness_db=row[14],
-            beats=row[15],
-            downbeats=row[16],
-            sections=row[17],
-            embeddings_shape=row[18],
-            analysis_status=row[19],
-            analysis_job_id=row[20],
-            lrc_status=row[21],
-            lrc_job_id=row[22],
+            key_algorithm_version=key_algorithm_version,
+            key_score_margin=key_score_margin,
+            key_window_agreement=key_window_agreement,
+            key_candidates=key_candidates,
+            key_detected_at=_to_str(key_detected_at),
+            loudness_db=row[loudness_index],
+            beats=row[loudness_index + 1],
+            downbeats=row[loudness_index + 2],
+            sections=row[loudness_index + 3],
+            embeddings_shape=row[loudness_index + 4],
+            analysis_status=row[loudness_index + 5],
+            analysis_job_id=row[loudness_index + 6],
+            lrc_status=row[loudness_index + 7],
+            lrc_job_id=row[loudness_index + 8],
             visibility_status=visibility_status,
             download_status=download_status or "pending",
             created_at=_to_str(created_at),
@@ -309,6 +364,11 @@ class Recording:
             "musical_key": self.musical_key,
             "musical_mode": self.musical_mode,
             "key_confidence": self.key_confidence,
+            "key_algorithm_version": self.key_algorithm_version,
+            "key_score_margin": self.key_score_margin,
+            "key_window_agreement": self.key_window_agreement,
+            "key_candidates": self.key_candidates,
+            "key_detected_at": self.key_detected_at,
             "loudness_db": self.loudness_db,
             "beats": self.beats,
             "downbeats": self.downbeats,

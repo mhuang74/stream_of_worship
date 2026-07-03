@@ -564,6 +564,11 @@ class JobQueue:
                     musical_key=analysis_result.get("musical_key"),
                     musical_mode=analysis_result.get("musical_mode"),
                     key_confidence=analysis_result.get("key_confidence"),
+                    key_algorithm_version=analysis_result.get("key_algorithm_version"),
+                    key_score_margin=analysis_result.get("key_score_margin"),
+                    key_window_agreement=analysis_result.get("key_window_agreement"),
+                    key_candidates=analysis_result.get("key_candidates"),
+                    key_detected_at=analysis_result.get("key_detected_at"),
                     loudness_db=analysis_result.get("loudness_db"),
                     beats=analysis_result.get("beats"),
                     downbeats=analysis_result.get("downbeats"),
@@ -715,6 +720,11 @@ class JobQueue:
                     musical_key=analysis_result.get("musical_key"),
                     musical_mode=analysis_result.get("musical_mode"),
                     key_confidence=analysis_result.get("key_confidence"),
+                    key_algorithm_version=analysis_result.get("key_algorithm_version"),
+                    key_score_margin=analysis_result.get("key_score_margin"),
+                    key_window_agreement=analysis_result.get("key_window_agreement"),
+                    key_candidates=analysis_result.get("key_candidates"),
+                    key_detected_at=analysis_result.get("key_detected_at"),
                     loudness_db=analysis_result.get("loudness_db"),
                 )
 

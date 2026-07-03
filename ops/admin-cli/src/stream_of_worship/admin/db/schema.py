@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS songs (
     album_name TEXT,
     album_series TEXT,
     musical_key TEXT,
+    musical_key_root TEXT,
+    musical_key_mode TEXT,
+    musical_key_start_root TEXT,
+    musical_key_end_root TEXT,
+    musical_key_start_pitch_class INTEGER,
+    musical_key_end_pitch_class INTEGER,
+    musical_key_parse_status TEXT,
     lyrics_raw TEXT,
     lyrics_lines TEXT,
     sections TEXT,
@@ -48,6 +55,11 @@ CREATE TABLE IF NOT EXISTS recordings (
     musical_key TEXT,
     musical_mode TEXT,
     key_confidence REAL,
+    key_algorithm_version TEXT,
+    key_score_margin REAL,
+    key_window_agreement REAL,
+    key_candidates TEXT,
+    key_detected_at timestamptz,
     loudness_db REAL,
     beats TEXT,
     downbeats TEXT,
@@ -219,23 +231,28 @@ SELECT 'recordings' as table_name, COUNT(*) as row_count FROM recordings WHERE d
 # Column lists for JOIN queries (used by catalog service and other query builders)
 SONG_COLUMNS_FOR_JOIN = """
     s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
-    s.album_name, s.album_series, s.musical_key, s.lyrics_raw,
-    s.lyrics_lines, s.sections, s.source_url, s.table_row_number,
-    s.scraped_at, s.created_at, s.updated_at, s.deleted_at
+    s.album_name, s.album_series, s.musical_key, s.musical_key_root,
+    s.musical_key_mode, s.musical_key_start_root, s.musical_key_end_root,
+    s.musical_key_start_pitch_class, s.musical_key_end_pitch_class,
+    s.musical_key_parse_status, s.lyrics_raw, s.lyrics_lines, s.sections,
+    s.source_url, s.table_row_number, s.scraped_at, s.created_at,
+    s.updated_at, s.deleted_at
 """
 
 RECORDING_COLUMNS_FOR_JOIN = """
     r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
     r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
     r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
-    r.musical_mode, r.key_confidence, r.loudness_db, r.beats,
-    r.downbeats, r.sections, r.embeddings_shape, r.analysis_status,
-    r.analysis_job_id, r.lrc_status, r.lrc_job_id, r.created_at,
-    r.updated_at, r.youtube_url, r.visibility_status, r.download_status, r.deleted_at
+    r.musical_mode, r.key_confidence, r.key_algorithm_version,
+    r.key_score_margin, r.key_window_agreement, r.key_candidates,
+    r.key_detected_at, r.loudness_db, r.beats, r.downbeats, r.sections,
+    r.embeddings_shape, r.analysis_status, r.analysis_job_id, r.lrc_status,
+    r.lrc_job_id, r.created_at, r.updated_at, r.youtube_url,
+    r.visibility_status, r.download_status, r.deleted_at
 """
 
-SONG_COLUMN_COUNT = 17
-RECORDING_COLUMN_COUNT = 29
+SONG_COLUMN_COUNT = 24
+RECORDING_COLUMN_COUNT = 34
 
 # SQL for listing active (non-deleted) songs
 ACTIVE_SONGS_QUERY = """

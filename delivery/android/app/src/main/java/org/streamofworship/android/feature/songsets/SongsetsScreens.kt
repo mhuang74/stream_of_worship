@@ -375,7 +375,7 @@ private fun SongsetItemCard(
                         listOfNotNull(
                             item.song?.albumName,
                             item.recording?.tempoBpm?.let { "${it.toInt()} BPM" },
-                            item.recording?.musicalKey,
+                            item.recording?.effectiveKey ?: item.recording?.musicalKey,
                             item.recording?.durationSeconds?.let(::formatDuration),
                         ).joinToString(" • "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -544,7 +544,7 @@ private fun SongSearchResult(
                             song.albumName,
                             song.composer,
                             song.publishedRecordings.firstOrNull()?.tempoBpm?.let { "${it.toInt()} BPM" },
-                            song.publishedRecordings.firstOrNull()?.musicalKey,
+                            song.publishedRecordings.firstOrNull()?.let { it.effectiveKey ?: it.musicalKey },
                         ).joinToString(" • "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
