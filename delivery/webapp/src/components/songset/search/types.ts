@@ -1,8 +1,10 @@
+import type { AlbumFilter } from "@/lib/search/album-filter";
+
 export interface StructuredSearchCriteria {
   query?: string;
   keys?: string[];
   bpmRange?: "slow" | "moderate" | "fast";
-  albums?: string[];
+  albums?: AlbumFilter[];
 }
 
 export const BPM_BANDS = {

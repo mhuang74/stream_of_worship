@@ -97,6 +97,8 @@ const defaultProps = {
   onAddSong: vi.fn().mockResolvedValue(undefined),
   existingSongIds: [],
 };
+const hymnsFilter = { albumName: "Hymns", albumSeries: "Classic" };
+const worshipFilter = { albumName: "Worship", albumSeries: null };
 
 describe("SemanticSearch", () => {
   beforeEach(() => {
@@ -190,7 +192,7 @@ describe("SemanticSearch", () => {
         json: () => Promise.resolve({ songs: [], query: "grace", total: 0 }),
       });
 
-      renderComponent({ albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: "slow" });
+      renderComponent({ albums: [hymnsFilter, worshipFilter], keys: ["D"], bpmRange: "slow" });
       const input = screen.getByTestId("semantic-search-input");
       fireEvent.change(input, { target: { value: "songs about grace" } });
 
@@ -206,7 +208,7 @@ describe("SemanticSearch", () => {
             body: JSON.stringify({
               query: "songs about grace",
               limit: 20,
-              albums: ["Hymns", "Worship"],
+              albums: [hymnsFilter, worshipFilter],
               keys: ["D"],
               bpmRange: "slow",
             }),

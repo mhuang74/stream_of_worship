@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
+import type { AlbumFilter } from "@/lib/search/album-filter";
 
 interface SemanticSearchResult extends SongCardData {
   similarity?: number;
@@ -26,14 +27,28 @@ interface SemanticSearchProps {
   addingSongIds?: Set<string>;
   addedSongIds?: Set<string>;
   onSwitchToSearchTab?: (query: string) => void;
-  albums?: string[];
+  albums?: AlbumFilter[];
   keys?: string[];
   bpmRange?: StructuredSearchCriteria["bpmRange"];
-  filterSlot?: ReactNode;
+  searchButtonClassName?: string;
+  showSearchButton?: boolean;
   className?: string;
 }
 
-export function SemanticSearch({
+interface UseSemanticSearchOptions {
+  onAddSong: (song: SongCardData) => Promise<void>;
+  existingSongIds?: string[];
+  addingSongIds?: Set<string>;
+  addedSongIds?: Set<string>;
+  onSwitchToSearchTab?: (query: string) => void;
+  albums?: AlbumFilter[];
+  keys?: string[];
+  bpmRange?: StructuredSearchCriteria["bpmRange"];
+  searchButtonClassName?: string;
+  showSearchButton?: boolean;
+}
+
+export function useSemanticSearch({
   onAddSong,
   existingSongIds = [],
   addingSongIds = new Set(),
@@ -42,9 +57,9 @@ export function SemanticSearch({
   albums = [],
   keys = [],
   bpmRange,
-  filterSlot,
-  className,
-}: SemanticSearchProps) {
+  searchButtonClassName,
+  showSearchButton = true,
+}: UseSemanticSearchOptions) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SemanticSearchResult[]>([]);
   const [resultMode, setResultMode] = useState<ResultMode | null>(null);
@@ -56,6 +71,19 @@ export function SemanticSearch({
   const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
   const latestSearchIdRef = useRef(0);
   const { play, currentTrack, state: playerState } = useAudioPlayerContext();
+
+  const reset = useCallback(() => {
+    setQuery("");
+    setResults([]);
+    setResultMode(null);
+    setIsLoading(false);
+    setError(null);
+    setHasSearched(false);
+    setPlayingSongId(null);
+    setPreviewLoadingSongId(null);
+    setExpandedSongId(null);
+    latestSearchIdRef.current += 1;
+  }, []);
 
   const handleSearch = useCallback(async () => {
     const trimmed = query.trim();
@@ -76,7 +104,7 @@ export function SemanticSearch({
         const body: {
           query: string;
           limit: number;
-          albums?: string[];
+          albums?: AlbumFilter[];
           keys?: string[];
           bpmRange?: StructuredSearchCriteria["bpmRange"];
         } = { query: trimmed, limit: 20 };
@@ -93,7 +121,8 @@ export function SemanticSearch({
         nextResultMode = "browse";
         const params = new URLSearchParams();
         for (const album of albums) {
-          params.append("albumName", album);
+          params.append("albumName", album.albumName);
+          params.append("albumSeries", album.albumSeries ?? "");
         }
         if (keys.length > 0) {
           params.set("keys", keys.join(","));
@@ -245,8 +274,7 @@ export function SemanticSearch({
     setExpandedSongId(expandedSongId === songId ? null : songId);
   };
 
-  return (
-    <div className={cn("flex flex-col gap-4", className)} data-testid="semantic-search">
+  const controls = (
       <div className="space-y-2">
         <Textarea
           value={query}
@@ -261,25 +289,28 @@ export function SemanticSearch({
           <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
             Tip: describe by theme or feeling — e.g. &lsquo;关于神的恩典与怜悯的赞美&rsquo;, &lsquo;upbeat praise songs about grace&rsquo; · Press Ctrl+Enter to search
           </p>
-          <Button
-            onClick={handleSearch}
-            disabled={isLoading}
-            size="sm"
-            data-testid="semantic-search-button"
-            aria-label={isLoading ? "Searching..." : "Search songs by description"}
-          >
-            {isLoading ? (
-              <Loader2 className="size-4 animate-spin mr-1" />
-            ) : (
-              <Sparkles className="size-4 mr-1" />
-            )}
-            Search
-          </Button>
+          {showSearchButton && (
+            <Button
+              onClick={handleSearch}
+              disabled={isLoading}
+              className={cn("gap-1.5", searchButtonClassName)}
+              data-testid="semantic-search-button"
+              aria-label={isLoading ? "Searching..." : "Search songs by description"}
+            >
+              {isLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              Search
+            </Button>
+          )}
         </div>
       </div>
+  );
 
-      {filterSlot}
-
+  const resultsContent = (
+    <>
       {error && (
         <div
           role="alert"
@@ -373,6 +404,28 @@ export function SemanticSearch({
           ))}
         </div>
       )}
+    </>
+  );
+
+  return {
+    controls,
+    resultsContent,
+    search: handleSearch,
+    isLoading,
+    reset,
+  };
+}
+
+export function SemanticSearch({
+  className,
+  ...props
+}: SemanticSearchProps) {
+  const { controls, resultsContent } = useSemanticSearch(props);
+
+  return (
+    <div className={cn("flex flex-col gap-4", className)} data-testid="semantic-search">
+      {controls}
+      {resultsContent}
     </div>
   );
 }

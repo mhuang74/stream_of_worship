@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SharedFilters } from "@/components/songset/SharedFilters";
+import { albumFilterKey } from "@/lib/search/album-filter";
 
 describe("SharedFilters", () => {
-  const mockAlbums = ["Hymns", "Worship", "Christmas"];
+  const mockAlbums = [
+    { albumName: "Hymns", albumSeries: "Classic", songCount: 12 },
+    { albumName: "Worship", albumSeries: null, songCount: 8 },
+    { albumName: "Christmas", albumSeries: "Seasonal", songCount: 4 },
+  ];
+  const hymns = { albumName: "Hymns", albumSeries: "Classic" };
+  const worship = { albumName: "Worship", albumSeries: null };
+  const hymnsOptionTestId = `album-option-${encodeURIComponent(albumFilterKey(hymns))}`;
 
   const defaultProps = {
     albums: mockAlbums,
@@ -29,6 +37,7 @@ describe("SharedFilters", () => {
     it("renders album multi-select when albums are provided", () => {
       renderFilters();
       expect(screen.getByTestId("album-filter")).toBeInTheDocument();
+      expect(screen.getByTestId("album-filter")).toHaveTextContent("All 3 Albums");
     });
 
     it("does not render album multi-select when albums array is empty", () => {
@@ -67,22 +76,23 @@ describe("SharedFilters", () => {
 
       fireEvent.click(screen.getByTestId("album-filter"));
       await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+        expect(screen.getByTestId(hymnsOptionTestId)).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-      expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith(["Hymns"]);
+      expect(screen.getByText("Hymns - Classic [12]")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId(hymnsOptionTestId));
+      expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([hymns]);
     });
 
     it("deselecting an album calls onSelectedAlbumsChange", async () => {
-      renderFilters({ selectedAlbums: ["Hymns"] });
+      renderFilters({ selectedAlbums: [hymns] });
 
       fireEvent.click(screen.getByTestId("album-filter"));
       await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+        expect(screen.getByTestId(hymnsOptionTestId)).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+      fireEvent.click(screen.getByTestId(hymnsOptionTestId));
       expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([]);
     });
   });
@@ -131,7 +141,7 @@ describe("SharedFilters", () => {
     });
 
     it("Clear all button calls onClearFilters", () => {
-      renderFilters({ selectedAlbums: ["Hymns"], selectedKeys: ["D"] });
+      renderFilters({ selectedAlbums: [hymns], selectedKeys: ["D"] });
       fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
       fireEvent.click(screen.getByTestId("advanced-clear-button"));
       expect(defaultProps.onClearFilters).toHaveBeenCalled();
@@ -145,14 +155,14 @@ describe("SharedFilters", () => {
   });
 
   describe("active filter count badge", () => {
-    it("shows correct count badge when filters are active", () => {
+    it("shows correct count badge for advanced filters only", () => {
       renderFilters({
-        selectedAlbums: ["Hymns", "Worship"],
+        selectedAlbums: [hymns, worship],
         selectedKeys: ["D"],
         selectedBpm: "slow",
       });
       const toggle = screen.getByTestId("advanced-filters-toggle");
-      expect(toggle.textContent).toContain("4");
+      expect(toggle.textContent).toContain("2");
     });
 
     it("does not show count badge when no filters active", () => {

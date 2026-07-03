@@ -11,14 +11,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  albumFilterKey,
+  formatAlbumLabel,
+  formatAlbumOptionLabel,
+  type AlbumFilter,
+  type AlbumOption,
+} from "@/lib/search/album-filter";
 
 interface AlbumMultiSelectProps {
-  albums: string[];
-  selectedAlbums: string[];
-  onSelectedAlbumsChange: (albums: string[]) => void;
+  albums: AlbumOption[];
+  selectedAlbums: AlbumFilter[];
+  onSelectedAlbumsChange: (albums: AlbumFilter[]) => void;
   disabled?: boolean;
   className?: string;
 }
@@ -30,19 +36,29 @@ export function AlbumMultiSelect({
   disabled = false,
   className,
 }: AlbumMultiSelectProps) {
-  const selectedSet = new Set(selectedAlbums);
+  const selectedSet = new Set(selectedAlbums.map(albumFilterKey));
 
-  const toggleAlbum = (album: string) => {
-    if (selectedSet.has(album)) {
-      onSelectedAlbumsChange(selectedAlbums.filter((name) => name !== album));
+  const toggleAlbum = (album: AlbumOption) => {
+    const key = albumFilterKey(album);
+    if (selectedSet.has(key)) {
+      onSelectedAlbumsChange(selectedAlbums.filter((selected) => albumFilterKey(selected) !== key));
     } else {
-      onSelectedAlbumsChange([...selectedAlbums, album]);
+      onSelectedAlbumsChange([
+        ...selectedAlbums,
+        { albumName: album.albumName, albumSeries: album.albumSeries },
+      ]);
     }
   };
 
   const clearAlbums = () => onSelectedAlbumsChange([]);
-  const summary = selectedAlbums.slice(0, 2).join(", ");
+  const summary = selectedAlbums.slice(0, 2).map(formatAlbumLabel).join(", ");
   const overflowCount = Math.max(0, selectedAlbums.length - 2);
+  const triggerText =
+    selectedAlbums.length === 0
+      ? `All ${albums.length} Albums`
+      : selectedAlbums.length === 1
+        ? formatAlbumLabel(selectedAlbums[0])
+        : `${selectedAlbums.length} Albums`;
 
   return (
     <div className={cn("space-y-2", className)} data-testid="album-multi-select">
@@ -50,18 +66,13 @@ export function AlbumMultiSelect({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="outline"
+            variant="link"
             size="sm"
-            className="h-9 justify-between gap-2"
+            className="h-auto px-0 py-0 text-sm font-medium underline-offset-4"
             disabled={disabled || albums.length === 0}
             data-testid="album-filter"
           >
-            <span>Albums</span>
-            {selectedAlbums.length > 0 && (
-              <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                {selectedAlbums.length}
-              </Badge>
-            )}
+            <span className="max-w-[18rem] truncate">{triggerText}</span>
             <ChevronDown className="size-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
@@ -77,16 +88,19 @@ export function AlbumMultiSelect({
                 <DropdownMenuSeparator />
               </>
             )}
-            {albums.map((album) => (
+            {albums.map((album) => {
+              const key = albumFilterKey(album);
+              return (
               <DropdownMenuCheckboxItem
-                key={album}
-                checked={selectedSet.has(album)}
+                key={key}
+                checked={selectedSet.has(key)}
                 onCheckedChange={() => toggleAlbum(album)}
-                data-testid={`album-option-${album}`}
+                data-testid={`album-option-${encodeURIComponent(key)}`}
               >
-                <span className="truncate">{album}</span>
+                <span className="truncate">{formatAlbumOptionLabel(album)}</span>
               </DropdownMenuCheckboxItem>
-            ))}
+              );
+            })}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>

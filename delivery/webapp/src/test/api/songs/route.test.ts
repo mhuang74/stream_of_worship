@@ -196,6 +196,33 @@ describe("GET /api/songs", () => {
     );
   });
 
+  it("applies structured album name and series filters", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(listSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?albumName=Hymns&albumSeries=Classic&albumName=Worship&albumSeries="
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({
+        albumFilters: [
+          { albumName: "Hymns", albumSeries: "Classic" },
+          { albumName: "Worship", albumSeries: null },
+        ],
+      })
+    );
+  });
+
   it("applies composer filter", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

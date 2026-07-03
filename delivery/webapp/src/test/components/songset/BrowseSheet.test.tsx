@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
+import { albumFilterKey } from "@/lib/search/album-filter";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -65,7 +66,12 @@ const mockSongs = [
   },
 ];
 
-const mockAlbums = ["Hymns", "Worship", "Christmas"];
+const mockAlbums = [
+  { albumName: "Hymns", albumSeries: "Classic", songCount: 12 },
+  { albumName: "Worship", albumSeries: null, songCount: 8 },
+  { albumName: "Christmas", albumSeries: "Seasonal", songCount: 4 },
+];
+const hymnsFilter = { albumName: "Hymns", albumSeries: "Classic" };
 
 describe("BrowseSheet", () => {
   const defaultProps = {
@@ -123,18 +129,25 @@ describe("BrowseSheet", () => {
         url !== "/api/songs/albums"
     );
 
-  const selectAlbum = async (album: string) => {
+  const selectAlbum = async (album = hymnsFilter) => {
+    const testId = `album-option-${encodeURIComponent(albumFilterKey(album))}`;
     fireEvent.click(screen.getByTestId("album-filter"));
     await waitFor(() => {
-      expect(screen.getByTestId(`album-option-${album}`)).toBeInTheDocument();
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByTestId(`album-option-${album}`));
+    fireEvent.click(screen.getByTestId(testId));
   };
 
   const selectKeyAndBpm = () => {
     fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
     fireEvent.click(screen.getByTestId("key-chip-D"));
     fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+  };
+
+  const expectBefore = (before: Element, after: Element) => {
+    expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   };
 
   it("opening the sheet fetches albums only, not songs", async () => {
@@ -150,7 +163,7 @@ describe("BrowseSheet", () => {
     await waitForAlbums();
 
     fireEvent.change(screen.getByTestId("search-input"), { target: { value: "grace" } });
-    await selectAlbum("Hymns");
+    await selectAlbum();
     selectKeyAndBpm();
 
     expect(songFetchCalls()).toHaveLength(0);
@@ -178,7 +191,7 @@ describe("BrowseSheet", () => {
     renderSheet();
     await waitForAlbums();
 
-    await selectAlbum("Hymns");
+    await selectAlbum();
     selectKeyAndBpm();
     fireEvent.click(screen.getByTestId("search-button"));
 
@@ -188,6 +201,7 @@ describe("BrowseSheet", () => {
           /^\/api\/songs\?.*albumName=Hymns.*keys=D.*bpmRange=slow.*limit=50/
         )
       );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("albumSeries=Classic"));
     });
   });
 
@@ -199,7 +213,7 @@ describe("BrowseSheet", () => {
     fireEvent.change(screen.getByTestId("semantic-search-input"), {
       target: { value: "songs about grace" },
     });
-    await selectAlbum("Hymns");
+    await selectAlbum();
     selectKeyAndBpm();
 
     expect(songFetchCalls()).toHaveLength(0);
@@ -229,7 +243,7 @@ describe("BrowseSheet", () => {
     renderSheet();
     await waitForAlbums();
 
-    await selectAlbum("Hymns");
+    await selectAlbum();
     selectKeyAndBpm();
     fireEvent.click(screen.getByTestId("describe-mode-tab"));
     fireEvent.change(screen.getByTestId("semantic-search-input"), {
@@ -245,7 +259,7 @@ describe("BrowseSheet", () => {
           body: JSON.stringify({
             query: "songs about grace",
             limit: 20,
-            albums: ["Hymns"],
+            albums: [hymnsFilter],
             keys: ["D"],
             bpmRange: "slow",
           }),
@@ -260,10 +274,15 @@ describe("BrowseSheet", () => {
 
     const input = screen.getByTestId("search-input");
     const albumFilter = screen.getByTestId("album-filter");
+    const searchButton = screen.getByTestId("search-button");
+    const resultsRegion = screen.getByTestId("search-results-region");
 
-    expect(input.compareDocumentPosition(albumFilter) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    );
+    expectBefore(input, albumFilter);
+    expectBefore(albumFilter, searchButton);
+    expectBefore(searchButton, resultsRegion);
+    expectBefore(albumFilter, resultsRegion);
+    expect(screen.getByTestId("search-controls-region")).toContainElement(input);
+    expect(resultsRegion).not.toContainElement(screen.getByTestId("shared-filters"));
   });
 
   it("renders the active input before the album filter in Describe mode", async () => {
@@ -274,9 +293,67 @@ describe("BrowseSheet", () => {
 
     const input = screen.getByTestId("semantic-search-input");
     const albumFilter = screen.getByTestId("album-filter");
+    const searchButton = screen.getByTestId("semantic-search-button");
+    const resultsRegion = screen.getByTestId("search-results-region");
 
-    expect(input.compareDocumentPosition(albumFilter) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
+    expectBefore(input, albumFilter);
+    expectBefore(albumFilter, searchButton);
+    expectBefore(searchButton, resultsRegion);
+    expectBefore(albumFilter, resultsRegion);
+    expect(screen.getByTestId("search-controls-region")).toContainElement(input);
+    expect(resultsRegion).not.toContainElement(screen.getByTestId("shared-filters"));
+  });
+
+  it("keeps shared filters in the common sheet layout across modes", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    expect(screen.getAllByTestId("shared-filters")).toHaveLength(1);
+    expect(screen.queryByTestId("semantic-search")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+    expect(screen.getAllByTestId("shared-filters")).toHaveLength(1);
+    expect(screen.queryByTestId("semantic-search")).not.toBeInTheDocument();
+    expect(screen.getByTestId("search-results-region")).not.toContainElement(
+      screen.getByTestId("shared-filters")
     );
+  });
+
+  it("uses the same Search button size in both modes", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    expect(screen.getByTestId("search-button")).toHaveClass(
+      "h-8",
+      "w-[92px]",
+      "text-sm"
+    );
+
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+    expect(screen.getByTestId("semantic-search-button")).toHaveClass(
+      "h-8",
+      "w-[92px]",
+      "text-sm"
+    );
+  });
+
+  it("renders results content after shared filters in both modes", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    fireEvent.click(screen.getByTestId("search-button"));
+    const keywordResult = await screen.findByText("Amazing Grace");
+    expectBefore(screen.getByTestId("album-filter"), keywordResult);
+
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+    fireEvent.click(screen.getByTestId("semantic-search-button"));
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
+    });
+    const describeResult = await screen.findByTestId("semantic-search-results");
+
+    expectBefore(screen.getByTestId("album-filter"), describeResult);
   });
 });

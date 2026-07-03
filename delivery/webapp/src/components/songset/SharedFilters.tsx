@@ -13,11 +13,12 @@ import {
   type BpmBandKey,
 } from "@/lib/constants";
 import { AlbumMultiSelect } from "./AlbumMultiSelect";
+import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 
 interface SharedFiltersProps {
-  albums: string[];
-  selectedAlbums: string[];
-  onSelectedAlbumsChange: (albums: string[]) => void;
+  albums: AlbumOption[];
+  selectedAlbums: AlbumFilter[];
+  onSelectedAlbumsChange: (albums: AlbumFilter[]) => void;
   selectedKeys: string[];
   onSelectedKeysChange: (keys: string[]) => void;
   selectedBpm?: BpmBandKey;
@@ -41,8 +42,8 @@ export function SharedFilters({
 }: SharedFiltersProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const hasAdvancedFilters =
-    selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm !== undefined;
+  const advancedFilterCount = selectedKeys.length + (selectedBpm ? 1 : 0);
+  const hasAdvancedFilters = advancedFilterCount > 0;
 
   const toggleKey = useCallback(
     (key: string) => {
@@ -88,7 +89,7 @@ export function SharedFilters({
         Advanced filters
         {hasAdvancedFilters && (
           <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
-            {selectedAlbums.length + selectedKeys.length + (selectedBpm ? 1 : 0)}
+            {advancedFilterCount}
           </Badge>
         )}
       </Button>

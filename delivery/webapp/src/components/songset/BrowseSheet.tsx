@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { SongSearch } from "./SongSearch";
 import { SharedFilters } from "./SharedFilters";
 import { SongCard, SongCardData } from "./SongCard";
-import { SemanticSearch } from "@/components/search/SemanticSearch";
+import { useSemanticSearch } from "@/components/search/SemanticSearch";
 import type { StructuredSearchCriteria } from "./search/types";
 import { Loader2, Music, AlertCircle, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
+import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 
 type SearchMode = "keyword" | "describe";
 
@@ -37,6 +38,30 @@ interface SearchResult {
   total: number;
 }
 
+function normalizeAlbumOptions(value: unknown): AlbumOption[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((album) => {
+    if (typeof album === "string") {
+      const albumName = album.trim();
+      return albumName ? [{ albumName, albumSeries: null, songCount: 0 }] : [];
+    }
+    if (album && typeof album === "object" && "albumName" in album) {
+      const option = album as Partial<AlbumOption>;
+      const albumName = typeof option.albumName === "string" ? option.albumName.trim() : "";
+      if (!albumName) return [];
+      return [{
+        albumName,
+        albumSeries: typeof option.albumSeries === "string" && option.albumSeries.trim()
+          ? option.albumSeries.trim()
+          : null,
+        songCount: typeof option.songCount === "number" ? option.songCount : 0,
+      }];
+    }
+    return [];
+  });
+}
+
 export function BrowseSheet({
   isOpen,
   onOpenChange,
@@ -47,14 +72,14 @@ export function BrowseSheet({
 }: BrowseSheetProps) {
   const [mode, setMode] = useState<SearchMode>("keyword");
   const [keywordQuery, setKeywordQuery] = useState("");
-  const [selectedAlbums, setSelectedAlbums] = useState<string[]>([]);
+  const [selectedAlbums, setSelectedAlbums] = useState<AlbumFilter[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [selectedBpm, setSelectedBpm] = useState<StructuredSearchCriteria["bpmRange"]>();
   const [activeFilters, setActiveFilters] = useState<StructuredSearchCriteria | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [hasKeywordSearched, setHasKeywordSearched] = useState(false);
-  const [albums, setAlbums] = useState<string[]>([]);
+  const [albums, setAlbums] = useState<AlbumOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +99,7 @@ export function BrowseSheet({
         throw new Error("Failed to load albums");
       }
       const data = await response.json();
-      setAlbums(data.albums || []);
+      setAlbums(normalizeAlbumOptions(data.albums));
     } catch (err) {
       console.error("Error loading albums:", err);
     } finally {
@@ -86,7 +111,7 @@ export function BrowseSheet({
   const handleSearch = useCallback(
     async (
       searchQuery: string,
-      albumFilters?: string[],
+      albumFilters?: AlbumFilter[],
       advanced?: StructuredSearchCriteria
     ) => {
       const searchId = latestSearchIdRef.current + 1;
@@ -109,7 +134,8 @@ export function BrowseSheet({
           params.set("q", searchQuery.trim());
         }
         for (const album of albumFilters ?? []) {
-          params.append("albumName", album);
+          params.append("albumName", album.albumName);
+          params.append("albumSeries", album.albumSeries ?? "");
         }
         if (nextFilters.keys?.length) {
           params.set("keys", nextFilters.keys.join(","));
@@ -145,36 +171,6 @@ export function BrowseSheet({
     },
     []
   );
-
-  // Handle sheet open/close
-  useEffect(() => {
-    if (isOpen) {
-      if (albums.length === 0) {
-        const albumTimeoutId = setTimeout(() => {
-          loadAlbums();
-        }, 0);
-        return () => clearTimeout(albumTimeoutId);
-      }
-    } else {
-      const timeoutId = setTimeout(() => {
-        setKeywordQuery("");
-        setSelectedAlbums([]);
-        setSelectedKeys([]);
-        setSelectedBpm(undefined);
-        setActiveFilters(undefined);
-        setResults([]);
-        setTotalCount(0);
-        setHasKeywordSearched(false);
-        setError(null);
-        setAddingSongIds(new Set());
-        setAddedSongIds(new Set());
-        setMode("keyword");
-        setPlayingSongId(null);
-        setPreviewLoadingSongId(null);
-      }, 300);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isOpen, albums.length, loadAlbums]);
 
   const handleAddSong = useCallback(
     async (songOrId: string | SongCardData) => {
@@ -227,6 +223,25 @@ export function BrowseSheet({
     setKeywordQuery(searchQuery);
     setMode("keyword");
   }, []);
+
+  const handleKeywordSubmit = useCallback(() => {
+    const normalizedAlbums = selectedAlbums.length > 0 ? selectedAlbums : undefined;
+    const hasAdvancedFilters =
+      selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm !== undefined;
+
+    handleSearch(
+      keywordQuery,
+      normalizedAlbums,
+      hasAdvancedFilters
+        ? {
+            query: keywordQuery.trim() || undefined,
+            keys: selectedKeys.length > 0 ? selectedKeys : undefined,
+            bpmRange: selectedBpm,
+            albums: normalizedAlbums,
+          }
+        : undefined
+    );
+  }, [handleSearch, keywordQuery, selectedAlbums, selectedKeys, selectedBpm]);
 
   const handlePlaySong = useCallback(
     async (songId: string) => {
@@ -324,9 +339,59 @@ export function BrowseSheet({
         setSelectedBpm(undefined);
       }}
       isLoading={isLoading || isLoadingAlbums}
-      className="px-1 pb-4"
+      className="px-1"
     />
   );
+  const sharedSearchButtonClassName = "h-8 w-[92px] gap-1.5 text-sm";
+
+  const {
+    controls: semanticControls,
+    resultsContent: semanticResultsContent,
+    search: handleSemanticSubmit,
+    isLoading: isSemanticLoading,
+    reset: resetSemanticSearch,
+  } = useSemanticSearch({
+    onAddSong: handleAddSong,
+    existingSongIds,
+    addingSongIds,
+    addedSongIds,
+    onSwitchToSearchTab: handleSwitchToSearchTab,
+    albums: selectedAlbums,
+    keys: selectedKeys,
+    bpmRange: selectedBpm,
+    showSearchButton: false,
+  });
+
+  // Handle sheet open/close
+  useEffect(() => {
+    if (isOpen) {
+      if (albums.length === 0) {
+        const albumTimeoutId = setTimeout(() => {
+          loadAlbums();
+        }, 0);
+        return () => clearTimeout(albumTimeoutId);
+      }
+    } else {
+      const timeoutId = setTimeout(() => {
+        setKeywordQuery("");
+        setSelectedAlbums([]);
+        setSelectedKeys([]);
+        setSelectedBpm(undefined);
+        setActiveFilters(undefined);
+        setResults([]);
+        setTotalCount(0);
+        setHasKeywordSearched(false);
+        setError(null);
+        setAddingSongIds(new Set());
+        setAddedSongIds(new Set());
+        setMode("keyword");
+        setPlayingSongId(null);
+        setPreviewLoadingSongId(null);
+        resetSemanticSearch();
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isOpen, albums.length, loadAlbums, resetSemanticSearch]);
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -338,14 +403,22 @@ export function BrowseSheet({
 
         <div className={cn("flex flex-col h-full min-h-0", currentTrack ? "pb-28 sm:pb-20" : "pb-8")}>
           {/* Mode tabs */}
-          <div className="flex gap-1 pb-4 border-b mb-4" role="tablist" aria-label="Search mode">
+          <div
+            className="mb-4 flex w-fit gap-1 rounded-lg border bg-muted/50 p-1"
+            role="tablist"
+            aria-label="Search mode"
+          >
             <Button
               role="tab"
               aria-selected={mode === "keyword"}
-              variant={mode === "keyword" ? "default" : "ghost"}
+              variant="ghost"
               size="sm"
               onClick={() => setMode("keyword")}
-              className="gap-1.5"
+              className={cn(
+                "gap-1.5 text-muted-foreground hover:text-foreground",
+                mode === "keyword" &&
+                  "bg-sky-100 text-sky-950 shadow-sm hover:bg-sky-100 hover:text-sky-950 dark:bg-sky-950/60 dark:text-sky-100 dark:hover:bg-sky-950/60"
+              )}
               data-testid="keyword-mode-tab"
             >
               <Search className="size-3.5" />
@@ -354,10 +427,14 @@ export function BrowseSheet({
             <Button
               role="tab"
               aria-selected={mode === "describe"}
-              variant={mode === "describe" ? "default" : "ghost"}
+              variant="ghost"
               size="sm"
               onClick={() => setMode("describe")}
-              className="gap-1.5"
+              className={cn(
+                "gap-1.5 text-muted-foreground hover:text-foreground",
+                mode === "describe" &&
+                  "bg-amber-100 text-amber-950 shadow-sm hover:bg-amber-100 hover:text-amber-950 dark:bg-amber-950/60 dark:text-amber-100 dark:hover:bg-amber-950/60"
+              )}
               data-testid="describe-mode-tab"
             >
               <Sparkles className="size-3.5" />
@@ -365,10 +442,12 @@ export function BrowseSheet({
             </Button>
           </div>
 
-          {mode === "keyword" && (
-            <div role="tabpanel" aria-label="Keyword song search" className="flex flex-col min-h-0 flex-1">
-              {/* Search section */}
-              <div className="px-1 pb-4">
+          <div
+            className="h-[124px] shrink-0 overflow-hidden pb-4"
+            data-testid="search-controls-region"
+          >
+            {mode === "keyword" ? (
+              <div role="tabpanel" aria-label="Keyword song search controls" className="px-1">
                 <SongSearch
                   onSearch={handleSearch}
                   onAdvancedSearch={(criteria) =>
@@ -380,13 +459,64 @@ export function BrowseSheet({
                   selectedAlbums={selectedAlbums}
                   selectedKeys={selectedKeys}
                   selectedBpm={selectedBpm}
+                  showSearchButton={false}
                 />
               </div>
+            ) : (
+              <div role="tabpanel" aria-label="Describe song search controls" className="px-1">
+                {semanticControls}
+              </div>
+            )}
+          </div>
 
-              {sharedFilters}
+          <div className="shrink-0 pb-3" data-testid="filters-region">
+            {sharedFilters}
+          </div>
 
-              {/* Results section */}
-              <div className="flex-1 overflow-y-auto px-1 -mx-1">
+          <div className="flex shrink-0 justify-end px-1 pb-4" data-testid="search-action-row">
+            {mode === "keyword" ? (
+              <Button
+                type="button"
+                onClick={handleKeywordSubmit}
+                disabled={isLoading || isLoadingAlbums}
+                className={sharedSearchButtonClassName}
+                data-testid="search-button"
+                aria-label={isLoading ? "Searching songs" : "Run song search"}
+              >
+                {isLoading || isLoadingAlbums ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Search className="size-4" />
+                )}
+                Search
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleSemanticSubmit}
+                disabled={isSemanticLoading}
+                className={sharedSearchButtonClassName}
+                data-testid="semantic-search-button"
+                aria-label={isSemanticLoading ? "Searching..." : "Search songs by description"}
+              >
+                {isSemanticLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="size-4" />
+                )}
+                Search
+              </Button>
+            )}
+          </div>
+
+          <div
+            className="flex-1 overflow-y-auto px-1 -mx-1"
+            data-testid="search-results-region"
+            role="region"
+            aria-label={mode === "keyword" ? "Keyword song search results" : "Describe song search results"}
+          >
+            {mode === "keyword" ? (
+              <>
                 {error && (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <AlertCircle className="size-8 text-destructive mb-2" />
@@ -460,25 +590,11 @@ export function BrowseSheet({
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {mode === "describe" && (
-            <div className="flex-1 min-h-0 overflow-y-auto px-1 -mx-1" role="tabpanel" aria-label="Describe songs">
-              <SemanticSearch
-                onAddSong={handleAddSong}
-                existingSongIds={existingSongIds}
-                addingSongIds={addingSongIds}
-                addedSongIds={addedSongIds}
-                onSwitchToSearchTab={handleSwitchToSearchTab}
-                albums={selectedAlbums}
-                keys={selectedKeys}
-                bpmRange={selectedBpm}
-                filterSlot={sharedFilters}
-              />
-            </div>
-          )}
+              </>
+            ) : (
+              semanticResultsContent
+            )}
+          </div>
 
           {/* Footer */}
           <div className="pt-4 border-t mt-4">

@@ -183,6 +183,40 @@ describe("POST /api/songs/search/semantic", () => {
     );
   });
 
+  it("validates and forwards structured album filters", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
+    vi.mocked(semanticSearchSongs).mockResolvedValue([]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
+
+    await POST(makeRequest({
+      query: "test",
+      albums: [
+        { albumName: " Hymns ", albumSeries: " Classic " },
+        { albumName: "Worship", albumSeries: null },
+        { albumName: "", albumSeries: "Ignored" },
+      ],
+      keys: ["D"],
+      bpmRange: "slow",
+    }));
+
+    expect(semanticSearchSongs).toHaveBeenCalledWith(
+      mockEmbedding,
+      "text-embedding-3-small",
+      40,
+      ["published", "review"],
+      {
+        albumFilters: [
+          { albumName: "Hymns", albumSeries: "Classic" },
+          { albumName: "Worship", albumSeries: null },
+        ],
+        albums: undefined,
+        keys: ["D"],
+        bpmRange: "slow",
+      }
+    );
+  });
+
   it("returns 400 when limit > 50", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
     const res = await POST(makeRequest({ query: "test", limit: 100 }));

@@ -1,6 +1,10 @@
 import { sql, type SQL } from "drizzle-orm";
 import { PITCH_CLASSES, BPM_BAND_KEYS, type BpmBandKey } from "@/lib/constants";
 import { parseMusicalKey } from "@/lib/music/key";
+import {
+  normalizeAlbumFilters,
+  type AlbumFilter,
+} from "@/lib/search/album-filter";
 
 const ENHARMONIC_ROOTS_BY_PITCH_CLASS: Record<number, string[]> = {
   0: ["C", "B#", "B♯"],
@@ -181,4 +185,42 @@ export function parseAlbumValues(values: string[]): string[] | undefined {
 
 export function parseAlbumNameParams(searchParams: URLSearchParams): string[] | undefined {
   return parseAlbumValues(searchParams.getAll("albumName"));
+}
+
+export function parseAlbumFilterValues(
+  values: Array<string | AlbumFilter>
+): AlbumFilter[] | undefined {
+  const parsed = values.flatMap((value) => {
+    if (typeof value === "string") {
+      return value
+        .split(",")
+        .map((albumName) => ({ albumName, albumSeries: null }));
+    }
+
+    return [{
+      albumName: value.albumName,
+      albumSeries: value.albumSeries,
+    }];
+  });
+
+  return normalizeAlbumFilters(parsed);
+}
+
+export function parseAlbumFilterParams(searchParams: URLSearchParams): {
+  albumFilters?: AlbumFilter[];
+  albumNames?: string[];
+} {
+  const albumNames = searchParams.getAll("albumName");
+  const albumSeries = searchParams.getAll("albumSeries");
+
+  if (albumSeries.length === 0) {
+    return { albumNames: parseAlbumValues(albumNames) };
+  }
+
+  const albumFilters = albumNames.map((albumName, index) => ({
+    albumName,
+    albumSeries: albumSeries[index]?.trim() || null,
+  }));
+
+  return { albumFilters: normalizeAlbumFilters(albumFilters) };
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fullTextSearchSongs } from "@/lib/db/search";
 import {
-  parseAlbumNameParams,
+  parseAlbumFilterParams,
   parseKeysParam,
   parseBpmRangeParam,
 } from "@/lib/db/search-helpers";
@@ -41,10 +41,11 @@ export async function GET(request: NextRequest) {
 
     const keys = parseKeysParam(searchParams.get("keys"));
     const bpmRange = parseBpmRangeParam(searchParams.get("bpmRange"));
-    const albums = parseAlbumNameParams(searchParams);
+    const { albumFilters, albumNames: albums } = parseAlbumFilterParams(searchParams);
 
     const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus, {
       albums,
+      albumFilters,
       keys,
       bpmRange,
     });
