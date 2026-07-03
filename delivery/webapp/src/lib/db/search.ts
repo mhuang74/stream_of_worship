@@ -4,7 +4,7 @@ import { sql, and, eq, isNull, or, ilike, inArray } from "drizzle-orm";
 import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
 import {
   buildEffectiveKeyPredicate,
-  buildBpmPredicate,
+  buildBpmPredicates,
   buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
@@ -14,7 +14,7 @@ export interface FullTextSearchOptions {
   albums?: string[];
   albumFilters?: AlbumFilter[];
   keys?: string[];
-  bpmRange?: BpmBandKey;
+  bpmRange?: BpmBandKey[];
 }
 
 export async function fullTextSearchSongs(
@@ -70,8 +70,8 @@ export async function fullTextSearchSongs(
     );
   }
 
-  if (options?.bpmRange) {
-    const bpmPredicate = buildBpmPredicate(options.bpmRange, "r3");
+  if (options?.bpmRange && options.bpmRange.length > 0) {
+    const bpmPredicate = buildBpmPredicates(options.bpmRange, "r3");
     const visCond = buildVisibilityCondition(visibilityStatus, "r3");
     whereConditions.push(
       sql`exists (

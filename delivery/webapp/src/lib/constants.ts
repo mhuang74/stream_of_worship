@@ -79,3 +79,14 @@ export const BPM_BANDS = {
 
 export const BPM_BAND_KEYS = ["slow", "moderate", "fast"] as const;
 export type BpmBandKey = (typeof BPM_BAND_KEYS)[number];
+
+export function formatBpmBandRangeText(band: BpmBandKey): string {
+  const config = BPM_BANDS[band];
+  if ("max" in config && !("min" in config)) {
+    return `< ${config.max}`;
+  }
+  if ("min" in config && "max" in config) {
+    return `${config.min}–${config.max}`;
+  }
+  return `≥ ${config.min}`;
+}

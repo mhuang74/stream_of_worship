@@ -241,7 +241,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: "slow" });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: ["slow"] });
   });
 
   it("parses combined keys + bpmRange filters (AND semantics)", async () => {
@@ -259,7 +259,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: "fast" });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: ["fast"] });
   });
 
   it("parses repeated albumName filters with keys and bpmRange", async () => {
@@ -282,7 +282,7 @@ describe("GET /api/songs/search", () => {
       50,
       0,
       ["published", "review"],
-      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: "slow" }
+      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: ["slow"] }
     );
   });
 
@@ -313,7 +313,7 @@ describe("GET /api/songs/search", () => {
           { albumName: "Worship", albumSeries: null },
         ],
         keys: ["D"],
-        bpmRange: "slow",
+        bpmRange: ["slow"],
       }
     );
   });

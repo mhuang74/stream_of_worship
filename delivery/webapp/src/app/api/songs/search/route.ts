@@ -4,7 +4,7 @@ import { fullTextSearchSongs } from "@/lib/db/search";
 import {
   parseAlbumFilterParams,
   parseKeysParam,
-  parseBpmRangeParam,
+  parseBpmRangeParams,
 } from "@/lib/db/search-helpers";
 
 export async function GET(request: NextRequest) {
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       : ["published", "review"];
 
     const keys = parseKeysParam(searchParams.get("keys"));
-    const bpmRange = parseBpmRangeParam(searchParams.get("bpmRange"));
+    const bpmRange = parseBpmRangeParams(searchParams.getAll("bpmRange"));
     const { albumFilters, albumNames: albums } = parseAlbumFilterParams(searchParams);
 
     const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus, {

@@ -5,7 +5,7 @@ import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 import { parseMusicalKey } from "@/lib/music/key";
 import {
   buildEffectiveKeyPredicate,
-  buildBpmPredicate,
+  buildBpmPredicates,
   buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
@@ -157,7 +157,7 @@ export interface ListSongsFilters {
   lyricist?: string;
   visibilityStatus?: string | string[];
   keys?: string[];
-  bpmRange?: BpmBandKey;
+  bpmRange?: BpmBandKey[];
 }
 
 function buildPublishedRecordingExistsClause(
@@ -262,8 +262,8 @@ function buildSongWhereClause(
     );
   }
 
-  if (filters?.bpmRange) {
-    const bpmPredicate = buildBpmPredicate(filters.bpmRange, "r3");
+  if (filters?.bpmRange && filters.bpmRange.length > 0) {
+    const bpmPredicate = buildBpmPredicates(filters.bpmRange, "r3");
     const visCond = buildVisibilityCondition(filters?.visibilityStatus, "r3");
     whereConditions.push(
       sql`exists (
@@ -445,7 +445,7 @@ export interface SemanticSearchOptions {
   albums?: string[];
   albumFilters?: AlbumFilter[];
   keys?: string[];
-  bpmRange?: BpmBandKey;
+  bpmRange?: BpmBandKey[];
 }
 
 function validateEmbedding(embedding: number[], expectedDims: number = 1536): string {
@@ -486,8 +486,8 @@ export async function semanticSearchSongs(
   const keyFilter = options?.keys?.length
     ? sql`AND ${buildEffectiveKeyPredicate(options.keys, "s", "r")}`
     : sql``;
-  const bpmFilter = options?.bpmRange
-    ? sql`AND ${buildBpmPredicate(options.bpmRange, "r")}`
+  const bpmFilter = options?.bpmRange && options.bpmRange.length > 0
+    ? sql`AND ${buildBpmPredicates(options.bpmRange, "r")}`
     : sql``;
 
   const rows = await db.execute(sql`
