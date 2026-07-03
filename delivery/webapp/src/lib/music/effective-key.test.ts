@@ -30,6 +30,20 @@ describe("getEffectiveKey", () => {
     expect(result.display).toBe("D");
   });
 
+  it("applies split detected minor mode to audio fallback keys", () => {
+    const result = getEffectiveKey({
+      detectedKey: "A",
+      detectedMode: "minor",
+      detectedConfidence: 0.84,
+      detectedMargin: 0.09,
+      detectedWindowAgreement: 0.72,
+    });
+
+    expect(result.source).toBe("audio");
+    expect(result.display).toBe("Am");
+    expect(result.mode).toBe("minor");
+  });
+
   it("marks new-detector threshold failures unknown", () => {
     const result = getEffectiveKey({
       detectedKey: "D",
@@ -63,4 +77,3 @@ describe("getEffectiveKey", () => {
     expect(result.warning).toBe("unparseable_catalog");
   });
 });
-

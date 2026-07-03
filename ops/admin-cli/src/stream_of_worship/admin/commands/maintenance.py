@@ -162,13 +162,13 @@ def _update_key_normalization_batch(db_client: DatabaseClient, rows: list[tuple]
     sql = f"""
         UPDATE songs AS s
         SET
-            musical_key_root = v.musical_key_root,
-            musical_key_mode = v.musical_key_mode,
-            musical_key_start_root = v.musical_key_start_root,
-            musical_key_end_root = v.musical_key_end_root,
-            musical_key_start_pitch_class = v.musical_key_start_pitch_class,
-            musical_key_end_pitch_class = v.musical_key_end_pitch_class,
-            musical_key_parse_status = v.musical_key_parse_status
+            musical_key_root = v.musical_key_root::text,
+            musical_key_mode = v.musical_key_mode::text,
+            musical_key_start_root = v.musical_key_start_root::text,
+            musical_key_end_root = v.musical_key_end_root::text,
+            musical_key_start_pitch_class = v.musical_key_start_pitch_class::integer,
+            musical_key_end_pitch_class = v.musical_key_end_pitch_class::integer,
+            musical_key_parse_status = v.musical_key_parse_status::text
         FROM (VALUES {placeholders}) AS v(
             id,
             musical_key_root,
@@ -203,16 +203,16 @@ def backfill_key_normalization(
 ) -> None:
     """Backfill normalized catalog key fields on active songs."""
     _, db_client = _load_clients(config_path)
-    cursor = db_client.connection.cursor()
-    cursor.execute(
-        """
-        SELECT id, musical_key
-        FROM songs
-        WHERE deleted_at IS NULL
-        ORDER BY id
-        """
-    )
-    rows = [(row[0], row[1]) for row in cursor.fetchall()]
+    with db_client.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, musical_key
+            FROM songs
+            WHERE deleted_at IS NULL
+            ORDER BY id
+            """
+        )
+        rows = [(row[0], row[1]) for row in cursor.fetchall()]
     counts = {"missing": 0, "ok": 0, "range": 0, "unparseable": 0}
     for _, musical_key in rows:
         counts[parse_musical_key(musical_key).status] += 1

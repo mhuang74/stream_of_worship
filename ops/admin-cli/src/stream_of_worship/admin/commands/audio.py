@@ -7370,8 +7370,8 @@ def _load_key_review_rows(db_client: DatabaseClient, hash_prefix: Optional[str] 
         JOIN songs s ON s.id = r.song_id
         WHERE s.deleted_at IS NULL
           AND r.deleted_at IS NULL
-          AND NULLIF(BTRIM(s.musical_key), '') IS NOT NULL
-          AND NULLIF(BTRIM(r.musical_key), '') IS NOT NULL
+          AND NULLIF(TRIM(s.musical_key), '') IS NOT NULL
+          AND NULLIF(TRIM(r.musical_key), '') IS NOT NULL
           AND r.key_algorithm_version = 'ks_segment_vote_v1'
           {where_hash}
         ORDER BY s.title, r.hash_prefix
@@ -7380,8 +7380,25 @@ def _load_key_review_rows(db_client: DatabaseClient, hash_prefix: Optional[str] 
     )
     rows = []
     for row in cursor.fetchall():
-        catalog = parse_musical_key(row[2])
-        detected = parse_musical_key(row[8])
+        (
+            song_id,
+            title,
+            catalog_key,
+            catalog_start_root,
+            catalog_end_root,
+            content_hash,
+            hash_prefix_value,
+            original_filename,
+            detected_key,
+            musical_mode,
+            key_confidence,
+            key_score_margin,
+            key_window_agreement,
+            key_algorithm_version,
+            key_candidates,
+        ) = row
+        catalog = parse_musical_key(catalog_key)
+        detected = parse_musical_key(detected_key)
         if (
             catalog.start_pitch_class is None
             or detected.start_pitch_class is None
@@ -7390,21 +7407,21 @@ def _load_key_review_rows(db_client: DatabaseClient, hash_prefix: Optional[str] 
             continue
         rows.append(
             {
-                "song_id": row[0],
-                "title": row[1],
-                "catalog_key": row[2],
-                "catalog_start_root": row[3],
-                "catalog_end_root": row[4],
-                "content_hash": row[5],
-                "hash_prefix": row[6],
-                "original_filename": row[7],
-                "detected_key": row[8],
-                "musical_mode": row[9],
-                "key_confidence": row[10],
-                "key_score_margin": row[11],
-                "key_window_agreement": row[12],
-                "key_algorithm_version": row[13],
-                "key_candidates": row[14],
+                "song_id": song_id,
+                "title": title,
+                "catalog_key": catalog_key,
+                "catalog_start_root": catalog_start_root,
+                "catalog_end_root": catalog_end_root,
+                "content_hash": content_hash,
+                "hash_prefix": hash_prefix_value,
+                "original_filename": original_filename,
+                "detected_key": detected_key,
+                "musical_mode": musical_mode,
+                "key_confidence": key_confidence,
+                "key_score_margin": key_score_margin,
+                "key_window_agreement": key_window_agreement,
+                "key_algorithm_version": key_algorithm_version,
+                "key_candidates": key_candidates,
             }
         )
     return rows

@@ -20,6 +20,7 @@ from stream_of_worship.admin.commands.maintenance import (
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.schema import RECORDING_COLUMN_COUNT, SONG_COLUMN_COUNT
 from stream_of_worship.admin.main import app
 
 runner = CliRunner()
@@ -783,6 +784,92 @@ def test_find_failed_render_jobs_formats_datetimes():
 
     assert jobs[0]["created_at"] == created.isoformat()
     assert jobs[0]["updated_at"] == updated.isoformat()
+
+
+def test_list_soft_deleted_songs_with_counts_uses_schema_column_count():
+    song_values = (
+        "song_1",
+        "Deleted Song",
+        None,
+        None,
+        None,
+        "Album",
+        None,
+        "G",
+        "G",
+        "major",
+        "G",
+        "G",
+        7,
+        7,
+        "ok",
+        "lyrics",
+        '["lyrics"]',
+        '[{"label": "verse"}]',
+        "https://example.com/song",
+        1,
+        "2024-01-01T00:00:00",
+        "2024-01-01T00:00:00",
+        "2024-01-02T00:00:00",
+        "2024-01-03T00:00:00",
+    )
+    assert len(song_values) == SONG_COLUMN_COUNT
+    cursor = FakeCursor(fetchall_rows=[song_values + (2, 3)])
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    rows = db.list_soft_deleted_songs_with_counts()
+
+    assert rows[0]["song"].sections == '[{"label": "verse"}]'
+    assert rows[0]["recording_count"] == 2
+    assert rows[0]["songset_reference_count"] == 3
+
+
+def test_list_soft_deleted_recordings_with_counts_uses_schema_column_count():
+    recording_values = (
+        "a" * 64,
+        "aaaaaaaaaaaa",
+        "song_1",
+        "song.mp3",
+        100,
+        "2024-01-01T00:00:00",
+        "s3://bucket/audio.mp3",
+        None,
+        None,
+        245.3,
+        128.0,
+        "A",
+        "minor",
+        0.8,
+        "ks_segment_vote_v1",
+        0.1,
+        0.75,
+        '[{"key": "A"}]',
+        "2024-01-01T00:10:00",
+        -8.2,
+        "[0.1]",
+        "[0.1]",
+        "[]",
+        "[4, 512, 24]",
+        "completed",
+        "analysis_1",
+        "completed",
+        "lrc_1",
+        "2024-01-01T00:00:00",
+        "2024-01-02T00:00:00",
+        "https://youtu.be/example",
+        "published",
+        "completed",
+        "2024-01-03T00:00:00",
+    )
+    assert len(recording_values) == RECORDING_COLUMN_COUNT
+    cursor = FakeCursor(fetchall_rows=[recording_values + (4,)])
+    db = DatabaseClient(FakeProvider(FakeConnection(cursor)))
+
+    rows = db.list_soft_deleted_recordings_with_counts()
+
+    assert rows[0]["recording"].sections == "[]"
+    assert rows[0]["recording"].updated_at == "2024-01-02T00:00:00"
+    assert rows[0]["songset_reference_count"] == 4
 
 
 # ---------------------------------------------------------------------------

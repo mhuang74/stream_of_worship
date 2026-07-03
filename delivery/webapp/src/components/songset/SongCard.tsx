@@ -71,9 +71,9 @@ export function SongCard({
   const tempo = primaryRecording?.tempoBpm;
   const effectiveKeyDisplay =
     primaryRecording?.effectiveKeyStartRoot &&
-    primaryRecording.effectiveKeyEndRoot &&
-    primaryRecording.effectiveKeyStartRoot !== primaryRecording.effectiveKeyEndRoot
-      ? `${primaryRecording.effectiveKeyStartRoot} → ${primaryRecording.effectiveKeyEndRoot}`
+    primaryRecording?.effectiveKeyEndRoot &&
+    primaryRecording?.effectiveKeyStartRoot !== primaryRecording?.effectiveKeyEndRoot
+      ? `${primaryRecording?.effectiveKeyStartRoot} → ${primaryRecording?.effectiveKeyEndRoot}`
       : primaryRecording?.effectiveKey ?? song.effectiveKey;
   const recordingKey = effectiveKeyDisplay || primaryRecording?.musicalKey || song.musicalKey;
   const artist = song.composer || song.lyricist || "Unknown Artist";

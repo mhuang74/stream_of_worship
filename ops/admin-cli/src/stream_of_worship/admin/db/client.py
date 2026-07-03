@@ -16,7 +16,9 @@ import psycopg.errors
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
     ACTIVE_ROW_COUNT_QUERY,
+    RECORDING_COLUMN_COUNT,
     ROW_COUNT_QUERY,
+    SONG_COLUMN_COUNT,
 )
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.helpers import to_str
@@ -1481,9 +1483,9 @@ class DatabaseClient:
             values = tuple(row)
             results.append(
                 {
-                    "song": Song.from_row(values[:17]),
-                    "recording_count": int(values[17]),
-                    "songset_reference_count": int(values[18]),
+                    "song": Song.from_row(values[:SONG_COLUMN_COUNT]),
+                    "recording_count": int(values[SONG_COLUMN_COUNT]),
+                    "songset_reference_count": int(values[SONG_COLUMN_COUNT + 1]),
                 }
             )
         return results
@@ -1507,8 +1509,8 @@ class DatabaseClient:
             values = tuple(row)
             results.append(
                 {
-                    "recording": Recording.from_row(values[:29]),
-                    "songset_reference_count": int(values[29]),
+                    "recording": Recording.from_row(values[:RECORDING_COLUMN_COUNT]),
+                    "songset_reference_count": int(values[RECORDING_COLUMN_COUNT]),
                 }
             )
         return results

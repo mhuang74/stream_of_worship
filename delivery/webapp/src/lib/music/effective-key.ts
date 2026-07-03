@@ -59,6 +59,37 @@ function parsedToEffective(
   };
 }
 
+function normalizeMode(mode: string | null | undefined): EffectiveKey["mode"] {
+  const normalized = (mode ?? "").normalize("NFKC").trim().toLowerCase();
+  if (normalized === "minor" || normalized === "m" || normalized === "小調") {
+    return "minor";
+  }
+  if (normalized === "major" || normalized === "大調") {
+    return "major";
+  }
+  return "unknown";
+}
+
+function detectedToEffective(
+  parsed: ParsedMusicalKey,
+  source: EffectiveKey["source"],
+  input: EffectiveKeyInput
+): EffectiveKey {
+  const detectedMode = normalizeMode(input.detectedMode);
+  if (detectedMode === "unknown" || detectedMode === parsed.mode) {
+    return parsedToEffective(parsed, source, input.detectedConfidence ?? null);
+  }
+  const suffix = detectedMode === "minor" ? "m" : "";
+  return {
+    ...parsedToEffective(parsed, source, input.detectedConfidence ?? null),
+    display:
+      parsed.status === "ok"
+        ? `${parsed.startRoot}${suffix}`
+        : `${parsed.startRoot}${suffix} → ${parsed.endRoot}${suffix}`,
+    mode: detectedMode,
+  };
+}
+
 function audioPasses(input: EffectiveKeyInput): boolean {
   return (
     (input.detectedConfidence ?? 0) >= MIN_CONFIDENCE &&
@@ -95,11 +126,11 @@ export function getEffectiveKey(input: EffectiveKeyInput): EffectiveKey {
   if (!hasDetected) return unknown();
 
   if (!hasNewDiagnostics) {
-    return parsedToEffective(detectedParsed, "audio_legacy", input.detectedConfidence ?? null);
+    return detectedToEffective(detectedParsed, "audio_legacy", input);
   }
 
   if (audioPasses(input)) {
-    return parsedToEffective(detectedParsed, "audio", input.detectedConfidence ?? null);
+    return detectedToEffective(detectedParsed, "audio", input);
   }
 
   return unknown("audio_low_confidence");
@@ -111,4 +142,3 @@ export function formatEffectiveKey(key: Pick<EffectiveKey, "display" | "startRoo
   }
   return key.display;
 }
-
