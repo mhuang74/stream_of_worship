@@ -4,7 +4,7 @@ import { eq, desc, and, or, ilike, sql, isNull, inArray } from "drizzle-orm";
 import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 import { parseMusicalKey } from "@/lib/music/key";
 import {
-  buildKeyRegex,
+  buildEffectiveKeyPredicate,
   buildBpmPredicate,
   buildVisibilityCondition,
 } from "./search-helpers";
@@ -234,7 +234,6 @@ function buildSongWhereClause(
   }
 
   if (filters?.keys && (filters.keys?.length ?? 0) > 0) {
-    const keyRegex = buildKeyRegex(filters.keys);
     const visCond = buildVisibilityCondition(filters?.visibilityStatus, "r2");
     whereConditions.push(
       sql`exists (
@@ -242,7 +241,7 @@ function buildSongWhereClause(
         where r2.song_id = ${songs.id}
           and r2.deleted_at IS NULL
           ${visCond ? sql`and ${visCond}` : sql``}
-          and r2.musical_key ~* ${keyRegex}
+          and ${buildEffectiveKeyPredicate(filters.keys, "songs", "r2")}
       )`
     );
   }
@@ -448,7 +447,7 @@ export async function semanticSearchSongs(
     ? sql`AND s.album_name = ANY(${sql`ARRAY[${sql.join(options.albums.map(a => sql`${a}`), sql`, `)}]::text[]`})`
     : sql``;
   const keyFilter = options?.keys?.length
-    ? sql`AND r.musical_key ~* ${buildKeyRegex(options.keys)}`
+    ? sql`AND ${buildEffectiveKeyPredicate(options.keys, "s", "r")}`
     : sql``;
   const bpmFilter = options?.bpmRange
     ? sql`AND ${buildBpmPredicate(options.bpmRange, "r")}`

@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   buildKeyRegex,
+  buildKeyTokenRegex,
+  buildCatalogKeyTokenRegex,
+  buildEffectiveKeyPredicate,
   buildBpmPredicate,
   buildVisibilityCondition,
+  effectiveKeyMatchesFilter,
   isValidPitchClass,
   isValidBpmBand,
   parseKeysParam,
@@ -26,6 +30,69 @@ describe("buildKeyRegex", () => {
   it("handles single key", () => {
     const regex = buildKeyRegex(["G"]);
     expect(regex).toBe("^(G)(maj|major|minor|min)?(?!\\w)");
+  });
+});
+
+describe("effectiveKeyMatchesFilter", () => {
+  it("matches exact natural keys and range endpoints", () => {
+    expect(effectiveKeyMatchesFilter({ catalogKey: "A", keys: ["A"] })).toBe(true);
+    expect(effectiveKeyMatchesFilter({ catalogKey: "G-A", keys: ["A"] })).toBe(true);
+  });
+
+  it("does not let natural keys match sharp or flat pitch classes", () => {
+    expect(effectiveKeyMatchesFilter({ catalogKey: "A#", keys: ["A"] })).toBe(false);
+    expect(effectiveKeyMatchesFilter({ catalogKey: "Bb", keys: ["A"] })).toBe(false);
+  });
+
+  it("matches enharmonic catalog keys for selected sharp pitch classes", () => {
+    expect(effectiveKeyMatchesFilter({ catalogKey: "A#", keys: ["A#"] })).toBe(true);
+    expect(effectiveKeyMatchesFilter({ catalogKey: "Bb", keys: ["A#"] })).toBe(true);
+  });
+
+  it("matches any displayed key in catalog ranges", () => {
+    expect(effectiveKeyMatchesFilter({ catalogKey: "E-F", keys: ["E"] })).toBe(true);
+    expect(effectiveKeyMatchesFilter({ catalogKey: "D-F", keys: ["A"] })).toBe(false);
+  });
+
+  it("prefers parseable catalog keys over mismatched recording keys", () => {
+    expect(
+      effectiveKeyMatchesFilter({ catalogKey: "D-F", recordingKey: "A", keys: ["A"] })
+    ).toBe(false);
+    expect(
+      effectiveKeyMatchesFilter({ catalogKey: "A-C", recordingKey: "E", keys: ["A"] })
+    ).toBe(true);
+  });
+
+  it("falls back to recording keys only when catalog key is missing", () => {
+    expect(effectiveKeyMatchesFilter({ catalogKey: null, recordingKey: "A", keys: ["A"] })).toBe(
+      true
+    );
+    expect(
+      effectiveKeyMatchesFilter({ catalogKey: "unknown", recordingKey: "A", keys: ["A"] })
+    ).toBe(false);
+  });
+});
+
+describe("effective key SQL helpers", () => {
+  it("builds token regexes with exact accidental boundaries", () => {
+    expect("A").toMatch(new RegExp(buildKeyTokenRegex(["A"]), "i"));
+    expect("A major").toMatch(new RegExp(buildKeyTokenRegex(["A"]), "i"));
+    expect("A#").not.toMatch(new RegExp(buildKeyTokenRegex(["A"]), "i"));
+    expect("Bb").toMatch(new RegExp(buildKeyTokenRegex(["A#"]), "i"));
+    expect("G-A").toMatch(new RegExp(buildCatalogKeyTokenRegex(["A"]), "i"));
+    expect("D-F").not.toMatch(new RegExp(buildCatalogKeyTokenRegex(["A"]), "i"));
+  });
+
+  it("builds effective-key SQL that checks catalog before recording fallback", () => {
+    const sqlFragment = buildEffectiveKeyPredicate(["A"], "songs", "r2");
+    const query = dialect.sqlToQuery(sqlFragment);
+
+    expect(query.sql).toContain("songs.musical_key");
+    expect(query.sql).toContain("songs.musical_key_start_pitch_class");
+    expect(query.sql).toContain("songs.musical_key_end_pitch_class");
+    expect(query.sql).toContain("r2.musical_key");
+    expect(query.sql).toContain("NOT (");
+    expect(query.params).toContain(9);
   });
 });
 

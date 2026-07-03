@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fullTextSearchSongs } from "@/lib/db/search";
 import { db } from "@/db";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 vi.mock("@/db", () => ({
   db: {
@@ -14,6 +15,8 @@ vi.mock("@/db", () => ({
     },
   },
 }));
+
+const dialect = new PgDialect();
 
 vi.mock("@/db/schema", () => ({
   songs: {
@@ -193,6 +196,29 @@ describe("fullTextSearchSongs", () => {
     });
 
     expect(mockFindMany).toHaveBeenCalled();
+  });
+
+  it("filters keys by effective catalog key before recording-key fallback", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const mockFindMany = vi.fn().mockResolvedValue([]);
+    const mockSelect = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where }),
+    });
+
+    (db.select as ReturnType<typeof vi.fn>) = mockSelect;
+    (db.query.songs.findMany as ReturnType<typeof vi.fn>) = mockFindMany;
+
+    await fullTextSearchSongs("test", 50, 0, "published", {
+      keys: ["A"],
+    });
+
+    const query = dialect.sqlToQuery(where.mock.calls[0][0]);
+    expect(query.sql).toContain("songs.musical_key");
+    expect(query.sql).toContain("songs.musical_key_start_pitch_class");
+    expect(query.sql).toContain("songs.musical_key_end_pitch_class");
+    expect(query.sql).toContain("r2.musical_key");
+    expect(query.sql).toContain("NOT (");
+    expect(query.params).toContain(9);
   });
 
   it("accepts bpmRange filter option without throwing", async () => {
