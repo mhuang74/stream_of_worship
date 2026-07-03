@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { songs } from "@/db/schema";
-import { sql, and, isNull, or, ilike } from "drizzle-orm";
+import { sql, and, isNull, or, ilike, inArray } from "drizzle-orm";
 import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
 import {
   buildKeyRegex,
@@ -10,6 +10,7 @@ import {
 import type { BpmBandKey } from "@/lib/constants";
 
 export interface FullTextSearchOptions {
+  albums?: string[];
   keys?: string[];
   bpmRange?: BpmBandKey;
 }
@@ -36,6 +37,10 @@ export async function fullTextSearchSongs(
     ),
     isNull(songs.deletedAt),
   ];
+
+  if (options?.albums?.length) {
+    whereConditions.push(inArray(songs.albumName, options.albums));
+  }
 
   if (options?.keys && (options.keys?.length ?? 0) > 0) {
     const keyRegex = buildKeyRegex(options.keys);

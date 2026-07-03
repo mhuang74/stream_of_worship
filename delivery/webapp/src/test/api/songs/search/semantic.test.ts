@@ -161,6 +161,28 @@ describe("POST /api/songs/search/semantic", () => {
     expect(semanticSearchSongs).toHaveBeenCalledWith(mockEmbedding, "text-embedding-3-small", 10, ["published", "review"]);
   });
 
+  it("validates and forwards optional filters", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
+    vi.mocked(semanticSearchSongs).mockResolvedValue([]);
+    vi.mocked(findTopMatchingLines).mockResolvedValue(new Map());
+
+    await POST(makeRequest({
+      query: "test",
+      albums: [" Hymns ", "", "Hymns", "Worship"],
+      keys: ["D", "H"],
+      bpmRange: "slow",
+    }));
+
+    expect(semanticSearchSongs).toHaveBeenCalledWith(
+      mockEmbedding,
+      "text-embedding-3-small",
+      40,
+      ["published", "review"],
+      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: "slow" }
+    );
+  });
+
   it("returns 400 when limit > 50", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
     const res = await POST(makeRequest({ query: "test", limit: 100 }));

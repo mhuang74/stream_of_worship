@@ -262,6 +262,30 @@ describe("GET /api/songs/search", () => {
     expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: "fast" });
   });
 
+  it("parses repeated albumName filters with keys and bpmRange", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&albumName=Hymns&albumName=Worship&keys=D&bpmRange=slow"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith(
+      "test",
+      50,
+      0,
+      ["published", "review"],
+      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: "slow" }
+    );
+  });
+
   it("filters out invalid pitch classes from keys param", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

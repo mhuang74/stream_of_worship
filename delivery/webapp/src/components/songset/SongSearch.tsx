@@ -5,13 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Search, X, Loader2, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,9 +14,10 @@ import {
   type BpmBandKey,
 } from "@/lib/constants";
 import type { StructuredSearchCriteria } from "./search/types";
+import { AlbumMultiSelect } from "./AlbumMultiSelect";
 
 interface SongSearchProps {
-  onSearch: (query: string, albumFilter?: string) => void;
+  onSearch: (query: string, albumFilters?: string[]) => void;
   onAdvancedSearch?: (criteria: StructuredSearchCriteria) => void;
   albums: string[];
   isLoading?: boolean;
@@ -31,6 +25,14 @@ interface SongSearchProps {
   placeholder?: string;
   debounceMs?: number;
   initialQuery?: string;
+  query?: string;
+  onQueryChange?: (query: string) => void;
+  selectedAlbums?: string[];
+  onSelectedAlbumsChange?: (albums: string[]) => void;
+  selectedKeys?: string[];
+  onSelectedKeysChange?: (keys: string[]) => void;
+  selectedBpm?: BpmBandKey;
+  onSelectedBpmChange?: (bpm: BpmBandKey | undefined) => void;
 }
 
 export function SongSearch({
@@ -42,57 +44,117 @@ export function SongSearch({
   placeholder = "Search songs by title, artist, or album...",
   debounceMs = 300,
   initialQuery,
+  query: controlledQuery,
+  onQueryChange,
+  selectedAlbums: controlledSelectedAlbums,
+  onSelectedAlbumsChange,
+  selectedKeys: controlledSelectedKeys,
+  onSelectedKeysChange,
+  selectedBpm: controlledSelectedBpm,
+  onSelectedBpmChange,
 }: SongSearchProps) {
-  const [query, setQuery] = useState(initialQuery ?? "");
-  const [selectedAlbum, setSelectedAlbum] = useState<string>("all");
+  const [internalQuery, setInternalQuery] = useState(initialQuery ?? "");
+  const [internalSelectedAlbums, setInternalSelectedAlbums] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const [selectedBpm, setSelectedBpm] = useState<BpmBandKey | undefined>();
+  const [internalSelectedKeys, setInternalSelectedKeys] = useState<string[]>([]);
+  const [internalSelectedBpm, setInternalSelectedBpm] = useState<BpmBandKey | undefined>();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const initialSearchTriggered = useRef(false);
 
+  const query = controlledQuery ?? internalQuery;
+  const selectedAlbums = controlledSelectedAlbums ?? internalSelectedAlbums;
+  const selectedKeys = controlledSelectedKeys ?? internalSelectedKeys;
+  const selectedBpm = controlledSelectedBpm ?? internalSelectedBpm;
+
+  const setQuery = useCallback(
+    (value: string) => {
+      if (onQueryChange) onQueryChange(value);
+      else setInternalQuery(value);
+    },
+    [onQueryChange]
+  );
+
+  const setSelectedAlbums = useCallback(
+    (value: string[]) => {
+      if (onSelectedAlbumsChange) onSelectedAlbumsChange(value);
+      else setInternalSelectedAlbums(value);
+    },
+    [onSelectedAlbumsChange]
+  );
+
+  const setSelectedKeys = useCallback(
+    (updater: string[] | ((prev: string[]) => string[])) => {
+      const next = typeof updater === "function" ? updater(selectedKeys) : updater;
+      if (onSelectedKeysChange) onSelectedKeysChange(next);
+      else setInternalSelectedKeys(next);
+    },
+    [onSelectedKeysChange, selectedKeys]
+  );
+
+  const setSelectedBpm = useCallback(
+    (
+      updater:
+        | BpmBandKey
+        | undefined
+        | ((prev: BpmBandKey | undefined) => BpmBandKey | undefined)
+    ) => {
+      const next = typeof updater === "function" ? updater(selectedBpm) : updater;
+      if (onSelectedBpmChange) onSelectedBpmChange(next);
+      else setInternalSelectedBpm(next);
+    },
+    [onSelectedBpmChange, selectedBpm]
+  );
+
   const hasAdvancedFilters =
-    selectedKeys.length > 0 || selectedBpm !== undefined;
+    selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm !== undefined;
 
   const triggerSearch = useCallback(
-    (searchQuery: string, albumFilter?: string) => {
-      const album = albumFilter === "all" ? undefined : albumFilter;
+    (searchQuery: string, albumFilters: string[] = selectedAlbums) => {
+      const normalizedAlbums = albumFilters.length > 0 ? albumFilters : undefined;
       if (showAdvanced && hasAdvancedFilters && onAdvancedSearch) {
         onAdvancedSearch({
           query: searchQuery.trim() || undefined,
           keys: selectedKeys.length > 0 ? selectedKeys : undefined,
           bpmRange: selectedBpm,
-          album,
+          albums: normalizedAlbums,
         });
       } else {
-        onSearch(searchQuery, album);
+        onSearch(searchQuery, normalizedAlbums);
       }
     },
-    [showAdvanced, hasAdvancedFilters, onAdvancedSearch, selectedKeys, selectedBpm, onSearch]
+    [
+      selectedAlbums,
+      showAdvanced,
+      hasAdvancedFilters,
+      onAdvancedSearch,
+      selectedKeys,
+      selectedBpm,
+      onSearch,
+    ]
   );
 
   useEffect(() => {
     if (initialQuery && initialQuery.trim() && !initialSearchTriggered.current) {
       initialSearchTriggered.current = true;
       setIsSearching(true);
-      triggerSearch(initialQuery, undefined);
+      triggerSearch(initialQuery, selectedAlbums);
     }
-  }, [initialQuery, triggerSearch]);
+  }, [initialQuery, selectedAlbums, triggerSearch]);
 
   // Debounced search handler
   const debouncedSearch = useCallback(
-    (searchQuery: string, albumFilter?: string) => {
+    (searchQuery: string, albumFilters: string[] = selectedAlbums) => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
 
       debounceTimerRef.current = setTimeout(() => {
-        triggerSearch(searchQuery, albumFilter);
+        triggerSearch(searchQuery, albumFilters);
         setIsSearching(false);
       }, debounceMs);
     },
-    [triggerSearch, debounceMs]
+    [triggerSearch, debounceMs, selectedAlbums]
   );
 
   // Handle query change
@@ -101,27 +163,27 @@ export function SongSearch({
       const newQuery = e.target.value;
       setQuery(newQuery);
       setIsSearching(true);
-      debouncedSearch(newQuery, selectedAlbum);
+      debouncedSearch(newQuery, selectedAlbums);
     },
-    [debouncedSearch, selectedAlbum]
+    [debouncedSearch, selectedAlbums, setQuery]
   );
 
   // Handle album filter change
   const handleAlbumChange = useCallback(
-    (value: string | null) => {
-      setSelectedAlbum(value ?? "");
+    (value: string[]) => {
+      setSelectedAlbums(value);
       setIsSearching(true);
-      debouncedSearch(query, value ?? "");
+      debouncedSearch(query, value);
     },
-    [debouncedSearch, query]
+    [debouncedSearch, query, setSelectedAlbums]
   );
 
   // Handle clear
   const handleClear = useCallback(() => {
     setQuery("");
     setIsSearching(true);
-    debouncedSearch("", selectedAlbum);
-  }, [debouncedSearch, selectedAlbum]);
+    debouncedSearch("", selectedAlbums);
+  }, [debouncedSearch, selectedAlbums, setQuery]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -136,26 +198,26 @@ export function SongSearch({
     setSelectedKeys((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
-  }, []);
+  }, [setSelectedKeys]);
 
   const toggleBpm = useCallback((band: BpmBandKey) => {
     setSelectedBpm((prev) => (prev === band ? undefined : band));
-  }, []);
+  }, [setSelectedBpm]);
 
   const handleApplyFilters = useCallback(() => {
     setIsSearching(true);
-    triggerSearch(query, selectedAlbum);
+    triggerSearch(query, selectedAlbums);
     setIsSearching(false);
-  }, [triggerSearch, query, selectedAlbum]);
+  }, [triggerSearch, query, selectedAlbums]);
 
   const handleClearFilters = useCallback(() => {
+    setSelectedAlbums([]);
     setSelectedKeys([]);
     setSelectedBpm(undefined);
     setIsSearching(true);
-    const album = selectedAlbum === "all" ? undefined : selectedAlbum;
-    onSearch(query, album);
+    onSearch(query, undefined);
     setIsSearching(false);
-  }, [query, selectedAlbum, onSearch]);
+  }, [query, onSearch, setSelectedAlbums, setSelectedBpm, setSelectedKeys]);
 
   const showClearButton = query.length > 0;
   const showLoadingIndicator = isLoading || isSearching;
@@ -199,24 +261,12 @@ export function SongSearch({
 
       {/* Album filter */}
       {albums.length > 0 && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            Filter by album:
-          </span>
-          <Select value={selectedAlbum} onValueChange={handleAlbumChange}>
-            <SelectTrigger className="w-full" data-testid="album-filter">
-              <SelectValue placeholder="All albums" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All albums</SelectItem>
-              {albums.map((album) => (
-                <SelectItem key={album} value={album}>
-                  {album}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <AlbumMultiSelect
+          albums={albums}
+          selectedAlbums={selectedAlbums}
+          onSelectedAlbumsChange={handleAlbumChange}
+          disabled={isLoading}
+        />
       )}
 
       {/* Advanced filters toggle */}
@@ -234,7 +284,7 @@ export function SongSearch({
           Advanced filters
           {hasAdvancedFilters && (
             <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
-              {selectedKeys.length + (selectedBpm ? 1 : 0)}
+              {selectedAlbums.length + selectedKeys.length + (selectedBpm ? 1 : 0)}
             </Badge>
           )}
         </Button>

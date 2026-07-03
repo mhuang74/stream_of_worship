@@ -148,7 +148,51 @@ describe("GET /api/songs", () => {
     expect(listSongs).toHaveBeenCalledWith(
       50,
       0,
-      expect.objectContaining({ albumName: "Test Album" })
+      expect.objectContaining({ albumNames: ["Test Album"] })
+    );
+  });
+
+  it("applies repeated albumName filters", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(listSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?albumName=Hymns&albumName=Worship"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({ albumNames: ["Hymns", "Worship"] })
+    );
+  });
+
+  it("trims, de-dupes, and ignores empty albumName filters", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(listSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?albumName=%20Hymns%20,,Hymns,Worship"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({ albumNames: ["Hymns", "Worship"] })
     );
   });
 

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { listSongs } from "@/lib/db/songs";
-import { parseKeysParam, parseBpmRangeParam } from "@/lib/db/search-helpers";
+import {
+  parseAlbumNameParams,
+  parseKeysParam,
+  parseBpmRangeParam,
+} from "@/lib/db/search-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     // Parse filters
     const filters: {
-      albumName?: string;
+      albumNames?: string[];
       albumSeries?: string;
       composer?: string;
       lyricist?: string;
@@ -31,8 +35,8 @@ export async function GET(request: NextRequest) {
       bpmRange?: "slow" | "moderate" | "fast";
     } = {};
 
-    const albumName = searchParams.get("albumName");
-    if (albumName) filters.albumName = albumName;
+    const albumNames = parseAlbumNameParams(searchParams);
+    if (albumNames) filters.albumNames = albumNames;
 
     const albumSeries = searchParams.get("albumSeries");
     if (albumSeries) filters.albumSeries = albumSeries;

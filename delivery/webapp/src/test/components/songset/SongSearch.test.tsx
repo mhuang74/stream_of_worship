@@ -122,7 +122,7 @@ describe("SongSearch", () => {
   describe("album filter", () => {
     it("renders album filter with correct label", () => {
       renderSearch();
-      expect(screen.getByText(/filter by album/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /albums/i })).toBeInTheDocument();
     });
 
     it("renders album filter select", () => {
@@ -142,6 +142,39 @@ describe("SongSearch", () => {
       // Verify the select opens (has aria-expanded attribute)
       await waitFor(() => {
         expect(albumFilter).toHaveAttribute("aria-expanded", "true");
+      });
+    });
+
+    it("selects, deselects, clears, and displays album count", async () => {
+      renderSearch();
+
+      fireEvent.click(screen.getByTestId("album-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter").textContent).toContain("1");
+        expect(screen.getAllByText("Hymns").length).toBeGreaterThan(1);
+      });
+
+      fireEvent.click(screen.getByTestId("album-option-Worship"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter").textContent).toContain("2");
+        expect(screen.getByText("Hymns, Worship")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter").textContent).toContain("1");
+        expect(screen.getAllByText("Worship").length).toBeGreaterThan(1);
+      });
+
+      fireEvent.click(screen.getByTestId("album-clear-all"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter").textContent).not.toContain("1");
+        expect(screen.queryByTestId("album-summary-clear")).not.toBeInTheDocument();
       });
     });
   });
@@ -286,7 +319,7 @@ describe("SongSearch", () => {
         query: undefined,
         keys: ["D", "A"],
         bpmRange: "slow",
-        album: undefined,
+        albums: undefined,
       });
     });
 
@@ -339,7 +372,7 @@ describe("SongSearch", () => {
           query: "amazing",
           keys: ["D"],
           bpmRange: undefined,
-          album: undefined,
+          albums: undefined,
         });
       });
     });
