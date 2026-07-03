@@ -30,11 +30,13 @@ interface TransitionPanelProps {
     title: string;
     key?: string | null;
     tempoBpm?: number | null;
+    exitPitchClass?: number | null;
   };
   toSong?: {
     title: string;
     key?: string | null;
     tempoBpm?: number | null;
+    entryPitchClass?: number | null;
   };
   settings: TransitionSettings;
   onChange: (settings: TransitionSettings) => void;
@@ -162,8 +164,18 @@ function DesktopLayout({
   onChange,
   onPreview,
 }: {
-  fromSong?: { title: string; key?: string | null; tempoBpm?: number | null };
-  toSong?: { title: string; key?: string | null; tempoBpm?: number | null };
+  fromSong?: {
+    title: string;
+    key?: string | null;
+    tempoBpm?: number | null;
+    exitPitchClass?: number | null;
+  };
+  toSong?: {
+    title: string;
+    key?: string | null;
+    tempoBpm?: number | null;
+    entryPitchClass?: number | null;
+  };
   settings: TransitionSettings;
   onChange: (settings: TransitionSettings) => void;
   onPreview?: () => void;
@@ -180,6 +192,13 @@ function DesktopLayout({
   const formatTempo = (ratio: number) => {
     return `${Math.round(ratio * 100)}%`;
   };
+
+  const keyDistance =
+    fromSong?.exitPitchClass != null && toSong?.entryPitchClass != null
+      ? Math.abs(fromSong.exitPitchClass - toSong.entryPitchClass)
+      : null;
+  const circleDistance =
+    keyDistance == null ? null : Math.min(keyDistance, 12 - keyDistance);
 
   return (
     <div className="space-y-6">
@@ -209,6 +228,13 @@ function DesktopLayout({
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {circleDistance != null && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Piano className="size-3.5" />
+          <span>Key distance: {circleDistance} semitone{circleDistance === 1 ? "" : "s"}</span>
         </div>
       )}
 

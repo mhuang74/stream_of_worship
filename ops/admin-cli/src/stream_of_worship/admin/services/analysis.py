@@ -45,6 +45,11 @@ class AnalysisResult:
     musical_key: Optional[str] = None
     musical_mode: Optional[str] = None
     key_confidence: Optional[float] = None
+    key_algorithm_version: Optional[str] = None
+    key_score_margin: Optional[float] = None
+    key_window_agreement: Optional[float] = None
+    key_candidates: Optional[Union[str, List[Dict[str, Any]]]] = None
+    key_detected_at: Optional[str] = None
     loudness_db: Optional[float] = None
     beats: Optional[List[float]] = None
     downbeats: Optional[List[float]] = None
@@ -810,6 +815,11 @@ class AnalysisClient:
                     musical_key=result_data.get("musical_key"),
                     musical_mode=result_data.get("musical_mode"),
                     key_confidence=result_data.get("key_confidence"),
+                    key_algorithm_version=result_data.get("key_algorithm_version"),
+                    key_score_margin=result_data.get("key_score_margin"),
+                    key_window_agreement=result_data.get("key_window_agreement"),
+                    key_candidates=result_data.get("key_candidates"),
+                    key_detected_at=result_data.get("key_detected_at"),
                     loudness_db=result_data.get("loudness_db"),
                     beats=result_data.get("beats"),
                     downbeats=result_data.get("downbeats"),

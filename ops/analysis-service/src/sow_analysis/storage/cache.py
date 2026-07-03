@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from ..config import settings
+
 
 class CacheManager:
     """Manages local disk cache for analysis results and stems."""
@@ -26,6 +28,11 @@ class CacheManager:
         """Get the first 32 chars of hash for cache keys."""
         return content_hash[:32]
 
+    def _versioned_analysis_file(self, content_hash: str, suffix: str = "") -> Path:
+        hash_prefix = self._get_hash_prefix(content_hash)
+        version = settings.KEY_ALGORITHM_VERSION
+        return self.cache_dir / f"{hash_prefix}.v{version}{suffix}.json"
+
     def get_analysis_result(self, content_hash: str) -> Optional[dict]:
         """Check if analysis result exists in cache.
 
@@ -36,13 +43,21 @@ class CacheManager:
             Cached result dict or None
         """
         hash_prefix = self._get_hash_prefix(content_hash)
-        cache_file = self.cache_dir / f"{hash_prefix}.json"
+        cache_files = [
+            self._versioned_analysis_file(content_hash),
+            self.cache_dir / f"{hash_prefix}.json",
+        ]
 
-        if cache_file.exists():
+        for index, cache_file in enumerate(cache_files):
+            if not cache_file.exists():
+                continue
             try:
-                return json.loads(cache_file.read_text())
+                data = json.loads(cache_file.read_text())
+                if index > 0:
+                    data.setdefault("key_algorithm_version", "ks_fulltrack_v1")
+                return data
             except (json.JSONDecodeError, IOError):
-                return None
+                continue
         return None
 
     def get_stems_dir(self, content_hash: str) -> Optional[Path]:
@@ -72,8 +87,7 @@ class CacheManager:
         Returns:
             Path to saved cache file
         """
-        hash_prefix = self._get_hash_prefix(content_hash)
-        cache_file = self.cache_dir / f"{hash_prefix}.json"
+        cache_file = self._versioned_analysis_file(content_hash)
 
         cache_file.write_text(json.dumps(result, indent=2))
         return cache_file
@@ -91,18 +105,26 @@ class CacheManager:
             Cached fast result dict or None (also None on corrupt JSON)
         """
         hash_prefix = self._get_hash_prefix(content_hash)
-        cache_file = self.cache_dir / f"{hash_prefix}_fast.json"
+        cache_files = [
+            self._versioned_analysis_file(content_hash, "_fast"),
+            self.cache_dir / f"{hash_prefix}_fast.json",
+        ]
 
-        if cache_file.exists():
+        for index, cache_file in enumerate(cache_files):
+            if not cache_file.exists():
+                continue
             try:
-                return json.loads(cache_file.read_text())
+                data = json.loads(cache_file.read_text())
+                if index > 0:
+                    data.setdefault("key_algorithm_version", "ks_fulltrack_v1")
+                return data
             except (json.JSONDecodeError, IOError):
                 # Corrupt cache: delete and treat as miss
                 try:
                     cache_file.unlink()
                 except OSError:
                     pass
-                return None
+                continue
         return None
 
     def save_fast_analyze_result(self, content_hash: str, result: dict) -> Path:
@@ -118,8 +140,7 @@ class CacheManager:
         Returns:
             Path to saved cache file
         """
-        hash_prefix = self._get_hash_prefix(content_hash)
-        cache_file = self.cache_dir / f"{hash_prefix}_fast.json"
+        cache_file = self._versioned_analysis_file(content_hash, "_fast")
 
         with tempfile.NamedTemporaryFile(
             mode="w",

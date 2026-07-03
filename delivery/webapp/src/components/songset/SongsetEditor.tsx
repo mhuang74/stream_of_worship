@@ -225,8 +225,11 @@ export function SongsetEditor({
       const prevItem = items[index - 1];
       return {
         title: prevItem.song?.title || "Unknown",
-        key: prevItem.song?.musicalKey,
+        key: prevItem.song?.effectiveKey ?? prevItem.song?.musicalKey,
         tempoBpm: prevItem.recording?.tempoBpm,
+        exitPitchClass:
+          prevItem.song?.effectiveKeyEndPitchClass ??
+          prevItem.recording?.effectiveKeyEndPitchClass,
       };
     }
     return undefined;
@@ -433,8 +436,11 @@ export function SongsetEditor({
           fromSong={getPreviousSong(selectedTransitionItem)}
           toSong={{
             title: selectedTransitionItem.song?.title || "Unknown",
-            key: selectedTransitionItem.song?.musicalKey,
+            key: selectedTransitionItem.song?.effectiveKey ?? selectedTransitionItem.song?.musicalKey,
             tempoBpm: selectedTransitionItem.recording?.tempoBpm,
+            entryPitchClass:
+              selectedTransitionItem.song?.effectiveKeyStartPitchClass ??
+              selectedTransitionItem.recording?.effectiveKeyStartPitchClass,
           }}
           settings={getTransitionSettings(selectedTransitionItem)}
           onChange={handleTransitionSave}

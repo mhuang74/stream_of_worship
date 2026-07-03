@@ -16,6 +16,7 @@ from pypinyin import lazy_pinyin
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Song
 from stream_of_worship.admin.services.catalog_edit import compute_song_id
+from stream_of_worship.music.key import parse_musical_key
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +283,7 @@ class CatalogScraper:
         title_pinyin = "_".join(lazy_pinyin(title))
 
         # Create Song object
+        parsed_key = parse_musical_key(key)
         song = Song(
             id=song_id,
             title=title,
@@ -291,6 +293,13 @@ class CatalogScraper:
             album_name=album,
             album_series=series,
             musical_key=key,
+            musical_key_root=parsed_key.root,
+            musical_key_mode=parsed_key.mode,
+            musical_key_start_root=parsed_key.start_root,
+            musical_key_end_root=parsed_key.end_root,
+            musical_key_start_pitch_class=parsed_key.start_pitch_class,
+            musical_key_end_pitch_class=parsed_key.end_pitch_class,
+            musical_key_parse_status=parsed_key.status,
             lyrics_raw=lyrics_data["lyrics_raw"],
             lyrics_lines=json.dumps(lyrics_data["lyrics_lines"], ensure_ascii=False),
             sections=json.dumps(

@@ -56,10 +56,19 @@ from stream_of_worship.admin.services.youtube import (
     _extract_bracket_content,
     _titles_match,
 )
+from stream_of_worship.music.key import parse_musical_key
 
 console = Console()
 logger = logging.getLogger("sow_admin.audio")
 app = typer.Typer(help="Audio recording operations")
+key_review_app = typer.Typer(help="Detected/catalog key disagreement review")
+app.add_typer(key_review_app, name="key-review")
+
+KEY_REVIEW_CAVEAT = (
+    "Detected-key rows accepted through accept-catalog / accept-detected are non-durable. "
+    "A detector version change + forced analysis re-run will clobber this state. "
+    "v3 will introduce an overrides table preserving manual decisions."
+)
 
 
 # Helper functions for download flow
@@ -1638,6 +1647,15 @@ def analyze_recording(
                 musical_key=result.musical_key,
                 musical_mode=result.musical_mode,
                 key_confidence=result.key_confidence,
+                key_algorithm_version=result.key_algorithm_version,
+                key_score_margin=result.key_score_margin,
+                key_window_agreement=result.key_window_agreement,
+                key_candidates=(
+                    json.dumps(result.key_candidates)
+                    if isinstance(result.key_candidates, list)
+                    else result.key_candidates
+                ),
+                key_detected_at=result.key_detected_at,
                 loudness_db=result.loudness_db,
                 beats=json.dumps(result.beats) if result.beats else None,
                 downbeats=json.dumps(result.downbeats) if result.downbeats else None,
@@ -2640,6 +2658,15 @@ def check_status(
                                 musical_key=analysis_data.get("musical_key"),
                                 musical_mode=analysis_data.get("musical_mode"),
                                 key_confidence=analysis_data.get("key_confidence"),
+                                key_algorithm_version=analysis_data.get("key_algorithm_version"),
+                                key_score_margin=analysis_data.get("key_score_margin"),
+                                key_window_agreement=analysis_data.get("key_window_agreement"),
+                                key_candidates=(
+                                    json.dumps(analysis_data.get("key_candidates"))
+                                    if isinstance(analysis_data.get("key_candidates"), list)
+                                    else analysis_data.get("key_candidates")
+                                ),
+                                key_detected_at=analysis_data.get("key_detected_at"),
                                 loudness_db=analysis_data.get("loudness_db"),
                                 beats=(
                                     json.dumps(analysis_data["beats"])
@@ -2849,6 +2876,19 @@ def check_status(
                                 musical_key=job.result.musical_key if job.result else None,
                                 musical_mode=job.result.musical_mode if job.result else None,
                                 key_confidence=job.result.key_confidence if job.result else None,
+                                key_algorithm_version=(
+                                    job.result.key_algorithm_version if job.result else None
+                                ),
+                                key_score_margin=job.result.key_score_margin if job.result else None,
+                                key_window_agreement=(
+                                    job.result.key_window_agreement if job.result else None
+                                ),
+                                key_candidates=(
+                                    json.dumps(job.result.key_candidates)
+                                    if job.result and isinstance(job.result.key_candidates, list)
+                                    else job.result.key_candidates if job.result else None
+                                ),
+                                key_detected_at=job.result.key_detected_at if job.result else None,
                                 loudness_db=job.result.loudness_db if job.result else None,
                                 beats=(
                                     json.dumps(job.result.beats)
@@ -5808,6 +5848,15 @@ def _handle_analysis_completion(
                 musical_key=result.musical_key,
                 musical_mode=result.musical_mode,
                 key_confidence=result.key_confidence,
+                key_algorithm_version=result.key_algorithm_version,
+                key_score_margin=result.key_score_margin,
+                key_window_agreement=result.key_window_agreement,
+                key_candidates=(
+                    json.dumps(result.key_candidates)
+                    if isinstance(result.key_candidates, list)
+                    else result.key_candidates
+                ),
+                key_detected_at=result.key_detected_at,
                 loudness_db=result.loudness_db,
                 beats=(
                     json.dumps(result.beats) if effective_tier == "full" and result.beats else None
@@ -6869,6 +6918,15 @@ def _apply_manifest_writeback(
                 musical_key=result.musical_key,
                 musical_mode=result.musical_mode,
                 key_confidence=result.key_confidence,
+                key_algorithm_version=result.key_algorithm_version,
+                key_score_margin=result.key_score_margin,
+                key_window_agreement=result.key_window_agreement,
+                key_candidates=(
+                    json.dumps(result.key_candidates)
+                    if isinstance(result.key_candidates, list)
+                    else result.key_candidates
+                ),
+                key_detected_at=result.key_detected_at,
                 loudness_db=result.loudness_db,
                 beats=(
                     json.dumps(result.beats) if effective_tier == "full" and result.beats else None
@@ -7284,3 +7342,193 @@ def probe_batch(
         probed += 1
 
     console.print(f"\n[bold]Summary:[/bold] {probed} probed, {skipped} skipped, {failed} failed")
+
+
+def _load_key_review_rows(db_client: DatabaseClient, hash_prefix: Optional[str] = None) -> list[dict]:
+    cursor = db_client.connection.cursor()
+    where_hash = "AND r.hash_prefix = %s" if hash_prefix else ""
+    params = (hash_prefix,) if hash_prefix else ()
+    cursor.execute(
+        f"""
+        SELECT
+          s.id,
+          s.title,
+          s.musical_key AS catalog_key,
+          s.musical_key_start_root AS catalog_start_root,
+          s.musical_key_end_root AS catalog_end_root,
+          r.content_hash,
+          r.hash_prefix,
+          r.original_filename,
+          r.musical_key AS detected_key,
+          r.musical_mode,
+          r.key_confidence,
+          r.key_score_margin,
+          r.key_window_agreement,
+          r.key_algorithm_version,
+          r.key_candidates
+        FROM recordings r
+        JOIN songs s ON s.id = r.song_id
+        WHERE s.deleted_at IS NULL
+          AND r.deleted_at IS NULL
+          AND NULLIF(BTRIM(s.musical_key), '') IS NOT NULL
+          AND NULLIF(BTRIM(r.musical_key), '') IS NOT NULL
+          AND r.key_algorithm_version = 'ks_segment_vote_v1'
+          {where_hash}
+        ORDER BY s.title, r.hash_prefix
+        """,
+        params,
+    )
+    rows = []
+    for row in cursor.fetchall():
+        catalog = parse_musical_key(row[2])
+        detected = parse_musical_key(row[8])
+        if (
+            catalog.start_pitch_class is None
+            or detected.start_pitch_class is None
+            or catalog.start_pitch_class == detected.start_pitch_class
+        ):
+            continue
+        rows.append(
+            {
+                "song_id": row[0],
+                "title": row[1],
+                "catalog_key": row[2],
+                "catalog_start_root": row[3],
+                "catalog_end_root": row[4],
+                "content_hash": row[5],
+                "hash_prefix": row[6],
+                "original_filename": row[7],
+                "detected_key": row[8],
+                "musical_mode": row[9],
+                "key_confidence": row[10],
+                "key_score_margin": row[11],
+                "key_window_agreement": row[12],
+                "key_algorithm_version": row[13],
+                "key_candidates": row[14],
+            }
+        )
+    return rows
+
+
+def _print_key_review_caveat() -> None:
+    console.print(f"[yellow]{KEY_REVIEW_CAVEAT}[/yellow]")
+
+
+@key_review_app.command("list")
+def key_review_list(
+    limit: int = typer.Option(50, "--limit", min=1),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """List catalog/audio key disagreements for new detector rows."""
+    config = AdminConfig.load(config_path)
+    db_client = get_db_client(config)
+    _print_key_review_caveat()
+    rows = _load_key_review_rows(db_client)[:limit]
+    table = Table(title="Key Review Queue")
+    table.add_column("Hash", style="cyan")
+    table.add_column("Title")
+    table.add_column("Catalog")
+    table.add_column("Detected")
+    table.add_column("Confidence")
+    table.add_column("Margin")
+    table.add_column("Agreement")
+    for row in rows:
+        table.add_row(
+            row["hash_prefix"],
+            row["title"],
+            row["catalog_key"] or "",
+            f"{row['detected_key'] or ''} {row['musical_mode'] or ''}".strip(),
+            f"{row['key_confidence']:.3f}" if row["key_confidence"] is not None else "",
+            f"{row['key_score_margin']:.3f}" if row["key_score_margin"] is not None else "",
+            f"{row['key_window_agreement']:.3f}"
+            if row["key_window_agreement"] is not None
+            else "",
+        )
+    console.print(table)
+
+
+@key_review_app.command("show")
+def key_review_show(
+    hash_prefix: str = typer.Option(..., "--hash-prefix"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Show a single catalog/audio key disagreement."""
+    config = AdminConfig.load(config_path)
+    db_client = get_db_client(config)
+    _print_key_review_caveat()
+    rows = _load_key_review_rows(db_client, hash_prefix)
+    if not rows:
+        console.print("[yellow]No key-review disagreement found.[/yellow]")
+        raise typer.Exit(0)
+    row = rows[0]
+    console.print(
+        Panel.fit(
+            "\n".join(
+                [
+                    f"[cyan]Title:[/cyan] {row['title']}",
+                    f"[cyan]Hash:[/cyan] {row['hash_prefix']}",
+                    f"[cyan]Catalog:[/cyan] {row['catalog_key']}",
+                    f"[cyan]Detected:[/cyan] {row['detected_key']} {row['musical_mode'] or ''}",
+                    f"[cyan]Confidence:[/cyan] {row['key_confidence']}",
+                    f"[cyan]Margin:[/cyan] {row['key_score_margin']}",
+                    f"[cyan]Window Agreement:[/cyan] {row['key_window_agreement']}",
+                    f"[cyan]Candidates:[/cyan] {row['key_candidates'] or ''}",
+                ]
+            ),
+            title="Key Review",
+        )
+    )
+
+
+def _accept_key(hash_prefix: str, use_catalog: bool, config_path: Optional[Path]) -> None:
+    config = AdminConfig.load(config_path)
+    db_client = get_db_client(config)
+    _print_key_review_caveat()
+    cursor = db_client.connection.cursor()
+    cursor.execute(
+        """
+        SELECT s.musical_key, r.musical_key, r.musical_mode
+        FROM recordings r
+        JOIN songs s ON s.id = r.song_id
+        WHERE r.hash_prefix = %s AND r.deleted_at IS NULL
+        """,
+        (hash_prefix,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        console.print("[red]Recording not found.[/red]")
+        raise typer.Exit(1)
+    key = row[0] if use_catalog else row[1]
+    parsed = parse_musical_key(key)
+    mode = parsed.mode if use_catalog and parsed.mode != "unknown" else row[2]
+    with db_client.transaction() as conn:
+        conn.cursor().execute(
+            """
+            UPDATE recordings
+            SET musical_key = %s,
+                musical_mode = %s,
+                key_confidence = 1.0,
+                updated_at = NOW()
+            WHERE hash_prefix = %s
+            """,
+            (key, mode, hash_prefix),
+        )
+    console.print(f"[green]Accepted {'catalog' if use_catalog else 'detected'} key for {hash_prefix}.[/green]")
+
+
+@key_review_app.command("accept-catalog")
+def key_review_accept_catalog(
+    hash_prefix: str = typer.Option(..., "--hash-prefix"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Accept the catalog key by mutating the recording row."""
+    _accept_key(hash_prefix, True, config_path)
+
+
+@key_review_app.command("accept-detected")
+def key_review_accept_detected(
+    hash_prefix: str = typer.Option(..., "--hash-prefix"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Accept the detected key by marking confidence as admin-accepted."""
+    _accept_key(hash_prefix, False, config_path)

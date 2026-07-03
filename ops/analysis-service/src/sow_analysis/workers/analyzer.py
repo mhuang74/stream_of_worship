@@ -4,12 +4,15 @@ import asyncio
 import logging
 import tempfile
 import time
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import librosa
 import numpy as np
 
+from ..config import settings
 from ..storage.cache import CacheManager
 
 logger = logging.getLogger(__name__)
@@ -24,7 +27,50 @@ MINOR_PROFILE = np.array(
 KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
-def detect_key(y: np.ndarray, sr: int) -> tuple[str, str, float]:
+@dataclass(frozen=True)
+class KeyCandidate:
+    key: str
+    mode: str
+    score: float
+    window_votes: Optional[int]
+    source: str
+
+
+@dataclass(frozen=True)
+class KeyDetectionResult:
+    key: str
+    mode: str
+    confidence: float
+    score_margin: Optional[float]
+    window_agreement: Optional[float]
+    candidates: list[KeyCandidate]
+    algorithm_version: str
+    detected_at: str
+
+    def to_analysis_fields(self) -> dict:
+        return {
+            "musical_key": self.key,
+            "musical_mode": self.mode,
+            "key_confidence": self.confidence,
+            "key_algorithm_version": self.algorithm_version,
+            "key_score_margin": self.score_margin,
+            "key_window_agreement": self.window_agreement,
+            "key_candidates": [asdict(candidate) for candidate in self.candidates],
+            "key_detected_at": self.detected_at,
+        }
+
+
+def _score_chroma(chroma_avg: np.ndarray) -> list[tuple[str, str, float]]:
+    correlations = []
+    for shift in range(12):
+        major_corr = np.corrcoef(chroma_avg, np.roll(MAJOR_PROFILE, shift))[0, 1]
+        minor_corr = np.corrcoef(chroma_avg, np.roll(MINOR_PROFILE, shift))[0, 1]
+        correlations.append(("major", KEYS[shift], float(np.nan_to_num(major_corr))))
+        correlations.append(("minor", KEYS[shift], float(np.nan_to_num(minor_corr))))
+    return correlations
+
+
+def detect_key_fulltrack(y: np.ndarray, sr: int) -> KeyDetectionResult:
     """Detect musical key using Krumhansl-Schmuckler key profile matching.
 
     Args:
@@ -32,22 +78,134 @@ def detect_key(y: np.ndarray, sr: int) -> tuple[str, str, float]:
         sr: Sample rate
 
     Returns:
-        Tuple of (mode, key, confidence)
+        Structured key detection result.
     """
-    # Compute chroma features
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=512)
     chroma_avg = np.mean(chroma, axis=1)
+    correlations = sorted(_score_chroma(chroma_avg), key=lambda x: x[2], reverse=True)
+    best = correlations[0]
+    second = correlations[1] if len(correlations) > 1 else None
+    candidates = [
+        KeyCandidate(key=key, mode=mode, score=score, window_votes=None, source="fulltrack_correlation")
+        for mode, key, score in correlations[:5]
+    ]
+    return KeyDetectionResult(
+        key=best[1],
+        mode=best[0],
+        confidence=best[2],
+        score_margin=best[2] - second[2] if second else None,
+        window_agreement=None,
+        candidates=candidates,
+        algorithm_version="ks_fulltrack_v1",
+        detected_at=datetime.now(timezone.utc).isoformat(),
+    )
 
-    # Find best correlation with major and minor profiles
-    correlations = []
-    for shift in range(12):
-        major_corr = np.corrcoef(chroma_avg, np.roll(MAJOR_PROFILE, shift))[0, 1]
-        minor_corr = np.corrcoef(chroma_avg, np.roll(MINOR_PROFILE, shift))[0, 1]
-        correlations.append(("major", KEYS[shift], major_corr))
-        correlations.append(("minor", KEYS[shift], minor_corr))
 
-    best_key = max(correlations, key=lambda x: x[2])
-    return best_key[0], best_key[1], best_key[2]
+def _window_bounds(duration: float, segments: Optional[list[dict]] = None) -> list[tuple[float, float]]:
+    if segments:
+        return [
+            (float(segment["start"]), float(segment["end"]))
+            for segment in segments
+            if float(segment["end"]) - float(segment["start"]) >= 8.0
+        ]
+    if duration < 8.0:
+        return [(0.0, duration)]
+    window = 20.0
+    step = 10.0
+    starts = np.arange(0.0, max(duration - 8.0, 0.0), step)
+    return [(float(start), float(min(start + window, duration))) for start in starts]
+
+
+def detect_key_segment_vote(
+    y: np.ndarray,
+    sr: int,
+    segments: Optional[list[dict]] = None,
+    algorithm_version: str = "ks_segment_vote_v1",
+) -> KeyDetectionResult:
+    """Detect key by aggregating harmonic chroma votes across sections/windows."""
+    hop_length = 512
+    duration = librosa.get_duration(y=y, sr=sr)
+    y_harmonic, _ = librosa.effects.hpss(y)
+    chroma = librosa.feature.chroma_cqt(y=y_harmonic, sr=sr, hop_length=hop_length)
+    rms = librosa.feature.rms(y=y_harmonic, frame_length=2048, hop_length=hop_length)[0]
+    rms_cutoff = float(np.percentile(rms, 10)) if rms.size else 0.0
+    rms_cap = float(np.percentile(rms, 90)) if rms.size else 1.0
+    aggregate: dict[tuple[str, str], float] = {}
+    vote_counts: dict[tuple[str, str], int] = {}
+    total_weight = 0.0
+    accepted = 0
+
+    windows = _window_bounds(duration, segments)
+    for index, (start, end) in enumerate(windows):
+        start_frame = librosa.time_to_frames(start, sr=sr, hop_length=hop_length)
+        end_frame = librosa.time_to_frames(end, sr=sr, hop_length=hop_length)
+        if end - start < 8.0 or end_frame <= start_frame:
+            continue
+        window_chroma = chroma[:, start_frame:end_frame]
+        window_rms = rms[start_frame:end_frame]
+        if window_rms.size and float(np.mean(window_rms)) < rms_cutoff:
+            continue
+        chroma_avg = np.mean(window_chroma, axis=1)
+        if float(np.max(chroma_avg) - np.min(chroma_avg)) < 0.1:
+            continue
+        scores = sorted(_score_chroma(chroma_avg), key=lambda x: x[2], reverse=True)
+        if len(scores) > 1 and scores[0][2] - scores[1][2] < 0.03:
+            continue
+        mode, key, score = scores[0]
+        window_duration = end - start
+        rms_weight = min(float(np.mean(window_rms)) if window_rms.size else 1.0, rms_cap)
+        weight = window_duration * max(rms_weight, 1e-6)
+        if index == 0 and window_duration < 20.0:
+            weight *= 0.5
+        if index == len(windows) - 1 and window_duration < 20.0:
+            weight *= 0.5
+        aggregate[(mode, key)] = aggregate.get((mode, key), 0.0) + weight * score
+        vote_counts[(mode, key)] = vote_counts.get((mode, key), 0) + 1
+        total_weight += weight
+        accepted += 1
+
+    if not aggregate:
+        return detect_key_fulltrack(y, sr)
+
+    normalized = {
+        key: score / total_weight if total_weight > 0 else score
+        for key, score in aggregate.items()
+    }
+    ranked = sorted(normalized.items(), key=lambda item: item[1], reverse=True)
+    (best_mode, best_key), best_score = ranked[0]
+    second_score = ranked[1][1] if len(ranked) > 1 else None
+    candidates = [
+        KeyCandidate(
+            key=key,
+            mode=mode,
+            score=float(score),
+            window_votes=vote_counts.get((mode, key), 0),
+            source="segment_vote",
+        )
+        for (mode, key), score in ranked[:5]
+    ]
+    winning_votes = sum(count for (mode, key), count in vote_counts.items() if key == best_key)
+    return KeyDetectionResult(
+        key=best_key,
+        mode=best_mode,
+        confidence=float(best_score),
+        score_margin=float(best_score - second_score) if second_score is not None else None,
+        window_agreement=winning_votes / accepted if accepted else None,
+        candidates=candidates,
+        algorithm_version=algorithm_version,
+        detected_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def detect_key(y: np.ndarray, sr: int, segments: Optional[list[dict]] = None) -> KeyDetectionResult:
+    algorithm = settings.KEY_ALGORITHM_VERSION
+    if algorithm == "ks_fulltrack_v1":
+        return detect_key_fulltrack(y, sr)
+    if algorithm == "ks_segment_vote_v1":
+        return detect_key_segment_vote(y, sr, segments, algorithm_version=algorithm)
+    if algorithm == "ks_window_vote_v1":
+        return detect_key_segment_vote(y, sr, None, algorithm_version=algorithm)
+    raise ValueError(f"Unsupported KEY_ALGORITHM_VERSION: {algorithm}")
 
 
 def compute_loudness(y: np.ndarray) -> float:
@@ -155,9 +313,12 @@ async def analyze_audio(
     # Key detection with librosa
     logger.info("Detecting musical key...")
     key_start = time.time()
-    mode, key, key_confidence = detect_key(y, sr)
+    key_result = detect_key(y, sr, sections)
     key_elapsed = time.time() - key_start
-    logger.info(f"Key detection completed in {key_elapsed:.2f}s - Detected: {key} {mode}")
+    logger.info(
+        f"Key detection completed in {key_elapsed:.2f}s - "
+        f"Detected: {key_result.key} {key_result.mode}"
+    )
 
     # Loudness
     loudness_db = compute_loudness(y)
@@ -169,9 +330,7 @@ async def analyze_audio(
     analysis_result = {
         "duration_seconds": duration,
         "tempo_bpm": bpm,
-        "musical_key": key,
-        "musical_mode": mode,
-        "key_confidence": key_confidence,
+        **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
         "beats": beats,
         "downbeats": downbeats,
@@ -254,9 +413,12 @@ async def analyze_audio_fast(
     # Key detection with librosa (blocking — run in executor)
     logger.info("Detecting musical key...")
     key_start = time.time()
-    mode, key, key_confidence = await loop.run_in_executor(None, detect_key, y, sr)
+    key_result = await loop.run_in_executor(None, detect_key, y, sr, None)
     key_elapsed = time.time() - key_start
-    logger.info(f"Key detection completed in {key_elapsed:.2f}s - Detected: {key} {mode}")
+    logger.info(
+        f"Key detection completed in {key_elapsed:.2f}s - "
+        f"Detected: {key_result.key} {key_result.mode}"
+    )
 
     # Loudness (blocking — run in executor)
     loudness_db = await loop.run_in_executor(None, compute_loudness, y)
@@ -268,9 +430,7 @@ async def analyze_audio_fast(
     analysis_result = {
         "duration_seconds": duration,
         "tempo_bpm": bpm,
-        "musical_key": key,
-        "musical_mode": mode,
-        "key_confidence": key_confidence,
+        **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
     }
 

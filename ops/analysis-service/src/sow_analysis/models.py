@@ -159,6 +159,11 @@ class JobResult(BaseModel):
     musical_key: Optional[str] = None
     musical_mode: Optional[str] = None
     key_confidence: Optional[float] = None
+    key_algorithm_version: Optional[str] = None
+    key_score_margin: Optional[float] = None
+    key_window_agreement: Optional[float] = None
+    key_candidates: Optional[str | list[dict]] = None
+    key_detected_at: Optional[str] = None
     loudness_db: Optional[float] = None
     beats: Optional[List[float]] = None
     downbeats: Optional[List[float]] = None

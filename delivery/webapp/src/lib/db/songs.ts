@@ -1,6 +1,8 @@
 import { db } from "@/db";
 import { recordings, songs } from "@/db/schema";
 import { eq, desc, and, or, ilike, sql, isNull, inArray } from "drizzle-orm";
+import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
+import { parseMusicalKey } from "@/lib/music/key";
 
 export interface SongWithRecordings {
   id: string;
@@ -11,6 +13,14 @@ export interface SongWithRecordings {
   albumName: string | null;
   albumSeries: string | null;
   musicalKey: string | null;
+  effectiveKey: string | null;
+  effectiveKeySource: EffectiveKey["source"];
+  effectiveKeyStartRoot: string | null;
+  effectiveKeyEndRoot: string | null;
+  effectiveKeyMode: EffectiveKey["mode"];
+  effectiveKeyStartPitchClass: number | null;
+  effectiveKeyEndPitchClass: number | null;
+  keyWarning: EffectiveKey["warning"];
   createdAt: Date | null;
   updatedAt: Date | null;
   recordings: RecordingInfo[];
@@ -24,11 +34,104 @@ export interface RecordingInfo {
   tempoBpm: number | null;
   musicalKey: string | null;
   musicalMode: string | null;
+  keyConfidence: number | null;
+  keyScoreMargin: number | null;
+  keyWindowAgreement: number | null;
+  keyAlgorithmVersion: string | null;
+  effectiveKey: string | null;
+  effectiveKeySource: EffectiveKey["source"];
+  effectiveKeyStartRoot: string | null;
+  effectiveKeyEndRoot: string | null;
+  effectiveKeyMode: EffectiveKey["mode"];
+  effectiveKeyStartPitchClass: number | null;
+  effectiveKeyEndPitchClass: number | null;
+  keyWarning: EffectiveKey["warning"];
   loudnessDb: number | null;
   r2AudioUrl: string | null;
   r2LrcUrl: string | null;
   visibilityStatus: string | null;
   analysisStatus: string | null;
+}
+
+type SongRow = typeof songs.$inferSelect & {
+  recordings: Array<typeof recordings.$inferSelect>;
+};
+
+function effectiveKeyFields(effective: EffectiveKey) {
+  return {
+    effectiveKey: effective.display,
+    effectiveKeySource: effective.source,
+    effectiveKeyStartRoot: effective.startRoot,
+    effectiveKeyEndRoot: effective.endRoot,
+    effectiveKeyMode: effective.mode,
+    effectiveKeyStartPitchClass: effective.startPitchClass,
+    effectiveKeyEndPitchClass: effective.endPitchClass,
+    keyWarning: effective.warning,
+  };
+}
+
+function mapRecordingInfo(
+  song: typeof songs.$inferSelect,
+  recording: typeof recordings.$inferSelect
+): RecordingInfo {
+  const effective = getEffectiveKey({
+    catalogKey: song.musicalKey,
+    catalogParsed: parseMusicalKey(song.musicalKey),
+    detectedKey: recording.musicalKey,
+    detectedMode: recording.musicalMode,
+    detectedConfidence: recording.keyConfidence,
+    detectedMargin: recording.keyScoreMargin,
+    detectedWindowAgreement: recording.keyWindowAgreement,
+  });
+  return {
+    contentHash: recording.contentHash,
+    hashPrefix: recording.hashPrefix,
+    originalFilename: recording.originalFilename,
+    durationSeconds: recording.durationSeconds,
+    tempoBpm: recording.tempoBpm,
+    musicalKey: recording.musicalKey,
+    musicalMode: recording.musicalMode,
+    keyConfidence: recording.keyConfidence,
+    keyScoreMargin: recording.keyScoreMargin,
+    keyWindowAgreement: recording.keyWindowAgreement,
+    keyAlgorithmVersion: recording.keyAlgorithmVersion,
+    ...effectiveKeyFields(effective),
+    loudnessDb: recording.loudnessDb,
+    r2AudioUrl: recording.r2AudioUrl,
+    r2LrcUrl: recording.r2LrcUrl,
+    visibilityStatus: recording.visibilityStatus,
+    analysisStatus: recording.analysisStatus,
+  };
+}
+
+export function mapSongWithRecordings(song: SongRow): SongWithRecordings {
+  const primaryRecording =
+    song.recordings.find((recording) => recording.visibilityStatus === "published") ??
+    song.recordings[0];
+  const effective = getEffectiveKey({
+    catalogKey: song.musicalKey,
+    catalogParsed: parseMusicalKey(song.musicalKey),
+    detectedKey: primaryRecording?.musicalKey,
+    detectedMode: primaryRecording?.musicalMode,
+    detectedConfidence: primaryRecording?.keyConfidence,
+    detectedMargin: primaryRecording?.keyScoreMargin,
+    detectedWindowAgreement: primaryRecording?.keyWindowAgreement,
+  });
+
+  return {
+    id: song.id,
+    title: song.title,
+    titlePinyin: song.titlePinyin,
+    composer: song.composer,
+    lyricist: song.lyricist,
+    albumName: song.albumName,
+    albumSeries: song.albumSeries,
+    musicalKey: song.musicalKey,
+    ...effectiveKeyFields(effective),
+    createdAt: song.createdAt,
+    updatedAt: song.updatedAt,
+    recordings: song.recordings.map((recording) => mapRecordingInfo(song, recording)),
+  };
 }
 
 export interface SongDetail extends SongWithRecordings {
@@ -161,32 +264,7 @@ export async function listSongs(
 
   const total = countResult[0]?.count ?? 0;
 
-  const songsWithRecordings: SongWithRecordings[] = result.map((song) => ({
-    id: song.id,
-    title: song.title,
-    titlePinyin: song.titlePinyin,
-    composer: song.composer,
-    lyricist: song.lyricist,
-    albumName: song.albumName,
-    albumSeries: song.albumSeries,
-    musicalKey: song.musicalKey,
-    createdAt: song.createdAt,
-    updatedAt: song.updatedAt,
-    recordings: song.recordings.map((r) => ({
-      contentHash: r.contentHash,
-      hashPrefix: r.hashPrefix,
-      originalFilename: r.originalFilename,
-      durationSeconds: r.durationSeconds,
-      tempoBpm: r.tempoBpm,
-      musicalKey: r.musicalKey,
-      musicalMode: r.musicalMode,
-      loudnessDb: r.loudnessDb,
-      r2AudioUrl: r.r2AudioUrl,
-      r2LrcUrl: r.r2LrcUrl,
-      visibilityStatus: r.visibilityStatus,
-      analysisStatus: r.analysisStatus,
-    })),
-  }));
+  const songsWithRecordings = result.map(mapSongWithRecordings);
 
   return { songs: songsWithRecordings, total };
 }
@@ -220,34 +298,11 @@ export async function getSong(
   }
 
   return {
-    id: song.id,
-    title: song.title,
-    titlePinyin: song.titlePinyin,
-    composer: song.composer,
-    lyricist: song.lyricist,
-    albumName: song.albumName,
-    albumSeries: song.albumSeries,
-    musicalKey: song.musicalKey,
+    ...mapSongWithRecordings(song),
     lyricsRaw: song.lyricsRaw,
     lyricsLines: song.lyricsLines,
     sections: song.sections,
     sourceUrl: song.sourceUrl,
-    createdAt: song.createdAt,
-    updatedAt: song.updatedAt,
-    recordings: song.recordings.map((r) => ({
-      contentHash: r.contentHash,
-      hashPrefix: r.hashPrefix,
-      originalFilename: r.originalFilename,
-      durationSeconds: r.durationSeconds,
-      tempoBpm: r.tempoBpm,
-      musicalKey: r.musicalKey,
-      musicalMode: r.musicalMode,
-      loudnessDb: r.loudnessDb,
-      r2AudioUrl: r.r2AudioUrl,
-      r2LrcUrl: r.r2LrcUrl,
-      visibilityStatus: r.visibilityStatus,
-      analysisStatus: r.analysisStatus,
-    })),
   };
 }
 
@@ -290,32 +345,7 @@ export async function searchSongs(
 
   const total = countResult[0]?.count ?? 0;
 
-  const songsWithRecordings: SongWithRecordings[] = result.map((song) => ({
-    id: song.id,
-    title: song.title,
-    titlePinyin: song.titlePinyin,
-    composer: song.composer,
-    lyricist: song.lyricist,
-    albumName: song.albumName,
-    albumSeries: song.albumSeries,
-    musicalKey: song.musicalKey,
-    createdAt: song.createdAt,
-    updatedAt: song.updatedAt,
-    recordings: song.recordings.map((r) => ({
-      contentHash: r.contentHash,
-      hashPrefix: r.hashPrefix,
-      originalFilename: r.originalFilename,
-      durationSeconds: r.durationSeconds,
-      tempoBpm: r.tempoBpm,
-      musicalKey: r.musicalKey,
-      musicalMode: r.musicalMode,
-      loudnessDb: r.loudnessDb,
-      r2AudioUrl: r.r2AudioUrl,
-      r2LrcUrl: r.r2LrcUrl,
-      visibilityStatus: r.visibilityStatus,
-      analysisStatus: r.analysisStatus,
-    })),
-  }));
+  const songsWithRecordings = result.map(mapSongWithRecordings);
 
   return { songs: songsWithRecordings, total };
 }
@@ -387,6 +417,10 @@ export async function semanticSearchSongs(
         r.tempo_bpm,
         r.musical_key  AS recording_musical_key,
         r.musical_mode,
+        r.key_confidence,
+        r.key_score_margin,
+        r.key_window_agreement,
+        r.key_algorithm_version,
         r.loudness_db,
         r.r2_audio_url,
         r.r2_lrc_url,
@@ -409,38 +443,55 @@ export async function semanticSearchSongs(
 
   const resultRows = rows.rows as unknown as Record<string, unknown>[];
 
-  return resultRows.map((row) => ({
-    id: row.id as string,
-    title: row.title as string,
-    titlePinyin: (row.title_pinyin as string | null) ?? null,
-    composer: (row.composer as string | null) ?? null,
-    lyricist: (row.lyricist as string | null) ?? null,
-    albumName: (row.album_name as string | null) ?? null,
-    albumSeries: (row.album_series as string | null) ?? null,
-    musicalKey: (row.musical_key as string | null) ?? null,
-    createdAt: row.created_at ? new Date(row.created_at as string) : null,
-    updatedAt: row.updated_at ? new Date(row.updated_at as string) : null,
-    similarity: Number(row.similarity),
-    modelVersion: row.model_version as string,
-    matchingSnippet: null,
-    whyThisMatch: [],
-    recordings: [
-      {
-        contentHash: row.content_hash as string,
-        hashPrefix: row.hash_prefix as string,
-        originalFilename: row.original_filename as string,
-        durationSeconds: (row.duration_seconds as number | null) ?? null,
-        tempoBpm: (row.tempo_bpm as number | null) ?? null,
-        musicalKey: (row.recording_musical_key as string | null) ?? null,
-        musicalMode: (row.musical_mode as string | null) ?? null,
-        loudnessDb: (row.loudness_db as number | null) ?? null,
-        r2AudioUrl: (row.r2_audio_url as string | null) ?? null,
-        r2LrcUrl: (row.r2_lrc_url as string | null) ?? null,
-        visibilityStatus: (row.visibility_status as string | null) ?? null,
-        analysisStatus: (row.analysis_status as string | null) ?? null,
-      },
-    ],
-  }));
+  return resultRows.map((row) => {
+    const effective = getEffectiveKey({
+      catalogKey: (row.musical_key as string | null) ?? null,
+      detectedKey: (row.recording_musical_key as string | null) ?? null,
+      detectedMode: (row.musical_mode as string | null) ?? null,
+      detectedConfidence: (row.key_confidence as number | null) ?? null,
+      detectedMargin: (row.key_score_margin as number | null) ?? null,
+      detectedWindowAgreement: (row.key_window_agreement as number | null) ?? null,
+    });
+    const fields = effectiveKeyFields(effective);
+    return {
+      id: row.id as string,
+      title: row.title as string,
+      titlePinyin: (row.title_pinyin as string | null) ?? null,
+      composer: (row.composer as string | null) ?? null,
+      lyricist: (row.lyricist as string | null) ?? null,
+      albumName: (row.album_name as string | null) ?? null,
+      albumSeries: (row.album_series as string | null) ?? null,
+      musicalKey: (row.musical_key as string | null) ?? null,
+      ...fields,
+      createdAt: row.created_at ? new Date(row.created_at as string) : null,
+      updatedAt: row.updated_at ? new Date(row.updated_at as string) : null,
+      similarity: Number(row.similarity),
+      modelVersion: row.model_version as string,
+      matchingSnippet: null,
+      whyThisMatch: [],
+      recordings: [
+        {
+          contentHash: row.content_hash as string,
+          hashPrefix: row.hash_prefix as string,
+          originalFilename: row.original_filename as string,
+          durationSeconds: (row.duration_seconds as number | null) ?? null,
+          tempoBpm: (row.tempo_bpm as number | null) ?? null,
+          musicalKey: (row.recording_musical_key as string | null) ?? null,
+          musicalMode: (row.musical_mode as string | null) ?? null,
+          keyConfidence: (row.key_confidence as number | null) ?? null,
+          keyScoreMargin: (row.key_score_margin as number | null) ?? null,
+          keyWindowAgreement: (row.key_window_agreement as number | null) ?? null,
+          keyAlgorithmVersion: (row.key_algorithm_version as string | null) ?? null,
+          ...fields,
+          loudnessDb: (row.loudness_db as number | null) ?? null,
+          r2AudioUrl: (row.r2_audio_url as string | null) ?? null,
+          r2LrcUrl: (row.r2_lrc_url as string | null) ?? null,
+          visibilityStatus: (row.visibility_status as string | null) ?? null,
+          analysisStatus: (row.analysis_status as string | null) ?? null,
+        },
+      ],
+    };
+  });
 }
 
 export async function findTopMatchingLines(
