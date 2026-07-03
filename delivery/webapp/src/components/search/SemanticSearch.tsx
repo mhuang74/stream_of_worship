@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +13,12 @@ import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
 
 interface SemanticSearchResult extends SongCardData {
-  similarity: number;
-  matchingSnippet: string | null;
-  whyThisMatch: string[];
+  similarity?: number;
+  matchingSnippet?: string | null;
+  whyThisMatch?: string[];
 }
+
+type ResultMode = "semantic" | "browse";
 
 interface SemanticSearchProps {
   onAddSong: (song: SongCardData) => Promise<void>;
@@ -27,6 +29,7 @@ interface SemanticSearchProps {
   albums?: string[];
   keys?: string[];
   bpmRange?: StructuredSearchCriteria["bpmRange"];
+  filterSlot?: ReactNode;
   className?: string;
 }
 
@@ -39,10 +42,12 @@ export function SemanticSearch({
   albums = [],
   keys = [],
   bpmRange,
+  filterSlot,
   className,
 }: SemanticSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SemanticSearchResult[]>([]);
+  const [resultMode, setResultMode] = useState<ResultMode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -54,7 +59,6 @@ export function SemanticSearch({
 
   const handleSearch = useCallback(async () => {
     const trimmed = query.trim();
-    if (!trimmed) return;
 
     const searchId = latestSearchIdRef.current + 1;
     latestSearchIdRef.current = searchId;
@@ -64,22 +68,43 @@ export function SemanticSearch({
     setExpandedSongId(null);
 
     try {
-      const body: {
-        query: string;
-        limit: number;
-        albums?: string[];
-        keys?: string[];
-        bpmRange?: StructuredSearchCriteria["bpmRange"];
-      } = { query: trimmed, limit: 20 };
-      if (albums.length > 0) body.albums = albums;
-      if (keys.length > 0) body.keys = keys;
-      if (bpmRange) body.bpmRange = bpmRange;
+      let response: Response;
+      let nextResultMode: ResultMode;
 
-      const response = await fetch("/api/songs/search/semantic", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      if (trimmed) {
+        nextResultMode = "semantic";
+        const body: {
+          query: string;
+          limit: number;
+          albums?: string[];
+          keys?: string[];
+          bpmRange?: StructuredSearchCriteria["bpmRange"];
+        } = { query: trimmed, limit: 20 };
+        if (albums.length > 0) body.albums = albums;
+        if (keys.length > 0) body.keys = keys;
+        if (bpmRange) body.bpmRange = bpmRange;
+
+        response = await fetch("/api/songs/search/semantic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } else {
+        nextResultMode = "browse";
+        const params = new URLSearchParams();
+        for (const album of albums) {
+          params.append("albumName", album);
+        }
+        if (keys.length > 0) {
+          params.set("keys", keys.join(","));
+        }
+        if (bpmRange) {
+          params.set("bpmRange", bpmRange);
+        }
+        params.set("limit", "50");
+
+        response = await fetch(`/api/songs?${params.toString()}`);
+      }
 
       if (response.status === 503) {
         const data = await response.json().catch(() => ({}));
@@ -100,10 +125,12 @@ export function SemanticSearch({
       const data = await response.json();
       if (searchId !== latestSearchIdRef.current) return;
       setResults((data.songs ?? []) as SemanticSearchResult[]);
+      setResultMode(nextResultMode);
     } catch (err) {
       if (searchId !== latestSearchIdRef.current) return;
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
+      setResultMode(null);
     } finally {
       if (searchId === latestSearchIdRef.current) {
         setIsLoading(false);
@@ -236,7 +263,7 @@ export function SemanticSearch({
           </p>
           <Button
             onClick={handleSearch}
-            disabled={isLoading || !query.trim()}
+            disabled={isLoading}
             size="sm"
             data-testid="semantic-search-button"
             aria-label={isLoading ? "Searching..." : "Search songs by description"}
@@ -251,6 +278,8 @@ export function SemanticSearch({
         </div>
       </div>
 
+      {filterSlot}
+
       {error && (
         <div
           role="alert"
@@ -264,16 +293,22 @@ export function SemanticSearch({
       {!error && isLoading && (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">Searching by meaning...</p>
+          <p className="text-sm text-muted-foreground">
+            {query.trim() ? "Searching by meaning..." : "Loading songs..."}
+          </p>
         </div>
       )}
 
       {!error && !isLoading && hasSearched && results.length === 0 && (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Music className="size-8 text-muted-foreground mb-2" />
-          <p className="text-muted-foreground text-sm">No matching songs found</p>
+          <p className="text-muted-foreground text-sm">
+            {resultMode === "browse" ? "No songs match your filters" : "No matching songs found"}
+          </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Try a different description, or songs may not have embeddings yet
+            {resultMode === "browse"
+              ? "Try removing some filters to see more results"
+              : "Try a different description, or songs may not have embeddings yet"}
           </p>
         </div>
       )}
@@ -292,13 +327,15 @@ export function SemanticSearch({
                 isPlaying={playingSongId === song.id}
                 isPreviewLoading={previewLoadingSongId === song.id}
               />
-              <Badge
-                variant="secondary"
-                className="absolute top-2 right-10 text-xs"
-                data-testid="similarity-badge"
-              >
-                {formatSimilarity(song.similarity)}
-              </Badge>
+              {resultMode === "semantic" && typeof song.similarity === "number" && (
+                <Badge
+                  variant="secondary"
+                  className="absolute top-2 right-10 text-xs"
+                  data-testid="similarity-badge"
+                >
+                  {formatSimilarity(song.similarity)}
+                </Badge>
+              )}
               {song.matchingSnippet && (
                 <p
                   className="text-xs italic text-muted-foreground pl-3 -mt-1"
@@ -307,7 +344,7 @@ export function SemanticSearch({
                   ▸ {song.matchingSnippet}
                 </p>
               )}
-              {song.whyThisMatch.length > 0 && (
+              {(song.whyThisMatch?.length ?? 0) > 0 && (
                 <button
                   className="flex items-center gap-1 text-xs text-muted-foreground pl-3 py-1 hover:text-foreground transition-colors"
                   onClick={() => toggleExpand(song.id)}
@@ -323,9 +360,9 @@ export function SemanticSearch({
                   Why this match?
                 </button>
               )}
-              {expandedSongId === song.id && song.whyThisMatch.length > 0 && (
+              {expandedSongId === song.id && (song.whyThisMatch?.length ?? 0) > 0 && (
                 <div className="pl-6 space-y-0.5" data-testid="why-this-match-content">
-                  {song.whyThisMatch.map((line, i) => (
+                  {song.whyThisMatch?.map((line, i) => (
                     <p key={i} className="text-xs text-muted-foreground">
                       Lyric {i + 1}: {line}
                     </p>

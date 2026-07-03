@@ -121,9 +121,9 @@ describe("SemanticSearch", () => {
       expect(screen.getByTestId("semantic-search-button")).toBeInTheDocument();
     });
 
-    it("search button is disabled when query is empty", () => {
+    it("search button is enabled when query is empty", () => {
       renderComponent();
-      expect(screen.getByTestId("semantic-search-button")).toBeDisabled();
+      expect(screen.getByTestId("semantic-search-button")).not.toBeDisabled();
     });
 
     it("search button is enabled when query has text", () => {
@@ -167,6 +167,21 @@ describe("SemanticSearch", () => {
           })
         );
       });
+    });
+
+    it("browses songs when Search is pressed with a blank description", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, total: 2 }),
+      });
+
+      renderComponent();
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
+      });
+      expect(screen.queryByTestId("similarity-badge")).not.toBeInTheDocument();
     });
 
     it("sends shared filters in the semantic search body", async () => {

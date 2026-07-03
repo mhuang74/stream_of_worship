@@ -13,7 +13,6 @@ describe("SharedFilters", () => {
     onSelectedKeysChange: vi.fn(),
     selectedBpm: undefined,
     onSelectedBpmChange: vi.fn(),
-    onApplyFilters: vi.fn(),
     onClearFilters: vi.fn(),
     isLoading: false,
   };
@@ -125,11 +124,10 @@ describe("SharedFilters", () => {
   });
 
   describe("actions", () => {
-    it("Apply button calls onApplyFilters", () => {
+    it("does not render an Apply filters button", () => {
       renderFilters();
       fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("advanced-apply-button"));
-      expect(defaultProps.onApplyFilters).toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: /apply filters/i })).not.toBeInTheDocument();
     });
 
     it("Clear all button calls onClearFilters", () => {

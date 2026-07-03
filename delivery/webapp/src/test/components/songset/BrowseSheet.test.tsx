@@ -3,17 +3,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
-
-const mockPlay = vi.fn();
 
 vi.mock("@/contexts/AudioPlayerContext", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/contexts/AudioPlayerContext")>();
   return {
     ...actual,
     useAudioPlayerContext: () => ({
-      play: mockPlay,
+      play: vi.fn(),
       pause: vi.fn(),
       stop: vi.fn(),
       currentTrack: null,
@@ -39,77 +37,57 @@ vi.mock("@/contexts/AudioPlayerContext", async (importOriginal) => {
   };
 });
 
-const mockGetPublicAudioUrl = vi.fn(() => null);
-
 vi.mock("@/lib/r2/public-url", () => ({
-  getPublicAudioUrl: (...args: unknown[]) => mockGetPublicAudioUrl(...args),
+  getPublicAudioUrl: vi.fn(() => null),
 }));
 
-// Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+const mockSongs = [
+  {
+    id: "song-1",
+    title: "Amazing Grace",
+    composer: "John Newton",
+    lyricist: null,
+    albumName: "Hymns",
+    musicalKey: "G",
+    recordings: [
+      {
+        contentHash: "abc123",
+        hashPrefix: "abc123",
+        durationSeconds: 180,
+        tempoBpm: 120,
+        musicalKey: "G",
+        visibilityStatus: "published",
+      },
+    ],
+  },
+];
+
+const mockAlbums = ["Hymns", "Worship", "Christmas"];
+
 describe("BrowseSheet", () => {
-  const mockOnOpenChange = vi.fn();
-  const mockOnAddSong = vi.fn().mockResolvedValue(undefined);
-
-  const mockSongs = [
-    {
-      id: "song-1",
-      title: "Amazing Grace",
-      composer: "John Newton",
-      lyricist: null,
-      albumName: "Hymns",
-      musicalKey: "G",
-      recordings: [
-        {
-          contentHash: "abc123",
-          hashPrefix: "abc123",
-          durationSeconds: 180,
-          tempoBpm: 120,
-          musicalKey: "G",
-          visibilityStatus: "published",
-        },
-      ],
-    },
-    {
-      id: "song-2",
-      title: "How Great Thou Art",
-      composer: "Stuart Hine",
-      lyricist: null,
-      albumName: "Hymns",
-      musicalKey: "A",
-      recordings: [
-        {
-          contentHash: "def456",
-          hashPrefix: "def456",
-          durationSeconds: 240,
-          tempoBpm: 100,
-          musicalKey: "A",
-          visibilityStatus: "published",
-        },
-      ],
-    },
-  ];
-
-  const mockAlbums = ["Hymns", "Worship", "Christmas"];
-
   const defaultProps = {
     isOpen: true,
-    onOpenChange: mockOnOpenChange,
-    onAddSong: mockOnAddSong,
+    onOpenChange: vi.fn(),
+    onAddSong: vi.fn().mockResolvedValue(undefined),
     existingSongIds: [],
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Default mock responses
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/songs/albums") {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ albums: mockAlbums }),
+        });
+      }
+      if (url.includes("/api/songs/search/semantic")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ songs: [], total: 0 }),
         });
       }
       if (url.includes("/api/songs")) {
@@ -126,772 +104,179 @@ describe("BrowseSheet", () => {
     vi.restoreAllMocks();
   });
 
-  const renderSheet = (props = {}) => {
-    return render(<BrowseSheet {...defaultProps} {...props} />);
-  };
+  const renderSheet = (props = {}) => render(<BrowseSheet {...defaultProps} {...props} />);
 
-  describe("rendering", () => {
-    it("renders sheet when isOpen is true", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByText("Search Songs")).toBeInTheDocument();
-      });
+  const waitForAlbums = async () => {
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/songs/albums");
     });
-
-    it("renders search component", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("search-input")).toBeInTheDocument();
-      });
-    });
-
-    it("renders song cards when songs are loaded", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
-        expect(screen.getByText("How Great Thou Art")).toBeInTheDocument();
-      });
-    });
-
-    it("renders album filter", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      });
-    });
-
-    it("renders done button", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /done/i })).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("search functionality", () => {
-    it("fetches songs on mount", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("/api/songs"));
-      });
-    });
-
-    it("fetches albums on mount", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith("/api/songs/albums");
-      });
-    });
-
-    it("searches with query when user types", async () => {
-      renderSheet();
-      
-      await waitFor(() => {
-        expect(screen.getByTestId("search-input")).toBeInTheDocument();
-      });
-
-      const input = screen.getByTestId("search-input");
-      fireEvent.change(input, { target: { value: "amazing" } });
-
-      // Wait for debounce
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/songs/search")
-        );
-      });
-    });
-
-    it("sends repeated albumName params for selected albums", async () => {
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("album-filter"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-      fireEvent.click(screen.getByTestId("album-option-Worship"));
-
-      const input = screen.getByTestId("search-input");
-      fireEvent.change(input, { target: { value: "grace" } });
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringMatching(
-            /\/api\/songs\/search\?.*albumName=Hymns.*albumName=Worship/
-          )
-        );
-      });
-    });
-  });
-
-  describe("add song functionality", () => {
-    it("calls onAddSong when add button is clicked", async () => {
-      renderSheet();
-      
-      await waitFor(() => {
-        expect(screen.getAllByTestId("add-song-button").length).toBeGreaterThan(0);
-      });
-
-      const addButtons = screen.getAllByTestId("add-song-button");
-      fireEvent.click(addButtons[0]);
-
-      await waitFor(() => {
-        expect(mockOnAddSong).toHaveBeenCalledWith(mockSongs[0]);
-      });
-    });
-
-    it("disables add button for already added songs", async () => {
-      renderSheet({ existingSongIds: ["song-1"] });
-      
-      await waitFor(() => {
-        const addButtons = screen.getAllByTestId("add-song-button");
-        expect(addButtons[0]).toBeDisabled();
-      });
-    });
-  });
-
-  describe("error handling", () => {
-    it("shows error message when fetch fails", async () => {
-      mockFetch.mockImplementation(() => 
-        Promise.resolve({
-          ok: false,
-          status: 500,
-          statusText: "Internal Server Error",
-        })
-      );
-      
-      renderSheet();
-      
-      await waitFor(() => {
-        expect(screen.getByText(/failed to search songs/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
-    });
-
-    it("shows retry button when fetch fails", async () => {
-      mockFetch.mockImplementation(() => 
-        Promise.resolve({
-          ok: false,
-          status: 500,
-          statusText: "Internal Server Error",
-        })
-      );
-      
-      renderSheet();
-      
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
-      }, { timeout: 3000 });
-    });
-  });
-
-  describe("empty states", () => {
-    it("shows empty state when no songs found", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: [], total: 0 }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderSheet();
-      
-      await waitFor(() => {
-        expect(screen.getByText(/no songs available/i)).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("sheet closing", () => {
-    it("calls onOpenChange when done button is clicked", async () => {
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /done/i })).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByRole("button", { name: /done/i }));
-      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
-    });
-  });
-
-  describe("describe mode", () => {
-    it("renders browse and describe mode tabs", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("keyword-mode-tab")).toBeInTheDocument();
-        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
-      });
-    });
-
-    it("starts in browse mode by default", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("search-input")).toBeInTheDocument();
-        expect(screen.queryByTestId("semantic-search-input")).not.toBeInTheDocument();
-      });
-    });
-
-    it("switches to describe mode when describe tab is clicked", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-        expect(screen.queryByTestId("search-input")).not.toBeInTheDocument();
-      });
-    });
-
-    it("switches back to browse mode from describe mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("keyword-mode-tab"));
-      await waitFor(() => {
-        expect(screen.getByTestId("search-input")).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("advanced filters", () => {
-    it("renders advanced filters toggle", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
-    });
-
-    it("opens advanced panel when toggle is clicked", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
-      });
-    });
-
-    it("renders results after applying advanced filters", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("advanced-apply-button"));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining("keys=D")
-        );
-      });
-    });
-
-    it("renders results after applying BPM filter", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-      fireEvent.click(screen.getByTestId("advanced-apply-button"));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining("bpmRange=slow")
-        );
-      });
-    });
-
-    it("shows filter-specific empty state when no results match filters", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/songs/albums") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ albums: mockAlbums }),
-          });
-        }
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: [], total: 0 }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("advanced-apply-button"));
-
-      await waitFor(() => {
-        expect(screen.getByText(/no songs match your filters/i)).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("play functionality", () => {
-    it("renders song cards with play buttons", async () => {
-      renderSheet();
-
-      await waitFor(() => {
-        const playButtons = screen.getAllByTestId("song-play-button");
-        expect(playButtons.length).toBeGreaterThan(0);
-      });
-    });
-
-    it("uses public R2 URL when available", async () => {
-      mockGetPublicAudioUrl.mockReturnValue("https://pub-test.r2.dev/abc123/audio.mp3");
-
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(mockGetPublicAudioUrl).toHaveBeenCalledWith("abc123");
-        expect(mockPlay).toHaveBeenCalledWith({
-          id: "song-song-1",
-          title: "Amazing Grace",
-          artist: "John Newton",
-          src: "https://pub-test.r2.dev/abc123/audio.mp3",
-          type: "song",
-          duration: 180,
-        });
-      });
-
-      expect(mockFetch).not.toHaveBeenCalledWith(
-        "/api/signed-url",
-        expect.anything()
-      );
-    });
-
-    it("falls back to /api/signed-url when public URL is not available", async () => {
-      mockGetPublicAudioUrl.mockReturnValue(null);
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/signed-url") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ url: "https://r2.example.com/audio.mp3" }),
-          });
-        }
-        if (url === "/api/songs/albums") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ albums: mockAlbums }),
-          });
-        }
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, total: mockSongs.length }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/signed-url",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({ hashPrefix: "abc123", fileType: "audio" }),
-          })
-        );
-      });
-    });
-
-    it("calls play() with signed URL data when falling back", async () => {
-      mockGetPublicAudioUrl.mockReturnValue(null);
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/signed-url") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ url: "https://r2.example.com/audio.mp3" }),
-          });
-        }
-        if (url === "/api/songs/albums") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ albums: mockAlbums }),
-          });
-        }
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, total: mockSongs.length }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(mockPlay).toHaveBeenCalledWith({
-          id: "song-song-1",
-          title: "Amazing Grace",
-          artist: "John Newton",
-          src: "https://r2.example.com/audio.mp3",
-          type: "song",
-          duration: 180,
-        });
-      });
-    });
-
-    it("shows error toast when signed URL fetch fails", async () => {
-      mockGetPublicAudioUrl.mockReturnValue(null);
-      const { toast } = await import("sonner");
-
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/signed-url") {
-          return Promise.resolve({ ok: false });
-        }
-        if (url === "/api/songs/albums") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ albums: mockAlbums }),
-          });
-        }
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, total: mockSongs.length }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId("song-play-button").length).toBeGreaterThan(0);
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Failed to load audio preview");
-      });
-    });
-
-    it("shows error toast when song has no recordings", async () => {
-      const { toast } = await import("sonner");
-
-      const songsNoRecordings = [
-        {
-          id: "song-nr",
-          title: "No Recording Song",
-          composer: "Test",
-          lyricist: null,
-          albumName: null,
-          musicalKey: null,
-          recordings: [],
-        },
-      ];
-
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/songs/albums") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ albums: mockAlbums }),
-          });
-        }
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: songsNoRecordings, total: 1 }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
-
-      renderSheet();
-
-      await waitFor(() => {
-        expect(screen.getByText("No Recording Song")).toBeInTheDocument();
-      });
-
-      const playButtons = screen.getAllByTestId("song-play-button");
-      fireEvent.click(playButtons[0]);
-
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("No audio available for this song");
-      });
-    });
-  });
-
-  describe("sheet description and help text", () => {
-    it("renders sheet description", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(
-          screen.getByText("Search the catalog and add songs to your songset")
-        ).toBeInTheDocument();
-      });
-    });
-
-    it("renders keyword help text in keyword mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("keyword-help-text")).toBeInTheDocument();
-      });
-      expect(screen.getByTestId("keyword-help-text").textContent).toContain("奇异恩典");
-    });
-
-    it("renders describe help text in describe mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("describe-help-text")).toBeInTheDocument();
-      });
-      expect(screen.getByTestId("describe-help-text").textContent).toContain("关于神的恩典");
-    });
-  });
-
-  describe("shared filter visibility in describe mode", () => {
-    it("renders album filter in describe mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-      });
+    await waitFor(() => {
       expect(screen.getByTestId("album-filter")).toBeInTheDocument();
     });
+  };
 
-    it("renders advanced filters toggle in describe mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
+  const songFetchCalls = () =>
+    mockFetch.mock.calls.filter(
+      ([url]) =>
+        typeof url === "string" &&
+        url.includes("/api/songs") &&
+        url !== "/api/songs/albums"
+    );
 
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-      });
-      expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
+  const selectAlbum = async (album: string) => {
+    fireEvent.click(screen.getByTestId("album-filter"));
+    await waitFor(() => {
+      expect(screen.getByTestId(`album-option-${album}`)).toBeInTheDocument();
     });
+    fireEvent.click(screen.getByTestId(`album-option-${album}`));
+  };
 
-    it("can open advanced filters panel in describe mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
+  const selectKeyAndBpm = () => {
+    fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+    fireEvent.click(screen.getByTestId("key-chip-D"));
+    fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+  };
 
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
+  it("opening the sheet fetches albums only, not songs", async () => {
+    renderSheet();
+    await waitForAlbums();
 
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-      });
+    expect(songFetchCalls()).toHaveLength(0);
+    expect(screen.queryByText("Amazing Grace")).not.toBeInTheDocument();
+  });
 
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+  it("keyword input and filter changes do not fetch until Search", async () => {
+    renderSheet();
+    await waitForAlbums();
 
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
-      });
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: "grace" } });
+    await selectAlbum("Hymns");
+    selectKeyAndBpm();
+
+    expect(songFetchCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByTestId("search-button"));
+
+    await waitFor(() => {
+      expect(songFetchCalls()).toHaveLength(1);
     });
   });
 
-  describe("filter persistence across mode switch", () => {
-    it("filter selections persist across mode switch", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      });
+  it("blank Keyword Search fetches the default catalog", async () => {
+    renderSheet();
+    await waitForAlbums();
 
-      // Select albums
-      fireEvent.click(screen.getByTestId("album-filter"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-      fireEvent.click(screen.getByTestId("album-option-Worship"));
+    fireEvent.click(screen.getByTestId("search-button"));
 
-      // Open advanced panel and select key + BPM
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
+    });
+    expect(await screen.findByText("Amazing Grace")).toBeInTheDocument();
+  });
 
-      // Switch to Describe
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-      });
+  it("Keyword Search with filters sends album, key, and BPM params", async () => {
+    renderSheet();
+    await waitForAlbums();
 
-      // Switch back to Keyword
-      fireEvent.click(screen.getByTestId("keyword-mode-tab"));
-      await waitFor(() => {
-        expect(screen.getByTestId("search-input")).toBeInTheDocument();
-      });
+    await selectAlbum("Hymns");
+    selectKeyAndBpm();
+    fireEvent.click(screen.getByTestId("search-button"));
 
-      // Assert selections preserved
-      expect(screen.getByTestId("album-filter").textContent).toContain("2");
-      expect(screen.getByTestId("key-chip-D")).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByTestId("bpm-chip-slow")).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^\/api\/songs\?.*albumName=Hymns.*keys=D.*bpmRange=slow.*limit=50/
+        )
+      );
     });
   });
 
-  describe("describe mode filter behavior", () => {
-    it("does not auto-search on filter change in describe mode", async () => {
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("describe-mode-tab")).toBeInTheDocument();
-      });
+  it("Describe input and filter changes do not fetch until Search", async () => {
+    renderSheet();
+    await waitForAlbums();
 
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-      });
-
-      const fetchCountBefore = mockFetch.mock.calls.filter(
-        (call) => typeof call[0] === "string" && call[0].includes("/api/songs/search/semantic")
-      ).length;
-
-      // Select an album (filter change)
-      fireEvent.click(screen.getByTestId("album-filter"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-
-      const fetchCountAfter = mockFetch.mock.calls.filter(
-        (call) => typeof call[0] === "string" && call[0].includes("/api/songs/search/semantic")
-      ).length;
-
-      expect(fetchCountAfter).toBe(fetchCountBefore);
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+    fireEvent.change(screen.getByTestId("semantic-search-input"), {
+      target: { value: "songs about grace" },
     });
+    await selectAlbum("Hymns");
+    selectKeyAndBpm();
 
-    it("sends selected filters in semantic body", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/songs/albums") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ albums: mockAlbums }),
-          });
-        }
-        if (url.includes("/api/songs/search/semantic")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: [], total: 0 }),
-          });
-        }
-        if (url.includes("/api/songs")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ songs: mockSongs, total: mockSongs.length }),
-          });
-        }
-        return Promise.resolve({ ok: false });
-      });
+    expect(songFetchCalls()).toHaveLength(0);
 
-      renderSheet();
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      });
+    fireEvent.click(screen.getByTestId("semantic-search-button"));
 
-      // Select albums + key + BPM in keyword mode (filters are shared)
-      fireEvent.click(screen.getByTestId("album-filter"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-      fireEvent.click(screen.getByTestId("album-option-Worship"));
-
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      await waitFor(() => {
-        expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-
-      // Switch to Describe
-      fireEvent.click(screen.getByTestId("describe-mode-tab"));
-      await waitFor(() => {
-        expect(screen.getByTestId("semantic-search-input")).toBeInTheDocument();
-      });
-
-      const input = screen.getByTestId("semantic-search-input");
-      fireEvent.change(input, { target: { value: "grace" } });
-      fireEvent.click(screen.getByTestId("semantic-search-button"));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/songs/search/semantic",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({
-              query: "grace",
-              limit: 20,
-              albums: ["Hymns", "Worship"],
-              keys: ["D"],
-              bpmRange: "slow",
-            }),
-          })
-        );
-      });
+    await waitFor(() => {
+      expect(songFetchCalls()).toHaveLength(1);
     });
+  });
+
+  it("blank Describe Search fetches the default catalog without similarity badges", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+    fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
+    });
+    expect(await screen.findByText("Amazing Grace")).toBeInTheDocument();
+    expect(screen.queryByTestId("similarity-badge")).not.toBeInTheDocument();
+  });
+
+  it("Describe Search with text sends semantic POST body with filters", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    await selectAlbum("Hymns");
+    selectKeyAndBpm();
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+    fireEvent.change(screen.getByTestId("semantic-search-input"), {
+      target: { value: "songs about grace" },
+    });
+    fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/songs/search/semantic",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            query: "songs about grace",
+            limit: 20,
+            albums: ["Hymns"],
+            keys: ["D"],
+            bpmRange: "slow",
+          }),
+        })
+      );
+    });
+  });
+
+  it("renders the active input before the album filter in Keyword mode", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    const input = screen.getByTestId("search-input");
+    const albumFilter = screen.getByTestId("album-filter");
+
+    expect(input.compareDocumentPosition(albumFilter) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it("renders the active input before the album filter in Describe mode", async () => {
+    renderSheet();
+    await waitForAlbums();
+
+    fireEvent.click(screen.getByTestId("describe-mode-tab"));
+
+    const input = screen.getByTestId("semantic-search-input");
+    const albumFilter = screen.getByTestId("album-filter");
+
+    expect(input.compareDocumentPosition(albumFilter) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 });

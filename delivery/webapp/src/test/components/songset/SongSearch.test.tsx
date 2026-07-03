@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SongSearch } from "@/components/songset/SongSearch";
 
 describe("SongSearch", () => {
@@ -8,16 +8,10 @@ describe("SongSearch", () => {
   const defaultProps = {
     onSearch: mockOnSearch,
     isLoading: false,
-    debounceMs: 100, // Use shorter debounce for tests
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   const renderSearch = (props = {}) => {
@@ -48,42 +42,41 @@ describe("SongSearch", () => {
   });
 
   describe("search functionality", () => {
-    it("calls onSearch with debounce when typing", async () => {
+    it("does not call onSearch when typing", () => {
       renderSearch();
 
       const input = screen.getByTestId("search-input");
       fireEvent.change(input, { target: { value: "amazing" } });
 
-      // Should not call immediately
       expect(mockOnSearch).not.toHaveBeenCalled();
-
-      // Advance timers
-      vi.advanceTimersByTime(150);
-
-      await waitFor(() => {
-        expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
-      });
     });
 
-    it("calls onSearch with empty string when cleared", async () => {
+    it("calls onSearch when Search is pressed", () => {
+      renderSearch();
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+      fireEvent.click(screen.getByTestId("search-button"));
+
+      expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
+    });
+
+    it("allows blank Search", () => {
+      renderSearch();
+
+      fireEvent.click(screen.getByTestId("search-button"));
+
+      expect(mockOnSearch).toHaveBeenCalledWith("", undefined);
+    });
+
+    it("does not call onSearch when cleared", () => {
       renderSearch();
 
       const input = screen.getByTestId("search-input");
       fireEvent.change(input, { target: { value: "test" } });
+      fireEvent.click(screen.getByTestId("clear-search-button"));
 
-      vi.advanceTimersByTime(150);
-      await waitFor(() => {
-        expect(mockOnSearch).toHaveBeenCalledWith("test", undefined);
-      });
-
-      // Clear the search
-      const clearButton = screen.getByTestId("clear-search-button");
-      fireEvent.click(clearButton);
-
-      vi.advanceTimersByTime(150);
-      await waitFor(() => {
-        expect(mockOnSearch).toHaveBeenLastCalledWith("", undefined);
-      });
+      expect(mockOnSearch).not.toHaveBeenCalled();
     });
 
     it("shows clear button when query is not empty", () => {

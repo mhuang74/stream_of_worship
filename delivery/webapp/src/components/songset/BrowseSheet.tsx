@@ -47,13 +47,13 @@ export function BrowseSheet({
 }: BrowseSheetProps) {
   const [mode, setMode] = useState<SearchMode>("keyword");
   const [keywordQuery, setKeywordQuery] = useState("");
-  const [initialSearchQuery, setInitialSearchQuery] = useState<string | undefined>();
   const [selectedAlbums, setSelectedAlbums] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [selectedBpm, setSelectedBpm] = useState<StructuredSearchCriteria["bpmRange"]>();
   const [activeFilters, setActiveFilters] = useState<StructuredSearchCriteria | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [hasKeywordSearched, setHasKeywordSearched] = useState(false);
   const [albums, setAlbums] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
@@ -99,6 +99,7 @@ export function BrowseSheet({
       };
       setKeywordQuery(searchQuery);
       setActiveFilters(nextFilters);
+      setHasKeywordSearched(true);
       setIsLoading(true);
       setError(null);
 
@@ -163,6 +164,7 @@ export function BrowseSheet({
         setActiveFilters(undefined);
         setResults([]);
         setTotalCount(0);
+        setHasKeywordSearched(false);
         setError(null);
         setAddingSongIds(new Set());
         setAddedSongIds(new Set());
@@ -173,33 +175,6 @@ export function BrowseSheet({
       return () => clearTimeout(timeoutId);
     }
   }, [isOpen, albums.length, loadAlbums]);
-
-  // Load initial results when opened
-  useEffect(() => {
-    if (isOpen) {
-      const timeoutId = setTimeout(() => {
-        handleSearch("", undefined);
-      }, 0);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isOpen, handleSearch]);
-
-  // In keyword mode, re-run search (debounced) when shared filters change
-  const prevAlbumsRef = useRef(selectedAlbums);
-  useEffect(() => {
-    if (mode !== "keyword") return;
-    if (prevAlbumsRef.current === selectedAlbums) return;
-    prevAlbumsRef.current = selectedAlbums;
-    const timeoutId = setTimeout(() => {
-      handleSearch(keywordQuery, selectedAlbums, {
-        query: keywordQuery.trim() || undefined,
-        albums: selectedAlbums.length > 0 ? selectedAlbums : undefined,
-        keys: selectedKeys.length > 0 ? selectedKeys : undefined,
-        bpmRange: selectedBpm,
-      });
-    }, 300);
-    return () => clearTimeout(timeoutId);
-  }, [selectedAlbums, mode, keywordQuery, selectedKeys, selectedBpm, handleSearch]);
 
   const handleAddSong = useCallback(
     async (songOrId: string | SongCardData) => {
@@ -249,7 +224,6 @@ export function BrowseSheet({
   const isSongsetFull = itemCount >= SONGSET_MAX_SONGS;
 
   const handleSwitchToSearchTab = useCallback((searchQuery: string) => {
-    setInitialSearchQuery(searchQuery);
     setKeywordQuery(searchQuery);
     setMode("keyword");
   }, []);
@@ -335,6 +309,25 @@ export function BrowseSheet({
     }
   }, [currentTrack, playerState.isPlaying]);
 
+  const sharedFilters = (
+    <SharedFilters
+      albums={albums}
+      selectedAlbums={selectedAlbums}
+      onSelectedAlbumsChange={setSelectedAlbums}
+      selectedKeys={selectedKeys}
+      onSelectedKeysChange={setSelectedKeys}
+      selectedBpm={selectedBpm}
+      onSelectedBpmChange={setSelectedBpm}
+      onClearFilters={() => {
+        setSelectedAlbums([]);
+        setSelectedKeys([]);
+        setSelectedBpm(undefined);
+      }}
+      isLoading={isLoading || isLoadingAlbums}
+      className="px-1 pb-4"
+    />
+  );
+
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className={cn("data-[side=bottom]:!h-[85vh] sm:data-[side=bottom]:!h-[90vh] overflow-hidden", className)}>
@@ -372,31 +365,6 @@ export function BrowseSheet({
             </Button>
           </div>
 
-          {/* Shared filters — visible in both modes */}
-          <SharedFilters
-            albums={albums}
-            selectedAlbums={selectedAlbums}
-            onSelectedAlbumsChange={setSelectedAlbums}
-            selectedKeys={selectedKeys}
-            onSelectedKeysChange={setSelectedKeys}
-            selectedBpm={selectedBpm}
-            onSelectedBpmChange={setSelectedBpm}
-            onApplyFilters={() => handleSearch(keywordQuery, selectedAlbums, {
-              query: keywordQuery.trim() || undefined,
-              albums: selectedAlbums.length > 0 ? selectedAlbums : undefined,
-              keys: selectedKeys.length > 0 ? selectedKeys : undefined,
-              bpmRange: selectedBpm,
-            })}
-            onClearFilters={() => {
-              setSelectedAlbums([]);
-              setSelectedKeys([]);
-              setSelectedBpm(undefined);
-              handleSearch(keywordQuery, undefined);
-            }}
-            isLoading={isLoading || isLoadingAlbums}
-            className="px-1 pb-4"
-          />
-
           {mode === "keyword" && (
             <div role="tabpanel" aria-label="Keyword song search" className="flex flex-col min-h-0 flex-1">
               {/* Search section */}
@@ -407,7 +375,6 @@ export function BrowseSheet({
                     handleSearch(criteria.query ?? "", criteria.albums, criteria)
                   }
                   isLoading={isLoading || isLoadingAlbums}
-                  initialQuery={initialSearchQuery}
                   query={keywordQuery}
                   onQueryChange={setKeywordQuery}
                   selectedAlbums={selectedAlbums}
@@ -415,6 +382,8 @@ export function BrowseSheet({
                   selectedBpm={selectedBpm}
                 />
               </div>
+
+              {sharedFilters}
 
               {/* Results section */}
               <div className="flex-1 overflow-y-auto px-1 -mx-1">
@@ -440,7 +409,7 @@ export function BrowseSheet({
                   </div>
                 )}
 
-                {!error && !isLoading && results.length === 0 && keywordQuery && (
+                {!error && !isLoading && hasKeywordSearched && results.length === 0 && keywordQuery && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">
@@ -454,7 +423,7 @@ export function BrowseSheet({
                   </div>
                 )}
 
-                {!error && !isLoading && results.length === 0 && !keywordQuery && (activeFilters?.albums?.length || activeFilters?.keys?.length || activeFilters?.bpmRange) && (
+                {!error && !isLoading && hasKeywordSearched && results.length === 0 && !keywordQuery && (activeFilters?.albums?.length || activeFilters?.keys?.length || activeFilters?.bpmRange) && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">No songs match your filters</p>
@@ -464,7 +433,7 @@ export function BrowseSheet({
                   </div>
                 )}
 
-                {!error && !isLoading && results.length === 0 && !keywordQuery && (
+                {!error && !isLoading && hasKeywordSearched && results.length === 0 && !keywordQuery && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">No songs available</p>
@@ -506,6 +475,7 @@ export function BrowseSheet({
                 albums={selectedAlbums}
                 keys={selectedKeys}
                 bpmRange={selectedBpm}
+                filterSlot={sharedFilters}
               />
             </div>
           )}

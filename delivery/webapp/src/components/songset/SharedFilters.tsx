@@ -22,7 +22,6 @@ interface SharedFiltersProps {
   onSelectedKeysChange: (keys: string[]) => void;
   selectedBpm?: BpmBandKey;
   onSelectedBpmChange: (bpm: BpmBandKey | undefined) => void;
-  onApplyFilters: () => void;
   onClearFilters: () => void;
   isLoading?: boolean;
   className?: string;
@@ -36,7 +35,6 @@ export function SharedFilters({
   onSelectedKeysChange,
   selectedBpm,
   onSelectedBpmChange,
-  onApplyFilters,
   onClearFilters,
   isLoading = false,
   className,
@@ -171,13 +169,6 @@ export function SharedFilters({
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={onApplyFilters}
-              data-testid="advanced-apply-button"
-            >
-              Apply filters
-            </Button>
             <Button
               variant="ghost"
               size="sm"
