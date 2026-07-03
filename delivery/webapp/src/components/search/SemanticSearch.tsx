@@ -231,7 +231,9 @@ export function SemanticSearch({
           data-testid="semantic-search-input"
         />
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground" aria-hidden="true">Press Ctrl+Enter to search</p>
+          <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
+            Tip: describe by theme or feeling — e.g. &lsquo;关于神的恩典与怜悯的赞美&rsquo;, &lsquo;upbeat praise songs about grace&rsquo; · Press Ctrl+Enter to search
+          </p>
           <Button
             onClick={handleSearch}
             disabled={isLoading || !query.trim()}

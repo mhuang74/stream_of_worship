@@ -6,9 +6,11 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { SongSearch } from "./SongSearch";
+import { SharedFilters } from "./SharedFilters";
 import { SongCard, SongCardData } from "./SongCard";
 import { SemanticSearch } from "@/components/search/SemanticSearch";
 import type { StructuredSearchCriteria } from "./search/types";
@@ -182,6 +184,23 @@ export function BrowseSheet({
     }
   }, [isOpen, handleSearch]);
 
+  // In keyword mode, re-run search (debounced) when shared filters change
+  const prevAlbumsRef = useRef(selectedAlbums);
+  useEffect(() => {
+    if (mode !== "keyword") return;
+    if (prevAlbumsRef.current === selectedAlbums) return;
+    prevAlbumsRef.current = selectedAlbums;
+    const timeoutId = setTimeout(() => {
+      handleSearch(keywordQuery, selectedAlbums, {
+        query: keywordQuery.trim() || undefined,
+        albums: selectedAlbums.length > 0 ? selectedAlbums : undefined,
+        keys: selectedKeys.length > 0 ? selectedKeys : undefined,
+        bpmRange: selectedBpm,
+      });
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [selectedAlbums, mode, keywordQuery, selectedKeys, selectedBpm, handleSearch]);
+
   const handleAddSong = useCallback(
     async (songOrId: string | SongCardData) => {
       const songId = typeof songOrId === "string" ? songOrId : songOrId.id;
@@ -321,6 +340,7 @@ export function BrowseSheet({
       <SheetContent side="bottom" className={cn("data-[side=bottom]:!h-[85vh] sm:data-[side=bottom]:!h-[90vh] overflow-hidden", className)}>
         <SheetHeader className="pb-2">
           <SheetTitle>Search Songs</SheetTitle>
+          <SheetDescription>Search the catalog and add songs to your songset</SheetDescription>
         </SheetHeader>
 
         <div className={cn("flex flex-col h-full min-h-0", currentTrack ? "pb-28 sm:pb-20" : "pb-8")}>
@@ -333,7 +353,7 @@ export function BrowseSheet({
               size="sm"
               onClick={() => setMode("keyword")}
               className="gap-1.5"
-              data-testid="browse-mode-tab"
+              data-testid="keyword-mode-tab"
             >
               <Search className="size-3.5" />
               Keyword
@@ -352,6 +372,31 @@ export function BrowseSheet({
             </Button>
           </div>
 
+          {/* Shared filters — visible in both modes */}
+          <SharedFilters
+            albums={albums}
+            selectedAlbums={selectedAlbums}
+            onSelectedAlbumsChange={setSelectedAlbums}
+            selectedKeys={selectedKeys}
+            onSelectedKeysChange={setSelectedKeys}
+            selectedBpm={selectedBpm}
+            onSelectedBpmChange={setSelectedBpm}
+            onApplyFilters={() => handleSearch(keywordQuery, selectedAlbums, {
+              query: keywordQuery.trim() || undefined,
+              albums: selectedAlbums.length > 0 ? selectedAlbums : undefined,
+              keys: selectedKeys.length > 0 ? selectedKeys : undefined,
+              bpmRange: selectedBpm,
+            })}
+            onClearFilters={() => {
+              setSelectedAlbums([]);
+              setSelectedKeys([]);
+              setSelectedBpm(undefined);
+              handleSearch(keywordQuery, undefined);
+            }}
+            isLoading={isLoading || isLoadingAlbums}
+            className="px-1 pb-4"
+          />
+
           {mode === "keyword" && (
             <div role="tabpanel" aria-label="Keyword song search" className="flex flex-col min-h-0 flex-1">
               {/* Search section */}
@@ -361,17 +406,13 @@ export function BrowseSheet({
                   onAdvancedSearch={(criteria) =>
                     handleSearch(criteria.query ?? "", criteria.albums, criteria)
                   }
-                  albums={albums}
                   isLoading={isLoading || isLoadingAlbums}
                   initialQuery={initialSearchQuery}
                   query={keywordQuery}
                   onQueryChange={setKeywordQuery}
                   selectedAlbums={selectedAlbums}
-                  onSelectedAlbumsChange={setSelectedAlbums}
                   selectedKeys={selectedKeys}
-                  onSelectedKeysChange={setSelectedKeys}
                   selectedBpm={selectedBpm}
-                  onSelectedBpmChange={setSelectedBpm}
                 />
               </div>
 

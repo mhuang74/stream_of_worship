@@ -4,11 +4,9 @@ import { SongSearch } from "@/components/songset/SongSearch";
 
 describe("SongSearch", () => {
   const mockOnSearch = vi.fn();
-  const mockAlbums = ["Hymns", "Worship", "Christmas Songs"];
 
   const defaultProps = {
     onSearch: mockOnSearch,
-    albums: mockAlbums,
     isLoading: false,
     debounceMs: 100, // Use shorter debounce for tests
   };
@@ -37,14 +35,10 @@ describe("SongSearch", () => {
       expect(screen.getByPlaceholderText(/search songs by title/i)).toBeInTheDocument();
     });
 
-    it("renders album filter when albums are provided", () => {
+    it("renders keyword help text", () => {
       renderSearch();
-      expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-    });
-
-    it("does not render album filter when no albums", () => {
-      renderSearch({ albums: [] });
-      expect(screen.queryByTestId("album-filter")).not.toBeInTheDocument();
+      expect(screen.getByTestId("keyword-help-text")).toBeInTheDocument();
+      expect(screen.getByTestId("keyword-help-text").textContent).toContain("奇异恩典");
     });
 
     it("renders search icon", () => {
@@ -119,66 +113,6 @@ describe("SongSearch", () => {
     });
   });
 
-  describe("album filter", () => {
-    it("renders album filter with correct label", () => {
-      renderSearch();
-      expect(screen.getByRole("button", { name: /albums/i })).toBeInTheDocument();
-    });
-
-    it("renders album filter select", () => {
-      renderSearch();
-      expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-    });
-
-    it("album filter is interactive", async () => {
-      renderSearch();
-      
-      const albumFilter = screen.getByTestId("album-filter");
-      expect(albumFilter).toBeInTheDocument();
-      
-      // Click to open the select
-      fireEvent.click(albumFilter);
-      
-      // Verify the select opens (has aria-expanded attribute)
-      await waitFor(() => {
-        expect(albumFilter).toHaveAttribute("aria-expanded", "true");
-      });
-    });
-
-    it("selects, deselects, clears, and displays album count", async () => {
-      renderSearch();
-
-      fireEvent.click(screen.getByTestId("album-filter"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter").textContent).toContain("1");
-        expect(screen.getAllByText("Hymns").length).toBeGreaterThan(1);
-      });
-
-      fireEvent.click(screen.getByTestId("album-option-Worship"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter").textContent).toContain("2");
-        expect(screen.getByText("Hymns, Worship")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByTestId("album-option-Hymns"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter").textContent).toContain("1");
-        expect(screen.getAllByText("Worship").length).toBeGreaterThan(1);
-      });
-
-      fireEvent.click(screen.getByTestId("album-clear-all"));
-      await waitFor(() => {
-        expect(screen.getByTestId("album-filter").textContent).not.toContain("1");
-        expect(screen.queryByTestId("album-summary-clear")).not.toBeInTheDocument();
-      });
-    });
-  });
-
   describe("loading state", () => {
     it("shows loading indicator when isLoading is true", () => {
       renderSearch({ isLoading: true });
@@ -199,197 +133,6 @@ describe("SongSearch", () => {
       fireEvent.change(input, { target: { value: "test" } });
 
       expect(screen.getByLabelText(/clear search/i)).toBeInTheDocument();
-    });
-  });
-
-  describe("advanced filters", () => {
-    const mockOnAdvancedSearch = vi.fn();
-
-    const renderWithAdvanced = (props = {}) => {
-      return renderSearch({
-        onAdvancedSearch: mockOnAdvancedSearch,
-        ...props,
-      });
-    };
-
-    beforeEach(() => {
-      mockOnAdvancedSearch.mockClear();
-    });
-
-    it("does not render advanced toggle when onAdvancedSearch is not provided", () => {
-      renderSearch();
-      expect(screen.queryByTestId("advanced-filters-toggle")).not.toBeInTheDocument();
-    });
-
-    it("renders advanced toggle when onAdvancedSearch is provided", () => {
-      renderWithAdvanced();
-      expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-    });
-
-    it("does not show advanced panel by default", () => {
-      renderWithAdvanced();
-      expect(screen.queryByTestId("advanced-filters-panel")).not.toBeInTheDocument();
-    });
-
-    it("shows advanced panel when toggle is clicked", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
-    });
-
-    it("hides advanced panel when toggle is clicked again", () => {
-      renderWithAdvanced();
-      const toggle = screen.getByTestId("advanced-filters-toggle");
-      fireEvent.click(toggle);
-      fireEvent.click(toggle);
-      expect(screen.queryByTestId("advanced-filters-panel")).not.toBeInTheDocument();
-    });
-
-    it("renders all 12 pitch class chips", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.getByTestId("key-chip-C")).toBeInTheDocument();
-      expect(screen.getByTestId("key-chip-D")).toBeInTheDocument();
-      expect(screen.getByTestId("key-chip-A")).toBeInTheDocument();
-      expect(screen.getByTestId("key-chip-B")).toBeInTheDocument();
-    });
-
-    it("renders 3 BPM band chips", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.getByTestId("bpm-chip-slow")).toBeInTheDocument();
-      expect(screen.getByTestId("bpm-chip-moderate")).toBeInTheDocument();
-      expect(screen.getByTestId("bpm-chip-fast")).toBeInTheDocument();
-    });
-
-    it("toggles key chip selection (multi-select)", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      const keyD = screen.getByTestId("key-chip-D");
-      const keyA = screen.getByTestId("key-chip-A");
-
-      expect(keyD).toHaveAttribute("aria-pressed", "false");
-      fireEvent.click(keyD);
-      expect(keyD).toHaveAttribute("aria-pressed", "true");
-
-      fireEvent.click(keyA);
-      expect(keyA).toHaveAttribute("aria-pressed", "true");
-      expect(keyD).toHaveAttribute("aria-pressed", "true");
-    });
-
-    it("toggles BPM chip selection (single-select)", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      const slow = screen.getByTestId("bpm-chip-slow");
-      const fast = screen.getByTestId("bpm-chip-fast");
-
-      fireEvent.click(slow);
-      expect(slow).toHaveAttribute("aria-pressed", "true");
-
-      fireEvent.click(fast);
-      expect(fast).toHaveAttribute("aria-pressed", "true");
-      expect(slow).toHaveAttribute("aria-pressed", "false");
-    });
-
-    it("deselects BPM chip when clicked again", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      const slow = screen.getByTestId("bpm-chip-slow");
-      fireEvent.click(slow);
-      expect(slow).toHaveAttribute("aria-pressed", "true");
-
-      fireEvent.click(slow);
-      expect(slow).toHaveAttribute("aria-pressed", "false");
-    });
-
-    it("calls onAdvancedSearch with criteria when Apply is clicked", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("key-chip-A"));
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-
-      fireEvent.click(screen.getByTestId("advanced-apply-button"));
-
-      expect(mockOnAdvancedSearch).toHaveBeenCalledWith({
-        query: undefined,
-        keys: ["D", "A"],
-        bpmRange: "slow",
-        albums: undefined,
-      });
-    });
-
-    it("clears all filters when Clear all is clicked", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-
-      expect(screen.getByTestId("key-chip-D")).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByTestId("bpm-chip-slow")).toHaveAttribute("aria-pressed", "true");
-
-      fireEvent.click(screen.getByTestId("advanced-clear-button"));
-
-      expect(screen.getByTestId("key-chip-D")).toHaveAttribute("aria-pressed", "false");
-      expect(screen.getByTestId("bpm-chip-slow")).toHaveAttribute("aria-pressed", "false");
-    });
-
-    it("Clear all button is disabled when no filters active", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.getByTestId("advanced-clear-button")).toBeDisabled();
-    });
-
-    it("shows active filter count badge on toggle", () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-
-      // Collapse panel
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      const toggle = screen.getByTestId("advanced-filters-toggle");
-      expect(toggle.textContent).toContain("2");
-    });
-
-    it("uses onAdvancedSearch for debounced keyword search when filters are active", async () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("key-chip-D"));
-
-      const input = screen.getByTestId("search-input");
-      fireEvent.change(input, { target: { value: "amazing" } });
-
-      vi.advanceTimersByTime(150);
-
-      await waitFor(() => {
-        expect(mockOnAdvancedSearch).toHaveBeenCalledWith({
-          query: "amazing",
-          keys: ["D"],
-          bpmRange: undefined,
-          albums: undefined,
-        });
-      });
-    });
-
-    it("falls back to onSearch when advanced panel is open but no filters active", async () => {
-      renderWithAdvanced();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      const input = screen.getByTestId("search-input");
-      fireEvent.change(input, { target: { value: "amazing" } });
-
-      vi.advanceTimersByTime(150);
-
-      await waitFor(() => {
-        expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
-        expect(mockOnAdvancedSearch).not.toHaveBeenCalled();
-      });
     });
   });
 });
