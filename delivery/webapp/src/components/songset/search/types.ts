@@ -2,7 +2,7 @@ export interface StructuredSearchCriteria {
   query?: string;
   keys?: string[];
   bpmRange?: "slow" | "moderate" | "fast";
-  album?: string;
+  albums?: string[];
 }
 
 export const BPM_BANDS = {

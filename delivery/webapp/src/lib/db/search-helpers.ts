@@ -57,3 +57,17 @@ export function parseBpmRangeParam(
   if (!isValidBpmBand(bpmRangeParam)) return undefined;
   return bpmRangeParam;
 }
+
+export function parseAlbumValues(values: string[]): string[] | undefined {
+  const albums = values
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (albums.length === 0) return undefined;
+  return Array.from(new Set(albums)).slice(0, 25);
+}
+
+export function parseAlbumNameParams(searchParams: URLSearchParams): string[] | undefined {
+  return parseAlbumValues(searchParams.getAll("albumName"));
+}

@@ -544,15 +544,15 @@ describe("Accessibility (Task 8.2)", () => {
       });
     });
 
-    it("Browse tab has role=tab and aria-selected=true when active", async () => {
+    it("Keyword tab has role=tab and aria-selected=true when active", async () => {
       render(<BrowseSheet {...defaultBrowseProps} />);
       await waitFor(() => {
-        const browseTab = screen.getByRole("tab", { name: /browse/i });
-        expect(browseTab).toHaveAttribute("aria-selected", "true");
+        const keywordTab = screen.getByRole("tab", { name: /keyword/i });
+        expect(keywordTab).toHaveAttribute("aria-selected", "true");
       });
     });
 
-    it("Describe tab has role=tab and aria-selected=false when Browse is active", async () => {
+    it("Describe tab has role=tab and aria-selected=false when Keyword is active", async () => {
       render(<BrowseSheet {...defaultBrowseProps} />);
       await waitFor(() => {
         const describeTab = screen.getByRole("tab", { name: /describe/i });

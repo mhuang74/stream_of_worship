@@ -134,7 +134,7 @@ describe("BrowseSheet", () => {
     it("renders sheet when isOpen is true", async () => {
       renderSheet();
       await waitFor(() => {
-        expect(screen.getByText("Browse Songs")).toBeInTheDocument();
+        expect(screen.getByText("Search Songs")).toBeInTheDocument();
       });
     });
 
@@ -197,6 +197,33 @@ describe("BrowseSheet", () => {
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
           expect.stringContaining("/api/songs/search")
+        );
+      });
+    });
+
+    it("sends repeated albumName params for selected albums", async () => {
+      renderSheet();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("album-filter")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("album-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("album-option-Hymns")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("album-option-Hymns"));
+      fireEvent.click(screen.getByTestId("album-option-Worship"));
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringMatching(
+            /\/api\/songs\/search\?.*albumName=Hymns.*albumName=Worship/
+          )
         );
       });
     });

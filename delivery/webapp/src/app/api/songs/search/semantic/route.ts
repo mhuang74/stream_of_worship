@@ -6,11 +6,19 @@ import {
   findTopMatchingLines,
   rrfRerank,
 } from "@/lib/db/songs";
+import {
+  parseAlbumValues,
+  parseBpmRangeParam,
+  parseKeysParam,
+} from "@/lib/db/search-helpers";
 import { z } from "zod";
 
 const RequestSchema = z.object({
   query: z.string().min(1, "query must not be empty"),
   limit: z.number().int().min(1).max(50).default(20),
+  albums: z.array(z.string()).optional(),
+  keys: z.array(z.string()).optional(),
+  bpmRange: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -36,6 +44,12 @@ export async function POST(request: NextRequest) {
     }
 
     const { query, limit } = parsed.data;
+    const albums = parseAlbumValues(parsed.data.albums ?? []);
+    const keys = parseKeysParam(parsed.data.keys?.join(",") ?? null);
+    const bpmRange = parseBpmRangeParam(parsed.data.bpmRange ?? null);
+    const semanticOptions = albums || keys || bpmRange
+      ? { albums, keys, bpmRange }
+      : undefined;
 
     let queryEmbedding: number[];
     try {
@@ -53,6 +67,7 @@ export async function POST(request: NextRequest) {
       QUERY_MODEL,
       overfetchLimit,
       ["published", "review"],
+      ...(semanticOptions ? [semanticOptions] as const : []),
     );
 
     const snippets = await findTopMatchingLines(

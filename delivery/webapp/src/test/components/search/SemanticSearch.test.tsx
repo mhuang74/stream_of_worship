@@ -162,6 +162,37 @@ describe("SemanticSearch", () => {
       });
     });
 
+    it("sends shared filters in the semantic search body", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: [], query: "grace", total: 0 }),
+      });
+
+      renderComponent({ albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: "slow" });
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "songs about grace" } });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/songs/search/semantic",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({
+              query: "songs about grace",
+              limit: 20,
+              albums: ["Hymns", "Worship"],
+              keys: ["D"],
+              bpmRange: "slow",
+            }),
+          })
+        );
+      });
+    });
+
     it("displays results after successful search", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -411,7 +442,7 @@ describe("SemanticSearch", () => {
       fireEvent.click(addButtons[0]);
 
       await waitFor(() => {
-        expect(onAddSong).toHaveBeenCalledWith("song-1");
+        expect(onAddSong).toHaveBeenCalledWith(mockSongs[0]);
       });
     });
 

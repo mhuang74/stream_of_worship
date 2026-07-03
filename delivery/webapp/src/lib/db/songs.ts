@@ -149,6 +149,7 @@ export interface SongDetail extends SongWithRecordings {
 
 export interface ListSongsFilters {
   albumName?: string;
+  albumNames?: string[];
   albumSeries?: string;
   composer?: string;
   lyricist?: string;
@@ -218,6 +219,9 @@ function buildSongWhereClause(
 
   if (filters?.albumName) {
     whereConditions.push(eq(songs.albumName, filters.albumName));
+  }
+  if (filters?.albumNames?.length) {
+    whereConditions.push(inArray(songs.albumName, filters.albumNames));
   }
   if (filters?.albumSeries) {
     whereConditions.push(eq(songs.albumSeries, filters.albumSeries));
@@ -411,6 +415,12 @@ export interface SemanticSearchResult extends SongWithRecordings {
   rrfScore?: number;
 }
 
+export interface SemanticSearchOptions {
+  albums?: string[];
+  keys?: string[];
+  bpmRange?: BpmBandKey;
+}
+
 function validateEmbedding(embedding: number[], expectedDims: number = 1536): string {
   if (embedding.length !== expectedDims) {
     throw new Error(`Invalid embedding: expected ${expectedDims} dimensions, got ${embedding.length}`);
@@ -431,8 +441,18 @@ export async function semanticSearchSongs(
   expectedModelVersion: string,
   limit: number = 20,
   visibilityStatuses: string[] = ["published", "review"],
+  options?: SemanticSearchOptions,
 ): Promise<SemanticSearchResult[]> {
   const vectorStr = validateEmbedding(embedding);
+  const albumFilter = options?.albums?.length
+    ? sql`AND s.album_name = ANY(${sql`ARRAY[${sql.join(options.albums.map(a => sql`${a}`), sql`, `)}]::text[]`})`
+    : sql``;
+  const keyFilter = options?.keys?.length
+    ? sql`AND r.musical_key ~* ${buildKeyRegex(options.keys)}`
+    : sql``;
+  const bpmFilter = options?.bpmRange
+    ? sql`AND ${buildBpmPredicate(options.bpmRange, "r")}`
+    : sql``;
 
   const rows = await db.execute(sql`
     SELECT * FROM (
@@ -470,8 +490,11 @@ export async function semanticSearchSongs(
       JOIN recordings r ON r.song_id = s.id
         AND r.visibility_status = ANY(${sql`ARRAY[${sql.join(visibilityStatuses.map(s => sql`${s}`), sql`, `)}]::text[]`})
         AND r.deleted_at IS NULL
+        ${keyFilter}
+        ${bpmFilter}
       WHERE s.deleted_at IS NULL
         AND se.model_version = ${expectedModelVersion}
+        ${albumFilter}
       ORDER BY s.id, se.embedding <=> ${vectorStr}::vector ASC
     ) ranked
     ORDER BY similarity DESC

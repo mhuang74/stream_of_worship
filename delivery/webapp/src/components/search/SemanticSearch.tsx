@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
+import type { StructuredSearchCriteria } from "@/components/songset/search/types";
 
 interface SemanticSearchResult extends SongCardData {
   similarity: number;
@@ -18,11 +19,14 @@ interface SemanticSearchResult extends SongCardData {
 }
 
 interface SemanticSearchProps {
-  onAddSong: (songId: string) => Promise<void>;
+  onAddSong: (song: SongCardData) => Promise<void>;
   existingSongIds?: string[];
   addingSongIds?: Set<string>;
   addedSongIds?: Set<string>;
   onSwitchToSearchTab?: (query: string) => void;
+  albums?: string[];
+  keys?: string[];
+  bpmRange?: StructuredSearchCriteria["bpmRange"];
   className?: string;
 }
 
@@ -32,6 +36,9 @@ export function SemanticSearch({
   addingSongIds = new Set(),
   addedSongIds = new Set(),
   onSwitchToSearchTab,
+  albums = [],
+  keys = [],
+  bpmRange,
   className,
 }: SemanticSearchProps) {
   const [query, setQuery] = useState("");
@@ -42,22 +49,36 @@ export function SemanticSearch({
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
   const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
+  const latestSearchIdRef = useRef(0);
   const { play, currentTrack, state: playerState } = useAudioPlayerContext();
 
   const handleSearch = useCallback(async () => {
     const trimmed = query.trim();
     if (!trimmed) return;
 
+    const searchId = latestSearchIdRef.current + 1;
+    latestSearchIdRef.current = searchId;
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
     setExpandedSongId(null);
 
     try {
+      const body: {
+        query: string;
+        limit: number;
+        albums?: string[];
+        keys?: string[];
+        bpmRange?: StructuredSearchCriteria["bpmRange"];
+      } = { query: trimmed, limit: 20 };
+      if (albums.length > 0) body.albums = albums;
+      if (keys.length > 0) body.keys = keys;
+      if (bpmRange) body.bpmRange = bpmRange;
+
       const response = await fetch("/api/songs/search/semantic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed, limit: 20 }),
+        body: JSON.stringify(body),
       });
 
       if (response.status === 503) {
@@ -77,14 +98,18 @@ export function SemanticSearch({
       }
 
       const data = await response.json();
+      if (searchId !== latestSearchIdRef.current) return;
       setResults((data.songs ?? []) as SemanticSearchResult[]);
     } catch (err) {
+      if (searchId !== latestSearchIdRef.current) return;
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
     } finally {
-      setIsLoading(false);
+      if (searchId === latestSearchIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [query, onSwitchToSearchTab]);
+  }, [query, albums, keys, bpmRange, onSwitchToSearchTab]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -258,7 +283,7 @@ export function SemanticSearch({
             <div key={song.id} className="relative">
               <SongCard
                 song={song}
-                onAdd={onAddSong}
+                onAdd={() => onAddSong(song)}
                 onPlay={handlePlaySong}
                 isAdded={isSongAdded(song.id)}
                 isAdding={isSongAdding(song.id)}
