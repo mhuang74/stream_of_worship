@@ -266,6 +266,27 @@ def test_cli_relax_h3_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
     assert result.exit_code == 0
 
 
+def test_cli_success_lists_review_artifact(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Artifacts written:" in result.output
+    assert "review:" in result.output
+    assert "songset_review" in result.output
+
+
 def test_cli_relax_h4_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
     monkeypatch.setattr(
         "poc.songset_constructor.graph.nodes.fetch_catalog_pool",

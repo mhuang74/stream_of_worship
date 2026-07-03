@@ -39,6 +39,7 @@ def test_no_llm_graph_writes_artifacts(tmp_path, synthetic_pool, monkeypatch):
     assert (tmp_path / "proposal_report.md").exists()
     assert (tmp_path / "candidate_pool.csv").exists()
     assert (tmp_path / "graph_trace.jsonl").exists()
+    assert (tmp_path / "songset_review.md").exists()
 
 
 def test_invalid_llm_draft_is_not_added_to_ranked_candidates(synthetic_pool):

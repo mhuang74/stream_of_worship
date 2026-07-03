@@ -25,7 +25,7 @@ uv run --project lab/poc-scripts --extra songset_constructor \
 
 ## Output
 
-Each run writes `proposals.json`, `proposal_report.md`, `candidate_pool.csv`, and `graph_trace.jsonl` under the selected `--output-dir`.
+Each successful run writes `proposals.json`, `proposal_report.md`, `candidate_pool.csv`, `graph_trace.jsonl`, and `songset_review.md` under the selected `--output-dir`.
 
 ## Theme Anchors
 
