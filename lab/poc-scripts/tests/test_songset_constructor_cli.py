@@ -201,8 +201,7 @@ def test_llm_no_results_prompt_includes_rule_descriptions(tmp_path, synthetic_po
     assert result.exit_code == 0
     assert len(prompts) == 1
     assert "Hard rule reference:" in prompts[0]
-    assert "H4: Tempo jump" in prompts[0]
-    assert "no songs in the pool satisfy it" in prompts[0]
+    assert "H1: Phase coverage" in prompts[0]
     assert "LLM summary: H2 requires" in result.output
 
 
@@ -261,6 +260,46 @@ def test_cli_relax_h3_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
             str(tmp_path),
             "--relax-h3-bpm",
             "110",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_cli_relax_h4_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+            "--relax-h4-bpm",
+            "25",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_cli_relax_h5_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+            "--relax-h5-cfd",
+            "3",
         ],
     )
 

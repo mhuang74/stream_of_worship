@@ -313,6 +313,10 @@ def construct(
     relax_h2_bpm: Annotated[int | None, typer.Option("--relax-h2-bpm", min=0)] = None,
     relax_h1: Annotated[bool, typer.Option("--relax-h1/--no-relax-h1")] = True,
     auto_relax: Annotated[bool, typer.Option("--auto-relax/--no-auto-relax")] = True,
+    relax_h4: Annotated[bool, typer.Option("--relax-h4/--no-relax-h4")] = False,
+    relax_h5: Annotated[bool, typer.Option("--relax-h5/--no-relax-h5")] = False,
+    relax_h4_bpm: Annotated[int | None, typer.Option("--relax-h4-bpm", min=0)] = None,
+    relax_h5_cfd: Annotated[int | None, typer.Option("--relax-h5-cfd", min=0)] = None,
 ) -> None:
     """Construct Chinese worship songset proposal artifacts."""
     try:
@@ -336,6 +340,10 @@ def construct(
             relax_h2_bpm=relax_h2_bpm,
             relax_h1=relax_h1,
             auto_relax=auto_relax,
+            relax_h4=relax_h4,
+            relax_h5=relax_h5,
+            relax_h4_bpm=relax_h4_bpm,
+            relax_h5_cfd=relax_h5_cfd,
         )
         config.validate_environment()
     except Exception as exc:

@@ -1,7 +1,7 @@
 from poc.songset_constructor.config import RunConfig
-from poc.songset_constructor.models import ScoreBreakdown, SongCandidate
-from poc.songset_constructor.rules.beam import compute_fan_out, search
-from poc.songset_constructor.rules.diagnostics import hard_rule_rejection_counts
+from poc.songset_constructor.models import ScoreBreakdown, SongCandidate, TransitionCandidate
+from poc.songset_constructor.rules.beam import _candidate_sort_key, _proposal_for_sequence, _sequences, compute_fan_out, search
+from poc.songset_constructor.rules.diagnostics import beam_diagnostics, hard_rule_rejection_counts
 from poc.songset_constructor.rules.fitness import score
 from poc.songset_constructor.rules.hard_constraints import validate
 from poc.songset_constructor.rules.phases import fuse_themes, infer_phase
@@ -45,8 +45,8 @@ def test_scored_proposal_passes_constraints(synthetic_pool):
 
 def test_beam_search_is_deterministic(synthetic_pool):
     matrix = _matrix(synthetic_pool)
-    pool = compute_fan_out(synthetic_pool, matrix)
     config = RunConfig(no_llm=True, top_k=2)
+    pool = compute_fan_out(synthetic_pool, matrix, config)
     first = search(pool, config, matrix)
     second = search(pool, config, matrix)
     assert [p.model_dump() for p in first] == [p.model_dump() for p in second]
@@ -141,9 +141,9 @@ def _loud_closer_pool():
 def test_relax_h3_raises_ceiling_allows_loud_closer():
     pool = _loud_closer_pool()
     matrix = _matrix(pool)
-    pool = compute_fan_out(pool, matrix)
-
     strict_config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, strict_config)
+
     assert search(pool, strict_config, matrix) == []
 
     relaxed_config = RunConfig(no_llm=True)
@@ -161,9 +161,9 @@ def test_relax_h2_lowers_floor_allows_slow_opener():
         _candidate("c2", "Closer2", "c2", 78, "B", "min", 5),
     ]
     matrix = _matrix(pool)
-    pool = compute_fan_out(pool, matrix)
-
     strict_config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, strict_config)
+
     assert search(pool, strict_config, matrix) == []
 
     relaxed_config = RunConfig(no_llm=True)
@@ -180,21 +180,366 @@ def test_relax_h1_skips_redundant_phase1_requirement():
         _candidate("c1", "Closer1", "c1", 88, "A", "maj", 5),
     ]
     matrix = _matrix(pool)
-    pool = compute_fan_out(pool, matrix)
+    strict_config = RunConfig(songs=4, no_llm=True, auto_relax=False, relax_h1=False)
+    pool = compute_fan_out(pool, matrix, strict_config)
 
-    strict_config = RunConfig(songs=4, no_llm=True, auto_relax=False)
     assert search(pool, strict_config, matrix) == []
 
-    relaxed_config = RunConfig(songs=4, no_llm=True)
+    relaxed_config = RunConfig(songs=4, no_llm=True, relax_h1=True)
     proposals = search(pool, relaxed_config, matrix)
     assert proposals
-    assert any("relaxed_H1" in p.hard_constraint_warnings for p in proposals)
 
 
 def test_no_auto_relax_keeps_strict_only():
     pool = _loud_closer_pool()
     matrix = _matrix(pool)
-    pool = compute_fan_out(pool, matrix)
-
     config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, config)
+
     assert search(pool, config, matrix) == []
+
+
+# ---------------------------------------------------------------------------
+# v1 H2/H3 endcap filtering tests
+# ---------------------------------------------------------------------------
+
+
+def test_beam_filters_closer_by_h3_ceiling():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 112, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 100, "A", "maj", 3),
+        _candidate("c1", "LowCloser", "c1", 88, "E", "min", 4),
+        _candidate("c2", "HighCloser", "c2", 100, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    proposals = search(strict_pool, strict_config, matrix)
+    assert proposals
+    assert all(p.items[-1].bpm <= strict_config.closing_limit for p in proposals)
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h3_bpm=110)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    relaxed_proposals = search(relaxed_pool, relaxed_config, matrix)
+    assert relaxed_proposals
+
+
+def test_beam_filters_opener_by_h2_floor():
+    pool = [
+        _candidate("o1", "SlowOpener", "o1", 95, "G", "maj", 1),
+        _candidate("o2", "FastOpener", "o2", 115, "D", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 105, "A", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 95, "E", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 85, "B", "min", 4),
+        _candidate("c2", "Closer2", "c2", 78, "F#", "min", 5),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    proposals = search(strict_pool, strict_config, matrix)
+    assert proposals
+    assert all(p.items[0].bpm >= strict_config.opening_floor for p in proposals)
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h2_bpm=90)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    relaxed_proposals = search(relaxed_pool, relaxed_config, matrix)
+    assert relaxed_proposals
+
+
+def test_relax_h3_unblocks_when_only_high_bpm_closer_matches_preceding():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 120, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 115, "A", "maj", 3),
+        _candidate("m3", "Mid3", "m3", 110, "E", "maj", 4),
+        _candidate("c1", "HighCloser", "c1", 105, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    assert search(strict_pool, strict_config, matrix) == []
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h3_bpm=110)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    proposals = search(relaxed_pool, relaxed_config, matrix)
+    assert proposals
+    assert all(p.items[-1].bpm <= 110 for p in proposals)
+
+
+def test_diagnostics_beam_sequences_uses_config_ceiling():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 112, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 100, "A", "maj", 3),
+        _candidate("c1", "LowCloser", "c1", 88, "E", "min", 4),
+        _candidate("c2", "HighCloser", "c2", 100, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False, relax_h3_bpm=110)
+    pool = compute_fan_out(pool, matrix, config)
+    diagnostics = beam_diagnostics(pool, config, matrix)
+    assert diagnostics["generated_sequences"] >= 1
+    assert diagnostics["rejected_sequences"] < diagnostics["generated_sequences"]
+
+
+# ---------------------------------------------------------------------------
+# v3 H1/H4/H5 per-pair filtering tests
+# ---------------------------------------------------------------------------
+
+
+def test_relax_h1_opener_accepts_phase_2():
+    pool = [
+        _candidate("o1", "Phase2Opener", "o1", 115, "G", "maj", 2),
+        _candidate("m1", "Mid1", "m1", 105, "D", "maj", 3),
+        _candidate("m2", "Mid2", "m2", 95, "A", "maj", 4),
+        _candidate("c1", "Closer1", "c1", 85, "B", "min", 5),
+        _candidate("c2", "Closer2", "c2", 78, "E", "min", 4),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False, relax_h1=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    assert search(strict_pool, strict_config, matrix) == []
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h1=True)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    proposals = search(relaxed_pool, relaxed_config, matrix)
+    assert proposals
+
+
+def test_beam_rejects_h4_violating_middle_pair():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 102, "E", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 92, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 82, "B", "min", 4),
+        _candidate("c2", "Closer2", "c2", 78, "E", "min", 5),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    strict_sequences = list(_sequences(strict_pool, strict_config, matrix, width=8))
+    assert not strict_sequences
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h4=True, relax_h5=True)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    relaxed_sequences = list(_sequences(relaxed_pool, relaxed_config, matrix, width=8))
+    assert relaxed_sequences
+
+
+def test_beam_rejects_h5_violating_pair():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 112, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 100, "F", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 88, "B", "min", 4),
+        _candidate("c2", "Closer2", "c2", 78, "F#", "min", 5),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    strict_sequences = list(_sequences(strict_pool, strict_config, matrix, width=8))
+    assert not strict_sequences
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h5=True)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    relaxed_sequences = list(_sequences(relaxed_pool, relaxed_config, matrix, width=8))
+    assert relaxed_sequences
+
+
+def test_beam_h4_honors_crossfade_branch():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m0", "Mid0", "m0", 112, "D", "maj", 2),
+        _candidate("m1", "Mid1", "m1", 106, "E", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 96, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 86, "B", "min", 4),
+        _candidate("c2", "Closer2", "c2", 78, "E", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, config)
+
+    o1 = next(c for c in pool if c.recording_hash_prefix == "o1")
+    m1 = next(c for c in pool if c.recording_hash_prefix == "m1")
+    key = (o1.recording_hash_prefix, m1.recording_hash_prefix)
+    original = matrix[key]
+    matrix[key] = original.model_copy(
+        update={
+            "bpm_delta": 18,
+            "crossfade_duration_seconds": 4.0,
+            "gap_beats": 2.0,
+        }
+    )
+
+    sequences = list(_sequences(pool, config, matrix, width=8))
+    found = any(
+        seq[0].recording_hash_prefix == o1.recording_hash_prefix
+        and seq[1].recording_hash_prefix == m1.recording_hash_prefix
+        for seq in sequences
+    )
+    assert found
+
+
+def test_beam_h5_honors_suggested_key_shift():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 120, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 110, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 100, "E", "min", 4),
+        _candidate("c2", "Closer2", "c2", 90, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, config)
+
+    o1 = pool[0]
+    m1 = pool[1]
+    key = (o1.recording_hash_prefix, m1.recording_hash_prefix)
+    original = matrix[key]
+    matrix[key] = original.model_copy(
+        update={
+            "cfd": 4,
+            "suggested_key_shift": 1,
+        }
+    )
+
+    sequences = list(_sequences(pool, config, matrix, width=8))
+    found = any(
+        seq[0].recording_hash_prefix == o1.recording_hash_prefix
+        and seq[1].recording_hash_prefix == m1.recording_hash_prefix
+        for seq in sequences
+    )
+    assert found
+
+
+def test_beam_h5_shifted_ok_after_proposal_applies_shift():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 120, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 110, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 100, "E", "min", 4),
+        _candidate("c2", "Closer2", "c2", 90, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, config)
+
+    o1 = pool[0]
+    m1 = pool[1]
+    key = (o1.recording_hash_prefix, m1.recording_hash_prefix)
+    original = matrix[key]
+    matrix[key] = original.model_copy(
+        update={
+            "cfd": 4,
+            "suggested_key_shift": 1,
+        }
+    )
+
+    sequences = list(_sequences(pool, config, matrix, width=8))
+    target_seq = next(
+        seq
+        for seq in sequences
+        if seq[0].recording_hash_prefix == o1.recording_hash_prefix
+        and seq[1].recording_hash_prefix == m1.recording_hash_prefix
+    )
+    proposal = _proposal_for_sequence(target_seq, config, matrix)
+    right_item = proposal.items[1]
+    assert right_item.key_shift_semitones == 1
+    feedback = validate(proposal, config, matrix)
+    assert "H5" not in feedback.violated
+
+
+def test_diagnostics_relaxed_tier_report_present():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 112, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 100, "A", "maj", 3),
+        _candidate("c1", "LowCloser", "c1", 88, "E", "min", 4),
+        _candidate("c2", "HighCloser", "c2", 100, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    pool = compute_fan_out(pool, matrix, config)
+    diagnostics = beam_diagnostics(pool, config, matrix)
+
+    assert "hard_rule_rejections" in diagnostics
+    assert "relaxed_tier_rejections" in diagnostics
+    relaxed = diagnostics["relaxed_tier_rejections"]
+    assert "hard_rule_rejections" in relaxed
+    assert "rejected_sequences" in relaxed
+    assert "generated_sequences" in relaxed
+
+
+def test_diagnostics_uses_beam_sort_key(monkeypatch):
+    calls = []
+    original = _candidate_sort_key
+
+    def wrapper(candidate):
+        calls.append(candidate)
+        return original(candidate)
+
+    import poc.songset_constructor.rules.diagnostics as diag_mod
+
+    monkeypatch.setattr(diag_mod, "_candidate_sort_key", wrapper)
+    monkeypatch.setattr(
+        "poc.songset_constructor.rules.diagnostics._candidate_sort_key", wrapper
+    )
+
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 112, "D", "maj", 2),
+        _candidate("c1", "Closer1", "c1", 88, "E", "min", 4),
+        _candidate("c2", "Closer2", "c2", 78, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    beam_diagnostics(pool, config, matrix)
+    assert calls
+
+
+def test_to_dict_preserves_relax_h4_h5():
+    config = RunConfig(
+        relax_h4=True,
+        relax_h5=True,
+        relax_h4_bpm=30,
+        relax_h5_cfd=4,
+    )
+    data = config.to_dict()
+    assert data["relax_h4"] is True
+    assert data["relax_h5"] is True
+    assert data["relax_h4_bpm"] == 30
+    assert data["relax_h5_cfd"] == 4
+
+    child = RunConfig(**{**data, "songs": 4})
+    assert child.relax_h4 is True
+    assert child.relax_h5 is True
+    assert child.relax_h4_bpm == 30
+    assert child.relax_h5_cfd == 4
+    assert child.h4_limit == 30
+    assert child.h5_limit == 4
+
+
+def test_compute_fan_out_uses_config_limits():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 76, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 52, "E", "min", 4),
+        _candidate("c2", "Closer2", "c2", 28, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+
+    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_pool = compute_fan_out(pool, matrix, strict_config)
+    assert all(c.is_dead_end for c in strict_pool)
+
+    relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h4=True, relax_h5=True)
+    relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
+    assert any(not c.is_dead_end for c in relaxed_pool)

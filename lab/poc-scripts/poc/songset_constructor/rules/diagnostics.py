@@ -13,7 +13,7 @@ from poc.songset_constructor.models import (
     TransitionCandidate,
 )
 
-from .beam import _sequences
+from .beam import _candidate_sort_key, _sequences
 from .fitness import score
 from .hard_constraints import validate
 from .proposals import draft_from_candidates, proposal_from_draft
@@ -71,6 +71,26 @@ def _proposal_for_diagnostics(
     matrix: dict[tuple[str, str], TransitionCandidate],
 ) -> SongsetProposal:
     draft = draft_from_candidates(sequence, rationale="Diagnostics beam sequence.")
+    if len(draft.items) > 1:
+        updated_items = [draft.items[0]]
+        for left, right in zip(draft.items, draft.items[1:]):
+            transition = matrix.get(
+                (left.recording_hash_prefix, right.recording_hash_prefix)
+            )
+            if transition:
+                updated_items.append(
+                    right.model_copy(
+                        update={
+                            "key_shift_semitones": transition.suggested_key_shift,
+                            "crossfade_enabled": transition.crossfade_enabled,
+                            "crossfade_duration_seconds": transition.crossfade_duration_seconds,
+                            "gap_beats": transition.gap_beats,
+                        }
+                    )
+                )
+            else:
+                updated_items.append(right)
+        draft = draft.model_copy(update={"items": updated_items})
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
     proposal = proposal_from_draft(draft, sequence, placeholder, llm_origin=False)
     return proposal.model_copy(update={"score": score(proposal, config, matrix)})
@@ -80,6 +100,8 @@ def hard_rule_rejection_counts(
     sequences: Iterable[list[SongCandidate]],
     config: RunConfig,
     matrix: dict[tuple[str, str], TransitionCandidate],
+    *,
+    relax_kwargs: dict | None = None,
 ) -> dict[str, int]:
     counts: Counter[str] = Counter()
     generated = 0
@@ -87,7 +109,7 @@ def hard_rule_rejection_counts(
     for sequence in sequences:
         generated += 1
         proposal = _proposal_for_diagnostics(sequence, config, matrix)
-        feedback = validate(proposal, config, matrix)
+        feedback = validate(proposal, config, matrix, **(relax_kwargs or {}))
         if feedback.passed:
             continue
         rejected += 1
@@ -106,19 +128,23 @@ def beam_diagnostics(
     *,
     width: int = 8,
 ) -> dict:
-    sorted_pool = sorted(
-        pool,
-        key=lambda candidate: (
-            candidate.is_dead_end,
-            candidate.phase,
-            -(candidate.tempo_bpm or 0),
-            candidate.recording_hash_prefix,
-        ),
+    sorted_pool = sorted(pool, key=_candidate_sort_key)
+    sequences = list(_sequences(sorted_pool, config, matrix, width=width))
+    hard = hard_rule_rejection_counts(sequences, config, matrix)
+    relaxed = hard_rule_rejection_counts(
+        sequences,
+        config,
+        matrix,
+        relax_kwargs={"relax_h4": True, "relax_h5": True},
     )
-    sequences = list(_sequences(sorted_pool, config.songs, width=width))
     return {
         "role_eligibility": role_eligibility_counts(pool, config, matrix),
-        **hard_rule_rejection_counts(sequences, config, matrix),
+        **hard,
+        "relaxed_tier_rejections": {
+            "rejected_sequences": relaxed["rejected_sequences"],
+            "generated_sequences": relaxed["generated_sequences"],
+            "hard_rule_rejections": relaxed["hard_rule_rejections"],
+        },
     }
 
 
@@ -158,6 +184,31 @@ def diagnostic_lines(config: RunConfig, result: dict) -> list[str]:
             )
         else:
             lines.append(f"beam validation rejections by rule: {counts}")
+    relaxed = beam_data.get("relaxed_tier_rejections") or {}
+    if isinstance(relaxed, dict):
+        relaxed_rejections = relaxed.get("hard_rule_rejections") or {}
+        relaxed_rejected = relaxed.get("rejected_sequences")
+        relaxed_generated = relaxed.get("generated_sequences")
+        if (
+            isinstance(relaxed_rejections, dict)
+            and relaxed_rejections
+            and (
+                relaxed_rejected != rejected
+                or relaxed_rejections != (rejections if isinstance(rejections, dict) else {})
+            )
+        ):
+            relaxed_counts = ", ".join(
+                f"{code}={count}" for code, count in sorted(relaxed_rejections.items())
+            )
+            if relaxed_generated:
+                lines.append(
+                    f"beam relaxed-tier fallback would still reject {relaxed_rejected or 0}/"
+                    f"{relaxed_generated} sequences: {relaxed_counts}"
+                )
+            else:
+                lines.append(
+                    f"beam relaxed-tier fallback rejections by rule: {relaxed_counts}"
+                )
     role = beam_data.get("role_eligibility") or {}
     if isinstance(role, dict) and role:
         zeroes = [key for key, value in sorted(role.items()) if value == 0]
