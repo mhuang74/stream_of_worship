@@ -36,6 +36,7 @@ def test_cli_traces_no_proposals_without_writing_artifacts(tmp_path, synthetic_p
     assert "candidates=0" in result.output
     assert "stop finalize_rank in " in result.output
     assert "proposals=0" in result.output
+    assert "Output files written: none" in result.output
     assert "No artifacts were written; no valid proposals were generated." in result.output
     assert "No songset artifacts were written because" in result.output
     assert "the beam search could not assemble any" in result.output
@@ -282,8 +283,12 @@ def test_cli_success_lists_review_artifact(tmp_path, synthetic_pool, monkeypatch
     )
 
     assert result.exit_code == 0
-    assert "Artifacts written:" in result.output
-    assert "review:" in result.output
+    assert "Output files written:" in result.output
+    assert "proposals.json:" in result.output
+    assert "proposal_report.md:" in result.output
+    assert "candidate_pool.csv:" in result.output
+    assert "graph_trace.jsonl:" in result.output
+    assert "songset_review.md:" in result.output
     assert "songset_review" in result.output
 
 

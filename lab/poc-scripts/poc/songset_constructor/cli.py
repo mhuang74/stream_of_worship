@@ -244,6 +244,17 @@ def _print_no_results_summary(config: RunConfig, result: Any) -> None:
     console.print(summary)
 
 
+def _print_output_files(paths: dict[str, str]) -> None:
+    if not paths:
+        console.print("[yellow]Output files written: none[/yellow]")
+        return
+
+    console.print("[green]Output files written:[/green]")
+    for path in paths.values():
+        output_path = Path(path)
+        console.print(f"  {output_path.name}: {output_path}")
+
+
 def _run_graph_with_traces(graph: Any, input_value: Any, graph_config: dict) -> dict:
     started_at: dict[str, float] = {}
     latest_values: dict[str, Any] = {}
@@ -368,11 +379,8 @@ def construct(
         raise typer.Exit(1) from exc
 
     paths = result.get("artifact_paths", {})
-    if paths:
-        console.print("[green]Artifacts written:[/green]")
-        for name, path in paths.items():
-            console.print(f"  {name}: {path}")
-    else:
+    _print_output_files(paths)
+    if not paths:
         _print_no_results_summary(config, result)
 
 
