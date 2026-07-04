@@ -119,6 +119,8 @@ async def lifespan(app: FastAPI):
         ("Processing", "queue_start_delay", f"{settings.SOW_QUEUE_START_DELAY_SECONDS}s"),
         ("LLM", "model", settings.SOW_LLM_MODEL or "(not set)"),
         ("LLM", "provider", settings.SOW_LLM_BASE_URL or "(not set)"),
+        ("Embedding", "model", settings.SOW_EMBEDDING_MODEL),
+        ("Embedding", "provider", settings.SOW_EMBEDDING_BASE_URL or "(not set)"),
         ("DashScope Qwen3 ASR", "configured", str(bool(settings.SOW_DASHSCOPE_API_KEY))),
         ("DashScope Qwen3 ASR", "region", settings.SOW_DASHSCOPE_ASR_REGION),
         ("DashScope Qwen3 ASR", "flash_model", settings.SOW_DASHSCOPE_ASR_FLASH_MODEL),

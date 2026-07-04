@@ -25,6 +25,9 @@ class TestSettings:
             assert settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS == 1
             assert settings.SOW_DEMUCS_MODEL == "htdemucs"
             assert settings.SOW_DEMUCS_DEVICE == "cpu"
+            assert settings.SOW_EMBEDDING_API_KEY == ""
+            assert settings.SOW_EMBEDDING_BASE_URL == ""
+            assert settings.SOW_EMBEDDING_MODEL == "text-embedding-3-small"
 
     def test_custom_values_from_env(self):
         """Test loading custom values from environment."""
@@ -52,6 +55,33 @@ class TestSettings:
             assert settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS == 4
             assert settings.SOW_DEMUCS_MODEL == "demucs"
             assert settings.SOW_DEMUCS_DEVICE == "cuda"
+
+    def test_embedding_values_from_env(self):
+        """Test loading embedding-specific values from environment."""
+        env_vars = {
+            "SOW_EMBEDDING_API_KEY": "embedding-key",
+            "SOW_EMBEDDING_BASE_URL": "https://embeddings.example.com/v1",
+            "SOW_EMBEDDING_MODEL": "provider/text-embedding-3-small",
+        }
+
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings()
+
+            assert settings.SOW_EMBEDDING_API_KEY == "embedding-key"
+            assert settings.SOW_EMBEDDING_BASE_URL == "https://embeddings.example.com/v1"
+            assert settings.SOW_EMBEDDING_MODEL == "provider/text-embedding-3-small"
+
+    def test_old_llm_embedding_model_env_is_ignored(self):
+        """Test SOW_LLM_EMBEDDING_MODEL is no longer a recognized setting."""
+        with patch.dict(
+            os.environ,
+            {"SOW_LLM_EMBEDDING_MODEL": "legacy/provider-model"},
+            clear=True,
+        ):
+            settings = Settings()
+
+            assert not hasattr(settings, "SOW_LLM_EMBEDDING_MODEL")
+            assert settings.SOW_EMBEDDING_MODEL == "text-embedding-3-small"
 
     def test_gpu_device_setting(self):
         """Test setting GPU device."""

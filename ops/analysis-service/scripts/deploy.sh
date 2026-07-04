@@ -225,6 +225,13 @@ SOW_LLM_BASE_URL=""
 SOW_LLM_MODEL=""
 
 # =============================================================================
+# EMBEDDING CONFIGURATION (REQUIRED for embedding generation)
+# =============================================================================
+SOW_EMBEDDING_API_KEY=""
+SOW_EMBEDDING_BASE_URL=""
+SOW_EMBEDDING_MODEL="text-embedding-3-small"
+
+# =============================================================================
 # FORCED ALIGNER MODEL CONFIGURATION (Auto-detected)
 # =============================================================================
 SOW_FORCED_ALIGNER_MODEL_ROOT="$FORCED_ALIGNER_ROOT"

@@ -57,6 +57,11 @@ SOW_ADMIN_API_KEY="your-secure-admin-key"  # Optional but recommended
 SOW_LLM_API_KEY="sk-or-v1-..."  # OpenRouter, OpenAI, etc.
 SOW_LLM_BASE_URL="https://openrouter.ai/api/v1"
 SOW_LLM_MODEL="openai/gpt-4o-mini"
+
+# Embedding Configuration (for song/line embedding generation)
+SOW_EMBEDDING_API_KEY="sk-..."  # OpenAI-compatible embedding provider
+SOW_EMBEDDING_BASE_URL="https://api.openai.com/v1"
+SOW_EMBEDDING_MODEL="text-embedding-3-small"
 ```
 
 ### Optional

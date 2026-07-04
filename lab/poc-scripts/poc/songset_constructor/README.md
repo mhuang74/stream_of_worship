@@ -36,7 +36,9 @@ uv run --project lab/poc-scripts --extra songset_constructor \
   python -m poc.songset_constructor.regen_theme_anchors
 ```
 
-The fixture must contain real 1536-dimensional `text-embedding-3-small` vectors.
+Set `SOW_EMBEDDING_API_KEY` / `SOW_EMBEDDING_BASE_URL` to an
+OpenAI-compatible provider that supports the embeddings endpoint.
+`SOW_EMBEDDING_MODEL` defaults to `text-embedding-3-small`.
 
 ## Read-Only Guarantee
 

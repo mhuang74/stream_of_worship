@@ -25,20 +25,20 @@ class EmbeddingWorker:
     """Generates text embeddings using OpenAI text-embedding-3-small."""
 
     def __init__(self):
-        if not settings.SOW_LLM_API_KEY:
+        if not settings.SOW_EMBEDDING_API_KEY:
             raise LLMConfigError(
-                "SOW_LLM_API_KEY environment variable not set. "
-                "Set this to your OpenAI-compatible API key."
+                "SOW_EMBEDDING_API_KEY environment variable not set. "
+                "Set this to your OpenAI-compatible API key for embeddings."
             )
-        if not settings.SOW_LLM_BASE_URL:
+        if not settings.SOW_EMBEDDING_BASE_URL:
             raise LLMConfigError(
-                "SOW_LLM_BASE_URL environment variable not set. "
-                "Set this to your OpenAI-compatible API base URL "
-                "(e.g., https://openrouter.ai/api/v1)."
+                "SOW_EMBEDDING_BASE_URL environment variable not set. "
+                "Set this to your OpenAI-compatible API base URL for embeddings "
+                "(e.g., https://api.openai.com/v1)."
             )
         self._client = OpenAI(
-            api_key=settings.SOW_LLM_API_KEY,
-            base_url=settings.SOW_LLM_BASE_URL,
+            api_key=settings.SOW_EMBEDDING_API_KEY,
+            base_url=settings.SOW_EMBEDDING_BASE_URL,
             timeout=60.0,
             max_retries=2,
         )
@@ -86,7 +86,7 @@ class EmbeddingWorker:
     async def _embed_texts(self, texts: List[str]) -> List[List[float]]:
         response = await asyncio.to_thread(
             self._client.embeddings.create,
-            model=settings.SOW_LLM_EMBEDDING_MODEL,
+            model=settings.SOW_EMBEDDING_MODEL,
             input=texts,
             dimensions=1536,
         )

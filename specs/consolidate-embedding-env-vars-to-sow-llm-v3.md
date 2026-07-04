@@ -1,5 +1,10 @@
 # Consolidate Embedding Env Vars to SOW_LLM_* (v3)
 
+> **Superseded:** This spec introduced `SOW_LLM_EMBEDDING_MODEL`. It has been
+> replaced by `SOW_EMBEDDING_MODEL` (see
+> `specs/separate-chat-and-embedding-env-vars-v1.md`) to cleanly separate chat
+> and embedding env vars. `SOW_LLM_EMBEDDING_MODEL` is removed.
+
 ## Summary
 
 Replace the standalone `SOW_OPENAI_API_KEY` environment variable with the existing `SOW_LLM_API_KEY` + `SOW_LLM_BASE_URL` pair, and add a new `SOW_LLM_EMBEDDING_MODEL` variable for the provider-specific embedding model name. This eliminates a redundant env var, enables OpenAI-compatible embedding providers (OpenRouter, NeuralWatt, etc.), and correctly handles provider-specific model naming — matching the pattern already used by the LRC and YouTube transcript workers.

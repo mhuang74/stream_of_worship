@@ -759,6 +759,48 @@ SOW_R2_SECRET_ACCESS_KEY=...            # R2 secret key
 SOW_SQS_QUEUE_URL=https://...           # SQS queue URL
 ```
 
+### LLM / Embedding Environment Variables
+
+Chat and embedding clients use separate OpenAI-compatible provider
+configuration. `SOW_LLM_*` is chat-only (lyric alignment, transcript
+processing, agentic songset construction). `SOW_EMBEDDING_*` is
+embedding-only (semantic song search, song/line embedding generation).
+
+| Env Var | Purpose | Default |
+|--------|---------|---------|
+| `SOW_LLM_API_KEY` | API key for the chat provider | _(none — required for chat features)_ |
+| `SOW_LLM_BASE_URL` | Base URL for the chat provider | _(none — required for chat features)_ |
+| `SOW_LLM_MODEL` | Chat model id (LRC alignment, YouTube transcript, songset agent) | _(none — required for chat features)_ |
+| `SOW_EMBEDDING_API_KEY` | API key for the embedding provider | _(none — required for embedding features)_ |
+| `SOW_EMBEDDING_BASE_URL` | Base URL for the embedding provider | _(none — required for embedding features)_ |
+| `SOW_EMBEDDING_MODEL` | Embedding model id for API calls (provider-specific) | `text-embedding-3-small` |
+
+> **Note:** The DB `model_version` label stored in `song_embedding` /
+> `song_line_embedding` is always hardcoded as `"text-embedding-3-small"`
+> (provider-agnostic), while `SOW_EMBEDDING_MODEL` is the
+> provider-specific name used for the actual API call (e.g.,
+> `openai/text-embedding-3-small` on OpenRouter).
+
+#### Usage by Component
+
+| Component | Env Vars | Purpose | Source File(s) |
+|----------|----------|---------|-----------------|
+| **Web App** | `SOW_EMBEDDING_*` | Query-time embedding for semantic search (`/api/songs/search/semantic`). No chat feature. | `delivery/webapp/src/lib/embedding.ts` |
+| **Analysis Service** | `SOW_LLM_*`, `SOW_EMBEDDING_*` | Chat for LRC/transcript workers; embeddings for song/line embedding jobs and health checks. | `ops/analysis-service/src/sow_analysis/config.py`, `workers/lrc.py`, `workers/youtube_transcript.py`, `workers/embedder.py`, `routes/health.py` |
+| **POC Scripts** | `SOW_LLM_*`, `SOW_EMBEDDING_*` | Chat for YouTube LRC/songset construction; embeddings for theme anchor vectors. | `lab/poc-scripts/gen_lrc_youtube.py`, `lab/poc-scripts/poc/songset_constructor/graph/llm.py`, `lab/poc-scripts/poc/songset_constructor/regen_theme_anchors.py` |
+| **Admin CLI** | — | Submits embedding jobs to the Analysis Service via HTTP (`audio embed` command). The Admin CLI itself never reads these env vars. | `ops/admin-cli/src/stream_of_worship/admin/commands/audio.py` (`_submit_embedding_single`) |
+| **Render Worker** | — | No LLM or embedding functionality. Render processing uses FFmpeg + Pillow only. | — |
+| **Android App** | — | Consumes webapp JSON APIs only. No direct LLM/embedding access. | — |
+
+#### Provider Considerations
+
+The two provider groups are intentionally independent. A deployment can point
+`SOW_LLM_*` at a chat-only provider such as NeuralWatt and
+`SOW_EMBEDDING_*` at a provider with an embeddings endpoint such as OpenAI,
+OpenRouter, or nano-gpt. There is no fallback from embedding vars to chat vars;
+missing embedding credentials should fail clearly instead of silently using the
+wrong provider.
+
 ### Android App Configuration
 
 The Android app has no server-side secrets; it talks only to the webapp JSON APIs. Configure the API base URL per build variant in `delivery/android/gradle.properties`:
@@ -849,4 +891,4 @@ peaks = librosa.util.peak_pick(
 
 ---
 
-**Last Updated:** 2026-06-20
+**Last Updated:** 2026-07-04
