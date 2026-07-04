@@ -248,19 +248,19 @@ describe(".env.production.example", () => {
     expect(content).toContain("SOW_SQS_ENDPOINT_URL=");
   });
 
-  it("documents SOW_LLM_API_KEY", () => {
+  it("documents SOW_EMBEDDING_API_KEY", () => {
     const content = readEnvExample();
-    expect(content).toContain("SOW_LLM_API_KEY=");
+    expect(content).toContain("SOW_EMBEDDING_API_KEY=");
   });
 
-  it("documents SOW_LLM_BASE_URL", () => {
+  it("documents SOW_EMBEDDING_BASE_URL", () => {
     const content = readEnvExample();
-    expect(content).toContain("SOW_LLM_BASE_URL=");
+    expect(content).toContain("SOW_EMBEDDING_BASE_URL=");
   });
 
-  it("documents SOW_LLM_EMBEDDING_MODEL", () => {
+  it("documents SOW_EMBEDDING_MODEL", () => {
     const content = readEnvExample();
-    expect(content).toContain("SOW_LLM_EMBEDDING_MODEL=");
+    expect(content).toContain("SOW_EMBEDDING_MODEL=");
   });
 });
 

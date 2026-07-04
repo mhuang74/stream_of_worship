@@ -1,6 +1,6 @@
 """Regenerate committed theme anchor embeddings.
 
-Requires SOW_LLM_API_KEY and optionally SOW_LLM_BASE_URL. The output must be
+Requires SOW_EMBEDDING_API_KEY and SOW_EMBEDDING_BASE_URL. The output must be
 real text-embedding-3-small vectors; this script intentionally fails rather
 than writing placeholders when the embedding endpoint is unavailable.
 """
@@ -30,13 +30,17 @@ ANCHOR_TEXTS = {
 
 
 def main() -> None:
-    api_key = os.environ.get("SOW_LLM_API_KEY")
+    api_key = os.environ.get("SOW_EMBEDDING_API_KEY")
     if not api_key:
-        raise RuntimeError("SOW_LLM_API_KEY is required to regenerate theme anchors")
+        raise RuntimeError("SOW_EMBEDDING_API_KEY is required to regenerate theme anchors")
+    base_url = os.environ.get("SOW_EMBEDDING_BASE_URL")
+    if not base_url:
+        raise RuntimeError("SOW_EMBEDDING_BASE_URL is required to regenerate theme anchors")
+    model = os.environ.get("SOW_EMBEDDING_MODEL", "text-embedding-3-small")
     embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small",
+        model=model,
         api_key=api_key,
-        base_url=os.environ.get("SOW_LLM_BASE_URL"),
+        base_url=base_url,
     )
     vectors = embeddings.embed_documents([ANCHOR_TEXTS[theme] for theme in ANCHOR_TEXTS])
     payload = {

@@ -233,6 +233,16 @@ SOW_LLM_BASE_URL=""     # e.g., https://openrouter.ai/api/v1
 SOW_LLM_MODEL=""        # e.g., openai/gpt-4o-mini
 
 # =============================================================================
+# EMBEDDING CONFIGURATION (REQUIRED for embedding generation)
+# =============================================================================
+# OpenAI-compatible API for song/line embeddings.
+# Can use a different provider than SOW_LLM_*.
+
+SOW_EMBEDDING_API_KEY=""
+SOW_EMBEDDING_BASE_URL=""     # e.g., https://api.openai.com/v1
+SOW_EMBEDDING_MODEL="text-embedding-3-small"
+
+# =============================================================================
 # FORCED ALIGNER MODEL CONFIGURATION (REQUIRED for LRC refinement)
 # =============================================================================
 # Path to the Qwen3 Forced Aligner model snapshot (downloaded in Step 2)
@@ -310,6 +320,9 @@ vim ~/sow-deployment/.env
 | `SOW_LLM_API_KEY` | LLM API key | OpenRouter, OpenAI, etc. |
 | `SOW_LLM_BASE_URL` | LLM endpoint | e.g., `https://openrouter.ai/api/v1` |
 | `SOW_LLM_MODEL` | LLM model | e.g., `openai/gpt-4o-mini` |
+| `SOW_EMBEDDING_API_KEY` | Embedding API key | OpenAI-compatible embedding provider |
+| `SOW_EMBEDDING_BASE_URL` | Embedding endpoint | e.g., `https://api.openai.com/v1` |
+| `SOW_EMBEDDING_MODEL` | Embedding model | default `text-embedding-3-small` |
 | `SOW_FORCED_ALIGNER_MODEL_PATH` | Model path | Output from Step 2.2 |
 | `SOW_FORCED_ALIGNER_DEVICE` | Device | `auto`, `cpu`, or `cuda` |
 | `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | Model path | Output from Step 2.1 |
@@ -365,6 +378,11 @@ services:
       SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
       SOW_LLM_BASE_URL: ${SOW_LLM_BASE_URL}
       SOW_LLM_MODEL: ${SOW_LLM_MODEL}
+
+      # Embedding Configuration
+      SOW_EMBEDDING_API_KEY: ${SOW_EMBEDDING_API_KEY}
+      SOW_EMBEDDING_BASE_URL: ${SOW_EMBEDDING_BASE_URL}
+      SOW_EMBEDDING_MODEL: ${SOW_EMBEDDING_MODEL:-text-embedding-3-small}
       
       # Forced Aligner Configuration (in-process, no separate service)
       SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH}
