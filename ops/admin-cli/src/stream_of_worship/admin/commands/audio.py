@@ -33,6 +33,7 @@ from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, g
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_SELECT
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
@@ -3263,8 +3264,8 @@ def _force_sync_all_pending(
     """Force update all pending recordings."""
     # Get all non-completed recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
-    cursor.execute("""
-        SELECT * FROM recordings
+    cursor.execute(f"""
+        SELECT {RECORDING_COLUMNS_SELECT} FROM recordings
         WHERE (analysis_status IN ('pending', 'processing', 'failed')
            OR lrc_status IN ('pending', 'processing', 'failed'))
           AND deleted_at IS NULL

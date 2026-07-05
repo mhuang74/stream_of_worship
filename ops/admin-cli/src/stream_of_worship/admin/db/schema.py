@@ -228,38 +228,45 @@ UNION ALL
 SELECT 'recordings' as table_name, COUNT(*) as row_count FROM recordings WHERE deleted_at IS NULL;
 """
 
-# Column lists for JOIN queries (used by catalog service and other query builders)
-SONG_COLUMNS_FOR_JOIN = """
-    s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
-    s.album_name, s.album_series, s.musical_key, s.musical_key_root,
-    s.musical_key_mode, s.musical_key_start_root, s.musical_key_end_root,
-    s.musical_key_start_pitch_class, s.musical_key_end_pitch_class,
-    s.musical_key_parse_status, s.lyrics_raw, s.lyrics_lines, s.sections,
-    s.source_url, s.table_row_number, s.scraped_at, s.created_at,
-    s.updated_at, s.deleted_at
+# Un-aliased column lists in canonical order (matches Song/Recording.from_row).
+# Single source of truth — JOIN variants below derive from these.
+SONG_COLUMNS_SELECT = """
+    id, title, title_pinyin, composer, lyricist,
+    album_name, album_series, musical_key, musical_key_root,
+    musical_key_mode, musical_key_start_root, musical_key_end_root,
+    musical_key_start_pitch_class, musical_key_end_pitch_class,
+    musical_key_parse_status, lyrics_raw, lyrics_lines, sections,
+    source_url, table_row_number, scraped_at, created_at,
+    updated_at, deleted_at
 """
 
-RECORDING_COLUMNS_FOR_JOIN = """
-    r.content_hash, r.hash_prefix, r.song_id, r.original_filename,
-    r.file_size_bytes, r.imported_at, r.r2_audio_url, r.r2_stems_url,
-    r.r2_lrc_url, r.duration_seconds, r.tempo_bpm, r.musical_key,
-    r.musical_mode, r.key_confidence, r.key_algorithm_version,
-    r.key_score_margin, r.key_window_agreement, r.key_candidates,
-    r.key_detected_at, r.loudness_db, r.beats, r.downbeats, r.sections,
-    r.embeddings_shape, r.analysis_status, r.analysis_job_id, r.lrc_status,
-    r.lrc_job_id, r.created_at, r.updated_at, r.youtube_url,
-    r.visibility_status, r.download_status, r.deleted_at
+RECORDING_COLUMNS_SELECT = """
+    content_hash, hash_prefix, song_id, original_filename,
+    file_size_bytes, imported_at, r2_audio_url, r2_stems_url,
+    r2_lrc_url, duration_seconds, tempo_bpm, musical_key,
+    musical_mode, key_confidence, key_algorithm_version,
+    key_score_margin, key_window_agreement, key_candidates,
+    key_detected_at, loudness_db, beats, downbeats, sections,
+    embeddings_shape, analysis_status, analysis_job_id, lrc_status,
+    lrc_job_id, created_at, updated_at, youtube_url,
+    visibility_status, download_status, deleted_at
 """
+
+# Column lists for JOIN queries (used by catalog service and other query builders)
+SONG_COLUMNS_FOR_JOIN = ", ".join(f"s.{c.strip()}" for c in SONG_COLUMNS_SELECT.split(","))
+RECORDING_COLUMNS_FOR_JOIN = ", ".join(
+    f"r.{c.strip()}" for c in RECORDING_COLUMNS_SELECT.split(",")
+)
 
 SONG_COLUMN_COUNT = 24
 RECORDING_COLUMN_COUNT = 34
 
 # SQL for listing active (non-deleted) songs
-ACTIVE_SONGS_QUERY = """
-SELECT * FROM songs WHERE deleted_at IS NULL
+ACTIVE_SONGS_QUERY = f"""
+SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE deleted_at IS NULL
 """
 
 # SQL for listing active (non-deleted) recordings
-ACTIVE_RECORDINGS_QUERY = """
-SELECT * FROM recordings WHERE deleted_at IS NULL
+ACTIVE_RECORDINGS_QUERY = f"""
+SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE deleted_at IS NULL
 """

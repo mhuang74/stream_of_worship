@@ -11,6 +11,7 @@ import psycopg
 import psycopg.rows
 
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_SELECT, SONG_COLUMNS_SELECT
 from stream_of_worship.db.connection import ConnectionProvider
 
 logger = logging.getLogger("sow_app.db")
@@ -91,9 +92,12 @@ class ReadOnlyClient:
         """
         cursor = self.connection.cursor()
         if include_deleted:
-            cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
+            cursor.execute(f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE id = %s", (song_id,))
         else:
-            cursor.execute("SELECT * FROM songs WHERE id = %s AND deleted_at IS NULL", (song_id,))
+            cursor.execute(
+                f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE id = %s AND deleted_at IS NULL",
+                (song_id,),
+            )
         row = cursor.fetchone()
 
         if row:
@@ -135,7 +139,7 @@ class ReadOnlyClient:
         """
         cursor = self.connection.cursor()
 
-        query = "SELECT * FROM songs WHERE 1=1"
+        query = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE 1=1"
         params: list = []
 
         if not include_deleted:
@@ -185,17 +189,19 @@ class ReadOnlyClient:
         deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
 
         if field == "title":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(title ILIKE %s OR title_pinyin ILIKE %s)"
+            sql = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(title ILIKE %s OR title_pinyin ILIKE %s)"
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw ILIKE %s"
+            sql = (
+                f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}lyrics_raw ILIKE %s"
+            )
             params = [search_pattern]
         elif field == "composer":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(composer ILIKE %s OR lyricist ILIKE %s)"
+            sql = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(composer ILIKE %s OR lyricist ILIKE %s)"
             params = [search_pattern, search_pattern]
         else:  # all
             sql = f"""
-                SELECT * FROM songs WHERE {deleted_clause}(
+                SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(
                 title ILIKE %s OR title_pinyin ILIKE %s OR
                 lyrics_raw ILIKE %s OR composer ILIKE %s OR lyricist ILIKE %s)
             """
@@ -217,11 +223,9 @@ class ReadOnlyClient:
             List of album names (excluding deleted songs).
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT DISTINCT album_name FROM songs
+        cursor.execute("""SELECT DISTINCT album_name FROM songs
             WHERE album_name IS NOT NULL AND deleted_at IS NULL
-            ORDER BY album_name"""
-        )
+            ORDER BY album_name""")
         return [row[0] for row in cursor.fetchall() if row[0]]
 
     def list_keys(self) -> list[str]:
@@ -231,11 +235,9 @@ class ReadOnlyClient:
             List of key names (excluding deleted songs).
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT DISTINCT musical_key FROM songs
+        cursor.execute("""SELECT DISTINCT musical_key FROM songs
             WHERE musical_key IS NOT NULL AND deleted_at IS NULL
-            ORDER BY musical_key"""
-        )
+            ORDER BY musical_key""")
         return [row[0] for row in cursor.fetchall() if row[0]]
 
     # ------------------------------------------------------------------
@@ -257,12 +259,12 @@ class ReadOnlyClient:
         cursor = self.connection.cursor()
         if include_deleted:
             cursor.execute(
-                "SELECT * FROM recordings WHERE hash_prefix = %s",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE hash_prefix = %s",
                 (hash_prefix,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
                 (hash_prefix,),
             )
         row = cursor.fetchone()
@@ -286,12 +288,12 @@ class ReadOnlyClient:
         cursor = self.connection.cursor()
         if include_deleted:
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = %s",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE song_id = %s",
                 (song_id,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
                 (song_id,),
             )
         row = cursor.fetchone()
@@ -320,7 +322,7 @@ class ReadOnlyClient:
         """
         cursor = self.connection.cursor()
 
-        query = "SELECT * FROM recordings WHERE 1=1"
+        query = f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE 1=1"
         params: list = []
 
         if not include_deleted:
@@ -363,10 +365,8 @@ class ReadOnlyClient:
             Count of analyzed recordings (excluding soft-deleted).
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT COUNT(*) FROM recordings
-            WHERE analysis_status = 'completed' AND deleted_at IS NULL"""
-        )
+        cursor.execute("""SELECT COUNT(*) FROM recordings
+            WHERE analysis_status = 'completed' AND deleted_at IS NULL""")
         result = cursor.fetchone()
         return result[0] if result else 0
 
@@ -390,12 +390,10 @@ class ReadOnlyClient:
             Count of LRC-ready songs.
         """
         cursor = self.connection.cursor()
-        cursor.execute(
-            """SELECT COUNT(*) FROM songs s
+        cursor.execute("""SELECT COUNT(*) FROM songs s
             JOIN recordings r ON s.id = r.song_id
             WHERE r.lrc_status = 'completed' AND r.visibility_status = 'published'
-            AND r.deleted_at IS NULL AND s.deleted_at IS NULL"""
-        )
+            AND r.deleted_at IS NULL AND s.deleted_at IS NULL""")
         result = cursor.fetchone()
         count = result[0] if result else 0
         logger.debug(f"Songs with LRC ready: {count}")
@@ -420,7 +418,7 @@ class ReadOnlyClient:
         def _fetch(conn: psycopg.Connection) -> dict[str, Recording]:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = ANY(%s) AND deleted_at IS NULL",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE song_id = ANY(%s) AND deleted_at IS NULL",
                 (song_ids,),
             )
             # song_id is at index 2 in the recordings table schema
@@ -450,12 +448,12 @@ class ReadOnlyClient:
             cursor = conn.cursor()
             if include_deleted:
                 cursor.execute(
-                    "SELECT * FROM recordings WHERE hash_prefix = ANY(%s)",
+                    f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE hash_prefix = ANY(%s)",
                     (hash_prefixes,),
                 )
             else:
                 cursor.execute(
-                    "SELECT * FROM recordings WHERE hash_prefix = ANY(%s) AND deleted_at IS NULL",
+                    f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE hash_prefix = ANY(%s) AND deleted_at IS NULL",
                     (hash_prefixes,),
                 )
             return {row[1]: Recording.from_row(tuple(row)) for row in cursor.fetchall()}
@@ -484,12 +482,12 @@ class ReadOnlyClient:
             cursor = conn.cursor()
             if include_deleted:
                 cursor.execute(
-                    "SELECT * FROM songs WHERE id = ANY(%s)",
+                    f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE id = ANY(%s)",
                     (song_ids,),
                 )
             else:
                 cursor.execute(
-                    "SELECT * FROM songs WHERE id = ANY(%s) AND deleted_at IS NULL",
+                    f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE id = ANY(%s) AND deleted_at IS NULL",
                     (song_ids,),
                 )
             return {row[0]: Song.from_row(tuple(row)) for row in cursor.fetchall()}

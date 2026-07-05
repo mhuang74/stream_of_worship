@@ -16,8 +16,11 @@ import psycopg.errors
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
     ACTIVE_ROW_COUNT_QUERY,
+    RECORDING_COLUMNS_SELECT,
     RECORDING_COLUMN_COUNT,
     ROW_COUNT_QUERY,
+    SONG_COLUMNS_FOR_JOIN,
+    SONG_COLUMNS_SELECT,
     SONG_COLUMN_COUNT,
 )
 from stream_of_worship.db.connection import ConnectionProvider
@@ -320,9 +323,12 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         if include_deleted:
-            cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
+            cursor.execute(f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE id = %s", (song_id,))
         else:
-            cursor.execute("SELECT * FROM songs WHERE id = %s AND deleted_at IS NULL", (song_id,))
+            cursor.execute(
+                f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE id = %s AND deleted_at IS NULL",
+                (song_id,),
+            )
         row = cursor.fetchone()
 
         if row:
@@ -338,11 +344,12 @@ class DatabaseClient:
         cursor = self.connection.cursor()
         if include_deleted:
             cursor.execute(
-                "SELECT * FROM songs WHERE source_url = %s ORDER BY updated_at DESC", (source_url,)
+                f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE source_url = %s ORDER BY updated_at DESC",
+                (source_url,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM songs WHERE source_url = %s AND deleted_at IS NULL ORDER BY updated_at DESC",
+                f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE source_url = %s AND deleted_at IS NULL ORDER BY updated_at DESC",
                 (source_url,),
             )
         row = cursor.fetchone()
@@ -411,7 +418,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
 
-        query = "SELECT * FROM songs WHERE 1=1"
+        query = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE 1=1"
         params: list = []
 
         if not include_deleted:
@@ -494,24 +501,22 @@ class DatabaseClient:
         deleted_clause = "" if include_deleted else "deleted_at IS NULL AND "
 
         if field == "title":
-            sql = (
-                f"SELECT * FROM songs WHERE {deleted_clause}(title ILIKE %s OR title_pinyin ILIKE %s)"
-            )
+            sql = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(title ILIKE %s OR title_pinyin ILIKE %s)"
             params = [search_pattern, search_pattern]
         elif field == "lyrics":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}lyrics_raw ILIKE %s"
+            sql = (
+                f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}lyrics_raw ILIKE %s"
+            )
             params = [search_pattern]
         elif field == "composer":
-            sql = (
-                f"SELECT * FROM songs WHERE {deleted_clause}(composer ILIKE %s OR lyricist ILIKE %s)"
-            )
+            sql = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(composer ILIKE %s OR lyricist ILIKE %s)"
             params = [search_pattern, search_pattern]
         elif field == "album":
-            sql = f"SELECT * FROM songs WHERE {deleted_clause}(album_name ILIKE %s OR album_series ILIKE %s)"
+            sql = f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(album_name ILIKE %s OR album_series ILIKE %s)"
             params = [search_pattern, search_pattern]
         else:  # all
             sql = f"""
-                SELECT * FROM songs WHERE {deleted_clause}(
+                SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE {deleted_clause}(
                 title ILIKE %s OR title_pinyin ILIKE %s OR
                 lyrics_raw ILIKE %s OR composer ILIKE %s OR lyricist ILIKE %s OR
                 album_name ILIKE %s OR album_series ILIKE %s)
@@ -632,12 +637,12 @@ class DatabaseClient:
             cursor = conn.cursor()
             if include_deleted:
                 cursor.execute(
-                    "SELECT * FROM recordings WHERE hash_prefix = %s",
+                    f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE hash_prefix = %s",
                     (hash_prefix,),
                 )
             else:
                 cursor.execute(
-                    "SELECT * FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
+                    f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE hash_prefix = %s AND deleted_at IS NULL",
                     (hash_prefix,),
                 )
             row = cursor.fetchone()
@@ -656,7 +661,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
+            f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE song_id = %s AND deleted_at IS NULL",
             (song_id,),
         )
         row = cursor.fetchone()
@@ -674,12 +679,12 @@ class DatabaseClient:
         cursor = self.connection.cursor()
         if include_deleted:
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = %s ORDER BY imported_at DESC",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE song_id = %s ORDER BY imported_at DESC",
                 (song_id,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE song_id = %s AND deleted_at IS NULL ORDER BY imported_at DESC",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE song_id = %s AND deleted_at IS NULL ORDER BY imported_at DESC",
                 (song_id,),
             )
         return [Recording.from_row(tuple(row)) for row in cursor.fetchall()]
@@ -692,7 +697,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE duration_seconds IS NULL AND deleted_at IS NULL",
+            f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE duration_seconds IS NULL AND deleted_at IS NULL",
         )
         rows = cursor.fetchall()
         return [Recording.from_row(tuple(row)) for row in rows]
@@ -721,7 +726,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
 
-        query = "SELECT * FROM recordings WHERE 1=1"
+        query = f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE 1=1"
         params: list = []
 
         if not include_deleted:
@@ -923,12 +928,12 @@ class DatabaseClient:
         cursor = self.connection.cursor()
         if job_type == "analysis":
             cursor.execute(
-                "SELECT * FROM recordings WHERE analysis_job_id = %s AND deleted_at IS NULL",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE analysis_job_id = %s AND deleted_at IS NULL",
                 (job_id,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM recordings WHERE lrc_job_id = %s AND deleted_at IS NULL",
+                f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE lrc_job_id = %s AND deleted_at IS NULL",
                 (job_id,),
             )
         row = cursor.fetchone()
@@ -1311,7 +1316,9 @@ class DatabaseClient:
             List of soft-deleted songs.
         """
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM songs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC")
+        cursor.execute(
+            f"SELECT {SONG_COLUMNS_SELECT} FROM songs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+        )
         results = []
         for row in cursor.fetchall():
             results.append(Song.from_row(tuple(row)))
@@ -1325,7 +1332,7 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM recordings WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+            f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
         )
         results = []
         for row in cursor.fetchall():
@@ -1383,8 +1390,8 @@ class DatabaseClient:
         """List active recordings for a song using deterministic ordering."""
         cursor = self.connection.cursor()
         cursor.execute(
-            """
-            SELECT * FROM recordings
+            f"""
+            SELECT {RECORDING_COLUMNS_SELECT} FROM recordings
             WHERE song_id = %s AND deleted_at IS NULL
             ORDER BY imported_at DESC, hash_prefix ASC
             """,
@@ -1658,8 +1665,8 @@ class DatabaseClient:
         """Find active recording candidates for a stale songset item."""
         cursor = self.connection.cursor()
         cursor.execute(
-            """
-            SELECT * FROM recordings
+            f"""
+            SELECT {RECORDING_COLUMNS_SELECT} FROM recordings
             WHERE song_id = %s AND deleted_at IS NULL
             ORDER BY
                 CASE WHEN visibility_status = 'published' THEN 0 ELSE 1 END,
@@ -1836,12 +1843,8 @@ class DatabaseClient:
             List of Song objects without embeddings.
         """
         cursor = self.connection.cursor()
-        cursor.execute("""
-            SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
-                   s.album_name, s.album_series, s.musical_key,
-                   s.lyrics_raw, s.lyrics_lines, s.sections,
-                   s.source_url, s.table_row_number, s.scraped_at,
-                   s.created_at, s.updated_at, s.deleted_at
+        cursor.execute(f"""
+            SELECT {SONG_COLUMNS_FOR_JOIN}
             FROM songs s
             LEFT JOIN song_embedding se ON s.id = se.song_id
             WHERE se.song_id IS NULL
@@ -1865,12 +1868,8 @@ class DatabaseClient:
             List of Song objects with lyrics and published recordings.
         """
         cursor = self.connection.cursor()
-        cursor.execute("""
-            SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
-                   s.album_name, s.album_series, s.musical_key,
-                   s.lyrics_raw, s.lyrics_lines, s.sections,
-                   s.source_url, s.table_row_number, s.scraped_at,
-                   s.created_at, s.updated_at, s.deleted_at
+        cursor.execute(f"""
+            SELECT {SONG_COLUMNS_FOR_JOIN}
             FROM songs s
             WHERE s.deleted_at IS NULL
               AND s.lyrics_raw IS NOT NULL
