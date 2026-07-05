@@ -11,8 +11,16 @@ export function albumFilterKey(album: AlbumFilter): string {
   return `${album.albumName}\u0000${album.albumSeries ?? ""}`;
 }
 
+const PAREN_CHARS = /[()（）]/g;
+
+function stripAlbumSeriesParens(raw: string): string {
+  return raw.replace(PAREN_CHARS, " ").replace(/\s+/g, " ").trim();
+}
+
 export function formatAlbumLabel(album: AlbumFilter): string {
-  return album.albumSeries ? `${album.albumName} (${album.albumSeries})` : album.albumName;
+  if (!album.albumSeries) return album.albumName;
+  const series = stripAlbumSeriesParens(album.albumSeries);
+  return series ? `${album.albumName} (${series})` : album.albumName;
 }
 
 export function formatAlbumOptionLabel(album: AlbumOption): string {
