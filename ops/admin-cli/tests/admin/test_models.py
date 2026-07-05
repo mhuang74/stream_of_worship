@@ -1,10 +1,12 @@
 """Tests for sow-admin database models."""
 
-import json
-
 import pytest
 
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
+from stream_of_worship.admin.db.schema import (
+    RECORDING_COLUMNS_SELECT,
+    SONG_COLUMNS_SELECT,
+)
 
 
 class TestSong:
@@ -91,6 +93,111 @@ class TestSong:
         )
 
         assert song.lyrics_list == []
+
+    def test_from_row_24_column_canonical_order(self):
+        """Regression test: from_row with 24-column row in canonical order
+        (matching SONG_COLUMNS_SELECT, not physical DB order).
+
+        Before the fix, SELECT * returned physical DB order (new columns
+        appended at end by ALTER TABLE), causing from_row to map
+        lyrics_raw to updated_at (datetime) and crash on .strip().
+        """
+        row = (
+            "song_0001",  # id
+            "將天敞開",  # title
+            "jiang_tian_chang_kai",  # title_pinyin
+            "作曲家",  # composer
+            "作詞家",  # lyricist
+            "敬拜讚美15",  # album_name
+            "敬拜讚美系列",  # album_series
+            "G",  # musical_key
+            "G",  # musical_key_root
+            "major",  # musical_key_mode
+            "G",  # musical_key_start_root
+            "G",  # musical_key_end_root
+            7,  # musical_key_start_pitch_class
+            7,  # musical_key_end_pitch_class
+            "parsed",  # musical_key_parse_status
+            "第一行歌詞\n第二行歌詞",  # lyrics_raw
+            '["第一行歌詞", "第二行歌詞"]',  # lyrics_lines
+            '[{"label": "verse", "start": 0, "end": 30}]',  # sections
+            "https://sop.org/song/123",  # source_url
+            123,  # table_row_number
+            "2024-01-15T10:30:00",  # scraped_at
+            "2024-01-15T10:30:00",  # created_at
+            "2024-01-15T10:30:00",  # updated_at
+            None,  # deleted_at
+        )
+        assert len(row) == 24
+        song = Song.from_row(row)
+
+        assert song.id == "song_0001"
+        assert song.title == "將天敞開"
+        assert song.musical_key == "G"
+        assert song.musical_key_root == "G"
+        assert song.musical_key_mode == "major"
+        assert song.musical_key_start_pitch_class == 7
+        assert song.musical_key_parse_status == "parsed"
+        assert song.lyrics_raw == "第一行歌詞\n第二行歌詞"
+        assert song.source_url == "https://sop.org/song/123"
+        assert song.scraped_at == "2024-01-15T10:30:00"
+        assert song.lyrics_list == ["第一行歌詞", "第二行歌詞"]
+
+    def test_from_row_physical_order_mismatch_regression(self):
+        """Regression test: a row in PHYSICAL DB order (16 original cols
+        + 8 appended at end) must NOT be passed to from_row expecting
+        canonical order. This test documents why SELECT * was replaced
+        with explicit column lists.
+
+        With the old SELECT *, the physical-order row would be returned
+        and from_row would map lyrics_raw=row[15]=updated_at (datetime),
+        crashing on .strip(). Now that queries use SONG_COLUMNS_SELECT,
+        rows are always in canonical order.
+        """
+        # Canonical-order row (what SONG_COLUMNS_SELECT produces)
+        canonical_row = (
+            "song_0001",
+            "將天敞開",
+            "jiang_tian_chang_kai",
+            "作曲家",
+            "作詞家",
+            "敬拜讚美15",
+            "敬拜讚美系列",
+            "G",
+            "G",
+            "major",
+            "G",
+            "G",
+            7,
+            7,
+            "parsed",
+            "第一行歌詞\n第二行歌詞",
+            '["第一行歌詞", "第二行歌詞"]',
+            '[{"label": "verse"}]',
+            "https://sop.org/song/123",
+            123,
+            "2024-01-15T10:30:00",
+            "2024-01-15T10:30:00",
+            "2024-01-15T10:30:00",
+            None,
+        )
+        song = Song.from_row(canonical_row)
+        assert song.lyrics_raw == "第一行歌詞\n第二行歌詞"
+        assert song.source_url == "https://sop.org/song/123"
+        assert song.musical_key_root == "G"
+
+    def test_song_columns_select_order_matches_from_row(self):
+        """Verify SONG_COLUMNS_SELECT column count and order matches
+        what from_row expects (24 columns in canonical order).
+        """
+        columns = [c.strip() for c in SONG_COLUMNS_SELECT.split(",") if c.strip()]
+        assert len(columns) == 24
+        assert columns[0] == "id"
+        assert columns[7] == "musical_key"
+        assert columns[8] == "musical_key_root"
+        assert columns[15] == "lyrics_raw"
+        assert columns[18] == "source_url"
+        assert columns[23] == "deleted_at"
 
 
 class TestRecording:
@@ -366,6 +473,79 @@ class TestRecording:
         assert recording.youtube_url is None
         assert recording.visibility_status is None
         assert recording.deleted_at is None
+
+    def test_from_row_34_column_canonical_order(self):
+        """Regression test: from_row with 34-column row in canonical order
+        (matching RECORDING_COLUMNS_SELECT, not physical DB order).
+
+        Before the fix, SELECT * returned physical DB order (key_* columns
+        appended at end by ALTER TABLE), causing from_row to map
+        key_algorithm_version to loudness_db, etc.
+        """
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # content_hash
+            "c6de4449928d",  # hash_prefix
+            "song_0001",  # song_id
+            "original.mp3",  # original_filename
+            5242880,  # file_size_bytes
+            "2024-01-15T10:30:00",  # imported_at
+            "s3://bucket/audio.mp3",  # r2_audio_url
+            "s3://bucket/stems/",  # r2_stems_url
+            "s3://bucket/lyrics.lrc",  # r2_lrc_url
+            245.3,  # duration_seconds
+            128.5,  # tempo_bpm
+            "G",  # musical_key
+            "major",  # musical_mode
+            0.87,  # key_confidence
+            "v2",  # key_algorithm_version
+            0.5,  # key_score_margin
+            0.9,  # key_window_agreement
+            '["G","D"]',  # key_candidates
+            "2024-01-15T10:30:00",  # key_detected_at
+            -8.2,  # loudness_db
+            "[0.23, 0.70]",  # beats
+            "[0.23, 2.10]",  # downbeats
+            '[{"label": "intro"}]',  # sections
+            "[4, 512, 24]",  # embeddings_shape
+            "completed",  # analysis_status
+            "job_abc123",  # analysis_job_id
+            "completed",  # lrc_status
+            "job_lrc123",  # lrc_job_id
+            "2024-01-15T10:30:00",  # created_at
+            "2024-01-15T10:30:00",  # updated_at
+            "https://youtube.com/watch?v=x",  # youtube_url
+            "published",  # visibility_status
+            "completed",  # download_status
+            None,  # deleted_at
+        )
+        assert len(row) == 34
+        recording = Recording.from_row(row)
+
+        assert recording.content_hash == "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908"
+        assert recording.key_algorithm_version == "v2"
+        assert recording.key_score_margin == 0.5
+        assert recording.key_window_agreement == 0.9
+        assert recording.key_candidates == '["G","D"]'
+        assert recording.loudness_db == -8.2
+        assert recording.beats == "[0.23, 0.70]"
+        assert recording.analysis_status == "completed"
+        assert recording.youtube_url == "https://youtube.com/watch?v=x"
+        assert recording.visibility_status == "published"
+        assert recording.download_status == "completed"
+        assert recording.deleted_at is None
+
+    def test_recording_columns_select_order_matches_from_row(self):
+        """Verify RECORDING_COLUMNS_SELECT column count and order matches
+        what from_row expects (34 columns in canonical order).
+        """
+        columns = [c.strip() for c in RECORDING_COLUMNS_SELECT.split(",") if c.strip()]
+        assert len(columns) == 34
+        assert columns[0] == "content_hash"
+        assert columns[13] == "key_confidence"
+        assert columns[14] == "key_algorithm_version"
+        assert columns[18] == "key_detected_at"
+        assert columns[19] == "loudness_db"
+        assert columns[33] == "deleted_at"
 
 
 class TestDatabaseStats:
