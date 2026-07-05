@@ -349,7 +349,8 @@ async def analyze_audio_fast(
     cache_manager: CacheManager,
     content_hash: str,
     sample_rate: int = 22050,
-    hop_length: int = 4096,
+    hop_length: int = 512,
+    start_bpm: float = 80.0,
     force: bool = False,
 ) -> dict:
     """Fast audio analysis using librosa only (no allin1, no stems).
@@ -367,7 +368,10 @@ async def analyze_audio_fast(
         cache_manager: Cache manager instance
         content_hash: SHA-256 hash of audio content for cache key
         sample_rate: Target sample rate for librosa.load (default 22050)
-        hop_length: Hop length for onset/tempo estimation (default 4096)
+        hop_length: Hop length for onset/tempo estimation (default 512)
+        start_bpm: Initial tempo guess for the log-normal prior (default 80).
+            Worship music typically has tempos 65-95 BPM; the librosa default
+            of 120 biases toward double-time octave errors.
         force: Bypass cache
 
     Returns:
@@ -401,10 +405,39 @@ async def analyze_audio_fast(
 
     def _compute_tempo() -> float:
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
-        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
-        if hasattr(tempo, "__iter__"):
-            tempo = float(tempo[0])
-        return float(tempo)
+
+        # Primary estimate with worship-music prior
+        tempo_primary = librosa.beat.tempo(
+            onset_envelope=onset_env,
+            sr=sr,
+            hop_length=hop_length,
+            start_bpm=start_bpm,
+        )
+        if hasattr(tempo_primary, "__iter__"):
+            tempo_primary = float(tempo_primary[0])
+        tempo_primary = float(tempo_primary)
+
+        # Octave-doubling guard: if primary is suspiciously slow, check for a
+        # strong double-time peak by re-estimating with the default 120 prior.
+        # This handles edge-case fast songs (true tempo > 100 BPM) without
+        # over-correcting the predominantly 65-95 BPM worship catalog.
+        if tempo_primary < 70.0:
+            tempo_alt = librosa.beat.tempo(
+                onset_envelope=onset_env,
+                sr=sr,
+                hop_length=hop_length,
+                start_bpm=120.0,
+            )
+            if hasattr(tempo_alt, "__iter__"):
+                tempo_alt = float(tempo_alt[0])
+            tempo_alt = float(tempo_alt)
+
+            # If the alternative is roughly double the primary, the alternative
+            # is likely the true tempo (the primary was half-time).
+            if abs(tempo_alt - 2.0 * tempo_primary) < 8.0:
+                return tempo_alt
+
+        return tempo_primary
 
     bpm = await loop.run_in_executor(None, _compute_tempo)
     tempo_elapsed = time.time() - tempo_start

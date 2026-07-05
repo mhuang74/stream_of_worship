@@ -50,7 +50,8 @@ class FastAnalyzeOptions(BaseModel):
 
     force: bool = False
     sample_rate: int = 22050
-    hop_length: int = 4096
+    hop_length: int = 512
+    start_bpm: float = Field(default=80.0, ge=40.0, le=200.0)
 
 
 class FastAnalyzeJobRequest(BaseModel):

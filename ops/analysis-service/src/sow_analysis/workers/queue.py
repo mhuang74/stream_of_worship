@@ -710,6 +710,7 @@ class JobQueue:
                     request.content_hash,
                     sample_rate=request.options.sample_rate,
                     hop_length=request.options.hop_length,
+                    start_bpm=request.options.start_bpm,
                     force=request.options.force,
                 )
 

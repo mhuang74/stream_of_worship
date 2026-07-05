@@ -268,7 +268,8 @@ class AnalysisClient:
         content_hash: str,
         force: bool = False,
         sample_rate: int = 22050,
-        hop_length: int = 4096,
+        hop_length: int = 512,
+        start_bpm: float = 80.0,
     ) -> JobInfo:
         """Submit an audio file for fast analysis (librosa-only).
 
@@ -282,6 +283,7 @@ class AnalysisClient:
             force: Whether to force re-analysis (bypass cache)
             sample_rate: Target sample rate for librosa
             hop_length: Hop length for tempo estimation
+            start_bpm: Initial tempo guess for the log-normal prior (default 80)
 
         Returns:
             JobInfo for the submitted job
@@ -296,6 +298,7 @@ class AnalysisClient:
                 "force": force,
                 "sample_rate": sample_rate,
                 "hop_length": hop_length,
+                "start_bpm": start_bpm,
             },
         }
 
