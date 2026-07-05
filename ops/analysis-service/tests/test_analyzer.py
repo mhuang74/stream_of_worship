@@ -195,3 +195,116 @@ class TestAnalyzeAudioFastTempoParams:
 
         assert result["tempo_bpm"] == 85.0
         assert mock_librosa.beat.tempo.call_count == 1
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @pytest.mark.asyncio
+    async def test_double_time_guard_selects_half_time(
+        self, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When primary > 120 and alt ≈ primary/2 in worship range, return alt."""
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.side_effect = [
+            np.array([136.0]),  # primary with start_bpm=80
+            np.array([70.0]),  # alt with start_bpm=60
+        ]
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(audio_path, cache_manager, "abc123")
+
+        assert result["tempo_bpm"] == 70.0
+        assert mock_librosa.beat.tempo.call_count == 2
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @pytest.mark.asyncio
+    async def test_double_time_guard_ignores_non_half_time(
+        self, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When alt is not ≈ primary/2, keep primary (137 vs 90)."""
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.side_effect = [
+            np.array([137.0]),  # primary with start_bpm=80
+            np.array([90.0]),  # alt with start_bpm=60 — not half-time
+        ]
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(audio_path, cache_manager, "abc123")
+
+        assert result["tempo_bpm"] == 137.0
+        assert mock_librosa.beat.tempo.call_count == 2
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @pytest.mark.asyncio
+    async def test_double_time_guard_rejects_half_time_outside_worship_range(
+        self, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When alt ≈ primary/2 but outside 65-100 range, keep primary (140 vs 50)."""
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.side_effect = [
+            np.array([140.0]),  # primary with start_bpm=80
+            np.array([50.0]),  # alt with start_bpm=60 — outside worship range
+        ]
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(audio_path, cache_manager, "abc123")
+
+        assert result["tempo_bpm"] == 140.0
+        assert mock_librosa.beat.tempo.call_count == 2
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @pytest.mark.asyncio
+    async def test_double_time_guard_not_triggered_at_or_below_120(
+        self, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When primary <= 120, no second tempo call is made."""
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.return_value = np.array([110.0])
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(audio_path, cache_manager, "abc123")
+
+        assert result["tempo_bpm"] == 110.0
+        assert mock_librosa.beat.tempo.call_count == 1

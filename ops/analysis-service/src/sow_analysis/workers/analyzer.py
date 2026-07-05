@@ -417,11 +417,34 @@ async def analyze_audio_fast(
             tempo_primary = float(tempo_primary[0])
         tempo_primary = float(tempo_primary)
 
-        # Octave-doubling guard: if primary is suspiciously slow, check for a
-        # strong double-time peak by re-estimating with the default 120 prior.
-        # This handles edge-case fast songs (true tempo > 100 BPM) without
-        # over-correcting the predominantly 65-95 BPM worship catalog.
-        if tempo_primary < 70.0:
+        # Double-time guard: if primary is suspiciously fast, re-estimate with
+        # a 60 BPM prior to probe the half-time peak. Handles slow worship songs
+        # (~65-75 BPM true) whose onset envelope peaks at twice the beat rate
+        # (eighth-/sixteenth-note patterns) and is reported at ~2x true tempo.
+        if tempo_primary > 120.0:
+            tempo_alt = librosa.beat.tempo(
+                onset_envelope=onset_env,
+                sr=sr,
+                hop_length=hop_length,
+                start_bpm=60.0,
+            )
+            if hasattr(tempo_alt, "__iter__"):
+                tempo_alt = float(tempo_alt[0])
+            tempo_alt = float(tempo_alt)
+
+            # Accept the half-time if it is roughly half the primary AND lands
+            # in the worship-plausible range (65-100 BPM).
+            if (
+                abs(tempo_alt - tempo_primary / 2.0) < 8.0
+                and 65.0 <= tempo_alt <= 100.0
+            ):
+                return tempo_alt
+
+        # Half-time guard (v2): if primary is suspiciously slow, re-estimate
+        # with the 120 BPM prior to probe the double-time peak. Handles
+        # edge-case fast songs (true tempo > 100 BPM) without over-correcting
+        # the predominantly 65-95 BPM worship catalog.
+        elif tempo_primary < 70.0:
             tempo_alt = librosa.beat.tempo(
                 onset_envelope=onset_env,
                 sr=sr,
