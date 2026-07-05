@@ -192,9 +192,55 @@ Update any assertions that checked the old selected album trigger text.
 Most assertions use `data-testid` (e.g., `getByTestId("album-filter")`) rather than text content, so minimal changes are expected. However:
 - Review any assertions that check rendered text inside the filter triggers and update to the new `Albums: ...`, `Keys: ...`, `BPM: ...` formats.
 
+### 7.3 `src/test/components/search/SemanticSearch.test.tsx`
+
+**Update these existing assertions:**
+- Line 116: Rename test `"renders the textarea"` -> `"renders the input"`. The `data-testid` stays `"semantic-search-input"`, so only the test name changes.
+- Line 146-147: Help text assertion — update from containing `Ctrl+Enter` to containing `Enter` (see Section 8 below for behavior).
+- Line 310-324: `"triggers search on Ctrl+Enter"` — since the element is now an `<Input>`, plain `Enter` should trigger search (not requiring Ctrl). Update this test to fire `Enter` without `ctrlKey` and expect the search to fire.
+- Line 326-333: `"does not trigger search on Enter without Ctrl"` — this test becomes invalid/obsolete because Enter alone now triggers search. **Remove** this test.
+
 ---
 
-## 8. Files to Modify (Summary)
+## 8. Describe Input — Change from Textarea to Single-line Input
+
+**File:** `src/components/search/SemanticSearch.tsx`
+
+**Current behavior:**
+- Uses `<Textarea>` with `min-h-[80px] resize-none` (80px tall, multi-line).
+- Help text says: "Press Ctrl+Enter to search".
+- `handleKeyDown` is typed for `HTMLTextAreaElement` and checks `e.ctrlKey || e.metaKey` to trigger search.
+
+**Problem:** The Describe input is much taller than the Keyword input. Users typically enter only a short sentence, so the multi-line textarea is unnecessary.
+
+**Change:**
+1. Replace `<Textarea>` with `<Input>` from `@/components/ui/input`.
+2. Remove `min-h-[80px] resize-none` classes (not needed on `<Input>`).
+3. Update `handleKeyDown`:
+   - Change type from `React.KeyboardEvent<HTMLTextAreaElement>` to `React.KeyboardEvent<HTMLInputElement>`.
+   - On a single-line `<Input>`, pressing `Enter` should trigger search directly (standard input behavior). Remove the `ctrlKey || metaKey` requirement.
+   - Keep `e.preventDefault()` to prevent form submission / newline behavior.
+4. Update help text:
+   - Change from `"Press Ctrl+Enter to search"` to `"Press Enter to search"`.
+
+**Example updated code:**
+```tsx
+const handleKeyDown = useCallback(
+  (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSearch();
+    }
+  },
+  [handleSearch]
+);
+```
+
+**Note:** The `data-testid="semantic-search-input"` should remain unchanged so that existing test selectors continue to work. Only the element tag and behavior change.
+
+---
+
+## 9. Files to Modify (Summary)
 
 | File | Change |
 |------|--------|
@@ -210,9 +256,9 @@ Most assertions use `data-testid` (e.g., `getByTestId("album-filter")`) rather t
 
 ---
 
-## 9. Verification Steps
+## 10. Verification Steps
 
-1. Run unit tests: `pnpm test -- src/test/components/songset/SharedFilters.test.tsx src/test/components/songset/BrowseSheet.test.tsx`
+1. Run unit tests: `pnpm test -- src/test/components/songset/SharedFilters.test.tsx src/test/components/songset/BrowseSheet.test.tsx src/test/components/search/SemanticSearch.test.tsx`
 2. Run linter: `pnpm lint`
 3. Manual visual check:
    - Open songset editor -> Add Song -> verify filters are horizontal on desktop and stack on narrow widths.
@@ -221,3 +267,4 @@ Most assertions use `data-testid` (e.g., `getByTestId("album-filter")`) rather t
    - Verify album chips do not appear after selecting albums.
    - Verify `Clear all` still works inside each dropdown and at the page level.
    - Verify trigger text reads: `Albums: All 42`, `Keys: All`, `BPM: All` when nothing selected; `Albums: Hymns (Classic)` when 1 album selected; `Albums, 3 Selected` when 2+ albums selected.
+   - Switch to "Describe" tab and verify the input is single-line (same height as Keyword input), and pressing `Enter` triggers search.
