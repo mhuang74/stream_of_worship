@@ -144,7 +144,7 @@ describe("SemanticSearch", () => {
       renderComponent();
       expect(screen.getByTestId("describe-help-text")).toBeInTheDocument();
       expect(screen.getByTestId("describe-help-text").textContent).toContain("关于神的恩典");
-      expect(screen.getByTestId("describe-help-text").textContent).toContain("Ctrl+Enter");
+      expect(screen.getByTestId("describe-help-text").textContent).toContain("Enter");
     });
   });
 
@@ -307,7 +307,7 @@ describe("SemanticSearch", () => {
       });
     });
 
-    it("triggers search on Ctrl+Enter", async () => {
+    it("triggers search on Enter", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ songs: [], query: "test", total: 0 }),
@@ -316,20 +316,30 @@ describe("SemanticSearch", () => {
       renderComponent();
       const input = screen.getByTestId("semantic-search-input");
       fireEvent.change(input, { target: { value: "worship songs" } });
-      fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+      fireEvent.keyDown(input, { key: "Enter" });
 
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalled();
       });
     });
 
-    it("does not trigger search on Enter without Ctrl", async () => {
+    it("fires search on plain Enter and calls preventDefault", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: [], query: "test", total: 0 }),
+      });
       renderComponent();
       const input = screen.getByTestId("semantic-search-input");
       fireEvent.change(input, { target: { value: "worship songs" } });
-      fireEvent.keyDown(input, { key: "Enter" });
 
-      expect(mockFetch).not.toHaveBeenCalled();
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+      const spy = vi.spyOn(event, "preventDefault");
+      fireEvent(input, event);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+      expect(spy).toHaveBeenCalled();
     });
   });
 

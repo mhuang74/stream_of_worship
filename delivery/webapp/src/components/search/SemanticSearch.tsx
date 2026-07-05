@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
@@ -171,8 +171,8 @@ export function useSemanticSearch({
   }, [query, albums, keys, bpmRange, onSwitchToSearchTab]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
         e.preventDefault();
         handleSearch();
       }
@@ -279,18 +279,17 @@ export function useSemanticSearch({
 
   const controls = (
       <div className="space-y-2">
-        <Textarea
+        <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe the songs you're looking for... (e.g. '关于神的恩典的赞美诗' or 'upbeat praise songs about grace')"
-          className="min-h-[80px] resize-none"
+          placeholder="Describe songs by theme or feeling..."
           aria-label="Describe songs to search for"
           data-testid="semantic-search-input"
         />
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
-            Tip: describe by theme or feeling — e.g. &lsquo;关于神的恩典与怜悯的赞美&rsquo;, &lsquo;upbeat praise songs about grace&rsquo; · Press Ctrl+Enter to search
+            Tip: describe by theme or feeling — e.g. &lsquo;关于神的恩典与怜悯的赞美&rsquo;, &lsquo;upbeat praise songs about grace&rsquo; · Press Enter to search
           </p>
           {showSearchButton && (
             <Button

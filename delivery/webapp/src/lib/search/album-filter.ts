@@ -12,7 +12,7 @@ export function albumFilterKey(album: AlbumFilter): string {
 }
 
 export function formatAlbumLabel(album: AlbumFilter): string {
-  return album.albumSeries ? `${album.albumName} - ${album.albumSeries}` : album.albumName;
+  return album.albumSeries ? `${album.albumName} (${album.albumSeries})` : album.albumName;
 }
 
 export function formatAlbumOptionLabel(album: AlbumOption): string {

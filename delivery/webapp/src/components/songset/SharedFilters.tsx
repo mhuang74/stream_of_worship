@@ -38,7 +38,7 @@ export function SharedFilters({
 
   return (
     <div className={cn("space-y-2", className)} data-testid="shared-filters">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {albums.length > 0 && (
           <AlbumMultiSelect
             albums={albums}

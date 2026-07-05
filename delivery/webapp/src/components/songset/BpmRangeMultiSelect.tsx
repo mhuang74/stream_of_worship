@@ -51,7 +51,7 @@ export function BpmRangeMultiSelect({
 
   let triggerText: string;
   if (sortedBpm.length === 0) {
-    triggerText = "All BPM Ranges";
+    triggerText = "All";
   } else {
     triggerText = sortedBpm.map((band) => BPM_BANDS[band].label).join(", ");
   }
@@ -68,8 +68,11 @@ export function BpmRangeMultiSelect({
             disabled={disabled}
             data-testid="bpm-filter"
           >
-            <span className="max-w-[18rem] truncate">{triggerText}</span>
-            <ChevronDown className="size-3.5 text-muted-foreground" />
+            <span className="max-w-[18rem] truncate whitespace-nowrap">
+              <span className="font-medium">BPM:</span>{" "}
+              <span className="text-muted-foreground">{triggerText}</span>
+            </span>
+            <ChevronDown className="size-3 text-muted-foreground/60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72 max-h-80">

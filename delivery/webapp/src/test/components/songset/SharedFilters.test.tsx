@@ -36,7 +36,7 @@ describe("SharedFilters", () => {
     it("renders album multi-select when albums are provided", () => {
       renderFilters();
       expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      expect(screen.getByTestId("album-filter")).toHaveTextContent("All 3 Albums");
+      expect(screen.getByTestId("album-filter")).toHaveTextContent("Albums: All 3");
     });
 
     it("does not render album multi-select when albums array is empty", () => {
@@ -58,8 +58,8 @@ describe("SharedFilters", () => {
 
     it("shows All Musical Keys and All BPM Ranges when empty", () => {
       renderFilters();
-      expect(screen.getByTestId("key-filter")).toHaveTextContent("All Musical Keys");
-      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("All BPM Ranges");
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: All");
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: All");
     });
   });
 
@@ -72,7 +72,7 @@ describe("SharedFilters", () => {
         expect(screen.getByTestId(hymnsOptionTestId)).toBeInTheDocument();
       });
 
-      expect(screen.getByText("Hymns - Classic [12]")).toBeInTheDocument();
+      expect(screen.getByText("Hymns (Classic) [12]")).toBeInTheDocument();
       fireEvent.click(screen.getByTestId(hymnsOptionTestId));
       expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([hymns]);
     });
@@ -89,12 +89,17 @@ describe("SharedFilters", () => {
       expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([]);
     });
 
-    it("shows only album names in the selected summary", () => {
+    it("shows 'Albums: <label>' when one album selected", () => {
       renderFilters({ selectedAlbums: [hymns] });
+      const trigger = screen.getByTestId("album-filter");
+      expect(trigger).toHaveTextContent("Albums: Hymns (Classic)");
+    });
 
-      const summary = screen.getByTestId("album-selected-summary");
-      expect(summary).toHaveTextContent("Hymns");
-      expect(summary).not.toHaveTextContent("Classic");
+    it("shows 'Albums: N Selected' when 2+ albums selected", () => {
+      renderFilters({
+        selectedAlbums: [hymns, { albumName: "Worship", albumSeries: null }],
+      });
+      expect(screen.getByTestId("album-filter")).toHaveTextContent("Albums: 2 Selected");
     });
   });
 
@@ -125,17 +130,17 @@ describe("SharedFilters", () => {
 
     it("shows key name when one selected", () => {
       renderFilters({ selectedKeys: ["C"] });
-      expect(screen.getByTestId("key-filter")).toHaveTextContent("C");
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: C");
     });
 
     it("shows two key names when two selected", () => {
       renderFilters({ selectedKeys: ["C", "D"] });
-      expect(screen.getByTestId("key-filter")).toHaveTextContent("C, D");
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: C, D");
     });
 
     it("shows first two keys plus overflow when 3+ selected", () => {
       renderFilters({ selectedKeys: ["C", "D", "E", "F"] });
-      expect(screen.getByTestId("key-filter")).toHaveTextContent("C, D, +2");
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: C, D, +2");
     });
 
     it("shows Clear all item only when keys are selected", async () => {
@@ -183,18 +188,18 @@ describe("SharedFilters", () => {
     it("shows band label only (no range text) when one selected", () => {
       renderFilters({ selectedBpm: ["slow"] });
       const trigger = screen.getByTestId("bpm-filter");
-      expect(trigger).toHaveTextContent("Slow");
+      expect(trigger).toHaveTextContent("BPM: Slow");
       expect(trigger).not.toHaveTextContent("< 90");
     });
 
     it("shows comma-joined labels when multiple selected", () => {
       renderFilters({ selectedBpm: ["slow", "fast"] });
-      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("Slow, Fast");
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: Slow, Fast");
     });
 
     it("selecting all three shows all three labels", () => {
       renderFilters({ selectedBpm: ["slow", "moderate", "fast"] });
-      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("Slow, Moderate, Fast");
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: Slow, Moderate, Fast");
     });
 
     it("shows Clear all item when bpm bands are selected", async () => {
