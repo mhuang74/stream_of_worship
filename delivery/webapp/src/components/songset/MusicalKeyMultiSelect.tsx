@@ -46,7 +46,7 @@ export function MusicalKeyMultiSelect({
 
   let triggerText: string;
   if (sortedKeys.length === 0) {
-    triggerText = "All Musical Keys";
+    triggerText = "All";
   } else if (sortedKeys.length === 1) {
     triggerText = sortedKeys[0];
   } else if (sortedKeys.length === 2) {
@@ -67,8 +67,11 @@ export function MusicalKeyMultiSelect({
             disabled={disabled}
             data-testid="key-filter"
           >
-            <span className="max-w-[18rem] truncate">{triggerText}</span>
-            <ChevronDown className="size-3.5 text-muted-foreground" />
+            <span className="max-w-[18rem] truncate whitespace-nowrap">
+              <span className="font-medium">Keys:</span>{" "}
+              <span className="text-muted-foreground">{triggerText}</span>
+            </span>
+            <ChevronDown className="size-3 text-muted-foreground/60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72 max-h-80">
