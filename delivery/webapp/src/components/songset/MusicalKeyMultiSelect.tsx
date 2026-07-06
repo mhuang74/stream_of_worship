@@ -41,7 +41,9 @@ export function MusicalKeyMultiSelect({
   const clearKeys = () => onSelectedKeysChange([]);
 
   const sortedKeys = [...selectedKeys].sort(
-    (a, b) => PITCH_CLASSES.indexOf(a) - PITCH_CLASSES.indexOf(b)
+    (a, b) =>
+      (PITCH_CLASSES as readonly string[]).indexOf(a) -
+      (PITCH_CLASSES as readonly string[]).indexOf(b)
   );
 
   let triggerText: string;
