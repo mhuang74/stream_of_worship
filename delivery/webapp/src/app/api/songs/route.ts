@@ -7,6 +7,7 @@ import {
   parseBpmRangeParam,
 } from "@/lib/db/search-helpers";
 import type { AlbumFilter } from "@/lib/search/album-filter";
+import type { BpmBandKey } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
       lyricist?: string;
       visibilityStatus?: string | string[];
       keys?: string[];
-      bpmRange?: "slow" | "moderate" | "fast";
+      bpmRange?: BpmBandKey;
     } = {};
 
     const { albumFilters, albumNames } = parseAlbumFilterParams(searchParams);

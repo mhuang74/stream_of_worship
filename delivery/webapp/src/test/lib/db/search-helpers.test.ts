@@ -97,26 +97,34 @@ describe("effective key SQL helpers", () => {
 });
 
 describe("buildBpmPredicate", () => {
-  it("slow: tempo_bpm < 90 (default alias r)", () => {
+  it("slow: tempo_bpm < 70 (default alias r)", () => {
     const sqlFragment = buildBpmPredicate("slow");
     const query = dialect.sqlToQuery(sqlFragment);
     expect(query.sql).toContain("r.tempo_bpm");
-    expect(query.sql).toContain("< 90");
+    expect(query.sql).toContain("< 70");
   });
 
-  it("moderate: 90 <= tempo_bpm < 120 (default alias r)", () => {
+  it("moderate: 70 <= tempo_bpm < 80 (default alias r)", () => {
     const sqlFragment = buildBpmPredicate("moderate");
     const query = dialect.sqlToQuery(sqlFragment);
     expect(query.sql).toContain("r.tempo_bpm");
-    expect(query.sql).toContain(">= 90");
-    expect(query.sql).toContain("< 120");
+    expect(query.sql).toContain(">= 70");
+    expect(query.sql).toContain("< 80");
   });
 
-  it("fast: tempo_bpm >= 120 (default alias r)", () => {
+  it("upbeat: 80 <= tempo_bpm < 90 (default alias r)", () => {
+    const sqlFragment = buildBpmPredicate("upbeat");
+    const query = dialect.sqlToQuery(sqlFragment);
+    expect(query.sql).toContain("r.tempo_bpm");
+    expect(query.sql).toContain(">= 80");
+    expect(query.sql).toContain("< 90");
+  });
+
+  it("fast: tempo_bpm >= 90 (default alias r)", () => {
     const sqlFragment = buildBpmPredicate("fast");
     const query = dialect.sqlToQuery(sqlFragment);
     expect(query.sql).toContain("r.tempo_bpm");
-    expect(query.sql).toContain(">= 120");
+    expect(query.sql).toContain(">= 90");
   });
 
   it("uses custom alias when provided", () => {
@@ -174,6 +182,7 @@ describe("isValidBpmBand", () => {
   it("returns true for valid bands", () => {
     expect(isValidBpmBand("slow")).toBe(true);
     expect(isValidBpmBand("moderate")).toBe(true);
+    expect(isValidBpmBand("upbeat")).toBe(true);
     expect(isValidBpmBand("fast")).toBe(true);
   });
 
@@ -217,6 +226,7 @@ describe("parseBpmRangeParam", () => {
   it("parses valid band", () => {
     expect(parseBpmRangeParam("slow")).toBe("slow");
     expect(parseBpmRangeParam("moderate")).toBe("moderate");
+    expect(parseBpmRangeParam("upbeat")).toBe("upbeat");
     expect(parseBpmRangeParam("fast")).toBe("fast");
   });
 
