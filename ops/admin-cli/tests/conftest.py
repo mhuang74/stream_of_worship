@@ -10,11 +10,6 @@ sys.path.insert(0, str(src_dir))
 import pytest
 
 
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line("markers", "integration: requires Docker (testcontainers)")
-
-
 @pytest.fixture(scope="session")
 def postgres_url():
     """Start a Postgres container and yield its connection URL.
@@ -25,29 +20,44 @@ def postgres_url():
     The URL returned by testcontainers uses the ``postgresql+psycopg2://``
     dialect prefix. We rewrite it to plain ``postgresql://`` so that
     ``psycopg.connect()`` accepts it directly.
+
+    If Docker is not available, the fixture skips instead of erroring.
     """
     pytest.importorskip("testcontainers", reason="testcontainers not installed")
     from testcontainers.postgres import PostgresContainer
 
-    with PostgresContainer("postgres:16-alpine") as postgres:
-        url = postgres.get_connection_url()
+    try:
+        container = PostgresContainer("postgres:16-alpine")
+        container.start()
+    except Exception:
+        pytest.skip("Docker not available; skipping integration test")
+
+    try:
+        url = container.get_connection_url()
         # psycopg doesn't understand the +psycopg2 dialect prefix
         url = url.replace("postgresql+psycopg2://", "postgresql://")
         yield url
+    finally:
+        container.stop()
 
 
-def make_test_provider(database_url: str):
-    """Create a ConnectionProvider configured for testcontainers (no SSL).
+@pytest.fixture
+def make_test_provider(postgres_url):
+    """Return a factory that builds a ConnectionProvider for the test DB.
 
-    Args:
-        database_url: Postgres connection URL from testcontainers.
+    Usage::
 
-    Returns:
-        ConnectionProvider with sslmode="disable" for local testing.
+        def test_something(make_test_provider):
+            provider = make_test_provider()
+            client = DatabaseClient(provider)
+            ...
     """
     from stream_of_worship.db.connection import ConnectionProvider
 
-    return ConnectionProvider(database_url, sslmode="disable")
+    def _make():
+        return ConnectionProvider(postgres_url, sslmode="disable")
+
+    return _make
 
 
 @pytest.fixture

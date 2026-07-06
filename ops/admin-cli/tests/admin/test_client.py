@@ -5,13 +5,12 @@ import pytest
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
-from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
-def admin_client(postgres_url):
+def admin_client(make_test_provider):
     """Create a DatabaseClient connected to a fresh Postgres schema."""
-    provider = make_test_provider(postgres_url)
+    provider = make_test_provider()
     conn = provider.get_connection()
 
     # Create schema
@@ -24,7 +23,7 @@ def admin_client(postgres_url):
 
     # Cleanup (use fresh connection in case provider was closed by a test)
     try:
-        cleanup_provider = make_test_provider(postgres_url)
+        cleanup_provider = make_test_provider()
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_items CASCADE;
