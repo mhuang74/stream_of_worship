@@ -446,7 +446,7 @@ export function BrowseSheet({
           </div>
 
           <div
-            className="h-[124px] shrink-0 overflow-hidden pb-4"
+            className="shrink-0 pb-4"
             data-testid="search-controls-region"
           >
             {mode === "keyword" ? (
@@ -577,7 +577,7 @@ export function BrowseSheet({
                 )}
 
                 {!error && results.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pb-4">
                     {results.map((song) => (
                       <SongCard
                         key={song.id}
