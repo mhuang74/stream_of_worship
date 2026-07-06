@@ -1,6 +1,6 @@
 """Database layer for sow-admin.
 
-Provides SQLite database client, models, and schema definitions.
+Provides PostgreSQL database client, models, and schema definitions.
 """
 
 from stream_of_worship.admin.db.client import DatabaseClient

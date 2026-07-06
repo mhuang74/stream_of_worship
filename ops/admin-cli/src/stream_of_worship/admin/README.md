@@ -266,15 +266,16 @@ export PYTHONPATH=/path/to/project/src:$PYTHONPATH
 uv run --extra admin sow-admin --help
 ```
 
-### Database Locked
+### Database Connection Issues
 
-If the database is locked, ensure no other process is using it:
+If you cannot connect to the database, verify your PostgreSQL connection:
 
 ```bash
-# Check for running processes (if using local SQLite)
-lsof ~/.config/stream-of-worship-admin/db/sow.db
+# Check the configured database URL
+sow-admin db status
 
-# Close any open database connections
+# Verify the database is reachable
+psql "$SOW_DATABASE_URL" -c "SELECT 1"
 ```
 
 ### Config File Not Found

@@ -1,7 +1,7 @@
 """Tests for the admin connection health checker.
 
-The old SyncService/Turso infrastructure has been removed; this module now
-only re-exports ``check_database_connection()`` from the shared db module.
+This module tests ``check_database_connection()`` re-exported from the
+shared db module.
 """
 
 from unittest.mock import MagicMock, patch
