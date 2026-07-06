@@ -9,7 +9,7 @@ import {
 import {
   parseAlbumFilterValues,
   parseAlbumValues,
-  parseBpmRangeParam,
+  parseBpmRangeParams,
   parseKeysParam,
 } from "@/lib/db/search-helpers";
 import { z } from "zod";
@@ -25,7 +25,7 @@ const RequestSchema = z.object({
   limit: z.number().int().min(1).max(50).default(20),
   albums: z.array(z.union([z.string(), AlbumFilterSchema])).optional(),
   keys: z.array(z.string()).optional(),
-  bpmRange: z.string().optional(),
+  bpmRange: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -60,7 +60,11 @@ export async function POST(request: NextRequest) {
     );
     const albums = parseAlbumValues(albumValues.filter((album): album is string => typeof album === "string"));
     const keys = parseKeysParam(parsed.data.keys?.join(",") ?? null);
-    const bpmRange = parseBpmRangeParam(parsed.data.bpmRange ?? null);
+    const bpmRangeRaw = parsed.data.bpmRange;
+    const bpmRangeParams = bpmRangeRaw
+      ? Array.isArray(bpmRangeRaw) ? bpmRangeRaw : [bpmRangeRaw]
+      : [];
+    const bpmRange = parseBpmRangeParams(bpmRangeParams);
     const semanticOptions = albumFilters || albums || keys || bpmRange
       ? { albumFilters, albums, keys, bpmRange }
       : undefined;

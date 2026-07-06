@@ -51,14 +51,12 @@ export function AlbumMultiSelect({
   };
 
   const clearAlbums = () => onSelectedAlbumsChange([]);
-  const summary = selectedAlbums.slice(0, 2).map((album) => album.albumName).join(", ");
-  const overflowCount = Math.max(0, selectedAlbums.length - 2);
-  const triggerText =
+  const triggerValue =
     selectedAlbums.length === 0
-      ? `All ${albums.length} Albums`
+      ? `All ${albums.length}`
       : selectedAlbums.length === 1
         ? formatAlbumLabel(selectedAlbums[0])
-        : `${selectedAlbums.length} Albums`;
+        : `${selectedAlbums.length} Selected`;
 
   return (
     <div className={cn("space-y-2", className)} data-testid="album-multi-select">
@@ -72,8 +70,11 @@ export function AlbumMultiSelect({
             disabled={disabled || albums.length === 0}
             data-testid="album-filter"
           >
-            <span className="max-w-[18rem] truncate">{triggerText}</span>
-            <ChevronDown className="size-3.5 text-muted-foreground" />
+            <span className="max-w-[18rem] truncate whitespace-nowrap">
+              <span className="font-medium">Albums:</span>{" "}
+              <span className="text-muted-foreground">{triggerValue}</span>
+            </span>
+            <ChevronDown className="size-3 text-muted-foreground/60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72 max-h-80">
@@ -104,27 +105,6 @@ export function AlbumMultiSelect({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {selectedAlbums.length > 0 && (
-        <div
-          className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
-          data-testid="album-selected-summary"
-        >
-          <span className="truncate max-w-[18rem]">{summary}</span>
-          {overflowCount > 0 && <span>+{overflowCount} more</span>}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="size-6"
-            onClick={clearAlbums}
-            aria-label="Clear selected albums"
-            data-testid="album-summary-clear"
-          >
-            <X className="size-3.5" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

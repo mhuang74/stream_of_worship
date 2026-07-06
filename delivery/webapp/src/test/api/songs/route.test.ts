@@ -349,7 +349,7 @@ describe("GET /api/songs", () => {
     expect(listSongs).toHaveBeenCalledWith(
       50,
       0,
-      expect.objectContaining({ bpmRange: "slow" })
+      expect.objectContaining({ bpmRange: ["slow"] })
     );
   });
 
@@ -371,7 +371,7 @@ describe("GET /api/songs", () => {
     expect(listSongs).toHaveBeenCalledWith(
       50,
       0,
-      expect.objectContaining({ keys: ["D", "A"], bpmRange: "fast" })
+      expect.objectContaining({ keys: ["D", "A"], bpmRange: ["fast"] })
     );
   });
 

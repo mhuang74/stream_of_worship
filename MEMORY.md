@@ -1,3 +1,14 @@
+## 2026-07-04
+
+- Split chat and embedding OpenAI-compatible configuration per
+  `specs/separate-chat-and-embedding-env-vars-v1.md`: `SOW_LLM_*` is now
+  chat-only, embedding clients use `SOW_EMBEDDING_API_KEY`,
+  `SOW_EMBEDDING_BASE_URL`, and `SOW_EMBEDDING_MODEL`, and
+  `SOW_LLM_EMBEDDING_MODEL` is ignored/removed from runtime config. Updated
+  analysis-service, webapp semantic search, POC theme-anchor regeneration,
+  deployment docs/examples, focused config/deployment tests, and graphify
+  output.
+
 ## 2026-06-30
 
 - Followed up Cast `session_request_failed` debugging: receiver env app IDs are

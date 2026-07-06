@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
@@ -11,6 +11,7 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
+import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
 
 interface SemanticSearchResult extends SongCardData {
@@ -106,11 +107,11 @@ export function useSemanticSearch({
           limit: number;
           albums?: AlbumFilter[];
           keys?: string[];
-          bpmRange?: StructuredSearchCriteria["bpmRange"];
+          bpmRange?: BpmBandKey[];
         } = { query: trimmed, limit: 20 };
         if (albums.length > 0) body.albums = albums;
         if (keys.length > 0) body.keys = keys;
-        if (bpmRange) body.bpmRange = bpmRange;
+        if (bpmRange && bpmRange.length > 0) body.bpmRange = bpmRange;
 
         response = await fetch("/api/songs/search/semantic", {
           method: "POST",
@@ -127,8 +128,10 @@ export function useSemanticSearch({
         if (keys.length > 0) {
           params.set("keys", keys.join(","));
         }
-        if (bpmRange) {
-          params.set("bpmRange", bpmRange);
+        if (bpmRange && bpmRange.length > 0) {
+          for (const band of bpmRange) {
+            params.append("bpmRange", band);
+          }
         }
         params.set("limit", "50");
 
@@ -168,8 +171,8 @@ export function useSemanticSearch({
   }, [query, albums, keys, bpmRange, onSwitchToSearchTab]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
         e.preventDefault();
         handleSearch();
       }
@@ -276,18 +279,17 @@ export function useSemanticSearch({
 
   const controls = (
       <div className="space-y-2">
-        <Textarea
+        <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe the songs you're looking for... (e.g. '关于神的恩典的赞美诗' or 'upbeat praise songs about grace')"
-          className="min-h-[80px] resize-none"
+          placeholder="Describe songs by theme or feeling..."
           aria-label="Describe songs to search for"
           data-testid="semantic-search-input"
         />
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
-            Tip: describe by theme or feeling — e.g. &lsquo;关于神的恩典与怜悯的赞美&rsquo;, &lsquo;upbeat praise songs about grace&rsquo; · Press Ctrl+Enter to search
+            Tip: describe by theme or feeling — e.g. &lsquo;关于神的恩典与怜悯的赞美&rsquo;, &lsquo;upbeat praise songs about grace&rsquo; · Press Enter to search
           </p>
           {showSearchButton && (
             <Button

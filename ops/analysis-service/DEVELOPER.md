@@ -355,6 +355,9 @@ docker compose down -v
 | `SOW_LLM_API_KEY` | For LRC | - | LLM API key |
 | `SOW_LLM_BASE_URL` | For LRC | - | LLM base URL |
 | `SOW_LLM_MODEL` | For LRC | - | LLM model name |
+| `SOW_EMBEDDING_API_KEY` | For embedding jobs | - | Embedding API key |
+| `SOW_EMBEDDING_BASE_URL` | For embedding jobs | - | Embedding base URL |
+| `SOW_EMBEDDING_MODEL` | For embedding jobs | text-embedding-3-small | Embedding model name |
 | `SOW_FORCED_ALIGNER_MODEL_PATH` | For LRC | - | Path to forced aligner model snapshot |
 | `SOW_FORCED_ALIGNER_DEVICE` | For LRC | auto | Device for forced aligner (cpu, cuda, auto) |
 | `SOW_DASHSCOPE_API_KEY` | Optional | - | DashScope API key for Qwen3 ASR |

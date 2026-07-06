@@ -1,24 +1,24 @@
 import OpenAI from "openai";
 
-if (!process.env.SOW_LLM_API_KEY) {
+if (!process.env.SOW_EMBEDDING_API_KEY) {
   throw new Error(
-    "SOW_LLM_API_KEY environment variable not set. " +
-    "Set this to your OpenAI-compatible API key."
+    "SOW_EMBEDDING_API_KEY environment variable not set. " +
+    "Set this to your OpenAI-compatible API key for embeddings."
   );
 }
-if (!process.env.SOW_LLM_BASE_URL) {
+if (!process.env.SOW_EMBEDDING_BASE_URL) {
   throw new Error(
-    "SOW_LLM_BASE_URL environment variable not set. " +
-    "Set this to your OpenAI-compatible API base URL " +
-    "(e.g., https://openrouter.ai/api/v1)."
+    "SOW_EMBEDDING_BASE_URL environment variable not set. " +
+    "Set this to your OpenAI-compatible API base URL for embeddings " +
+    "(e.g., https://api.openai.com/v1)."
   );
 }
 
-const EMBEDDING_MODEL = process.env.SOW_LLM_EMBEDDING_MODEL || "text-embedding-3-small";
+const EMBEDDING_MODEL = process.env.SOW_EMBEDDING_MODEL || "text-embedding-3-small";
 
 const openai = new OpenAI({
-  apiKey: process.env.SOW_LLM_API_KEY,
-  baseURL: process.env.SOW_LLM_BASE_URL,
+  apiKey: process.env.SOW_EMBEDDING_API_KEY,
+  baseURL: process.env.SOW_EMBEDDING_BASE_URL,
   timeout: 10_000,
   maxRetries: 2,
 });

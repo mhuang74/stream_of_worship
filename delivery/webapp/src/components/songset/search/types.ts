@@ -6,6 +6,6 @@ export type { BpmBandKey } from "@/lib/constants";
 export interface StructuredSearchCriteria {
   query?: string;
   keys?: string[];
-  bpmRange?: BpmBandKey;
+  bpmRange?: BpmBandKey[];
   albums?: AlbumFilter[];
 }

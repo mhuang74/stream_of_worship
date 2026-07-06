@@ -149,22 +149,6 @@ class TestConnectionUrl:
         with pytest.raises(ValueError, match="database_url is not configured"):
             config.get_connection_url()
 
-    def test_ignores_old_turso_section(self, tmp_path, monkeypatch):
-        """Old [turso] section is silently ignored."""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text("""
-[turso]
-database_url = "libsql://old.turso.io"
-sync_on_startup = true
-
-[database]
-url = "postgresql://user@host/db"
-""")
-        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
-        config = AdminConfig.load(config_file)
-        assert config.database_url == "postgresql://user@host/db"
-        assert config.get_connection_url() == "postgresql://user@host/db"
-
 
 class TestConfigPaths:
     """Tests for config path functions."""

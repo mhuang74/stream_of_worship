@@ -10,7 +10,6 @@ describe("SharedFilters", () => {
     { albumName: "Christmas", albumSeries: "Seasonal", songCount: 4 },
   ];
   const hymns = { albumName: "Hymns", albumSeries: "Classic" };
-  const worship = { albumName: "Worship", albumSeries: null };
   const hymnsOptionTestId = `album-option-${encodeURIComponent(albumFilterKey(hymns))}`;
 
   const defaultProps = {
@@ -19,7 +18,7 @@ describe("SharedFilters", () => {
     onSelectedAlbumsChange: vi.fn(),
     selectedKeys: [],
     onSelectedKeysChange: vi.fn(),
-    selectedBpm: undefined,
+    selectedBpm: [],
     onSelectedBpmChange: vi.fn(),
     onClearFilters: vi.fn(),
     isLoading: false,
@@ -37,7 +36,7 @@ describe("SharedFilters", () => {
     it("renders album multi-select when albums are provided", () => {
       renderFilters();
       expect(screen.getByTestId("album-filter")).toBeInTheDocument();
-      expect(screen.getByTestId("album-filter")).toHaveTextContent("All 3 Albums");
+      expect(screen.getByTestId("album-filter")).toHaveTextContent("Albums: All 3");
     });
 
     it("does not render album multi-select when albums array is empty", () => {
@@ -45,28 +44,22 @@ describe("SharedFilters", () => {
       expect(screen.queryByTestId("album-filter")).not.toBeInTheDocument();
     });
 
-    it("renders advanced filters toggle", () => {
+    it("does not render advanced filters toggle or panel", () => {
       renderFilters();
-      expect(screen.getByTestId("advanced-filters-toggle")).toBeInTheDocument();
-    });
-
-    it("does not show advanced panel by default", () => {
-      renderFilters();
+      expect(screen.queryByTestId("advanced-filters-toggle")).not.toBeInTheDocument();
       expect(screen.queryByTestId("advanced-filters-panel")).not.toBeInTheDocument();
     });
 
-    it("shows advanced panel when toggle is clicked", () => {
+    it("renders key and bpm filters at top level", () => {
       renderFilters();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.getByTestId("advanced-filters-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("key-filter")).toBeInTheDocument();
+      expect(screen.getByTestId("bpm-filter")).toBeInTheDocument();
     });
 
-    it("hides advanced panel when toggle is clicked again", () => {
+    it("shows All Musical Keys and All BPM Ranges when empty", () => {
       renderFilters();
-      const toggle = screen.getByTestId("advanced-filters-toggle");
-      fireEvent.click(toggle);
-      fireEvent.click(toggle);
-      expect(screen.queryByTestId("advanced-filters-panel")).not.toBeInTheDocument();
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: All");
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: All");
     });
   });
 
@@ -79,7 +72,7 @@ describe("SharedFilters", () => {
         expect(screen.getByTestId(hymnsOptionTestId)).toBeInTheDocument();
       });
 
-      expect(screen.getByText("Hymns - Classic [12]")).toBeInTheDocument();
+      expect(screen.getByText("Hymns (Classic) [12]")).toBeInTheDocument();
       fireEvent.click(screen.getByTestId(hymnsOptionTestId));
       expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([hymns]);
     });
@@ -96,87 +89,143 @@ describe("SharedFilters", () => {
       expect(defaultProps.onSelectedAlbumsChange).toHaveBeenCalledWith([]);
     });
 
-    it("shows only album names in the selected summary", () => {
+    it("shows 'Albums: <label>' when one album selected", () => {
       renderFilters({ selectedAlbums: [hymns] });
+      const trigger = screen.getByTestId("album-filter");
+      expect(trigger).toHaveTextContent("Albums: Hymns (Classic)");
+    });
 
-      const summary = screen.getByTestId("album-selected-summary");
-      expect(summary).toHaveTextContent("Hymns");
-      expect(summary).not.toHaveTextContent("Classic");
+    it("shows 'Albums: N Selected' when 2+ albums selected", () => {
+      renderFilters({
+        selectedAlbums: [hymns, { albumName: "Worship", albumSeries: null }],
+      });
+      expect(screen.getByTestId("album-filter")).toHaveTextContent("Albums: 2 Selected");
     });
   });
 
-  describe("key chips", () => {
-    it("selecting a key calls onSelectedKeysChange", () => {
+  describe("musical key multi-select", () => {
+    it("selecting a key calls onSelectedKeysChange", async () => {
       renderFilters();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
 
-      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("key-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("key-option-D")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("key-option-D"));
       expect(defaultProps.onSelectedKeysChange).toHaveBeenCalledWith(["D"]);
     });
 
-    it("deselecting a key calls onSelectedKeysChange", () => {
+    it("deselecting a key calls onSelectedKeysChange", async () => {
       renderFilters({ selectedKeys: ["D"] });
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
 
-      fireEvent.click(screen.getByTestId("key-chip-D"));
+      fireEvent.click(screen.getByTestId("key-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("key-option-D")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("key-option-D"));
       expect(defaultProps.onSelectedKeysChange).toHaveBeenCalledWith([]);
     });
-  });
 
-  describe("bpm chips", () => {
-    it("selecting a bpm calls onSelectedBpmChange", () => {
-      renderFilters();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-      expect(defaultProps.onSelectedBpmChange).toHaveBeenCalledWith("slow");
+    it("shows key name when one selected", () => {
+      renderFilters({ selectedKeys: ["C"] });
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: C");
     });
 
-    it("deselecting a bpm calls onSelectedBpmChange with undefined", () => {
-      renderFilters({ selectedBpm: "slow" });
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
+    it("shows two key names when two selected", () => {
+      renderFilters({ selectedKeys: ["C", "D"] });
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: C, D");
+    });
 
-      fireEvent.click(screen.getByTestId("bpm-chip-slow"));
-      expect(defaultProps.onSelectedBpmChange).toHaveBeenCalledWith(undefined);
+    it("shows first two keys plus overflow when 3+ selected", () => {
+      renderFilters({ selectedKeys: ["C", "D", "E", "F"] });
+      expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: C, D, +2");
+    });
+
+    it("shows Clear all item only when keys are selected", async () => {
+      renderFilters();
+      fireEvent.click(screen.getByTestId("key-filter"));
+      await waitFor(() => {
+        expect(screen.queryByTestId("key-clear-all")).not.toBeInTheDocument();
+      });
+    });
+
+    it("Clear all item appears when keys are selected", async () => {
+      renderFilters({ selectedKeys: ["C"] });
+      fireEvent.click(screen.getByTestId("key-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("key-clear-all")).toBeInTheDocument();
+      });
     });
   });
 
-  describe("actions", () => {
-    it("does not render an Apply filters button", () => {
+  describe("bpm range multi-select", () => {
+    it("selecting a bpm calls onSelectedBpmChange", async () => {
       renderFilters();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.queryByRole("button", { name: /apply filters/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("bpm-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("bpm-option-slow")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("bpm-option-slow"));
+      expect(defaultProps.onSelectedBpmChange).toHaveBeenCalledWith(["slow"]);
+    });
+
+    it("deselecting a bpm calls onSelectedBpmChange removing the band", async () => {
+      renderFilters({ selectedBpm: ["slow"] });
+
+      fireEvent.click(screen.getByTestId("bpm-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("bpm-option-slow")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("bpm-option-slow"));
+      expect(defaultProps.onSelectedBpmChange).toHaveBeenCalledWith([]);
+    });
+
+    it("shows band label only (no range text) when one selected", () => {
+      renderFilters({ selectedBpm: ["slow"] });
+      const trigger = screen.getByTestId("bpm-filter");
+      expect(trigger).toHaveTextContent("BPM: Slow");
+      expect(trigger).not.toHaveTextContent("< 90");
+    });
+
+    it("shows comma-joined labels when multiple selected", () => {
+      renderFilters({ selectedBpm: ["slow", "fast"] });
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: Slow, Fast");
+    });
+
+    it("selecting all three shows all three labels", () => {
+      renderFilters({ selectedBpm: ["slow", "moderate", "fast"] });
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: Slow, Moderate, Fast");
+    });
+
+    it("shows Clear all item when bpm bands are selected", async () => {
+      renderFilters({ selectedBpm: ["slow"] });
+      fireEvent.click(screen.getByTestId("bpm-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("bpm-clear-all")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("page-level clear all", () => {
+    it("does not render Clear all button when no filters active", () => {
+      renderFilters();
+      expect(screen.queryByTestId("clear-all-filters")).not.toBeInTheDocument();
+    });
+
+    it("renders Clear all button when filters are active", () => {
+      renderFilters({ selectedKeys: ["D"] });
+      expect(screen.getByTestId("clear-all-filters")).toBeInTheDocument();
     });
 
     it("Clear all button calls onClearFilters", () => {
       renderFilters({ selectedAlbums: [hymns], selectedKeys: ["D"] });
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      fireEvent.click(screen.getByTestId("advanced-clear-button"));
+      fireEvent.click(screen.getByTestId("clear-all-filters"));
       expect(defaultProps.onClearFilters).toHaveBeenCalled();
-    });
-
-    it("Clear all button is disabled when no filters active", () => {
-      renderFilters();
-      fireEvent.click(screen.getByTestId("advanced-filters-toggle"));
-      expect(screen.getByTestId("advanced-clear-button")).toBeDisabled();
-    });
-  });
-
-  describe("active filter count badge", () => {
-    it("shows correct count badge for advanced filters only", () => {
-      renderFilters({
-        selectedAlbums: [hymns, worship],
-        selectedKeys: ["D"],
-        selectedBpm: "slow",
-      });
-      const toggle = screen.getByTestId("advanced-filters-toggle");
-      expect(toggle.textContent).toContain("2");
-    });
-
-    it("does not show count badge when no filters active", () => {
-      renderFilters();
-      const toggle = screen.getByTestId("advanced-filters-toggle");
-      expect(toggle.textContent).not.toMatch(/\d/);
     });
   });
 });

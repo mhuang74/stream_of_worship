@@ -5,12 +5,14 @@ import {
   buildCatalogKeyTokenRegex,
   buildEffectiveKeyPredicate,
   buildBpmPredicate,
+  buildBpmPredicates,
   buildVisibilityCondition,
   effectiveKeyMatchesFilter,
   isValidPitchClass,
   isValidBpmBand,
   parseKeysParam,
   parseBpmRangeParam,
+  parseBpmRangeParams,
 } from "@/lib/db/search-helpers";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -135,6 +137,36 @@ describe("buildBpmPredicate", () => {
   });
 });
 
+describe("buildBpmPredicates", () => {
+  it("returns undefined for empty array", () => {
+    expect(buildBpmPredicates([])).toBeUndefined();
+  });
+
+  it("returns single predicate (no OR) for one band", () => {
+    const sqlFragment = buildBpmPredicates(["slow"]);
+    expect(sqlFragment).toBeDefined();
+    const query = dialect.sqlToQuery(sqlFragment!);
+    expect(query.sql).toContain("r.tempo_bpm");
+    expect(query.sql).toContain("< 70");
+    expect(query.sql).not.toContain("OR");
+  });
+
+  it("ORs multiple bands together", () => {
+    const sqlFragment = buildBpmPredicates(["slow", "fast"]);
+    expect(sqlFragment).toBeDefined();
+    const query = dialect.sqlToQuery(sqlFragment!);
+    expect(query.sql).toContain("OR");
+    expect(query.sql).toContain("< 70");
+    expect(query.sql).toContain(">= 90");
+  });
+
+  it("uses custom alias", () => {
+    const sqlFragment = buildBpmPredicates(["slow"], "r3");
+    const query = dialect.sqlToQuery(sqlFragment!);
+    expect(query.sql).toContain("r3.tempo_bpm");
+  });
+});
+
 describe("buildVisibilityCondition", () => {
   it("returns undefined for undefined visibilityStatus", () => {
     expect(buildVisibilityCondition(undefined, "r2")).toBeUndefined();
@@ -236,5 +268,40 @@ describe("parseBpmRangeParam", () => {
 
   it("returns undefined for invalid band", () => {
     expect(parseBpmRangeParam("medium")).toBeUndefined();
+  });
+});
+
+describe("parseBpmRangeParams", () => {
+  it("parses valid bands", () => {
+    expect(parseBpmRangeParams(["slow"])).toEqual(["slow"]);
+    expect(parseBpmRangeParams(["slow", "fast"])).toEqual(["slow", "fast"]);
+  });
+
+  it("filters out invalid bands", () => {
+    expect(parseBpmRangeParams(["slow", "medium", "fast"])).toEqual(["slow", "fast"]);
+  });
+
+  it("deduplicates bands", () => {
+    expect(parseBpmRangeParams(["slow", "slow", "fast"])).toEqual(["slow", "fast"]);
+  });
+
+  it("returns undefined for empty array", () => {
+    expect(parseBpmRangeParams([])).toBeUndefined();
+  });
+
+  it("returns undefined when all invalid", () => {
+    expect(parseBpmRangeParams(["medium", "unknown"])).toBeUndefined();
+  });
+
+  it("parses comma-separated values within a single param", () => {
+    expect(parseBpmRangeParams(["slow,fast"])).toEqual(["slow", "fast"]);
+  });
+
+  it("trims whitespace around comma-separated values", () => {
+    expect(parseBpmRangeParams([" slow , fast "])).toEqual(["slow", "fast"]);
+  });
+
+  it("filters invalid entries within comma-separated values", () => {
+    expect(parseBpmRangeParams(["slow,medium,fast"])).toEqual(["slow", "fast"]);
   });
 });

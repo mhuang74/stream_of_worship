@@ -11,11 +11,10 @@ from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.db.app.read_client import ReadOnlyClient
 from stream_of_worship.db.app.songset_client import SongsetClient
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
-from tests.conftest import make_test_provider
 
 
 @pytest.fixture(scope="function")
-def db_clients(postgres_url, seed_user):
+def db_clients(make_test_provider, seed_user):
     """Create schema, seed a default user, and return connected clients.
 
     The ``SongsetClient`` returned is scoped to the seeded user so existing
@@ -24,7 +23,7 @@ def db_clients(postgres_url, seed_user):
     Returns:
         Tuple of (DatabaseClient, ReadOnlyClient, SongsetClient, connection).
     """
-    provider = make_test_provider(postgres_url)
+    provider = make_test_provider()
     conn = provider.get_connection()
 
     # Create all tables
@@ -43,7 +42,7 @@ def db_clients(postgres_url, seed_user):
 
     # Cleanup (use a fresh connection in case provider was closed by test)
     try:
-        cleanup_provider = make_test_provider(postgres_url)
+        cleanup_provider = make_test_provider()
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_share CASCADE;

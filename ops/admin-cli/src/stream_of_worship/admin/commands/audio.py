@@ -33,6 +33,7 @@ from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, g
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_SELECT
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
@@ -1275,7 +1276,8 @@ def list_recordings(
         console.print("[yellow]No recordings found.[/yellow]")
         return
 
-    # For "series" sort, we need to re-sort because SQLite can't extract the series number
+    # Re-sort in Python because SQL ORDER BY is lexicographic; we need natural
+    # sort on the embedded series number (e.g. 敬拜讚美2 before 敬拜讚美15).
     # For "album" and "title", DB sort is sufficient but we do Python sort as fallback
     if sort == "series":
         enriched.sort(key=lambda t: (_extract_series_sort_key(t[3]), t[2] or "", t[1] or ""))
@@ -1380,6 +1382,12 @@ def show_recording(
 
     if song:
         info_lines.append(f"[cyan]Song Title:[/cyan] {song.title}")
+        if song.musical_key:
+            parsed_catalog = parse_musical_key(song.musical_key)
+            catalog_display = parsed_catalog.display or song.musical_key
+            info_lines.append(f"[cyan]Scraped Key:[/cyan] {catalog_display}")
+            if song.musical_key_mode:
+                info_lines.append(f"[cyan]Scraped Mode:[/cyan] {song.musical_key_mode}")
 
     info_lines.extend(
         [
@@ -1426,9 +1434,9 @@ def show_recording(
         if recording.duration_seconds is not None:
             info_lines.append(f"[cyan]Duration:[/cyan] {recording.formatted_duration}")
         if recording.tempo_bpm is not None:
-            info_lines.append(f"[cyan]Tempo:[/cyan] {recording.tempo_bpm} BPM")
+            info_lines.append(f"[cyan]BPM:[/cyan] {round(recording.tempo_bpm)}")
         if recording.musical_key:
-            info_lines.append(f"[cyan]Key:[/cyan] {recording.musical_key}")
+            info_lines.append(f"[cyan]Analyzed Key:[/cyan] {recording.musical_key}")
         if recording.musical_mode:
             info_lines.append(f"[cyan]Mode:[/cyan] {recording.musical_mode}")
         if recording.key_confidence is not None:
@@ -3263,8 +3271,8 @@ def _force_sync_all_pending(
     """Force update all pending recordings."""
     # Get all non-completed recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
-    cursor.execute("""
-        SELECT * FROM recordings
+    cursor.execute(f"""
+        SELECT {RECORDING_COLUMNS_SELECT} FROM recordings
         WHERE (analysis_status IN ('pending', 'processing', 'failed')
            OR lrc_status IN ('pending', 'processing', 'failed'))
           AND deleted_at IS NULL

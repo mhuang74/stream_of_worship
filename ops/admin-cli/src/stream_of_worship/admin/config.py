@@ -113,9 +113,6 @@ class AdminConfig:
             if "url" in db:
                 config.database_url = db["url"]
 
-        # Backward compatibility: silently ignore old [turso] section
-        # (it may still exist in user configs from before migration)
-
         # Backward compatibility: silently ignore old [paths] section
         # (cache_dir is now always at standard platform location)
 

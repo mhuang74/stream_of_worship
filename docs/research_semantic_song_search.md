@@ -95,7 +95,7 @@ API route: `POST /api/songs/search/semantic` — `{ query: string, limit?: numbe
 | CJK filtering (≥ 4 chars) | Excludes metadata lines, short interjections, and English-only lines that produce noisy similarity scores |
 | HNSW indexes | Fast approximate nearest neighbor search for production-scale vector queries |
 | Separate embedding semaphore | Embedding jobs only call external OpenAI API — no GPU/CPU contention with heavy ML jobs |
-| OpenAI-compatible provider | `SOW_LLM_BASE_URL` + `SOW_LLM_API_KEY` supports OpenRouter, direct OpenAI, etc. |
+| OpenAI-compatible provider | `SOW_EMBEDDING_BASE_URL` + `SOW_EMBEDDING_API_KEY` supports OpenRouter, direct OpenAI, etc. |
 
 ---
 
@@ -103,12 +103,14 @@ API route: `POST /api/songs/search/semantic` — `{ query: string, limit?: numbe
 
 | Variable | Scope | Purpose |
 |----------|-------|---------|
-| `SOW_LLM_API_KEY` | Analysis Service + Web App | API key for OpenAI-compatible embedding provider |
-| `SOW_LLM_BASE_URL` | Analysis Service + Web App | Base URL for OpenAI-compatible API (e.g., `https://openrouter.ai/api/v1`) |
-| `SOW_LLM_EMBEDDING_MODEL` | Analysis Service + Web App | Provider-specific model name for API calls (default: `text-embedding-3-small`; OpenRouter: `openai/text-embedding-3-small`) |
-| `SOW_LLM_MODEL` | Analysis Service only | LLM chat model for LRC alignment (e.g., `openai/gpt-4o-mini`) — NOT used for embeddings |
+| `SOW_EMBEDDING_API_KEY` | Analysis Service + Web App | API key for OpenAI-compatible embedding provider |
+| `SOW_EMBEDDING_BASE_URL` | Analysis Service + Web App | Base URL for embedding API calls (e.g., `https://openrouter.ai/api/v1`) |
+| `SOW_EMBEDDING_MODEL` | Analysis Service + Web App | Provider-specific embedding model name for API calls (default: `text-embedding-3-small`; OpenRouter: `openai/text-embedding-3-small`) |
+| `SOW_LLM_API_KEY` | Analysis Service chat only | API key for OpenAI-compatible chat provider |
+| `SOW_LLM_BASE_URL` | Analysis Service chat only | Base URL for chat API calls |
+| `SOW_LLM_MODEL` | Analysis Service chat only | LLM chat model for LRC alignment (e.g., `openai/gpt-4o-mini`) — NOT used for embeddings |
 
-> **Note**: The DB `model_version` label is always hardcoded as `"text-embedding-3-small"` (provider-agnostic), while `SOW_LLM_EMBEDDING_MODEL` is the provider-specific name used for the actual API call.
+> **Note**: The DB `model_version` label is always hardcoded as `"text-embedding-3-small"` (provider-agnostic), while `SOW_EMBEDDING_MODEL` is the provider-specific name used for the actual API call.
 
 ---
 
@@ -116,7 +118,7 @@ API route: `POST /api/songs/search/semantic` — `{ query: string, limit?: numbe
 
 ### Operational Concerns
 
-1. **`SOW_LLM_BASE_URL` is now required even for OpenAI direct** — Previously, `SOW_OPENAI_API_KEY` alone was sufficient (the OpenAI SDK defaults to `https://api.openai.com/v1`). Now users must explicitly set `SOW_LLM_BASE_URL` even when using OpenAI directly. This adds friction for the simplest use case. **Recommendation**: Default `SOW_LLM_BASE_URL` to `https://api.openai.com/v1` in `config.py` and `embedding.ts` instead of requiring it and raising `LLMConfigError` on absence.
+1. **`SOW_EMBEDDING_BASE_URL` is required even for OpenAI direct** — Users must explicitly set `SOW_EMBEDDING_BASE_URL` even when using OpenAI directly. This adds friction for the simplest use case. **Recommendation**: Default `SOW_EMBEDDING_BASE_URL` to `https://api.openai.com/v1` in `config.py` and `embedding.ts` instead of requiring it and raising `LLMConfigError` on absence.
 
 2. **No rollback plan** — The spec acknowledges hard cutover but doesn't address what happens if deployment needs to be reverted. Since `SOW_OPENAI_API_KEY` is removed from code, a rollback would require either re-adding the old var or ensuring the new vars are already in place. **Recommendation**: Add a brief rollback note (e.g., "ensure both old and new env vars are set during the deployment window, then remove old vars after confirming stability").
 
@@ -128,13 +130,13 @@ API route: `POST /api/songs/search/semantic` — `{ query: string, limit?: numbe
 
 5. **Silent exclusion of old-model songs with no admin visibility** — The per-song `WHERE se.model_version = ${expectedModelVersion}` filter silently drops songs from search results. This is better than a hard 503, but there's no admin-visible signal that songs are missing. **Recommendation**: Log a count of excluded songs (or add a metric) so operators know remediation SQL is still pending. Alternatively, add an admin CLI command that reports songs with mismatched `model_version`.
 
-6. **No dimension mismatch guard** — If someone configures a different embedding model that produces non-1536-dimension vectors, the `semanticSearchSongs` validation will reject it, but the `model_version` check alone doesn't prevent this. The `SOW_LLM_EMBEDDING_MODEL` env var could be set to any model name without dimension validation. **Recommendation**: Consider validating the `dimensions` parameter against the configured model, or at minimum documenting which models produce 1536-d vectors.
+6. **No dimension mismatch guard** — If someone configures a different embedding model that produces non-1536-dimension vectors, the `semanticSearchSongs` validation will reject it, but the `model_version` check alone doesn't prevent this. The `SOW_EMBEDDING_MODEL` env var could be set to any model name without dimension validation. **Recommendation**: Consider validating the `dimensions` parameter against the configured model, or at minimum documenting which models produce 1536-d vectors.
 
 ### UX Concerns
 
-7. **Webapp errors surface lazily, not at startup** — The `embedding.ts` guards fail on first request import (not server startup) due to Next.js App Router's lazy module loading. A misconfigured deployment can pass smoke tests and only fail when a user actually tries semantic search. **Recommendation**: Add a startup health probe or build-time env var validation for `SOW_LLM_API_KEY` and `SOW_LLM_BASE_URL`.
+7. **Webapp errors surface lazily, not at startup** — The `embedding.ts` guards fail on first request import (not server startup) due to Next.js App Router's lazy module loading. A misconfigured deployment can pass smoke tests and only fail when a user actually tries semantic search. **Recommendation**: Add a startup health probe or build-time env var validation for `SOW_EMBEDDING_API_KEY` and `SOW_EMBEDDING_BASE_URL`.
 
-8. **Dual model naming is a cognitive burden** — `SOW_LLM_EMBEDDING_MODEL` (API call, provider-specific) vs. hardcoded `model_version` (DB label, "provider-agnostic") requires developers to understand two naming schemes for the same concept. **Recommendation**: Add inline comments in `config.py` and `embedding.ts` linking the two, and document the relationship in the `.env.example` files.
+8. **Dual model naming is a cognitive burden** — `SOW_EMBEDDING_MODEL` (API call, provider-specific) vs. hardcoded `model_version` (DB label, "provider-agnostic") requires developers to understand two naming schemes for the same concept. **Recommendation**: Add inline comments in `config.py` and `embedding.ts` linking the two, and document the relationship in the `.env.example` files.
 
 9. **No automated remediation** — The spec provides manual SQL for `model_version` migration but no admin CLI command or migration script. This increases the risk of the step being forgotten, leaving songs silently excluded from search indefinitely. **Recommendation**: Add an `sow-admin db migrate-embedding-model-version` command (or include it in the existing migration tooling) to automate the `UPDATE` statements.
 

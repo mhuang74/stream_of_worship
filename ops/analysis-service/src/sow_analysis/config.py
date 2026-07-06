@@ -65,10 +65,11 @@ class Settings(BaseSettings):
     SOW_LLM_BASE_URL: str = ""  # e.g., "https://openrouter.ai/api/v1"
     SOW_LLM_MODEL: str = ""  # e.g., "openai/gpt-4o-mini" for OpenRouter
 
-    # Embedding Model Configuration (OpenAI-compatible API for embedding generation)
-    # Provider-specific model name for the embeddings API call.
-    # The DB model_version label is always "text-embedding-3-small" (provider-agnostic).
-    SOW_LLM_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    # Embedding Provider Configuration (OpenAI-compatible API)
+    # Separate from SOW_LLM_* so chat and embedding can use different providers.
+    SOW_EMBEDDING_API_KEY: str = ""
+    SOW_EMBEDDING_BASE_URL: str = ""
+    SOW_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
     # Whisper Configuration
     SOW_WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
