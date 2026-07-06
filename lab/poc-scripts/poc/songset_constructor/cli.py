@@ -368,7 +368,10 @@ def construct(
     try:
         result = _run_graph_with_traces(graph, initial_state, graph_config)
         while "__interrupt__" in result:
-            payload = result["__interrupt__"][0].value
+            interrupt_obj = result["__interrupt__"][0]
+            # The debug stream serializes Interrupt dataclasses to dicts via
+            # asdict(), so handle both dict and Interrupt object forms.
+            payload = interrupt_obj["value"] if isinstance(interrupt_obj, dict) else interrupt_obj.value
             console.print(payload)
             action = typer.prompt("Review action (approve/reject)", default="approve")
             from langgraph.types import Command
