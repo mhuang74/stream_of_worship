@@ -23,7 +23,7 @@ class TestBatchStepFlags:
     def test_no_step_flags_exits_1(self, tmp_path):
         """No step flags and no --all-steps exits 1 with usage."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             ["audio", "batch", "--config", str(config_path)],
@@ -34,7 +34,7 @@ class TestBatchStepFlags:
 
     def test_invalid_format_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             ["audio", "batch", "--analyze", "--format", "xml", "--config", str(config_path)],
@@ -45,7 +45,7 @@ class TestBatchStepFlags:
 
     def test_invalid_analysis_tier_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             [
@@ -64,7 +64,7 @@ class TestBatchStepFlags:
 
     def test_invalid_analysis_status_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             [
@@ -84,7 +84,7 @@ class TestBatchStepFlags:
     def test_partial_is_valid_analysis_status(self, tmp_path):
         """'partial' is accepted as a valid analysis status filter."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             [
@@ -107,7 +107,7 @@ class TestForceScoping:
 
     def test_force_all_steps_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             ["audio", "batch", "--all-steps", "--force", "--config", str(config_path)],
@@ -118,7 +118,7 @@ class TestForceScoping:
 
     def test_force_no_step_flags_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             ["audio", "batch", "--force", "--config", str(config_path)],
@@ -129,7 +129,7 @@ class TestForceScoping:
     def test_force_download_exits_1_with_hint(self, tmp_path):
         """--force --download is rejected with the two-step purge hint."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             ["audio", "batch", "--download", "--force", "--config", str(config_path)],
@@ -142,7 +142,7 @@ class TestForceScoping:
     def test_force_multiple_steps_exits_1(self, tmp_path):
         """--force with two step flags exits 1."""
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             ["audio", "batch", "--lrc", "--analyze", "--force", "--config", str(config_path)],
@@ -157,7 +157,7 @@ class TestResumeMutualExclusivity:
 
     def test_resume_with_force_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             [
@@ -176,7 +176,7 @@ class TestResumeMutualExclusivity:
 
     def test_resume_with_analyze_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             [
@@ -195,7 +195,7 @@ class TestResumeMutualExclusivity:
 
     def test_resume_with_album_exits_1(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
             [
@@ -626,7 +626,7 @@ class TestProbeBatchAlbumFilter:
 
     def test_probe_batch_album_matches_album_series(self, tmp_path):
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
 
         # Recording whose song has album_series="敬拜讚美15"
         recording = _make_recording("song_010", hash_prefix="feedface")
