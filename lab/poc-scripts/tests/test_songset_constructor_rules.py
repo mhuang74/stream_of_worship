@@ -341,6 +341,9 @@ def test_beam_rejects_h5_violating_pair():
         _candidate("c2", "Closer2", "c2", 78, "F#", "min", 5),
     ]
     matrix = _matrix(pool)
+    for key, transition in matrix.items():
+        if transition.cfd > 2:
+            matrix[key] = transition.model_copy(update={"suggested_key_shift": 0})
 
     strict_config = RunConfig(no_llm=True, auto_relax=False)
     strict_pool = compute_fan_out(pool, matrix, strict_config)

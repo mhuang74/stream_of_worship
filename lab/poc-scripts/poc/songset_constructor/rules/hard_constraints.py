@@ -67,14 +67,14 @@ def validate(
     if bpms[-1] is None or bpms[-1] > closing_limit:
         failures.append(("H3", f"Closing tempo must be <= {closing_limit} BPM.", "Choose a calmer closer."))
 
-    h4_limit = 25 if relax_h4 else 20
+    h4_limit = config.h4_limit
     for left, right in zip(proposal.items, proposal.items[1:]):
         transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
         bpm_delta = transition.bpm_delta if transition else abs((right.bpm or 0) - (left.bpm or 0))
         allowed = h4_limit if (right.crossfade_duration_seconds > 0 or right.gap_beats > 4) else min(15, h4_limit)
         if bpm_delta > allowed:
             failures.append(("H4", f"Tempo jump {bpm_delta:.1f} BPM from {left.title} to {right.title} exceeds {allowed}.", "Use a crossfade/gap or choose a closer tempo neighbor."))
-        h5_limit = 3 if relax_h5 else 2
+        h5_limit = config.h5_limit
         distance = transition.cfd if transition else 6
         shifted_ok = transition is not None and transition.suggested_key_shift == right.key_shift_semitones and transition.suggested_key_shift != 0
         if distance > h5_limit and right.crossfade_duration_seconds <= 0 and not shifted_ok:

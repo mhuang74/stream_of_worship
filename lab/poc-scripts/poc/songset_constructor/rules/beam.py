@@ -29,7 +29,9 @@ def compute_fan_out(
             if candidate.recording_hash_prefix == other.recording_hash_prefix:
                 continue
             transition = matrix.get((candidate.recording_hash_prefix, other.recording_hash_prefix))
-            if transition and transition.cfd <= config.h5_limit and transition.bpm_delta <= config.h4_limit:
+            if transition and transition.bpm_delta <= config.h4_limit and (
+                transition.cfd <= config.h5_limit or transition.suggested_key_shift != 0
+            ):
                 fan_out += 1
         updated.append(candidate.model_copy(update={"fan_out": fan_out, "is_dead_end": fan_out == 0}))
     return updated
