@@ -42,7 +42,7 @@ class TestSongFromRowCoercion:
     """Test that Song.from_row() handles timestamptz datetime objects."""
 
     def test_from_row_with_string_timestamps(self):
-        """Test with string timestamps (legacy SQLite format)."""
+        """Test with string timestamps (legacy string timestamp format)."""
         row = (
             "song_1",
             "Test Song",
