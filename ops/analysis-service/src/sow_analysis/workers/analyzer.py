@@ -440,16 +440,18 @@ async def analyze_audio_fast(
             ):
                 return tempo_alt
 
-        # Half-time guard (v2): if primary is below the worship-plausible range
-        # (< 65 BPM), re-estimate with the 120 BPM prior to probe the
-        # double-time peak. Handles edge-case fast songs (true tempo > 100 BPM)
-        # without over-correcting the predominantly 65-100 BPM worship catalog.
-        # NOTE: threshold is < 65 (not < 70) because 65-70 is a legitimate slow
-        # worship tempo; the v2 < 70 threshold misfired on ~70 BPM songs (e.g.
-        # 69.8 BPM primary) and doubled them to ~140. The range gate
-        # (100 <= alt <= 160) confirms the alt is genuinely fast before
-        # accepting, mirroring the double-time guard's 65-100 range gate.
-        elif tempo_primary < 65.0:
+        # Half-time guard (v4): if primary is below the worship-plausible floor
+        # (< 60 BPM), re-estimate with the 120 BPM prior to probe the
+        # double-time peak. Handles edge-case fast songs (true tempo > 110 BPM)
+        # without over-correcting the predominantly 60-100 BPM worship catalog.
+        # NOTE: threshold lowered from v3's < 65 to < 60 because 60-65 BPM is a
+        # legitimate slow worship tempo (e.g. "我活著要稱頌祢" at 64.6 BPM true).
+        # The v3 < 65 threshold misfired on 64.6 and doubled it to 129.2.
+        # Acceptance range floor raised from 100 to 110 so doublings of primaries
+        # in [50, 55) (which yield alts in [100, 110)) are rejected as implausible;
+        # ceiling raised from 160 to 180 to accommodate doublings of primaries up
+        # to 90 (defense-in-depth; in practice only primaries < 60 trigger).
+        elif tempo_primary < 60.0:
             tempo_alt = librosa.beat.tempo(
                 onset_envelope=onset_env,
                 sr=sr,
@@ -464,7 +466,7 @@ async def analyze_audio_fast(
             # genuinely-fast range, the primary was half-time.
             if (
                 abs(tempo_alt - 2.0 * tempo_primary) < 8.0
-                and 100.0 <= tempo_alt <= 160.0
+                and 110.0 <= tempo_alt <= 180.0
             ):
                 return tempo_alt
 
