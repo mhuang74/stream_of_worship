@@ -94,6 +94,17 @@ export function SongSearch({
     setQuery("");
   }, [setQuery]);
 
+  // Handle Enter key to trigger search
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerSearch();
+      }
+    },
+    [triggerSearch]
+  );
+
   const showClearButton = query.length > 0;
   const showLoadingIndicator = isLoading;
 
@@ -107,6 +118,7 @@ export function SongSearch({
             type="text"
             value={query}
             onChange={handleQueryChange}
+            onKeyDown={handleKeyDown}
             placeholder={placeholder}
             className="pl-9 pr-10"
             aria-label="Search songs"
@@ -150,7 +162,7 @@ export function SongSearch({
       </div>
 
       <p className="text-xs text-muted-foreground px-1" data-testid="keyword-help-text">
-        Tip: search by title, pinyin, or composer — e.g. &lsquo;奇異恩典&rsquo;, &lsquo;Amazing Grace&rsquo;, &lsquo;約瑟夫&rsquo;
+        Tip: search by title, pinyin, or composer — e.g. &lsquo;奇異恩典&rsquo;, &lsquo;Amazing Grace&rsquo;, &lsquo;約瑟夫&rsquo; · Press Enter to search
       </p>
     </div>
   );
