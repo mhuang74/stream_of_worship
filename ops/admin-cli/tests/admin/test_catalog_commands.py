@@ -1,11 +1,6 @@
 """Tests for catalog CLI commands."""
 
-import pytest
-
-pytestmark = pytest.mark.skip(reason="pre-migration SQLite/Turso test; not compatible with Postgres")
-
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -18,23 +13,41 @@ from stream_of_worship.admin.main import app
 runner = CliRunner()
 
 
+def _write_config(tmp_path, postgres_url):
+    """Write a config TOML pointing at the testcontainers Postgres."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'[database]\nurl = "{postgres_url}"\n')
+    return config_path
+
+
+def _drop_all_tables(make_test_provider):
+    """Drop all tables for cleanup."""
+    try:
+        cleanup_provider = make_test_provider()
+        with cleanup_provider.get_connection().cursor() as cur:
+            cur.execute("""
+                DROP TABLE IF EXISTS songset_share CASCADE;
+                DROP TABLE IF EXISTS lyric_mark CASCADE;
+                DROP TABLE IF EXISTS user_lrc_override CASCADE;
+                DROP TABLE IF EXISTS user_settings CASCADE;
+                DROP TABLE IF EXISTS songset_items CASCADE;
+                DROP TABLE IF EXISTS songsets CASCADE;
+                DROP TABLE IF EXISTS recordings CASCADE;
+                DROP TABLE IF EXISTS songs CASCADE;
+                DROP TABLE IF EXISTS "session" CASCADE;
+                DROP TABLE IF EXISTS "account" CASCADE;
+                DROP TABLE IF EXISTS "verification" CASCADE;
+                DROP TABLE IF EXISTS "user" CASCADE;
+                DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+                DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
+            """)
+        cleanup_provider.close()
+    except Exception:
+        pass
+
+
 class TestCatalogScrapeCommand:
     """Tests for 'catalog scrape' command."""
-
-    @pytest.fixture
-    def temp_db(self, tmp_path):
-        """Create a temporary database with schema."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Create a config file in TOML format
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(
-            f'[database]\npath = "{db_path}"\n'
-        )
-
-        return {"db_path": db_path, "config_path": config_path}
 
     def test_scrape_without_config(self):
         """Test scrape fails without config."""
@@ -45,21 +58,25 @@ class TestCatalogScrapeCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_scrape_without_database(self, tmp_path):
-        """Test scrape fails without database."""
+    def test_scrape_without_database(self, tmp_path, monkeypatch):
+        """Test scrape fails without database url."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
         config_path = tmp_path / "config.toml"
-        config_path.write_text(
-            '[database]\npath = "/nonexistent/db.sqlite"\n'
-        )
+        config_path.write_text('[database]\n')
 
         result = runner.invoke(app, ["catalog", "scrape", "--config", str(config_path)])
 
-        assert result.exit_code == 1
-        assert "Database not found" in result.output
+        assert result.exit_code != 0
 
+    @pytest.mark.integration
     @patch("stream_of_worship.admin.services.scraper.requests.get")
-    def test_scrape_success(self, mock_get, temp_db):
+    def test_scrape_success(self, mock_get, make_test_provider, postgres_url, tmp_path):
         """Test successful scrape command."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
         html_content = """
         <table id="tablepress-3">
             <tr><th>曲名</th><th>作曲</th><th>作詞</th><th>專輯名稱</th>
@@ -75,16 +92,24 @@ class TestCatalogScrapeCommand:
         mock_get.return_value = mock_response
 
         result = runner.invoke(
-            app, ["catalog", "scrape", "--config", str(temp_db["config_path"]), "--limit", "1"]
+            app, ["catalog", "scrape", "--config", str(config_path), "--limit", "1"]
         )
 
         assert result.exit_code == 0
         assert "Found 1 songs" in result.output
         assert "Test Song" in result.output
 
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
     @patch("stream_of_worship.admin.services.scraper.requests.get")
-    def test_scrape_dry_run(self, mock_get, temp_db):
+    def test_scrape_dry_run(self, mock_get, make_test_provider, postgres_url, tmp_path):
         """Test scrape with dry-run flag."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
         html_content = """
         <table id="tablepress-3">
             <tr><th>曲名</th><th>作曲</th><th>作詞</th><th>專輯名稱</th>
@@ -100,66 +125,21 @@ class TestCatalogScrapeCommand:
 
         result = runner.invoke(
             app,
-            ["catalog", "scrape", "--config", str(temp_db["config_path"]), "--dry-run"],
+            ["catalog", "scrape", "--config", str(config_path), "--dry-run"],
         )
 
         assert result.exit_code == 0
         assert "Dry run mode" in result.output
         assert "Dry run - no songs saved" in result.output
 
-        # Verify nothing was saved
-        db_client = DatabaseClient(temp_db["db_path"])
-        songs = db_client.list_songs()
+        songs = client.list_songs()
         assert len(songs) == 0
+
+        _drop_all_tables(make_test_provider)
 
 
 class TestCatalogListCommand:
     """Tests for 'catalog list' command."""
-
-    @pytest.fixture
-    def temp_db_with_songs(self, tmp_path):
-        """Create a temporary database with sample songs."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Insert sample songs
-        songs = [
-            Song(
-                id="song_001",
-                title="Song One",
-                source_url="https://example.com/1",
-                scraped_at=datetime.now().isoformat(),
-                composer="Composer A",
-                album_name="Album X",
-                musical_key="G",
-            ),
-            Song(
-                id="song_002",
-                title="Song Two",
-                source_url="https://example.com/2",
-                scraped_at=datetime.now().isoformat(),
-                composer="Composer B",
-                album_name="Album Y",
-                musical_key="D",
-            ),
-            Song(
-                id="song_003",
-                title="Song Three",
-                source_url="https://example.com/3",
-                scraped_at=datetime.now().isoformat(),
-                composer="Composer A",
-                album_name="Album X",
-                musical_key="C",
-            ),
-        ]
-        for song in songs:
-            client.insert_song(song)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path}
 
     def test_list_without_config(self):
         """Test list fails without config."""
@@ -170,10 +150,30 @@ class TestCatalogListCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_list_all_songs(self, temp_db_with_songs):
+    @pytest.mark.integration
+    def test_list_all_songs(self, make_test_provider, postgres_url, tmp_path):
         """Test listing all songs."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="Song One", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="G"),
+            Song(id="song_002", title="Song Two", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer B",
+                 album_name="Album Y", musical_key="D"),
+            Song(id="song_003", title="Song Three", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="C"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app, ["catalog", "list", "--config", str(temp_db_with_songs["config_path"])]
+            app, ["catalog", "list", "--config", str(config_path)]
         )
 
         assert result.exit_code == 0
@@ -181,18 +181,32 @@ class TestCatalogListCommand:
         assert "Song Two" in result.output
         assert "Song Three" in result.output
 
-    def test_list_with_album_filter(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_with_album_filter(self, make_test_provider, postgres_url, tmp_path):
         """Test listing with album filter."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="Song One", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="G"),
+            Song(id="song_002", title="Song Two", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer B",
+                 album_name="Album Y", musical_key="D"),
+            Song(id="song_003", title="Song Three", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="C"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "list",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--album",
-                "Album X",
-            ],
+            app, ["catalog", "list", "--config", str(config_path), "--album", "Album X"],
         )
 
         assert result.exit_code == 0
@@ -200,18 +214,32 @@ class TestCatalogListCommand:
         assert "Song Three" in result.output
         assert "Song Two" not in result.output
 
-    def test_list_with_key_filter(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_with_key_filter(self, make_test_provider, postgres_url, tmp_path):
         """Test listing with key filter."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="Song One", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="G"),
+            Song(id="song_002", title="Song Two", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer B",
+                 album_name="Album Y", musical_key="D"),
+            Song(id="song_003", title="Song Three", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="C"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "list",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--key",
-                "G",
-            ],
+            app, ["catalog", "list", "--config", str(config_path), "--key", "G"],
         )
 
         assert result.exit_code == 0
@@ -219,36 +247,63 @@ class TestCatalogListCommand:
         assert "Song Two" not in result.output
         assert "Song Three" not in result.output
 
-    def test_list_with_limit(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_with_limit(self, make_test_provider, postgres_url, tmp_path):
         """Test listing with limit."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="Song One", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="G"),
+            Song(id="song_002", title="Song Two", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer B",
+                 album_name="Album Y", musical_key="D"),
+            Song(id="song_003", title="Song Three", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="C"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "list",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--limit",
-                "2",
-            ],
+            app, ["catalog", "list", "--config", str(config_path), "--limit", "2"],
         )
 
         assert result.exit_code == 0
-        # Should show 2 songs
         assert "(2 total)" in result.output or "Song" in result.output
 
-    def test_list_format_ids(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_format_ids(self, make_test_provider, postgres_url, tmp_path):
         """Test listing with ids format."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="Song One", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="G"),
+            Song(id="song_002", title="Song Two", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer B",
+                 album_name="Album Y", musical_key="D"),
+            Song(id="song_003", title="Song Three", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="Composer A",
+                 album_name="Album X", musical_key="C"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "list",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--format",
-                "ids",
-            ],
+            app, ["catalog", "list", "--config", str(config_path), "--format", "ids"],
         )
 
         assert result.exit_code == 0
@@ -256,65 +311,26 @@ class TestCatalogListCommand:
         assert "song_002" in result.output
         assert "song_003" in result.output
 
-    def test_list_empty_database(self, tmp_path):
-        """Test listing with empty database."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
+        _drop_all_tables(make_test_provider)
 
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
+    @pytest.mark.integration
+    def test_list_empty_database(self, make_test_provider, postgres_url, tmp_path):
+        """Test listing with empty database."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
 
         result = runner.invoke(app, ["catalog", "list", "--config", str(config_path)])
 
         assert result.exit_code == 0
         assert "No songs found" in result.output
 
+        _drop_all_tables(make_test_provider)
+
 
 class TestCatalogSearchCommand:
     """Tests for 'catalog search' command."""
-
-    @pytest.fixture
-    def temp_db_with_songs(self, tmp_path):
-        """Create a temporary database with sample songs."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        # Insert sample songs
-        songs = [
-            Song(
-                id="song_001",
-                title="將天敞開",
-                source_url="https://example.com/1",
-                scraped_at=datetime.now().isoformat(),
-                composer="游智婷",
-                lyrics_raw="將天敞開歌詞內容",
-            ),
-            Song(
-                id="song_002",
-                title="感謝",
-                source_url="https://example.com/2",
-                scraped_at=datetime.now().isoformat(),
-                composer="感謝作曲家",
-                lyrics_raw="感謝的歌詞在這裡",
-            ),
-            Song(
-                id="song_003",
-                title="讚美之歌",
-                source_url="https://example.com/3",
-                scraped_at=datetime.now().isoformat(),
-                composer="讚美作曲家",
-                lyrics_raw="讚美的歌詞內容",
-            ),
-        ]
-        for song in songs:
-            client.insert_song(song)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path}
 
     def test_search_without_config(self):
         """Test search fails without config."""
@@ -325,138 +341,197 @@ class TestCatalogSearchCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_search_by_title(self, temp_db_with_songs):
+    @pytest.mark.integration
+    def test_search_by_title(self, make_test_provider, postgres_url, tmp_path):
         """Test searching by title."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="將天敞開", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="游智婷",
+                 lyrics_raw="將天敞開歌詞內容"),
+            Song(id="song_002", title="感謝", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="感謝作曲家",
+                 lyrics_raw="感謝的歌詞在這裡"),
+            Song(id="song_003", title="讚美之歌", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="讚美作曲家",
+                 lyrics_raw="讚美的歌詞內容"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "search",
-                "將天",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--field",
-                "title",
-            ],
+            app, ["catalog", "search", "將天", "--config", str(config_path), "--field", "title"],
         )
 
         assert result.exit_code == 0
         assert "將天敞開" in result.output
         assert "感謝" not in result.output
 
-    def test_search_by_lyrics(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_search_by_lyrics(self, make_test_provider, postgres_url, tmp_path):
         """Test searching by lyrics."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="將天敞開", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="游智婷",
+                 lyrics_raw="將天敞開歌詞內容"),
+            Song(id="song_002", title="感謝", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="感謝作曲家",
+                 lyrics_raw="感謝的歌詞在這裡"),
+            Song(id="song_003", title="讚美之歌", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="讚美作曲家",
+                 lyrics_raw="讚美的歌詞內容"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "search",
-                "感謝的歌詞",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--field",
-                "lyrics",
-            ],
+            app, ["catalog", "search", "感謝的歌詞", "--config", str(config_path), "--field", "lyrics"],
         )
 
         assert result.exit_code == 0
         assert "感謝" in result.output
         assert "將天敞開" not in result.output
 
-    def test_search_by_composer(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_search_by_composer(self, make_test_provider, postgres_url, tmp_path):
         """Test searching by composer."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="將天敞開", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="游智婷",
+                 lyrics_raw="將天敞開歌詞內容"),
+            Song(id="song_002", title="感謝", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="感謝作曲家",
+                 lyrics_raw="感謝的歌詞在這裡"),
+            Song(id="song_003", title="讚美之歌", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="讚美作曲家",
+                 lyrics_raw="讚美的歌詞內容"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "search",
-                "游智婷",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--field",
-                "composer",
-            ],
+            app, ["catalog", "search", "游智婷", "--config", str(config_path), "--field", "composer"],
         )
 
         assert result.exit_code == 0
         assert "將天敞開" in result.output
 
-    def test_search_all_fields(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_search_all_fields(self, make_test_provider, postgres_url, tmp_path):
         """Test searching all fields."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="將天敞開", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="游智婷",
+                 lyrics_raw="將天敞開歌詞內容"),
+            Song(id="song_002", title="感謝", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="感謝作曲家",
+                 lyrics_raw="感謝的歌詞在這裡"),
+            Song(id="song_003", title="讚美之歌", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="讚美作曲家",
+                 lyrics_raw="讚美的歌詞內容"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            ["catalog", "search", "讚美", "--config", str(temp_db_with_songs["config_path"])],
+            app, ["catalog", "search", "讚美", "--config", str(config_path)],
         )
 
         assert result.exit_code == 0
         assert "讚美之歌" in result.output
 
-    def test_search_with_limit(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_search_with_limit(self, make_test_provider, postgres_url, tmp_path):
         """Test search with limit."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="將天敞開", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="游智婷",
+                 lyrics_raw="將天敞開歌詞內容"),
+            Song(id="song_002", title="感謝", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="感謝作曲家",
+                 lyrics_raw="感謝的歌詞在這裡"),
+            Song(id="song_003", title="讚美之歌", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="讚美作曲家",
+                 lyrics_raw="讚美的歌詞內容"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "search",
-                "歌",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-                "--limit",
-                "1",
-            ],
+            app, ["catalog", "search", "歌", "--config", str(config_path), "--limit", "1"],
         )
 
         assert result.exit_code == 0
         assert "(1 found)" in result.output or "found" in result.output
 
-    def test_search_no_results(self, temp_db_with_songs):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_search_no_results(self, make_test_provider, postgres_url, tmp_path):
         """Test search with no results."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        songs = [
+            Song(id="song_001", title="將天敞開", source_url="https://example.com/1",
+                 scraped_at="2024-01-01T00:00:00", composer="游智婷",
+                 lyrics_raw="將天敞開歌詞內容"),
+            Song(id="song_002", title="感謝", source_url="https://example.com/2",
+                 scraped_at="2024-01-01T00:00:00", composer="感謝作曲家",
+                 lyrics_raw="感謝的歌詞在這裡"),
+            Song(id="song_003", title="讚美之歌", source_url="https://example.com/3",
+                 scraped_at="2024-01-01T00:00:00", composer="讚美作曲家",
+                 lyrics_raw="讚美的歌詞內容"),
+        ]
+        for song in songs:
+            client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "search",
-                "nonexistent",
-                "--config",
-                str(temp_db_with_songs["config_path"]),
-            ],
+            app, ["catalog", "search", "nonexistent", "--config", str(config_path)],
         )
 
         assert result.exit_code == 0
         assert "No songs found" in result.output
 
+        _drop_all_tables(make_test_provider)
+
 
 class TestCatalogShowCommand:
     """Tests for 'catalog show' command."""
-
-    @pytest.fixture
-    def temp_db_with_song(self, tmp_path):
-        """Create a temporary database with a sample song."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-
-        song = Song(
-            id="test_song_001",
-            title="Test Song",
-            source_url="https://example.com/1",
-            scraped_at=datetime.now().isoformat(),
-            title_pinyin="test_song",
-            composer="Test Composer",
-            lyricist="Test Lyricist",
-            album_name="Test Album",
-            album_series="Test Series",
-            musical_key="G",
-            lyrics_raw="Line 1\nLine 2\nLine 3",
-            lyrics_lines='["Line 1", "Line 2", "Line 3"]',
-            table_row_number=42,
-        )
-        client.insert_song(song)
-
-        config_path = tmp_path / "config.toml"
-        config_path.write_text(f'[database]\npath = "{db_path}"\n')
-
-        return {"db_path": db_path, "config_path": config_path, "song": song}
 
     def test_show_without_config(self):
         """Test show fails without config."""
@@ -467,17 +542,26 @@ class TestCatalogShowCommand:
         assert result.exit_code == 1
         assert "Config file not found" in result.output
 
-    def test_show_existing_song(self, temp_db_with_song):
+    @pytest.mark.integration
+    def test_show_existing_song(self, make_test_provider, postgres_url, tmp_path):
         """Test showing an existing song."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        song = Song(
+            id="test_song_001", title="Test Song", source_url="https://example.com/1",
+            scraped_at="2024-01-01T00:00:00", title_pinyin="test_song",
+            composer="Test Composer", lyricist="Test Lyricist",
+            album_name="Test Album", album_series="Test Series",
+            musical_key="G", lyrics_raw="Line 1\nLine 2\nLine 3",
+            lyrics_lines='["Line 1", "Line 2", "Line 3"]', table_row_number=42,
+        )
+        client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "show",
-                "test_song_001",
-                "--config",
-                str(temp_db_with_song["config_path"]),
-            ],
+            app, ["catalog", "show", "test_song_001", "--config", str(config_path)],
         )
 
         assert result.exit_code == 0
@@ -489,30 +573,39 @@ class TestCatalogShowCommand:
         assert "Line 1" in result.output
         assert "Line 2" in result.output
 
-    def test_show_nonexistent_song(self, temp_db_with_song):
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_show_nonexistent_song(self, make_test_provider, postgres_url, tmp_path):
         """Test showing a non-existent song."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        song = Song(
+            id="test_song_001", title="Test Song", source_url="https://example.com/1",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        client.insert_song(song)
+
         result = runner.invoke(
-            app,
-            [
-                "catalog",
-                "show",
-                "nonexistent",
-                "--config",
-                str(temp_db_with_song["config_path"]),
-            ],
+            app, ["catalog", "show", "nonexistent", "--config", str(config_path)],
         )
 
         assert result.exit_code == 1
         assert "Song not found" in result.output
 
-    def test_show_without_database(self, tmp_path):
-        """Test show fails without database."""
+        _drop_all_tables(make_test_provider)
+
+    def test_show_without_database(self, tmp_path, monkeypatch):
+        """Test show fails without database url."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[database]\npath = "/nonexistent/db.sqlite"\n')
+        config_path.write_text('[database]\n')
 
         result = runner.invoke(
             app, ["catalog", "show", "song_001", "--config", str(config_path)]
         )
 
-        assert result.exit_code == 1
-        assert "Database not found" in result.output
+        assert result.exit_code != 0

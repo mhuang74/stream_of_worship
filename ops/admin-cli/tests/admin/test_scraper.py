@@ -1,9 +1,5 @@
 """Tests for catalog scraper service."""
 
-import pytest
-
-pytestmark = pytest.mark.skip(reason="pre-migration SQLite/Turso test; not compatible with Postgres")
-
 import json
 from datetime import datetime
 from unittest.mock import Mock, patch
@@ -19,28 +15,19 @@ class TestCatalogScraper:
     """Tests for CatalogScraper class."""
 
     @pytest.fixture
-    def temp_db(self, tmp_path):
-        """Create a temporary database with schema."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
-        client.initialize_schema()
-        return client
-
-    @pytest.fixture
-    def scraper(self, temp_db):
-        """Create a scraper with database client."""
-        return CatalogScraper(db_client=temp_db)
-
-    @pytest.fixture
     def scraper_no_db(self):
         """Create a scraper without database client."""
         return CatalogScraper(db_client=None)
 
-    def test_init_with_db(self, temp_db):
+    def test_init_with_db(self, make_test_provider):
         """Test initialization with database client."""
-        scraper = CatalogScraper(db_client=temp_db)
-        assert scraper.db_client == temp_db
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        scraper = CatalogScraper(db_client=client)
+        assert scraper.db_client == client
         assert scraper.url == "https://www.sop.org/songs/"
+        _drop_all_tables(make_test_provider)
 
     def test_init_without_db(self):
         """Test initialization without database client."""
@@ -186,16 +173,18 @@ class TestCatalogScraper:
             scraper_no_db.scrape_all_songs()
 
 
+@pytest.mark.integration
 class TestCatalogScraperWithDatabase:
     """Tests for CatalogScraper database operations."""
 
     @pytest.fixture
-    def temp_db(self, tmp_path):
+    def temp_db(self, make_test_provider):
         """Create a temporary database with schema."""
-        db_path = tmp_path / "test.db"
-        client = DatabaseClient(db_path)
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
         client.initialize_schema()
-        return client
+        yield client
+        _drop_all_tables(make_test_provider)
 
     @pytest.fixture
     def scraper(self, temp_db):
@@ -206,13 +195,9 @@ class TestCatalogScraperWithDatabase:
     def sample_song(self):
         """Return a sample song."""
         return Song(
-            id="test_song_001",
-            title="Test Song",
-            source_url="https://example.com",
-            scraped_at=datetime.now().isoformat(),
-            composer="Test Composer",
-            album_name="Test Album",
-            musical_key="G",
+            id="test_song_001", title="Test Song", source_url="https://example.com",
+            scraped_at="2024-01-01T00:00:00", composer="Test Composer",
+            album_name="Test Album", musical_key="G",
         )
 
     def test_save_songs(self, scraper, temp_db, sample_song):
@@ -223,7 +208,6 @@ class TestCatalogScraperWithDatabase:
         assert count == 1
         assert elapsed > 0
 
-        # Verify song was saved
         retrieved = temp_db.get_song("test_song_001")
         assert retrieved is not None
         assert retrieved.title == "Test Song"
@@ -244,16 +228,12 @@ class TestCatalogScraperWithDatabase:
     @patch("stream_of_worship.admin.services.scraper.requests.get")
     def test_scrape_with_incremental(self, mock_get, temp_db):
         """Test incremental scraping skips existing songs."""
-        # Insert an existing song
         existing_song = Song(
-            id="jiang_tian_chang_kai_1",
-            title="將天敞開",
-            source_url="https://example.com",
-            scraped_at=datetime.now().isoformat(),
+            id="jiang_tian_chang_kai_1", title="將天敞開",
+            source_url="https://example.com", scraped_at="2024-01-01T00:00:00",
         )
         temp_db.insert_song(existing_song)
 
-        # Mock HTML with the same song
         html_content = """
         <table id="tablepress-3">
             <tr><th>曲名</th><th>作曲</th><th>作詞</th><th>專輯名稱</th>
@@ -272,23 +252,18 @@ class TestCatalogScraperWithDatabase:
         scraper = CatalogScraper(db_client=temp_db)
         songs = scraper.scrape_all_songs(incremental=True, force=False)
 
-        # Should only return the new song
         assert len(songs) == 1
         assert songs[0].title == "New Song"
 
     @patch("stream_of_worship.admin.services.scraper.requests.get")
     def test_scrape_with_force(self, mock_get, temp_db):
         """Test force re-scrapes all songs."""
-        # Insert an existing song
         existing_song = Song(
-            id="jiang_tian_chang_kai_1",
-            title="將天敞開",
-            source_url="https://example.com",
-            scraped_at=datetime.now().isoformat(),
+            id="jiang_tian_chang_kai_1", title="將天敞開",
+            source_url="https://example.com", scraped_at="2024-01-01T00:00:00",
         )
         temp_db.insert_song(existing_song)
 
-        # Mock HTML with the same song plus a new one
         html_content = """
         <table id="tablepress-3">
             <tr><th>曲名</th><th>作曲</th><th>作詞</th><th>專輯名稱</th>
@@ -307,7 +282,6 @@ class TestCatalogScraperWithDatabase:
         scraper = CatalogScraper(db_client=temp_db)
         songs = scraper.scrape_all_songs(incremental=True, force=True)
 
-        # Should return both songs when force=True
         assert len(songs) == 2
 
 
@@ -389,7 +363,6 @@ class TestCatalogScraperLyricsParsing:
 
         result = scraper_no_db._parse_lyrics_cell(cell)
 
-        # Empty lines should be filtered out
         assert result["lyrics_lines"] == ["Line 1", "Line 2"]
 
     def test_parse_lyrics_cell_malformed_br(self, scraper_no_db):
@@ -401,14 +374,12 @@ class TestCatalogScraperLyricsParsing:
         """
         from bs4 import BeautifulSoup
 
-        # This is the actual HTML pattern from row 104 (大山可以挪開)
         html = "<td>Line 1<br>Line 2<br/>Line 3<br/>Line 4</br></td>"
         soup = BeautifulSoup(html, "html.parser")
         cell = soup.find("td")
 
         result = scraper_no_db._parse_lyrics_cell(cell)
 
-        # All lines should be preserved, not just Line 1
         assert result["lyrics_lines"] == ["Line 1", "Line 2", "Line 3", "Line 4"]
 
 
@@ -430,23 +401,21 @@ class TestCatalogScraperHelpers:
         assert scraper_no_db._find_header_index(headers, ["nonexistent"]) is None
 
     def test_normalize_song_id_chinese(self, scraper_no_db):
-        """Test normalizing Chinese song title to ID."""
-        song_id = scraper_no_db._normalize_song_id("將天敞開", 42)
+        """Test computing song ID from Chinese title."""
+        song_id = scraper_no_db._compute_song_id("將天敞開", "游智婷", "鄭懋柔")
 
         assert "jiang_tian_chang_kai" in song_id
-        assert song_id.endswith("_42")
 
     def test_normalize_song_id_english(self, scraper_no_db):
-        """Test normalizing English song title to ID."""
-        song_id = scraper_no_db._normalize_song_id("Amazing Grace", 1)
+        """Test computing song ID from English title."""
+        song_id = scraper_no_db._compute_song_id("Amazing Grace", "Composer", "Lyricist")
 
         assert "amazing" in song_id
-        assert song_id.endswith("_1")
 
     def test_normalize_song_id_length_limit(self, scraper_no_db):
-        """Test that long titles are truncated."""
+        """Test that long titles produce reasonably-sized IDs."""
         long_title = "A" * 200
-        song_id = scraper_no_db._normalize_song_id(long_title, 5)
+        song_id = scraper_no_db._compute_song_id(long_title, "Comp", "Lyr")
 
         assert len(song_id) <= 100
 
@@ -462,7 +431,6 @@ class TestCatalogScraperHelpers:
     @patch("stream_of_worship.admin.services.scraper.requests.get")
     def test_scrape_duplicate_rows_first_seen_wins(self, mock_get, scraper_no_db):
         """Test that duplicate rows are skipped with first-seen-wins ordering."""
-        # Two rows with identical (title, composer, lyricist) should hash to same id
         html_content = """
         <table id="tablepress-3">
             <tr>
@@ -510,12 +478,36 @@ class TestCatalogScraperHelpers:
 
         songs = scraper_no_db.scrape_all_songs()
 
-        # Should only return 2 songs (first duplicate kept, second skipped)
         assert len(songs) == 2
         assert scraper_no_db.last_run_duplicate_count == 1
 
-        # First-seen-wins: the returned song should have row 1's album, not row 2's
         duplicate_song = [s for s in songs if s.title == "Duplicate Song"][0]
         assert duplicate_song.table_row_number == 1
         assert duplicate_song.album_name == "First Album"
         assert duplicate_song.musical_key == "G"
+
+
+def _drop_all_tables(make_test_provider):
+    """Drop all tables for cleanup."""
+    try:
+        cleanup_provider = make_test_provider()
+        with cleanup_provider.get_connection().cursor() as cur:
+            cur.execute("""
+                DROP TABLE IF EXISTS songset_share CASCADE;
+                DROP TABLE IF EXISTS lyric_mark CASCADE;
+                DROP TABLE IF EXISTS user_lrc_override CASCADE;
+                DROP TABLE IF EXISTS user_settings CASCADE;
+                DROP TABLE IF EXISTS songset_items CASCADE;
+                DROP TABLE IF EXISTS songsets CASCADE;
+                DROP TABLE IF EXISTS recordings CASCADE;
+                DROP TABLE IF EXISTS songs CASCADE;
+                DROP TABLE IF EXISTS "session" CASCADE;
+                DROP TABLE IF EXISTS "account" CASCADE;
+                DROP TABLE IF EXISTS "verification" CASCADE;
+                DROP TABLE IF EXISTS "user" CASCADE;
+                DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+                DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
+            """)
+        cleanup_provider.close()
+    except Exception:
+        pass
