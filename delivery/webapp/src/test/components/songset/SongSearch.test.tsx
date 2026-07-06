@@ -61,6 +61,26 @@ describe("SongSearch", () => {
       expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
     });
 
+    it("calls onSearch when Enter is pressed", () => {
+      renderSearch();
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
+    });
+
+    it("does not call onSearch when non-Enter key is pressed", () => {
+      renderSearch();
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      expect(mockOnSearch).not.toHaveBeenCalled();
+    });
+
     it("allows blank Search", () => {
       renderSearch();
 
