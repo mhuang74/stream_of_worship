@@ -1514,15 +1514,21 @@ def set_visibility(
 @app.command("analyze")
 def analyze_recording(
     song_id: str = typer.Argument(..., help="Song ID to analyze"),
+    analysis_tier: str = typer.Option(
+        "fast", "--analysis-tier", help="Analysis tier: fast (default) or full"
+    ),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
-    no_stems: bool = typer.Option(False, "--no-stems", help="Skip stem separation"),
+    no_stems: bool = typer.Option(False, "--no-stems", help="Skip stem separation (full tier only)"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for analysis to complete"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for analysis.
 
-    Looks up the recording by song_id and submits it to the analysis service
-    for tempo/key/beats/sections detection.
+    By default, submits fast analysis (librosa-only: tempo, key, loudness).
+    Use --analysis-tier full for structural analysis (beats, sections,
+    embeddings) via allin1, with optional stem separation.
+
+    Looks up the recording by song_id and submits it to the analysis service.
     """
     # Standard config/db boilerplate
     try:
@@ -1532,6 +1538,21 @@ def analyze_recording(
         raise typer.Exit(1)
 
     db_client = get_db_client(config)
+
+    # Validate analysis_tier value
+    if analysis_tier not in ("fast", "full"):
+        console.print(
+            f"[red]Invalid analysis tier: {analysis_tier}. Must be 'fast' or 'full'[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Warn on --no-stems with fast tier
+    if no_stems and analysis_tier == "fast":
+        console.print(
+            "[yellow]--no-stems is ignored with --analysis-tier fast "
+            "(stems are never generated for fast analysis)[/yellow]"
+        )
+        no_stems = False
 
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
@@ -1547,44 +1568,74 @@ def analyze_recording(
         console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
 
-    # Check if already analyzed
-    if recording.analysis_status == "completed" and not force:
-        console.print(
-            f"[yellow]Recording {recording.hash_prefix} is already analyzed. "
-            f"Use --force to re-analyze.[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    # Check if already processing
-    if recording.analysis_status == "processing" and recording.analysis_job_id and not force:
-        if not wait:
+    # Check if already analyzed (tier-aware)
+    if not force:
+        if analysis_tier == "fast" and recording.analysis_status in ("partial", "completed"):
             console.print(
-                f"[yellow]Analysis already in progress for "
-                f"{recording.hash_prefix} (job: {recording.analysis_job_id})[/yellow]"
+                f"[yellow]Recording {recording.hash_prefix} already analyzed "
+                f"(status: {recording.analysis_status}). Use --force to re-analyze.[/yellow]"
             )
             raise typer.Exit(0)
-        # With --wait, we'll poll the existing job
-        job_id = recording.analysis_job_id
-        skip_submission = True
-    else:
-        skip_submission = False
+        if analysis_tier == "full" and recording.analysis_status == "completed":
+            console.print(
+                f"[yellow]Recording {recording.hash_prefix} already fully analyzed. "
+                f"Use --force to re-analyze.[/yellow]"
+            )
+            raise typer.Exit(0)
 
-    # Create analysis client
+    # Create analysis client (needed for in-flight job reuse check)
     try:
         client = AnalysisClient(config.analysis_url)
     except ValueError as e:
         console.print(f"[red]Analysis service not configured: {e}[/red]")
         raise typer.Exit(1)
 
+    # Check if already processing (tier-aware in-flight job reuse)
+    skip_submission = False
+    if recording.analysis_status == "processing" and recording.analysis_job_id and not force:
+        # Verify the existing job's tier matches the requested tier
+        try:
+            existing_job = client.get_job(recording.analysis_job_id)
+            job_is_fast = existing_job.job_type == "fast_analyze"
+            tier_is_fast = analysis_tier == "fast"
+            if job_is_fast != tier_is_fast:
+                # Tier mismatch — submit a new job instead of reusing
+                console.print(
+                    f"[yellow]Existing job {recording.analysis_job_id} is "
+                    f"{'fast' if job_is_fast else 'full'} tier; "
+                    f"requested {'fast' if tier_is_fast else 'full'}. "
+                    f"Submitting new job.[/yellow]"
+                )
+                skip_submission = False
+            elif not wait:
+                console.print(
+                    f"[yellow]Analysis already in progress for "
+                    f"{recording.hash_prefix} (job: {recording.analysis_job_id})[/yellow]"
+                )
+                raise typer.Exit(0)
+            else:
+                job_id = recording.analysis_job_id
+                skip_submission = True
+        except Exception:
+            # Can't reach service or job not found — submit new
+            skip_submission = False
+
     # Submit analysis (unless we're polling an existing job)
     if not skip_submission:
         try:
-            job = client.submit_analysis(
-                audio_url=recording.r2_audio_url,
-                content_hash=recording.content_hash,
-                generate_stems=not no_stems,
-                force=force,
-            )
+            if analysis_tier == "fast":
+                job = client.submit_fast_analysis(
+                    audio_url=recording.r2_audio_url,
+                    content_hash=recording.content_hash,
+                    force=force,
+                )
+            else:
+                job = client.submit_analysis(
+                    audio_url=recording.r2_audio_url,
+                    content_hash=recording.content_hash,
+                    generate_stems=not no_stems,
+                    force=force,
+                )
         except AnalysisServiceError as e:
             if e.status_code == 401:
                 console.print(f"[red]Authentication failed: {e}[/red]")
@@ -1648,6 +1699,20 @@ def analyze_recording(
         # Store results
         if final_job.result:
             result = final_job.result
+            # Determine effective tier from job type (in case of job reuse)
+            effective_tier = "fast" if final_job.job_type == "fast_analyze" else "full"
+            if effective_tier != analysis_tier:
+                console.print(
+                    f"[yellow]Job type '{effective_tier}' differs from requested "
+                    f"'{analysis_tier}', treating as '{effective_tier}'[/yellow]"
+                )
+
+            # Status: partial for fast, completed for full
+            status_to_set = "partial" if effective_tier == "fast" else "completed"
+            # Don't downgrade an already-completed recording
+            if effective_tier == "fast" and recording.analysis_status == "completed":
+                status_to_set = "completed"
+
             db_client.update_recording_analysis(
                 hash_prefix=recording.hash_prefix,
                 duration_seconds=result.duration_seconds,
@@ -1665,13 +1730,29 @@ def analyze_recording(
                 ),
                 key_detected_at=result.key_detected_at,
                 loudness_db=result.loudness_db,
-                beats=json.dumps(result.beats) if result.beats else None,
-                downbeats=json.dumps(result.downbeats) if result.downbeats else None,
-                sections=json.dumps(result.sections) if result.sections else None,
+                # Full-tier-only fields: only write for full tier
+                beats=(
+                    json.dumps(result.beats)
+                    if effective_tier == "full" and result.beats
+                    else None
+                ),
+                downbeats=(
+                    json.dumps(result.downbeats)
+                    if effective_tier == "full" and result.downbeats
+                    else None
+                ),
+                sections=(
+                    json.dumps(result.sections)
+                    if effective_tier == "full" and result.sections
+                    else None
+                ),
                 embeddings_shape=(
-                    json.dumps(result.embeddings_shape) if result.embeddings_shape else None
+                    json.dumps(result.embeddings_shape)
+                    if effective_tier == "full" and result.embeddings_shape
+                    else None
                 ),
                 r2_stems_url=result.stems_url,
+                analysis_status=status_to_set,
             )
 
         console.print(f"[green]Analysis completed for {song_id}[/green]")
