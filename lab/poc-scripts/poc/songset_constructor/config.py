@@ -60,8 +60,8 @@ class RunConfig:
 
     def __post_init__(self) -> None:
         self.env_file = load_runtime_env(self.env_file)
-        if self.songs not in {4, 5}:
-            raise ValueError("--songs supports only 4 or 5 for this POC")
+        if self.songs not in {2, 3, 4, 5}:
+            raise ValueError("--songs supports only 2-5 for this POC")
         if self.top_k < 1:
             raise ValueError("--top-k must be >= 1")
         if self.pool_limit < self.songs:

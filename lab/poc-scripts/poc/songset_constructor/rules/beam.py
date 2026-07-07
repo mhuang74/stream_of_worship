@@ -6,15 +6,27 @@ from itertools import combinations
 from typing import Iterable
 
 from poc.songset_constructor.config import RunConfig
-from poc.songset_constructor.models import ScoreBreakdown, SongCandidate, SongsetProposal, TransitionCandidate
+from poc.songset_constructor.models import (
+    ScoreBreakdown,
+    SongCandidate,
+    SongsetProposal,
+    TransitionCandidate,
+)
 
 from .fitness import score
 from .hard_constraints import validate
 from .proposals import draft_from_candidates, proposal_from_draft, rank_proposals
 
+_TEMPLATES: dict[int, tuple[int, ...]] = {
+    2: (1, 4),
+    3: (1, 3, 5),
+    4: (1, 3, 4, 5),
+    5: (1, 2, 3, 4, 5),
+}
+
 
 def _template(songs: int) -> tuple[int, ...]:
-    return (1, 3, 4, 5) if songs == 4 else (1, 2, 3, 4, 5)
+    return _TEMPLATES[songs]
 
 
 def compute_fan_out(
@@ -29,11 +41,15 @@ def compute_fan_out(
             if candidate.recording_hash_prefix == other.recording_hash_prefix:
                 continue
             transition = matrix.get((candidate.recording_hash_prefix, other.recording_hash_prefix))
-            if transition and transition.bpm_delta <= config.h4_limit and (
-                transition.cfd <= config.h5_limit or transition.suggested_key_shift != 0
+            if (
+                transition
+                and transition.bpm_delta <= config.h4_limit
+                and (transition.cfd <= config.h5_limit or transition.suggested_key_shift != 0)
             ):
                 fan_out += 1
-        updated.append(candidate.model_copy(update={"fan_out": fan_out, "is_dead_end": fan_out == 0}))
+        updated.append(
+            candidate.model_copy(update={"fan_out": fan_out, "is_dead_end": fan_out == 0})
+        )
     return updated
 
 
@@ -102,16 +118,17 @@ def _sequences(
                     if bpm_delta > allowed:
                         continue
                     distance = transition.cfd if transition else 6
-                    shifted_ok = (
-                        transition is not None and transition.suggested_key_shift != 0
-                    )
+                    shifted_ok = transition is not None and transition.suggested_key_shift != 0
                     if distance > config.h5_limit and not shifted_ok:
                         continue
                 expanded.append([*beam, by_hash[candidate.recording_hash_prefix]])
         expanded.sort(
             key=lambda seq: (
                 sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
-                sum(abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0)) for index in range(len(seq) - 1)),
+                sum(
+                    abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
+                    for index in range(len(seq) - 1)
+                ),
                 tuple(item.recording_hash_prefix for item in seq),
             )
         )
@@ -135,9 +152,7 @@ def _proposal_for_sequence(
     if len(draft.items) > 1:
         updated_items = [draft.items[0]]
         for left, right in zip(draft.items, draft.items[1:]):
-            transition = matrix.get(
-                (left.recording_hash_prefix, right.recording_hash_prefix)
-            )
+            transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
             if transition:
                 updated_items.append(
                     right.model_copy(
@@ -153,7 +168,9 @@ def _proposal_for_sequence(
                 updated_items.append(right)
         draft = draft.model_copy(update={"items": updated_items})
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
-    proposal = proposal_from_draft(draft, sequence, placeholder, llm_origin=False, warnings=warnings)
+    proposal = proposal_from_draft(
+        draft, sequence, placeholder, llm_origin=False, warnings=warnings
+    )
     return proposal.model_copy(update={"score": score(proposal, config, matrix)})
 
 
@@ -219,9 +236,11 @@ def search(
         relaxed_config = RunConfig(
             **{
                 **config.to_dict(),
-                "relax_h3_bpm": config.relax_h3_bpm
-                if config.relax_h3_bpm is not None
-                else (100 if config.intimate else 120),
+                "relax_h3_bpm": (
+                    config.relax_h3_bpm
+                    if config.relax_h3_bpm is not None
+                    else (100 if config.intimate else 120)
+                ),
                 "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
                 "relax_h4": True,
                 "relax_h5": True,
@@ -237,17 +256,17 @@ def search(
                 matrix,
                 warnings=["relaxed_H2_H3", "relaxed_H4_H5"],
             )
-            if validate(
-                proposal, relaxed_config, matrix, relax_h4=True, relax_h5=True
-            ).passed:
+            if validate(proposal, relaxed_config, matrix, relax_h4=True, relax_h5=True).passed:
                 proposals.append(proposal)
     if config.auto_relax and config.relax_h1 and not proposals:
         relaxed_config = RunConfig(
             **{
                 **config.to_dict(),
-                "relax_h3_bpm": config.relax_h3_bpm
-                if config.relax_h3_bpm is not None
-                else (100 if config.intimate else 120),
+                "relax_h3_bpm": (
+                    config.relax_h3_bpm
+                    if config.relax_h3_bpm is not None
+                    else (100 if config.intimate else 120)
+                ),
                 "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
                 "relax_h4": True,
                 "relax_h5": True,

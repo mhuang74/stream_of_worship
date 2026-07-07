@@ -115,7 +115,7 @@ def test_cli_no_llm_explains_enrichment_shortfall(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0
-    assert "only 1 enriched candidates remain for a 5-song set" in result.output
+    assert "only 1 enriched candidates remain for a 3-song set" in result.output
     assert "most loaded songs were dropped by missing_tempo_and_key_metadata (5/6)" in result.output
     assert "No artifacts were written; no valid proposals were generated." in result.output
 
@@ -166,7 +166,7 @@ def test_llm_no_results_prompt_includes_rule_drop_diagnostics(tmp_path, monkeypa
     assert result.exit_code == 0
     assert len(prompts) == 1
     assert "Rule-drop diagnostics:" in prompts[0]
-    assert "only 1 enriched candidates remain for a 5-song set" in prompts[0]
+    assert "only 1 enriched candidates remain for a 3-song set" in prompts[0]
     assert "most loaded songs were dropped by missing_tempo_and_key_metadata (4/5)" in prompts[0]
     assert "Hard rule reference:" in prompts[0]
 

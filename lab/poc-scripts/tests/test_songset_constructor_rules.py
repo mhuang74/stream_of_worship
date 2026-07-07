@@ -1,8 +1,15 @@
 from poc.songset_constructor.config import RunConfig
-from poc.songset_constructor.models import ScoreBreakdown, SongCandidate, TransitionCandidate
-from poc.songset_constructor.rules.beam import _candidate_sort_key, _proposal_for_sequence, _sequences, compute_fan_out, search
+from poc.songset_constructor.models import ScoreBreakdown, SongCandidate
+from poc.songset_constructor.rules.beam import (
+    _candidate_sort_key,
+    _proposal_for_sequence,
+    _sequences,
+    _template,
+    compute_fan_out,
+    search,
+)
 from poc.songset_constructor.rules.diagnostics import beam_diagnostics, hard_rule_rejection_counts
-from poc.songset_constructor.rules.fitness import score
+from poc.songset_constructor.rules.fitness import f_theme, score
 from poc.songset_constructor.rules.hard_constraints import validate
 from poc.songset_constructor.rules.phases import fuse_themes, infer_phase
 from poc.songset_constructor.rules.proposals import draft_from_candidates, proposal_from_draft
@@ -491,9 +498,7 @@ def test_diagnostics_uses_beam_sort_key(monkeypatch):
     import poc.songset_constructor.rules.diagnostics as diag_mod
 
     monkeypatch.setattr(diag_mod, "_candidate_sort_key", wrapper)
-    monkeypatch.setattr(
-        "poc.songset_constructor.rules.diagnostics._candidate_sort_key", wrapper
-    )
+    monkeypatch.setattr("poc.songset_constructor.rules.diagnostics._candidate_sort_key", wrapper)
 
     pool = [
         _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
@@ -546,3 +551,78 @@ def test_compute_fan_out_uses_config_limits():
     relaxed_config = RunConfig(no_llm=True, auto_relax=False, relax_h4=True, relax_h5=True)
     relaxed_pool = compute_fan_out(pool, matrix, relaxed_config)
     assert any(not c.is_dead_end for c in relaxed_pool)
+
+
+# ---------------------------------------------------------------------------
+# Short-set (songs=2 / songs=3) phase template tests
+# ---------------------------------------------------------------------------
+
+
+def test_template_returns_correct_phase_arc_for_each_song_count():
+    assert _template(2) == (1, 4)
+    assert _template(3) == (1, 3, 5)
+    assert _template(4) == (1, 3, 4, 5)
+    assert _template(5) == (1, 2, 3, 4, 5)
+
+
+def test_beam_search_passes_h0_for_three_songs(synthetic_pool):
+    matrix = _matrix(synthetic_pool)
+    config = RunConfig(songs=3, no_llm=True)
+    pool = compute_fan_out(synthetic_pool, matrix, config)
+    proposals = search(pool, config, matrix)
+    assert proposals, "expected at least one 3-song proposal passing H0"
+    assert len(proposals[0].items) == 3
+    feedback = validate(
+        proposals[0],
+        config,
+        matrix,
+        relax_h1=config.relax_h1,
+        relax_h4=config.relax_h4,
+        relax_h5=config.relax_h5,
+    )
+    assert feedback.passed, feedback.errors
+
+
+def test_beam_search_passes_h0_for_two_songs():
+    # synthetic_pool's BPM spread (124 -> 78) exceeds H4 limits for a 2-song
+    # opener->closer arc, so use a compact pool where the opener and closer sit
+    # within the default 15-BPM non-crossfade H4 budget.
+    pool = [
+        _candidate("o1", "Opener", "o1", 110, "G", "maj", 1),
+        _candidate("c1", "Closer", "c1", 95, "E", "min", 4),
+    ]
+    matrix = _matrix(pool)
+    config = RunConfig(songs=2, no_llm=True, relax_h3_bpm=100)
+    pool = compute_fan_out(pool, matrix, config)
+    proposals = search(pool, config, matrix)
+    assert proposals, "expected at least one 2-song proposal passing H0"
+    assert len(proposals[0].items) == 2
+    feedback = validate(
+        proposals[0],
+        config,
+        matrix,
+        relax_h1=config.relax_h1,
+        relax_h4=config.relax_h4,
+        relax_h5=config.relax_h5,
+    )
+    assert feedback.passed, feedback.errors
+
+
+def test_f_theme_uses_correct_template_for_short_sets():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid", "m1", 98, "A", "maj", 3),
+        _candidate("c1", "Closer", "c1", 78, "B", "min", 5),
+    ]
+    matrix = _matrix(pool)
+    draft = draft_from_candidates(pool[:3])
+    proposal = proposal_from_draft(
+        draft,
+        pool,
+        score=ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0),
+        llm_origin=False,
+    )
+    # Phases exactly match the (1, 3, 5) template -> distance 0 -> f_theme == 1.0
+    assert f_theme(proposal, songs=3) == 1.0
+    # Sanity: the denominator uses len(template)==3, not the legacy 5-phase value.
+    assert score(proposal, RunConfig(songs=3, no_llm=True), matrix).f_theme == 1.0
