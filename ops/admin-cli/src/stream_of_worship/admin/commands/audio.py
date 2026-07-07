@@ -1673,19 +1673,35 @@ def analyze_recording(
                 progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
 
             try:
-                final_job = client.wait_for_completion(
-                    job_id,
-                    poll_interval=30.0,
-                    timeout=600.0,
-                    callback=update_progress,
+                try:
+                    final_job = client.wait_for_completion(
+                        job_id,
+                        poll_interval=30.0,
+                        timeout=1800.0,
+                        callback=update_progress,
+                    )
+                except AnalysisServiceError as e:
+                    msg = str(e)
+                    if msg.startswith("Timed out waiting for job"):
+                        console.print(
+                            f"[yellow]Timed out after 30 min. The job is still "
+                            f"running server-side.[/yellow]\n"
+                            f"[dim]Poll with: sow-admin audio status {job_id}[/dim]"
+                        )
+                        raise typer.Exit(0)
+                    console.print(f"[red]{e}[/red]")
+                    db_client.update_recording_status(
+                        hash_prefix=recording.hash_prefix,
+                        analysis_status="failed",
+                    )
+                    raise typer.Exit(1)
+            except KeyboardInterrupt:
+                console.print(
+                    f"\n[yellow]Interrupted — job {job_id} is still running "
+                    f"server-side.[/yellow]\n"
+                    f"[dim]Poll with: sow-admin audio status {job_id}[/dim]"
                 )
-            except AnalysisServiceError as e:
-                console.print(f"[red]{e}[/red]")
-                db_client.update_recording_status(
-                    hash_prefix=recording.hash_prefix,
-                    analysis_status="failed",
-                )
-                raise typer.Exit(1)
+                raise typer.Exit(130)
 
         if final_job.status == "failed":
             error_msg = final_job.error_message or "Unknown error"
