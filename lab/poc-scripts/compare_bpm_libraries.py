@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 import librosa
+from librosa.feature.rhythm import tempo as librosa_tempo
 import numpy as np
 import typer
 
@@ -162,6 +163,17 @@ def _get_madmom_processors():
 def _get_beatnet_estimator():
     global _beatnet_estimator
     if _beatnet_estimator is None:
+        import sys
+        import types
+
+        # BeatNet imports pyaudio at module level, but it's only used in 'stream'
+        # mode. Stub it out so offline mode works without portaudio/pyaudio.
+        if "pyaudio" not in sys.modules:
+            pyaudio_stub = types.ModuleType("pyaudio")
+            pyaudio_stub.PyAudio = type("PyAudio", (), {})
+            pyaudio_stub.paFloat32 = 0
+            sys.modules["pyaudio"] = pyaudio_stub
+
         from BeatNet.BeatNet import BeatNet
 
         _beatnet_estimator = BeatNet(
@@ -177,7 +189,7 @@ def timed_librosa_raw(y: np.ndarray, sr: int) -> LibraryResult:
     t0 = time.perf_counter()
     try:
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=HOP)
-        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, hop_length=HOP, start_bpm=80)
+        tempo = librosa_tempo(onset_envelope=onset_env, sr=sr, hop_length=HOP, start_bpm=80)
         if hasattr(tempo, "__iter__"):
             tempo = float(tempo[0])
         bpm = float(tempo)
@@ -229,15 +241,13 @@ def timed_prod_v4(y: np.ndarray, sr: int) -> LibraryResult:
     t0 = time.perf_counter()
     try:
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=HOP)
-        tempo_primary = librosa.beat.tempo(
-            onset_envelope=onset_env, sr=sr, hop_length=HOP, start_bpm=80
-        )
+        tempo_primary = librosa_tempo(onset_envelope=onset_env, sr=sr, hop_length=HOP, start_bpm=80)
         if hasattr(tempo_primary, "__iter__"):
             tempo_primary = float(tempo_primary[0])
         tempo_primary = float(tempo_primary)
 
         if tempo_primary > 120.0:
-            tempo_alt = librosa.beat.tempo(
+            tempo_alt = librosa_tempo(
                 onset_envelope=onset_env, sr=sr, hop_length=HOP, start_bpm=60.0
             )
             if hasattr(tempo_alt, "__iter__"):
@@ -248,7 +258,7 @@ def timed_prod_v4(y: np.ndarray, sr: int) -> LibraryResult:
             else:
                 bpm = tempo_primary
         elif tempo_primary < 60.0:
-            tempo_alt = librosa.beat.tempo(
+            tempo_alt = librosa_tempo(
                 onset_envelope=onset_env, sr=sr, hop_length=HOP, start_bpm=120.0
             )
             if hasattr(tempo_alt, "__iter__"):
