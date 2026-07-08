@@ -7,6 +7,7 @@ dependencies = [
     "stream-of-worship[postgres]",
     "sow-lab-app",
     "sow-legacy-cli-tui",
+    "matplotlib[bpm-poc]>=3.11.0",
 ]
 
 [project.optional-dependencies]
@@ -95,6 +96,7 @@ score_lrc_base = [
 fix_lrc = ["sow-lab-poc-scripts[poc_qwen3_mlx,poc_qwen3_align,score_lrc_base]"]
 bpm_poc = [
     "librosa>=0.10.0",
+    "matplotlib>=3.8.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
