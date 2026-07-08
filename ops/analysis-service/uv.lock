@@ -2497,7 +2497,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosqlite", marker = "extra == 'test'", specifier = ">=0.19.0" },
     { name = "audio-separator", marker = "extra == 'admin'", specifier = ">=0.30.0" },
     { name = "beautifulsoup4", marker = "extra == 'admin'", specifier = ">=4.14.3" },
     { name = "beautifulsoup4", marker = "extra == 'scraper'", specifier = ">=4.14.0" },
