@@ -33,6 +33,16 @@ class CacheManager:
         version = settings.KEY_ALGORITHM_VERSION
         return self.cache_dir / f"{hash_prefix}.v{version}{suffix}.json"
 
+    def _versioned_fast_file(self, content_hash: str) -> Path:
+        """Fast-tier cache filename incorporating both KEY and BPM algorithm versions.
+
+        Format: ``{hash32}.v{KEY_ALGORITHM_VERSION}.v{BPM_ALGORITHM_VERSION}_fast.json``
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        key_version = settings.KEY_ALGORITHM_VERSION
+        bpm_version = settings.BPM_ALGORITHM_VERSION
+        return self.cache_dir / f"{hash_prefix}.v{key_version}.v{bpm_version}_fast.json"
+
     def get_analysis_result(self, content_hash: str) -> Optional[dict]:
         """Check if analysis result exists in cache.
 
@@ -98,6 +108,11 @@ class CacheManager:
         Distinct from the full-tier {hash_prefix}.json cache. Fast results are
         stored as {hash_prefix}_fast.json and never overwrite the full cache.
 
+        Reads in order of preference:
+        1. ``{hash32}.v{KEY}.v{BPM}_fast.json`` (new versioned file)
+        2. ``{hash32}.v{KEY}_fast.json`` (legacy v4 file)
+        3. ``{hash32}_fast.json`` (pre-versioning file)
+
         Args:
             content_hash: Full SHA-256 content hash
 
@@ -106,6 +121,7 @@ class CacheManager:
         """
         hash_prefix = self._get_hash_prefix(content_hash)
         cache_files = [
+            self._versioned_fast_file(content_hash),
             self._versioned_analysis_file(content_hash, "_fast"),
             self.cache_dir / f"{hash_prefix}_fast.json",
         ]
@@ -140,7 +156,7 @@ class CacheManager:
         Returns:
             Path to saved cache file
         """
-        cache_file = self._versioned_analysis_file(content_hash, "_fast")
+        cache_file = self._versioned_fast_file(content_hash)
 
         with tempfile.NamedTemporaryFile(
             mode="w",

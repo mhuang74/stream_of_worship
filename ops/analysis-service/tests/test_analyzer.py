@@ -22,6 +22,9 @@ def _stub_key_result() -> KeyDetectionResult:
     )
 
 
+_SAMPLE_LRC = "[00:00.00]神愛你\n[00:10.00]我活著稱頌祢\n[00:20.00]哈利路亞"
+
+
 class TestAnalyzeAudioFastTempoParams:
     """Tests that tempo estimation uses correct hop_length and start_bpm."""
 
@@ -56,10 +59,7 @@ class TestAnalyzeAudioFastTempoParams:
         assert result["tempo_bpm"] == 80.0
 
         # Assert librosa.beat.tempo was called with start_bpm=80 and hop_length=512
-        tempo_calls = [
-            call
-            for call in mock_librosa.beat.tempo.call_args_list
-        ]
+        tempo_calls = [call for call in mock_librosa.beat.tempo.call_args_list]
         assert len(tempo_calls) >= 1
         assert tempo_calls[0].kwargs.get("start_bpm") == 80.0
         assert tempo_calls[0].kwargs.get("hop_length") == 512
@@ -410,3 +410,161 @@ class TestAnalyzeAudioFastTempoParams:
 
         assert result["tempo_bpm"] == 110.0
         assert mock_librosa.beat.tempo.call_count == 1
+
+
+class TestAnalyzeAudioFastV5CpsPrior:
+    """Tests for the prod-v5 CPS-derived lognormal prior path."""
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @patch("sow_analysis.workers.analyzer.settings")
+    @pytest.mark.asyncio
+    async def test_v5_uses_cps_prior_when_lrc_present(
+        self, mock_settings, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When v5 + lrc_content, librosa.beat.tempo is called with prior=... (no octave guard)."""
+        mock_settings.BPM_ALGORITHM_VERSION = "v5_cps_prior"
+        mock_settings.KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"
+
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.return_value = np.array([68.0])
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(
+            audio_path,
+            cache_manager,
+            "abc123",
+            lrc_content=_SAMPLE_LRC,
+        )
+
+        assert result["tempo_bpm"] == 68.0
+        # Only one tempo call (no octave guard)
+        assert mock_librosa.beat.tempo.call_count == 1
+        # The call must use prior=, not start_bpm=
+        tempo_call = mock_librosa.beat.tempo.call_args
+        assert tempo_call.kwargs.get("prior") is not None
+        assert "start_bpm" not in tempo_call.kwargs
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @patch("sow_analysis.workers.analyzer.settings")
+    @pytest.mark.asyncio
+    async def test_v5_falls_back_to_v4_when_lrc_missing(
+        self, mock_settings, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When v5 + lrc_content=None, the v4 path runs (start_bpm + octave guard)."""
+        mock_settings.BPM_ALGORITHM_VERSION = "v5_cps_prior"
+        mock_settings.KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"
+
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.return_value = np.array([85.0])
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(
+            audio_path,
+            cache_manager,
+            "abc123",
+            lrc_content=None,
+        )
+
+        assert result["tempo_bpm"] == 85.0
+        # v4 path uses start_bpm, not prior
+        tempo_call = mock_librosa.beat.tempo.call_args
+        assert tempo_call.kwargs.get("start_bpm") == 80.0
+        assert "prior" not in tempo_call.kwargs
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @patch("sow_analysis.workers.analyzer.settings")
+    @pytest.mark.asyncio
+    async def test_v5_falls_back_to_v4_when_cps_unparseable(
+        self, mock_settings, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When v5 + malformed LRC (no valid lines), fall through to v4."""
+        mock_settings.BPM_ALGORITHM_VERSION = "v5_cps_prior"
+        mock_settings.KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"
+
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.return_value = np.array([90.0])
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(
+            audio_path,
+            cache_manager,
+            "abc123",
+            lrc_content="just plain text\nno timestamps here",
+        )
+
+        assert result["tempo_bpm"] == 90.0
+        # v4 fallback uses start_bpm
+        tempo_call = mock_librosa.beat.tempo.call_args
+        assert tempo_call.kwargs.get("start_bpm") == 80.0
+        assert "prior" not in tempo_call.kwargs
+
+    @patch("sow_analysis.workers.analyzer.compute_loudness")
+    @patch("sow_analysis.workers.analyzer.detect_key")
+    @patch("sow_analysis.workers.analyzer.librosa")
+    @patch("sow_analysis.workers.analyzer.settings")
+    @pytest.mark.asyncio
+    async def test_v4_default_ignores_lrc_content(
+        self, mock_settings, mock_librosa, mock_detect_key, mock_compute_loudness, tmp_path
+    ):
+        """When BPM_ALGORITHM_VERSION=v4_octave_guard, lrc_content is ignored."""
+        mock_settings.BPM_ALGORITHM_VERSION = "v4_octave_guard"
+        mock_settings.KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"
+
+        mock_librosa.load.return_value = (np.zeros(22050 * 3), 22050)
+        mock_librosa.get_duration.return_value = 3.0
+        mock_librosa.onset.onset_strength.return_value = np.zeros(258)
+        mock_librosa.beat.tempo.return_value = np.array([80.0])
+        mock_detect_key.return_value = _stub_key_result()
+        mock_compute_loudness.return_value = -20.0
+
+        cache_manager = MagicMock()
+        cache_manager.get_fast_analyze_result.return_value = None
+
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_text("dummy")
+
+        result = await analyze_audio_fast(
+            audio_path,
+            cache_manager,
+            "abc123",
+            lrc_content=_SAMPLE_LRC,
+        )
+
+        assert result["tempo_bpm"] == 80.0
+        # v4 path uses start_bpm, not prior
+        tempo_call = mock_librosa.beat.tempo.call_args
+        assert tempo_call.kwargs.get("start_bpm") == 80.0
+        assert "prior" not in tempo_call.kwargs

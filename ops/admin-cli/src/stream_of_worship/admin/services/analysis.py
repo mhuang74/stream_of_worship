@@ -270,6 +270,7 @@ class AnalysisClient:
         sample_rate: int = 22050,
         hop_length: int = 512,
         start_bpm: float = 80.0,
+        lrc_content: Optional[str] = None,
     ) -> JobInfo:
         """Submit an audio file for fast analysis (librosa-only).
 
@@ -284,6 +285,9 @@ class AnalysisClient:
             sample_rate: Target sample rate for librosa
             hop_length: Hop length for tempo estimation
             start_bpm: Initial tempo guess for the log-normal prior (default 80)
+            lrc_content: Optional LRC lyrics text for CPS-based prod-v5 prior.
+                When provided and the service has BPM_ALGORITHM_VERSION=v5_cps_prior,
+                a lognormal prior is derived from the CPS value.
 
         Returns:
             JobInfo for the submitted job
@@ -299,6 +303,7 @@ class AnalysisClient:
                 "sample_rate": sample_rate,
                 "hop_length": hop_length,
                 "start_bpm": start_bpm,
+                **({"lrc_content": lrc_content} if lrc_content is not None else {}),
             },
         }
 

@@ -698,9 +698,7 @@ class JobQueue:
                 job.stage = "analyzing"
                 job.progress = 0.3
                 try:
-                    await self.job_store.update_job(
-                        job.id, stage="analyzing", progress=0.3
-                    )
+                    await self.job_store.update_job(job.id, stage="analyzing", progress=0.3)
                 except Exception as e:
                     logger.error(f"Failed to update job {job.id} in database: {e}")
 
@@ -712,6 +710,7 @@ class JobQueue:
                     hop_length=request.options.hop_length,
                     start_bpm=request.options.start_bpm,
                     force=request.options.force,
+                    lrc_content=request.options.lrc_content,
                 )
 
                 # Build job result (fast subset only; full-only fields stay None)

@@ -52,6 +52,7 @@ class FastAnalyzeOptions(BaseModel):
     sample_rate: int = 22050
     hop_length: int = 512
     start_bpm: float = Field(default=80.0, ge=40.0, le=200.0)
+    lrc_content: Optional[str] = None  # LRC lyrics text for CPS-based prod-v5 prior
 
 
 class FastAnalyzeJobRequest(BaseModel):
@@ -175,7 +176,9 @@ class JobResult(BaseModel):
     # LRC results
     lrc_url: Optional[str] = None
     line_count: Optional[int] = None
-    lrc_source: Optional[str] = None  # youtube_transcript, qwen3_asr, whisper_asr, or forced_alignment
+    lrc_source: Optional[str] = (
+        None  # youtube_transcript, qwen3_asr, whisper_asr, or forced_alignment
+    )
 
     # Stem separation results
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)
