@@ -31,14 +31,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import typer
 from sklearn.cluster import KMeans
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-CSV_PATH = Path("lab/poc-scripts/output/bpm_comparison_20260708_114300.csv")
-OUTPUT_PATH = Path("lab/poc-scripts/output/bpm_agreement_report.html")
+OUTPUT_DIR = Path("lab/poc-scripts/output")
+CSV_GLOB = "bpm_comparison_*.csv"
 
 METHOD_COLS = {
     "librosa": "librosa_bpm",
@@ -66,6 +67,53 @@ OCTAVE_RANGE = [-2, -1, 0, 1, 2]  # 2^k shifts for octave_corrected_diff
 def load_data(path: Path) -> list[dict]:
     with path.open() as f:
         return list(csv.DictReader(f))
+
+
+def _count_data_rows(path: Path) -> int:
+    """Return the number of data rows (excluding header) in a CSV."""
+    with path.open() as f:
+        reader = csv.DictReader(f)
+        return sum(1 for _ in reader)
+
+
+def find_latest_csv(
+    output_dir: Path = OUTPUT_DIR,
+    glob_pattern: str = CSV_GLOB,
+    min_songs: int = 3,
+) -> Path:
+    """Return the newest ``bpm_comparison_*.csv`` in *output_dir* with enough data.
+
+    Filenames follow ``bpm_comparison_YYYYMMDD_HHMMSS.csv``, so a
+    lexicographic sort yields the most recent timestamp. Candidates with
+    ``<= min_songs`` data rows are skipped (k-means requires ``n_samples >= 3``
+    and the report needs a meaningful population). The newest qualifying file
+    is returned.
+    """
+    candidates = sorted(output_dir.glob(glob_pattern), key=lambda p: p.name, reverse=True)
+    if not candidates:
+        typer.echo(
+            f"Error: no '{glob_pattern}' files found in {output_dir}. "
+            "Pass an explicit CSV path as the first argument.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    skipped: list[tuple[Path, int]] = []
+    for cand in candidates:
+        n = _count_data_rows(cand)
+        if n > min_songs:
+            if skipped:
+                typer.echo("  Skipped smaller reports (<= {} songs):".format(min_songs))
+                for p, k in skipped:
+                    typer.echo(f"    {p.name} ({k} songs)")
+            return cand
+        skipped.append((cand, n))
+    typer.echo(
+        f"Error: no '{glob_pattern}' file in {output_dir} has more than "
+        f"{min_songs} songs (checked {len(candidates)} file(s)). "
+        "Pass an explicit CSV path as the first argument.",
+        err=True,
+    )
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -922,6 +970,8 @@ def build_html_report(
     data: list[dict],
     charts: dict[str, str],
     tables: dict[str, dict[str, str]],
+    csv_name: str,
+    output_name: str,
 ) -> str:
     names = list(METHOD_COLS.keys())
 
@@ -1031,7 +1081,7 @@ def build_html_report(
     {section_d}
 
     <div class="footer">
-        Generated from {CSV_PATH.name} · {OUTPUT_PATH.name}
+        Generated from {csv_name} · {output_name}
     </div>
 </body>
 </html>"""
@@ -1043,11 +1093,44 @@ def build_html_report(
 # ---------------------------------------------------------------------------
 
 
-def main():
-    print(f"Loading data from {CSV_PATH} ...")
-    data = load_data(CSV_PATH)
-    print(f"  {len(data)} songs loaded.")
+app = typer.Typer(
+    help="BPM agreement report — v5 lineage + consensus + CPS×BPM crosstab. "
+    "Defaults to the latest bpm_comparison_*.csv in the output directory."
+)
+
+
+@app.command()
+def main(
+    csv_path: Optional[Path] = typer.Argument(
+        None,
+        help="Path to a bpm_comparison_*.csv file. If omitted, the latest "
+        "one in lab/poc-scripts/output/ is used.",
+    ),
+) -> None:
+    if csv_path is None:
+        csv_path = find_latest_csv()
+        typer.echo(f"Auto-detected latest report: {csv_path}")
+    else:
+        if not csv_path.exists():
+            typer.echo(f"Error: CSV not found: {csv_path}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"Using provided report: {csv_path}")
+
+    output_path = OUTPUT_DIR / f"{csv_path.stem}_agreement_report.html"
+
+    typer.echo(f"Loading data from {csv_path} ...")
+    data = load_data(csv_path)
+    typer.echo(f"  {len(data)} songs loaded.")
     n = len(data)
+
+    if n <= 3:
+        typer.echo(
+            f"Error: {csv_path} has only {n} song(s); at least 4 are required for "
+            "k-means clustering and a meaningful report. "
+            "Use a CSV with more songs.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     # 1. Compute global k-means BPM cutoffs (490-point combined set)
     all_bpms = []
@@ -1056,16 +1139,18 @@ def main():
             all_bpms.append(float(r[col]))
     all_bpms_arr = np.array(all_bpms)
     _, bpm_centers, bpm_kmeans_cutoffs = kmeans_3(all_bpms_arr)
-    print(f"  Global BPM k-means cutoffs: {bpm_kmeans_cutoffs[0]:.1f}, {bpm_kmeans_cutoffs[1]:.1f}")
+    typer.echo(
+        f"  Global BPM k-means cutoffs: {bpm_kmeans_cutoffs[0]:.1f}, {bpm_kmeans_cutoffs[1]:.1f}"
+    )
 
     # 2. Compute k-means CPS cutoffs (98-point set)
     cps_vals = [cps_value(r) for r in data]
     cps_valid = np.array([c for c in cps_vals if c is not None])
     _, cps_centers, cps_kmeans_cutoffs = kmeans_3(cps_valid)
-    print(f"  CPS k-means cutoffs: {cps_kmeans_cutoffs[0]:.2f}, {cps_kmeans_cutoffs[1]:.2f}")
+    typer.echo(f"  CPS k-means cutoffs: {cps_kmeans_cutoffs[0]:.2f}, {cps_kmeans_cutoffs[1]:.2f}")
 
     # 3. Section B artifacts
-    print("Building Section B (v5 Lineage Delta) ...")
+    typer.echo("Building Section B (v5 Lineage Delta) ...")
     charts = {}
     charts["v5_delta_histogram"] = chart_v5_delta_histogram(data)
     charts["v5_error_scatter"] = chart_v5_error_scatter(data, cps_kmeans_cutoffs)
@@ -1080,20 +1165,20 @@ def main():
     err_v5_oct = np.array([octave_corrected_diff(s, v) for s, v in zip(stored, v5)])
     delta_oct = err_v5_oct - err_v4_oct
     v5_winrate = float(np.mean(delta_oct < 0) * 100)
-    print(f"  v5 win-rate (octave-corrected): {v5_winrate:.1f}%")
+    typer.echo(f"  v5 win-rate (octave-corrected): {v5_winrate:.1f}%")
 
     # 4. Section C artifacts
-    print("Building Section C (Consensus & Disagreement) ...")
+    typer.echo("Building Section C (Consensus & Disagreement) ...")
     consensus = per_song_consensus(data, METHOD_COLS)
     charts["consensus_radius_hist"] = chart_consensus_radius_hist(data, consensus)
     charts["method_deviation_box"] = chart_method_deviation_box(data, consensus)
     charts["disputed_strip"] = chart_disputed_strip(data, consensus)
     tables_c = section_c_tables(data, consensus)
     median_radius = float(np.median([consensus[i]["radius"] for i in range(n)]))
-    print(f"  Median consensus radius: {median_radius:.1f} BPM")
+    typer.echo(f"  Median consensus radius: {median_radius:.1f} BPM")
 
     # 5. Section D artifacts
-    print("Building Section D (CPS × BPM crosstab) ...")
+    typer.echo("Building Section D (CPS × BPM crosstab) ...")
     crosstabs = {}
     for name, col in METHOD_COLS.items():
         crosstabs[(name, "nominal")] = build_crosstab_text(
@@ -1133,18 +1218,18 @@ def main():
                 if cb == bb:
                     diagonal += 1
             pct = diagonal / total * 100 if total > 0 else 0
-            print(f"  {name} ({scheme_label} CPS): diagonal = {diagonal}/{total} = {pct:.0f}%")
+            typer.echo(f"  {name} ({scheme_label} CPS): diagonal = {diagonal}/{total} = {pct:.0f}%")
 
     tables_d = {"crosstabs": crosstabs}
 
     # 6. Assemble and write
     tables = {"b": tables_b, "c": tables_c, "d": tables_d}
-    html = build_html_report(data, charts, tables)
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(html, encoding="utf-8")
-    size_kb = OUTPUT_PATH.stat().st_size / 1024
-    print(f"\nReport saved to {OUTPUT_PATH} ({size_kb:.0f} KB)")
+    html = build_html_report(data, charts, tables, csv_path.name, output_path.name)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html, encoding="utf-8")
+    size_kb = output_path.stat().st_size / 1024
+    typer.echo(f"\nReport saved to {output_path} ({size_kb:.0f} KB)")
 
 
 if __name__ == "__main__":
-    main()
+    app()
