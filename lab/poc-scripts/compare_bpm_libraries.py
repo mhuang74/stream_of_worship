@@ -17,6 +17,19 @@ Timing methodology:
     loading + processing, reflecting real end-to-end cost.
   Model weight loading (one-time) is excluded from per-song timing via lazy
   singletons, so the mean-per-song projection is not inflated by startup cost.
+
+Octave guard:
+  BeatNet and madmom apply a post-hoc halving heuristic (``halve_fast_bpm``)
+  mirroring the upper half of prod-v4's octave guard: when the reported BPM
+  exceeds 120 and its half-time lands in the worship range [65, 100], the
+  half-time value is used. Neural trackers tend to lock onto eighth-note
+  subdivisions for slow worship songs, reporting ~2× the true tempo; this
+  guard resolves that octave-level ambiguity without re-estimation.
+
+BeatNet model selection:
+  The ``--beatnet-model`` option selects which trained CRNN BeatNet uses
+  (1=GTZAN default, 2=Ballroom, 3=Rock corpus), enabling comparison of the
+  three shipped models on the same song.
 """
 
 from __future__ import annotations
@@ -283,7 +296,7 @@ def _prior_label_for_lib(lib: str, cps: Optional[float]) -> str:
 
 _madmom_rnn = None
 _madmom_dbn = None
-_beatnet_estimator = None
+_beatnet_estimators: dict[int, "BeatNet"] = {}
 
 
 def _get_madmom_processors():
@@ -296,9 +309,8 @@ def _get_madmom_processors():
     return _madmom_rnn, _madmom_dbn
 
 
-def _get_beatnet_estimator():
-    global _beatnet_estimator
-    if _beatnet_estimator is None:
+def _get_beatnet_estimator(model: int = 1):
+    if model not in _beatnet_estimators:
         import sys
         import types
 
@@ -312,10 +324,10 @@ def _get_beatnet_estimator():
 
         from BeatNet.BeatNet import BeatNet
 
-        _beatnet_estimator = BeatNet(
-            1, mode="offline", inference_model="DBN", plot=[], thread=False
+        _beatnet_estimators[model] = BeatNet(
+            model, mode="offline", inference_model="DBN", plot=[], thread=False
         )
-    return _beatnet_estimator
+    return _beatnet_estimators[model]
 
 
 # --- Timed library wrappers ---
@@ -347,6 +359,7 @@ def timed_madmom(audio_path: Path) -> LibraryResult:
             bpm = float(60.0 / np.median(np.diff(beats)))
         else:
             bpm = 0.0
+        bpm = halve_fast_bpm(bpm)
         elapsed = time.perf_counter() - t0
         return LibraryResult(bpm=bpm, elapsed=elapsed)
     except Exception as exc:
@@ -355,8 +368,8 @@ def timed_madmom(audio_path: Path) -> LibraryResult:
         return LibraryResult(bpm=None, elapsed=elapsed)
 
 
-def timed_beatnet(audio_path: Path) -> LibraryResult:
-    estimator = _get_beatnet_estimator()
+def timed_beatnet(audio_path: Path, model: int = 1) -> LibraryResult:
+    estimator = _get_beatnet_estimator(model)
     t0 = time.perf_counter()
     try:
         output = estimator.process(str(audio_path))
@@ -365,6 +378,7 @@ def timed_beatnet(audio_path: Path) -> LibraryResult:
             bpm = float(60.0 / np.median(np.diff(beats)))
         else:
             bpm = 0.0
+        bpm = halve_fast_bpm(bpm)
         elapsed = time.perf_counter() - t0
         return LibraryResult(bpm=bpm, elapsed=elapsed)
     except Exception as exc:
@@ -475,6 +489,30 @@ def timed_prod_v5(y: np.ndarray, sr: int, cps: Optional[float]) -> LibraryResult
 
 
 # --- Output formatting helpers ---
+
+
+def halve_fast_bpm(
+    bpm: float,
+    trigger: float = 120.0,
+    lo: float = 65.0,
+    hi: float = 100.0,
+) -> float:
+    """Halve a runaway high BPM if its half-time lands in the worship range.
+
+    Neural trackers (BeatNet, madmom) tend to lock onto eighth-note
+    subdivisions for slow worship songs, reporting ~2× the true tempo.
+    This mirrors the upper half of prod-v4's octave guard (line 385-395)
+    but without re-estimation — the median inter-beat interval is all we
+    have for neural trackers, so the half-time candidate is simply bpm/2.
+
+    No doubling guard (bpm < 60) is applied: neural trackers over-count
+    subdivisions; they do not underestimate.
+    """
+    if bpm > trigger:
+        half = bpm / 2.0
+        if lo <= half <= hi:
+            return half
+    return bpm
 
 
 def octave_flag(library_bpm: Optional[float], stored_bpm: Optional[float]) -> str:
@@ -851,6 +889,9 @@ def main(
         None, "--limit", help="Cap number of songs (with --all-catalog)"
     ),
     csv_output: bool = typer.Option(True, "--csv/--no-csv", help="Write results CSV (default on)"),
+    beatnet_model: int = typer.Option(
+        1, "--beatnet-model", help="BeatNet model: 1=GTZAN (default), 2=Ballroom, 3=Rock corpus"
+    ),
 ) -> None:
     """Compare BPM detection across librosa, madmom, BeatNet, prod-v4, and prod-v5."""
     songs = resolve_songs(song_ids, all_catalog, limit)
@@ -885,6 +926,7 @@ def main(
             typer.echo(
                 f"\nSong {i}/{len(songs)}: {song.title} ({song.song_id})\n"
                 f"  Hash: {song.hash_prefix} | Stored BPM: {song.stored_bpm or '—'}\n"
+                f"  BeatNet model: {beatnet_model}\n"
                 f"  Downloaded audio.mp3 ({size_mb:.2f} MB)",
                 err=True,
             )
@@ -906,7 +948,7 @@ def main(
             results: dict[str, LibraryResult] = {
                 "librosa_raw": timed_librosa_raw(y, sr),
                 "madmom": timed_madmom(audio_path),
-                "beatnet": timed_beatnet(audio_path),
+                "beatnet": timed_beatnet(audio_path, beatnet_model),
                 "prod_v4": timed_prod_v4(y, sr),
                 "prod_v5": timed_prod_v5(y, sr, cps),
             }
