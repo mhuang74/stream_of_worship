@@ -54,6 +54,8 @@ x-common-env: &common-env
   SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
   # Fast Analysis (librosa-only) Concurrency
   SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
+  # BPM Algorithm Configuration (Fast Analysis tempo detection)
+  BPM_ALGORITHM_VERSION: ${BPM_ALGORITHM_VERSION:-v4_octave_guard}
 
 # Define common GPU configuration using YAML anchor
 x-gpu-deploy: &gpu-deploy
