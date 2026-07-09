@@ -326,7 +326,7 @@ async def analyze_audio(
     # Build result
     analysis_result = {
         "duration_seconds": duration,
-        "tempo_bpm": bpm,
+        "tempo_bpm": round(bpm, 1),
         **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
         "beats": beats,
@@ -544,7 +544,7 @@ async def analyze_audio_fast(
     # Build result (fast subset only)
     analysis_result = {
         "duration_seconds": duration,
-        "tempo_bpm": bpm,
+        "tempo_bpm": round(bpm, 1),
         **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
     }

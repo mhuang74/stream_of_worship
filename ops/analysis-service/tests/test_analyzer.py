@@ -295,7 +295,7 @@ class TestAnalyzeAudioFastTempoParams:
             "abc123",
         )
 
-        assert result["tempo_bpm"] == 69.837
+        assert result["tempo_bpm"] == 69.8
         assert mock_librosa.beat.tempo.call_count == 1
 
     @patch("sow_analysis.workers.analyzer.compute_loudness")
