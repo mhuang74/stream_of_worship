@@ -74,7 +74,7 @@ services:
       args:
         - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
     ports:
-      - "8000:8000"
+      - "${SOW_BIND_IP:-0.0.0.0}:8000:8000"
     environment:
       <<: *common-env
     volumes:
@@ -96,7 +96,7 @@ services:
         - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
         - DEV_MODE=true
     ports:
-      - "8000:8000"
+      - "${SOW_BIND_IP:-0.0.0.0}:8000:8000"
     environment:
       <<: *common-env
       DEV_MODE: "true"
