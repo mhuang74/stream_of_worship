@@ -109,6 +109,8 @@ class MvsepClient:
             hour=0, minute=0, second=0, microsecond=0
         )
 
+        self._mutex = asyncio.Lock()
+
         self._client = httpx.AsyncClient(timeout=self.http_timeout)
 
     @property
@@ -347,64 +349,64 @@ class MvsepClient:
         Returns:
             Tuple of (vocals_path, instrumental_path)
         """
-        self._increment_daily_count()
+        async with self._mutex:
+            if stage_callback:
+                stage_callback("mvsep_stage1_submitting")
 
-        if stage_callback:
-            stage_callback("mvsep_stage1_submitting")
+            job_hash = await self._submit_job(
+                audio_path=input_path,
+                sep_type=self.stage1_sep_type,
+                add_opt1=self.stage1_add_opt1,
+                add_opt2=self.stage1_add_opt2,
+                output_format=2,  # FLAC 16-bit
+            )
+            self._increment_daily_count()  # only count successful submits
 
-        job_hash = await self._submit_job(
-            audio_path=input_path,
-            sep_type=self.stage1_sep_type,
-            add_opt1=self.stage1_add_opt1,
-            add_opt2=self.stage1_add_opt2,
-            output_format=2,  # FLAC 16-bit
-        )
+            if stage_callback:
+                stage_callback("mvsep_stage1_polling")
 
-        if stage_callback:
-            stage_callback("mvsep_stage1_polling")
+            result = await self._poll_job(job_hash)
 
-        result = await self._poll_job(job_hash)
+            if stage_callback:
+                stage_callback("mvsep_stage1_downloading")
 
-        if stage_callback:
-            stage_callback("mvsep_stage1_downloading")
+            file_entries = result.get("data", {}).get("files", [])
+            downloaded = await self._download_files(file_entries, output_dir)
 
-        file_entries = result.get("data", {}).get("files", [])
-        downloaded = await self._download_files(file_entries, output_dir)
+            # Build map of download filenames to their API type (robust classification)
+            entry_type_by_download: dict[str, str] = {}
+            for entry in file_entries:
+                download_name = (entry.get("download") or "").lower()
+                file_type = entry.get("type", "").lower()
+                if download_name and file_type:
+                    entry_type_by_download[download_name] = file_type
 
-        # Build map of download filenames to their API type (robust classification)
-        entry_type_by_download: dict[str, str] = {}
-        for entry in file_entries:
-            download_name = (entry.get("download") or "").lower()
-            file_type = entry.get("type", "").lower()
-            if download_name and file_type:
-                entry_type_by_download[download_name] = file_type
+            # Identify outputs by API type first, then filename fallback
+            vocals_file: Optional[Path] = None
+            instrumental_file: Optional[Path] = None
 
-        # Identify outputs by API type first, then filename fallback
-        vocals_file: Optional[Path] = None
-        instrumental_file: Optional[Path] = None
+            for path in downloaded:
+                name_lower = path.name.lower()
 
-        for path in downloaded:
-            name_lower = path.name.lower()
+                # Primary: match by API type field using download filename
+                matched = False
+                for dl_name, file_type in entry_type_by_download.items():
+                    if dl_name in name_lower:
+                        if file_type == "vocals":
+                            vocals_file = path
+                        elif file_type in ("other", "instrumental", "accompaniment", "music"):
+                            instrumental_file = path
+                        matched = True
+                        break
 
-            # Primary: match by API type field using download filename
-            matched = False
-            for dl_name, file_type in entry_type_by_download.items():
-                if dl_name in name_lower:
-                    if file_type == "vocals":
-                        vocals_file = path
-                    elif file_type in ("other", "instrumental", "accompaniment", "music"):
-                        instrumental_file = path
-                    matched = True
-                    break
+                if matched:
+                    continue
 
-            if matched:
-                continue
-
-            # Fallback: filename pattern matching
-            if "vocal" in name_lower:
-                vocals_file = path
-            elif "instrumental" in name_lower or "accompaniment" in name_lower or "other" in name_lower:
-                instrumental_file = path
+                # Fallback: filename pattern matching
+                if "vocal" in name_lower:
+                    vocals_file = path
+                elif "instrumental" in name_lower or "accompaniment" in name_lower or "other" in name_lower:
+                    instrumental_file = path
 
         return vocals_file, instrumental_file
 
@@ -426,42 +428,43 @@ class MvsepClient:
         Returns:
             Tuple of (dry_vocals_path, reverb_path)
         """
-        if stage_callback:
-            stage_callback("mvsep_stage2_submitting")
+        async with self._mutex:
+            if stage_callback:
+                stage_callback("mvsep_stage2_submitting")
 
-        job_hash = await self._submit_job(
-            audio_path=vocals_path,
-            sep_type=self.stage2_sep_type,
-            add_opt1=self.stage2_add_opt1,
-            add_opt2=self.stage2_add_opt2,
-            output_format=2,  # FLAC 16-bit
-        )
+            job_hash = await self._submit_job(
+                audio_path=vocals_path,
+                sep_type=self.stage2_sep_type,
+                add_opt1=self.stage2_add_opt1,
+                add_opt2=self.stage2_add_opt2,
+                output_format=2,  # FLAC 16-bit
+            )
 
-        if stage_callback:
-            stage_callback("mvsep_stage2_polling")
+            if stage_callback:
+                stage_callback("mvsep_stage2_polling")
 
-        result = await self._poll_job(job_hash)
+            result = await self._poll_job(job_hash)
 
-        if stage_callback:
-            stage_callback("mvsep_stage2_downloading")
+            if stage_callback:
+                stage_callback("mvsep_stage2_downloading")
 
-        file_entries = result.get("data", {}).get("files", [])
-        downloaded = await self._download_files(file_entries, output_dir)
+            file_entries = result.get("data", {}).get("files", [])
+            downloaded = await self._download_files(file_entries, output_dir)
 
-        # Identify outputs by filename
-        dry_vocals_file: Optional[Path] = None
-        reverb_file: Optional[Path] = None
+            # Identify outputs by filename
+            dry_vocals_file: Optional[Path] = None
+            reverb_file: Optional[Path] = None
 
-        for path in downloaded:
-            name_lower = path.name.lower()
-            if any(x in name_lower for x in ["no reverb", "noreverb", "no_echo", "no echo", "dry"]):
-                dry_vocals_file = path
-            elif "reverb" in name_lower or "echo" in name_lower:
-                reverb_file = path
+            for path in downloaded:
+                name_lower = path.name.lower()
+                if any(x in name_lower for x in ["no reverb", "noreverb", "no_echo", "no echo", "dry"]):
+                    dry_vocals_file = path
+                elif "reverb" in name_lower or "echo" in name_lower:
+                    reverb_file = path
 
-        # Fallback: if dry not found but we have files, use first as dry
-        if not dry_vocals_file and downloaded:
-            dry_vocals_file = downloaded[0]
+            # Fallback: if dry not found but we have files, use first as dry
+            if not dry_vocals_file and downloaded:
+                dry_vocals_file = downloaded[0]
 
         return dry_vocals_file, reverb_file
 

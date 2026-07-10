@@ -6,6 +6,7 @@ Uses AudioSeparatorWrapper for vocal separation + UVR-De-Echo processing.
 
 import asyncio
 import logging
+import random
 import shutil
 import tempfile
 import time
@@ -28,10 +29,19 @@ from ..services.mvsep_client import MvsepNonRetriableError, MvsepQueueFullError
 logger = logging.getLogger(__name__)
 
 MVSEP_MAX_RETRIES = 3
-MVSEP_QUEUE_FULL_MAX_RETRIES = 4
+MVSEP_QUEUE_FULL_MAX_RETRIES = 6
 
-QUEUE_FULL_BACKOFF_SECONDS = [60, 120, 300]
-OTHER_ERROR_BACKOFF_SECONDS = [5, 10, 20]
+# Queue-full (retriable, long): 30, 60, 120, 240, 300... + ±20% jitter, cap 300s
+QUEUE_FULL_BACKOFF_BASE = 30.0
+QUEUE_FULL_BACKOFF_FACTOR = 2.0
+QUEUE_FULL_BACKOFF_CAP = 300.0
+QUEUE_FULL_BACKOFF_JITTER = 0.20
+
+# Other retriable errors: 5, 10, 20... (matches current behavior, now via formula)
+OTHER_ERROR_BACKOFF_BASE = 5.0
+OTHER_ERROR_BACKOFF_FACTOR = 2.0
+OTHER_ERROR_BACKOFF_CAP = 20.0
+OTHER_ERROR_BACKOFF_JITTER = 0.20
 
 # Legacy stem name mappings for cache backward compatibility
 CACHE_STEM_LEGACY_NAMES = {
@@ -47,6 +57,90 @@ class StemSeparationWorkerError(Exception):
     """Base exception for stem separation worker errors."""
 
     pass
+
+
+def _compute_mvsep_backoff(
+    attempt: int,
+    *,
+    base: float,
+    factor: float,
+    cap: float,
+    jitter: float,
+) -> float:
+    """Exponential backoff with ±jitter. attempt is 1-indexed."""
+    raw = base * (factor ** (attempt - 1))
+    capped = min(raw, cap)
+    amp = capped * jitter
+    return max(0.0, capped + random.uniform(-amp, amp))
+
+
+async def _run_mvsep_stage_with_retries(
+    stage_name: str,
+    stage_fn,
+    job: Job,
+    time_remaining_fn,
+) -> Optional[tuple]:
+    """Run a single MVSEP stage with retry/backoff logic.
+
+    Args:
+        stage_name: "Stage 1" or "Stage 2" for logging.
+        stage_fn: Async callable that performs the MVSEP operation.
+        job: Job being processed (for stage updates).
+        time_remaining_fn: Callable returning remaining seconds.
+
+    Returns:
+        Result tuple on success, None on exhaustion/non-retriable.
+    """
+    max_attempts = MVSEP_MAX_RETRIES
+
+    for attempt in range(1, MVSEP_QUEUE_FULL_MAX_RETRIES + 1):
+        if attempt > max_attempts:
+            break
+        if time_remaining_fn() <= 0:
+            logger.warning(f"MVSEP total timeout exceeded during {stage_name}, using fallback")
+            break
+
+        try:
+            result = await stage_fn()
+            logger.info(f"MVSEP {stage_name} succeeded on attempt {attempt}")
+            return result
+        except Exception as e:
+            if isinstance(e, MvsepNonRetriableError):
+                logger.error(f"MVSEP {stage_name} non-retriable error: {e}")
+                break
+            if isinstance(e, MvsepQueueFullError):
+                max_attempts = MVSEP_QUEUE_FULL_MAX_RETRIES
+                backoff = _compute_mvsep_backoff(
+                    attempt,
+                    base=QUEUE_FULL_BACKOFF_BASE,
+                    factor=QUEUE_FULL_BACKOFF_FACTOR,
+                    cap=QUEUE_FULL_BACKOFF_CAP,
+                    jitter=QUEUE_FULL_BACKOFF_JITTER,
+                )
+                backoff_label = "queue full"
+            else:
+                backoff = _compute_mvsep_backoff(
+                    attempt,
+                    base=OTHER_ERROR_BACKOFF_BASE,
+                    factor=OTHER_ERROR_BACKOFF_FACTOR,
+                    cap=OTHER_ERROR_BACKOFF_CAP,
+                    jitter=OTHER_ERROR_BACKOFF_JITTER,
+                )
+                backoff_label = "error"
+            logger.warning(
+                f"MVSEP {stage_name} attempt {attempt} failed ({backoff_label}): {e}"
+            )
+            if attempt >= max_attempts:
+                logger.error(f"MVSEP {stage_name} exhausted all {max_attempts} retries")
+                break
+            wait = min(backoff, time_remaining_fn())
+            if wait > 0:
+                logger.info(
+                    f"MVSEP {stage_name} waiting {wait:.0f}s before retry ({backoff_label})"
+                )
+                await asyncio.sleep(wait)
+
+    return None
 
 
 def find_cached_stem(cache_manager: "CacheManager", hash_32: str, stem_name: str) -> Optional[Path]:
@@ -154,43 +248,15 @@ async def _separate_with_mvsep_fallback(
 
     # --- Stage 1: Vocal separation ---
     stage1_dir = output_dir / "mvsep_stage1"
-    stage1_result = None
-    stage1_max_attempts = MVSEP_MAX_RETRIES
 
-    for attempt in range(1, MVSEP_QUEUE_FULL_MAX_RETRIES + 1):
-        if attempt > stage1_max_attempts:
-            break
-        if _time_remaining() <= 0:
-            logger.warning("MVSEP total timeout exceeded, falling back to local")
-            break
+    async def _stage1_fn():
+        return await mvsep_client.separate_vocals(
+            input_path, stage1_dir, stage_callback
+        )
 
-        try:
-            vocals, instrumental = await mvsep_client.separate_vocals(
-                input_path, stage1_dir, stage_callback
-            )
-            stage1_result = (vocals, instrumental)
-            logger.info(f"MVSEP Stage 1 succeeded on attempt {attempt}")
-            break
-        except Exception as e:
-            if isinstance(e, MvsepNonRetriableError):
-                logger.error(f"MVSEP Stage 1 non-retriable error: {e}")
-                break
-            if isinstance(e, MvsepQueueFullError):
-                stage1_max_attempts = MVSEP_QUEUE_FULL_MAX_RETRIES
-                backoff_list = QUEUE_FULL_BACKOFF_SECONDS
-                backoff_label = "queue full"
-            else:
-                backoff_list = OTHER_ERROR_BACKOFF_SECONDS
-                backoff_label = "error"
-            logger.warning(f"MVSEP Stage 1 attempt {attempt} failed ({backoff_label}): {e}")
-            if attempt >= stage1_max_attempts:
-                logger.error(f"MVSEP Stage 1 exhausted all {stage1_max_attempts} retries")
-                break
-            backoff = backoff_list[attempt - 1] if attempt - 1 < len(backoff_list) else backoff_list[-1]
-            wait = min(backoff, _time_remaining())
-            if wait > 0:
-                logger.info(f"MVSEP Stage 1 waiting {wait:.0f}s before retry ({backoff_label})")
-                await asyncio.sleep(wait)
+    stage1_result = await _run_mvsep_stage_with_retries(
+        "Stage 1", _stage1_fn, job, _time_remaining
+    )
 
     if stage1_result is None:
         # Stage 1 MVSEP failed — fall back to full local pipeline
@@ -215,43 +281,15 @@ async def _separate_with_mvsep_fallback(
         return None, vocals, instrumental
 
     stage2_dir = output_dir / "mvsep_stage2"
-    stage2_result = None
-    stage2_max_attempts = MVSEP_MAX_RETRIES
 
-    for attempt in range(1, MVSEP_QUEUE_FULL_MAX_RETRIES + 1):
-        if attempt > stage2_max_attempts:
-            break
-        if _time_remaining() <= 0:
-            logger.warning("MVSEP total timeout exceeded during Stage 2, using local fallback")
-            break
+    async def _stage2_fn():
+        return await mvsep_client.remove_reverb(
+            vocals, stage2_dir, stage_callback
+        )
 
-        try:
-            dry_vocals, reverb = await mvsep_client.remove_reverb(
-                vocals, stage2_dir, stage_callback
-            )
-            stage2_result = (dry_vocals, reverb)
-            logger.info(f"MVSEP Stage 2 succeeded on attempt {attempt}")
-            break
-        except Exception as e:
-            if isinstance(e, MvsepNonRetriableError):
-                logger.error(f"MVSEP Stage 2 non-retriable error: {e}")
-                break
-            if isinstance(e, MvsepQueueFullError):
-                stage2_max_attempts = MVSEP_QUEUE_FULL_MAX_RETRIES
-                backoff_list = QUEUE_FULL_BACKOFF_SECONDS
-                backoff_label = "queue full"
-            else:
-                backoff_list = OTHER_ERROR_BACKOFF_SECONDS
-                backoff_label = "error"
-            logger.warning(f"MVSEP Stage 2 attempt {attempt} failed ({backoff_label}): {e}")
-            if attempt >= stage2_max_attempts:
-                logger.error(f"MVSEP Stage 2 exhausted all {stage2_max_attempts} retries")
-                break
-            backoff = backoff_list[attempt - 1] if attempt - 1 < len(backoff_list) else backoff_list[-1]
-            wait = min(backoff, _time_remaining())
-            if wait > 0:
-                logger.info(f"MVSEP Stage 2 waiting {wait:.0f}s before retry ({backoff_label})")
-                await asyncio.sleep(wait)
+    stage2_result = await _run_mvsep_stage_with_retries(
+        "Stage 2", _stage2_fn, job, _time_remaining
+    )
 
     if stage2_result is None:
         # Stage 2 MVSEP failed — local Stage 2 only (cross-backend handoff)
