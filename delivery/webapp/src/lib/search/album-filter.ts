@@ -50,15 +50,20 @@ export function normalizeAlbumFilters(values: AlbumFilter[]): AlbumFilter[] | un
 
 const TRAILING_NUMBER_RE = /(\d+)\s*$/;
 
+function stripParens(series: string): string {
+  return series.replace(PAREN_CHARS, " ").replace(/\s+/g, " ").trim();
+}
+
 export function extractTrailingNumber(series: string | null): number | null {
   if (!series) return null;
-  const match = series.match(TRAILING_NUMBER_RE);
+  const match = stripParens(series).match(TRAILING_NUMBER_RE);
   return match ? parseInt(match[1], 10) : null;
 }
 
 export function extractSeriesPrefix(series: string | null): string | null {
   if (!series) return null;
-  return series.replace(TRAILING_NUMBER_RE, "").trim() || series.trim();
+  const stripped = stripParens(series);
+  return stripped.replace(TRAILING_NUMBER_RE, "").trim() || stripped;
 }
 
 function compareNullsLast<T>(a: T | null, b: T | null, cmp: (a: T, b: T) => number): number {

@@ -151,6 +151,15 @@ describe("extractTrailingNumber", () => {
   it("extracts only the last number when multiple exist", () => {
     expect(extractTrailingNumber("Vol. 3 No. 7")).toBe(7);
   });
+
+  it("extracts number from full-width parenthesized CJK series", () => {
+    expect(extractTrailingNumber("敬拜讚美（1）")).toBe(1);
+    expect(extractTrailingNumber("敬拜讚美（22）")).toBe(22);
+  });
+
+  it("extracts number from ASCII parenthesized series", () => {
+    expect(extractTrailingNumber("Series (Vol. 1)")).toBe(1);
+  });
 });
 
 describe("extractSeriesPrefix", () => {
@@ -172,6 +181,15 @@ describe("extractSeriesPrefix", () => {
 
   it("extracts prefix from multi-number series", () => {
     expect(extractSeriesPrefix("Vol. 3 No. 7")).toBe("Vol. 3 No.");
+  });
+
+  it("extracts prefix from full-width parenthesized CJK series", () => {
+    expect(extractSeriesPrefix("敬拜讚美（1）")).toBe("敬拜讚美");
+    expect(extractSeriesPrefix("敬拜讚美（22）")).toBe("敬拜讚美");
+  });
+
+  it("extracts prefix from ASCII parenthesized series", () => {
+    expect(extractSeriesPrefix("Series (Vol. 1)")).toBe("Series Vol.");
   });
 });
 
@@ -260,5 +278,32 @@ describe("sortAlbumOptions", () => {
     ];
     const result = sortAlbumOptions(input);
     expect(result.map((a) => a.albumName)).toEqual(["A1", "A2", "A13"]);
+  });
+
+  it("sorts full-width parenthesized series numerically within same prefix", () => {
+    const input = [
+      makeOption("詩歌22", "敬拜讚美（22）", 1),
+      makeOption("詩歌2", "敬拜讚美（2）", 1),
+      makeOption("詩歌1", "敬拜讚美（1）", 1),
+      makeOption("詩歌13", "敬拜讚美（13）", 1),
+      makeOption("詩歌10", "敬拜讚美（10）", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual([
+      "詩歌1",
+      "詩歌2",
+      "詩歌10",
+      "詩歌13",
+      "詩歌22",
+    ]);
+  });
+
+  it("groups parenthesized and non-parenthesized series with same prefix together", () => {
+    const input = [
+      makeOption("B", "敬拜讚美（2）", 1),
+      makeOption("A", "敬拜讚美 1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual(["A", "B"]);
   });
 });
