@@ -422,7 +422,7 @@ export async function getAlbums(): Promise<AlbumOption[]> {
           and recordings.deleted_at IS NULL
       )`)
     .groupBy(songs.albumName, songs.albumSeries)
-    .orderBy(songs.albumName, songs.albumSeries);
+    .orderBy(sql`${songs.albumSeries} ASC NULLS LAST`, songs.albumName);
 
   return result
     .filter((row): row is typeof row & { albumName: string } => row.albumName !== null)
