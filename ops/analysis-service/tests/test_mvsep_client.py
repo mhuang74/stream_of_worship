@@ -31,8 +31,9 @@ class MockSettings:
 
     SOW_MVSEP_HTTP_TIMEOUT = 60
     SOW_MVSEP_STAGE_TIMEOUT = 300
-    SOW_MVSEP_TOTAL_TIMEOUT = 900
-    SOW_MVSEP_DAILY_JOB_LIMIT = 50
+    SOW_MVSEP_STAGE2_TIMEOUT = 900
+    SOW_MVSEP_TOTAL_TIMEOUT = 1800
+    SOW_MVSEP_MAX_CONCURRENT = 3
 
     # YouTube Transcript Rate Limiting
     SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
@@ -41,6 +42,10 @@ class MockSettings:
     SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
     SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
     SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+    # YouTube Proxy
+    SOW_YOUTUBE_PROXY = ""
+    SOW_YOUTUBE_PROXY_RETRIES = 3
 
 
 # Mock the config module before importing mvsep_client
@@ -81,7 +86,7 @@ def client(tmp_path):
         stage2_add_opt2=1,
         http_timeout=60,
         stage_timeout=300,
-        daily_job_limit=50,
+        max_concurrent=3,
     )
     client._test_audio = test_audio
     return client
@@ -93,6 +98,13 @@ def mock_response():
     response = MagicMock()
     response.json.return_value = {}
     return response
+
+
+@pytest.fixture
+def mock_post(client):
+    """Create a mock for client._client.post."""
+    with patch.object(client._client, "post", new_callable=AsyncMock) as mock:
+        yield mock
 
 
 @pytest.mark.asyncio
@@ -286,25 +298,20 @@ def test_is_available_without_key(tmp_path):
     assert client.is_available is False
 
 
-def test_is_available_daily_limit_exceeded(client):
-    """Test is_available returns False when daily limit exceeded."""
-    client._daily_job_count = 50  # At limit
-    assert client.is_available is False
-
-    client._daily_job_count = 51  # Over limit
+def test_is_available_false_when_quota_exhausted(client):
+    """Test is_available returns False when quota exhausted."""
+    client._quota_exhausted = True
     assert client.is_available is False
 
 
-def test_daily_limit_resets_on_new_utc_day(client):
-    """Test daily job count resets on new UTC day."""
-    # Set up as if we ran jobs yesterday
+def test_quota_resets_on_new_utc_day(client):
+    """Test quota-exhausted flag resets on new UTC day."""
+    from datetime import datetime, timezone, timedelta
+    client._quota_exhausted = True
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    client._daily_reset_utc = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-    client._daily_job_count = 50  # At limit
-
-    # Check should reset the counter
-    assert client._check_daily_limit() is True
-    assert client._daily_job_count == 0
+    client._quota_reset_utc = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+    assert client.is_available is True
+    assert client._quota_exhausted is False
 
 
 @pytest.mark.asyncio
@@ -467,22 +474,24 @@ async def test_separate_vocals_handles_other_type(client, tmp_path, mock_respons
 
 
 @pytest.mark.asyncio
-async def test_separate_vocals_mutex_serializes(client, tmp_path, mock_response):
-    """Test that concurrent separate_vocals calls are serialized by the mutex."""
+async def test_separate_vocals_semaphore_allows_concurrency(client, tmp_path, mock_response):
+    """Test that concurrent separate_vocals calls are allowed up to max_concurrent=3."""
     import asyncio
 
-    call_order = []
+    in_flight = 0
+    max_in_flight = 0
+    enter_event = asyncio.Event()
 
     async def mock_submit_job(*args, **kwargs):
-        call_order.append("submit_start")
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        enter_event.set()  # Signal that at least one entered
         await asyncio.sleep(0.05)
-        call_order.append("submit_end")
+        in_flight -= 1
         return "test_hash"
 
     async def mock_poll_job(job_hash):
-        call_order.append("poll_start")
-        await asyncio.sleep(0.05)
-        call_order.append("poll_end")
         return {
             "success": True,
             "status": "done",
@@ -498,19 +507,105 @@ async def test_separate_vocals_mutex_serializes(client, tmp_path, mock_response)
     with patch.object(client, "_submit_job", side_effect=mock_submit_job):
         with patch.object(client, "_poll_job", side_effect=mock_poll_job):
             with patch.object(client, "_download_files", side_effect=mock_download):
-                # Launch two concurrent calls
+                # Launch 3 concurrent calls — all should enter concurrently
                 results = await asyncio.gather(
+                    client.separate_vocals(client._test_audio, output_dir),
                     client.separate_vocals(client._test_audio, output_dir),
                     client.separate_vocals(client._test_audio, output_dir),
                 )
 
-    # Both should succeed
-    assert results[0] == (None, None)
-    assert results[1] == (None, None)
+    # All should succeed
+    assert all(r == (None, None) for r in results)
+    # All 3 should have been in flight at the same time
+    assert max_in_flight == 3
 
-    # Verify serialization: submit_start, submit_end, poll_start, poll_end
-    # for call 1, then the same for call 2 — no interleaving
-    first_call = call_order[:4]
-    second_call = call_order[4:]
-    assert first_call == ["submit_start", "submit_end", "poll_start", "poll_end"]
-    assert second_call == ["submit_start", "submit_end", "poll_start", "poll_end"]
+
+@pytest.mark.asyncio
+async def test_separate_vocals_semaphore_blocks_4th(client, tmp_path, mock_response):
+    """Test that a 4th concurrent call blocks until one of the first 3 completes."""
+    import asyncio
+
+    in_flight = 0
+    max_in_flight = 0
+    release = asyncio.Event()
+
+    async def mock_submit_job(*args, **kwargs):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await release.wait()
+        in_flight -= 1
+        return "test_hash"
+
+    async def mock_poll_job(job_hash):
+        return {
+            "success": True,
+            "status": "done",
+            "data": {"files": []},
+        }
+
+    async def mock_download(file_entries, output_dir):
+        return []
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with patch.object(client, "_submit_job", side_effect=mock_submit_job):
+        with patch.object(client, "_poll_job", side_effect=mock_poll_job):
+            with patch.object(client, "_download_files", side_effect=mock_download):
+                # Launch 4 concurrent calls
+                tasks = [
+                    asyncio.create_task(client.separate_vocals(client._test_audio, output_dir))
+                    for _ in range(4)
+                ]
+                # Give time for first 3 to enter (4th should block)
+                await asyncio.sleep(0.1)
+                # Only 3 should be in flight
+                assert max_in_flight == 3
+                # Release all
+                release.set()
+                results = await asyncio.gather(*tasks)
+
+    assert all(r == (None, None) for r in results)
+    # Max in-flight never exceeded 3
+    assert max_in_flight == 3
+
+
+@pytest.mark.asyncio
+async def test_quota_exhausted_detected_from_success_false(client, mock_post):
+    """Test that API response with success=false and quota keywords sets _quota_exhausted."""
+    req = httpx.Request("POST", "https://api.mvsep.com/api/create")
+    mock_post.return_value = httpx.Response(
+        200,
+        json={"success": False, "data": {"message": "Daily limit exceeded"}},
+        request=req,
+    )
+    with pytest.raises(MvsepNonRetriableError):
+        await client._submit_job(client._test_audio, sep_type=48, add_opt1=11)
+    assert client._quota_exhausted is True
+
+
+@pytest.mark.asyncio
+async def test_quota_exhausted_detected_from_400(client, mock_post):
+    """Test that HTTP 400 with quota keywords sets _quota_exhausted."""
+    req = httpx.Request("POST", "https://api.mvsep.com/api/create")
+    mock_post.return_value = httpx.Response(
+        400, text="You have exceeded your daily quota", request=req
+    )
+    with pytest.raises(MvsepNonRetriableError):
+        await client._submit_job(client._test_audio, sep_type=48, add_opt1=11)
+    assert client._quota_exhausted is True
+
+
+@pytest.mark.asyncio
+async def test_quota_not_triggered_by_generic_error(client, mock_post):
+    """Test that non-quota errors don't set _quota_exhausted."""
+    req = httpx.Request("POST", "https://api.mvsep.com/api/create")
+    mock_post.return_value = httpx.Response(
+        200,
+        json={"success": False, "data": {"message": "Some other error"}},
+        request=req,
+    )
+    with pytest.raises(MvsepClientError):
+        await client._submit_job(client._test_audio, sep_type=48, add_opt1=11)
+    assert client._quota_exhausted is False

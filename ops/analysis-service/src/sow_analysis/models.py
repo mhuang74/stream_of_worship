@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class JobStatus(str, Enum):
@@ -87,6 +87,18 @@ class LrcOptions(BaseModel):
     qwen3_asr_context_max_chars: int = 10000
     qwen3_asr_snap_threshold: float = 0.60
     qwen3_asr_min_usable_segments: int = 3
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_fields(cls, values):
+        """Reject legacy field names that have been renamed."""
+        if isinstance(values, dict):
+            if "use_qwen3" in values:
+                raise ValueError(
+                    "use_qwen3 is a legacy ForcedAligner option and has been removed. "
+                    "Use 'use_qwen3_asr' instead."
+                )
+        return values
 
     @field_validator("language", mode="before")
     @classmethod

@@ -18,6 +18,32 @@ logger = logging.getLogger(__name__)
 MVSEP_API_BASE_URL = "https://mvsep.com/api/separation"
 MVSEP_MAX_POLL_INTERVAL = 30.0  # Maximum seconds between poll attempts
 
+# Keywords indicating daily quota/limit exhaustion from MVSEP API
+_QUOTA_KEYWORDS = (
+    "daily limit",
+    "daily quota",
+    "limit exceeded",
+    "quota exceeded",
+    "limit reached",
+    "too many jobs",
+    "too many requests today",
+    "day limit",
+    "per day",
+    "exceeded your",
+)
+
+
+def _is_quota_exhausted(error_text: str) -> bool:
+    """Check if an MVSEP API error message indicates daily quota exhaustion.
+
+    Args:
+        error_text: Lowercased error message from API response.
+
+    Returns:
+        True if the message matches quota-exhaustion patterns.
+    """
+    return any(kw in error_text for kw in _QUOTA_KEYWORDS)
+
 
 class MvsepClientError(Exception):
     """Base exception for MVSEP client errors."""
@@ -56,8 +82,8 @@ class MvsepClient:
     - Stage 1: Vocal/instrumental separation (configurable sep_type)
     - Stage 2: Optional reverb removal from vocals (can be skipped)
 
-    Includes daily cost tracking with UTC-day rollover and service-wide
-    disable on non-retriable errors.
+    Includes daily quota detection from API responses with UTC-day rollover
+    and service-wide disable on non-retriable errors.
     """
 
     def __init__(
@@ -72,7 +98,7 @@ class MvsepClient:
         stage2_add_opt2: Optional[int] = None,
         http_timeout: Optional[int] = None,
         stage_timeout: Optional[int] = None,
-        daily_job_limit: Optional[int] = None,
+        max_concurrent: Optional[int] = None,
     ) -> None:
         """Initialize MVSEP client.
 
@@ -87,7 +113,7 @@ class MvsepClient:
             stage2_add_opt2: Additional option for Stage 2. Defaults to settings.SOW_MVSEP_STAGE2_ADD_OPT2.
             http_timeout: Seconds per HTTP request. Defaults to settings.SOW_MVSEP_HTTP_TIMEOUT.
             stage_timeout: Max seconds per stage. Defaults to settings.SOW_MVSEP_STAGE_TIMEOUT.
-            daily_job_limit: Max jobs per UTC day. Defaults to settings.SOW_MVSEP_DAILY_JOB_LIMIT.
+            max_concurrent: Max concurrent MVSEP API operations. Defaults to settings.SOW_MVSEP_MAX_CONCURRENT.
         """
         from ..config import settings
 
@@ -101,15 +127,14 @@ class MvsepClient:
         self.stage2_add_opt2 = stage2_add_opt2 if stage2_add_opt2 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT2
         self.http_timeout = http_timeout if http_timeout is not None else settings.SOW_MVSEP_HTTP_TIMEOUT
         self.stage_timeout = stage_timeout if stage_timeout is not None else settings.SOW_MVSEP_STAGE_TIMEOUT
-        self.daily_job_limit = daily_job_limit if daily_job_limit is not None else settings.SOW_MVSEP_DAILY_JOB_LIMIT
+        self._max_concurrent = max_concurrent if max_concurrent is not None else settings.SOW_MVSEP_MAX_CONCURRENT
 
         self._disabled = False
-        self._daily_job_count = 0
-        self._daily_reset_utc = datetime.now(timezone.utc).replace(
+        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._quota_exhausted = False
+        self._quota_reset_utc = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-
-        self._mutex: Optional[asyncio.Lock] = None
 
         self._client = httpx.AsyncClient(timeout=self.http_timeout)
 
@@ -119,7 +144,7 @@ class MvsepClient:
 
         Returns:
             True when enabled, api_token is non-empty, not disabled,
-            and daily job limit is not exceeded.
+            and daily quota is not exhausted.
         """
         if not self.enabled:
             return False
@@ -127,26 +152,20 @@ class MvsepClient:
             return False
         if self._disabled:
             return False
-        return self._check_daily_limit()
+        if self._quota_exhausted:
+            self._check_quota_reset()
+            if self._quota_exhausted:
+                return False
+        return True
 
-    def _check_daily_limit(self) -> bool:
-        """Check if under daily job limit, resetting counter on new UTC day.
-
-        Returns:
-            True if under daily job limit.
-        """
+    def _check_quota_reset(self) -> None:
+        """Reset quota-exhausted flag on new UTC day."""
         now_utc = datetime.now(timezone.utc)
         today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        if self._daily_reset_utc < today_start:
-            self._daily_job_count = 0
-            self._daily_reset_utc = today_start
-            logger.info("MVSEP daily job count reset for new UTC day")
-        return self._daily_job_count < self.daily_job_limit
-
-    def _increment_daily_count(self) -> None:
-        """Increment the daily job count."""
-        self._daily_job_count += 1
-        logger.debug(f"MVSEP daily job count: {self._daily_job_count}/{self.daily_job_limit}")
+        if self._quota_reset_utc < today_start:
+            self._quota_exhausted = False
+            self._quota_reset_utc = today_start
+            logger.info("MVSEP daily quota reset for new UTC day")
 
     async def _submit_job(
         self,
@@ -202,12 +221,17 @@ class MvsepClient:
 
             if not success:
                 error_msg = result_data.get("message", "Unknown error")
-                if "invalid" in error_msg.lower() and "key" in error_msg.lower():
+                error_lower = error_msg.lower()
+                if "invalid" in error_lower and "key" in error_lower:
                     self._disabled = True
                     raise MvsepNonRetriableError(f"Invalid API key: {error_msg}")
-                if "insufficient" in error_msg.lower() and "credit" in error_msg.lower():
+                if "insufficient" in error_lower and "credit" in error_lower:
                     self._disabled = True
                     raise MvsepNonRetriableError(f"Insufficient credits: {error_msg}")
+                if _is_quota_exhausted(error_lower):
+                    self._quota_exhausted = True
+                    logger.warning(f"MVSEP daily quota exhausted: {error_msg}")
+                    raise MvsepNonRetriableError(f"Daily quota exhausted: {error_msg}")
                 raise MvsepClientError(f"MVSEP API error: {error_msg}")
 
             job_hash = result_data.get("hash")
@@ -226,6 +250,10 @@ class MvsepClient:
                 error_text = e.response.text.lower()
                 if "queue" in error_text or "wait before adding" in error_text:
                     raise MvsepQueueFullError(f"MVSEP queue full: {e.response.text}") from e
+                if _is_quota_exhausted(error_text):
+                    self._quota_exhausted = True
+                    logger.warning(f"MVSEP daily quota exhausted: {e.response.text}")
+                    raise MvsepNonRetriableError(f"Daily quota exhausted: {e.response.text}") from e
             raise MvsepClientError(f"HTTP error {status_code}: {e.response.text}") from e
         except httpx.TimeoutException as e:
             raise MvsepClientError("Request timed out") from e
@@ -349,9 +377,9 @@ class MvsepClient:
         Returns:
             Tuple of (vocals_path, instrumental_path)
         """
-        if self._mutex is None:
-            self._mutex = asyncio.Lock()
-        async with self._mutex:
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        async with self._semaphore:
             if stage_callback:
                 stage_callback("mvsep_stage1_submitting")
 
@@ -362,7 +390,6 @@ class MvsepClient:
                 add_opt2=self.stage1_add_opt2,
                 output_format=2,  # FLAC 16-bit
             )
-            self._increment_daily_count()  # only count successful submits
 
             if stage_callback:
                 stage_callback("mvsep_stage1_polling")
@@ -430,9 +457,9 @@ class MvsepClient:
         Returns:
             Tuple of (dry_vocals_path, reverb_path)
         """
-        if self._mutex is None:
-            self._mutex = asyncio.Lock()
-        async with self._mutex:
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        async with self._semaphore:
             if stage_callback:
                 stage_callback("mvsep_stage2_submitting")
 

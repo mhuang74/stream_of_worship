@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ..config import settings
 from ..models import (
@@ -214,7 +214,10 @@ async def submit_lrc_job(
     if job_queue is None:
         raise HTTPException(500, "Job queue not initialized")
 
-    request = LrcJobRequest.model_validate(request_payload)
+    try:
+        request = LrcJobRequest.model_validate(request_payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     job = await job_queue.submit(JobType.LRC, request)
     return job_to_response(job)
 
