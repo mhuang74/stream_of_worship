@@ -139,7 +139,7 @@ async def lifespan(app: FastAPI):
         ("MVSEP", "enabled", str(settings.SOW_MVSEP_ENABLED)),
         ("MVSEP", "stage1_sep_type", str(settings.SOW_MVSEP_STAGE1_SEP_TYPE)),
         ("MVSEP", "stage2_sep_type", str(settings.SOW_MVSEP_STAGE2_SEP_TYPE)),
-        ("MVSEP", "daily_limit", str(settings.SOW_MVSEP_DAILY_JOB_LIMIT)),
+        ("MVSEP", "max_concurrent", str(settings.SOW_MVSEP_MAX_CONCURRENT)),
         ("YouTube", "proxy", settings.SOW_YOUTUBE_PROXY or "(not set)"),
         ("YouTube", "proxy_retries", str(settings.SOW_YOUTUBE_PROXY_RETRIES)),
         ("R2", "bucket", settings.SOW_R2_BUCKET),

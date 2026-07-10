@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from ..services.mvsep_client import MvsepClient
 
 # Import exception at module level to avoid local imports in retry loops
-from ..services.mvsep_client import MvsepNonRetriableError, MvsepQueueFullError
+from ..services.mvsep_client import MvsepNonRetriableError, MvsepQueueFullError, MvsepTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +96,8 @@ async def _run_mvsep_stage_with_retries(
     for attempt in range(1, MVSEP_QUEUE_FULL_MAX_RETRIES + 1):
         if attempt > max_attempts:
             break
-        if time_remaining_fn() <= 0:
-            logger.warning(f"MVSEP total timeout exceeded during {stage_name}, using fallback")
+        if attempt > 1 and time_remaining_fn() <= 0:
+            logger.warning(f"MVSEP timeout budget exhausted during {stage_name}, using fallback")
             break
 
         try:
@@ -108,7 +108,7 @@ async def _run_mvsep_stage_with_retries(
             if isinstance(e, MvsepNonRetriableError):
                 logger.error(f"MVSEP {stage_name} non-retriable error: {e}")
                 break
-            if isinstance(e, MvsepQueueFullError):
+            if isinstance(e, (MvsepQueueFullError, MvsepTimeoutError)):
                 max_attempts = MVSEP_QUEUE_FULL_MAX_RETRIES
                 backoff = _compute_mvsep_backoff(
                     attempt,
@@ -117,7 +117,7 @@ async def _run_mvsep_stage_with_retries(
                     cap=QUEUE_FULL_BACKOFF_CAP,
                     jitter=QUEUE_FULL_BACKOFF_JITTER,
                 )
-                backoff_label = "queue full"
+                backoff_label = "timeout" if isinstance(e, MvsepTimeoutError) else "queue full"
             else:
                 backoff = _compute_mvsep_backoff(
                     attempt,
@@ -241,6 +241,17 @@ async def _separate_with_mvsep_fallback(
     def _time_remaining() -> float:
         return settings.SOW_MVSEP_TOTAL_TIMEOUT - (time.monotonic() - total_start)
 
+    # Stage 2 gets its own dedicated budget, initialized when Stage 2 begins
+    stage2_start: Optional[float] = None
+
+    def _stage2_time_remaining() -> float:
+        # Combined: must respect both the outer total cap and Stage 2's dedicated budget
+        total_remaining = settings.SOW_MVSEP_TOTAL_TIMEOUT - (time.monotonic() - total_start)
+        if stage2_start is None:
+            return total_remaining
+        stage2_remaining = settings.SOW_MVSEP_STAGE2_TIMEOUT - (time.monotonic() - stage2_start)
+        return min(total_remaining, stage2_remaining)
+
     # Helper to update job stage
     def stage_callback(stage: str) -> None:
         _set_job_stage(job, stage)
@@ -281,6 +292,7 @@ async def _separate_with_mvsep_fallback(
         return None, vocals, instrumental
 
     stage2_dir = output_dir / "mvsep_stage2"
+    stage2_start = time.monotonic()
 
     async def _stage2_fn():
         return await mvsep_client.remove_reverb(
@@ -288,7 +300,7 @@ async def _separate_with_mvsep_fallback(
         )
 
     stage2_result = await _run_mvsep_stage_with_retries(
-        "Stage 2", _stage2_fn, job, _time_remaining
+        "Stage 2", _stage2_fn, job, _stage2_time_remaining
     )
 
     if stage2_result is None:
