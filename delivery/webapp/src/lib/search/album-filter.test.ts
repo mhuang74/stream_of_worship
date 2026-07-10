@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   albumFilterKey,
+  extractSeriesPrefix,
+  extractTrailingNumber,
   formatAlbumLabel,
   formatAlbumOptionLabel,
   normalizeAlbumFilters,
+  sortAlbumOptions,
   type AlbumOption,
 } from "./album-filter";
 
@@ -121,5 +124,141 @@ describe("normalizeAlbumFilters", () => {
     ];
     const result = normalizeAlbumFilters(input);
     expect(result).toEqual(input);
+  });
+});
+
+describe("extractTrailingNumber", () => {
+  it("extracts trailing number from CJK series", () => {
+    expect(extractTrailingNumber("敬拜讚美 13")).toBe(13);
+  });
+
+  it("extracts trailing number without space", () => {
+    expect(extractTrailingNumber("敬拜讚美13")).toBe(13);
+  });
+
+  it("extracts from ASCII series", () => {
+    expect(extractTrailingNumber("Series Vol. 42")).toBe(42);
+  });
+
+  it("returns null for series without trailing number", () => {
+    expect(extractTrailingNumber("敬拜讚美")).toBeNull();
+  });
+
+  it("returns null for null input", () => {
+    expect(extractTrailingNumber(null)).toBeNull();
+  });
+
+  it("extracts only the last number when multiple exist", () => {
+    expect(extractTrailingNumber("Vol. 3 No. 7")).toBe(7);
+  });
+});
+
+describe("extractSeriesPrefix", () => {
+  it("extracts prefix from CJK series with space", () => {
+    expect(extractSeriesPrefix("敬拜讚美 13")).toBe("敬拜讚美");
+  });
+
+  it("extracts prefix from CJK series without space", () => {
+    expect(extractSeriesPrefix("敬拜讚美13")).toBe("敬拜讚美");
+  });
+
+  it("returns full string when no trailing number", () => {
+    expect(extractSeriesPrefix("敬拜讚美")).toBe("敬拜讚美");
+  });
+
+  it("returns null for null input", () => {
+    expect(extractSeriesPrefix(null)).toBeNull();
+  });
+
+  it("extracts prefix from multi-number series", () => {
+    expect(extractSeriesPrefix("Vol. 3 No. 7")).toBe("Vol. 3 No.");
+  });
+});
+
+describe("sortAlbumOptions", () => {
+  it("sorts albums by trailing number numerically within same series", () => {
+    const input = [
+      makeOption("Album 13", "敬拜讚美 13", 1),
+      makeOption("Album 2", "敬拜讚美 2", 1),
+      makeOption("Album 1", "敬拜讚美 1", 1),
+      makeOption("Album 12", "敬拜讚美 12", 1),
+      makeOption("Album 10", "敬拜讚美 10", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual([
+      "Album 1",
+      "Album 2",
+      "Album 10",
+      "Album 12",
+      "Album 13",
+    ]);
+  });
+
+  it("groups different series together by prefix", () => {
+    const input = [
+      makeOption("B2", "系列B 2", 1),
+      makeOption("A2", "系列A 2", 1),
+      makeOption("B1", "系列B 1", 1),
+      makeOption("A1", "系列A 1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual(["A1", "A2", "B1", "B2"]);
+  });
+
+  it("sorts non-numbered series after numbered within same prefix", () => {
+    const input = [
+      makeOption("Special", "敬拜讚美 特輯", 1),
+      makeOption("Vol2", "敬拜讚美 2", 1),
+      makeOption("Vol1", "敬拜讚美 1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual(["Vol1", "Vol2", "Special"]);
+  });
+
+  it("sorts NULL series after all non-null series", () => {
+    const input = [
+      makeOption("NoSeries", null, 1),
+      makeOption("WithSeries2", "敬拜讚美 2", 1),
+      makeOption("WithSeries1", "敬拜讚美 1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual([
+      "WithSeries1",
+      "WithSeries2",
+      "NoSeries",
+    ]);
+  });
+
+  it("uses albumName as tiebreaker for identical series", () => {
+    const input = [
+      makeOption("Zeta", "敬拜讚美 1", 1),
+      makeOption("Alpha", "敬拜讚美 1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual(["Alpha", "Zeta"]);
+  });
+
+  it("does not mutate the original array", () => {
+    const input = [
+      makeOption("B", "敬拜讚美 2", 1),
+      makeOption("A", "敬拜讚美 1", 1),
+    ];
+    const original = [...input];
+    sortAlbumOptions(input);
+    expect(input).toEqual(original);
+  });
+
+  it("handles empty array", () => {
+    expect(sortAlbumOptions([])).toEqual([]);
+  });
+
+  it("handles series without space before number", () => {
+    const input = [
+      makeOption("A13", "敬拜讚美13", 1),
+      makeOption("A2", "敬拜讚美2", 1),
+      makeOption("A1", "敬拜讚美1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual(["A1", "A2", "A13"]);
   });
 });
