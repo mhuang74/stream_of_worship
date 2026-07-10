@@ -161,5 +161,45 @@ class Settings(BaseSettings):
     )
     SOW_YOUTUBE_PROXY_RETRIES: int = 3  # Number of retries on HTTP 429 when using rotating proxies
 
+    # YouTube Transcript Rate Limiting
+    SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT: int = 1
+    # Maximum concurrent YouTube transcript API calls (semaphore).
+    # Default 1 (conservative — prevents IP-level rate limiting from YouTube).
+    # Increase to 2-3 if using a rotating proxy with multiple IPs.
+    # Set to 0 to disable the rate limiter entirely (not recommended).
+
+    SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS: float = 3.0
+    # Minimum seconds between consecutive YouTube API calls (global throttle).
+    # With max_concurrent=1, this caps throughput at 1/min_interval requests per second.
+    # Default 3.0 = ~20 requests/minute. Lower to 2.0 for ~30 req/min if
+    # using a rotating proxy with good IP diversity.
+
+    SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES: int = 3
+    # Retry attempts per YouTube API call on HTTP 429 (rate limited).
+    # Each retry uses exponential backoff with jitter.
+
+    SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY: float = 5.0
+    # Base delay in seconds for exponential backoff on 429 retries.
+    # Actual delay: min(base * 2^attempt, 60) + jitter(0-25%).
+    # With base=5: 5s, 10s, 20s (capped at 60s).
+
+    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD: int = 5
+    # Number of consecutive 429 failures before the circuit breaker opens.
+    # When open, all YouTube transcript fetches are skipped immediately
+    # (jobs fall back to Whisper/Qwen3 ASR without hitting YouTube).
+
+    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN: int = 120
+    # Seconds before the circuit breaker auto-recovers (closes).
+    # During cooldown, YouTube transcript fetches are skipped.
+    # After cooldown, the next fetch attempt is allowed (and resets the breaker if successful).
+
+    @field_validator("SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT")
+    @classmethod
+    def _validate_youtube_transcript_concurrent(cls, v: int) -> int:
+        """Ensure YouTube transcript concurrency is at least 0 (0 = disabled)."""
+        if v < 0:
+            raise ValueError("SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT must be >= 0 (0 disables rate limiting)")
+        return v
+
 
 settings = Settings()

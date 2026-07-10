@@ -1,5 +1,8 @@
 """Tests for YouTube transcript-based LRC generation."""
 
+import asyncio
+import time
+
 import pytest
 
 from sow_analysis.workers.youtube_transcript import (
@@ -8,12 +11,16 @@ from sow_analysis.workers.youtube_transcript import (
     ZH_LANG_CODES,
     _build_proxy_config,
     _find_best_transcript,
+    _is_rate_limited_error,
+    _rate_limiter,
+    _YouTubeRateLimiter,
     build_correction_prompt,
     extract_video_id,
     fetch_youtube_transcript,
     language_preference_codes,
     parse_lrc_response,
     RotatingProxyConfig,
+    YouTubeTranscriptError,
 )
 
 
@@ -526,12 +533,22 @@ class TestFetchYoutubeTranscriptWithProxy:
         mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
         mock_transcript = [mock_snippet]
 
+        _rate_limiter._last_request_time = 0.0
+        _rate_limiter._consecutive_429_count = 0
+        _rate_limiter._circuit_open_until = 0.0
+
         with (
             patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
             patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
         ):
             mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
             mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
 
             mock_api = MockApi.return_value
             mock_api.fetch.return_value = mock_transcript
@@ -553,12 +570,22 @@ class TestFetchYoutubeTranscriptWithProxy:
         mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
         mock_transcript = [mock_snippet]
 
+        _rate_limiter._last_request_time = 0.0
+        _rate_limiter._consecutive_429_count = 0
+        _rate_limiter._circuit_open_until = 0.0
+
         with (
             patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
             patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
         ):
             mock_settings.SOW_YOUTUBE_PROXY = ""
             mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
 
             mock_api = MockApi.return_value
             mock_api.fetch.return_value = mock_transcript
@@ -570,3 +597,289 @@ class TestFetchYoutubeTranscriptWithProxy:
             call_kwargs = MockApi.call_args[1]
             assert "proxy_config" in call_kwargs
             assert call_kwargs["proxy_config"] is None
+
+
+class TestYouTubeRateLimiter:
+    """Tests for _YouTubeRateLimiter."""
+
+    def _fresh_rate_limiter(self):
+        """Create a fresh _YouTubeRateLimiter instance for test isolation."""
+        rl = _YouTubeRateLimiter()
+        rl._semaphore = None
+        rl._interval_lock = None
+        rl._last_request_time = 0.0
+        rl._consecutive_429_count = 0
+        rl._circuit_open_until = 0.0
+        return rl
+
+    @pytest.mark.asyncio
+    async def test_min_interval_enforced(self):
+        """Two rapid calls → second call waits the min interval."""
+        from unittest.mock import AsyncMock, patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 3.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            sleep_calls = []
+
+            original_sleep = asyncio.sleep
+
+            async def mock_sleep(duration):
+                sleep_calls.append(duration)
+                await original_sleep(0)
+
+            with patch(
+                "sow_analysis.workers.youtube_transcript.asyncio.sleep",
+                side_effect=mock_sleep,
+            ):
+                await rl.call(lambda: "result1", description="call1")
+                await rl.call(lambda: "result2", description="call2")
+
+            # Second call should have slept for ~min_interval
+            assert len(sleep_calls) > 0
+            assert sleep_calls[0] >= 2.9
+
+    @pytest.mark.asyncio
+    async def test_retries_on_429(self):
+        """fn raises 429 on first 2 attempts, succeeds on 3rd → retried, result returned."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise Exception("too many 429 error responses")
+            return "success"
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            result = await rl.call(fn, description="retry test")
+
+        assert result == "success"
+        assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_opens_after_threshold(self):
+        """N consecutive 429s (N=threshold) → circuit opens."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        def fn():
+            raise Exception("too many 429 error responses")
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            for _ in range(3):
+                with pytest.raises(YouTubeTranscriptError):
+                    await rl.call(fn, description="circuit test")
+
+            assert rl._consecutive_429_count >= 3
+            assert rl._is_circuit_open()
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_blocks_calls_when_open(self):
+        """When circuit is open, call() raises YouTubeTranscriptError without calling fn."""
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+        rl._circuit_open_until = time.monotonic() + 9999
+
+        fn_called = False
+
+        def fn():
+            nonlocal fn_called
+            fn_called = True
+            return "should not reach"
+
+        with pytest.raises(YouTubeTranscriptError, match="circuit breaker is open"):
+            await rl.call(fn, description="blocked test")
+
+        assert fn_called is False
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_closes_after_cooldown(self):
+        """After cooldown period elapses, calls proceed again."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        # Set circuit open in the past
+        rl._circuit_open_until = time.monotonic() - 1
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            result = await rl.call(lambda: "recovered", description="recovery test")
+
+        assert result == "recovered"
+        assert not rl._is_circuit_open()
+
+    @pytest.mark.asyncio
+    async def test_success_resets_429_count(self):
+        """After some 429s, a successful call resets _consecutive_429_count to 0."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+        rl._consecutive_429_count = 3
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            result = await rl.call(lambda: "ok", description="reset test")
+
+        assert result == "ok"
+        assert rl._consecutive_429_count == 0
+
+    @pytest.mark.asyncio
+    async def test_non_429_error_not_retried(self):
+        """fn raises non-429 error → no retry, exception propagates immediately."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            raise Exception("Subtitles are disabled for this video")
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            with pytest.raises(Exception, match="Subtitles are disabled"):
+                await rl.call(fn, description="non-429 test")
+
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrency_semaphore_limits_parallel(self):
+        """Multiple concurrent call() invocations → only max_concurrent run at once."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        current_concurrent = 0
+        max_observed = 0
+
+        def fn():
+            nonlocal current_concurrent, max_observed
+            current_concurrent += 1
+            max_observed = max(max_observed, current_concurrent)
+            import time as _time
+
+            _time.sleep(0.05)
+            current_concurrent -= 1
+            return "done"
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            # Create a semaphore with max_concurrent=1
+            rl._semaphore = asyncio.Semaphore(1)
+
+            tasks = [rl.call(fn, description=f"concurrent-{i}") for i in range(5)]
+            results = await asyncio.gather(*tasks)
+
+        assert all(r == "done" for r in results)
+        assert max_observed == 1
+
+    @pytest.mark.asyncio
+    async def test_max_concurrent_zero_disables_semaphore(self):
+        """With MAX_CONCURRENT=0, calls proceed without semaphore but min-interval still enforced."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            rl._ensure_initialized()
+
+            assert rl._semaphore is None
+
+            result = await rl.call(lambda: "no semaphore", description="zero test")
+
+        assert result == "no semaphore"
+
+    def test_status_code_429_detected(self):
+        """Exception with .status_code = 429 is detected as rate-limited."""
+
+        class FakeResponseError(Exception):
+            def __init__(self):
+                self.status_code = 429
+                super().__init__("Too Many Requests")
+
+        assert _is_rate_limited_error(FakeResponseError()) is True
+
+    def test_string_429_detected(self):
+        """Exception with '429' in message is detected as rate-limited."""
+        assert _is_rate_limited_error(Exception("too many 429 error responses")) is True
+
+    def test_non_429_not_detected(self):
+        """Non-429 exception is not detected as rate-limited."""
+        assert _is_rate_limited_error(Exception("Subtitles are disabled")) is False
