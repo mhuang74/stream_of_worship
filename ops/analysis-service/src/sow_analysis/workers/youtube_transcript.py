@@ -71,23 +71,27 @@ def _is_rate_limited_error(e: Exception) -> bool:
     Strategy 1 is more robust; strategy 2 is a pragmatic fallback.
     """
     # Strategy 1: Check for status_code attribute (urllib3 / requests)
+    visited = set()
     exc = e
-    while exc is not None:
+    while exc is not None and exc not in visited:
+        visited.add(exc)
         if hasattr(exc, "status_code") and exc.status_code == 429:
             return True
         if hasattr(exc, "code") and exc.code == 429:
             return True
-        exc = getattr(exc, "__cause__", None)
+        exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
 
     # Strategy 2: String-based fallback
     error_str = str(e)
     if "429" in error_str:
         return True
-    cause = e.__cause__
-    while cause is not None:
+    visited = set()
+    cause = e.__cause__ or e.__context__
+    while cause is not None and cause not in visited:
+        visited.add(cause)
         if "429" in str(cause):
             return True
-        cause = cause.__cause__
+        cause = cause.__cause__ or cause.__context__
     return False
 
 
@@ -112,7 +116,7 @@ class _YouTubeRateLimiter:
 
     def _ensure_initialized(self) -> None:
         """Lazily initialize asyncio primitives on first use."""
-        if self._semaphore is None:
+        if self._interval_lock is None:
             max_concurrent = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT
             # MAX_CONCURRENT=0 disables the semaphore entirely
             if max_concurrent > 0:
@@ -190,97 +194,69 @@ class _YouTubeRateLimiter:
         threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD
 
         for attempt in range(max_retries + 1):
-            # Layer 2: Concurrency semaphore + Layer 3: Min-interval throttle
-            if self._semaphore is not None:
-                async with self._semaphore:
-                    await self._enforce_min_interval()
-                    try:
+            # Layer 2: Circuit breaker check (re-check each iteration)
+            if self._is_circuit_open():
+                remaining = self._circuit_open_until - time.monotonic()
+                raise YouTubeTranscriptError(
+                    f"YouTube transcript circuit breaker is open "
+                    f"(cooldown: {remaining:.0f}s remaining) — skipping {description}"
+                )
+
+            # Layer 3: Concurrency semaphore + min-interval throttle
+            # Only wrap the API call, NOT the backoff sleep, so other tasks
+            # aren't blocked during retry delays.
+            try:
+                if self._semaphore is not None:
+                    async with self._semaphore:
+                        await self._enforce_min_interval()
                         result = await loop.run_in_executor(None, fn)
-                        # Success — reset circuit breaker
-                        self._reset_circuit()
-                        return result
-                    except Exception as e:
-                        if not _is_rate_limited_error(e):
-                            # Non-429 error — don't retry, propagate immediately
-                            raise
-
-                        # Layer 4: 429 retry with backoff
-                        self._consecutive_429_count += 1
-                        logger.warning(
-                            "YouTube API rate limited (429), attempt %d/%d for %s: %s",
-                            attempt + 1,
-                            max_retries + 1,
-                            description,
-                            e,
-                        )
-
-                        # Check if circuit breaker should open
-                        if self._consecutive_429_count >= threshold:
-                            self._open_circuit()
-                            raise YouTubeTranscriptError(
-                                f"YouTube API rate limited — circuit breaker opened "
-                                f"after {self._consecutive_429_count} consecutive 429s: {e}"
-                            ) from e
-
-                        # Retry with exponential backoff + jitter (if attempts remain)
-                        if attempt < max_retries:
-                            delay = min(base_delay * (2 ** attempt), 60.0)
-                            delay += random.uniform(0, delay * 0.25)
-                            logger.info(
-                                "Retrying YouTube API call for %s in %.1fs",
-                                description,
-                                delay,
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-
-                        # All retries exhausted
-                        raise YouTubeTranscriptError(
-                            f"YouTube API rate limited after {max_retries + 1} "
-                            f"attempts for {description}: {e}"
-                        ) from e
-            else:
-                # MAX_CONCURRENT=0: no semaphore, but still enforce min-interval
-                await self._enforce_min_interval()
-                try:
+                else:
+                    # MAX_CONCURRENT=0: no semaphore, but still enforce min-interval
+                    await self._enforce_min_interval()
                     result = await loop.run_in_executor(None, fn)
-                    self._reset_circuit()
-                    return result
-                except Exception as e:
-                    if not _is_rate_limited_error(e):
-                        raise
+                # Success — reset circuit breaker
+                self._reset_circuit()
+                return result
+            except Exception as e:
+                if not _is_rate_limited_error(e):
+                    # Non-429 error — don't retry, propagate immediately
+                    raise
 
-                    self._consecutive_429_count += 1
-                    logger.warning(
-                        "YouTube API rate limited (429), attempt %d/%d for %s: %s",
-                        attempt + 1,
-                        max_retries + 1,
-                        description,
-                        e,
-                    )
+                # Layer 4: 429 retry with backoff
+                self._consecutive_429_count += 1
+                logger.warning(
+                    "YouTube API rate limited (429), attempt %d/%d for %s: %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    description,
+                    e,
+                )
 
-                    if self._consecutive_429_count >= threshold:
-                        self._open_circuit()
-                        raise YouTubeTranscriptError(
-                            f"YouTube API rate limited — circuit breaker opened "
-                            f"after {self._consecutive_429_count} consecutive 429s: {e}"
-                        ) from e
-
-                    if attempt < max_retries:
-                        delay = min(base_delay * (2 ** attempt), 60.0)
-                        delay += random.uniform(0, delay * 0.25)
-                        logger.info(
-                            "Retrying YouTube API call for %s in %.1fs",
-                            description,
-                            delay,
-                        )
-                        await asyncio.sleep(delay)
-                        continue
-
+                # Check if circuit breaker should open
+                if self._consecutive_429_count >= threshold:
+                    self._open_circuit()
                     raise YouTubeTranscriptError(
-                        f"YouTube API rate limited after {max_retries + 1} "
-                        f"attempts for {description}: {e}"
+                        f"YouTube API rate limited — circuit breaker opened "
+                        f"after {self._consecutive_429_count} consecutive 429s: {e}"
                     ) from e
+
+                # Retry with exponential backoff + jitter (if attempts remain)
+                if attempt < max_retries:
+                    delay = min(base_delay * (2 ** attempt), 60.0)
+                    delay += random.uniform(0, delay * 0.25)
+                    logger.info(
+                        "Retrying YouTube API call for %s in %.1fs",
+                        description,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                # All retries exhausted
+                raise YouTubeTranscriptError(
+                    f"YouTube API rate limited after {max_retries + 1} "
+                    f"attempts for {description}: {e}"
+                ) from e
 
         # Should not reach here, but safety net
         raise YouTubeTranscriptError(
