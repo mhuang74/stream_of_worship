@@ -9,6 +9,7 @@ import {
   buildVisibilityCondition,
 } from "./search-helpers";
 import type { BpmBandKey } from "@/lib/constants";
+import { sortAlbumOptions } from "@/lib/search/album-filter";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 
 export interface SongWithRecordings {
@@ -424,13 +425,15 @@ export async function getAlbums(): Promise<AlbumOption[]> {
     .groupBy(songs.albumName, songs.albumSeries)
     .orderBy(sql`${songs.albumSeries} ASC NULLS LAST`, songs.albumName);
 
-  return result
-    .filter((row): row is typeof row & { albumName: string } => row.albumName !== null)
-    .map((row) => ({
-      albumName: row.albumName,
-      albumSeries: row.albumSeries,
-      songCount: Number(row.songCount),
-    }));
+  return sortAlbumOptions(
+    result
+      .filter((row): row is typeof row & { albumName: string } => row.albumName !== null)
+      .map((row) => ({
+        albumName: row.albumName,
+        albumSeries: row.albumSeries,
+        songCount: Number(row.songCount),
+      })),
+  );
 }
 
 export interface SemanticSearchResult extends SongWithRecordings {
