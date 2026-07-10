@@ -358,6 +358,7 @@ docker compose down -v
 | `SOW_EMBEDDING_API_KEY` | For embedding jobs | - | Embedding API key |
 | `SOW_EMBEDDING_BASE_URL` | For embedding jobs | - | Embedding base URL |
 | `SOW_EMBEDDING_MODEL` | For embedding jobs | text-embedding-3-small | Embedding model name |
+| `BPM_ALGORITHM_VERSION` | Optional | v4_octave_guard | Tempo algorithm for Fast Analysis jobs (v4_octave_guard / v5_cps_prior) |
 | `SOW_FORCED_ALIGNER_MODEL_PATH` | For LRC | - | Path to forced aligner model snapshot |
 | `SOW_FORCED_ALIGNER_DEVICE` | For LRC | auto | Device for forced aligner (cpu, cuda, auto) |
 | `SOW_DASHSCOPE_API_KEY` | Optional | - | DashScope API key for Qwen3 ASR |

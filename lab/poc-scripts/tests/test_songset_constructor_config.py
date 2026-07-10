@@ -59,6 +59,29 @@ def test_config_opening_floor_override():
     assert RunConfig(relax_h2_bpm=0).opening_floor == 0
 
 
+def test_config_h4_limit_property():
+    assert RunConfig().h4_limit == 20
+    assert RunConfig(relax_h4=True).h4_limit == 25
+    assert RunConfig(relax_h4_bpm=30).h4_limit == 30
+    assert RunConfig(relax_h4=True, relax_h4_bpm=30).h4_limit == 30
+
+
+def test_config_h5_limit_property():
+    assert RunConfig().h5_limit == 2
+    assert RunConfig(relax_h5=True).h5_limit == 3
+    assert RunConfig(relax_h5_cfd=4).h5_limit == 4
+    assert RunConfig(relax_h5=True, relax_h5_cfd=4).h5_limit == 4
+
+
+def test_config_relax_h4_h5_negative_raises_value_error():
+    import pytest
+
+    with pytest.raises(ValueError):
+        RunConfig(relax_h4_bpm=-1)
+    with pytest.raises(ValueError):
+        RunConfig(relax_h5_cfd=-1)
+
+
 def test_config_relax_bpm_negative_raises_value_error():
     import pytest
 
@@ -75,11 +98,19 @@ def test_to_dict_preserves_relax_fields():
     assert data["relax_h2_bpm"] == 85
     assert data["relax_h1"] is False
     assert data["auto_relax"] is False
+    assert data["relax_h4"] is False
+    assert data["relax_h5"] is False
+    assert data["relax_h4_bpm"] is None
+    assert data["relax_h5_cfd"] is None
 
     child = RunConfig(**{**data, "songs": 4})
     assert child.relax_h3_bpm == 120
     assert child.relax_h2_bpm == 85
     assert child.relax_h1 is False
     assert child.auto_relax is False
+    assert child.relax_h4 is False
+    assert child.relax_h5 is False
+    assert child.relax_h4_bpm is None
+    assert child.relax_h5_cfd is None
     assert child.closing_limit == 120
     assert child.opening_floor == 85

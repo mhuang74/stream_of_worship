@@ -8,7 +8,17 @@ from pathlib import Path
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
-from sow_analysis.models import AnalyzeJobRequest, JobStatus, JobType, LrcJobRequest, LrcOptions
+from sow_analysis.models import (
+    AnalyzeJobRequest,
+    EmbeddingJobRequest,
+    FastAnalyzeJobRequest,
+    ForcedAlignmentJobRequest,
+    JobStatus,
+    JobType,
+    LrcJobRequest,
+    LrcOptions,
+    StemSeparationJobRequest,
+)
 from sow_analysis.workers.queue import (
     FINISHED_JOB_MEMORY_RETENTION_SECONDS,
     Job,
@@ -28,6 +38,70 @@ def _make_analysis_job(job_id: str, status: JobStatus) -> Job:
         status=status,
         request=AnalyzeJobRequest(audio_url=f"s3://bucket/{job_id}.mp3", content_hash=job_id),
     )
+
+
+def _make_embedding_job(job_id: str, status: JobStatus) -> Job:
+    return Job(
+        id=job_id,
+        type=JobType.EMBEDDING,
+        status=status,
+        request=EmbeddingJobRequest(
+            song_id=job_id,
+            title="Test Song",
+            content_hash=job_id,
+        ),
+    )
+
+
+def _make_job_for_type(job_type: JobType, job_id: str, status: JobStatus) -> Job:
+    """Build a minimal valid Job for any JobType."""
+    if job_type == JobType.ANALYZE:
+        return _make_analysis_job(job_id, status)
+    if job_type == JobType.EMBEDDING:
+        return _make_embedding_job(job_id, status)
+    if job_type == JobType.LRC:
+        return Job(
+            id=job_id,
+            type=job_type,
+            status=status,
+            request=LrcJobRequest(
+                audio_url=f"s3://bucket/{job_id}.mp3",
+                content_hash=job_id,
+                lyrics_text="测试歌词",
+            ),
+        )
+    if job_type == JobType.STEM_SEPARATION:
+        return Job(
+            id=job_id,
+            type=job_type,
+            status=status,
+            request=StemSeparationJobRequest(
+                audio_url=f"s3://bucket/{job_id}.mp3",
+                content_hash=job_id,
+            ),
+        )
+    if job_type == JobType.FORCED_ALIGNMENT:
+        return Job(
+            id=job_id,
+            type=job_type,
+            status=status,
+            request=ForcedAlignmentJobRequest(
+                audio_url=f"s3://bucket/{job_id}.mp3",
+                content_hash=job_id,
+                lyrics_text="测试歌词",
+            ),
+        )
+    if job_type == JobType.FAST_ANALYZE:
+        return Job(
+            id=job_id,
+            type=job_type,
+            status=status,
+            request=FastAnalyzeJobRequest(
+                audio_url=f"s3://bucket/{job_id}.mp3",
+                content_hash=job_id,
+            ),
+        )
+    raise ValueError(f"Unsupported JobType: {job_type}")
 
 
 class TestJobQueue:
@@ -156,6 +230,50 @@ class TestJobQueueStateLogging:
             queue._log_queue_state()
 
         assert _queue_state_messages(caplog) == []
+
+    def test_log_queue_state_handles_embedding_queued_job(self, tmp_path, caplog):
+        """Regression: EMBEDDING jobs must not cause KeyError in _log_queue_state."""
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_embedding_job("job_emb_queued", JobStatus.QUEUED)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        messages = _queue_state_messages(caplog)
+        assert len(messages) == 1
+        assert "EMBEDDING[queued:1,processing:0,completed:0,failed:0]" in messages[0]
+        assert "EMBEDDING queued=[" in messages[0]
+
+    def test_log_queue_state_handles_embedding_processing_job(self, tmp_path, caplog):
+        """Regression: EMBEDDING processing jobs must not cause KeyError."""
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_embedding_job("job_emb_processing", JobStatus.PROCESSING)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        messages = _queue_state_messages(caplog)
+        assert len(messages) == 1
+        assert "EMBEDDING[queued:0,processing:1,completed:0,failed:0]" in messages[0]
+        assert "EMBEDDING processing=" in messages[0]
+
+
+    @pytest.mark.parametrize("job_type", list(JobType))
+    def test_log_queue_state_covers_every_job_type(self, tmp_path, caplog, job_type):
+        """Future-proof: every JobType member renders without raising."""
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        job = _make_job_for_type(job_type, f"job_{job_type.value}", JobStatus.QUEUED)
+        queue._jobs[job.id] = job
+
+        with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
+            queue._log_queue_state()
+
+        messages = _queue_state_messages(caplog)
+        assert len(messages) == 1
+        assert f"{job_type.name}[queued:1,processing:0,completed:0,failed:0]" in messages[0]
+        assert f"{job_type.name} queued=[" in messages[0]
 
 
 class TestLRCJobProcessing:

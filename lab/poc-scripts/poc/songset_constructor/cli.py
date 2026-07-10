@@ -244,6 +244,17 @@ def _print_no_results_summary(config: RunConfig, result: Any) -> None:
     console.print(summary)
 
 
+def _print_output_files(paths: dict[str, str]) -> None:
+    if not paths:
+        console.print("[yellow]Output files written: none[/yellow]")
+        return
+
+    console.print("[green]Output files written:[/green]")
+    for path in paths.values():
+        output_path = Path(path)
+        console.print(f"  {output_path.name}: {output_path}")
+
+
 def _run_graph_with_traces(graph: Any, input_value: Any, graph_config: dict) -> dict:
     started_at: dict[str, float] = {}
     latest_values: dict[str, Any] = {}
@@ -292,7 +303,7 @@ def _run_graph_with_traces(graph: Any, input_value: Any, graph_config: dict) -> 
 
 @app.command()
 def construct(
-    songs: Annotated[int, typer.Option("--songs", min=4, max=5)] = 5,
+    songs: Annotated[int, typer.Option("--songs", min=2, max=5)] = 3,
     top_k: Annotated[int, typer.Option("--top-k", min=1, max=10)] = 3,
     pool_limit: Annotated[int, typer.Option("--pool-limit", min=4)] = 200,
     output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
@@ -313,6 +324,10 @@ def construct(
     relax_h2_bpm: Annotated[int | None, typer.Option("--relax-h2-bpm", min=0)] = None,
     relax_h1: Annotated[bool, typer.Option("--relax-h1/--no-relax-h1")] = True,
     auto_relax: Annotated[bool, typer.Option("--auto-relax/--no-auto-relax")] = True,
+    relax_h4: Annotated[bool, typer.Option("--relax-h4/--no-relax-h4")] = False,
+    relax_h5: Annotated[bool, typer.Option("--relax-h5/--no-relax-h5")] = False,
+    relax_h4_bpm: Annotated[int | None, typer.Option("--relax-h4-bpm", min=0)] = None,
+    relax_h5_cfd: Annotated[int | None, typer.Option("--relax-h5-cfd", min=0)] = None,
 ) -> None:
     """Construct Chinese worship songset proposal artifacts."""
     try:
@@ -336,6 +351,10 @@ def construct(
             relax_h2_bpm=relax_h2_bpm,
             relax_h1=relax_h1,
             auto_relax=auto_relax,
+            relax_h4=relax_h4,
+            relax_h5=relax_h5,
+            relax_h4_bpm=relax_h4_bpm,
+            relax_h5_cfd=relax_h5_cfd,
         )
         config.validate_environment()
     except Exception as exc:
@@ -349,7 +368,10 @@ def construct(
     try:
         result = _run_graph_with_traces(graph, initial_state, graph_config)
         while "__interrupt__" in result:
-            payload = result["__interrupt__"][0].value
+            interrupt_obj = result["__interrupt__"][0]
+            # The debug stream serializes Interrupt dataclasses to dicts via
+            # asdict(), so handle both dict and Interrupt object forms.
+            payload = interrupt_obj["value"] if isinstance(interrupt_obj, dict) else interrupt_obj.value
             console.print(payload)
             action = typer.prompt("Review action (approve/reject)", default="approve")
             from langgraph.types import Command
@@ -360,11 +382,8 @@ def construct(
         raise typer.Exit(1) from exc
 
     paths = result.get("artifact_paths", {})
-    if paths:
-        console.print("[green]Artifacts written:[/green]")
-        for name, path in paths.items():
-            console.print(f"  {name}: {path}")
-    else:
+    _print_output_files(paths)
+    if not paths:
         _print_no_results_summary(config, result)
 
 

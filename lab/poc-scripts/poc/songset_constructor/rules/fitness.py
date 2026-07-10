@@ -7,6 +7,15 @@ from poc.songset_constructor.models import ScoreBreakdown, SongsetProposal, Tran
 
 TEMPLATE_PHASES_5 = (1, 2, 3, 4, 5)
 TEMPLATE_PHASES_4 = (1, 3, 4, 5)
+TEMPLATE_PHASES_3 = (1, 3, 5)
+TEMPLATE_PHASES_2 = (1, 4)
+
+_THEME_TEMPLATES: dict[int, tuple[int, ...]] = {
+    2: TEMPLATE_PHASES_2,
+    3: TEMPLATE_PHASES_3,
+    4: TEMPLATE_PHASES_4,
+    5: TEMPLATE_PHASES_5,
+}
 
 
 def _clamp(value: float) -> float:
@@ -14,8 +23,10 @@ def _clamp(value: float) -> float:
 
 
 def f_theme(proposal: SongsetProposal, songs: int) -> float:
-    template = TEMPLATE_PHASES_4 if songs == 4 else TEMPLATE_PHASES_5
-    distances = [abs((item.phase or 3) - template[index]) for index, item in enumerate(proposal.items)]
+    template = _THEME_TEMPLATES[songs]
+    distances = [
+        abs((item.phase or 3) - template[index]) for index, item in enumerate(proposal.items)
+    ]
     return _clamp(1.0 - sum(distances) / (4.0 * len(template)))
 
 

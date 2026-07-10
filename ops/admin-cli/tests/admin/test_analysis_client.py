@@ -161,6 +161,80 @@ class TestSubmitAnalysis:
             client.submit_analysis("s3://bucket/audio.mp3", "abc123")
 
 
+class TestSubmitFastAnalysis:
+    """Tests for AnalysisClient.submit_fast_analysis."""
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_payload_includes_start_bpm(self, mock_post, api_key_env):
+        """Verify start_bpm is included in the API payload."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "fast_analyze",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        job = client.submit_fast_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+        )
+
+        assert job.job_id == "job-123"
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["options"]["start_bpm"] == 80.0
+        assert payload["options"]["hop_length"] == 512
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_custom_start_bpm_passed_through(self, mock_post, api_key_env):
+        """Verify custom start_bpm overrides the default."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "fast_analyze",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_fast_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            start_bpm=120.0,
+        )
+
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["options"]["start_bpm"] == 120.0
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_connection_error(self, mock_post, api_key_env):
+        """Raises AnalysisServiceError on connection failure."""
+        mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
+
+        client = AnalysisClient("http://localhost:8000")
+        with pytest.raises(AnalysisServiceError, match="Cannot connect"):
+            client.submit_fast_analysis("s3://bucket/audio.mp3", "abc123")
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_401_unauthorized(self, mock_post, api_key_env):
+        """Raises AnalysisServiceError with status_code 401 on auth failure."""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        with pytest.raises(AnalysisServiceError) as exc_info:
+            client.submit_fast_analysis("s3://bucket/audio.mp3", "abc123")
+
+        assert exc_info.value.status_code == 401
+        assert "Authentication failed" in str(exc_info.value)
+
+
 class TestGetJob:
     """Tests for AnalysisClient.get_job."""
 

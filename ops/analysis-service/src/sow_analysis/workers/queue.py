@@ -698,9 +698,7 @@ class JobQueue:
                 job.stage = "analyzing"
                 job.progress = 0.3
                 try:
-                    await self.job_store.update_job(
-                        job.id, stage="analyzing", progress=0.3
-                    )
+                    await self.job_store.update_job(job.id, stage="analyzing", progress=0.3)
                 except Exception as e:
                     logger.error(f"Failed to update job {job.id} in database: {e}")
 
@@ -710,7 +708,9 @@ class JobQueue:
                     request.content_hash,
                     sample_rate=request.options.sample_rate,
                     hop_length=request.options.hop_length,
+                    start_bpm=request.options.start_bpm,
                     force=request.options.force,
+                    lrc_content=request.options.lrc_content,
                 )
 
                 # Build job result (fast subset only; full-only fields stay None)
@@ -1959,115 +1959,58 @@ class JobQueue:
         """Log current queue state statistics."""
         now = datetime.now(timezone.utc)
 
-        # Count jobs by type and status
         stats: Dict[JobType, Dict[JobStatus, int]] = {
-            JobType.ANALYZE: {status: 0 for status in JobStatus},
-            JobType.LRC: {status: 0 for status in JobStatus},
-            JobType.STEM_SEPARATION: {status: 0 for status in JobStatus},
-            JobType.EMBEDDING: {status: 0 for status in JobStatus},
-            JobType.FORCED_ALIGNMENT: {status: 0 for status in JobStatus},
-            JobType.FAST_ANALYZE: {status: 0 for status in JobStatus},
+            jt: {status: 0 for status in JobStatus} for jt in JobType
         }
-
-        # Track wait times for queued and processing jobs
-        queued_wait_times: Dict[JobType, list] = {
-            JobType.ANALYZE: [],
-            JobType.LRC: [],
-            JobType.STEM_SEPARATION: [],
-            JobType.FORCED_ALIGNMENT: [],
-            JobType.FAST_ANALYZE: [],
-        }
-        processing_durations: Dict[JobType, list] = {
-            JobType.ANALYZE: [],
-            JobType.LRC: [],
-            JobType.STEM_SEPARATION: [],
-            JobType.FORCED_ALIGNMENT: [],
-            JobType.FAST_ANALYZE: [],
-        }
+        queued_wait_times: Dict[JobType, list] = {jt: [] for jt in JobType}
+        processing_durations: Dict[JobType, list] = {jt: [] for jt in JobType}
 
         has_reportable_jobs = False
         for job in self._jobs.values():
             stats[job.type][job.status] += 1
-
             if job.status == JobStatus.QUEUED:
-                wait_time = (now - job.created_at).total_seconds()
-                queued_wait_times[job.type].append(wait_time)
+                queued_wait_times[job.type].append(
+                    (now - job.created_at).total_seconds()
+                )
                 has_reportable_jobs = True
             elif job.status == JobStatus.PROCESSING:
-                duration = (now - job.updated_at).total_seconds()
-                processing_durations[job.type].append(duration)
+                processing_durations[job.type].append(
+                    (now - job.updated_at).total_seconds()
+                )
                 has_reportable_jobs = True
             elif (
                 job.status == JobStatus.FAILED
-                and (now - job.updated_at).total_seconds() <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
+                and (now - job.updated_at).total_seconds()
+                <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
             ):
                 has_reportable_jobs = True
 
         if not has_reportable_jobs:
             return
 
-        # Build summary line
-        analyze_stats = f"queued:{stats[JobType.ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.ANALYZE][JobStatus.FAILED]}"
-        lrc_stats = f"queued:{stats[JobType.LRC][JobStatus.QUEUED]},processing:{stats[JobType.LRC][JobStatus.PROCESSING]},completed:{stats[JobType.LRC][JobStatus.COMPLETED]},failed:{stats[JobType.LRC][JobStatus.FAILED]}"
-        stem_stats = f"queued:{stats[JobType.STEM_SEPARATION][JobStatus.QUEUED]},processing:{stats[JobType.STEM_SEPARATION][JobStatus.PROCESSING]},completed:{stats[JobType.STEM_SEPARATION][JobStatus.COMPLETED]},failed:{stats[JobType.STEM_SEPARATION][JobStatus.FAILED]}"
-        fa_stats = f"queued:{stats[JobType.FORCED_ALIGNMENT][JobStatus.QUEUED]},processing:{stats[JobType.FORCED_ALIGNMENT][JobStatus.PROCESSING]},completed:{stats[JobType.FORCED_ALIGNMENT][JobStatus.COMPLETED]},failed:{stats[JobType.FORCED_ALIGNMENT][JobStatus.FAILED]}"
-        fast_stats = f"queued:{stats[JobType.FAST_ANALYZE][JobStatus.QUEUED]},processing:{stats[JobType.FAST_ANALYZE][JobStatus.PROCESSING]},completed:{stats[JobType.FAST_ANALYZE][JobStatus.COMPLETED]},failed:{stats[JobType.FAST_ANALYZE][JobStatus.FAILED]}"
+        parts: list[str] = []
+        wait_parts: list[str] = []
+        for jt in JobType:
+            s = stats[jt]
+            parts.append(
+                f"{jt.name}[queued:{s[JobStatus.QUEUED]},"
+                f"processing:{s[JobStatus.PROCESSING]},"
+                f"completed:{s[JobStatus.COMPLETED]},"
+                f"failed:{s[JobStatus.FAILED]}]"
+            )
+            qwt = queued_wait_times[jt]
+            if qwt:
+                waits = ",".join(f"{w:.0f}s" for w in qwt[:3])
+                if len(qwt) > 3:
+                    waits += f",...+{len(qwt) - 3}more"
+                wait_parts.append(f"{jt.name} queued=[{waits}]")
+            pd = processing_durations[jt]
+            if pd:
+                avg_dur = sum(pd) / len(pd)
+                wait_parts.append(f"{jt.name} processing={avg_dur:.0f}s")
 
-        wait_time_str = ""
-        if queued_wait_times[JobType.ANALYZE]:
-            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.ANALYZE][:3])
-            if len(queued_wait_times[JobType.ANALYZE]) > 3:
-                waits += f",...+{len(queued_wait_times[JobType.ANALYZE]) - 3}more"
-            wait_time_str += f" ANALYZE queued=[{waits}]"
-        if queued_wait_times[JobType.LRC]:
-            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.LRC][:3])
-            if len(queued_wait_times[JobType.LRC]) > 3:
-                waits += f",...+{len(queued_wait_times[JobType.LRC]) - 3}more"
-            wait_time_str += f" LRC queued=[{waits}]"
-        if queued_wait_times[JobType.STEM_SEPARATION]:
-            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.STEM_SEPARATION][:3])
-            if len(queued_wait_times[JobType.STEM_SEPARATION]) > 3:
-                waits += f",...+{len(queued_wait_times[JobType.STEM_SEPARATION]) - 3}more"
-            wait_time_str += f" STEM queued=[{waits}]"
-        if queued_wait_times[JobType.FORCED_ALIGNMENT]:
-            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.FORCED_ALIGNMENT][:3])
-            if len(queued_wait_times[JobType.FORCED_ALIGNMENT]) > 3:
-                waits += f",...+{len(queued_wait_times[JobType.FORCED_ALIGNMENT]) - 3}more"
-            wait_time_str += f" FA queued=[{waits}]"
-        if queued_wait_times[JobType.FAST_ANALYZE]:
-            waits = ",".join(f"{w:.0f}s" for w in queued_wait_times[JobType.FAST_ANALYZE][:3])
-            if len(queued_wait_times[JobType.FAST_ANALYZE]) > 3:
-                waits += f",...+{len(queued_wait_times[JobType.FAST_ANALYZE]) - 3}more"
-            wait_time_str += f" FAST queued=[{waits}]"
-        if processing_durations[JobType.ANALYZE]:
-            avg_dur = sum(processing_durations[JobType.ANALYZE]) / len(
-                processing_durations[JobType.ANALYZE]
-            )
-            wait_time_str += f" ANALYZE processing={avg_dur:.0f}s"
-        if processing_durations[JobType.LRC]:
-            avg_dur = sum(processing_durations[JobType.LRC]) / len(
-                processing_durations[JobType.LRC]
-            )
-            wait_time_str += f" LRC processing={avg_dur:.0f}s"
-        if processing_durations[JobType.STEM_SEPARATION]:
-            avg_dur = sum(processing_durations[JobType.STEM_SEPARATION]) / len(
-                processing_durations[JobType.STEM_SEPARATION]
-            )
-            wait_time_str += f" STEM processing={avg_dur:.0f}s"
-        if processing_durations[JobType.FORCED_ALIGNMENT]:
-            avg_dur = sum(processing_durations[JobType.FORCED_ALIGNMENT]) / len(
-                processing_durations[JobType.FORCED_ALIGNMENT]
-            )
-            wait_time_str += f" FA processing={avg_dur:.0f}s"
-        if processing_durations[JobType.FAST_ANALYZE]:
-            avg_dur = sum(processing_durations[JobType.FAST_ANALYZE]) / len(
-                processing_durations[JobType.FAST_ANALYZE]
-            )
-            wait_time_str += f" FAST processing={avg_dur:.0f}s"
-
-        logger.info(
-            f"Queue state: ANALYZE[{analyze_stats}] LRC[{lrc_stats}] STEM[{stem_stats}] FA[{fa_stats}] FAST[{fast_stats}] | Wait times:{wait_time_str if wait_time_str else ' none'}"
-        )
+        wait_time_str = " " + " ".join(wait_parts) if wait_parts else " none"
+        logger.info(f"Queue state: {' '.join(parts)} | Wait times:{wait_time_str}")
 
     async def _periodic_logging_loop(self) -> None:
         """Background task that logs queue state periodically."""

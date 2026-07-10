@@ -125,11 +125,13 @@ export function buildBpmPredicate(bpmRange: BpmBandKey, alias: string = "r"): SQ
   const col = sql.raw(`${alias}.tempo_bpm`);
   switch (bpmRange) {
     case "slow":
-      return sql`${col} < 90`;
+      return sql`${col} < 70`;
     case "moderate":
-      return sql`${col} >= 90 AND ${col} < 120`;
+      return sql`${col} >= 70 AND ${col} < 80`;
+    case "upbeat":
+      return sql`${col} >= 80 AND ${col} < 90`;
     case "fast":
-      return sql`${col} >= 120`;
+      return sql`${col} >= 90`;
   }
 }
 

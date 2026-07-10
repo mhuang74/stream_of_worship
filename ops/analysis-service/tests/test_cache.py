@@ -215,6 +215,61 @@ class TestFastAnalyzeCache:
             assert cache_manager.get_fast_analyze_result(content_hash) is None
             assert not cache_file.exists()
 
+    def test_fast_cache_uses_bpm_versioned_filename(self):
+        """Fast result saves under the new BPM-versioned filename."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "d" * 64
+            result = {"tempo_bpm": 68.0}
+
+            cache_file = cache_manager.save_fast_analyze_result(content_hash, result)
+            # Filename must include both KEY and BPM version suffixes before _fast.json
+            assert cache_file.name.endswith("_fast.json")
+            assert ".v" in cache_file.name
+            assert cache_file.exists()
+
+            cached = cache_manager.get_fast_analyze_result(content_hash)
+            assert cached is not None
+            assert cached["tempo_bpm"] == 68.0
+
+    def test_fast_cache_reads_legacy_file_as_fallback(self):
+        """Legacy v4 fast cache file is read as fallback when no versioned file exists."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "e" * 64
+            hash_prefix = content_hash[:32]
+            # Write a legacy-style file (pre-BPM-versioning format)
+            legacy_file = cache_dir / f"{hash_prefix}_fast.json"
+            legacy_file.write_text('{"tempo_bpm": 92.0}')
+
+            cached = cache_manager.get_fast_analyze_result(content_hash)
+            assert cached is not None
+            assert cached["tempo_bpm"] == 92.0
+
+    def test_fast_cache_prefers_versioned_over_legacy(self):
+        """Versioned fast file takes precedence over legacy file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "f" * 64
+            hash_prefix = content_hash[:32]
+            legacy_file = cache_dir / f"{hash_prefix}_fast.json"
+            legacy_file.write_text('{"tempo_bpm": 92.0}')
+
+            versioned_file = cache_manager.save_fast_analyze_result(
+                content_hash, {"tempo_bpm": 68.0}
+            )
+
+            cached = cache_manager.get_fast_analyze_result(content_hash)
+            assert cached is not None
+            assert cached["tempo_bpm"] == 68.0
+            assert versioned_file.exists()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

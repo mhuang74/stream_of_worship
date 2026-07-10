@@ -176,7 +176,19 @@ echo ""
 echo -e "${GREEN}Starting Analysis Service in development mode...${NC}"
 echo "  Audio-separator model directory: $MODEL_DIR"
 echo "  Forced aligner model directory: $HF_CACHE_DIR"
-echo "  API will be available at: http://localhost:8000"
+
+# Determine the bind IP for display (matches docker-compose SOW_BIND_IP logic)
+BIND_IP="0.0.0.0"
+if [[ -f "/opt/sow/.env" ]]; then
+    BIND_IP=$(grep -E '^SOW_BIND_IP=' /opt/sow/.env | cut -d= -f2- | tr -d '[:space:]' || echo "0.0.0.0")
+    BIND_IP="${BIND_IP:-0.0.0.0}"
+fi
+if [[ "$BIND_IP" == "0.0.0.0" ]]; then
+    DISPLAY_IP="localhost"
+else
+    DISPLAY_IP="$BIND_IP"
+fi
+echo "  API will be available at: http://${DISPLAY_IP}:8000  (bound to ${BIND_IP})"
 if [[ "$REBUILD" == true ]]; then
     echo "  Rebuilding Docker image before start"
     COMPOSE_UP_ARGS=(--build "${COMPOSE_UP_ARGS[@]}")

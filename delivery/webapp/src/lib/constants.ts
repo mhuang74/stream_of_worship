@@ -72,12 +72,13 @@ export const PITCH_CLASSES = [
 export type PitchClass = (typeof PITCH_CLASSES)[number];
 
 export const BPM_BANDS = {
-  slow: { label: "Slow", max: 90 },
-  moderate: { label: "Moderate", min: 90, max: 120 },
-  fast: { label: "Fast", min: 120 },
+  slow: { label: "Slow", max: 70 },
+  moderate: { label: "Moderate", min: 70, max: 80 },
+  upbeat: { label: "Upbeat", min: 80, max: 90 },
+  fast: { label: "Fast", min: 90 },
 } as const;
 
-export const BPM_BAND_KEYS = ["slow", "moderate", "fast"] as const;
+export const BPM_BAND_KEYS = ["slow", "moderate", "upbeat", "fast"] as const;
 export type BpmBandKey = (typeof BPM_BAND_KEYS)[number];
 
 export function formatBpmBandRangeText(band: BpmBandKey): string {

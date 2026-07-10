@@ -96,7 +96,7 @@ def build_transition_matrix(state: ConstructorState) -> dict:
             transition = recommend_transition(left, right)
             if transition.cfd <= 6:
                 matrix[(left.recording_hash_prefix, right.recording_hash_prefix)] = transition
-    pool = compute_fan_out(pool, matrix)
+    pool = compute_fan_out(pool, matrix, state["config"])
     return {
         "pool": pool,
         "transition_matrix": matrix,
@@ -201,6 +201,8 @@ def validate_score(state: ConstructorState) -> dict:
         state["config"],
         state.get("transition_matrix", {}),
         relax_h1=state["config"].relax_h1,
+        relax_h4=state["config"].relax_h4,
+        relax_h5=state["config"].relax_h5,
     )
     update = {
         "feedback": feedback,

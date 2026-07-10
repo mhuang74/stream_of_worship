@@ -847,9 +847,7 @@ def import_youtube_audio_for_song(
         if search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
             audio_path = downloader.download_by_url(search_or_url)
         else:
-            audio_path = downloader.download(
-                search_or_url, max_results=5, song_title=song.title
-            )
+            audio_path = downloader.download(search_or_url, max_results=5, song_title=song.title)
     except RuntimeError as e:
         console.print(f"[red]Download failed: {e}[/red]")
         raise typer.Exit(1)
@@ -2984,7 +2982,9 @@ def check_status(
                                 key_algorithm_version=(
                                     job.result.key_algorithm_version if job.result else None
                                 ),
-                                key_score_margin=job.result.key_score_margin if job.result else None,
+                                key_score_margin=(
+                                    job.result.key_score_margin if job.result else None
+                                ),
                                 key_window_agreement=(
                                     job.result.key_window_agreement if job.result else None
                                 ),
@@ -5377,10 +5377,14 @@ def _submit_analysis_for_song(
     # Submit new job
     try:
         if analysis_tier == "fast":
+            lrc_content = (
+                r2_client.download_lrc_content(recording.hash_prefix) if r2_client else None
+            )
             job = analysis_client.submit_fast_analysis(
                 audio_url=recording.r2_audio_url,
                 content_hash=recording.content_hash,
                 force=force,
+                lrc_content=lrc_content,
             )
         else:
             job = analysis_client.submit_analysis(
@@ -7449,7 +7453,9 @@ def probe_batch(
     console.print(f"\n[bold]Summary:[/bold] {probed} probed, {skipped} skipped, {failed} failed")
 
 
-def _load_key_review_rows(db_client: DatabaseClient, hash_prefix: Optional[str] = None) -> list[dict]:
+def _load_key_review_rows(
+    db_client: DatabaseClient, hash_prefix: Optional[str] = None
+) -> list[dict]:
     cursor = db_client.connection.cursor()
     where_hash = "AND r.hash_prefix = %s" if hash_prefix else ""
     params = (hash_prefix,) if hash_prefix else ()
@@ -7562,9 +7568,7 @@ def key_review_list(
             f"{row['detected_key'] or ''} {row['musical_mode'] or ''}".strip(),
             f"{row['key_confidence']:.3f}" if row["key_confidence"] is not None else "",
             f"{row['key_score_margin']:.3f}" if row["key_score_margin"] is not None else "",
-            f"{row['key_window_agreement']:.3f}"
-            if row["key_window_agreement"] is not None
-            else "",
+            f"{row['key_window_agreement']:.3f}" if row["key_window_agreement"] is not None else "",
         )
     console.print(table)
 
@@ -7635,7 +7639,9 @@ def _accept_key(hash_prefix: str, use_catalog: bool, config_path: Optional[Path]
             """,
             (key, mode, hash_prefix),
         )
-    console.print(f"[green]Accepted {'catalog' if use_catalog else 'detected'} key for {hash_prefix}.[/green]")
+    console.print(
+        f"[green]Accepted {'catalog' if use_catalog else 'detected'} key for {hash_prefix}.[/green]"
+    )
 
 
 @key_review_app.command("accept-catalog")

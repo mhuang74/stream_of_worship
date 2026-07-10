@@ -117,6 +117,7 @@ async def lifespan(app: FastAPI):
         ),
         ("Processing", "cache_dir", str(settings.CACHE_DIR)),
         ("Processing", "queue_start_delay", f"{settings.SOW_QUEUE_START_DELAY_SECONDS}s"),
+        ("BPM (Fast Analysis)", "algorithm", settings.BPM_ALGORITHM_VERSION),
         ("LLM", "model", settings.SOW_LLM_MODEL or "(not set)"),
         ("LLM", "provider", settings.SOW_LLM_BASE_URL or "(not set)"),
         ("Embedding", "model", settings.SOW_EMBEDDING_MODEL),

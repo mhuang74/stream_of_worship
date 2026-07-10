@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
     KEY_ALGORITHM_VERSION: str = "ks_segment_vote_v1"
+    # Tempo detection algorithm version.
+    #   "v4_octave_guard" -> start_bpm=80 + double/half-time guard (current default)
+    #   "v5_cps_prior"    -> CPS-derived lognormal prior (skips octave guard)
+    BPM_ALGORITHM_VERSION: str = "v4_octave_guard"
     SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = (
         1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
     )
@@ -53,6 +57,15 @@ class Settings(BaseSettings):
         """Ensure concurrent jobs is at least 1 to prevent deadlock."""
         if v < 1:
             raise ValueError("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS must be at least 1")
+        return v
+
+    @field_validator("BPM_ALGORITHM_VERSION")
+    @classmethod
+    def _validate_bpm_algorithm_version(cls, v: str) -> str:
+        """Validate BPM algorithm version to fail fast on typos."""
+        allowed = {"v4_octave_guard", "v5_cps_prior"}
+        if v not in allowed:
+            raise ValueError(f"BPM_ALGORITHM_VERSION must be one of {allowed}, got: {v!r}")
         return v
 
     # Demucs Configuration
@@ -137,7 +150,9 @@ class Settings(BaseSettings):
     )
 
     # Forced Aligner Configuration (Qwen3ForcedAligner-0.6B, runs in-process)
-    SOW_FORCED_ALIGNER_MODEL_PATH: str = "Qwen/Qwen3-ForcedAligner-0.6B"  # HF model ID or local path
+    SOW_FORCED_ALIGNER_MODEL_PATH: str = (
+        "Qwen/Qwen3-ForcedAligner-0.6B"  # HF model ID or local path
+    )
     SOW_FORCED_ALIGNER_DEVICE: str = "auto"  # auto/mps/cuda/cpu
 
     # YouTube Proxy Configuration

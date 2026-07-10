@@ -264,6 +264,13 @@ SOW_AUDIO_SEPARATOR_MODEL_ROOT=""
 # Maximum concurrent local model executions (default: 1)
 SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 
+# Fast Analysis (librosa-only) concurrency (default: 0 = auto-detect, capped at 4)
+SOW_FAST_ANALYZE_MAX_CONCURRENT=0
+
+# Tempo detection algorithm for Fast Analysis jobs
+# Allowed: v4_octave_guard (default) or v5_cps_prior
+BPM_ALGORITHM_VERSION=v4_octave_guard
+
 # Device selection (cpu or cuda - requires GPU setup)
 SOW_DEMUCS_DEVICE=cpu
 SOW_WHISPER_DEVICE=cpu
@@ -395,6 +402,11 @@ services:
       # Processing Configuration
       SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}
       SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
+      
+      # Fast Analysis (librosa-only) Concurrency
+      SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
+      # BPM Algorithm (Fast Analysis tempo detection)
+      BPM_ALGORITHM_VERSION: ${BPM_ALGORITHM_VERSION:-v4_octave_guard}
       
       # Stem Separation Model Configuration
       SOW_AUDIO_SEPARATOR_MODEL_DIR: /models/audio-separator

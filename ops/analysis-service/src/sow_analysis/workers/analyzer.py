@@ -14,16 +14,13 @@ import numpy as np
 
 from ..config import settings
 from ..storage.cache import CacheManager
+from . import cps as cps_module
 
 logger = logging.getLogger(__name__)
 
 # Key detection profiles (Krumhansl-Schmuckler)
-MAJOR_PROFILE = np.array(
-    [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-)
-MINOR_PROFILE = np.array(
-    [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
-)
+MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
@@ -86,7 +83,9 @@ def detect_key_fulltrack(y: np.ndarray, sr: int) -> KeyDetectionResult:
     best = correlations[0]
     second = correlations[1] if len(correlations) > 1 else None
     candidates = [
-        KeyCandidate(key=key, mode=mode, score=score, window_votes=None, source="fulltrack_correlation")
+        KeyCandidate(
+            key=key, mode=mode, score=score, window_votes=None, source="fulltrack_correlation"
+        )
         for mode, key, score in correlations[:5]
     ]
     return KeyDetectionResult(
@@ -101,7 +100,9 @@ def detect_key_fulltrack(y: np.ndarray, sr: int) -> KeyDetectionResult:
     )
 
 
-def _window_bounds(duration: float, segments: Optional[list[dict]] = None) -> list[tuple[float, float]]:
+def _window_bounds(
+    duration: float, segments: Optional[list[dict]] = None
+) -> list[tuple[float, float]]:
     if segments:
         return [
             (float(segment["start"]), float(segment["end"]))
@@ -168,8 +169,7 @@ def detect_key_segment_vote(
         return detect_key_fulltrack(y, sr)
 
     normalized = {
-        key: score / total_weight if total_weight > 0 else score
-        for key, score in aggregate.items()
+        key: score / total_weight if total_weight > 0 else score for key, score in aggregate.items()
     }
     ranked = sorted(normalized.items(), key=lambda item: item[1], reverse=True)
     (best_mode, best_key), best_score = ranked[0]
@@ -303,10 +303,7 @@ async def analyze_audio(
     else:
         downbeats = list(downbeats)
 
-    sections = [
-        {"label": seg.label, "start": seg.start, "end": seg.end}
-        for seg in result.segments
-    ]
+    sections = [{"label": seg.label, "start": seg.start, "end": seg.end} for seg in result.segments]
 
     embeddings_shape = list(result.embeddings.shape)
 
@@ -329,7 +326,7 @@ async def analyze_audio(
     # Build result
     analysis_result = {
         "duration_seconds": duration,
-        "tempo_bpm": bpm,
+        "tempo_bpm": round(bpm, 1),
         **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
         "beats": beats,
@@ -344,13 +341,122 @@ async def analyze_audio(
     return analysis_result
 
 
+def _compute_tempo_v4(y: np.ndarray, sr: int, hop_length: int, start_bpm: float) -> float:
+    """v4 tempo estimation: start_bpm prior + double/half-time octave guard.
+
+    Preserved verbatim from the original ``_compute_tempo`` inner function
+    for fallback use by the v5 path when LRC is missing.
+    """
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+
+    # Primary estimate with worship-music prior
+    tempo_primary = librosa.beat.tempo(
+        onset_envelope=onset_env,
+        sr=sr,
+        hop_length=hop_length,
+        start_bpm=start_bpm,
+    )
+    if hasattr(tempo_primary, "__iter__"):
+        tempo_primary = float(tempo_primary[0])
+    tempo_primary = float(tempo_primary)
+
+    # Double-time guard: if primary is suspiciously fast, re-estimate with
+    # a 60 BPM prior to probe the half-time peak. Handles slow worship songs
+    # (~65-75 BPM true) whose onset envelope peaks at twice the beat rate
+    # (eighth-/sixteenth-note patterns) and is reported at ~2x true tempo.
+    if tempo_primary > 120.0:
+        tempo_alt = librosa.beat.tempo(
+            onset_envelope=onset_env,
+            sr=sr,
+            hop_length=hop_length,
+            start_bpm=60.0,
+        )
+        if hasattr(tempo_alt, "__iter__"):
+            tempo_alt = float(tempo_alt[0])
+        tempo_alt = float(tempo_alt)
+
+        # Accept the half-time if it is roughly half the primary AND lands
+        # in the worship-plausible range (65-100 BPM).
+        if abs(tempo_alt - tempo_primary / 2.0) < 8.0 and 65.0 <= tempo_alt <= 100.0:
+            return tempo_alt
+
+    # Half-time guard (v4): if primary is below the worship-plausible floor
+    # (< 60 BPM), re-estimate with the 120 BPM prior to probe the
+    # double-time peak. Handles edge-case fast songs (true tempo > 110 BPM)
+    # without over-correcting the predominantly 60-100 BPM worship catalog.
+    # NOTE: threshold lowered from v3's < 65 to < 60 because 60-65 BPM is a
+    # legitimate slow worship tempo (e.g. "我活著要稱頌祢" at 64.6 BPM true).
+    # The v3 < 65 threshold misfired on 64.6 and doubled it to 129.2.
+    # Acceptance range floor raised from 100 to 110 so doublings of primaries
+    # in [50, 55) (which yield alts in [100, 110)) are rejected as implausible;
+    # ceiling raised from 160 to 180 to accommodate doublings of primaries up
+    # to 90 (defense-in-depth; in practice only primaries < 60 trigger).
+    elif tempo_primary < 60.0:
+        tempo_alt = librosa.beat.tempo(
+            onset_envelope=onset_env,
+            sr=sr,
+            hop_length=hop_length,
+            start_bpm=120.0,
+        )
+        if hasattr(tempo_alt, "__iter__"):
+            tempo_alt = float(tempo_alt[0])
+        tempo_alt = float(tempo_alt)
+
+        # If the alternative is roughly double the primary AND lands in the
+        # genuinely-fast range, the primary was half-time.
+        if abs(tempo_alt - 2.0 * tempo_primary) < 8.0 and 110.0 <= tempo_alt <= 180.0:
+            return tempo_alt
+
+    return tempo_primary
+
+
+def _compute_tempo_v5(
+    y: np.ndarray,
+    sr: int,
+    hop_length: int,
+    lrc_content: Optional[str],
+    start_bpm: float,
+) -> float:
+    """v5 tempo estimation: CPS-derived lognormal prior (skips octave guard).
+
+    When ``lrc_content`` is present and parseable into a CPS value, a
+    lognormal prior is built and passed to ``librosa.beat.tempo``. The prior
+    resolves octave ambiguity, so the v4 octave guard is skipped.
+
+    When CPS is None (LRC missing or unparseable), delegates to the v4 path
+    (``_compute_tempo_v4``) for identical fallback behavior.
+    """
+    cps_value, _meta = cps_module.compute_cps(lrc_content) if lrc_content else (None, None)
+    prior = cps_module.cps_to_prior(cps_value)
+
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+
+    if prior is not None:
+        tempo_primary = librosa.beat.tempo(
+            onset_envelope=onset_env,
+            sr=sr,
+            hop_length=hop_length,
+            prior=prior,
+        )
+        if hasattr(tempo_primary, "__iter__"):
+            tempo_primary = float(tempo_primary[0])
+        tempo_primary = float(tempo_primary)
+        # Prior already encodes the half/double-time belief — skip octave guard.
+        return tempo_primary
+    else:
+        # CPS missing — fall back to v4 behavior.
+        return _compute_tempo_v4(y, sr, hop_length, start_bpm)
+
+
 async def analyze_audio_fast(
     audio_path: Path,
     cache_manager: CacheManager,
     content_hash: str,
     sample_rate: int = 22050,
-    hop_length: int = 4096,
+    hop_length: int = 512,
+    start_bpm: float = 80.0,
     force: bool = False,
+    lrc_content: Optional[str] = None,
 ) -> dict:
     """Fast audio analysis using librosa only (no allin1, no stems).
 
@@ -367,8 +473,15 @@ async def analyze_audio_fast(
         cache_manager: Cache manager instance
         content_hash: SHA-256 hash of audio content for cache key
         sample_rate: Target sample rate for librosa.load (default 22050)
-        hop_length: Hop length for onset/tempo estimation (default 4096)
+        hop_length: Hop length for onset/tempo estimation (default 512)
+        start_bpm: Initial tempo guess for the log-normal prior (default 80).
+            Worship music typically has tempos 65-95 BPM; the librosa default
+            of 120 biases toward double-time octave errors.
         force: Bypass cache
+        lrc_content: Optional LRC lyrics text for CPS-based prod-v5 prior.
+            When provided and BPM_ALGORITHM_VERSION=v5_cps_prior, a lognormal
+            prior is derived from the CPS value. When None or empty, the v5
+            path falls back to v4 behavior.
 
     Returns:
         Dictionary with the fast-tier analysis fields
@@ -399,14 +512,16 @@ async def analyze_audio_fast(
     logger.info("Estimating tempo...")
     tempo_start = time.time()
 
-    def _compute_tempo() -> float:
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
-        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
-        if hasattr(tempo, "__iter__"):
-            tempo = float(tempo[0])
-        return float(tempo)
+    algorithm = settings.BPM_ALGORITHM_VERSION
+    if algorithm == "v5_cps_prior":
+        bpm = await loop.run_in_executor(
+            None, _compute_tempo_v5, y, sr, hop_length, lrc_content, start_bpm
+        )
+    elif algorithm == "v4_octave_guard":
+        bpm = await loop.run_in_executor(None, _compute_tempo_v4, y, sr, hop_length, start_bpm)
+    else:
+        raise ValueError(f"Unsupported BPM_ALGORITHM_VERSION: {algorithm}")
 
-    bpm = await loop.run_in_executor(None, _compute_tempo)
     tempo_elapsed = time.time() - tempo_start
     logger.info(f"Tempo estimation completed in {tempo_elapsed:.2f}s - {bpm:.1f} BPM")
 
@@ -429,7 +544,7 @@ async def analyze_audio_fast(
     # Build result (fast subset only)
     analysis_result = {
         "duration_seconds": duration,
-        "tempo_bpm": bpm,
+        "tempo_bpm": round(bpm, 1),
         **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
     }

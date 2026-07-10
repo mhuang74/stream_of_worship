@@ -53,11 +53,15 @@ class RunConfig:
     relax_h2_bpm: int | None = None
     relax_h1: bool = True
     auto_relax: bool = True
+    relax_h4: bool = False
+    relax_h5: bool = False
+    relax_h4_bpm: int | None = None
+    relax_h5_cfd: int | None = None
 
     def __post_init__(self) -> None:
         self.env_file = load_runtime_env(self.env_file)
-        if self.songs not in {4, 5}:
-            raise ValueError("--songs supports only 4 or 5 for this POC")
+        if self.songs not in {2, 3, 4, 5}:
+            raise ValueError("--songs supports only 2-5 for this POC")
         if self.top_k < 1:
             raise ValueError("--top-k must be >= 1")
         if self.pool_limit < self.songs:
@@ -69,6 +73,10 @@ class RunConfig:
             raise ValueError("--relax-h3-bpm must be >= 0")
         if self.relax_h2_bpm is not None and self.relax_h2_bpm < 0:
             raise ValueError("--relax-h2-bpm must be >= 0")
+        if self.relax_h4_bpm is not None and self.relax_h4_bpm < 0:
+            raise ValueError("--relax-h4-bpm must be >= 0")
+        if self.relax_h5_cfd is not None and self.relax_h5_cfd < 0:
+            raise ValueError("--relax-h5-cfd must be >= 0")
         self.output_dir = Path(self.output_dir)
         self.album_series = list(dict.fromkeys(self.album_series or DEFAULT_ALBUM_SERIES))
         if self.include_cpw and "CPW" not in self.album_series:
@@ -97,6 +105,18 @@ class RunConfig:
         if self.relax_h2_bpm is not None:
             return self.relax_h2_bpm
         return 110
+
+    @property
+    def h4_limit(self) -> int:
+        if self.relax_h4_bpm is not None:
+            return self.relax_h4_bpm
+        return 25 if self.relax_h4 else 20
+
+    @property
+    def h5_limit(self) -> int:
+        if self.relax_h5_cfd is not None:
+            return self.relax_h5_cfd
+        return 3 if self.relax_h5 else 2
 
     def validate_environment(self) -> None:
         if self.no_llm and self.llm_judge:
@@ -142,4 +162,8 @@ class RunConfig:
             "relax_h2_bpm": self.relax_h2_bpm,
             "relax_h1": self.relax_h1,
             "auto_relax": self.auto_relax,
+            "relax_h4": self.relax_h4,
+            "relax_h5": self.relax_h5,
+            "relax_h4_bpm": self.relax_h4_bpm,
+            "relax_h5_cfd": self.relax_h5_cfd,
         }

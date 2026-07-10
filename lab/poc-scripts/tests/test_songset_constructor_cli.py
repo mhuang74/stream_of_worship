@@ -36,6 +36,7 @@ def test_cli_traces_no_proposals_without_writing_artifacts(tmp_path, synthetic_p
     assert "candidates=0" in result.output
     assert "stop finalize_rank in " in result.output
     assert "proposals=0" in result.output
+    assert "Output files written: none" in result.output
     assert "No artifacts were written; no valid proposals were generated." in result.output
     assert "No songset artifacts were written because" in result.output
     assert "the beam search could not assemble any" in result.output
@@ -114,7 +115,7 @@ def test_cli_no_llm_explains_enrichment_shortfall(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0
-    assert "only 1 enriched candidates remain for a 5-song set" in result.output
+    assert "only 1 enriched candidates remain for a 3-song set" in result.output
     assert "most loaded songs were dropped by missing_tempo_and_key_metadata (5/6)" in result.output
     assert "No artifacts were written; no valid proposals were generated." in result.output
 
@@ -165,7 +166,7 @@ def test_llm_no_results_prompt_includes_rule_drop_diagnostics(tmp_path, monkeypa
     assert result.exit_code == 0
     assert len(prompts) == 1
     assert "Rule-drop diagnostics:" in prompts[0]
-    assert "only 1 enriched candidates remain for a 5-song set" in prompts[0]
+    assert "only 1 enriched candidates remain for a 3-song set" in prompts[0]
     assert "most loaded songs were dropped by missing_tempo_and_key_metadata (4/5)" in prompts[0]
     assert "Hard rule reference:" in prompts[0]
 
@@ -201,8 +202,7 @@ def test_llm_no_results_prompt_includes_rule_descriptions(tmp_path, synthetic_po
     assert result.exit_code == 0
     assert len(prompts) == 1
     assert "Hard rule reference:" in prompts[0]
-    assert "H4: Tempo jump" in prompts[0]
-    assert "no songs in the pool satisfy it" in prompts[0]
+    assert "H1: Phase coverage" in prompts[0]
     assert "LLM summary: H2 requires" in result.output
 
 
@@ -261,6 +261,71 @@ def test_cli_relax_h3_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
             str(tmp_path),
             "--relax-h3-bpm",
             "110",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_cli_success_lists_review_artifact(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Output files written:" in result.output
+    assert "proposals.json:" in result.output
+    assert "proposal_report.md:" in result.output
+    assert "candidate_pool.csv:" in result.output
+    assert "graph_trace.jsonl:" in result.output
+    assert "songset_review.md:" in result.output
+    assert "songset_review" in result.output
+
+
+def test_cli_relax_h4_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+            "--relax-h4-bpm",
+            "25",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_cli_relax_h5_flag_args_accepted(tmp_path, synthetic_pool, monkeypatch):
+    monkeypatch.setattr(
+        "poc.songset_constructor.graph.nodes.fetch_catalog_pool",
+        lambda _config: synthetic_pool,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "--no-llm",
+            "--output-dir",
+            str(tmp_path),
+            "--relax-h5-cfd",
+            "3",
         ],
     )
 

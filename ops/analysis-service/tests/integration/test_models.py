@@ -200,13 +200,23 @@ class TestFastAnalyzeOptions:
         opts = FastAnalyzeOptions()
         assert opts.force is False
         assert opts.sample_rate == 22050
-        assert opts.hop_length == 4096
+        assert opts.hop_length == 512
+        assert opts.start_bpm == 80.0
 
     def test_custom_values(self):
-        opts = FastAnalyzeOptions(force=True, sample_rate=44100, hop_length=512)
+        opts = FastAnalyzeOptions(force=True, sample_rate=44100, hop_length=1024, start_bpm=120.0)
         assert opts.force is True
         assert opts.sample_rate == 44100
-        assert opts.hop_length == 512
+        assert opts.hop_length == 1024
+        assert opts.start_bpm == 120.0
+
+    def test_start_bpm_out_of_range_rejected(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            FastAnalyzeOptions(start_bpm=30.0)
+        with pytest.raises(ValidationError):
+            FastAnalyzeOptions(start_bpm=250.0)
 
 
 class TestFastAnalyzeJobRequest:

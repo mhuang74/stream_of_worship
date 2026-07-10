@@ -3,6 +3,7 @@ from poc.songset_constructor.graph.builder import build_graph
 from poc.songset_constructor.graph.nodes import llm_plan, route_after_beam, route_validation, validate_score
 from poc.songset_constructor.models import DraftItem, SongsetDraft, ValidationFeedback
 from poc.songset_constructor.rules.transitions import recommend_transition
+import poc.songset_constructor.graph.nodes as graph_nodes
 
 
 def test_no_llm_routes_to_finalize():
@@ -38,6 +39,7 @@ def test_no_llm_graph_writes_artifacts(tmp_path, synthetic_pool, monkeypatch):
     assert (tmp_path / "proposal_report.md").exists()
     assert (tmp_path / "candidate_pool.csv").exists()
     assert (tmp_path / "graph_trace.jsonl").exists()
+    assert (tmp_path / "songset_review.md").exists()
 
 
 def test_invalid_llm_draft_is_not_added_to_ranked_candidates(synthetic_pool):
@@ -99,3 +101,44 @@ def test_llm_plan_trace_records_full_prompt(synthetic_pool):
     assert prompt == planner.prompt
     assert "Select a 5-song Chinese worship set using only these hash prefixes." in prompt
     assert "h001: 赞美主" in prompt
+
+
+def test_validate_score_propagates_relax_h4_h5(synthetic_pool, monkeypatch):
+    matrix = {
+        (left.recording_hash_prefix, right.recording_hash_prefix): recommend_transition(left, right)
+        for left in synthetic_pool
+        for right in synthetic_pool
+        if left.recording_hash_prefix != right.recording_hash_prefix
+    }
+    config = RunConfig(no_llm=True, relax_h4=True, relax_h5=True)
+    draft = SongsetDraft(
+        items=[
+            DraftItem(position=1, recording_hash_prefix="h001"),
+            DraftItem(position=2, recording_hash_prefix="h002"),
+            DraftItem(position=3, recording_hash_prefix="h003"),
+            DraftItem(position=4, recording_hash_prefix="h004"),
+            DraftItem(position=5, recording_hash_prefix="h005"),
+        ]
+    )
+
+    captured = {}
+
+    def fake_validate(proposal, cfg, mtx, **kwargs):
+        captured.update(kwargs)
+        return ValidationFeedback(passed=True)
+
+    monkeypatch.setattr(graph_nodes, "validate", fake_validate)
+
+    validate_score(
+        {
+            "config": config,
+            "pool": synthetic_pool,
+            "transition_matrix": matrix,
+            "current_draft": draft,
+            "iterations": 0,
+        }
+    )
+
+    assert captured.get("relax_h1") is True
+    assert captured.get("relax_h4") is True
+    assert captured.get("relax_h5") is True

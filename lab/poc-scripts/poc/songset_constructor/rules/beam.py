@@ -6,20 +6,33 @@ from itertools import combinations
 from typing import Iterable
 
 from poc.songset_constructor.config import RunConfig
-from poc.songset_constructor.models import ScoreBreakdown, SongCandidate, SongsetProposal, TransitionCandidate
+from poc.songset_constructor.models import (
+    ScoreBreakdown,
+    SongCandidate,
+    SongsetProposal,
+    TransitionCandidate,
+)
 
 from .fitness import score
 from .hard_constraints import validate
 from .proposals import draft_from_candidates, proposal_from_draft, rank_proposals
 
+_TEMPLATES: dict[int, tuple[int, ...]] = {
+    2: (1, 4),
+    3: (1, 3, 5),
+    4: (1, 3, 4, 5),
+    5: (1, 2, 3, 4, 5),
+}
+
 
 def _template(songs: int) -> tuple[int, ...]:
-    return (1, 3, 4, 5) if songs == 4 else (1, 2, 3, 4, 5)
+    return _TEMPLATES[songs]
 
 
 def compute_fan_out(
     pool: list[SongCandidate],
     matrix: dict[tuple[str, str], TransitionCandidate],
+    config: RunConfig,
 ) -> list[SongCandidate]:
     updated = []
     for candidate in pool:
@@ -28,9 +41,15 @@ def compute_fan_out(
             if candidate.recording_hash_prefix == other.recording_hash_prefix:
                 continue
             transition = matrix.get((candidate.recording_hash_prefix, other.recording_hash_prefix))
-            if transition and transition.cfd <= 2 and transition.bpm_delta <= 20:
+            if (
+                transition
+                and transition.bpm_delta <= config.h4_limit
+                and (transition.cfd <= config.h5_limit or transition.suggested_key_shift != 0)
+            ):
                 fan_out += 1
-        updated.append(candidate.model_copy(update={"fan_out": fan_out, "is_dead_end": fan_out == 0}))
+        updated.append(
+            candidate.model_copy(update={"fan_out": fan_out, "is_dead_end": fan_out == 0})
+        )
     return updated
 
 
@@ -47,8 +66,13 @@ def _phase_score(candidate: SongCandidate, target_phase: int) -> int:
     return abs((candidate.phase or 3) - target_phase)
 
 
-def _sequences(pool: list[SongCandidate], songs: int, width: int = 8) -> Iterable[list[SongCandidate]]:
-    target = _template(songs)
+def _sequences(
+    pool: list[SongCandidate],
+    config: RunConfig,
+    matrix: dict[tuple[str, str], TransitionCandidate],
+    width: int = 8,
+) -> Iterable[list[SongCandidate]]:
+    target = _template(config.songs)
     by_hash = {candidate.recording_hash_prefix: candidate for candidate in pool}
     beams: list[list[SongCandidate]] = [[]]
     for position, target_phase in enumerate(target, start=1):
@@ -58,19 +82,53 @@ def _sequences(pool: list[SongCandidate], songs: int, width: int = 8) -> Iterabl
             for candidate in pool:
                 if candidate.song_id in used:
                     continue
-                if position == 1 and candidate.phase != 1:
-                    continue
-                if position == len(target) and candidate.phase not in {4, 5}:
-                    continue
+                if position == 1:
+                    if config.relax_h1:
+                        if candidate.phase not in {1, 2}:
+                            continue
+                    elif candidate.phase != 1:
+                        continue
+                    if candidate.tempo_bpm is None or candidate.tempo_bpm < config.opening_floor:
+                        continue
+                if position == len(target):
+                    if candidate.phase not in {4, 5}:
+                        continue
+                    if candidate.tempo_bpm is None or candidate.tempo_bpm > config.closing_limit:
+                        continue
                 if beam and candidate.phase < beam[-1].phase - 1:
                     continue
                 if candidate.is_dead_end and position != len(target):
                     continue
+                if beam:
+                    left = beam[-1]
+                    transition = matrix.get(
+                        (left.recording_hash_prefix, candidate.recording_hash_prefix)
+                    )
+                    bpm_delta = (
+                        transition.bpm_delta
+                        if transition
+                        else abs((candidate.tempo_bpm or 0) - (left.tempo_bpm or 0))
+                    )
+                    allowed = (
+                        config.h4_limit
+                        if transition
+                        and (transition.crossfade_duration_seconds > 0 or transition.gap_beats > 4)
+                        else min(15, config.h4_limit)
+                    )
+                    if bpm_delta > allowed:
+                        continue
+                    distance = transition.cfd if transition else 6
+                    shifted_ok = transition is not None and transition.suggested_key_shift != 0
+                    if distance > config.h5_limit and not shifted_ok:
+                        continue
                 expanded.append([*beam, by_hash[candidate.recording_hash_prefix]])
         expanded.sort(
             key=lambda seq: (
                 sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
-                sum(abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0)) for index in range(len(seq) - 1)),
+                sum(
+                    abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
+                    for index in range(len(seq) - 1)
+                ),
                 tuple(item.recording_hash_prefix for item in seq),
             )
         )
@@ -94,9 +152,7 @@ def _proposal_for_sequence(
     if len(draft.items) > 1:
         updated_items = [draft.items[0]]
         for left, right in zip(draft.items, draft.items[1:]):
-            transition = matrix.get(
-                (left.recording_hash_prefix, right.recording_hash_prefix)
-            )
+            transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
             if transition:
                 updated_items.append(
                     right.model_copy(
@@ -112,7 +168,9 @@ def _proposal_for_sequence(
                 updated_items.append(right)
         draft = draft.model_copy(update={"items": updated_items})
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
-    proposal = proposal_from_draft(draft, sequence, placeholder, llm_origin=False, warnings=warnings)
+    proposal = proposal_from_draft(
+        draft, sequence, placeholder, llm_origin=False, warnings=warnings
+    )
     return proposal.model_copy(update={"score": score(proposal, config, matrix)})
 
 
@@ -125,63 +183,99 @@ def search(
 ) -> list[SongsetProposal]:
     sorted_pool = sorted(pool, key=_candidate_sort_key)
     proposals: list[SongsetProposal] = []
-    for sequence in _sequences(sorted_pool, config.songs, width=width):
+    for sequence in _sequences(sorted_pool, config, matrix, width=width):
         proposal = _proposal_for_sequence(sequence, config, matrix)
-        if validate(proposal, config, matrix).passed:
+        if validate(
+            proposal,
+            config,
+            matrix,
+            relax_h1=config.relax_h1,
+            relax_h4=config.relax_h4,
+            relax_h5=config.relax_h5,
+        ).passed:
             proposals.append(proposal)
     if not proposals and config.songs == 5:
         compact_config = RunConfig(**{**config.to_dict(), "songs": 4})
-        for sequence in _sequences(sorted_pool, 4, width=width):
+        for sequence in _sequences(sorted_pool, compact_config, matrix, width=width):
             proposal = _proposal_for_sequence(
                 sequence,
                 compact_config,
                 matrix,
                 warnings=["fell_back_to_4_song_template"],
             )
-            if validate(proposal, compact_config, matrix).passed:
+            if validate(
+                proposal,
+                compact_config,
+                matrix,
+                relax_h1=compact_config.relax_h1,
+                relax_h4=compact_config.relax_h4,
+                relax_h5=compact_config.relax_h5,
+            ).passed:
                 proposals.append(proposal)
     if not proposals:
-        for sequence in _sequences(sorted_pool, config.songs, width=max(width * 2, 16)):
+        relaxed_config = RunConfig(
+            **{
+                **config.to_dict(),
+                "relax_h4": True,
+                "relax_h5": True,
+            }
+        )
+        relaxed_pool = sorted(
+            compute_fan_out(pool, matrix, relaxed_config), key=_candidate_sort_key
+        )
+        for sequence in _sequences(relaxed_pool, relaxed_config, matrix, width=max(width * 2, 16)):
             proposal = _proposal_for_sequence(
                 sequence,
-                config,
+                relaxed_config,
                 matrix,
                 warnings=["relaxed_H4_H5"],
             )
-            if validate(proposal, config, matrix, relax_h4=True, relax_h5=True).passed:
+            if validate(proposal, relaxed_config, matrix, relax_h4=True, relax_h5=True).passed:
                 proposals.append(proposal)
     if config.auto_relax and not proposals:
         relaxed_config = RunConfig(
             **{
                 **config.to_dict(),
-                "relax_h3_bpm": config.relax_h3_bpm
-                if config.relax_h3_bpm is not None
-                else (100 if config.intimate else 120),
+                "relax_h3_bpm": (
+                    config.relax_h3_bpm
+                    if config.relax_h3_bpm is not None
+                    else (100 if config.intimate else 120)
+                ),
                 "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
+                "relax_h4": True,
+                "relax_h5": True,
             }
         )
-        for sequence in _sequences(sorted_pool, config.songs, width=max(width * 2, 16)):
+        relaxed_pool = sorted(
+            compute_fan_out(pool, matrix, relaxed_config), key=_candidate_sort_key
+        )
+        for sequence in _sequences(relaxed_pool, relaxed_config, matrix, width=max(width * 2, 16)):
             proposal = _proposal_for_sequence(
                 sequence,
                 relaxed_config,
                 matrix,
                 warnings=["relaxed_H2_H3", "relaxed_H4_H5"],
             )
-            if validate(
-                proposal, relaxed_config, matrix, relax_h4=True, relax_h5=True
-            ).passed:
+            if validate(proposal, relaxed_config, matrix, relax_h4=True, relax_h5=True).passed:
                 proposals.append(proposal)
     if config.auto_relax and config.relax_h1 and not proposals:
         relaxed_config = RunConfig(
             **{
                 **config.to_dict(),
-                "relax_h3_bpm": config.relax_h3_bpm
-                if config.relax_h3_bpm is not None
-                else (100 if config.intimate else 120),
+                "relax_h3_bpm": (
+                    config.relax_h3_bpm
+                    if config.relax_h3_bpm is not None
+                    else (100 if config.intimate else 120)
+                ),
                 "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
+                "relax_h4": True,
+                "relax_h5": True,
             }
         )
-        for sequence in _sequences(sorted_pool, config.songs, width=max(width * 2, 16)):
+        relaxed_pool = sorted(
+            compute_fan_out(pool, matrix, relaxed_config), key=_candidate_sort_key
+        )
+        for sequence in _sequences(relaxed_pool, relaxed_config, matrix, width=max(width * 2, 16)):
             proposal = _proposal_for_sequence(
                 sequence,
                 relaxed_config,

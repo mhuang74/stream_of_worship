@@ -72,6 +72,9 @@ SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1  # Max concurrent local model executions (
 SOW_DEMUCS_DEVICE=cpu               # "cpu" or "cuda" (default: cpu)
 SOW_WHISPER_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
 
+# BPM Algorithm (used by Fast Analysis jobs)
+BPM_ALGORITHM_VERSION="v4_octave_guard"  # v4_octave_guard (default) or v5_cps_prior
+
 # Stem Separation Model Configuration
 SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to pre-downloaded models
 SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"  # Vocal separation model filename
