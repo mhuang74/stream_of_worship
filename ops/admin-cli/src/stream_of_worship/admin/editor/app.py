@@ -3,6 +3,10 @@
 Launches the interactive LRC editor as a Textual TUI application.
 """
 
+import textual.constants
+
+textual.constants.DISABLE_KITTY_KEY = True
+
 from textual.app import App
 
 from stream_of_worship.admin.editor.screen import LRCEditorScreen

@@ -162,7 +162,7 @@ export function SongSearch({
       </div>
 
       <p className="text-xs text-muted-foreground px-1" data-testid="keyword-help-text">
-        Tip: search by title, pinyin, or composer — e.g. &lsquo;奇異恩典&rsquo;, &lsquo;Amazing Grace&rsquo;, &lsquo;約瑟夫&rsquo; · Press Enter to search
+        Tip: search by title, pinyin, or composer — e.g. &lsquo;歡喜&rsquo;, &lsquo;huan xi&rsquo;, &lsquo;曾祥怡&rsquo; · Press Enter to search
       </p>
     </div>
   );
