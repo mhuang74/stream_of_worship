@@ -31,12 +31,12 @@ data, but it does not trust YouTube captions or silently upsert catalog records.
   optional manual field and defaults blank.
 - Add catalog recovery and correction commands:
   - `catalog edit <song_id>`
-  - `catalog quarantine <song_id>`
+  - `catalog delete <song_id>`
   - `catalog restore <song_id>`
   - `catalog list --deleted`
 - Treat YouTube captions as draft input only. They are saved as canonical
   catalog lyrics only after admin review.
-- Quarantine bad catalog data instead of hard-deleting it.
+- Soft-delete bad catalog data instead of hard-deleting it.
 
 ## Goals
 
@@ -53,7 +53,7 @@ data, but it does not trust YouTube captions or silently upsert catalog records.
 - Automatic analysis or LRC submission after insert.
 - Hard deletion or R2 purge of songs inserted through this flow.
 - Re-keying song IDs after title/composer/lyricist edits.
-- Rewriting existing user songsets when a song is quarantined.
+- Rewriting existing user songsets when a song is soft-deleted.
 
 ## Command Behavior
 
@@ -151,16 +151,16 @@ null according to the existing scraper/catalog conventions.
 Extend the existing `catalog list` command with:
 
 ```text
---deleted          Show quarantined/soft-deleted songs instead of active songs
+--deleted          Show soft-deleted songs instead of active songs
 ```
 
 Default `catalog list` continues to show only active songs. `--deleted` lists
 only rows where `songs.deleted_at IS NOT NULL`, reusing the existing table and
 filter behavior where practical. It should work with `--format ids`.
 
-### `catalog quarantine <song_id>`
+### `catalog delete <song_id>`
 
-Quarantine is the default recovery path for bad catalog inserts.
+Delete is the default recovery path for bad catalog inserts.
 
 Behavior:
 
@@ -168,13 +168,13 @@ Behavior:
 2. Show the song metadata.
 3. Show active recordings associated with the song.
 4. Show affected songset reference counts from `songset_items.song_id`.
-5. Ask for confirmation unless a future explicit noninteractive flag is added.
+5. Ask for confirmation unless `--yes` is passed.
 6. Soft-delete the song via `songs.deleted_at`.
 7. Set associated active recordings to `visibility_status = 'hold'`.
 8. Preserve R2 audio, stems, and LRC files.
 9. Do not mutate `songset_items`.
 
-After quarantine, the song is hidden from catalog browse/search and normal app
+After deletion, the song is hidden from catalog browse/search and normal app
 song discovery. Existing songsets are not rewritten; the command only reports
 their references so the admin knows what may need manual follow-up.
 
@@ -321,8 +321,8 @@ def insert_song(...):
 def edit_song(...):
     ...
 
-@app.command("quarantine")
-def quarantine_song(...):
+@app.command("delete")
+def delete_song(...):
     ...
 
 @app.command("restore")
@@ -448,9 +448,9 @@ Use mocks for YouTube, R2, hashing, ffprobe, editor launch, and DB setup.
 - Existing active or deleted `source_url` exits without audio import.
 - Audio failure after insert prints the retry command.
 - `catalog list` excludes soft-deleted songs by default.
-- `catalog list --deleted` returns only quarantined songs and supports
+- `catalog list --deleted` returns only soft-deleted songs and supports
   `--format ids`.
-- `catalog quarantine` soft-deletes the song, holds recordings, reports songset
+- `catalog delete` soft-deletes the song, holds recordings, reports songset
   references, and does not delete R2 resources.
 - `catalog restore` clears `deleted_at` and does not change recording
   visibility.
@@ -491,9 +491,9 @@ graphify update .
 - Duplicate ID/source URL checks prevent accidental upserts.
 - Download failure after song insertion is recoverable with the printed
   `audio download` command.
-- Admins can quarantine bad catalog rows and list them through
+- Admins can soft-delete bad catalog rows and list them through
   `catalog list --deleted`.
-- Admins can restore quarantined rows without automatically publishing
+- Admins can restore soft-deleted rows without automatically publishing
   recordings.
 - Admins can fix catalog lyrics/metadata through `catalog edit`.
 - Existing `catalog scrape` ID behavior is unchanged.
@@ -501,10 +501,10 @@ graphify update .
 
 ## Assumptions And Defaults
 
-- Quarantine means hidden from discovery but preserved for audit and restore.
-- Quarantine does not purge R2 resources.
-- Quarantine does not rewrite user songsets.
-- Existing songsets may still reference quarantined songs; v2 reports this but
+- Soft-delete means hidden from discovery but preserved for audit and restore.
+- Soft-delete does not purge R2 resources.
+- Soft-delete does not rewrite user songsets.
+- Existing songsets may still reference soft-deleted songs; v2 reports this but
   leaves remediation to admins.
 - `catalog edit` preserves the existing song ID.
 - `musical_key` is optional manual metadata and blank by default.
