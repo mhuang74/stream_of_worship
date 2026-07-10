@@ -398,6 +398,186 @@ class TestLLMAlign:
         assert mock_client.chat.completions.create.call_count == 2
 
 
+class TestLLMAlignRateLimitBackoff:
+    """Tests for _llm_align() 429 backoff behavior."""
+
+    @pytest.mark.asyncio
+    async def test_llm_align_retries_on_429_with_backoff(self):
+        """Mock OpenAI client raises 429, verify asyncio.sleep called with backoff before retry."""
+        from sow_analysis.workers.lrc import _llm_align
+
+        import asyncio as _asyncio
+
+        phrases = [WhisperPhrase("hello", 0.0, 0.5)]
+
+        class FakeRateLimitError(Exception):
+            def __init__(self):
+                self.status_code = 429
+                super().__init__("Rate limit exceeded")
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '[{"time_seconds": 0.0, "text": "Hello"}]'
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise FakeRateLimitError()
+            return mock_response
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = side_effect
+        mock_openai_class = MagicMock(return_value=mock_client)
+
+        sleep_calls = []
+        original_sleep = _asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.lrc.settings") as mock_settings,
+            patch("sow_analysis.workers.llm_rate_limit.settings") as mock_rl_settings,
+            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}),
+            patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 30.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+
+            lines = await _llm_align("Hello", phrases, "test-model", max_retries=3)
+
+        assert len(lines) == 1
+        assert lines[0].text == "Hello"
+        # Should have slept at least once (for the 429 backoff)
+        assert len(sleep_calls) >= 1
+        # Backoff delay should be > 0
+        assert sleep_calls[0] > 0
+
+    @pytest.mark.asyncio
+    async def test_llm_align_429_then_parse_error(self):
+        """429 on first attempt, JSON parse error on second → retries with backoff for 429, then retries for parse error."""
+        from sow_analysis.workers.lrc import _llm_align
+
+        import asyncio as _asyncio
+
+        phrases = [WhisperPhrase("hello", 0.0, 0.5)]
+
+        class FakeRateLimitError(Exception):
+            def __init__(self):
+                self.status_code = 429
+                super().__init__("Rate limit exceeded")
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "invalid json"
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise FakeRateLimitError()
+            return mock_response
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = side_effect
+        mock_openai_class = MagicMock(return_value=mock_client)
+
+        sleep_calls = []
+        original_sleep = _asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.lrc.settings") as mock_settings,
+            patch("sow_analysis.workers.llm_rate_limit.settings") as mock_rl_settings,
+            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}),
+            patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+
+            with pytest.raises(LLMAlignmentError):
+                await _llm_align("Hello", phrases, "test-model", max_retries=2)
+
+        # First _llm_align attempt: 429 (retried inside rate-limit wrapper,
+        #   succeeds on 2nd LLM call), returns invalid JSON → parse error
+        # Second _llm_align attempt: returns invalid JSON → parse error
+        # max_retries=2, so 2 total _llm_align attempts, 3 LLM calls total
+        assert call_count == 3
+        # Should have slept at least once for the 429 backoff
+        assert len(sleep_calls) >= 1
+
+    @pytest.mark.asyncio
+    async def test_llm_align_non_429_error_no_backoff(self):
+        """Non-429 error → no backoff sleep, immediate retry."""
+        from sow_analysis.workers.lrc import _llm_align
+
+        import asyncio as _asyncio
+
+        phrases = [WhisperPhrase("hello", 0.0, 0.5)]
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "invalid json"
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class = MagicMock(return_value=mock_client)
+
+        sleep_calls = []
+        original_sleep = _asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.lrc.settings") as mock_settings,
+            patch("sow_analysis.workers.llm_rate_limit.settings") as mock_rl_settings,
+            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}),
+            patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 30.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+
+            with pytest.raises(LLMAlignmentError):
+                await _llm_align("Hello", phrases, "test-model", max_retries=2)
+
+        # Parse errors are not 429, so no rate-limit backoff sleep should occur
+        # (the rate-limit retry utility only sleeps on 429)
+        rate_limit_sleeps = [s for s in sleep_calls if s > 0.5]
+        assert len(rate_limit_sleeps) == 0
+
+
 class TestGenerateLRC:
     """Test full LRC generation pipeline."""
 
