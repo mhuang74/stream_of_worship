@@ -1353,6 +1353,58 @@ class DatabaseClient:
             cursor.execute("UPDATE songs SET deleted_at = NULL WHERE id = %s", (song_id,))
             return cursor.rowcount > 0
 
+    def restore_recordings_visibility_for_song(self, song_id: str) -> int:
+        """Restore held recordings to 'review' visibility after song restore.
+
+        Resets all non-deleted recordings for a restored song that are still
+        on 'hold' visibility back to 'review' so they re-enter the user-app
+        review queue. Recordings already in 'published' or 'review' are left
+        untouched, and independently soft-deleted recordings are skipped.
+
+        Args:
+            song_id: The restored song's ID.
+
+        Returns:
+            Number of recordings updated.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings
+                SET visibility_status = 'review', updated_at = NOW()
+                WHERE song_id = %s
+                  AND visibility_status = 'hold'
+                  AND deleted_at IS NULL
+                """,
+                (song_id,),
+            )
+            return cursor.rowcount
+
+    def count_held_recordings_for_song(self, song_id: str) -> int:
+        """Count non-deleted recordings currently held at 'hold' visibility.
+
+        Used for dry-run previews of song restore.
+
+        Args:
+            song_id: The song ID to count held recordings for.
+
+        Returns:
+            Number of held, non-deleted recordings for the song.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM recordings
+            WHERE song_id = %s
+              AND visibility_status = 'hold'
+              AND deleted_at IS NULL
+            """,
+            (song_id,),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
     def count_songset_references(self, song_id: str) -> int:
         """Count songset item references to a song."""
         cursor = self.connection.cursor()

@@ -668,23 +668,23 @@ def restore_song(
         raise typer.Exit(1)
 
     console.print(f"[green]Restored song {song_id}[/green]")
-    held_recordings = [
-        recording
-        for recording in db_client.list_recordings_by_song_id(song_id, include_deleted=True)
-        if recording.visibility_status == "hold" and recording.deleted_at is None
-    ]
-    if held_recordings:
-        table = Table(title="Held Recordings")
+    restored_count = db_client.restore_recordings_visibility_for_song(song_id)
+    if restored_count > 0:
+        console.print(
+            f"[cyan]Restored recording visibility:[/cyan] {restored_count} recording(s) → review"
+        )
+        table = Table(title="Restored Recordings")
         table.add_column("Hash Prefix", style="cyan")
         table.add_column("Visibility", style="yellow")
-        for recording in held_recordings:
-            table.add_row(recording.hash_prefix, recording.visibility_status or "-")
+        for recording in db_client.list_recordings_by_song_id(song_id, include_deleted=True):
+            if recording.deleted_at is None and recording.visibility_status == "review":
+                table.add_row(recording.hash_prefix, recording.visibility_status or "-")
         console.print(table)
+    else:
+        console.print("[dim]No held recordings to restore.[/dim]")
     console.print(
-        f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status review"
-    )
-    console.print(
-        f"[cyan]Suggested next step:[/cyan] sow-admin audio set-visibility {song_id} --status published"
+        f"[dim]To promote recordings to 'published', run: "
+        f"sow-admin audio set-visibility {song_id} --status published[/dim]"
     )
 
 

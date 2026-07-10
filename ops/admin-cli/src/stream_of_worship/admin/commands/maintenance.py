@@ -432,9 +432,20 @@ def restore_soft_deletes(
 
     for row in songs:
         song = row["song"]
-        rows.append({"entity": "song", "id": song.id, "action": "restore", "blocked_reasons": ""})
         if confirm:
             db_client.restore_song(song.id)
+            recordings_restored = db_client.restore_recordings_visibility_for_song(song.id)
+        else:
+            recordings_restored = db_client.count_held_recordings_for_song(song.id)
+        rows.append(
+            {
+                "entity": "song",
+                "id": song.id,
+                "action": "restore",
+                "blocked_reasons": "",
+                "recordings_restored": recordings_restored,
+            }
+        )
 
     for row in recordings:
         recording = row["recording"]

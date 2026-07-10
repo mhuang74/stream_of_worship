@@ -229,6 +229,110 @@ class TestDatabaseClientIntegration:
         assert result is not None
         assert result.deleted_at is None
 
+    def test_restore_recordings_visibility_for_song(self, admin_client):
+        """Test restoring held recordings to 'review' after song restore."""
+        song = Song(
+            id="song_1",
+            title="Test Song",
+            source_url="http://test",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+
+        # Recording A: starts as 'published', will be held then restored
+        admin_client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaa111",
+                song_id="song_1",
+                original_filename="a.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                visibility_status="published",
+            )
+        )
+        # Recording B: starts as 'review', will be held then restored
+        admin_client.insert_recording(
+            Recording(
+                content_hash="b" * 64,
+                hash_prefix="bbb222",
+                song_id="song_1",
+                original_filename="b.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                visibility_status="review",
+            )
+        )
+        # Recording C: independently soft-deleted, should NOT be touched
+        admin_client.insert_recording(
+            Recording(
+                content_hash="c" * 64,
+                hash_prefix="ccc333",
+                song_id="song_1",
+                original_filename="c.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                visibility_status="hold",
+            )
+        )
+        admin_client.delete_recording("ccc333")
+
+        # Soft-delete song and hold recordings
+        admin_client.soft_delete_song("song_1")
+        admin_client.hold_recordings_for_song("song_1")
+
+        # All active recordings should now be on hold
+        rec_a = admin_client.get_recording_by_hash("aaa111", include_deleted=True)
+        rec_b = admin_client.get_recording_by_hash("bbb222", include_deleted=True)
+        rec_c = admin_client.get_recording_by_hash("ccc333", include_deleted=True)
+        assert rec_a.visibility_status == "hold"
+        assert rec_b.visibility_status == "hold"
+        assert rec_c.visibility_status == "hold"
+
+        # Dry-run preview count
+        assert admin_client.count_held_recordings_for_song("song_1") == 2
+
+        # Restore song and recording visibility
+        assert admin_client.restore_song("song_1") is True
+        restored = admin_client.restore_recordings_visibility_for_song("song_1")
+        assert restored == 2
+
+        # A and B should be 'review'; C (soft-deleted) should remain 'hold'
+        rec_a = admin_client.get_recording_by_hash("aaa111", include_deleted=True)
+        rec_b = admin_client.get_recording_by_hash("bbb222", include_deleted=True)
+        rec_c = admin_client.get_recording_by_hash("ccc333", include_deleted=True)
+        assert rec_a.visibility_status == "review"
+        assert rec_b.visibility_status == "review"
+        assert rec_c.visibility_status == "hold"
+
+    def test_restore_recordings_visibility_noop_for_non_hold(self, admin_client):
+        """Recordings already in 'published'/'review' are not touched on restore."""
+        song = Song(
+            id="song_1",
+            title="Test Song",
+            source_url="http://test",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        admin_client.insert_song(song)
+        admin_client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaa111",
+                song_id="song_1",
+                original_filename="a.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                visibility_status="published",
+            )
+        )
+
+        # No soft-delete/hold — recording stays 'published'
+        admin_client.restore_song("song_1")
+        restored = admin_client.restore_recordings_visibility_for_song("song_1")
+        assert restored == 0
+        rec = admin_client.get_recording_by_hash("aaa111", include_deleted=True)
+        assert rec.visibility_status == "published"
+
     def test_find_song_by_source_url_including_deleted(self, admin_client):
         song = Song(
             id="song_1",
