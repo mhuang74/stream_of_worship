@@ -451,7 +451,6 @@ async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_
 async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_separator_wrapper):
     """Test that queue-full errors trigger correct backoff delays."""
     from unittest.mock import patch
-    import time
 
     sleep_times = []
 
@@ -465,17 +464,18 @@ async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_separ
     ]
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        result = await _separate_with_mvsep_fallback(
-            input_path=Path("/tmp/input.mp3"),
-            output_dir=Path("/tmp/output"),
-            job=mock_job,
-            mvsep_client=mock_mvsep_client,
-            separator_wrapper=mock_separator_wrapper,
-        )
+        with patch("random.uniform", return_value=0.0):
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
 
     assert len(sleep_times) == 2
-    assert sleep_times[0] == 60
-    assert sleep_times[1] == 120
+    assert sleep_times[0] == 30
+    assert sleep_times[1] == 60
     assert mock_mvsep_client.separate_vocals.call_count == 3
 
 
@@ -496,13 +496,14 @@ async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_sepa
     ]
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        result = await _separate_with_mvsep_fallback(
-            input_path=Path("/tmp/input.mp3"),
-            output_dir=Path("/tmp/output"),
-            job=mock_job,
-            mvsep_client=mock_mvsep_client,
-            separator_wrapper=mock_separator_wrapper,
-        )
+        with patch("random.uniform", return_value=0.0):
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
 
     assert len(sleep_times) == 2
     assert sleep_times[0] == 5
@@ -511,8 +512,8 @@ async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_sepa
 
 
 @pytest.mark.asyncio
-async def test_queue_full_4_attempts_before_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test that queue-full errors get 4 attempts (vs 3 for other errors)."""
+async def test_queue_full_6_attempts_before_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
+    """Test that queue-full errors get 6 attempts (vs 3 for other errors)."""
     from unittest.mock import patch
 
     sleep_times = []
@@ -523,15 +524,47 @@ async def test_queue_full_4_attempts_before_fallback(mock_job, mock_mvsep_client
     mock_mvsep_client.separate_vocals.side_effect = MvsepQueueFullError("Queue full")
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        result = await _separate_with_mvsep_fallback(
-            input_path=Path("/tmp/input.mp3"),
-            output_dir=Path("/tmp/output"),
-            job=mock_job,
-            mvsep_client=mock_mvsep_client,
-            separator_wrapper=mock_separator_wrapper,
-        )
+        with patch("random.uniform", return_value=0.0):
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
 
-    assert mock_mvsep_client.separate_vocals.call_count == 4
-    assert len(sleep_times) == 3
-    assert sleep_times == [60, 120, 300]
+    assert mock_mvsep_client.separate_vocals.call_count == 6
+    assert len(sleep_times) == 5
+    assert sleep_times == [30, 60, 120, 240, 300]
     mock_separator_wrapper.separate_stems.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_queue_full_backoff_jitter_applied(mock_job, mock_mvsep_client, mock_separator_wrapper):
+    """Test that jitter is applied to queue-full backoff (sleep > base value)."""
+    from unittest.mock import patch
+
+    sleep_times = []
+
+    async def fake_sleep(seconds):
+        sleep_times.append(seconds)
+
+    mock_mvsep_client.separate_vocals.side_effect = [
+        MvsepQueueFullError("Queue full"),
+        (Path("/tmp/mvsep_vocals.flac"), Path("/tmp/mvsep_instrumental.flac")),
+    ]
+
+    # Patch random.uniform to return +amp (max positive jitter)
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        with patch("random.uniform", side_effect=lambda low, high: high):
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
+
+    assert len(sleep_times) == 1
+    # base=30, jitter=0.20 → amp=6 → sleep = 30 + 6 = 36
+    assert sleep_times[0] == 36

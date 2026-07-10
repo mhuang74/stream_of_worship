@@ -456,3 +456,53 @@ async def test_separate_vocals_handles_other_type(client, tmp_path, mock_respons
                     f"Expected Other file to be identified as instrumental, "
                     f"but got: {result_instrumental}"
                 )
+
+
+@pytest.mark.asyncio
+async def test_separate_vocals_mutex_serializes(client, tmp_path, mock_response):
+    """Test that concurrent separate_vocals calls are serialized by the mutex."""
+    import asyncio
+
+    call_order = []
+
+    async def mock_submit_job(*args, **kwargs):
+        call_order.append("submit_start")
+        await asyncio.sleep(0.05)
+        call_order.append("submit_end")
+        return "test_hash"
+
+    async def mock_poll_job(job_hash):
+        call_order.append("poll_start")
+        await asyncio.sleep(0.05)
+        call_order.append("poll_end")
+        return {
+            "success": True,
+            "status": "done",
+            "data": {"files": []},
+        }
+
+    async def mock_download(file_entries, output_dir):
+        return []
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with patch.object(client, "_submit_job", side_effect=mock_submit_job):
+        with patch.object(client, "_poll_job", side_effect=mock_poll_job):
+            with patch.object(client, "_download_files", side_effect=mock_download):
+                # Launch two concurrent calls
+                results = await asyncio.gather(
+                    client.separate_vocals(client._test_audio, output_dir),
+                    client.separate_vocals(client._test_audio, output_dir),
+                )
+
+    # Both should succeed
+    assert results[0] == (None, None)
+    assert results[1] == (None, None)
+
+    # Verify serialization: submit_start, submit_end, poll_start, poll_end
+    # for call 1, then the same for call 2 — no interleaving
+    first_call = call_order[:4]
+    second_call = call_order[4:]
+    assert first_call == ["submit_start", "submit_end", "poll_start", "poll_end"]
+    assert second_call == ["submit_start", "submit_end", "poll_start", "poll_end"]
