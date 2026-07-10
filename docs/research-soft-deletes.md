@@ -18,7 +18,7 @@ catalog rows and R2 objects.
 
 | Entity | Delete model | Storage | Primary delete paths | Restore path |
 | --- | --- | --- | --- | --- |
-| `songs` | Soft delete | `songs.deleted_at` | `sow-admin catalog quarantine`; full scraper missing-song pass | `sow-admin catalog restore`; scraper upsert |
+| `songs` | Soft delete | `songs.deleted_at` | `sow-admin catalog delete`; full scraper missing-song pass | `sow-admin catalog restore`; scraper upsert |
 | `recordings` | Soft delete plus asset deletion in CLI paths | `recordings.deleted_at` | `sow-admin audio delete`; `sow-admin audio delete --stdin`; `sow-admin audio download --force` | recording upsert; `DatabaseClient.restore_recording()` |
 | `songsets` | Hard delete | no `deleted_at` | webapp `deleteSongset()`; TUI `SongsetClient.delete_songset()` | none |
 | `songset_items` | Hard delete through parent cascade or item delete | no `deleted_at` | `songsets` cascade; item delete paths | none |
@@ -71,12 +71,12 @@ The same helper is used by:
 
 ### Song Soft Deletes
 
-`sow-admin catalog quarantine <song_id>` is implemented in
+`sow-admin catalog delete <song_id>` is implemented in
 `src/stream_of_worship/admin/commands/catalog.py`. It soft-deletes the song
 through `DatabaseClient.soft_delete_song()` and then calls
 `DatabaseClient.hold_recordings_for_song()`.
 
-Quarantine is intentionally less destructive than recording deletion:
+Catalog deletion is intentionally less destructive than recording deletion:
 
 - It preserves R2 audio, stems, and LRC objects.
 - It sets active recordings for the song to `visibility_status = 'hold'`.
@@ -226,13 +226,13 @@ Example observed failure mode:
 
 ## Operational Guidance
 
-- Use `sow-admin catalog quarantine` when the catalog row is bad but existing
+- Use `sow-admin catalog delete` when the catalog row is bad but existing
   assets and references should be preserved for investigation.
 - Use `sow-admin audio delete` when the recording asset itself is wrong and the
   R2 audio/stems/LRC should be removed.
 - Before deleting a recording that may have user-facing usage, check for
   `songset_items.recording_hash_prefix` references.
-- After restoring a quarantined song, review held recordings and explicitly set
+- After restoring a soft-deleted song, review held recordings and explicitly set
   visibility back to `review` or `published` when appropriate.
 - Treat webapp songset item counts as visible-item counts, not necessarily raw
   database row counts, because deleted-recording items may be filtered out.

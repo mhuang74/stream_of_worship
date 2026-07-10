@@ -62,6 +62,15 @@ class FakeDbClient:
         self.songs[song_id] = replace(song, deleted_at="2026-06-15T00:00:00")
         return True
 
+    def list_recordings_by_song_id(self, song_id: str, include_deleted: bool = False):
+        return []
+
+    def count_songset_references(self, song_id: str) -> int:
+        return 0
+
+    def hold_recordings_for_song(self, song_id: str) -> int:
+        return 0
+
 
 def test_catalog_insert_manual_inserts_song(monkeypatch):
     db = FakeDbClient()
@@ -205,7 +214,7 @@ def test_catalog_edit_preserves_song_id_and_prints_follow_up(monkeypatch):
     assert "audio lrc editable_song_deadbeef --force" in result.output
 
 
-def test_catalog_list_deleted_only_shows_quarantined(monkeypatch):
+def test_catalog_list_deleted_only_shows_soft_deleted(monkeypatch):
     db = FakeDbClient()
     active = build_song_from_review(
         normalize_reviewed_data(
@@ -249,3 +258,121 @@ def test_catalog_list_deleted_only_shows_quarantined(monkeypatch):
     assert result.exit_code == 0
     assert "deleted_song_deadbeef" in result.output
     assert "active_song_deadbeef" not in result.output
+
+
+def _build_song(song_id: str, title: str = "Test Song") -> Song:
+    return build_song_from_review(
+        normalize_reviewed_data(
+            {
+                "title": title,
+                "composer": "",
+                "lyricist": "",
+                "album_name": "",
+                "album_series": "",
+                "musical_key": "",
+                "source_url": f"https://example.com/{song_id}",
+                "lyrics_raw": "",
+            }
+        ),
+        existing_song_id=song_id,
+    )
+
+
+def test_catalog_delete_single_soft_deletes_song(monkeypatch):
+    db = FakeDbClient()
+    song = _build_song("delete_me_deadbeef", "Delete Me")
+    db.insert_song(song)
+
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.AdminConfig.load", lambda path=None: _fake_config())
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.get_db_client", lambda config: db)
+
+    result = runner.invoke(app, ["catalog", "delete", "delete_me_deadbeef", "--yes"])
+
+    assert result.exit_code == 0
+    assert "soft-deleted successfully" in result.output
+    updated = db.get_song("delete_me_deadbeef", include_deleted=True)
+    assert updated is not None
+    assert updated.deleted_at is not None
+
+
+def test_catalog_delete_already_deleted_song_errors(monkeypatch):
+    db = FakeDbClient()
+    song = _build_song("already_deleted_deadbeef", "Already Deleted")
+    db.insert_song(song)
+    db.soft_delete_song("already_deleted_deadbeef")
+
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.AdminConfig.load", lambda path=None: _fake_config())
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.get_db_client", lambda config: db)
+
+    result = runner.invoke(app, ["catalog", "delete", "already_deleted_deadbeef", "--yes"])
+
+    assert result.exit_code == 1
+    assert "already soft-deleted" in result.output
+
+
+def test_catalog_delete_not_found_errors(monkeypatch):
+    db = FakeDbClient()
+
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.AdminConfig.load", lambda path=None: _fake_config())
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.get_db_client", lambda config: db)
+
+    result = runner.invoke(app, ["catalog", "delete", "nonexistent_deadbeef", "--yes"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_catalog_delete_no_args_no_stdin_errors(monkeypatch):
+    db = FakeDbClient()
+
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.AdminConfig.load", lambda path=None: _fake_config())
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.get_db_client", lambda config: db)
+
+    result = runner.invoke(app, ["catalog", "delete"])
+
+    assert result.exit_code == 1
+    assert "song_id" in result.output
+
+
+def test_catalog_delete_batch_from_stdin(monkeypatch):
+    db = FakeDbClient()
+    song_a = _build_song("batch_a_deadbeef", "Batch A")
+    song_b = _build_song("batch_b_deadbeef", "Batch B")
+    db.insert_song(song_a)
+    db.insert_song(song_b)
+
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.AdminConfig.load", lambda path=None: _fake_config())
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.get_db_client", lambda config: db)
+
+    result = runner.invoke(
+        app,
+        ["catalog", "delete", "--stdin", "--yes"],
+        input="batch_a_deadbeef\nbatch_b_deadbeef\n",
+    )
+
+    assert result.exit_code == 0
+    assert "2 deleted" in result.output
+    assert db.get_song("batch_a_deadbeef", include_deleted=True).deleted_at is not None
+    assert db.get_song("batch_b_deadbeef", include_deleted=True).deleted_at is not None
+
+
+def test_catalog_delete_batch_skips_already_deleted(monkeypatch):
+    db = FakeDbClient()
+    song_active = _build_song("batch_active_deadbeef", "Active")
+    song_deleted = _build_song("batch_deleted_deadbeef", "Deleted")
+    db.insert_song(song_active)
+    db.insert_song(song_deleted)
+    db.soft_delete_song("batch_deleted_deadbeef")
+
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.AdminConfig.load", lambda path=None: _fake_config())
+    monkeypatch.setattr("stream_of_worship.admin.commands.catalog.get_db_client", lambda config: db)
+
+    result = runner.invoke(
+        app,
+        ["catalog", "delete", "--stdin", "--yes"],
+        input="batch_active_deadbeef\nbatch_deleted_deadbeef\n",
+    )
+
+    assert result.exit_code == 0
+    assert "1 deleted" in result.output
+    assert "Already soft-deleted" in result.output

@@ -5,6 +5,7 @@ songs in the Stream of Worship catalog.
 """
 
 import re
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -447,12 +448,45 @@ def edit_song(
         console.print(f"[cyan]Follow-up:[/cyan] sow-admin audio embed {song_id}")
 
 
-@app.command("quarantine")
-def quarantine_song(
-    song_id: str = typer.Argument(..., help="Song ID to quarantine"),
-    config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
+def _read_song_ids_from_stdin() -> list[str]:
+    """Read song IDs from stdin, one per line.
+
+    Returns:
+        List of non-empty, stripped song IDs
+    """
+    song_ids = []
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            song_ids.append(line)
+    return song_ids
+
+
+@app.command("delete")
+def delete_song(
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to delete"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Hide a bad catalog row without deleting its assets."""
+    """Soft-delete a catalog song while preserving associated R2 files.
+
+    Marks the song as deleted in the database and places its active recordings
+    on hold so they disappear from the user app. R2 assets are preserved
+    so they can be reviewed, restored, or purged by maintenance commands.
+
+    For batch deletion, pipe song IDs via stdin:
+
+        sow-admin catalog list --album album1 --format ids | sow-admin catalog delete --stdin
+    """
+    if not song_id and not stdin:
+        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if song_id and stdin:
+        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
     try:
         config = AdminConfig.load(config_path)
     except FileNotFoundError:
@@ -460,26 +494,155 @@ def quarantine_song(
         raise typer.Exit(1)
 
     db_client = get_db_client(config)
-    song = db_client.get_song(song_id)
+
+    if stdin:
+        _delete_songs_batch(db_client, yes, console)
+    else:
+        _delete_song_single(song_id, db_client, yes, console)
+
+
+def _delete_song_single(
+    song_id: str,
+    db_client: DatabaseClient,
+    yes: bool,
+    console: Console,
+) -> None:
+    """Delete a single song by song_id."""
+    song = db_client.get_song(song_id, include_deleted=True)
     if not song:
         console.print(f"[red]Song not found: {song_id}[/red]")
         raise typer.Exit(1)
 
+    if song.deleted_at:
+        console.print(f"[red]Song is already soft-deleted: {song_id}[/red]")
+        raise typer.Exit(1)
+
     recordings = db_client.list_recordings_by_song_id(song_id)
     references = db_client.count_songset_references(song_id)
-    console.print(_render_song_summary(song, title="Song To Quarantine"))
-    console.print(f"[cyan]Active recordings:[/cyan] {len(recordings)}")
-    console.print(f"[cyan]Songset references:[/cyan] {references}")
 
-    if not _prompt_confirmation("Quarantine this song?"):
-        console.print("[yellow]Quarantine cancelled.[/yellow]")
-        raise typer.Exit(0)
+    info_lines = [
+        f"[cyan]Song ID:[/cyan] {song_id}",
+        f"[cyan]Title:[/cyan] {song.title}",
+    ]
+    if song.album_name:
+        info_lines.append(f"[cyan]Album:[/cyan] {song.album_name}")
+    if song.album_series:
+        info_lines.append(f"[cyan]Album Series:[/cyan] {song.album_series}")
+    info_lines.append(f"[cyan]Active recordings:[/cyan] {len(recordings)}")
+    info_lines.append(f"[cyan]Songset references:[/cyan] {references}")
 
+    console.print(
+        Panel.fit(
+            "\n".join(info_lines),
+            title="Song to Delete",
+            border_style="yellow",
+        )
+    )
+
+    if not yes:
+        console.print(
+            "[yellow]This soft-deletes the song row and holds its recordings; "
+            "R2 assets remain for maintenance review.[/yellow]"
+        )
+        confirmed = _prompt_confirmation("Soft-delete this song?")
+        if not confirmed:
+            console.print("[yellow]Deletion cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    console.print("[cyan]Soft-deleting song...[/cyan]")
     db_client.soft_delete_song(song_id)
     held_count = db_client.hold_recordings_for_song(song_id)
-    console.print(f"[green]Quarantined {song_id}[/green]")
+    console.print(f"[green]Song {song_id} soft-deleted successfully.[/green]")
     console.print(f"[cyan]Recordings placed on hold:[/cyan] {held_count}")
     console.print("[dim]R2 audio, stems, and LRC files were preserved.[/dim]")
+
+
+def _delete_songs_batch(
+    db_client: DatabaseClient,
+    yes: bool,
+    console: Console,
+) -> None:
+    """Delete multiple songs from stdin."""
+    song_ids = _read_song_ids_from_stdin()
+
+    if not song_ids:
+        console.print("[yellow]No song IDs provided via stdin[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[cyan]Looking up {len(song_ids)} song(s)...[/cyan]")
+
+    songs_to_delete: list[tuple[str, Song]] = []
+    not_found: list[str] = []
+    already_deleted: list[str] = []
+
+    for sid in song_ids:
+        song = db_client.get_song(sid, include_deleted=True)
+        if not song:
+            not_found.append(sid)
+        elif song.deleted_at:
+            already_deleted.append(sid)
+        else:
+            songs_to_delete.append((sid, song))
+
+    if not_found:
+        console.print(
+            f"[yellow]Song not found for {len(not_found)} ID(s): "
+            f"{', '.join(not_found[:5])}{'...' if len(not_found) > 5 else ''}[/yellow]"
+        )
+
+    if already_deleted:
+        console.print(
+            f"[yellow]Already soft-deleted: {len(already_deleted)} ID(s): "
+            f"{', '.join(already_deleted[:5])}{'...' if len(already_deleted) > 5 else ''}[/yellow]"
+        )
+
+    if not songs_to_delete:
+        console.print("[yellow]No valid songs to delete.[/yellow]")
+        raise typer.Exit(0)
+
+    info_lines = [
+        f"[cyan]Count:[/cyan] {len(songs_to_delete)} song(s)",
+        "",
+        "[bold]Songs to delete:[/bold]",
+    ]
+    for sid, song in songs_to_delete[:10]:
+        info_lines.append(f"  • {sid}: {song.title}")
+    if len(songs_to_delete) > 10:
+        info_lines.append(f"  ... and {len(songs_to_delete) - 10} more")
+
+    console.print(
+        Panel.fit(
+            "\n".join(info_lines),
+            title="Batch Delete Songs",
+            border_style="yellow",
+        )
+    )
+
+    if not yes:
+        console.print(
+            "[yellow]This soft-deletes song rows and holds their recordings; "
+            "R2 assets remain for maintenance review.[/yellow]"
+        )
+        confirmed = _prompt_confirmation(f"Soft-delete {len(songs_to_delete)} song(s)?")
+        if not confirmed:
+            console.print("[yellow]Deletion cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    deleted_count = 0
+    failed_count = 0
+
+    for sid, song in songs_to_delete:
+        try:
+            db_client.soft_delete_song(sid)
+            db_client.hold_recordings_for_song(sid)
+            deleted_count += 1
+            console.print(f"[green]✓ Deleted: {sid} ({song.title})[/green]")
+        except Exception as e:
+            failed_count += 1
+            console.print(f"[red]✗ Failed to delete {sid}: {e}[/red]")
+
+    console.print()
+    console.print(f"[bold]Summary:[/bold] {deleted_count} deleted, {failed_count} failed")
 
 
 @app.command("restore")
@@ -487,7 +650,7 @@ def restore_song(
     song_id: str = typer.Argument(..., help="Song ID to restore"),
     config_path: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Restore a quarantined song row."""
+    """Restore a soft-deleted song row."""
     try:
         config = AdminConfig.load(config_path)
     except FileNotFoundError:
@@ -571,7 +734,7 @@ def list_songs(
     deleted: bool = typer.Option(
         False,
         "--deleted",
-        help="Show quarantined/soft-deleted songs instead of active songs",
+        help="Show soft-deleted songs instead of active songs",
     ),
     config_path: Path = typer.Option(
         None,
