@@ -226,7 +226,6 @@ class JobQueue:
         # Recover interrupted jobs (were PROCESSING when service died)
         interrupted = await self.job_store.get_interrupted_jobs()
         for job in interrupted:
-            logger.info(f"Recovering interrupted job {job.id} (was {job.status})")
             job.status = JobStatus.QUEUED
             job.progress = 0.0
             job.stage = "requeued"
@@ -243,7 +242,9 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in DB during recovery: {e}")
 
         if interrupted:
-            logger.info(f"Recovered {len(interrupted)} interrupted jobs")
+            sample_ids = ", ".join(job.id for job in interrupted[:5])
+            more = f", ... +{len(interrupted) - 5} more" if len(interrupted) > 5 else ""
+            logger.info(f"Recovered {len(interrupted)} interrupted jobs (e.g., {sample_ids}{more})")
 
         # Load queued jobs into memory (but don't re-add to queue, they're already in DB)
         queued = await self.job_store.get_queued_jobs()
