@@ -965,8 +965,8 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
-        mock_client.submit_analysis.return_value = JobInfo(
-            job_id="job-123", status="queued", job_type="analysis", progress=0.0,
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-123", status="queued", job_type="fast_analyze", progress=0.0,
         )
         mock_client_cls.return_value = mock_client
 
@@ -977,9 +977,10 @@ class TestAnalyzeCommand:
 
         assert result.exit_code == 0
         assert "Analysis submitted" in result.output
-        mock_client.submit_analysis.assert_called_once()
+        mock_client.submit_fast_analysis.assert_called_once()
 
-    def test_analyze_already_processing_no_wait(self, setup_db, monkeypatch):
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_already_processing_no_wait(self, mock_client_cls, setup_db, monkeypatch):
         """Exit 0 with existing job info."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
@@ -992,6 +993,13 @@ class TestAnalyzeCommand:
             analysis_status="processing", analysis_job_id="existing-job-123",
         )
         db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.get_job.return_value = JobInfo(
+            job_id="existing-job-123", status="processing", job_type="fast_analyze",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
 
         result = runner.invoke(
             app,
@@ -1018,8 +1026,12 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
+        mock_client.get_job.return_value = JobInfo(
+            job_id="existing-job-123", status="processing", job_type="fast_analyze",
+            progress=0.0,
+        )
         mock_client.wait_for_completion.return_value = JobInfo(
-            job_id="existing-job-123", status="completed", job_type="analysis", progress=1.0,
+            job_id="existing-job-123", status="completed", job_type="fast_analyze", progress=1.0,
         )
         mock_client_cls.return_value = mock_client
 
@@ -1065,7 +1077,7 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
-        mock_client.submit_analysis.side_effect = AnalysisServiceError("Cannot connect to analysis service")
+        mock_client.submit_fast_analysis.side_effect = AnalysisServiceError("Cannot connect to analysis service")
         mock_client_cls.return_value = mock_client
 
         result = runner.invoke(
@@ -1091,8 +1103,8 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
-        mock_client.submit_analysis.return_value = JobInfo(
-            job_id="job-abc-123", status="queued", job_type="analysis", progress=0.0,
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-abc-123", status="queued", job_type="fast_analyze", progress=0.0,
         )
         mock_client_cls.return_value = mock_client
 
@@ -1124,8 +1136,8 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
-        mock_client.submit_analysis.return_value = JobInfo(
-            job_id="job-123", status="queued", job_type="analysis", progress=0.0,
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-123", status="queued", job_type="fast_analyze", progress=0.0,
         )
         mock_client_cls.return_value = mock_client
 
@@ -1135,7 +1147,7 @@ class TestAnalyzeCommand:
         )
 
         assert result.exit_code == 0
-        mock_client.submit_analysis.assert_called_once()
+        mock_client.submit_fast_analysis.assert_called_once()
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_wait_mode_completed(self, mock_client_cls, setup_db, monkeypatch):
@@ -1167,7 +1179,7 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--wait"],
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--config", str(setup_db["config_path"]), "--wait"],
         )
 
         assert result.exit_code == 0
@@ -1194,11 +1206,11 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
-        mock_client.submit_analysis.return_value = JobInfo(
-            job_id="job-123", status="queued", job_type="analysis", progress=0.0,
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-123", status="queued", job_type="fast_analyze", progress=0.0,
         )
         mock_client.wait_for_completion.return_value = JobInfo(
-            job_id="job-123", status="failed", job_type="analysis", progress=0.0,
+            job_id="job-123", status="failed", job_type="fast_analyze", progress=0.0,
             error_message="Analysis pipeline error",
         )
         mock_client_cls.return_value = mock_client
@@ -1229,8 +1241,8 @@ class TestAnalyzeCommand:
         db_client.insert_recording(recording)
 
         mock_client = MagicMock()
-        mock_client.submit_analysis.return_value = JobInfo(
-            job_id="job-123", status="queued", job_type="analysis", progress=0.0,
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-123", status="queued", job_type="fast_analyze", progress=0.0,
         )
         mock_client.wait_for_completion.side_effect = AnalysisServiceError("Timed out waiting for job")
         mock_client_cls.return_value = mock_client
@@ -1265,12 +1277,411 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--no-stems"],
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--config", str(setup_db["config_path"]), "--no-stems"],
         )
 
         assert result.exit_code == 0
         call_kwargs = mock_client.submit_analysis.call_args[1]
         assert call_kwargs["generate_stems"] is False
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_default_tier_is_fast(self, mock_client_cls, setup_db, monkeypatch):
+        """Default tier is fast — submit_fast_analysis called, not submit_analysis."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-fast-001", status="queued", job_type="fast_analyze", progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_fast_analysis.assert_called_once()
+        mock_client.submit_analysis.assert_not_called()
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_explicit_fast_tier(self, mock_client_cls, setup_db, monkeypatch):
+        """Explicit --analysis-tier fast calls submit_fast_analysis."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-fast-002", status="queued", job_type="fast_analyze", progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "fast", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_fast_analysis.assert_called_once()
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_full_tier(self, mock_client_cls, setup_db, monkeypatch):
+        """--analysis-tier full calls submit_analysis with generate_stems=True."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-full-001", status="queued", job_type="analysis", progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_analysis.assert_called_once()
+        call_kwargs = mock_client.submit_analysis.call_args[1]
+        assert call_kwargs["generate_stems"] is True
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_full_tier_no_stems(self, mock_client_cls, setup_db, monkeypatch):
+        """--analysis-tier full --no-stems calls submit_analysis with generate_stems=False."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-full-002", status="queued", job_type="analysis", progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--no-stems", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_analysis.assert_called_once()
+        call_kwargs = mock_client.submit_analysis.call_args[1]
+        assert call_kwargs["generate_stems"] is False
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_fast_tier_no_stems_warned(self, mock_client_cls, setup_db, monkeypatch):
+        """--no-stems with fast tier is warned and ignored; submit_fast_analysis still called."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-fast-003", status="queued", job_type="fast_analyze", progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "fast", "--no-stems", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        assert "ignored" in result.output
+        mock_client.submit_fast_analysis.assert_called_once()
+
+    def test_analyze_invalid_tier(self, setup_db):
+        """Invalid tier value exits 1 with error message."""
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "bogus", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid analysis tier" in result.output
+
+    def test_analyze_fast_skips_partial(self, setup_db):
+        """Fast tier skips when analysis_status is 'partial'."""
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3", analysis_status="partial",
+        )
+        db_client.insert_recording(recording)
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        assert "already analyzed" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_full_does_not_skip_partial(self, mock_client_cls, setup_db, monkeypatch):
+        """Full tier does NOT skip on 'partial' status; submits and updates to 'completed'."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3", analysis_status="partial",
+        )
+        db_client.insert_recording(recording)
+
+        from stream_of_worship.admin.services.analysis import AnalysisResult
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-full-003", status="queued", job_type="analysis", progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-full-003", status="completed", job_type="analysis", progress=1.0,
+            result=AnalysisResult(
+                duration_seconds=200.0, tempo_bpm=120.0, musical_key="C",
+                musical_mode="major", key_confidence=0.9, loudness_db=-10.0,
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--config", str(setup_db["config_path"]), "--wait"],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_analysis.assert_called_once()
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "completed"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_fast_force_overrides_partial(self, mock_client_cls, setup_db, monkeypatch):
+        """--force with fast tier overrides 'partial' skip and submits fast job."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3", analysis_status="partial",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-fast-004", status="queued", job_type="fast_analyze", progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "fast", "--force", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        mock_client.submit_fast_analysis.assert_called_once()
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_fast_wait_sets_partial(self, mock_client_cls, setup_db, monkeypatch):
+        """Fast tier --wait sets analysis_status='partial', not 'completed'."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        from stream_of_worship.admin.services.analysis import AnalysisResult
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-fast-005", status="queued", job_type="fast_analyze", progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-fast-005", status="completed", job_type="fast_analyze", progress=1.0,
+            result=AnalysisResult(
+                duration_seconds=180.0, tempo_bpm=100.0, musical_key="D",
+                musical_mode="minor", key_confidence=0.88, loudness_db=-12.0,
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--wait"],
+        )
+
+        assert result.exit_code == 0
+        assert "Analysis completed" in result.output
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "partial"
+        assert updated.tempo_bpm == 100.0
+        assert updated.musical_key == "D"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_fast_wait_preserves_completed(self, mock_client_cls, setup_db, monkeypatch):
+        """Fast tier --force --wait on already-completed recording keeps 'completed' status."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3", analysis_status="completed",
+        )
+        db_client.insert_recording(recording)
+
+        from stream_of_worship.admin.services.analysis import AnalysisResult
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-fast-006", status="queued", job_type="fast_analyze", progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-fast-006", status="completed", job_type="fast_analyze", progress=1.0,
+            result=AnalysisResult(
+                duration_seconds=190.0, tempo_bpm=110.0, musical_key="E",
+                musical_mode="major", key_confidence=0.92, loudness_db=-9.0,
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--force", "--config", str(setup_db["config_path"]), "--wait"],
+        )
+
+        assert result.exit_code == 0
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "completed"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_full_wait_sets_completed(self, mock_client_cls, setup_db, monkeypatch):
+        """Full tier --wait sets analysis_status='completed' and writes all fields."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+        )
+        db_client.insert_recording(recording)
+
+        from stream_of_worship.admin.services.analysis import AnalysisResult
+        mock_client = MagicMock()
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="job-full-004", status="queued", job_type="analysis", progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-full-004", status="completed", job_type="analysis", progress=1.0,
+            result=AnalysisResult(
+                duration_seconds=210.0, tempo_bpm=130.0, musical_key="F",
+                musical_mode="major", key_confidence=0.93, loudness_db=-7.0,
+                beats=[1.0, 2.0], downbeats=[1.0], sections=[{"start": 0.0}],
+                embeddings_shape=[1, 128],
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--config", str(setup_db["config_path"]), "--wait"],
+        )
+
+        assert result.exit_code == 0
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "completed"
+        assert updated.tempo_bpm == 130.0
+        assert updated.musical_key == "F"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_tier_mismatch_in_flight_job(self, mock_client_cls, setup_db, monkeypatch):
+        """Tier mismatch on in-flight job submits new job instead of reusing."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        recording = Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="test.mp3", file_size_bytes=1000,
+            imported_at="2024-01-15T10:30:00",
+            r2_audio_url="s3://sow-audio/test/audio.mp3",
+            analysis_status="processing", analysis_job_id="existing-fast-job",
+        )
+        db_client.insert_recording(recording)
+
+        mock_client = MagicMock()
+        # Existing job is fast, but we request full
+        mock_client.get_job.return_value = JobInfo(
+            job_id="existing-fast-job", status="processing", job_type="fast_analyze",
+            progress=0.0,
+        )
+        mock_client.submit_analysis.return_value = JobInfo(
+            job_id="new-full-job", status="queued", job_type="analysis", progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="new-full-job", status="completed", job_type="analysis", progress=1.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--analysis-tier", "full", "--config", str(setup_db["config_path"]), "--wait"],
+        )
+
+        assert result.exit_code == 0
+        assert "Submitting new job" in result.output
+        mock_client.submit_analysis.assert_called_once()
+        # Should NOT have reused the existing fast job
+        assert mock_client.wait_for_completion.call_args[0][0] == "new-full-job"
 
 
 class TestStatusCommand:

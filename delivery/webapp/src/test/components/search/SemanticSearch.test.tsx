@@ -143,7 +143,7 @@ describe("SemanticSearch", () => {
     it("renders describe help text", () => {
       renderComponent();
       expect(screen.getByTestId("describe-help-text")).toBeInTheDocument();
-      expect(screen.getByTestId("describe-help-text").textContent).toContain("关于神的恩典");
+      expect(screen.getByTestId("describe-help-text").textContent).toContain("關於神的恩典");
       expect(screen.getByTestId("describe-help-text").textContent).toContain("Enter");
     });
   });

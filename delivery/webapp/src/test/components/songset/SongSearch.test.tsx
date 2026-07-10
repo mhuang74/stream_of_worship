@@ -32,7 +32,7 @@ describe("SongSearch", () => {
     it("renders keyword help text", () => {
       renderSearch();
       expect(screen.getByTestId("keyword-help-text")).toBeInTheDocument();
-      expect(screen.getByTestId("keyword-help-text").textContent).toContain("奇异恩典");
+      expect(screen.getByTestId("keyword-help-text").textContent).toContain("奇異恩典");
     });
 
     it("renders search icon", () => {
@@ -59,6 +59,26 @@ describe("SongSearch", () => {
       fireEvent.click(screen.getByTestId("search-button"));
 
       expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
+    });
+
+    it("calls onSearch when Enter is pressed", () => {
+      renderSearch();
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(mockOnSearch).toHaveBeenCalledWith("amazing", undefined);
+    });
+
+    it("does not call onSearch when non-Enter key is pressed", () => {
+      renderSearch();
+
+      const input = screen.getByTestId("search-input");
+      fireEvent.change(input, { target: { value: "amazing" } });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      expect(mockOnSearch).not.toHaveBeenCalled();
     });
 
     it("allows blank Search", () => {
