@@ -78,6 +78,25 @@ class Settings(BaseSettings):
     SOW_LLM_BASE_URL: str = ""  # e.g., "https://openrouter.ai/api/v1"
     SOW_LLM_MODEL: str = ""  # e.g., "openai/gpt-4o-mini" for OpenRouter
 
+    # LLM Rate-Limit Retry Configuration
+    SOW_LLM_MAX_CONCURRENT: int = 3
+    # Module-level semaphore limiting concurrent LLM calls across all LRC jobs.
+    # Matches the provider's concurrency budget (3 slots). Prevents self-inflicted
+    # 429s from multiple overlapping jobs. Set to 0 to disable.
+
+    SOW_LLM_RATE_LIMIT_MAX_RETRIES: int = 8
+    # Max retry attempts on 429. Increased from the SDK's implicit 2 to be more patient.
+
+    SOW_LLM_RATE_LIMIT_BASE_DELAY: float = 2.0
+    # Base delay in seconds for exponential backoff on 429 retries.
+
+    SOW_LLM_RATE_LIMIT_MAX_DELAY: float = 30.0
+    # Cap on backoff delay. Matches provider's max_delay_s: 30.0.
+
+    SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS: int = 300
+    # Total wall-clock budget for 429 retries (5 minutes). If all retries are
+    # consumed within this budget but keep getting 429, give up.
+
     # Embedding Provider Configuration (OpenAI-compatible API)
     # Separate from SOW_LLM_* so chat and embedding can use different providers.
     SOW_EMBEDDING_API_KEY: str = ""

@@ -574,6 +574,11 @@ async def _llm_correct(
 ) -> str:
     """Call LLM to correct YouTube transcript against official lyrics.
 
+    Uses the shared rate-limit retry utility to handle HTTP 429 responses
+    with exponential backoff and jitter, respecting the provider's
+    ``retry_after`` guidance. Retries for up to
+    ``SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS`` (default 5 min) before giving up.
+
     Args:
         prompt: Correction prompt
         llm_model: LLM model identifier
@@ -583,8 +588,16 @@ async def _llm_correct(
 
     Raises:
         LLMConfigError: If LLM is not configured
-        YouTubeTranscriptError: If LLM call fails
+        YouTubeTranscriptError: If LLM call fails after all retries,
+            or on non-rate-limit errors
     """
+    from .llm_rate_limit import (
+        _acquire_llm_slot,
+        _call_llm_with_rate_limit_retry,
+        _is_llm_rate_limited_error,
+        _release_llm_slot,
+    )
+
     if not settings.SOW_LLM_API_KEY:
         raise LLMConfigError(
             "SOW_LLM_API_KEY environment variable not set. "
@@ -612,6 +625,7 @@ async def _llm_correct(
         client = OpenAI(
             api_key=settings.SOW_LLM_API_KEY,
             base_url=settings.SOW_LLM_BASE_URL,
+            max_retries=0,
         )
 
         response = client.chat.completions.create(
@@ -626,8 +640,20 @@ async def _llm_correct(
 
     logger.info(f"Calling LLM ({effective_model}) for YouTube transcript correction")
     try:
-        return await loop.run_in_executor(None, _call_llm)
+        await _acquire_llm_slot()
+        try:
+            return await _call_llm_with_rate_limit_retry(
+                _call_llm,
+                description=f"LLM correction ({effective_model})",
+                loop=loop,
+            )
+        finally:
+            _release_llm_slot()
     except Exception as e:
+        if _is_llm_rate_limited_error(e):
+            raise YouTubeTranscriptError(
+                f"LLM correction failed after rate-limit retries: {e}"
+            ) from e
         raise YouTubeTranscriptError(f"LLM correction failed: {e}") from e
 
 

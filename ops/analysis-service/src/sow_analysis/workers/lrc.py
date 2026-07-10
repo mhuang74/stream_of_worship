@@ -616,6 +616,7 @@ async def _llm_align(
         client = OpenAI(
             api_key=settings.SOW_LLM_API_KEY,
             base_url=settings.SOW_LLM_BASE_URL,
+            max_retries=0,
         )
 
         response = client.chat.completions.create(
@@ -630,13 +631,32 @@ async def _llm_align(
 
     logger.info(f"Using LLM model: {effective_model}")
 
+    from .llm_rate_limit import (
+        _acquire_llm_slot,
+        _call_llm_with_rate_limit_retry,
+        _is_llm_rate_limited_error,
+        _release_llm_slot,
+    )
+
     last_error: Optional[Exception] = None
     llm_start = time.time()
     for attempt in range(max_retries):
         try:
             logger.info(f"LLM alignment attempt {attempt + 1}/{max_retries}")
             attempt_start = time.time()
-            response_text = await loop.run_in_executor(None, _call_llm)
+
+            # Use rate-limit retry wrapper for the LLM call
+            # (handles 429 with backoff; non-429 propagates immediately)
+            await _acquire_llm_slot()
+            try:
+                response_text = await _call_llm_with_rate_limit_retry(
+                    _call_llm,
+                    description=f"LLM alignment ({effective_model})",
+                    loop=loop,
+                )
+            finally:
+                _release_llm_slot()
+
             attempt_elapsed = time.time() - attempt_start
             logger.info(f"LLM call completed in {attempt_elapsed:.2f}s")
 
@@ -669,8 +689,17 @@ async def _llm_align(
             last_error = e
             logger.warning(f"LLM response validation error (attempt {attempt + 1}): {e}")
         except Exception as e:
-            last_error = e
-            logger.warning(f"LLM API error (attempt {attempt + 1}): {e}")
+            if _is_llm_rate_limited_error(e):
+                # Rate-limit errors should have been retried inside
+                # _call_llm_with_rate_limit_retry. If we get here, all rate-limit
+                # retries were exhausted — treat as a failure.
+                last_error = e
+                logger.warning(
+                    f"LLM rate-limit retries exhausted (attempt {attempt + 1}): {e}"
+                )
+            else:
+                last_error = e
+                logger.warning(f"LLM API error (attempt {attempt + 1}): {e}")
 
     raise LLMAlignmentError(f"LLM alignment failed after {max_retries} attempts: {last_error}")
 
