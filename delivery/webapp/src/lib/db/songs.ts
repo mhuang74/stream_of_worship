@@ -422,8 +422,7 @@ export async function getAlbums(): Promise<AlbumOption[]> {
           and recordings.visibility_status IN ('published', 'review')
           and recordings.deleted_at IS NULL
       )`)
-    .groupBy(songs.albumName, songs.albumSeries)
-    .orderBy(sql`${songs.albumSeries} ASC NULLS LAST`, songs.albumName);
+    .groupBy(songs.albumName, songs.albumSeries);
 
   return sortAlbumOptions(
     result

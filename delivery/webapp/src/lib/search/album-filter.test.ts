@@ -160,6 +160,15 @@ describe("extractTrailingNumber", () => {
   it("extracts number from ASCII parenthesized series", () => {
     expect(extractTrailingNumber("Series (Vol. 1)")).toBe(1);
   });
+
+  it("extracts number from series with trailing non-digit suffix (EP)", () => {
+    expect(extractTrailingNumber("兒童敬拜讚美 14EP")).toBe(14);
+    expect(extractTrailingNumber("兒童敬拜讚美（14EP）")).toBe(14);
+  });
+
+  it("extracts number from pure numeric series", () => {
+    expect(extractTrailingNumber("123")).toBe(123);
+  });
 });
 
 describe("extractSeriesPrefix", () => {
@@ -190,6 +199,15 @@ describe("extractSeriesPrefix", () => {
 
   it("extracts prefix from ASCII parenthesized series", () => {
     expect(extractSeriesPrefix("Series (Vol. 1)")).toBe("Series Vol.");
+  });
+
+  it("extracts prefix from series with trailing non-digit suffix (EP)", () => {
+    expect(extractSeriesPrefix("兒童敬拜讚美 14EP")).toBe("兒童敬拜讚美");
+    expect(extractSeriesPrefix("兒童敬拜讚美（14EP）")).toBe("兒童敬拜讚美");
+  });
+
+  it("returns empty string for pure numeric series", () => {
+    expect(extractSeriesPrefix("123")).toBe("");
   });
 });
 
@@ -305,5 +323,31 @@ describe("sortAlbumOptions", () => {
     ];
     const result = sortAlbumOptions(input);
     expect(result.map((a) => a.albumName)).toEqual(["A", "B"]);
+  });
+
+  it("sorts pure numeric series numerically", () => {
+    const input = [
+      makeOption("Album 10", "10", 1),
+      makeOption("Album 2", "2", 1),
+      makeOption("Album 1", "1", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual(["Album 1", "Album 2", "Album 10"]);
+  });
+
+  it("sorts EP volume series numerically within same prefix", () => {
+    const input = [
+      makeOption("EP14", "兒童敬拜讚美（14EP）", 1),
+      makeOption("EP2", "兒童敬拜讚美（2EP）", 1),
+      makeOption("EP1", "兒童敬拜讚美（1EP）", 1),
+      makeOption("EP10", "兒童敬拜讚美（10EP）", 1),
+    ];
+    const result = sortAlbumOptions(input);
+    expect(result.map((a) => a.albumName)).toEqual([
+      "EP1",
+      "EP2",
+      "EP10",
+      "EP14",
+    ]);
   });
 });

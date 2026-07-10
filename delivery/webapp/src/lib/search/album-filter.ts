@@ -48,22 +48,17 @@ export function normalizeAlbumFilters(values: AlbumFilter[]): AlbumFilter[] | un
   return albums.length > 0 ? albums : undefined;
 }
 
-const TRAILING_NUMBER_RE = /(\d+)\s*$/;
-
-function stripParens(series: string): string {
-  return series.replace(PAREN_CHARS, " ").replace(/\s+/g, " ").trim();
-}
+const TRAILING_NUMBER_RE = /(\d+)\D*$/;
 
 export function extractTrailingNumber(series: string | null): number | null {
   if (!series) return null;
-  const match = stripParens(series).match(TRAILING_NUMBER_RE);
+  const match = stripAlbumSeriesParens(series).match(TRAILING_NUMBER_RE);
   return match ? parseInt(match[1], 10) : null;
 }
 
 export function extractSeriesPrefix(series: string | null): string | null {
   if (!series) return null;
-  const stripped = stripParens(series);
-  return stripped.replace(TRAILING_NUMBER_RE, "").trim() || stripped;
+  return stripAlbumSeriesParens(series).replace(TRAILING_NUMBER_RE, "").trim();
 }
 
 function compareNullsLast<T>(a: T | null, b: T | null, cmp: (a: T, b: T) => number): number {
@@ -74,22 +69,26 @@ function compareNullsLast<T>(a: T | null, b: T | null, cmp: (a: T, b: T) => numb
 }
 
 export function sortAlbumOptions(options: AlbumOption[]): AlbumOption[] {
-  return [...options].sort((a, b) => {
-    const prefixA = extractSeriesPrefix(a.albumSeries);
-    const prefixB = extractSeriesPrefix(b.albumSeries);
-    const prefixCmp = compareNullsLast(prefixA, prefixB, (x, y) => x.localeCompare(y));
+  const mapped = options.map((opt) => ({
+    opt,
+    prefix: extractSeriesPrefix(opt.albumSeries),
+    num: extractTrailingNumber(opt.albumSeries),
+  }));
+
+  mapped.sort((a, b) => {
+    const prefixCmp = compareNullsLast(a.prefix, b.prefix, (x, y) => x.localeCompare(y));
     if (prefixCmp !== 0) return prefixCmp;
 
-    const numA = extractTrailingNumber(a.albumSeries);
-    const numB = extractTrailingNumber(b.albumSeries);
-    const numCmp = compareNullsLast(numA, numB, (x, y) => x - y);
+    const numCmp = compareNullsLast(a.num, b.num, (x, y) => x - y);
     if (numCmp !== 0) return numCmp;
 
-    const seriesCmp = compareNullsLast(a.albumSeries, b.albumSeries, (x, y) =>
+    const seriesCmp = compareNullsLast(a.opt.albumSeries, b.opt.albumSeries, (x, y) =>
       x.localeCompare(y),
     );
     if (seriesCmp !== 0) return seriesCmp;
 
-    return a.albumName.localeCompare(b.albumName);
+    return a.opt.albumName.localeCompare(b.opt.albumName);
   });
+
+  return mapped.map((m) => m.opt);
 }
