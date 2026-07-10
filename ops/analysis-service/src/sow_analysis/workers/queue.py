@@ -242,7 +242,7 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in DB during recovery: {e}")
 
         if interrupted:
-            sample_ids = ", ".join(job.id for job in interrupted[:5])
+            sample_ids = ", ".join(str(job.id) for job in interrupted[:5])
             more = f", ... +{len(interrupted) - 5} more" if len(interrupted) > 5 else ""
             logger.info(f"Recovered {len(interrupted)} interrupted jobs (e.g., {sample_ids}{more})")
 

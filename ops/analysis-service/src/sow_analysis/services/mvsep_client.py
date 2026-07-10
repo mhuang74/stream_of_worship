@@ -109,7 +109,7 @@ class MvsepClient:
             hour=0, minute=0, second=0, microsecond=0
         )
 
-        self._mutex = asyncio.Lock()
+        self._mutex: Optional[asyncio.Lock] = None
 
         self._client = httpx.AsyncClient(timeout=self.http_timeout)
 
@@ -349,6 +349,8 @@ class MvsepClient:
         Returns:
             Tuple of (vocals_path, instrumental_path)
         """
+        if self._mutex is None:
+            self._mutex = asyncio.Lock()
         async with self._mutex:
             if stage_callback:
                 stage_callback("mvsep_stage1_submitting")
@@ -428,6 +430,8 @@ class MvsepClient:
         Returns:
             Tuple of (dry_vocals_path, reverb_path)
         """
+        if self._mutex is None:
+            self._mutex = asyncio.Lock()
         async with self._mutex:
             if stage_callback:
                 stage_callback("mvsep_stage2_submitting")
