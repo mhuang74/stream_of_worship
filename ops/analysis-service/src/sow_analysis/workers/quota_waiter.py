@@ -89,14 +89,13 @@ class QuotaWaiter:
             for _ in range(max_wait_seconds):
                 if cancel_fn():
                     return False
+                # Clear event before checking probe to prevent race condition:
+                # if poller (or another waiter) sets the event between probe()
+                # and clear(), we'd incorrectly discard it and block for 1s.
+                self._event.clear()
                 if self._probe_fn():
                     self._event.set()
                     return True
-                # Clear event before waiting — probe is the definitive check.
-                # If event was set (initial state or poller), clearing ensures
-                # we wait a full tick before re-probing. If another job or the
-                # poller sets it during our wait, we wake up early to re-probe.
-                self._event.clear()
                 # Periodic logging every 30s
                 now = time.monotonic()
                 if now - self._last_log_time >= 30.0:
