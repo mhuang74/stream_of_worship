@@ -11,7 +11,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, Tuple
 
 from ..config import settings
 from ..models import Job, JobResult, JobStatus, StemSeparationJobRequest
@@ -22,11 +22,15 @@ from .separator_wrapper import AudioSeparatorWrapper
 
 if TYPE_CHECKING:
     from ..services.mvsep_client import MvsepClient
+    from .quota_waiter import QuotaWaiter
 
 # Import exception at module level to avoid local imports in retry loops
 from ..services.mvsep_client import MvsepNonRetriableError, MvsepQueueFullError, MvsepTimeoutError
 
 logger = logging.getLogger(__name__)
+
+# Async callback: (stage: str, progress: Optional[float]) -> None
+StageUpdater = Callable[[str, "Optional[float]"], "Awaitable[None]"]
 
 MVSEP_MAX_RETRIES = 3
 MVSEP_QUEUE_FULL_MAX_RETRIES = 6
@@ -213,6 +217,8 @@ async def _separate_with_mvsep_fallback(
     mvsep_client: Optional["MvsepClient"],
     separator_wrapper: AudioSeparatorWrapper,
     local_model_semaphore: Optional[asyncio.Semaphore] = None,
+    stage_updater: Optional[StageUpdater] = None,
+    mvsep_quota_waiter: Optional["QuotaWaiter"] = None,
 ) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """Try MVSEP per-stage with cross-backend handoff; fall back to local on failure.
 
@@ -225,28 +231,88 @@ async def _separate_with_mvsep_fallback(
         local_model_semaphore: Optional semaphore to limit concurrent local model execution.
             Acquired around local separator calls (audio-separator uses BS-Roformer model).
             MVSEP (cloud API) does not acquire this semaphore.
+        stage_updater: Optional async callback to persist stage transitions to DB.
+            When None, falls back to in-memory _set_job_stage().
+        mvsep_quota_waiter: Optional QuotaWaiter for free-only mode quota waits.
+            When None, quota-wait logic is skipped (existing fallback behavior).
 
     Returns:
         Tuple of (vocals_dry_path, vocals_path, instrumental_path).
         vocals_dry_path is None when Stage 2 is disabled or skipped.
     """
     total_start = time.monotonic()
+    total_wait_seconds = [0.0]
+
+    async def _safe_stage_updater(stage: str, progress: Optional[float] = None) -> None:
+        """Update stage via callback or in-memory, never raising."""
+        if stage_updater is not None:
+            try:
+                await stage_updater(stage, progress)
+            except Exception as exc:
+                logger.error(
+                    "stage_updater raised during '%s' (continuing): %s", stage, exc
+                )
+        else:
+            _set_job_stage(job, stage)
+
+    async def _wait_for_mvsep_quota() -> bool:
+        """Wait for MVSEP quota to reset. Returns True if available, False if cancelled."""
+        if mvsep_quota_waiter is None:
+            return False
+        await mvsep_quota_waiter.mark_exhausted()
+        await _safe_stage_updater("waiting_for_mvsep_quota_reset", None)
+        while True:
+            wait_start = time.monotonic()
+            available = await mvsep_quota_waiter.wait(
+                job, lambda: job.status == JobStatus.CANCELLED, max_wait_seconds=60
+            )
+            total_wait_seconds[0] += time.monotonic() - wait_start
+            if available:
+                return True
+            if job.status == JobStatus.CANCELLED:
+                return False
+            # Heartbeat: refresh updated_at
+            await _safe_stage_updater("waiting_for_mvsep_quota_reset", None)
 
     # Check if MVSEP is available
     if not mvsep_client or not mvsep_client.is_available:
-        logger.info("MVSEP not available, using local audio-separator")
-        async with optional_semaphore(local_model_semaphore):
-            return await separator_wrapper.separate_stems(input_path, output_dir)
+        if (
+            settings.SOW_FREE_ONLY_MODE
+            and mvsep_client is not None
+            and mvsep_client.is_quota_exhausted
+        ):
+            # Quota exhausted in free-only mode -> wait for reset
+            available = await _wait_for_mvsep_quota()
+            if not available or job.status == JobStatus.CANCELLED:
+                return (None, None, None)
+            # After resume: continue to Stage 1 (don't fall back to local)
+        elif settings.SOW_FREE_ONLY_MODE:
+            # Permanent unavailability in free-only mode -> fail
+            # (covers: _disabled=True, missing API key, not enabled)
+            raise StemSeparationWorkerError(
+                "MVSEP permanently unavailable in free-only mode "
+                "(disabled, missing API key, or not enabled). "
+                "Cannot fall back to local models."
+            )
+        else:
+            # Not in free-only mode -> existing local fallback (unchanged)
+            logger.info("MVSEP not available, using local audio-separator")
+            async with optional_semaphore(local_model_semaphore):
+                return await separator_wrapper.separate_stems(input_path, output_dir)
 
     def _time_remaining() -> float:
-        return settings.SOW_MVSEP_TOTAL_TIMEOUT - (time.monotonic() - total_start)
+        elapsed = time.monotonic() - total_start - total_wait_seconds[0]
+        return settings.SOW_MVSEP_TOTAL_TIMEOUT - elapsed
 
     # Stage 2 gets its own dedicated budget, initialized when Stage 2 begins
     stage2_start: Optional[float] = None
 
     def _stage2_time_remaining() -> float:
         # Combined: must respect both the outer total cap and Stage 2's dedicated budget
-        total_remaining = settings.SOW_MVSEP_TOTAL_TIMEOUT - (time.monotonic() - total_start)
+        total_remaining = (
+            settings.SOW_MVSEP_TOTAL_TIMEOUT
+            - (time.monotonic() - total_start - total_wait_seconds[0])
+        )
         if stage2_start is None:
             return total_remaining
         stage2_remaining = settings.SOW_MVSEP_STAGE2_TIMEOUT - (time.monotonic() - stage2_start)
@@ -265,9 +331,27 @@ async def _separate_with_mvsep_fallback(
             input_path, stage1_dir, stage_callback
         )
 
-    stage1_result = await _run_mvsep_stage_with_retries(
-        "Stage 1", _stage1_fn, job, _time_remaining
-    )
+    # Point 2: Stage 1 with quota-wait retry loop
+    stage1_result: Optional[tuple] = None
+    while True:
+        stage1_result = await _run_mvsep_stage_with_retries(
+            "Stage 1", _stage1_fn, job, _time_remaining
+        )
+        if stage1_result is not None:
+            break
+        if not (
+            settings.SOW_FREE_ONLY_MODE
+            and mvsep_client is not None
+            and mvsep_client.is_quota_exhausted
+        ):
+            break  # Non-quota failure -> existing fallback
+        # Quota exhausted in free-only mode -> wait and retry
+        available = await _wait_for_mvsep_quota()
+        if not available:
+            if job.status == JobStatus.CANCELLED:
+                return (None, None, None)
+            continue
+        # After resume: back to top of while loop to retry Stage 1
 
     if stage1_result is None:
         # Stage 1 MVSEP failed — fall back to full local pipeline
@@ -299,9 +383,26 @@ async def _separate_with_mvsep_fallback(
             vocals, stage2_dir, stage_callback
         )
 
-    stage2_result = await _run_mvsep_stage_with_retries(
-        "Stage 2", _stage2_fn, job, _stage2_time_remaining
-    )
+    # Point 3: Stage 2 with quota-wait retry loop
+    stage2_result: Optional[tuple] = None
+    while True:
+        stage2_result = await _run_mvsep_stage_with_retries(
+            "Stage 2", _stage2_fn, job, _stage2_time_remaining
+        )
+        if stage2_result is not None:
+            break
+        if not (
+            settings.SOW_FREE_ONLY_MODE
+            and mvsep_client is not None
+            and mvsep_client.is_quota_exhausted
+        ):
+            break  # Non-quota failure -> existing fallback
+        # Quota exhausted in free-only mode -> wait and retry
+        available = await _wait_for_mvsep_quota()
+        if not available:
+            if job.status == JobStatus.CANCELLED:
+                return (None, None, None)
+            continue
 
     if stage2_result is None:
         # Stage 2 MVSEP failed — local Stage 2 only (cross-backend handoff)
@@ -322,6 +423,8 @@ async def process_stem_separation(
     cache_manager: CacheManager,
     mvsep_client: Optional["MvsepClient"] = None,
     local_model_semaphore: Optional[asyncio.Semaphore] = None,
+    stage_updater: Optional[StageUpdater] = None,
+    mvsep_quota_waiter: Optional["QuotaWaiter"] = None,
 ) -> None:
     """Process a stem separation job.
 
@@ -336,6 +439,8 @@ async def process_stem_separation(
         mvsep_client: Optional MVSEP client for cloud processing
         local_model_semaphore: Optional semaphore to limit concurrent local model execution.
             Passed to _separate_with_mvsep_fallback() for local fallback paths.
+        stage_updater: Optional async callback to persist stage transitions to DB.
+        mvsep_quota_waiter: Optional QuotaWaiter for free-only mode quota waits.
 
     Raises:
         StemSeparationWorkerError: If processing fails
@@ -458,6 +563,8 @@ async def process_stem_separation(
             ) = await _separate_with_mvsep_fallback(
                 audio_path, stage_output_dir, job, mvsep_client, separator_wrapper,
                 local_model_semaphore=local_model_semaphore,
+                stage_updater=stage_updater,
+                mvsep_quota_waiter=mvsep_quota_waiter,
             )
         except Exception as e:
             raise StemSeparationWorkerError(f"Stem separation failed: {e}") from e

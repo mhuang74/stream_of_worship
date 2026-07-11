@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -34,6 +35,10 @@ class Qwen3AsrNonRetriableError(Qwen3AsrError):
 
 class Qwen3AsrTimeoutError(Qwen3AsrError):
     """Raised when DashScope does not complete before timeout."""
+
+
+class Qwen3AsrQuotaExhaustedError(Qwen3AsrError):
+    """DashScope free-tier daily quota exhausted. Will reset at UTC midnight."""
 
 
 @dataclass
@@ -100,12 +105,54 @@ class Qwen3AsrClient:
         self.region = region
         self.flash_model = flash_model
         self.filetrans_model = filetrans_model
+        self._quota_exhausted: bool = False
+        self._quota_reset_utc: datetime = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+    @property
+    def is_available(self) -> bool:
+        """Check if Qwen3 ASR is available for use.
+
+        Returns:
+            True when api_key is set, circuit breaker is closed, and daily
+            quota is not exhausted.
+        """
+        if not self.api_key:
+            return False
+        if self.__class__._circuit_open:
+            return False
+        if self._quota_exhausted:
+            self._check_quota_reset()
+            if self._quota_exhausted:
+                return False
+        return True
+
+    @property
+    def is_quota_exhausted(self) -> bool:
+        """True if daily quota is exhausted (will reset at UTC midnight)."""
+        if self._quota_exhausted:
+            self._check_quota_reset()
+        return self._quota_exhausted
+
+    def _check_quota_reset(self) -> None:
+        """Reset quota-exhausted flag on new UTC day."""
+        now_utc = datetime.now(timezone.utc)
+        today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        if self._quota_reset_utc < today_start:
+            self._quota_exhausted = False
+            self._quota_reset_utc = today_start
+            logger.info("DashScope Qwen3 ASR daily quota reset for new UTC day")
 
     async def transcribe(self, audio_path: Path, context: str = "") -> Qwen3AsrResult:
         if not self.api_key:
             raise Qwen3AsrNonRetriableError("SOW_DASHSCOPE_API_KEY is not configured")
         if self._circuit_open:
             raise Qwen3AsrNonRetriableError("DashScope Qwen3 ASR circuit breaker is open")
+        if self._quota_exhausted:
+            self._check_quota_reset()
+            if self._quota_exhausted:
+                raise Qwen3AsrQuotaExhaustedError("DashScope Qwen3 ASR daily quota exhausted")
 
         size_mb, duration_seconds = self._audio_diagnostics(audio_path)
         mode = self._choose_mode_from_metadata(size_mb, duration_seconds)
@@ -210,6 +257,7 @@ class Qwen3AsrClient:
 
     async def _with_retries(self, call):
         last_error: Optional[Exception] = None
+        quota_error_seen = False
         for attempt in range(3):
             try:
                 return await call()
@@ -217,11 +265,22 @@ class Qwen3AsrClient:
                 raise
             except Qwen3AsrTimeoutError:
                 raise
+            except Qwen3AsrQuotaExhaustedError as exc:
+                quota_error_seen = True
+                last_error = exc
+                if attempt == 2:
+                    break
+                await asyncio.sleep(2**attempt)
             except Exception as exc:
                 last_error = exc
                 if attempt == 2:
                     break
                 await asyncio.sleep(2**attempt)
+        if quota_error_seen:
+            self._quota_exhausted = True
+            raise Qwen3AsrQuotaExhaustedError(
+                f"DashScope quota exhausted after retries: {last_error}"
+            ) from last_error
         raise Qwen3AsrError(f"Qwen3 ASR failed after retries: {last_error}") from last_error
 
     async def _transcribe_direct(self, audio_path: Path, context: str) -> Qwen3AsrResult:
@@ -312,7 +371,9 @@ class Qwen3AsrClient:
         message = self._response_error_summary(resp)
         if status in {401, 403}:
             raise Qwen3AsrNonRetriableError(f"DashScope auth error {status}: {message}")
-        if status == 429 or status >= 500:
+        if status == 429:
+            raise Qwen3AsrQuotaExhaustedError(f"DashScope rate limit {status}: {message}")
+        if status >= 500:
             raise Qwen3AsrError(f"DashScope transient error {status}: {message}")
         raise Qwen3AsrError(f"DashScope API error {status}: {message}")
 

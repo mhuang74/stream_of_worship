@@ -799,6 +799,7 @@ async def generate_lrc_from_qwen3_asr(
     cache_manager: CacheManager,
     dashscope_semaphore: asyncio.Semaphore,
     resolved_language: ResolvedLrcLanguage = "zh",
+    qwen3_client: Optional["Qwen3AsrClient"] = None,
 ) -> tuple[Path, int, list[WhisperPhrase]]:
     """Generate LRC from DashScope Qwen3 ASR, snap, then LLM alignment."""
     context_limit = min(
@@ -815,7 +816,7 @@ async def generate_lrc_from_qwen3_asr(
         result = Qwen3AsrResult.from_cache_payload(cached_payload)
     else:
         logger.info("Qwen3 ASR cache miss; calling DashScope")
-        client = Qwen3AsrClient(
+        client = qwen3_client if qwen3_client is not None else Qwen3AsrClient(
             api_key=settings.SOW_DASHSCOPE_API_KEY,
             region=settings.SOW_DASHSCOPE_ASR_REGION,
             flash_model=settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
