@@ -118,11 +118,13 @@ async def lifespan(app: FastAPI):
     qwen3_quota_waiter = None
     if mvsep_client is not None:
         from .workers.quota_waiter import QuotaWaiter
+
         mvsep_quota_waiter = QuotaWaiter(
             "mvsep", mvsep_client.is_available, settings.SOW_QUOTA_POLL_INTERVAL_SECONDS
         )
     if qwen3_client is not None:
         from .workers.quota_waiter import QuotaWaiter
+
         qwen3_quota_waiter = QuotaWaiter(
             "qwen3", qwen3_client.is_available, settings.SOW_QUOTA_POLL_INTERVAL_SECONDS
         )

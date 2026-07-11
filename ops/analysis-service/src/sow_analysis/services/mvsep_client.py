@@ -119,15 +119,33 @@ class MvsepClient:
 
         self.api_token = api_token if api_token is not None else settings.SOW_MVSEP_API_KEY
         self.enabled = enabled if enabled is not None else settings.SOW_MVSEP_ENABLED
-        self.stage1_sep_type = stage1_sep_type if stage1_sep_type is not None else settings.SOW_MVSEP_STAGE1_SEP_TYPE
-        self.stage1_add_opt1 = stage1_add_opt1 if stage1_add_opt1 is not None else settings.SOW_MVSEP_STAGE1_ADD_OPT1
-        self.stage1_add_opt2 = stage1_add_opt2 if stage1_add_opt2 is not None else settings.SOW_MVSEP_STAGE1_ADD_OPT2
-        self.stage2_sep_type = stage2_sep_type if stage2_sep_type is not None else settings.SOW_MVSEP_STAGE2_SEP_TYPE
-        self.stage2_add_opt1 = stage2_add_opt1 if stage2_add_opt1 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT1
-        self.stage2_add_opt2 = stage2_add_opt2 if stage2_add_opt2 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT2
-        self.http_timeout = http_timeout if http_timeout is not None else settings.SOW_MVSEP_HTTP_TIMEOUT
-        self.stage_timeout = stage_timeout if stage_timeout is not None else settings.SOW_MVSEP_STAGE_TIMEOUT
-        self._max_concurrent = max_concurrent if max_concurrent is not None else settings.SOW_MVSEP_MAX_CONCURRENT
+        self.stage1_sep_type = (
+            stage1_sep_type if stage1_sep_type is not None else settings.SOW_MVSEP_STAGE1_SEP_TYPE
+        )
+        self.stage1_add_opt1 = (
+            stage1_add_opt1 if stage1_add_opt1 is not None else settings.SOW_MVSEP_STAGE1_ADD_OPT1
+        )
+        self.stage1_add_opt2 = (
+            stage1_add_opt2 if stage1_add_opt2 is not None else settings.SOW_MVSEP_STAGE1_ADD_OPT2
+        )
+        self.stage2_sep_type = (
+            stage2_sep_type if stage2_sep_type is not None else settings.SOW_MVSEP_STAGE2_SEP_TYPE
+        )
+        self.stage2_add_opt1 = (
+            stage2_add_opt1 if stage2_add_opt1 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT1
+        )
+        self.stage2_add_opt2 = (
+            stage2_add_opt2 if stage2_add_opt2 is not None else settings.SOW_MVSEP_STAGE2_ADD_OPT2
+        )
+        self.http_timeout = (
+            http_timeout if http_timeout is not None else settings.SOW_MVSEP_HTTP_TIMEOUT
+        )
+        self.stage_timeout = (
+            stage_timeout if stage_timeout is not None else settings.SOW_MVSEP_STAGE_TIMEOUT
+        )
+        self._max_concurrent = (
+            max_concurrent if max_concurrent is not None else settings.SOW_MVSEP_MAX_CONCURRENT
+        )
 
         self._disabled = False
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -222,9 +240,7 @@ class MvsepClient:
         }
 
         try:
-            response = await self._client.post(
-                url, data=data, files=files
-            )
+            response = await self._client.post(url, data=data, files=files)
             response.raise_for_status()
             result = response.json()
 
@@ -296,9 +312,7 @@ class MvsepClient:
                 raise MvsepTimeoutError(f"Polling timeout after {elapsed:.0f}s")
 
             try:
-                response = await self._client.get(
-                    url, params={"hash": job_hash}
-                )
+                response = await self._client.get(url, params={"hash": job_hash})
                 response.raise_for_status()
                 result = response.json()
 
@@ -328,9 +342,7 @@ class MvsepClient:
             poll_interval = min(poll_interval * 1.5, MVSEP_MAX_POLL_INTERVAL)
             await asyncio.sleep(poll_interval)
 
-    async def _download_files(
-        self, file_entries: list, output_dir: Path
-    ) -> list[Path]:
+    async def _download_files(self, file_entries: list, output_dir: Path) -> list[Path]:
         """Download result files from MVSEP.
 
         Args:
@@ -353,6 +365,7 @@ class MvsepClient:
             if not filename:
                 # Extract from URL
                 from urllib.parse import urlparse
+
                 parsed = urlparse(url)
                 filename = Path(parsed.path).name or "download.bin"
 
@@ -446,7 +459,11 @@ class MvsepClient:
                 # Fallback: filename pattern matching
                 if "vocal" in name_lower:
                     vocals_file = path
-                elif "instrumental" in name_lower or "accompaniment" in name_lower or "other" in name_lower:
+                elif (
+                    "instrumental" in name_lower
+                    or "accompaniment" in name_lower
+                    or "other" in name_lower
+                ):
                     instrumental_file = path
 
         return vocals_file, instrumental_file
@@ -500,7 +517,9 @@ class MvsepClient:
 
             for path in downloaded:
                 name_lower = path.name.lower()
-                if any(x in name_lower for x in ["no reverb", "noreverb", "no_echo", "no echo", "dry"]):
+                if any(
+                    x in name_lower for x in ["no reverb", "noreverb", "no_echo", "no echo", "dry"]
+                ):
                     dry_vocals_file = path
                 elif "reverb" in name_lower or "echo" in name_lower:
                     reverb_file = path
@@ -548,9 +567,7 @@ class MvsepClient:
             logger.info("MVSEP Stage 2 disabled (stage2_sep_type not set), skipping")
             return None, vocals_file, instrumental_file
 
-        dry_vocals_file, _ = await self.remove_reverb(
-            vocals_file, stage2_dir, stage_callback
-        )
+        dry_vocals_file, _ = await self.remove_reverb(vocals_file, stage2_dir, stage_callback)
 
         if not dry_vocals_file:
             raise MvsepClientError("Stage 2 failed: No dry vocals file produced")

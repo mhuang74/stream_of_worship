@@ -258,9 +258,7 @@ class JobQueue:
             await self._queue.put(job.id)
             # Update DB to reflect requeued status (status + stage only, preserve progress)
             try:
-                await self.job_store.update_job(
-                    job.id, status="queued", stage="requeued"
-                )
+                await self.job_store.update_job(job.id, status="queued", stage="requeued")
             except Exception as e:
                 logger.error(f"Failed to update job {job.id} in DB during recovery: {e}")
 
@@ -1197,21 +1195,25 @@ class JobQueue:
                                 )
                                 if (
                                     not request.options.force_qwen3_asr
-                                    and self.cache_manager.get_qwen3_asr_transcription(qwen_cache_key)
+                                    and self.cache_manager.get_qwen3_asr_transcription(
+                                        qwen_cache_key
+                                    )
                                 ):
                                     await self._update_stage(job, "qwen3_asr_cached", 0.4)
                                 else:
                                     await self._update_stage(job, "qwen3_asr_transcribing", 0.4)
-                                lrc_path, line_count, _qwen_phrases = await generate_lrc_from_qwen3_asr(
-                                    resolved_audio.path,
-                                    request.lyrics_text,
-                                    request.options,
-                                    output_path=lrc_path,
-                                    cache_key=qwen_cache_key,
-                                    cache_manager=self.cache_manager,
-                                    dashscope_semaphore=self._dashscope_asr_semaphore,
-                                    resolved_language=resolved_language,
-                                    qwen3_client=self._qwen3_client,
+                                lrc_path, line_count, _qwen_phrases = (
+                                    await generate_lrc_from_qwen3_asr(
+                                        resolved_audio.path,
+                                        request.lyrics_text,
+                                        request.options,
+                                        output_path=lrc_path,
+                                        cache_key=qwen_cache_key,
+                                        cache_manager=self.cache_manager,
+                                        dashscope_semaphore=self._dashscope_asr_semaphore,
+                                        resolved_language=resolved_language,
+                                        qwen3_client=self._qwen3_client,
+                                    )
                                 )
                                 lrc_source = "qwen3_asr"
                                 await self._update_stage(job, "qwen3_asr_done", 0.7)
@@ -1245,7 +1247,9 @@ class JobQueue:
                                     break
                             except Qwen3AsrError as e:
                                 # Existing: fall back to Whisper (unchanged)
-                                logger.warning("Qwen3 ASR failed; falling back to LLM-based ASR: %s", e)
+                                logger.warning(
+                                    "Qwen3 ASR failed; falling back to LLM-based ASR: %s", e
+                                )
                                 await self._update_stage(job, "falling_back_to_whisper", 0.45)
                                 break
                             except Exception as e:
@@ -2085,9 +2089,7 @@ class JobQueue:
         for job in self._jobs.values():
             stats[job.type][job.status] += 1
             if job.status == JobStatus.QUEUED:
-                queued_wait_times[job.type].append(
-                    (now - job.created_at).total_seconds()
-                )
+                queued_wait_times[job.type].append((now - job.created_at).total_seconds())
                 has_reportable_jobs = True
             elif job.status == JobStatus.WAITING:
                 queued_wait_times[job.type].append(
@@ -2095,14 +2097,11 @@ class JobQueue:
                 )
                 has_reportable_jobs = True
             elif job.status == JobStatus.PROCESSING:
-                processing_durations[job.type].append(
-                    (now - job.updated_at).total_seconds()
-                )
+                processing_durations[job.type].append((now - job.updated_at).total_seconds())
                 has_reportable_jobs = True
             elif (
                 job.status == JobStatus.FAILED
-                and (now - job.updated_at).total_seconds()
-                <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
+                and (now - job.updated_at).total_seconds() <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
             ):
                 has_reportable_jobs = True
 

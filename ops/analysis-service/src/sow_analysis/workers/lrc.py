@@ -106,7 +106,9 @@ def resolve_lrc_language(
     return LrcLanguageResolution(language, "zh", "default_zh")
 
 
-def warn_if_lrc_language_script_mismatch(language: ResolvedLrcLanguage, lyrics_text: object) -> None:
+def warn_if_lrc_language_script_mismatch(
+    language: ResolvedLrcLanguage, lyrics_text: object
+) -> None:
     stripped = lyrics_text.strip() if isinstance(lyrics_text, str) else ""
     if not stripped:
         return
@@ -694,9 +696,7 @@ async def _llm_align(
                 # _call_llm_with_rate_limit_retry. If we get here, all rate-limit
                 # retries were exhausted — treat as a failure.
                 last_error = e
-                logger.warning(
-                    f"LLM rate-limit retries exhausted (attempt {attempt + 1}): {e}"
-                )
+                logger.warning(f"LLM rate-limit retries exhausted (attempt {attempt + 1}): {e}")
             else:
                 last_error = e
                 logger.warning(f"LLM API error (attempt {attempt + 1}): {e}")
@@ -816,11 +816,15 @@ async def generate_lrc_from_qwen3_asr(
         result = Qwen3AsrResult.from_cache_payload(cached_payload)
     else:
         logger.info("Qwen3 ASR cache miss; calling DashScope")
-        client = qwen3_client if qwen3_client is not None else Qwen3AsrClient(
-            api_key=settings.SOW_DASHSCOPE_API_KEY,
-            region=settings.SOW_DASHSCOPE_ASR_REGION,
-            flash_model=settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
-            filetrans_model=settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL,
+        client = (
+            qwen3_client
+            if qwen3_client is not None
+            else Qwen3AsrClient(
+                api_key=settings.SOW_DASHSCOPE_API_KEY,
+                region=settings.SOW_DASHSCOPE_ASR_REGION,
+                flash_model=settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
+                filetrans_model=settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL,
+            )
         )
         async with dashscope_semaphore:
             result = await client.transcribe(audio_path, context=context)
