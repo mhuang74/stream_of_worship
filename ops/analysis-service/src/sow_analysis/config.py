@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     SOW_MVSEP_STAGE_TIMEOUT: int = 300
     SOW_MVSEP_STAGE2_TIMEOUT: int = 900  # Dedicated budget for Stage 2 + retries
     SOW_MVSEP_TOTAL_TIMEOUT: int = 1800  # Outer cap: Stage 1 + Stage 2 combined
-    SOW_MVSEP_MAX_CONCURRENT: int = 3  # Max concurrent MVSEP API operations
+    SOW_MVSEP_MAX_CONCURRENT: int = 1  # Max concurrent MVSEP API operations (MVSEP free-tier allows 1 pending job per token)
 
     @field_validator(
         "SOW_MVSEP_STAGE1_ADD_OPT2",
