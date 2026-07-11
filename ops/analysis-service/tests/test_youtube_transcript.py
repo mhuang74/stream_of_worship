@@ -12,6 +12,7 @@ from sow_analysis.workers.youtube_transcript import (
     _build_proxy_config,
     _find_best_transcript,
     _is_rate_limited_error,
+    _is_transient_connection_error,
     _rate_limiter,
     _YouTubeRateLimiter,
     build_correction_prompt,
@@ -1605,3 +1606,406 @@ class TestRemainingCooldown:
         rl = self._fresh_rate_limiter()
         rl._circuit_open_until = time.monotonic() - 10
         assert rl.remaining_cooldown() == 0.0
+
+
+class TestIsTransientConnectionError:
+    """Tests for _is_transient_connection_error()."""
+
+    def test_ssl_error_by_type_name(self):
+        """Exception with 'ssl' in type name is detected."""
+
+        class SSLError(Exception):
+            pass
+
+        assert _is_transient_connection_error(SSLError("handshake failed")) is True
+
+    def test_connection_error_by_type_name(self):
+        """Exception with 'connectionerror' in type name is detected."""
+
+        class ConnectionError(Exception):
+            pass
+
+        assert _is_transient_connection_error(ConnectionError("reset")) is True
+
+    def test_ssl_marker_in_message(self):
+        """Exception message containing SSL markers is detected."""
+        assert _is_transient_connection_error(
+            Exception("[SSL: BAD_EXTENSION] bad extension (_ssl.c:1016)")
+        ) is True
+
+    def test_wrong_version_number_marker(self):
+        """Exception message with wrong_version_number is detected."""
+        assert _is_transient_connection_error(
+            Exception("[SSL: WRONG_VERSION_NUMBER] wrong version number")
+        ) is True
+
+    def test_record_layer_failure_marker(self):
+        """Exception message with record layer failure is detected."""
+        assert _is_transient_connection_error(
+            Exception("[SSL] record layer failure (_ssl.c:2590)")
+        ) is True
+
+    def test_tls_marker_in_message(self):
+        """Exception message containing 'tls' is detected."""
+        assert _is_transient_connection_error(
+            Exception("tls handshake failed")
+        ) is True
+
+    def test_connection_reset_marker(self):
+        """Exception message with 'connection reset' is detected."""
+        assert _is_transient_connection_error(
+            Exception("Connection reset by peer")
+        ) is True
+
+    def test_connection_aborted_marker(self):
+        """Exception message with 'connection aborted' is detected."""
+        assert _is_transient_connection_error(
+            Exception("Connection aborted")
+        ) is True
+
+    def test_broken_pipe_marker(self):
+        """Exception message with 'broken pipe' is detected."""
+        assert _is_transient_connection_error(
+            Exception("broken pipe")
+        ) is True
+
+    def test_read_timed_out_marker(self):
+        """Exception message with 'read timed out' is detected."""
+        assert _is_transient_connection_error(
+            Exception("Read timed out")
+        ) is True
+
+    def test_max_retries_exceeded_with_ssl_cause(self):
+        """Max retries exceeded wrapping an SSL error is detected via __cause__."""
+
+        class SSLError(Exception):
+            pass
+
+        ssl_err = SSLError("[SSL: BAD_EXTENSION] bad extension")
+        try:
+            raise ssl_err
+        except SSLError as cause:
+            try:
+                raise Exception("Max retries exceeded with url") from cause
+            except Exception as wrapper:
+                assert _is_transient_connection_error(wrapper) is True
+
+    def test_max_retries_exceeded_with_ssl_context(self):
+        """Max retries exceeded wrapping an SSL error via __context__ is detected."""
+
+        class SSLError(Exception):
+            pass
+
+        try:
+            raise SSLError("[SSL: WRONG_VERSION_NUMBER]")
+        except SSLError:
+            try:
+                raise Exception("Max retries exceeded with url")
+            except Exception as wrapper:
+                assert _is_transient_connection_error(wrapper) is True
+
+    def test_non_transient_error_not_detected(self):
+        """Non-SSL, non-connection error is not detected."""
+        assert _is_transient_connection_error(
+            Exception("Subtitles are disabled for this video")
+        ) is False
+
+    def test_429_error_not_detected_as_transient(self):
+        """429 errors are not classified as transient connection errors."""
+        assert _is_transient_connection_error(
+            Exception("too many 429 error responses")
+        ) is False
+
+    def test_none_exception_returns_false(self):
+        """None exception returns False (no crash)."""
+        assert _is_transient_connection_error(None) is False
+
+    def test_circular_reference_does_not_loop(self):
+        """Circular __cause__ chain doesn't cause infinite loop."""
+
+        class CustomError(Exception):
+            pass
+
+        err = CustomError("ssl error")
+        err.__cause__ = err  # self-reference
+        assert _is_transient_connection_error(err) is True
+
+
+class TestSSLRetryBehavior:
+    """Tests for SSL/connection error retry in _YouTubeRateLimiter.call()."""
+
+    def _fresh_rate_limiter(self):
+        rl = _YouTubeRateLimiter()
+        rl._semaphore = None
+        rl._interval_lock = None
+        rl._state_lock = None
+        rl._last_request_time = 0.0
+        rl._consecutive_429_count = 0
+        rl._circuit_open_until = 0.0
+        return rl
+
+    @pytest.mark.asyncio
+    async def test_ssl_error_retried_then_succeeds(self):
+        """fn raises SSL error twice, succeeds on 3rd → retried, result returned."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise Exception("[SSL: BAD_EXTENSION] bad extension (_ssl.c:1016)")
+            return "success"
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            result = await rl.call(fn, description="ssl retry test")
+
+        assert result == "success"
+        assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_ssl_error_does_not_trip_circuit_breaker(self):
+        """SSL errors do NOT increment _consecutive_429_count or open the breaker."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        def fn():
+            raise Exception("[SSL: WRONG_VERSION_NUMBER] wrong version number")
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            with pytest.raises(Exception, match="WRONG_VERSION_NUMBER"):
+                await rl.call(fn, description="ssl no-breaker test")
+
+        # 429 count should remain 0 — SSL errors don't trip the breaker
+        assert rl._consecutive_429_count == 0
+        assert not await rl._is_circuit_open()
+
+    @pytest.mark.asyncio
+    async def test_ssl_error_exhausts_retries_then_raises(self):
+        """SSL error on all attempts → original exception propagates."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            raise Exception("[SSL] record layer failure (_ssl.c:2590)")
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            with pytest.raises(Exception, match="record layer failure"):
+                await rl.call(fn, description="ssl exhausted test")
+
+        # Should have tried max_retries + 1 = 3 times
+        assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_ssl_error_retry_uses_backoff_sleep(self):
+        """SSL error retry sleeps with exponential backoff (capped at 30s)."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise Exception("[SSL: BAD_EXTENSION] bad extension")
+            return "ok"
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch(
+                "sow_analysis.workers.youtube_transcript.settings"
+            ) as mock_settings,
+            patch(
+                "sow_analysis.workers.youtube_transcript.asyncio.sleep",
+                side_effect=mock_sleep,
+            ),
+        ):
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 5.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            result = await rl.call(fn, description="ssl backoff test")
+
+        assert result == "ok"
+        # At least one backoff sleep should have occurred
+        assert len(sleep_calls) >= 1
+        # First backoff: base_delay * 2^0 = 5.0, capped at 30, +jitter (up to 25%)
+        # So sleep should be in [5.0, 6.25]
+        assert 5.0 <= sleep_calls[0] <= 6.25
+
+    @pytest.mark.asyncio
+    async def test_connection_reset_error_retried(self):
+        """Connection reset error is retried like SSL errors."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise Exception("Connection reset by peer")
+            return "recovered"
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            result = await rl.call(fn, description="conn-reset test")
+
+        assert result == "recovered"
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_non_transient_non_429_error_not_retried(self):
+        """Non-SSL, non-429 error is not retried (propagates immediately)."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            raise Exception("Subtitles are disabled for this video")
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            with pytest.raises(Exception, match="Subtitles are disabled"):
+                await rl.call(fn, description="non-transient test")
+
+        assert call_count == 1
+
+
+class TestListFallbackDelay:
+    """Tests for the 2s delay before list fallback in fetch_youtube_transcript()."""
+
+    @pytest.mark.asyncio
+    async def test_delay_before_list_fallback(self):
+        """When direct fetch fails, a ~2s delay occurs before list fallback."""
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "測試", "start": 0.0})()
+        mock_fetched = [mock_snippet]
+
+        mock_transcript_obj = type(
+            "Transcript",
+            (),
+            {
+                "language_code": "zh-TW",
+                "language": "Chinese (Taiwan)",
+                "is_generated": False,
+                "fetch": lambda s: mock_fetched,
+            },
+        )()
+
+        mock_transcript_list = [mock_transcript_obj]
+
+        _rate_limiter._last_request_time = 0.0
+        _rate_limiter._consecutive_429_count = 0
+        _rate_limiter._circuit_open_until = 0.0
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
+            patch(
+                "sow_analysis.workers.youtube_transcript.asyncio.sleep",
+                side_effect=mock_sleep,
+            ),
+        ):
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_PROXY = ""
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = Exception("No transcripts found")
+            mock_api.list.return_value = mock_transcript_list
+
+            result = await fetch_youtube_transcript("testVideoId")
+
+        assert len(result) == 1
+        # The 2.0s delay should be among the sleep calls
+        assert 2.0 in sleep_calls
