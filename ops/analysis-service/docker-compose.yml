@@ -64,6 +64,9 @@ x-common-env: &common-env
   SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
   # BPM Algorithm Configuration (Fast Analysis tempo detection)
   BPM_ALGORITHM_VERSION: ${BPM_ALGORITHM_VERSION:-v4_octave_guard}
+  # Free-Only Patient Mode
+  SOW_FREE_ONLY_MODE: ${SOW_FREE_ONLY_MODE:-false}
+  SOW_QUOTA_POLL_INTERVAL_SECONDS: ${SOW_QUOTA_POLL_INTERVAL_SECONDS:-3600}
 
 # Define common GPU configuration using YAML anchor
 x-gpu-deploy: &gpu-deploy
