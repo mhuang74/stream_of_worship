@@ -303,7 +303,7 @@ class MvsepClient:
             MvsepClientError: On API errors
         """
         url = f"{MVSEP_API_BASE_URL}/get"
-        poll_interval = 5.0
+        poll_interval = 8.0
         start_time = asyncio.get_event_loop().time()
 
         while True:

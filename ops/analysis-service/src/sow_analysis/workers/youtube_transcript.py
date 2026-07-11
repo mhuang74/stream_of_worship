@@ -102,6 +102,47 @@ def _is_rate_limited_error(e: Exception) -> bool:
     return False
 
 
+def _is_transient_connection_error(e: Exception) -> bool:
+    """Check if an exception is a transient connection-level error (SSL, network).
+
+    These errors are common with rotating residential proxies where individual
+    exit IPs may have TLS handshake issues. They are transient — the next
+    request through a different IP typically succeeds.
+
+    Detects:
+    - SSLError from urllib3/requests (via type name and message)
+    - ConnectionError variants
+    - "Max retries exceeded" caused by SSL/connection failures
+    """
+    visited: set[int] = set()
+    exc: Optional[Exception] = e
+    ssl_markers = (
+        "ssl",
+        "bad_extension",
+        "wrong_version_number",
+        "record layer failure",
+        "tls",
+    )
+    conn_markers = (
+        "connection reset",
+        "connection aborted",
+        "broken pipe",
+        "read timed out",
+    )
+    while exc is not None and id(exc) not in visited:
+        visited.add(id(exc))
+        type_name = type(exc).__name__.lower()
+        if "ssl" in type_name or "connectionerror" in type_name:
+            return True
+        error_str = str(exc).lower()
+        if any(m in error_str for m in ssl_markers):
+            return True
+        if any(m in error_str for m in conn_markers):
+            return True
+        exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    return False
+
+
 class _YouTubeRateLimiter:
     """Module-level rate limiter for YouTube transcript API calls.
 
@@ -269,48 +310,66 @@ class _YouTubeRateLimiter:
                 await self._reset_circuit()
                 return result
             except Exception as e:
-                if not _is_rate_limited_error(e):
-                    # Non-429 error — don't retry, propagate immediately
-                    raise
+                if _is_rate_limited_error(e):
+                    # Layer 4: 429 retry with backoff
+                    async with self._state_lock:
+                        self._consecutive_429_count += 1
+                        logger.warning(
+                            "YouTube API rate limited (429), attempt %d/%d for %s: %s",
+                            attempt + 1,
+                            max_retries + 1,
+                            description,
+                            e,
+                        )
+                        should_open = self._consecutive_429_count >= threshold
 
-                # Layer 4: 429 retry with backoff
-                async with self._state_lock:
-                    self._consecutive_429_count += 1
-                    logger.warning(
-                        "YouTube API rate limited (429), attempt %d/%d for %s: %s",
-                        attempt + 1,
-                        max_retries + 1,
-                        description,
-                        e,
-                    )
-                    should_open = self._consecutive_429_count >= threshold
+                    # Open circuit breaker outside the lock to avoid deadlock
+                    # (_open_circuit acquires the same lock)
+                    if should_open:
+                        await self._open_circuit()
+                        raise YouTubeRateLimitedError(
+                            f"YouTube API rate limited — circuit breaker opened "
+                            f"after {self._consecutive_429_count} consecutive 429s: {e}"
+                        ) from e
 
-                # Open circuit breaker outside the lock to avoid deadlock
-                # (_open_circuit acquires the same lock)
-                if should_open:
-                    await self._open_circuit()
+                    # Retry with exponential backoff + jitter (if attempts remain)
+                    if attempt < max_retries:
+                        delay = min(base_delay * (2 ** attempt), 60.0)
+                        delay += random.uniform(0, delay * 0.25)
+                        logger.info(
+                            "Retrying YouTube API call for %s in %.1fs",
+                            description,
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    # All retries exhausted
                     raise YouTubeRateLimitedError(
-                        f"YouTube API rate limited — circuit breaker opened "
-                        f"after {self._consecutive_429_count} consecutive 429s: {e}"
+                        f"YouTube API rate limited after {max_retries + 1} "
+                        f"attempts for {description}: {e}"
                     ) from e
 
-                # Retry with exponential backoff + jitter (if attempts remain)
-                if attempt < max_retries:
-                    delay = min(base_delay * (2 ** attempt), 60.0)
+                if _is_transient_connection_error(e) and attempt < max_retries:
+                    # SSL/connection errors from rotating proxy — retry with
+                    # backoff. These are proxy-level, not YouTube rate limiting,
+                    # so the circuit breaker is NOT tripped.
+                    delay = min(base_delay * (2 ** attempt), 30.0)
                     delay += random.uniform(0, delay * 0.25)
                     logger.info(
-                        "Retrying YouTube API call for %s in %.1fs",
+                        "YouTube API transient connection error for %s, "
+                        "attempt %d/%d, retrying in %.1fs: %s",
                         description,
+                        attempt + 1,
+                        max_retries + 1,
                         delay,
+                        e,
                     )
                     await asyncio.sleep(delay)
                     continue
 
-                # All retries exhausted
-                raise YouTubeRateLimitedError(
-                    f"YouTube API rate limited after {max_retries + 1} "
-                    f"attempts for {description}: {e}"
-                ) from e
+                # Non-retriable error — propagate immediately
+                raise
 
         # Should not reach here, but safety net
         raise YouTubeTranscriptError(
@@ -641,6 +700,8 @@ async def fetch_youtube_transcript(
             return transcript
     except Exception as e:
         logger.error(f"Direct fetch failed for {video_id}, trying list fallback: {e}")
+        # Brief delay to allow proxy IP rotation before list fallback
+        await asyncio.sleep(2.0)
 
     # Phase 2: List available transcripts and pick the best one
     try:
