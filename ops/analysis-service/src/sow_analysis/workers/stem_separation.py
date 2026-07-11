@@ -131,9 +131,7 @@ async def _run_mvsep_stage_with_retries(
                     jitter=OTHER_ERROR_BACKOFF_JITTER,
                 )
                 backoff_label = "error"
-            logger.warning(
-                f"MVSEP {stage_name} attempt {attempt} failed ({backoff_label}): {e}"
-            )
+            logger.warning(f"MVSEP {stage_name} attempt {attempt} failed ({backoff_label}): {e}")
             if attempt >= max_attempts:
                 logger.error(f"MVSEP {stage_name} exhausted all {max_attempts} retries")
                 break
@@ -250,9 +248,7 @@ async def _separate_with_mvsep_fallback(
             try:
                 await stage_updater(stage, progress)
             except Exception as exc:
-                logger.error(
-                    "stage_updater raised during '%s' (continuing): %s", stage, exc
-                )
+                logger.error("stage_updater raised during '%s' (continuing): %s", stage, exc)
         else:
             _set_job_stage(job, stage)
 
@@ -313,13 +309,14 @@ async def _separate_with_mvsep_fallback(
 
     def _stage2_time_remaining() -> float:
         # Combined: must respect both the outer total cap and Stage 2's dedicated budget
-        total_remaining = (
-            settings.SOW_MVSEP_TOTAL_TIMEOUT
-            - (time.monotonic() - total_start - total_wait_seconds[0])
+        total_remaining = settings.SOW_MVSEP_TOTAL_TIMEOUT - (
+            time.monotonic() - total_start - total_wait_seconds[0]
         )
         if stage2_start is None:
             return total_remaining
-        stage2_remaining = settings.SOW_MVSEP_STAGE2_TIMEOUT - (time.monotonic() - stage2_start - stage2_wait_seconds[0])
+        stage2_remaining = settings.SOW_MVSEP_STAGE2_TIMEOUT - (
+            time.monotonic() - stage2_start - stage2_wait_seconds[0]
+        )
         return min(total_remaining, stage2_remaining)
 
     # Helper to update job stage
@@ -331,9 +328,7 @@ async def _separate_with_mvsep_fallback(
     stage1_dir = output_dir / "mvsep_stage1"
 
     async def _stage1_fn():
-        return await mvsep_client.separate_vocals(
-            input_path, stage1_dir, stage_callback
-        )
+        return await mvsep_client.separate_vocals(input_path, stage1_dir, stage_callback)
 
     # Point 2: Stage 1 with quota-wait retry loop
     stage1_result: Optional[tuple] = None
@@ -383,9 +378,7 @@ async def _separate_with_mvsep_fallback(
     stage2_start = time.monotonic()
 
     async def _stage2_fn():
-        return await mvsep_client.remove_reverb(
-            vocals, stage2_dir, stage_callback
-        )
+        return await mvsep_client.remove_reverb(vocals, stage2_dir, stage_callback)
 
     # Point 3: Stage 2 with quota-wait retry loop
     stage2_result: Optional[tuple] = None
@@ -508,7 +501,11 @@ async def process_stem_separation(
     cache_complete = False
     if not request.options.force:
         if stage2_enabled:
-            cache_complete = cache_vocals_dry is not None and cache_vocals is not None and cache_instrumental is not None
+            cache_complete = (
+                cache_vocals_dry is not None
+                and cache_vocals is not None
+                and cache_instrumental is not None
+            )
         else:
             cache_complete = cache_vocals is not None and cache_instrumental is not None
 
@@ -519,9 +516,13 @@ async def process_stem_separation(
 
         # Upload cached files to R2
         # Return order: (vocals_dry_url, vocals_url, instrumental_url)
-        vocals_dry_upload = cache_vocals_dry if cache_vocals_dry and cache_vocals_dry.exists() else None
+        vocals_dry_upload = (
+            cache_vocals_dry if cache_vocals_dry and cache_vocals_dry.exists() else None
+        )
         vocals_upload = cache_vocals if cache_vocals and cache_vocals.exists() else None
-        instrumental_upload = cache_instrumental if cache_instrumental and cache_instrumental.exists() else None
+        instrumental_upload = (
+            cache_instrumental if cache_instrumental and cache_instrumental.exists() else None
+        )
 
         vocals_dry_r2_url, vocals_r2_url, instrumental_r2_url = await r2_client.upload_clean_stems(
             hash_prefix,
@@ -565,7 +566,11 @@ async def process_stem_separation(
                 vocals_path,
                 instrumental_path,
             ) = await _separate_with_mvsep_fallback(
-                audio_path, stage_output_dir, job, mvsep_client, separator_wrapper,
+                audio_path,
+                stage_output_dir,
+                job,
+                mvsep_client,
+                separator_wrapper,
                 local_model_semaphore=local_model_semaphore,
                 stage_updater=stage_updater,
                 mvsep_quota_waiter=mvsep_quota_waiter,

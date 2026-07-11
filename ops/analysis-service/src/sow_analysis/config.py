@@ -154,9 +154,9 @@ class Settings(BaseSettings):
     # Timeouts & limits
     SOW_MVSEP_HTTP_TIMEOUT: int = 60
     SOW_MVSEP_STAGE_TIMEOUT: int = 300
-    SOW_MVSEP_STAGE2_TIMEOUT: int = 900       # Dedicated budget for Stage 2 + retries
-    SOW_MVSEP_TOTAL_TIMEOUT: int = 1800       # Outer cap: Stage 1 + Stage 2 combined
-    SOW_MVSEP_MAX_CONCURRENT: int = 3         # Max concurrent MVSEP API operations
+    SOW_MVSEP_STAGE2_TIMEOUT: int = 900  # Dedicated budget for Stage 2 + retries
+    SOW_MVSEP_TOTAL_TIMEOUT: int = 1800  # Outer cap: Stage 1 + Stage 2 combined
+    SOW_MVSEP_MAX_CONCURRENT: int = 3  # Max concurrent MVSEP API operations
 
     @field_validator(
         "SOW_MVSEP_STAGE1_ADD_OPT2",
@@ -231,7 +231,9 @@ class Settings(BaseSettings):
     def _validate_youtube_transcript_concurrent(cls, v: int) -> int:
         """Ensure YouTube transcript concurrency is at least 0 (0 = disabled)."""
         if v < 0:
-            raise ValueError("SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT must be >= 0 (0 disables rate limiting)")
+            raise ValueError(
+                "SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT must be >= 0 (0 disables rate limiting)"
+            )
         return v
 
 

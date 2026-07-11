@@ -202,17 +202,13 @@ class Qwen3AsrClient:
             duration_seconds = self._probe_duration_seconds(audio_path)
         return size_mb, duration_seconds
 
-    def _choose_mode_from_metadata(
-        self, size_mb: float, duration_seconds: Optional[float]
-    ) -> str:
+    def _choose_mode_from_metadata(self, size_mb: float, duration_seconds: Optional[float]) -> str:
         if size_mb > DIRECT_FLASH_MAX_SIZE_MB:
             logger.info("Routing Qwen3 ASR to filetrans: audio size %.1fMB", size_mb)
             return "filetrans"
 
         if duration_seconds is not None and duration_seconds > DIRECT_FLASH_MAX_DURATION_SECONDS:
-            logger.info(
-                "Routing Qwen3 ASR to filetrans: audio duration %.1fs", duration_seconds
-            )
+            logger.info("Routing Qwen3 ASR to filetrans: audio duration %.1fs", duration_seconds)
             return "filetrans"
 
         logger.info(
