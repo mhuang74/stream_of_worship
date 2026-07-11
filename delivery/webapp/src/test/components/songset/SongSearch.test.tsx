@@ -32,7 +32,7 @@ describe("SongSearch", () => {
     it("renders keyword help text", () => {
       renderSearch();
       expect(screen.getByTestId("keyword-help-text")).toBeInTheDocument();
-      expect(screen.getByTestId("keyword-help-text").textContent).toContain("奇異恩典");
+      expect(screen.getByTestId("keyword-help-text").textContent).toContain("歡喜");
     });
 
     it("renders search icon", () => {
