@@ -167,6 +167,18 @@ class MvsepClient:
             self._quota_reset_utc = today_start
             logger.info("MVSEP daily quota reset for new UTC day")
 
+    @property
+    def is_quota_exhausted(self) -> bool:
+        """True if daily quota is exhausted (will reset at UTC midnight).
+
+        Distinguishes from ``_disabled`` (permanent). Callers use:
+        - ``not is_available AND is_quota_exhausted`` -> wait (daily, resets)
+        - ``not is_available AND not is_quota_exhausted`` -> fail (permanent)
+        """
+        if self._quota_exhausted:
+            self._check_quota_reset()
+        return self._quota_exhausted
+
     async def _submit_job(
         self,
         audio_path: Path,

@@ -34,6 +34,11 @@ try:
 except ImportError:
     ForcedAlignerWrapper = None
 
+try:
+    from .services.qwen3_asr_client import Qwen3AsrClient
+except ImportError:
+    Qwen3AsrClient = None
+
 # Global job queue instance
 job_queue: JobQueue
 
@@ -45,6 +50,13 @@ mvsep_client: "MvsepClient | None" = None
 
 # Global forced aligner wrapper instance
 forced_aligner_wrapper: "ForcedAlignerWrapper | None" = None
+
+# Global Qwen3 ASR client instance
+qwen3_client: "Qwen3AsrClient | None" = None
+
+# Global QuotaWaiter instances
+mvsep_quota_waiter = None
+qwen3_quota_waiter = None
 
 
 @asynccontextmanager
@@ -58,6 +70,7 @@ async def lifespan(app: FastAPI):
         None
     """
     global job_queue, separator_wrapper, mvsep_client, forced_aligner_wrapper
+    global qwen3_client, mvsep_quota_waiter, qwen3_quota_waiter
 
     # Startup
     job_queue = JobQueue(
@@ -82,6 +95,53 @@ async def lifespan(app: FastAPI):
             logger.info("MVSEP not configured (using local audio-separator only)")
     else:
         logger.warning("MvsepClient not available")
+
+    # Create Qwen3 ASR client singleton if configured
+    qwen3_client = None
+    if Qwen3AsrClient is not None:
+        if settings.SOW_DASHSCOPE_API_KEY:
+            qwen3_client = Qwen3AsrClient(
+                api_key=settings.SOW_DASHSCOPE_API_KEY,
+                region=settings.SOW_DASHSCOPE_ASR_REGION,
+                flash_model=settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
+                filetrans_model=settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL,
+            )
+            job_queue.set_qwen3_client(qwen3_client)
+            logger.info("Qwen3 ASR client singleton initialized")
+        else:
+            logger.info("Qwen3 ASR not configured (SOW_DASHSCOPE_API_KEY not set)")
+    else:
+        logger.warning("Qwen3AsrClient not available")
+
+    # Create QuotaWaiters (for free-only patient mode)
+    mvsep_quota_waiter = None
+    qwen3_quota_waiter = None
+    if mvsep_client is not None:
+        from .workers.quota_waiter import QuotaWaiter
+        mvsep_quota_waiter = QuotaWaiter(
+            "mvsep", mvsep_client.is_available, settings.SOW_QUOTA_POLL_INTERVAL_SECONDS
+        )
+    if qwen3_client is not None:
+        from .workers.quota_waiter import QuotaWaiter
+        qwen3_quota_waiter = QuotaWaiter(
+            "qwen3", qwen3_client.is_available, settings.SOW_QUOTA_POLL_INTERVAL_SECONDS
+        )
+    job_queue.set_quota_waiters(mvsep=mvsep_quota_waiter, qwen3=qwen3_quota_waiter)
+
+    # Startup validation: warn about missing keys in free-only mode
+    if settings.SOW_FREE_ONLY_MODE:
+        if not settings.SOW_DASHSCOPE_API_KEY:
+            logger.warning(
+                "SOW_FREE_ONLY_MODE is enabled but SOW_DASHSCOPE_API_KEY is not set. "
+                "LRC jobs with use_qwen3_asr=True will FAIL instead of waiting. "
+                "Set SOW_DASHSCOPE_API_KEY to use free-only mode."
+            )
+        if not settings.SOW_MVSEP_API_KEY:
+            logger.warning(
+                "SOW_FREE_ONLY_MODE is enabled but SOW_MVSEP_API_KEY is not set. "
+                "Stem separation jobs will FAIL (permanently unavailable). "
+                "Set SOW_MVSEP_API_KEY to use free-only mode."
+            )
 
     # Create separator wrapper (lazy init — models validated on first use, not at startup)
     if AudioSeparatorWrapper is not None:
@@ -140,6 +200,8 @@ async def lifespan(app: FastAPI):
         ("MVSEP", "stage1_sep_type", str(settings.SOW_MVSEP_STAGE1_SEP_TYPE)),
         ("MVSEP", "stage2_sep_type", str(settings.SOW_MVSEP_STAGE2_SEP_TYPE)),
         ("MVSEP", "max_concurrent", str(settings.SOW_MVSEP_MAX_CONCURRENT)),
+        ("Free-Only Mode", "enabled", str(settings.SOW_FREE_ONLY_MODE)),
+        ("Free-Only Mode", "poll_interval_seconds", str(settings.SOW_QUOTA_POLL_INTERVAL_SECONDS)),
         ("YouTube", "proxy", settings.SOW_YOUTUBE_PROXY or "(not set)"),
         ("YouTube", "proxy_retries", str(settings.SOW_YOUTUBE_PROXY_RETRIES)),
         ("R2", "bucket", settings.SOW_R2_BUCKET),
@@ -184,6 +246,14 @@ async def lifespan(app: FastAPI):
     if mvsep_client is not None:
         await mvsep_client.aclose()
         logger.info("MVSEP client closed")
+
+    # Stop QuotaWaiters
+    if mvsep_quota_waiter is not None:
+        await mvsep_quota_waiter.stop()
+        logger.info("MVSEP quota waiter stopped")
+    if qwen3_quota_waiter is not None:
+        await qwen3_quota_waiter.stop()
+        logger.info("Qwen3 quota waiter stopped")
 
     task.cancel()
     try:

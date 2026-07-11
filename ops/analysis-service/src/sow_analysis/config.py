@@ -128,6 +128,19 @@ class Settings(BaseSettings):
     SOW_MVSEP_API_KEY: str = ""
     SOW_MVSEP_ENABLED: bool = True
 
+    # Free-Only Patient Mode
+    SOW_FREE_ONLY_MODE: bool = False
+    # When enabled, LRC and stem-separation jobs wait for free-tier API quota
+    # to reset (UTC daily) instead of falling back to local models (Whisper,
+    # audio-separator) or failing. Scoped to LRC generation (Qwen3 ASR) and
+    # stem separation (MVSEP) only. Other job types unaffected.
+    SOW_QUOTA_POLL_INTERVAL_SECONDS: int = 3600
+    # How often the shared QuotaWaiter's poller checks whether free-tier API
+    # quota has reset. Both MVSEP and DashScope. Lower values = faster detection
+    # after UTC midnight at cost of more checks. Since wait() also self-checks
+    # every 1s, this primarily controls how aggressively the poller
+    # re-evaluates; it is an optimization, not a hard dependency.
+
     # Stage 1 (Vocal Separation)
     SOW_MVSEP_STAGE1_SEP_TYPE: int = 48
     SOW_MVSEP_STAGE1_ADD_OPT1: int = 11

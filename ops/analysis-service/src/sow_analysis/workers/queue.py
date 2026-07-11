@@ -98,10 +98,11 @@ try:
         resolve_lrc_language,
         warn_if_lrc_language_script_mismatch,
     )
-    from ..services.qwen3_asr_client import Qwen3AsrError
+    from ..services.qwen3_asr_client import Qwen3AsrError, Qwen3AsrQuotaExhaustedError
 except ImportError:
     LRCWorkerError = Exception
     Qwen3AsrError = Exception
+    Qwen3AsrQuotaExhaustedError = Exception
     build_qwen3_asr_cache_key = None
     build_whisper_transcription_cache_key = None
     generate_lrc = None
@@ -159,6 +160,9 @@ class JobQueue:
         self._separator_wrapper: Optional[Any] = None
         self._mvsep_client: Optional[Any] = None
         self._forced_aligner_wrapper: Optional[Any] = None
+        self._qwen3_client: Any = None
+        self._mvsep_quota_waiter: Optional[Any] = None
+        self._qwen3_quota_waiter: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         # Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
@@ -214,6 +218,24 @@ class JobQueue:
         """
         self._forced_aligner_wrapper = wrapper
 
+    def set_quota_waiters(self, mvsep: Any = None, qwen3: Any = None) -> None:
+        """Set QuotaWaiter instances for free-only patient mode.
+
+        Args:
+            mvsep: QuotaWaiter for MVSEP quota (or None)
+            qwen3: QuotaWaiter for DashScope Qwen3 ASR quota (or None)
+        """
+        self._mvsep_quota_waiter = mvsep
+        self._qwen3_quota_waiter = qwen3
+
+    def set_qwen3_client(self, qwen3_client: Any) -> None:
+        """Set the Qwen3 ASR client singleton for LRC jobs.
+
+        Args:
+            qwen3_client: Qwen3AsrClient instance
+        """
+        self._qwen3_client = qwen3_client
+
     async def initialize(self) -> None:
         """Initialize persistent store and recover interrupted jobs."""
         await self.job_store.initialize()
@@ -227,16 +249,17 @@ class JobQueue:
         interrupted = await self.job_store.get_interrupted_jobs()
         for job in interrupted:
             job.status = JobStatus.QUEUED
-            job.progress = 0.0
+            # Preserve progress from DB — _update_stage() persists it during quota waits.
+            # job.progress is already set from the DB row deserialization; do NOT reset to 0.0.
             job.stage = "requeued"
             job.updated_at = datetime.now(timezone.utc)
 
             self._jobs[job.id] = job
             await self._queue.put(job.id)
-            # Update DB to reflect requeued status
+            # Update DB to reflect requeued status (status + stage only, preserve progress)
             try:
                 await self.job_store.update_job(
-                    job.id, status="queued", progress=0.0, stage="requeued"
+                    job.id, status="queued", stage="requeued"
                 )
             except Exception as e:
                 logger.error(f"Failed to update job {job.id} in DB during recovery: {e}")
@@ -1140,62 +1163,101 @@ class JobQueue:
                         logger.info("LRC job %s cancelled; skipping transcription", job.id)
                         return
 
-                    if (
-                        request.options.use_qwen3_asr
-                        and settings.SOW_DASHSCOPE_API_KEY
-                        and generate_lrc_from_qwen3_asr is not None
-                        and build_qwen3_asr_cache_key is not None
-                    ):
-                        try:
-                            from .lrc import _build_qwen3_context
+                    if request.options.use_qwen3_asr:
+                        # Guard: free-only mode requires DashScope to be configured
+                        if settings.SOW_FREE_ONLY_MODE and not settings.SOW_DASHSCOPE_API_KEY:
+                            raise LRCWorkerError(
+                                "SOW_FREE_ONLY_MODE is enabled but DashScope Qwen3 ASR "
+                                "is not configured. Set SOW_DASHSCOPE_API_KEY to use "
+                                "free-only mode, or disable use_qwen3_asr to skip "
+                                "ASR-based LRC generation."
+                            )
 
-                            context_limit = min(
-                                request.options.qwen3_asr_context_max_chars,
-                                settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
-                            )
-                            context = _build_qwen3_context(
-                                request.lyrics_text, context_limit, resolved_language
-                            )
-                            qwen_cache_key = build_qwen3_asr_cache_key(
-                                request.content_hash,
-                                request.lyrics_text,
-                                resolved_audio.stem_kind,
-                                settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
-                                settings.SOW_DASHSCOPE_ASR_REGION,
-                                resolved_language,
-                                context_limit,
-                                context,
-                            )
-                            if (
-                                not request.options.force_qwen3_asr
-                                and self.cache_manager.get_qwen3_asr_transcription(qwen_cache_key)
-                            ):
-                                await self._update_stage(job, "qwen3_asr_cached", 0.4)
-                            else:
-                                await self._update_stage(job, "qwen3_asr_transcribing", 0.4)
-                            lrc_path, line_count, _qwen_phrases = await generate_lrc_from_qwen3_asr(
-                                resolved_audio.path,
-                                request.lyrics_text,
-                                request.options,
-                                output_path=lrc_path,
-                                cache_key=qwen_cache_key,
-                                cache_manager=self.cache_manager,
-                                dashscope_semaphore=self._dashscope_asr_semaphore,
-                                resolved_language=resolved_language,
-                            )
-                            lrc_source = "qwen3_asr"
-                            await self._update_stage(job, "qwen3_asr_done", 0.7)
-                        except Qwen3AsrError as e:
-                            logger.warning("Qwen3 ASR failed; falling back to LLM-based ASR: %s", e)
-                            await self._update_stage(job, "falling_back_to_whisper", 0.45)
-                        except Exception as e:
-                            logger.warning(
-                                "Qwen3 ASR unexpected failure; falling back to LLM-based ASR: %s",
-                                e,
-                            )
-                            await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                        lrc_source = None  # Initialize before retry loop
+                        while True:
+                            try:
+                                from .lrc import _build_qwen3_context
+
+                                context_limit = min(
+                                    request.options.qwen3_asr_context_max_chars,
+                                    settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
+                                )
+                                context = _build_qwen3_context(
+                                    request.lyrics_text, context_limit, resolved_language
+                                )
+                                qwen_cache_key = build_qwen3_asr_cache_key(
+                                    request.content_hash,
+                                    request.lyrics_text,
+                                    resolved_audio.stem_kind,
+                                    settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
+                                    settings.SOW_DASHSCOPE_ASR_REGION,
+                                    resolved_language,
+                                    context_limit,
+                                    context,
+                                )
+                                if (
+                                    not request.options.force_qwen3_asr
+                                    and self.cache_manager.get_qwen3_asr_transcription(qwen_cache_key)
+                                ):
+                                    await self._update_stage(job, "qwen3_asr_cached", 0.4)
+                                else:
+                                    await self._update_stage(job, "qwen3_asr_transcribing", 0.4)
+                                lrc_path, line_count, _qwen_phrases = await generate_lrc_from_qwen3_asr(
+                                    resolved_audio.path,
+                                    request.lyrics_text,
+                                    request.options,
+                                    output_path=lrc_path,
+                                    cache_key=qwen_cache_key,
+                                    cache_manager=self.cache_manager,
+                                    dashscope_semaphore=self._dashscope_asr_semaphore,
+                                    resolved_language=resolved_language,
+                                    qwen3_client=self._qwen3_client,
+                                )
+                                lrc_source = "qwen3_asr"
+                                await self._update_stage(job, "qwen3_asr_done", 0.7)
+                                break  # success
+                            except Qwen3AsrQuotaExhaustedError:
+                                if settings.SOW_FREE_ONLY_MODE:
+                                    await self._qwen3_quota_waiter.mark_exhausted()
+                                    await self._update_stage(
+                                        job, "waiting_for_qwen3_asr_quota_reset", 0.4
+                                    )
+                                    # Loop with 60s heartbeat
+                                    while True:
+                                        available = await self._qwen3_quota_waiter.wait(
+                                            job,
+                                            lambda: job.status == JobStatus.CANCELLED,
+                                            max_wait_seconds=60,
+                                        )
+                                        if available:
+                                            break
+                                        if job.status == JobStatus.CANCELLED:
+                                            return  # cancelled
+                                        # Heartbeat: refresh updated_at
+                                        await self._update_stage(
+                                            job, "waiting_for_qwen3_asr_quota_reset", 0.4
+                                        )
+                                    await self._update_stage(job, "qwen3_asr_transcribing", 0.4)
+                                    continue  # retry Qwen3 ASR
+                                else:
+                                    # Existing: fall back to Whisper
+                                    await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                                    break
+                            except Qwen3AsrError as e:
+                                # Existing: fall back to Whisper (unchanged)
+                                logger.warning("Qwen3 ASR failed; falling back to LLM-based ASR: %s", e)
+                                await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                                break
+                            except Exception as e:
+                                # Existing: fall back to Whisper (unchanged)
+                                logger.warning(
+                                    "Qwen3 ASR unexpected failure; falling back to LLM-based ASR: %s",
+                                    e,
+                                )
+                                await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                                break
                     else:
-                        logger.info("Qwen3 ASR disabled or DashScope not configured; using Whisper")
+                        logger.info("Qwen3 ASR disabled (use_qwen3_asr=False); using Whisper")
                         await self._update_stage(job, "falling_back_to_whisper", 0.35)
 
                     # Check for cached Whisper transcription with language/prompt-aware key.
@@ -1710,6 +1772,8 @@ class JobQueue:
                 cache_manager=self.cache_manager,
                 mvsep_client=self._mvsep_client,
                 local_model_semaphore=self._local_model_semaphore,
+                stage_updater=lambda s, p=None: self._update_stage(job, s, p),
+                mvsep_quota_waiter=self._mvsep_quota_waiter,
             )
 
             # Persist completion to database
