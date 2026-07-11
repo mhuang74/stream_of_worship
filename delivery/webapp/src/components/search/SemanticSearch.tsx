@@ -289,7 +289,7 @@ export function useSemanticSearch({
         />
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
-            Tip: describe by theme or feeling — e.g. &lsquo;在神寶座前&rsquo;, &lsquo;standing before God's throne&rsquo; · Press Enter to search
+            Tip: describe by theme or feeling — e.g. &lsquo;在神寶座前&rsquo;, &lsquo;standing before God&apos;s throne&rsquo; · Press Enter to search
           </p>
           {showSearchButton && (
             <Button
