@@ -57,6 +57,13 @@ class YouTubeTranscriptError(LRCWorkerError):
     pass
 
 
+class YouTubeRateLimitedError(YouTubeTranscriptError):
+    """Raised when YouTube transcript fetch fails due to rate limiting (429)
+    or an open circuit breaker. Retryable — caller may wait and retry."""
+
+    pass
+
+
 def _is_rate_limited_error(e: Exception) -> bool:
     """Check if an exception is caused by YouTube rate limiting (HTTP 429).
 
@@ -110,6 +117,7 @@ class _YouTubeRateLimiter:
     def __init__(self):
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._interval_lock: Optional[asyncio.Lock] = None
+        self._state_lock: Optional[asyncio.Lock] = None
         self._last_request_time: float = 0.0
         self._consecutive_429_count: int = 0
         self._circuit_open_until: float = 0.0  # monotonic time
@@ -122,28 +130,55 @@ class _YouTubeRateLimiter:
             if max_concurrent > 0:
                 self._semaphore = asyncio.Semaphore(max_concurrent)
             self._interval_lock = asyncio.Lock()
+            self._state_lock = asyncio.Lock()
 
-    def _is_circuit_open(self) -> bool:
-        """Check if the circuit breaker is currently open."""
-        return time.monotonic() < self._circuit_open_until
+    async def _is_circuit_open(self) -> bool:
+        """Check if the circuit breaker is currently open.
 
-    def _open_circuit(self) -> None:
+        If the cooldown has expired, reset the 429 count so the breaker
+        can recover (the next fetch probes YouTube and resets fully on success).
+        """
+        if self._circuit_open_until == 0.0:
+            return False
+        if time.monotonic() >= self._circuit_open_until:
+            # Cooldown expired — reset so the next 429 doesn't instantly re-trip
+            async with self._state_lock:
+                # Double-check after acquiring lock
+                if time.monotonic() >= self._circuit_open_until:
+                    if self._consecutive_429_count > 0:
+                        logger.info(
+                            "YouTube transcript circuit breaker cooldown expired — "
+                            "resetting 429 count (was %d), next fetch will probe YouTube",
+                            self._consecutive_429_count,
+                        )
+                    self._consecutive_429_count = 0
+                    self._circuit_open_until = 0.0
+            return False
+        return True
+
+    async def _open_circuit(self) -> None:
         """Open the circuit breaker for the configured cooldown period."""
-        cooldown = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN
-        self._circuit_open_until = time.monotonic() + cooldown
-        logger.warning(
-            "YouTube transcript circuit breaker OPENED after %d consecutive 429s, "
-            "cooldown %ds — all YouTube transcript fetches will skip to fallback",
-            self._consecutive_429_count,
-            cooldown,
+        cooldown = (
+            settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE
+            if settings.SOW_FREE_ONLY_MODE
+            else settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN
         )
+        async with self._state_lock:
+            self._circuit_open_until = time.monotonic() + cooldown
+            logger.warning(
+                "YouTube transcript circuit breaker OPENED after %d consecutive 429s, "
+                "cooldown %ds — all YouTube transcript fetches will skip to fallback",
+                self._consecutive_429_count,
+                cooldown,
+            )
 
-    def _reset_circuit(self) -> None:
+    async def _reset_circuit(self) -> None:
         """Reset the circuit breaker on a successful request."""
-        if self._consecutive_429_count > 0:
-            self._consecutive_429_count = 0
-            self._circuit_open_until = 0.0
-            logger.info("YouTube transcript circuit breaker RESET after successful request")
+        async with self._state_lock:
+            if self._consecutive_429_count > 0:
+                self._consecutive_429_count = 0
+                self._circuit_open_until = 0.0
+                logger.info("YouTube transcript circuit breaker RESET after successful request")
 
     async def _enforce_min_interval(self) -> None:
         """Sleep if the last request was too recent (min-interval throttle).
@@ -154,7 +189,15 @@ class _YouTubeRateLimiter:
         async with self._interval_lock:
             now = time.monotonic()
             elapsed = now - self._last_request_time
-            min_interval = settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS
+            min_interval = (
+                settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE
+                if settings.SOW_FREE_ONLY_MODE
+                else settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS
+            )
+            # Add jitter to prevent thundering herd when multiple jobs wake from cooldown
+            if settings.SOW_FREE_ONLY_MODE:
+                jitter = min_interval * 0.25
+                min_interval = random.uniform(min_interval - jitter, min_interval + jitter)
             if elapsed < min_interval:
                 wait = min_interval - elapsed
                 logger.debug(
@@ -175,29 +218,37 @@ class _YouTubeRateLimiter:
             The result of fn().
 
         Raises:
-            YouTubeTranscriptError: If the circuit breaker is open, or if all
-                retries are exhausted on 429, or if fn() raises a non-429 error.
+            YouTubeRateLimitedError: If the circuit breaker is open, or if all
+                retries are exhausted on 429. These are retryable — the caller
+                may wait for cooldown and retry.
+            YouTubeTranscriptError: If fn() raises a non-429 error, or if the
+                rate limiter is exhausted for unexpected reasons.
         """
         self._ensure_initialized()
 
         # Layer 1: Circuit breaker check
-        if self._is_circuit_open():
+        if await self._is_circuit_open():
             remaining = self._circuit_open_until - time.monotonic()
-            raise YouTubeTranscriptError(
+            raise YouTubeRateLimitedError(
                 f"YouTube transcript circuit breaker is open "
                 f"(cooldown: {remaining:.0f}s remaining) — skipping {description}"
             )
 
         loop = asyncio.get_running_loop()
-        max_retries = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES
-        base_delay = settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY
-        threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD
+        if settings.SOW_FREE_ONLY_MODE:
+            threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD_FREE
+            max_retries = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES_FREE
+            base_delay = settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY_FREE
+        else:
+            threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD
+            max_retries = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES
+            base_delay = settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY
 
         for attempt in range(max_retries + 1):
             # Layer 2: Circuit breaker check (re-check each iteration)
-            if self._is_circuit_open():
+            if await self._is_circuit_open():
                 remaining = self._circuit_open_until - time.monotonic()
-                raise YouTubeTranscriptError(
+                raise YouTubeRateLimitedError(
                     f"YouTube transcript circuit breaker is open "
                     f"(cooldown: {remaining:.0f}s remaining) — skipping {description}"
                 )
@@ -215,7 +266,7 @@ class _YouTubeRateLimiter:
                     await self._enforce_min_interval()
                     result = await loop.run_in_executor(None, fn)
                 # Success — reset circuit breaker
-                self._reset_circuit()
+                await self._reset_circuit()
                 return result
             except Exception as e:
                 if not _is_rate_limited_error(e):
@@ -223,19 +274,22 @@ class _YouTubeRateLimiter:
                     raise
 
                 # Layer 4: 429 retry with backoff
-                self._consecutive_429_count += 1
-                logger.warning(
-                    "YouTube API rate limited (429), attempt %d/%d for %s: %s",
-                    attempt + 1,
-                    max_retries + 1,
-                    description,
-                    e,
-                )
+                async with self._state_lock:
+                    self._consecutive_429_count += 1
+                    logger.warning(
+                        "YouTube API rate limited (429), attempt %d/%d for %s: %s",
+                        attempt + 1,
+                        max_retries + 1,
+                        description,
+                        e,
+                    )
+                    should_open = self._consecutive_429_count >= threshold
 
-                # Check if circuit breaker should open
-                if self._consecutive_429_count >= threshold:
-                    self._open_circuit()
-                    raise YouTubeTranscriptError(
+                # Open circuit breaker outside the lock to avoid deadlock
+                # (_open_circuit acquires the same lock)
+                if should_open:
+                    await self._open_circuit()
+                    raise YouTubeRateLimitedError(
                         f"YouTube API rate limited — circuit breaker opened "
                         f"after {self._consecutive_429_count} consecutive 429s: {e}"
                     ) from e
@@ -253,7 +307,7 @@ class _YouTubeRateLimiter:
                     continue
 
                 # All retries exhausted
-                raise YouTubeTranscriptError(
+                raise YouTubeRateLimitedError(
                     f"YouTube API rate limited after {max_retries + 1} "
                     f"attempts for {description}: {e}"
                 ) from e
@@ -263,8 +317,50 @@ class _YouTubeRateLimiter:
             f"YouTube API rate limiter exhausted all retries for {description}"
         )
 
+    async def is_circuit_open(self) -> bool:
+        """Public accessor — also performs cooldown-expiry reset (see _is_circuit_open)."""
+        return await self._is_circuit_open()
+
+    def remaining_cooldown(self) -> float:
+        """Seconds remaining in the current cooldown (0.0 if closed)."""
+        if self._circuit_open_until == 0.0:
+            return 0.0
+        return max(0.0, self._circuit_open_until - time.monotonic())
+
 
 _rate_limiter = _YouTubeRateLimiter()
+
+
+async def wait_for_youtube_cooldown_if_open(
+    max_heartbeat_seconds: float = 60.0,
+    is_cancelled: Optional[Callable[[], bool]] = None,
+) -> bool:
+    """Block (async) until the YouTube circuit breaker closes, or until cancelled.
+
+    Sleeps in increments of ``max_heartbeat_seconds`` so the caller can emit
+    heartbeats (refresh job.updated_at) between sleeps and check cancellation.
+
+    Args:
+        max_heartbeat_seconds: Max seconds to sleep per iteration before
+            returning so the caller can heartbeat. Default 60s.
+        is_cancelled: Optional callable returning True if the job was cancelled;
+            checked between sleeps. If it returns True, this function returns
+            immediately with the breaker's current state.
+
+    Returns:
+        True when the breaker is closed (cooldown expired or was never open).
+        The caller should re-check cancellation before retrying.
+    """
+    while await _rate_limiter.is_circuit_open():
+        if is_cancelled is not None and is_cancelled():
+            return not await _rate_limiter.is_circuit_open()
+        remaining = _rate_limiter.remaining_cooldown()
+        # If breaker just closed, don't sleep an extra second
+        if remaining <= 0.0:
+            return True
+        sleep_for = min(max_heartbeat_seconds, max(remaining, 0.1))
+        await asyncio.sleep(sleep_for)
+    return True
 
 
 def extract_video_id(youtube_url: str) -> Optional[str]:

@@ -226,6 +226,33 @@ class Settings(BaseSettings):
     # During cooldown, YouTube transcript fetches are skipped.
     # After cooldown, the next fetch attempt is allowed (and resets the breaker if successful).
 
+    # ── Free-only-mode overrides (patient retry, no local ML fallback) ──
+    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD_FREE: int = 10
+    # Consecutive 429s before breaker opens in free-only mode (vs 5 default).
+    # Higher because free mode prefers waiting over falling back to local Whisper.
+
+    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE: int = 300
+    # Breaker cooldown in seconds in free-only mode (vs 120 default).
+    # Longer to let YouTube's IP-level rate-limit window pass.
+
+    SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES_FREE: int = 5
+    # Retry attempts per YouTube API call on 429 in free-only mode (vs 3 default).
+
+    SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY_FREE: float = 10.0
+    # Base backoff delay in seconds in free-only mode (vs 5.0 default).
+    # With base=10: 10s, 20s, 40s, 60s, 60s (capped).
+
+    SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE: float = 30.0
+    # Min seconds between YouTube API calls in free-only mode (vs 3.0 default).
+    # More conservative spacing to avoid triggering IP-level 429s.
+    # Actual interval includes ±25% jitter to prevent thundering herd.
+
+    SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES: int = 3
+    # Maximum number of breaker cooldown cycles a free-mode job will wait
+    # through before giving up and falling back to local ASR.
+    # Prevents infinite hangs if YouTube permanently blocks this IP.
+    # 3 cycles × 300s cooldown = ~15 minutes of patience per job.
+
     @field_validator("SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT")
     @classmethod
     def _validate_youtube_transcript_concurrent(cls, v: int) -> int:

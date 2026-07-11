@@ -868,7 +868,10 @@ async def try_youtube_transcript_lrc(
     Returns (path, line_count, []) on success, None on failure.
     Logs scraped lyrics and result regardless of outcome.
     """
-    from .youtube_transcript import YouTubeTranscriptError, youtube_transcript_to_lrc
+    from .youtube_transcript import (
+        YouTubeRateLimitedError,
+        youtube_transcript_to_lrc,
+    )
 
     logger.info("=" * 80)
     logger.info("SCRAPED LYRICS (Input)")
@@ -904,7 +907,9 @@ async def try_youtube_transcript_lrc(
                 logger.info(lrc_line.rstrip("\n"))
         logger.info("=" * 80)
         return output_path, line_count, []
-    except (YouTubeTranscriptError, Exception) as e:
+    except YouTubeRateLimitedError:
+        raise  # let queue.py decide: wait-and-retry (free) or fall back (non-free)
+    except Exception as e:  # incl. YouTubeTranscriptError("no transcript found")
         logger.warning("=" * 80)
         logger.warning("LRC GENERATION: YouTube transcript path FAILED")
         logger.warning(f"Reason: {e}")

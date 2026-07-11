@@ -1124,17 +1124,69 @@ class JobQueue:
                 youtube_lrc_result = None
                 if request.youtube_url:
                     from .lrc import try_youtube_transcript_lrc
-
-                    job.stage = "trying_youtube_transcript"
-                    job.progress = 0.2
-                    job.updated_at = datetime.now(timezone.utc)
-                    youtube_lrc_result = await try_youtube_transcript_lrc(
-                        request.youtube_url,
-                        request.lyrics_text,
-                        request.options,
-                        lrc_path,
-                        resolved_language,
+                    from .youtube_transcript import (
+                        YouTubeRateLimitedError,
+                        wait_for_youtube_cooldown_if_open,
                     )
+
+                    youtube_breaker_cycles_waited = 0
+                    while True:
+                        await self._update_stage(job, "trying_youtube_transcript", 0.2)
+                        try:
+                            youtube_lrc_result = await try_youtube_transcript_lrc(
+                                request.youtube_url,
+                                request.lyrics_text,
+                                request.options,
+                                lrc_path,
+                                resolved_language,
+                            )
+                            break  # success or permanent failure (None) → exit loop
+                        except YouTubeRateLimitedError as e:
+                            if not settings.SOW_FREE_ONLY_MODE:
+                                # Non-free: don't wait, fall through to Whisper/Qwen3 ASR
+                                youtube_lrc_result = None
+                                break
+                            # Free mode: check cycle cap before waiting
+                            if (
+                                youtube_breaker_cycles_waited
+                                >= settings.SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES
+                            ):
+                                logger.warning(
+                                    "YouTube transcript rate-limited for job %s: exceeded max "
+                                    "breaker cycles (%d) in free mode — giving up and falling back "
+                                    "to local ASR",
+                                    job.id,
+                                    settings.SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES,
+                                )
+                                youtube_lrc_result = None
+                                break
+                            # Free mode: wait for breaker cooldown with heartbeat, then retry
+                            await self._update_stage(job, "waiting_for_youtube_rate_limit", 0.2)
+                            logger.warning(
+                                "YouTube transcript rate-limited for job %s: %s — waiting for "
+                                "circuit-breaker cooldown in free-only mode (cycle %d/%d)",
+                                job.id,
+                                e,
+                                youtube_breaker_cycles_waited + 1,
+                                settings.SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES,
+                            )
+                            while True:
+                                closed = await wait_for_youtube_cooldown_if_open(
+                                    max_heartbeat_seconds=60.0,
+                                    is_cancelled=lambda: job.status == JobStatus.CANCELLED,
+                                )
+                                if job.status == JobStatus.CANCELLED:
+                                    return
+                                if closed:
+                                    break
+                                # Heartbeat: refresh updated_at
+                                await self._update_stage(
+                                    job, "waiting_for_youtube_rate_limit", 0.2
+                                )
+                            youtube_breaker_cycles_waited += 1
+                            # Breaker closed — retry YouTube transcript
+                            continue
+
                     if youtube_lrc_result:
                         lrc_path, line_count, whisper_phrases = youtube_lrc_result
                         lrc_source = "youtube_transcript"
