@@ -202,25 +202,16 @@ When a new johnvansickle release is available:
 
 ## Local Development
 
-### Install Dependencies
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install pytest pytest-mock pytest-asyncio
-```
-
 ### Run Tests
 
 ```bash
-PYTHONPATH=src pytest tests/ -v
+cd delivery/render-worker && uv run --extra dev pytest tests/ -v
 ```
 
 ### Run a Single Test File
 
 ```bash
-PYTHONPATH=src pytest tests/test_pipeline.py -v
+cd delivery/render-worker && uv run --extra dev pytest tests/test_pipeline.py -v
 ```
 
 ## Local Testing with Docker
