@@ -134,12 +134,10 @@ curl -X POST http://localhost:8000/api/v1/jobs/analyze \
 
 ```bash
 # From project root
-cd /home/mhuang/Development/stream_of_worship
+cd ops/analysis-service
 
 # Run analysis service tests
-PYTHONPATH=ops/analysis-service/src uv run --python 3.11 \
-  --extra app --extra test \
-  pytest ops/analysis-service/tests/ -v
+uv run --extra dev pytest tests/ -v
 ```
 
 ### Integration Tests (Inside Docker)

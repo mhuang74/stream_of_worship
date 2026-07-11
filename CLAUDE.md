@@ -37,16 +37,20 @@ cd ops/analysis-service && docker compose up -d
 **Run Tests:**
 ```bash
 # Admin CLI + shared DB helpers
-PYTHONPATH=ops/admin-cli/src uv run --project ops/admin-cli --python 3.11 --extra admin --extra test pytest ops/admin-cli/tests -v
+# (integration tests requiring Docker/testcontainers are excluded by default)
+uv run --project ops/admin-cli --python 3.11 --extra admin --extra test pytest -v
 
 # Lab app
-uv run --project lab/sow-app --extra test pytest lab/sow-app/tests -v
+uv run --project lab/sow-app --extra test pytest -v
 
 # Analysis service
-cd ops/analysis-service && PYTHONPATH=src pytest tests/ -v
+cd ops/analysis-service && uv run --extra dev pytest tests/ -v
 
 # Render worker
-cd delivery/render-worker && PYTHONPATH=src pytest tests/ -v
+cd delivery/render-worker && uv run --extra dev pytest tests/ -v
+
+# Legacy CLI/TUI
+uv run --project lab/legacy-cli-tui --extra test pytest -v
 
 # Android app
 cd delivery/android && ./gradlew testDebugUnitTest koverXmlReport
@@ -70,11 +74,11 @@ npx drizzle-kit migrate    # Run pending migrations
 **Render Worker Commands (delivery/render-worker/ directory):**
 ```bash
 # Run tests
-PYTHONPATH=src pytest tests/ -v
+cd delivery/render-worker && uv run --extra dev pytest tests/ -v
 
 # Run specific test files
-PYTHONPATH=src pytest tests/test_pipeline.py -v
-PYTHONPATH=src pytest tests/test_video_engine.py -v
+cd delivery/render-worker && uv run --extra dev pytest tests/test_pipeline.py -v
+cd delivery/render-worker && uv run --extra dev pytest tests/test_video_engine.py -v
 
 # Local development with Docker
 docker compose up --build
@@ -90,7 +94,7 @@ docker compose up --build
 
 ## Architecture & Structure
 
-The project consists of **seven architecturally separate components**:
+The project consists of **eight architecturally separate components**:
 
 ### 1. POC Scripts (Experimental)
 - **Location:** `lab/poc-scripts/` directory
@@ -104,18 +108,23 @@ The project consists of **seven architecturally separate components**:
 ### 4. Lab User App (Deprecated TUI)
 - **Location:** `lab/sow-app/` (Python package: `sow_lab_app`)
 
-### 5. Web App (Next.js Browser Application)
+### 5. Legacy CLI/TUI (Deprecated)
+- **Location:** `lab/legacy-cli-tui/` (Python package: `sow_legacy_cli_tui`)
+- **Stack:** Textual TUI, pydub, miniaudio, ffmpeg-python, Pillow
+- **Commands:** `uv run --project lab/legacy-cli-tui stream-of-worship --help`
+
+### 6. Web App (Next.js Browser Application)
 - **Location:** `delivery/webapp/` (Node.js/TypeScript, Next.js 16 App Router)
 - **Stack:** Drizzle ORM + Neon Postgres, Better Auth, Cloudflare R2, AWS SQS (render jobs enqueued to SQS, processed by Lambda worker)
 - **Commands:** `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build` (run from `delivery/webapp/` or via `pnpm --filter sow-webapp`)
 
-### 6. Android App (Native Mobile Client)
+### 7. Android App (Native Mobile Client)
 - **Location:** `delivery/android/` (Kotlin/Jetpack Compose Gradle project)
 - **Stack:** Jetpack Compose, Navigation, Retrofit/OkHttp, Better Auth cookies, Media3, Android DownloadManager, Kover, Robolectric
 - **Boundary:** Uses only the webapp JSON APIs. It does not connect directly to PostgreSQL, Cloudflare R2, or AWS SQS.
 - **Commands:** `./gradlew testDebugUnitTest`, `./gradlew koverXmlReport`, `./gradlew lintDebug`, `./gradlew assembleDebug`
 
-### 7. Render Worker (AWS Lambda)
+### 8. Render Worker (AWS Lambda)
 - **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Stack:** psycopg2, boto3, Pillow, FFmpeg, urllib3
 - **Commands:** See `delivery/render-worker/README.md`
@@ -124,6 +133,7 @@ The project consists of **seven architecturally separate components**:
 
 - **Admin CLI**: Lightweight catalog/audio management
 - **Lab User App**: Deprecated TUI for transitions, read-only from PostgreSQL/R2
+- **Legacy CLI/TUI**: Deprecated CLI/TUI, predecessor to sow-app
 - **Analysis Service**: Heavy ML (PyTorch, Demucs, allin1) in Docker
 - **Android App**: Native delivery client for auth, songsets, render submission/status, playback, sharing, settings, and offline downloads
 
