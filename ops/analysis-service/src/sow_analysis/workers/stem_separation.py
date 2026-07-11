@@ -242,6 +242,7 @@ async def _separate_with_mvsep_fallback(
     """
     total_start = time.monotonic()
     total_wait_seconds = [0.0]
+    stage2_wait_seconds = [0.0]
 
     async def _safe_stage_updater(stage: str, progress: Optional[float] = None) -> None:
         """Update stage via callback or in-memory, never raising."""
@@ -266,7 +267,10 @@ async def _separate_with_mvsep_fallback(
             available = await mvsep_quota_waiter.wait(
                 job, lambda: job.status == JobStatus.CANCELLED, max_wait_seconds=60
             )
-            total_wait_seconds[0] += time.monotonic() - wait_start
+            wait_duration = time.monotonic() - wait_start
+            total_wait_seconds[0] += wait_duration
+            if stage2_start is not None:
+                stage2_wait_seconds[0] += wait_duration
             if available:
                 return True
             if job.status == JobStatus.CANCELLED:
@@ -315,7 +319,7 @@ async def _separate_with_mvsep_fallback(
         )
         if stage2_start is None:
             return total_remaining
-        stage2_remaining = settings.SOW_MVSEP_STAGE2_TIMEOUT - (time.monotonic() - stage2_start)
+        stage2_remaining = settings.SOW_MVSEP_STAGE2_TIMEOUT - (time.monotonic() - stage2_start - stage2_wait_seconds[0])
         return min(total_remaining, stage2_remaining)
 
     # Helper to update job stage
