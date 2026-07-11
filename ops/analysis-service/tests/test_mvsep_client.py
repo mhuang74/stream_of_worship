@@ -33,7 +33,7 @@ class MockSettings:
     SOW_MVSEP_STAGE_TIMEOUT = 300
     SOW_MVSEP_STAGE2_TIMEOUT = 900
     SOW_MVSEP_TOTAL_TIMEOUT = 1800
-    SOW_MVSEP_MAX_CONCURRENT = 3
+    SOW_MVSEP_MAX_CONCURRENT = 1
 
     # YouTube Transcript Rate Limiting
     SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
@@ -95,7 +95,7 @@ def client(tmp_path):
         stage2_add_opt2=1,
         http_timeout=60,
         stage_timeout=300,
-        max_concurrent=3,
+        max_concurrent=1,
     )
     client._test_audio = test_audio
     return client
@@ -483,29 +483,23 @@ async def test_separate_vocals_handles_other_type(client, tmp_path, mock_respons
 
 
 @pytest.mark.asyncio
-async def test_separate_vocals_semaphore_allows_concurrency(client, tmp_path, mock_response):
-    """Test that concurrent separate_vocals calls are allowed up to max_concurrent=3."""
+async def test_separate_vocals_semaphore_serializes_calls(client, tmp_path, mock_response):
+    """With max_concurrent=1, concurrent separate_vocals calls are serialized."""
     import asyncio
 
     in_flight = 0
     max_in_flight = 0
-    enter_event = asyncio.Event()
 
     async def mock_submit_job(*args, **kwargs):
         nonlocal in_flight, max_in_flight
         in_flight += 1
         max_in_flight = max(max_in_flight, in_flight)
-        enter_event.set()  # Signal that at least one entered
         await asyncio.sleep(0.05)
         in_flight -= 1
         return "test_hash"
 
     async def mock_poll_job(job_hash):
-        return {
-            "success": True,
-            "status": "done",
-            "data": {"files": []},
-        }
+        return {"success": True, "status": "done", "data": {"files": []}}
 
     async def mock_download(file_entries, output_dir):
         return []
@@ -516,22 +510,21 @@ async def test_separate_vocals_semaphore_allows_concurrency(client, tmp_path, mo
     with patch.object(client, "_submit_job", side_effect=mock_submit_job):
         with patch.object(client, "_poll_job", side_effect=mock_poll_job):
             with patch.object(client, "_download_files", side_effect=mock_download):
-                # Launch 3 concurrent calls — all should enter concurrently
+                # Launch 3 concurrent calls — serialized, never more than 1 in flight
                 results = await asyncio.gather(
                     client.separate_vocals(client._test_audio, output_dir),
                     client.separate_vocals(client._test_audio, output_dir),
                     client.separate_vocals(client._test_audio, output_dir),
                 )
 
-    # All should succeed
     assert all(r == (None, None) for r in results)
-    # All 3 should have been in flight at the same time
-    assert max_in_flight == 3
+    # With max_concurrent=1, never more than 1 in flight
+    assert max_in_flight == 1
 
 
 @pytest.mark.asyncio
-async def test_separate_vocals_semaphore_blocks_4th(client, tmp_path, mock_response):
-    """Test that a 4th concurrent call blocks until one of the first 3 completes."""
+async def test_separate_vocals_semaphore_blocks_2nd(client, tmp_path, mock_response):
+    """With max_concurrent=1, a 2nd concurrent call blocks until the 1st completes."""
     import asyncio
 
     in_flight = 0
@@ -547,11 +540,7 @@ async def test_separate_vocals_semaphore_blocks_4th(client, tmp_path, mock_respo
         return "test_hash"
 
     async def mock_poll_job(job_hash):
-        return {
-            "success": True,
-            "status": "done",
-            "data": {"files": []},
-        }
+        return {"success": True, "status": "done", "data": {"files": []}}
 
     async def mock_download(file_entries, output_dir):
         return []
@@ -562,22 +551,59 @@ async def test_separate_vocals_semaphore_blocks_4th(client, tmp_path, mock_respo
     with patch.object(client, "_submit_job", side_effect=mock_submit_job):
         with patch.object(client, "_poll_job", side_effect=mock_poll_job):
             with patch.object(client, "_download_files", side_effect=mock_download):
-                # Launch 4 concurrent calls
+                # Launch 2 concurrent calls
                 tasks = [
                     asyncio.create_task(client.separate_vocals(client._test_audio, output_dir))
-                    for _ in range(4)
+                    for _ in range(2)
                 ]
-                # Give time for first 3 to enter (4th should block)
                 await asyncio.sleep(0.1)
-                # Only 3 should be in flight
-                assert max_in_flight == 3
-                # Release all
+                # Only 1 should be in flight; 2nd is blocked on semaphore
+                assert max_in_flight == 1
                 release.set()
                 results = await asyncio.gather(*tasks)
 
     assert all(r == (None, None) for r in results)
-    # Max in-flight never exceeded 3
-    assert max_in_flight == 3
+    assert max_in_flight == 1
+
+
+@pytest.mark.asyncio
+async def test_mvsep_semaphore_serializes_stage1_and_stage2(client, tmp_path, mock_response):
+    """Stage 1 and Stage 2 share the semaphore — they cannot run concurrently."""
+    import asyncio
+
+    in_flight = 0
+    max_in_flight = 0
+
+    async def mock_submit_job(*args, **kwargs):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+        return "test_hash"
+
+    async def mock_poll_job(job_hash):
+        return {"success": True, "status": "done", "data": {"files": []}}
+
+    async def mock_download(file_entries, output_dir):
+        return []
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    vocals_path = tmp_path / "vocals.flac"
+    vocals_path.write_bytes(b"fake vocals")
+
+    with patch.object(client, "_submit_job", side_effect=mock_submit_job):
+        with patch.object(client, "_poll_job", side_effect=mock_poll_job):
+            with patch.object(client, "_download_files", side_effect=mock_download):
+                # Launch Stage 1 and Stage 2 concurrently — should serialize
+                await asyncio.gather(
+                    client.separate_vocals(client._test_audio, output_dir),
+                    client.remove_reverb(vocals_path, output_dir),
+                )
+
+    assert max_in_flight == 1
 
 
 @pytest.mark.asyncio
