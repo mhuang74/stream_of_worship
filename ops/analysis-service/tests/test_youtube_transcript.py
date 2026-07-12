@@ -899,7 +899,7 @@ class TestYouTubeRateLimiter:
 
 
 class TestLLMCorrectRateLimitRetry:
-    """Tests for _llm_correct() 429 retry behavior."""
+    """Tests for _llm_correct() 429 and 5xx retry behavior."""
 
     @pytest.mark.asyncio
     async def test_llm_correct_retries_on_429(self):
@@ -949,6 +949,7 @@ class TestLLMCorrectRateLimitRetry:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0  # disable semaphore
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
@@ -958,6 +959,64 @@ class TestLLMCorrectRateLimitRetry:
 
         assert result == "[00:15.00] 我要看見"
         assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_llm_correct_retries_on_524_then_succeeds(self):
+        """Mock OpenAI client raises 524 on first call, succeeds on second."""
+        from unittest.mock import MagicMock, patch
+
+        from sow_analysis.workers.youtube_transcript import _llm_correct
+
+        class Fake524Error(Exception):
+            def __init__(self):
+                self.status_code = 524
+                super().__init__("Cloudflare timeout")
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "[00:15.00] 我要看見"
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise Fake524Error()
+            return mock_response
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = side_effect
+        mock_openai_class = MagicMock(return_value=mock_client)
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch("sow_analysis.workers.llm_rate_limit.settings") as mock_rl_settings,
+            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}),
+            patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+
+            result = await _llm_correct("test prompt", "test-model")
+
+        assert result == "[00:15.00] 我要看見"
+        assert call_count == 2
 
     @pytest.mark.asyncio
     async def test_llm_correct_429_exhausts_retries(self):
@@ -993,12 +1052,58 @@ class TestLLMCorrectRateLimitRetry:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 3
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
             mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
 
             with pytest.raises(YouTubeTranscriptError, match="rate-limit retries"):
+                await _llm_correct("test prompt", "test-model")
+
+        assert mock_client.chat.completions.create.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_llm_correct_524_exhausts_retries(self):
+        """Mock OpenAI client always raises 524 → YouTubeTranscriptError with 'transient-error retries'."""
+        from unittest.mock import MagicMock, patch
+
+        from sow_analysis.workers.youtube_transcript import _llm_correct
+
+        class Fake524Error(Exception):
+            def __init__(self):
+                self.status_code = 524
+                super().__init__("Cloudflare timeout")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = Fake524Error()
+        mock_openai_class = MagicMock(return_value=mock_client)
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch("sow_analysis.workers.llm_rate_limit.settings") as mock_rl_settings,
+            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}),
+            patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 3
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+
+            with pytest.raises(YouTubeTranscriptError, match="transient-error retries"):
                 await _llm_correct("test prompt", "test-model")
 
         assert mock_client.chat.completions.create.call_count == 3
@@ -1024,6 +1129,7 @@ class TestLLMCorrectRateLimitRetry:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
@@ -1084,6 +1190,7 @@ class TestLLMCorrectRateLimitRetry:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 30.0
