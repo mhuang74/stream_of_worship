@@ -16,6 +16,7 @@ import psycopg.errors
 from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
 from stream_of_worship.admin.db.schema import (
     ACTIVE_ROW_COUNT_QUERY,
+    RECORDING_COLUMNS_FOR_JOIN,
     RECORDING_COLUMNS_SELECT,
     RECORDING_COLUMN_COUNT,
     ROW_COUNT_QUERY,
@@ -800,8 +801,8 @@ class DatabaseClient:
         """
         cursor = self.connection.cursor()
 
-        query = """
-            SELECT r.*, s.title as song_title, s.album_name, s.album_series
+        query = f"""
+            SELECT {RECORDING_COLUMNS_FOR_JOIN}, s.title as song_title, s.album_name, s.album_series
             FROM recordings r
             LEFT JOIN songs s ON r.song_id = s.id
             WHERE 1=1
@@ -1552,8 +1553,8 @@ class DatabaseClient:
     def list_soft_deleted_recordings_with_counts(self, limit: Optional[int] = None) -> list[dict]:
         """List soft-deleted recordings with songset reference counts."""
         cursor = self.connection.cursor()
-        sql = """
-            SELECT r.*, COUNT(si.id) AS songset_reference_count
+        sql = f"""
+            SELECT {RECORDING_COLUMNS_FOR_JOIN}, COUNT(si.id) AS songset_reference_count
             FROM recordings r
             LEFT JOIN songset_items si ON si.recording_hash_prefix = r.hash_prefix
             WHERE r.deleted_at IS NOT NULL
