@@ -12,6 +12,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
+    # Logging
+    SOW_LOG_LEVEL: str = "INFO"
+    # Root log level for the service. Default INFO hides large content dumps
+    # (LLM prompts/responses, scraped/final lyrics, Whisper phrases).
+    # Set to DEBUG to surface them in console / docker logs for troubleshooting.
+
     # R2 Configuration
     SOW_R2_BUCKET: str = "sow-audio"
     SOW_R2_ENDPOINT_URL: str = ""
@@ -37,6 +43,15 @@ class Settings(BaseSettings):
     # SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS. Default is cgroup-aware on Linux.
     # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
     SOW_FAST_ANALYZE_MAX_CONCURRENT: int = 0
+
+    @field_validator("SOW_LOG_LEVEL")
+    @classmethod
+    def _validate_log_level(cls, v: str) -> str:
+        allowed = {"DEBUG", "INFO", "WARNING", "ERROR"}
+        upper = v.upper()
+        if upper not in allowed:
+            raise ValueError(f"SOW_LOG_LEVEL must be one of {allowed}, got: {v!r}")
+        return upper
 
     @field_validator("SOW_FAST_ANALYZE_MAX_CONCURRENT")
     @classmethod

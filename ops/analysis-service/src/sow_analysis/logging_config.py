@@ -10,6 +10,22 @@ from contextvars import ContextVar
 job_id_ctx: ContextVar[str | None] = ContextVar("job_id", default=None)
 
 
+class _JobStatusAccessFilter(logging.Filter):
+    """Drop uvicorn access-log records for GET /api/v1/jobs* (status + list polls)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        # uvicorn access record args: (host, method, path, http_version, status)
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True  # not a uvicorn access record; let it through
+        method = str(args[1]).upper()
+        path = str(args[2])
+        if method != "GET":
+            return True
+        # Match /api/v1/jobs and /api/v1/jobs/{id}; ignore query string
+        return not path.startswith("/api/v1/jobs")
+
+
 class JobIdFormatter(logging.Formatter):
     """Custom formatter that adds job_id prefix from contextvar.
 
@@ -71,6 +87,10 @@ def configure_logging(
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
+
+    # Filter out noisy job-status polling from uvicorn access logs.
+    # Always active (independent of SOW_LOG_LEVEL) — status polls are pure noise.
+    logging.getLogger("uvicorn.access").addFilter(_JobStatusAccessFilter())
 
     # Suppress external library logs if requested
     if suppress_external:

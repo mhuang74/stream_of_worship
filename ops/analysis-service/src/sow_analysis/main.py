@@ -8,12 +8,16 @@ from fastapi import FastAPI
 
 from .logging_config import configure_logging
 
-# Configure logging with job_id support
-configure_logging(level=logging.INFO, suppress_external=True)
-logger = logging.getLogger(__name__)
-
 from . import __version__
 from .config import settings
+
+# Configure logging with job_id support
+configure_logging(
+    level=getattr(logging, settings.SOW_LOG_LEVEL, logging.INFO),
+    suppress_external=True,
+)
+logger = logging.getLogger(__name__)
+
 from .routes import health, jobs
 from .routes.jobs import set_job_queue
 from .workers.queue import JobQueue
