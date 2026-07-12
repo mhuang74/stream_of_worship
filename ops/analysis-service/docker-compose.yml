@@ -12,6 +12,7 @@ x-common-env: &common-env
   SOW_VOCAL_SEPARATION_MODEL: ${SOW_VOCAL_SEPARATION_MODEL:-model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt}
   SOW_DEREVERB_MODEL: ${SOW_DEREVERB_MODEL:-UVR-De-Echo-Normal.pth}
   NATTEN_LOG_LEVEL: error
+  SOW_LOG_LEVEL: ${SOW_LOG_LEVEL:-INFO}
   # LLM Configuration for LRC generation
   SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
   SOW_LLM_BASE_URL: ${SOW_LLM_BASE_URL}

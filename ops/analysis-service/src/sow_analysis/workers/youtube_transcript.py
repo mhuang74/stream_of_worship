@@ -850,23 +850,23 @@ async def youtube_transcript_to_lrc(
     prompt = build_correction_prompt(transcript_text, lyrics_lines, language=language)
 
     # Log the prompt
-    logger.info("=" * 80)
-    logger.info("YOUTUBE TRANSCRIPT LLM PROMPT")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug("YOUTUBE TRANSCRIPT LLM PROMPT")
+    logger.debug("=" * 80)
     for line in prompt.split("\n"):
-        logger.info(line)
-    logger.info("=" * 80)
+        logger.debug(line)
+    logger.debug("=" * 80)
 
     # Step 4: LLM correction
     response_text = await _llm_correct(prompt, llm_model)
 
     # Log the response
-    logger.info("=" * 80)
-    logger.info("YOUTUBE TRANSCRIPT LLM RESPONSE")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug("YOUTUBE TRANSCRIPT LLM RESPONSE")
+    logger.debug("=" * 80)
     for line in response_text.split("\n"):
-        logger.info(line)
-    logger.info("=" * 80)
+        logger.debug(line)
+    logger.debug("=" * 80)
 
     # Step 5: Parse LRC response
     try:

@@ -276,14 +276,14 @@ async def _run_whisper_transcription(
 
     # Log transcribed phrases with timecodes
     logger.info(f"Transcribed {len(phrases)} phrases")
-    logger.info("=" * 80)
-    logger.info("WHISPER TRANSCRIBED PHRASES (with timecodes)")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug("WHISPER TRANSCRIBED PHRASES (with timecodes)")
+    logger.debug("=" * 80)
     for phrase in phrases:
         start_ts = _format_timestamp(phrase.start)
         end_ts = _format_timestamp(phrase.end)
-        logger.info(f"{start_ts} - {end_ts}  {phrase.text}")
-    logger.info("=" * 80)
+        logger.debug(f"{start_ts} - {end_ts}  {phrase.text}")
+    logger.debug("=" * 80)
 
     return phrases
 
@@ -605,12 +605,12 @@ async def _llm_align(
     prompt = prompt_builder(lyrics_text, whisper_phrases, language)
 
     # Log the full LLM prompt
-    logger.info("=" * 80)
-    logger.info(f"LLM PROMPT (sent to model: {effective_model})")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug(f"LLM PROMPT (sent to model: {effective_model})")
+    logger.debug("=" * 80)
     for line in prompt.split("\n"):
-        logger.info(line)
-    logger.info("=" * 80)
+        logger.debug(line)
+    logger.debug("=" * 80)
 
     def _call_llm():
         from openai import OpenAI
@@ -663,12 +663,12 @@ async def _llm_align(
             logger.info(f"LLM call completed in {attempt_elapsed:.2f}s")
 
             # Log the LLM response
-            logger.info("=" * 80)
-            logger.info(f"LLM RESPONSE (attempt {attempt + 1}/{max_retries})")
-            logger.info("=" * 80)
+            logger.debug("=" * 80)
+            logger.debug(f"LLM RESPONSE (attempt {attempt + 1}/{max_retries})")
+            logger.debug("=" * 80)
             for line in response_text.split("\n"):
-                logger.info(line)
-            logger.info("=" * 80)
+                logger.debug(line)
+            logger.debug("=" * 80)
 
             lines = _parse_llm_response(response_text)
 
@@ -873,12 +873,12 @@ async def try_youtube_transcript_lrc(
         youtube_transcript_to_lrc,
     )
 
-    logger.info("=" * 80)
-    logger.info("SCRAPED LYRICS (Input)")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug("SCRAPED LYRICS (Input)")
+    logger.debug("=" * 80)
     for line in lyrics_text.split("\n"):
-        logger.info(line)
-    logger.info("=" * 80)
+        logger.debug(line)
+    logger.debug("=" * 80)
 
     lrc_start = time.time()
 
@@ -899,13 +899,13 @@ async def try_youtube_transcript_lrc(
         logger.info("LRC GENERATION: YouTube transcript path SUCCEEDED")
         logger.info(f"Wrote {line_count} lines to {output_path} (total time: {total_elapsed:.2f}s)")
         logger.info("=" * 80)
-        logger.info("=" * 80)
-        logger.info("FINAL LRC FILE CONTENTS (via YouTube transcript)")
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("FINAL LRC FILE CONTENTS (via YouTube transcript)")
+        logger.debug("=" * 80)
         with open(output_path, "r", encoding="utf-8") as f:
             for lrc_line in f:
-                logger.info(lrc_line.rstrip("\n"))
-        logger.info("=" * 80)
+                logger.debug(lrc_line.rstrip("\n"))
+        logger.debug("=" * 80)
         return output_path, line_count, []
     except YouTubeRateLimitedError:
         raise  # let queue.py decide: wait-and-retry (free) or fall back (non-free)
@@ -972,15 +972,15 @@ async def generate_lrc(
 
     # Log scraped lyrics and announce Whisper path when YouTube is not being attempted
     if not youtube_url:
-        logger.info("=" * 80)
-        logger.info("SCRAPED LYRICS (Input)")
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("SCRAPED LYRICS (Input)")
+        logger.debug("=" * 80)
         for line in lyrics_text.split("\n"):
-            logger.info(line)
-        logger.info("=" * 80)
-        logger.info("=" * 80)
-        logger.info("LRC GENERATION: Using Whisper transcription directly")
-        logger.info("=" * 80)
+            logger.debug(line)
+        logger.debug("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("LRC GENERATION: Using Whisper transcription directly")
+        logger.debug("=" * 80)
 
     # Fallback path: Whisper transcription + LLM alignment
     logger.info(f"Starting Whisper LRC generation for {audio_path}")
@@ -1013,12 +1013,12 @@ async def generate_lrc(
     logger.info(f"Wrote {line_count} lines to {output_path} (total LRC time: {total_elapsed:.2f}s)")
 
     # Log final LRC file contents
-    logger.info("=" * 80)
-    logger.info("FINAL LRC FILE CONTENTS")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug("FINAL LRC FILE CONTENTS")
+    logger.debug("=" * 80)
     with open(output_path, "r", encoding="utf-8") as f:
         for lrc_line in f:
-            logger.info(lrc_line.rstrip("\n"))
-    logger.info("=" * 80)
+            logger.debug(lrc_line.rstrip("\n"))
+    logger.debug("=" * 80)
 
     return output_path, line_count, whisper_phrases
