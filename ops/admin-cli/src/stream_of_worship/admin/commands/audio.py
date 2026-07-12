@@ -33,7 +33,7 @@ from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, g
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
-from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_SELECT
+from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_FOR_JOIN, RECORDING_COLUMNS_SELECT
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
@@ -3060,8 +3060,8 @@ def check_status(
 
     # List pending recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
-    cursor.execute("""
-        SELECT r.*, s.title as song_title
+    cursor.execute(f"""
+        SELECT {RECORDING_COLUMNS_FOR_JOIN}, s.title as song_title
         FROM recordings r
         LEFT JOIN songs s ON r.song_id = s.id
         WHERE (r.analysis_status != 'completed' OR r.lrc_status != 'completed')

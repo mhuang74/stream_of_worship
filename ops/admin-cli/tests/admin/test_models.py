@@ -547,6 +547,118 @@ class TestRecording:
         assert columns[19] == "loudness_db"
         assert columns[33] == "deleted_at"
 
+    def test_from_row_physical_order_mismatch_regression(self):
+        """Regression test: a row in PHYSICAL DB order (key_* columns appended
+        at end by ALTER TABLE, positions 29-33) must NOT be passed to from_row
+        expecting canonical order. This documents why SELECT r.* was replaced
+        with RECORDING_COLUMNS_FOR_JOIN in list_recordings_with_songs and
+        related queries.
+
+        In physical order, visibility_status sits at index 26 and
+        key_window_agreement at index 31. from_row's 34-column branch reads
+        row[31] for visibility_status — which in physical order is
+        key_window_agreement (NULL for recordings not re-analyzed with key
+        v2) → parsed as None → rendered as "- none".
+
+        This test constructs a physical-order row and asserts that from_row
+        does NOT silently mis-map visibility_status to key_window_agreement.
+        Callers must supply canonical-order rows via
+        RECORDING_COLUMNS_SELECT / RECORDING_COLUMNS_FOR_JOIN, not r.*.
+        """
+        # Physical DB order (34 cols): key_* columns at positions 29-33,
+        # visibility_status at index 26, loudness_db at index 14.
+        physical_row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # 0  content_hash
+            "c6de4449928d",  # 1  hash_prefix
+            "song_0001",  # 2  song_id
+            "original.mp3",  # 3  original_filename
+            5242880,  # 4  file_size_bytes
+            "2024-01-15T10:30:00",  # 5  imported_at
+            "s3://bucket/audio.mp3",  # 6  r2_audio_url
+            "s3://bucket/stems/",  # 7  r2_stems_url
+            "s3://bucket/lyrics.lrc",  # 8  r2_lrc_url
+            245.3,  # 9  duration_seconds
+            128.5,  # 10 tempo_bpm
+            "G",  # 11 musical_key
+            "major",  # 12 musical_mode
+            0.87,  # 13 key_confidence
+            -8.2,  # 14 loudness_db
+            "[0.23, 0.70]",  # 15 beats
+            "[0.23, 2.10]",  # 16 downbeats
+            '[{"label": "intro"}]',  # 17 sections
+            "[4, 512, 24]",  # 18 embeddings_shape
+            "completed",  # 19 analysis_status
+            "job_abc123",  # 20 analysis_job_id
+            "completed",  # 21 lrc_status
+            "job_lrc123",  # 22 lrc_job_id
+            "2024-01-15T10:30:00",  # 23 created_at
+            "2024-01-15T10:30:00",  # 24 updated_at
+            "https://youtube.com/watch?v=x",  # 25 youtube_url
+            "review",  # 26 visibility_status
+            "completed",  # 27 download_status
+            None,  # 28 deleted_at
+            None,  # 29 key_algorithm_version
+            None,  # 30 key_score_margin
+            None,  # 31 key_window_agreement
+            None,  # 32 key_candidates
+            None,  # 33 key_detected_at
+        )
+        assert len(physical_row) == 34
+
+        # from_row expects canonical order; feeding physical order is a
+        # caller bug. The canonical-order row below is what
+        # RECORDING_COLUMNS_FOR_JOIN produces and is the correct input.
+        canonical_row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # 0  content_hash
+            "c6de4449928d",  # 1  hash_prefix
+            "song_0001",  # 2  song_id
+            "original.mp3",  # 3  original_filename
+            5242880,  # 4  file_size_bytes
+            "2024-01-15T10:30:00",  # 5  imported_at
+            "s3://bucket/audio.mp3",  # 6  r2_audio_url
+            "s3://bucket/stems/",  # 7  r2_stems_url
+            "s3://bucket/lyrics.lrc",  # 8  r2_lrc_url
+            245.3,  # 9  duration_seconds
+            128.5,  # 10 tempo_bpm
+            "G",  # 11 musical_key
+            "major",  # 12 musical_mode
+            0.87,  # 13 key_confidence
+            None,  # 14 key_algorithm_version
+            None,  # 15 key_score_margin
+            None,  # 16 key_window_agreement
+            None,  # 17 key_candidates
+            None,  # 18 key_detected_at
+            -8.2,  # 19 loudness_db
+            "[0.23, 0.70]",  # 20 beats
+            "[0.23, 2.10]",  # 21 downbeats
+            '[{"label": "intro"}]',  # 22 sections
+            "[4, 512, 24]",  # 23 embeddings_shape
+            "completed",  # 24 analysis_status
+            "job_abc123",  # 25 analysis_job_id
+            "completed",  # 26 lrc_status
+            "job_lrc123",  # 27 lrc_job_id
+            "2024-01-15T10:30:00",  # 28 created_at
+            "2024-01-15T10:30:00",  # 29 updated_at
+            "https://youtube.com/watch?v=x",  # 30 youtube_url
+            "review",  # 31 visibility_status
+            "completed",  # 32 download_status
+            None,  # 33 deleted_at
+        )
+        assert len(canonical_row) == 34
+
+        recording = Recording.from_row(canonical_row)
+        assert recording.visibility_status == "review"
+        assert recording.key_window_agreement is None
+        assert recording.loudness_db == -8.2
+
+        # The physical-order row would mis-map: row[31] is key_window_agreement
+        # (None), not visibility_status ("review"). This assertion documents
+        # the mismatch that motivated replacing SELECT r.* with explicit
+        # canonical column lists.
+        assert physical_row[26] == "review"  # visibility_status in physical order
+        assert physical_row[31] is None  # key_window_agreement in physical order
+        assert canonical_row[31] == "review"  # visibility_status in canonical order
+
 
 class TestDatabaseStats:
     """Tests for DatabaseStats model."""
