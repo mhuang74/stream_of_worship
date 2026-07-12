@@ -181,7 +181,7 @@ async def _run_whisper_transcription(
     Raises:
         WhisperTranscriptionError: If transcription fails or returns no phrases
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _transcribe():
         from faster_whisper import WhisperModel
@@ -601,7 +601,7 @@ async def _llm_align(
             "or set SOW_LLM_MODEL environment variable."
         )
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     prompt = prompt_builder(lyrics_text, whisper_phrases, language)
 
     # Log the full LLM prompt
@@ -634,10 +634,8 @@ async def _llm_align(
     logger.info(f"Using LLM model: {effective_model}")
 
     from .llm_rate_limit import (
-        _acquire_llm_slot,
-        _call_llm_with_rate_limit_retry,
         _is_llm_rate_limited_error,
-        _release_llm_slot,
+        call_llm_with_retry,
     )
 
     last_error: Optional[Exception] = None
@@ -647,17 +645,11 @@ async def _llm_align(
             logger.info(f"LLM alignment attempt {attempt + 1}/{max_retries}")
             attempt_start = time.time()
 
-            # Use rate-limit retry wrapper for the LLM call
-            # (handles 429 with backoff; non-429 propagates immediately)
-            await _acquire_llm_slot()
-            try:
-                response_text = await _call_llm_with_rate_limit_retry(
-                    _call_llm,
-                    description=f"LLM alignment ({effective_model})",
-                    loop=loop,
-                )
-            finally:
-                _release_llm_slot()
+            response_text = await call_llm_with_retry(
+                _call_llm,
+                description=f"LLM alignment ({effective_model})",
+                loop=loop,
+            )
 
             attempt_elapsed = time.time() - attempt_start
             logger.info(f"LLM call completed in {attempt_elapsed:.2f}s")

@@ -112,6 +112,12 @@ class Settings(BaseSettings):
     # Total wall-clock budget for 429 retries (5 minutes). If all retries are
     # consumed within this budget but keep getting 429, give up.
 
+    SOW_LLM_MIN_INTERVAL_SECONDS: float = 2.0
+    # Minimum gap (seconds) between consecutive LLM HTTP calls across all jobs.
+    # Compensates for provider-side in_flight accounting lag. This throttle fires
+    # after acquiring the LLM semaphore slot, so it paces active requests without
+    # blocking idle jobs. Set to 0 to disable.
+
     # Embedding Provider Configuration (OpenAI-compatible API)
     # Separate from SOW_LLM_* so chat and embedding can use different providers.
     SOW_EMBEDDING_API_KEY: str = ""

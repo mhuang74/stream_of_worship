@@ -749,10 +749,9 @@ async def _llm_correct(
             or on non-rate-limit errors
     """
     from .llm_rate_limit import (
-        _acquire_llm_slot,
-        _call_llm_with_rate_limit_retry,
         _is_llm_rate_limited_error,
-        _release_llm_slot,
+        _is_llm_retryable_error,
+        call_llm_with_retry,
     )
 
     if not settings.SOW_LLM_API_KEY:
@@ -774,7 +773,7 @@ async def _llm_correct(
             "or set SOW_LLM_MODEL environment variable."
         )
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _call_llm():
         from openai import OpenAI
@@ -797,19 +796,19 @@ async def _llm_correct(
 
     logger.info(f"Calling LLM ({effective_model}) for YouTube transcript correction")
     try:
-        await _acquire_llm_slot()
-        try:
-            return await _call_llm_with_rate_limit_retry(
-                _call_llm,
-                description=f"LLM correction ({effective_model})",
-                loop=loop,
-            )
-        finally:
-            _release_llm_slot()
+        return await call_llm_with_retry(
+            _call_llm,
+            description=f"LLM correction ({effective_model})",
+            loop=loop,
+        )
     except Exception as e:
         if _is_llm_rate_limited_error(e):
             raise YouTubeTranscriptError(
                 f"LLM correction failed after rate-limit retries: {e}"
+            ) from e
+        if _is_llm_retryable_error(e):
+            raise YouTubeTranscriptError(
+                f"LLM correction failed after transient-error retries: {e}"
             ) from e
         raise YouTubeTranscriptError(f"LLM correction failed: {e}") from e
 

@@ -450,6 +450,7 @@ class TestLLMAlignRateLimitBackoff:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 30.0
@@ -513,6 +514,7 @@ class TestLLMAlignRateLimitBackoff:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
@@ -564,6 +566,7 @@ class TestLLMAlignRateLimitBackoff:
             mock_settings.SOW_LLM_MODEL = "test-model"
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0
             mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
             mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
             mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 30.0
