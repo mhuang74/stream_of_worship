@@ -35,7 +35,9 @@ class QuotaWaiter:
     Args:
         name: Human-readable name for logging (e.g., "mvsep", "qwen3").
         probe_fn: Callable returning True when quota is available.
-            Typically ``client.is_available`` (a property bound method).
+            Typically ``lambda: client.is_available`` (since ``is_available``
+            is a property, a lambda or bound method must be passed, not the
+            property value itself).
         poll_interval: Seconds between poller background checks.
     """
 
