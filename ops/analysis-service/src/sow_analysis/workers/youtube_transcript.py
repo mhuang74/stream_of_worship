@@ -734,7 +734,7 @@ async def _llm_correct(
     Uses the shared rate-limit retry utility to handle HTTP 429 responses
     with exponential backoff and jitter, respecting the provider's
     ``retry_after`` guidance. Retries for up to
-    ``SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS`` (default 5 min) before giving up.
+    ``SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS`` (default 20 min) before giving up.
 
     Args:
         prompt: Correction prompt

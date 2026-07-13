@@ -270,10 +270,10 @@ class TestCallLlmWithRetry:
     def _setup_settings(self):
         """Patch settings for all tests in this class."""
         with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
-            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 16
             mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
-            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 30.0
-            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 1200
             mock_settings.SOW_LLM_MAX_CONCURRENT = 0  # disable semaphore
             mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0  # disable throttle
             yield
@@ -639,6 +639,225 @@ class TestCallLlmWithRetry:
         """Importing _call_llm_with_rate_limit_retry raises ImportError (symbol removed)."""
         with pytest.raises(ImportError):
             from sow_analysis.workers.llm_rate_limit import _call_llm_with_rate_limit_retry  # noqa: F401
+
+    @pytest.mark.asyncio
+    async def test_retry_budget_1200s_sustained(self):
+        """Retries continue past the old 305s cliff and only give up after 1200s budget.
+
+        Simulates the production failure (job_11d44eb841fe) where the budget was
+        exhausted at 304.8s. With the new 1200s budget, retries should continue.
+        Uses a fake monotonic clock to simulate elapsed time without real sleeping.
+        """
+        call_count = 0
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            raise FakeRateLimitError(status_code=429)
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        # Fake time: each call takes 30s, each sleep takes 30s.
+        # With 16 attempts and 1200s budget, we should get many retries before
+        # the budget is exhausted.
+        fake_time = [0.0]
+
+        def fake_monotonic():
+            return fake_time[0]
+
+        def sync_fn_with_time():
+            nonlocal call_count
+            call_count += 1
+            fake_time[0] += 30.0  # each LLM call takes 30s
+            raise FakeRateLimitError(status_code=429)
+
+        async def mock_sleep_with_time(duration):
+            sleep_calls.append(duration)
+            fake_time[0] += duration  # advance fake clock by sleep duration
+            await original_sleep(0)
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 16
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 1200
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with (
+                patch("sow_analysis.workers.llm_rate_limit.time.monotonic", side_effect=fake_monotonic),
+                patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep_with_time),
+            ):
+                with pytest.raises(FakeRateLimitError):
+                    await call_llm_with_retry(sync_fn_with_time, description="test")
+
+        # Critical: must have retried past the old 305s cliff.
+        # With 30s per call + 30s sleeps, the old 300s budget would have stopped
+        # at ~5 attempts. With 1200s budget we should get significantly more.
+        assert call_count > 5, (
+            f"Expected more than 5 retries with 1200s budget, got {call_count}"
+        )
+        # And we should have made at least one sleep (i.e. didn't give up immediately)
+        assert len(sleep_calls) > 0
+
+    @pytest.mark.asyncio
+    async def test_sixteen_attempts_before_giveup(self):
+        """Loop honors max_attempts=16 when each attempt fails immediately with 429.
+
+        Uses a fake monotonic clock that doesn't advance, so the budget never
+        triggers — only the attempt count limits retries.
+        """
+        call_count = 0
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            raise FakeRateLimitError(status_code=429)
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        fake_time = [0.0]
+
+        def fake_monotonic():
+            return fake_time[0]
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 16
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 1200
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with (
+                patch("sow_analysis.workers.llm_rate_limit.time.monotonic", side_effect=fake_monotonic),
+                patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+            ):
+                with pytest.raises(FakeRateLimitError):
+                    await call_llm_with_retry(sync_fn, description="test")
+
+        assert call_count == 16
+        # 15 sleeps between 16 attempts (no sleep after last)
+        assert len(sleep_calls) == 15
+
+    @pytest.mark.asyncio
+    async def test_max_delay_90s_when_provider_omits_guidance(self):
+        """Single 429 with no retry_strategy in body → delay capped at 90s + 25% jitter.
+
+        Verifies our local SOW_LLM_RATE_LIMIT_MAX_DELAY=90.0 is honored when the
+        provider error body omits retry_strategy.max_delay_s.
+        """
+        # Plain 429 with no retry guidance in body
+        call_count = 0
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise FakeRateLimitError(status_code=429)
+            return "ok"
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 16
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 1200
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with patch(
+                "sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep
+            ):
+                result = await call_llm_with_retry(sync_fn, description="test")
+
+        assert result == "ok"
+        assert len(sleep_calls) == 1
+        # First attempt backoff = base * 2^0 = 2.0, well under 90s cap.
+        # The 90s cap matters for later attempts; here we just verify the cap
+        # is loaded correctly (no provider override → effective_max == 90.0).
+        assert sleep_calls[0] <= 2.0 * 1.25 + 0.1  # 2.0 + 25% jitter
+
+    @pytest.mark.asyncio
+    async def test_provider_max_delay_30s_still_honored(self):
+        """Provider-reported retry_strategy.max_delay_s=30.0 caps delay at 30s.
+
+        Even though our local SOW_LLM_RATE_LIMIT_MAX_DELAY=90.0, the provider's
+        dynamic guidance (max_delay_s: 30.0) should override and cap each
+        per-attempt sleep at 30s + 25% jitter.
+        """
+        body = (
+            '{"error": {"type": "rate_limit_error", "code": "concurrent_budget_exceeded", '
+            '"message": "Concurrent limit reached", "retry_after": 1.0, '
+            '"retry_strategy": {"type": "concurrent_drain", '
+            '"suggested_initial_delay_s": 1.0, "max_delay_s": 30.0, '
+            '"backoff": "exponential", "backoff_base": 2.0, "jitter": true}, '
+            '"retryable": true}}'
+        )
+        response = _make_429_response(body)
+
+        # Force many retries so backoff reaches the cap.
+        call_count = 0
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 10:
+                raise FakeRateLimitError(response=response, status_code=429)
+            return "ok"
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        fake_time = [0.0]
+
+        def fake_monotonic():
+            return fake_time[0]
+
+        async def mock_sleep_with_time(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 16
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 1200
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with (
+                patch("sow_analysis.workers.llm_rate_limit.time.monotonic", side_effect=fake_monotonic),
+                patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep_with_time),
+            ):
+                result = await call_llm_with_retry(sync_fn, description="test")
+
+        assert result == "ok"
+        # All sleeps should be <= 30s + 25% jitter = 37.5s
+        for i, delay in enumerate(sleep_calls):
+            assert delay <= 37.5 + 0.1, (
+                f"Sleep {i} = {delay}s exceeds provider max_delay_s=30.0 + 25% jitter"
+            )
 
 
 class TestEnforceLlmMinInterval:

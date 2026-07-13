@@ -99,18 +99,26 @@ class Settings(BaseSettings):
     # Matches the provider's concurrency budget (3 slots). Prevents self-inflicted
     # 429s from multiple overlapping jobs. Set to 0 to disable.
 
-    SOW_LLM_RATE_LIMIT_MAX_RETRIES: int = 8
-    # Max retry attempts on 429. Increased from the SDK's implicit 2 to be more patient.
+    SOW_LLM_RATE_LIMIT_MAX_RETRIES: int = 16
+    # Max retry attempts on 429 / retryable errors. Applies globally to both the
+    # YouTube-transcript LLM correction step (_llm_correct) and the ASR-fallback
+    # LLM alignment step (_llm_align). The wall-clock SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS
+    # is the primary ceiling; this count is a secondary guard.
 
     SOW_LLM_RATE_LIMIT_BASE_DELAY: float = 2.0
     # Base delay in seconds for exponential backoff on 429 retries.
 
-    SOW_LLM_RATE_LIMIT_MAX_DELAY: float = 30.0
-    # Cap on backoff delay. Matches provider's max_delay_s: 30.0.
+    SOW_LLM_RATE_LIMIT_MAX_DELAY: float = 90.0
+    # Cap on single backoff delay. Provider-reported retry_strategy.max_delay_s
+    # from the OpenRouter error body overrides this dynamically (e.g. provider says
+    # 30s), but our local cap is now 90s so we can wait longer when the provider's
+    # guidance permits or is absent.
 
-    SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS: int = 300
-    # Total wall-clock budget for 429 retries (5 minutes). If all retries are
-    # consumed within this budget but keep getting 429, give up.
+    SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS: int = 1200
+    # Total wall-clock budget for the retry sequence (20 minutes). Raised from 5 min
+    # because OpenRouter concurrent_budget_exceeded (3/3 slots) windows frequently
+    # outlast 5 min; the YouTube transcript path is much faster than ASR fallback
+    # (~50-640s vs ~900-1300s), so patience here avoids an expensive fallback.
 
     SOW_LLM_MIN_INTERVAL_SECONDS: float = 2.0
     # Minimum gap (seconds) between consecutive LLM HTTP calls across all jobs.
