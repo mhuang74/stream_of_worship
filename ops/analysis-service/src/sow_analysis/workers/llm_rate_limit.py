@@ -499,6 +499,10 @@ async def call_llm_with_retry(
     if loop is None:
         loop = asyncio.get_running_loop()
 
+    # These are global defaults covering both the YouTube-transcript LLM correction
+    # step (_llm_correct) and the ASR-fallback LLM alignment step (_llm_align).
+    # Provider-reported retry_strategy.max_delay_s from the OpenRouter error body
+    # overrides max_delay dynamically when present.
     max_attempts = settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES
     total_timeout = settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS
     base_delay = settings.SOW_LLM_RATE_LIMIT_BASE_DELAY
@@ -530,12 +534,13 @@ async def call_llm_with_retry(
             if attempt >= max_attempts - 1:
                 break
 
-            # Check budget
+            # Check budget (env-overridable via SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS)
             elapsed = time.monotonic() - start_time
             remaining_budget = total_timeout - elapsed
             if remaining_budget <= 0:
                 logger.warning(
-                    "LLM retry budget exhausted for %s (%.1fs elapsed, %.1fs budget) — giving up",
+                    "LLM retry budget exhausted for %s (%.1fs elapsed, %.1fs budget) — giving up "
+                    "(raise SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS to extend)",
                     description,
                     elapsed,
                     total_timeout,
