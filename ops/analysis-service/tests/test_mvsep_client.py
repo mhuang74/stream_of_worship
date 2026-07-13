@@ -74,6 +74,7 @@ from sow_analysis.services.mvsep_client import (
     MvsepClient,
     MvsepClientError,
     MvsepNonRetriableError,
+    MvsepParsingError,
     MvsepTimeoutError,
     MvsepQueueFullError,
 )
@@ -499,10 +500,16 @@ async def test_separate_vocals_semaphore_serializes_calls(client, tmp_path, mock
         return "test_hash"
 
     async def mock_poll_job(job_hash):
-        return {"success": True, "status": "done", "data": {"files": []}}
+        return {
+            "success": True,
+            "status": "done",
+            "data": {"files": [{"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}]},
+        }
 
     async def mock_download(file_entries, output_dir):
-        return []
+        f = output_dir / "v.flac"
+        f.write_text("fake")
+        return [f]
 
     output_dir = tmp_path / "output"
     output_dir.mkdir()
@@ -517,7 +524,7 @@ async def test_separate_vocals_semaphore_serializes_calls(client, tmp_path, mock
                     client.separate_vocals(client._test_audio, output_dir),
                 )
 
-    assert all(r == (None, None) for r in results)
+    assert all(r[0] is not None for r in results)
     # With max_concurrent=1, never more than 1 in flight
     assert max_in_flight == 1
 
@@ -540,10 +547,16 @@ async def test_separate_vocals_semaphore_blocks_2nd(client, tmp_path, mock_respo
         return "test_hash"
 
     async def mock_poll_job(job_hash):
-        return {"success": True, "status": "done", "data": {"files": []}}
+        return {
+            "success": True,
+            "status": "done",
+            "data": {"files": [{"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}]},
+        }
 
     async def mock_download(file_entries, output_dir):
-        return []
+        f = output_dir / "v.flac"
+        f.write_text("fake")
+        return [f]
 
     output_dir = tmp_path / "output"
     output_dir.mkdir()
@@ -562,7 +575,7 @@ async def test_separate_vocals_semaphore_blocks_2nd(client, tmp_path, mock_respo
                 release.set()
                 results = await asyncio.gather(*tasks)
 
-    assert all(r == (None, None) for r in results)
+    assert all(r[0] is not None for r in results)
     assert max_in_flight == 1
 
 
@@ -583,10 +596,16 @@ async def test_mvsep_semaphore_serializes_stage1_and_stage2(client, tmp_path, mo
         return "test_hash"
 
     async def mock_poll_job(job_hash):
-        return {"success": True, "status": "done", "data": {"files": []}}
+        return {
+            "success": True,
+            "status": "done",
+            "data": {"files": [{"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}]},
+        }
 
     async def mock_download(file_entries, output_dir):
-        return []
+        f = output_dir / "v.flac"
+        f.write_text("fake")
+        return [f]
 
     output_dir = tmp_path / "output"
     output_dir.mkdir()
@@ -644,3 +663,106 @@ async def test_quota_not_triggered_by_generic_error(client, mock_post):
     with pytest.raises(MvsepClientError):
         await client._submit_job(client._test_audio, sep_type=48, add_opt1=11)
     assert client._quota_exhausted is False
+
+
+@pytest.mark.asyncio
+async def test_quota_exhausted_detected_from_real_mvsep_message(client, mock_post):
+    """Regression: real MVSEP daily-limit message must trigger quota detection.
+
+    Production log showed this exact 400 response body was NOT detected as
+    quota exhaustion, causing 3 wasted retries + unwanted local fallback.
+    """
+    req = httpx.Request("POST", "https://api.mvsep.com/api/create")
+    mock_post.return_value = httpx.Response(
+        400,
+        json={
+            "success": False,
+            "errors": [
+                "You have reached the limit of separations for today. "
+                "Please try again tomorrow or consider signing up for a "
+                "premium account."
+            ],
+        },
+        request=req,
+    )
+    with pytest.raises(MvsepNonRetriableError):
+        await client._submit_job(client._test_audio, sep_type=48, add_opt1=11)
+    assert client._quota_exhausted is True
+
+
+def test_is_quota_exhausted_real_mvsep_message():
+    """Unit test: real MVSEP daily-limit message matches _is_quota_exhausted()."""
+    from sow_analysis.services.mvsep_client import _is_quota_exhausted
+
+    real = (
+        "you have reached the limit of separations for today. "
+        "please try again tomorrow or consider signing up for a premium account."
+    )
+    assert _is_quota_exhausted(real) is True
+
+
+@pytest.mark.asyncio
+async def test_separate_vocals_api_empty_raises_retriable(client, tmp_path):
+    """Case A: API returned no file entries — retriable MvsepClientError."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with patch.object(client, "_submit_job", new_callable=AsyncMock) as mock_submit:
+        with patch.object(client, "_poll_job", new_callable=AsyncMock) as mock_poll:
+            mock_submit.return_value = "test_hash"
+            mock_poll.return_value = {"success": True, "status": "done", "data": {"files": []}}
+
+            with pytest.raises(MvsepClientError, match="no file entries"):
+                await client.separate_vocals(client._test_audio, output_dir)
+
+
+@pytest.mark.asyncio
+async def test_separate_vocals_download_failure_raises_retriable(client, tmp_path):
+    """Case B: Files returned but download failed — retriable MvsepClientError."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    file_entries = [
+        {"type": "vocals", "url": "http://example.com/vocals.flac", "download": "vocals.flac"},
+    ]
+
+    with patch.object(client, "_submit_job", new_callable=AsyncMock) as mock_submit:
+        with patch.object(client, "_poll_job", new_callable=AsyncMock) as mock_poll:
+            with patch.object(client, "_download_files", new_callable=AsyncMock) as mock_download:
+                mock_submit.return_value = "test_hash"
+                mock_poll.return_value = {
+                    "success": True,
+                    "status": "done",
+                    "data": {"files": file_entries},
+                }
+                mock_download.return_value = []  # Download failed
+
+                with pytest.raises(MvsepClientError, match="download failed"):
+                    await client.separate_vocals(client._test_audio, output_dir)
+
+
+@pytest.mark.asyncio
+async def test_separate_vocals_classification_failure_raises_non_retriable(client, tmp_path):
+    """Case C: Files downloaded but none classified as vocals — non-retriable MvsepParsingError."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    file_entries = [
+        {"type": "unknown_type", "url": "http://example.com/unknown.flac", "download": "unknown.flac"},
+    ]
+    downloaded_file = output_dir / "unknown.flac"
+    downloaded_file.write_text("fake")
+
+    with patch.object(client, "_submit_job", new_callable=AsyncMock) as mock_submit:
+        with patch.object(client, "_poll_job", new_callable=AsyncMock) as mock_poll:
+            with patch.object(client, "_download_files", new_callable=AsyncMock) as mock_download:
+                mock_submit.return_value = "test_hash"
+                mock_poll.return_value = {
+                    "success": True,
+                    "status": "done",
+                    "data": {"files": file_entries},
+                }
+                mock_download.return_value = [downloaded_file]
+
+                with pytest.raises(MvsepParsingError, match="none could be classified as vocals"):
+                    await client.separate_vocals(client._test_audio, output_dir)

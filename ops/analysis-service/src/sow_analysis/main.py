@@ -95,6 +95,12 @@ async def lifespan(app: FastAPI):
             mvsep_client = MvsepClient()
             job_queue.set_mvsep_client(mvsep_client)
             logger.info("MVSEP client initialized (cloud stem separation enabled)")
+            if settings.SOW_FREE_ONLY_MODE and not mvsep_client.is_available:
+                logger.warning(
+                    "SOW_FREE_ONLY_MODE=True but MVSEP is unavailable at startup "
+                    "(missing API key, disabled, or quota already exhausted). "
+                    "Stem-separation jobs will wait for quota or fail permanently."
+                )
         else:
             logger.info("MVSEP not configured (using local audio-separator only)")
     else:

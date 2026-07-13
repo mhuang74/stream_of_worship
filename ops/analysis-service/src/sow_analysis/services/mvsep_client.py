@@ -25,6 +25,9 @@ _QUOTA_KEYWORDS = (
     "limit exceeded",
     "quota exceeded",
     "limit reached",
+    "reached the limit",
+    "separations for today",
+    "try again tomorrow",
     "too many jobs",
     "too many requests today",
     "day limit",
@@ -70,6 +73,17 @@ class MvsepQueueFullError(MvsepClientError):
     """Exception raised when MVSEP queue is full (HTTP 400 with queue-full message).
 
     This is a retriable error that signals the worker should wait longer before retrying.
+    """
+
+    pass
+
+
+class MvsepParsingError(MvsepNonRetriableError):
+    """MVSEP returned files but we could not classify them (parsing bug).
+
+    Non-retriable: retrying will always fail because the classification logic
+    cannot match the response format. Propagates up to fail the job in both
+    free-only and non-free modes.
     """
 
     pass
@@ -425,7 +439,22 @@ class MvsepClient:
                 stage_callback("mvsep_stage1_downloading")
 
             file_entries = result.get("data", {}).get("files", [])
+
+            # Case A: API returned no file entries — transient, retriable
+            if not file_entries:
+                raise MvsepClientError(
+                    f"MVSEP Stage 1 returned no file entries for {input_path.name}. "
+                    f"This may be a transient API issue."
+                )
+
             downloaded = await self._download_files(file_entries, output_dir)
+
+            # Case B: files returned but download failed — transient, retriable
+            if not downloaded:
+                raise MvsepClientError(
+                    f"MVSEP Stage 1: {len(file_entries)} file(s) returned but download failed "
+                    f"for {input_path.name}. Transient network error — will retry."
+                )
 
             # Build map of download filenames to their API type (robust classification)
             entry_type_by_download: dict[str, str] = {}
@@ -465,6 +494,16 @@ class MvsepClient:
                     or "other" in name_lower
                 ):
                     instrumental_file = path
+
+            # Case C: files downloaded but none classified as vocals — parsing bug
+            if vocals_file is None:
+                raise MvsepParsingError(
+                    f"MVSEP Stage 1 returned {len(file_entries)} file(s) for {input_path.name} "
+                    f"but none could be classified as vocals. "
+                    f"API types: {[e.get('type') for e in file_entries]}. "
+                    f"Download URLs: {[e.get('download') for e in file_entries if e.get('download')]}. "
+                    f"This indicates a parsing/classification bug — please check MVSEP response format."
+                )
 
         return vocals_file, instrumental_file
 
