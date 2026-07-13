@@ -137,7 +137,7 @@ def test_status_sync_lrc_completion_forces_review_visibility():
     )
 
 
-def test_status_reconcile_lrc_on_r2_forces_review_visibility():
+def test_status_reconcile_lrc_on_r2_preserves_visibility():
     db_client = MagicMock()
     rec = _recording(lrc_status="failed")
 
@@ -176,7 +176,7 @@ def test_status_reconcile_lrc_on_r2_forces_review_visibility():
     db_client.update_recording_lrc.assert_called_once_with(
         hash_prefix="abc123def456",
         r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
-        visibility_status="review",
+        visibility_status=None,
     )
 
 
@@ -217,7 +217,7 @@ def test_handle_lrc_completion_forces_review_visibility():
     )
 
 
-def test_interrupt_reconciliation_forces_review_visibility():
+def test_interrupt_reconciliation_preserves_visibility():
     db_client = MagicMock()
     db_client.get_recording_by_song_id.return_value = _recording()
     db_client.get_song.return_value = _song()
@@ -237,5 +237,81 @@ def test_interrupt_reconciliation_forces_review_visibility():
     db_client.update_recording_lrc.assert_called_once_with(
         "abc123def456",
         "s3://bucket/abc123def456/lyrics.lrc",
-        visibility_status="review",
+        visibility_status=None,
+    )
+
+
+def test_submit_lrc_for_song_skip_r2_preserves_visibility():
+    """Pre-existing LRC on R2 (skip path) preserves existing visibility."""
+    db_client = MagicMock()
+    db_client.get_recording_by_song_id.return_value = _recording()
+    db_client.get_song.return_value = _song()
+
+    analysis_client = MagicMock()
+    r2_client = MagicMock()
+    r2_client.lrc_exists.return_value = "s3://bucket/abc123def456/lyrics.lrc"
+
+    results = {"song_1": {}}
+    active_lrc_jobs: dict = {}
+    lrc_attempted: set = set()
+
+    status = audio._submit_lrc_for_song(
+        song_id="song_1",
+        db_client=db_client,
+        analysis_client=analysis_client,
+        r2_client=r2_client,
+        force=False,
+        stale_after_minutes=60,
+        console=_console(),
+        results=results,
+        active_lrc_jobs=active_lrc_jobs,
+        lrc_attempted=lrc_attempted,
+        _add_manifest_entry=lambda *a, **k: None,
+    )
+
+    assert status == "skipped_r2"
+    assert results["song_1"]["lrc"] == "completed"
+    assert results["song_1"]["lrc_source"] == "r2_preexisting"
+    analysis_client.submit_lrc.assert_not_called()
+    db_client.update_recording_lrc.assert_called_once_with(
+        "abc123def456",
+        "s3://bucket/abc123def456/lyrics.lrc",
+        visibility_status=None,
+    )
+
+
+def test_handle_lrc_404_lost_job_preserves_visibility():
+    """Pre-existing LRC on R2 (lost-job 404 path) preserves existing visibility."""
+    db_client = MagicMock()
+    db_client.get_recording_by_song_id.return_value = _recording()
+    db_client.get_song.return_value = _song()
+
+    analysis_client = MagicMock()
+    r2_client = MagicMock()
+    r2_client.lrc_exists.return_value = "s3://bucket/abc123def456/lyrics.lrc"
+
+    results = {"song_1": {}}
+    resubmit_counts = {}
+
+    is_terminal, new_job_id = audio._handle_lrc_404(
+        song_id="song_1",
+        job_id="lrc-job-1",
+        db_client=db_client,
+        analysis_client=analysis_client,
+        r2_client=r2_client,
+        force=False,
+        console=_console(),
+        results=results,
+        _add_manifest_entry=lambda *a, **k: None,
+        resubmit_counts=resubmit_counts,
+    )
+
+    assert is_terminal is True
+    assert new_job_id is None
+    assert results["song_1"]["lrc"] == "completed"
+    analysis_client.submit_lrc.assert_not_called()
+    db_client.update_recording_lrc.assert_called_once_with(
+        "abc123def456",
+        "s3://bucket/abc123def456/lyrics.lrc",
+        visibility_status=None,
     )
