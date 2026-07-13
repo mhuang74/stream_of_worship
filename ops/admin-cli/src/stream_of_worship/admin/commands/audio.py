@@ -1196,7 +1196,7 @@ def list_recordings(
         None,
         "--visibility",
         "-v",
-        help="Filter by visibility status (published|review|hold)",
+        help="Filter by visibility status (published|review|hold|none where none = no status set)",
     ),
     album: Optional[str] = typer.Option(
         None,
@@ -1234,7 +1234,7 @@ def list_recordings(
 
     # Validate visibility filter
     if visibility:
-        valid_visibilities = {"published", "review", "hold"}
+        valid_visibilities = {"published", "review", "hold", "none"}
         if visibility not in valid_visibilities:
             console.print(
                 f"[red]Invalid visibility: {visibility}. Must be one of: {', '.join(valid_visibilities)}[/red]"

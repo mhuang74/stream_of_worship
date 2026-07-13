@@ -716,7 +716,7 @@ class DatabaseClient:
 
         Args:
             status: Filter by analysis status.
-            visibility: Filter by visibility status.
+            visibility: Filter by visibility status. Pass "none" to match recordings with NULL visibility_status.
             lrc_status: Filter by LRC status.
             download_status: Filter by download status.
             limit: Maximum number of results.
@@ -744,8 +744,11 @@ class DatabaseClient:
                 params.append(status)
 
         if visibility:
-            query += " AND visibility_status = %s"
-            params.append(visibility)
+            if visibility == "none":
+                query += " AND visibility_status IS NULL"
+            else:
+                query += " AND visibility_status = %s"
+                params.append(visibility)
 
         if lrc_status:
             if lrc_status == "incomplete":
@@ -789,7 +792,7 @@ class DatabaseClient:
 
         Args:
             status: Filter by analysis status.
-            visibility: Filter by visibility status.
+            visibility: Filter by visibility status. Pass "none" to match recordings with NULL visibility_status.
             lrc_status: Filter by LRC status.
             album: Filter by album name (case-insensitive substring).
             sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
@@ -824,8 +827,11 @@ class DatabaseClient:
                 params.append(status)
 
         if visibility:
-            query += " AND r.visibility_status = %s"
-            params.append(visibility)
+            if visibility == "none":
+                query += " AND r.visibility_status IS NULL"
+            else:
+                query += " AND r.visibility_status = %s"
+                params.append(visibility)
 
         if lrc_status:
             if lrc_status == "incomplete":
