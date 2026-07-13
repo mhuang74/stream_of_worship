@@ -343,6 +343,32 @@ class TestAudioListCommand:
 
         assert result.exit_code != 0
 
+    def test_list_rejects_invalid_visibility(self, tmp_path, monkeypatch):
+        """Invalid visibility value is rejected before DB access."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\n')
+
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path), "--visibility", "bogus"],
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid visibility" in result.output
+
+    def test_list_accepts_visibility_none(self, tmp_path, monkeypatch):
+        """`--visibility none` passes validation (fails later at DB access, not validation)."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\n')
+
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path), "--visibility", "none"],
+        )
+
+        # Validation passed; failure (if any) is from DB, not from visibility filter.
+        assert "Invalid visibility" not in result.output
+
     @pytest.mark.integration
     def test_list_empty_database(self, make_test_provider, postgres_url, tmp_path):
         """Shows a message when no recordings exist."""
@@ -435,6 +461,74 @@ class TestAudioListCommand:
         assert result.exit_code == 0
         assert "aaaaaaaaaaaa" in result.output
         assert "bbbbbbbbbbbb" not in result.output
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_with_visibility_none_filter(self, make_test_provider, postgres_url, tmp_path):
+        """`--visibility none` returns only recordings with NULL visibility_status."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+
+        for sid, title in [("song_001", "第一首歌"), ("song_002", "第二首歌")]:
+            client.insert_song(Song(id=sid, title=title, source_url=f"https://example.com/{sid}",
+                                    scraped_at="2024-01-01T00:00:00"))
+
+        client.insert_recording(Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="song1.mp3", file_size_bytes=1024000,
+            imported_at="2024-01-15T10:30:00", visibility_status="published"))
+        client.insert_recording(Recording(
+            content_hash="b" * 64, hash_prefix="bbbbbbbbbbbb", song_id="song_002",
+            original_filename="song2.mp3", file_size_bytes=2048000,
+            imported_at="2024-01-16T10:30:00", visibility_status=None))
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path),
+                  "--visibility", "none", "--format", "ids"],
+        )
+
+        assert result.exit_code == 0
+        assert "song_002" in result.output
+        assert "song_001" not in result.output
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_with_visibility_none_excludes_set_status(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """`--visibility published` excludes recordings with NULL visibility_status."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+
+        for sid, title in [("song_001", "第一首歌"), ("song_002", "第二首歌")]:
+            client.insert_song(Song(id=sid, title=title, source_url=f"https://example.com/{sid}",
+                                    scraped_at="2024-01-01T00:00:00"))
+
+        client.insert_recording(Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="song1.mp3", file_size_bytes=1024000,
+            imported_at="2024-01-15T10:30:00", visibility_status="published"))
+        client.insert_recording(Recording(
+            content_hash="b" * 64, hash_prefix="bbbbbbbbbbbb", song_id="song_002",
+            original_filename="song2.mp3", file_size_bytes=2048000,
+            imported_at="2024-01-16T10:30:00", visibility_status=None))
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path),
+                  "--visibility", "published", "--format", "ids"],
+        )
+
+        assert result.exit_code == 0
+        assert "song_001" in result.output
+        assert "song_002" not in result.output
 
         _drop_all_tables(make_test_provider)
 
