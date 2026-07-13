@@ -13,8 +13,15 @@ import pytest_asyncio
 
 from sow_analysis.config import settings
 from sow_analysis.models import Job, JobResult, JobStatus, StemSeparationJobRequest, StemSeparationOptions
-from sow_analysis.services.mvsep_client import MvsepClient, MvsepClientError, MvsepNonRetriableError, MvsepQueueFullError
+from sow_analysis.services.mvsep_client import (
+    MvsepClient,
+    MvsepClientError,
+    MvsepNonRetriableError,
+    MvsepParsingError,
+    MvsepQueueFullError,
+)
 from sow_analysis.workers.stem_separation import (
+    StemSeparationWorkerError,
     _separate_with_mvsep_fallback,
     process_stem_separation,
 )
@@ -388,19 +395,25 @@ async def test_quota_exhausted_uses_local(mock_job, mock_mvsep_client, mock_sepa
 
 @pytest.mark.asyncio
 async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test Stage 1 succeeds but returns no vocals file - falls back to local."""
-    mock_mvsep_client.separate_vocals.return_value = (None, Path("/tmp/instrumental.flac"))
+    """Test Stage 1 succeeds but returns no vocals file - falls back to local.
 
-    result = await _separate_with_mvsep_fallback(
-        input_path=Path("/tmp/input.mp3"),
-        output_dir=Path("/tmp/output"),
-        job=mock_job,
-        mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+    In non-free mode, MvsepParsingError (classification failure) propagates up
+    and fails the job in both modes (no local fallback for parsing bugs).
+    """
+    mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError(
+        "MVSEP Stage 1 returned 1 file(s) but none could be classified as vocals"
     )
 
-    assert mock_job.stage == "fallback_local"
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    with pytest.raises(MvsepParsingError, match="none could be classified as vocals"):
+        await _separate_with_mvsep_fallback(
+            input_path=Path("/tmp/input.mp3"),
+            output_dir=Path("/tmp/output"),
+            job=mock_job,
+            mvsep_client=mock_mvsep_client,
+            separator_wrapper=mock_separator_wrapper,
+        )
+
+    mock_separator_wrapper.separate_stems.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -432,23 +445,6 @@ async def test_upload_stems_return_order_matches_separate_stems():
     assert params[2] == "vocals_dry"
     assert params[3] == "instrumental"
     assert params[4] == "vocals"
-
-
-@pytest.mark.asyncio
-async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test Stage 1 succeeds but returns no vocals file - falls back to local."""
-    mock_mvsep_client.separate_vocals.return_value = (None, Path("/tmp/instrumental.flac"))
-
-    result = await _separate_with_mvsep_fallback(
-        input_path=Path("/tmp/input.mp3"),
-        output_dir=Path("/tmp/output"),
-        job=mock_job,
-        mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
-    )
-
-    assert mock_job.stage == "fallback_local"
-    mock_separator_wrapper.separate_stems.assert_called_once()
 
 
 # Note: test_httpx_500_retriable is in test_mvsep_client.py where it belongs
@@ -712,3 +708,208 @@ async def test_timeout_error_backoff_uses_queue_full_constants(
 
     assert len(sleep_times) == 1
     assert sleep_times[0] == 30  # queue-full base, not other-error base (5)
+
+
+# =============================================================================
+# Free-only mode tests (SOW_FREE_ONLY_MODE=True)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_free_mode_stage1_non_quota_failure_raises_no_local(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """In free mode, non-quota Stage 1 exhaustion raises instead of local fallback."""
+    monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", True)
+    mock_mvsep_client.is_quota_exhausted = False
+    mock_mvsep_client.separate_vocals.side_effect = MvsepClientError("Persistent error")
+
+    with patch("asyncio.sleep"):
+        with patch("random.uniform", return_value=0.0):
+            with pytest.raises(StemSeparationWorkerError, match="free-only mode"):
+                await _separate_with_mvsep_fallback(
+                    input_path=Path("/tmp/input.mp3"),
+                    output_dir=Path("/tmp/output"),
+                    job=mock_job,
+                    mvsep_client=mock_mvsep_client,
+                    separator_wrapper=mock_separator_wrapper,
+                )
+    mock_separator_wrapper.separate_stems.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_free_mode_stage1_quota_exhausted_waits_and_retries(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """In free mode, quota exhaustion triggers QuotaWaiter. Job resumes after reset."""
+    monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", True)
+
+    call_count = 0
+
+    async def side_effect_fn(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise MvsepNonRetriableError("Daily quota exhausted")
+        return (Path("/tmp/v.flac"), Path("/tmp/i.flac"))
+
+    mock_mvsep_client.separate_vocals.side_effect = side_effect_fn
+    mock_mvsep_client.remove_reverb.return_value = (
+        Path("/tmp/mvsep_dry.flac"),
+        Path("/tmp/mvsep_reverb.flac"),
+    )
+
+    # Simulate quota exhausted initially; will be reset during wait
+    mock_mvsep_client._quota_exhausted = True
+    mock_mvsep_client.is_quota_exhausted = True  # first read
+
+    # Create a real QuotaWaiter with a probe that flips after first wait
+    from sow_analysis.workers.quota_waiter import QuotaWaiter
+
+    probe_calls = [False, True]  # first call exhausted, second available
+
+    def probe_fn():
+        return probe_calls.pop(0)
+
+    qw = QuotaWaiter("mvsep_test", probe_fn, poll_interval=3600)
+
+    result = await _separate_with_mvsep_fallback(
+        input_path=Path("/tmp/input.mp3"),
+        output_dir=Path("/tmp/output"),
+        job=mock_job,
+        mvsep_client=mock_mvsep_client,
+        separator_wrapper=mock_separator_wrapper,
+        mvsep_quota_waiter=qw,
+    )
+
+    assert result[1] == Path("/tmp/v.flac")  # vocals from 2nd call
+    mock_separator_wrapper.separate_stems.assert_not_called()
+    await qw.stop()
+
+
+@pytest.mark.asyncio
+async def test_free_mode_stage2_non_quota_failure_raises_no_local(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """In free mode, non-quota Stage 2 exhaustion raises instead of local Stage 2 fallback."""
+    monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", True)
+    mock_mvsep_client.is_quota_exhausted = False
+    mock_mvsep_client.remove_reverb.side_effect = MvsepClientError("Stage 2 persistent error")
+
+    with patch("asyncio.sleep"):
+        with patch("random.uniform", return_value=0.0):
+            with pytest.raises(StemSeparationWorkerError, match="free-only mode"):
+                await _separate_with_mvsep_fallback(
+                    input_path=Path("/tmp/input.mp3"),
+                    output_dir=Path("/tmp/output"),
+                    job=mock_job,
+                    mvsep_client=mock_mvsep_client,
+                    separator_wrapper=mock_separator_wrapper,
+                )
+    mock_separator_wrapper.remove_reverb.assert_not_called()
+
+
+# =============================================================================
+# Three root-cause tests for no-vocals-file scenario
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_mvsep_stage1_api_empty_raises_retriable(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """Case A: API returned no file entries — retriable MvsepClientError.
+
+    MvsepClientError is retriable, so the retry loop catches it. After
+    exhaustion in non-free mode, local fallback runs (unlike MvsepParsingError
+    which propagates immediately).
+    """
+    mock_mvsep_client.separate_vocals.side_effect = MvsepClientError(
+        "MVSEP Stage 1 returned no file entries"
+    )
+    mock_mvsep_client.is_quota_exhausted = False
+
+    with patch("asyncio.sleep"):
+        with patch("random.uniform", return_value=0.0):
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
+    # Retriable error exhausted -> local fallback in non-free mode
+    assert mock_mvsep_client.separate_vocals.call_count == 3
+    mock_separator_wrapper.separate_stems.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mvsep_stage1_download_failure_raises_retriable(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """Case B: Files returned but download failed — retriable MvsepClientError.
+
+    MvsepClientError is retriable, so the retry loop catches it. After
+    exhaustion in non-free mode, local fallback runs.
+    """
+    mock_mvsep_client.separate_vocals.side_effect = MvsepClientError(
+        "MVSEP Stage 1: file(s) returned but download failed"
+    )
+    mock_mvsep_client.is_quota_exhausted = False
+
+    with patch("asyncio.sleep"):
+        with patch("random.uniform", return_value=0.0):
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
+    # Retriable error exhausted -> local fallback in non-free mode
+    assert mock_mvsep_client.separate_vocals.call_count == 3
+    mock_separator_wrapper.separate_stems.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mvsep_stage1_classification_failure_raises_non_retriable(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """Case C: Files downloaded but none classified as vocals — non-retriable MvsepParsingError."""
+    mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError(
+        "MVSEP Stage 1 returned 2 file(s) but none could be classified as vocals"
+    )
+    mock_mvsep_client.is_quota_exhausted = False
+
+    with pytest.raises(MvsepParsingError, match="none could be classified as vocals"):
+        await _separate_with_mvsep_fallback(
+            input_path=Path("/tmp/input.mp3"),
+            output_dir=Path("/tmp/output"),
+            job=mock_job,
+            mvsep_client=mock_mvsep_client,
+            separator_wrapper=mock_separator_wrapper,
+        )
+    mock_separator_wrapper.separate_stems.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mvsep_stage1_classification_failure_fails_in_both_modes(
+    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+):
+    """Case C must fail in both free and non-free modes — no local fallback."""
+    for free_mode in (True, False):
+        monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", free_mode)
+        mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError(
+            "classification failed"
+        )
+        mock_mvsep_client.is_quota_exhausted = False
+
+        with pytest.raises(MvsepParsingError, match="classification failed"):
+            await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                separator_wrapper=mock_separator_wrapper,
+            )
+        mock_separator_wrapper.separate_stems.assert_not_called()

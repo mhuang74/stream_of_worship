@@ -25,7 +25,12 @@ if TYPE_CHECKING:
     from .quota_waiter import QuotaWaiter
 
 # Import exception at module level to avoid local imports in retry loops
-from ..services.mvsep_client import MvsepNonRetriableError, MvsepQueueFullError, MvsepTimeoutError
+from ..services.mvsep_client import (
+    MvsepNonRetriableError,
+    MvsepParsingError,
+    MvsepQueueFullError,
+    MvsepTimeoutError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +113,10 @@ async def _run_mvsep_stage_with_retries(
             result = await stage_fn()
             logger.info(f"MVSEP {stage_name} succeeded on attempt {attempt}")
             return result
+        except MvsepParsingError:
+            # Parsing/classification bug — non-retriable, must propagate up to fail
+            # the job in both free-only and non-free modes (no local fallback).
+            raise
         except Exception as e:
             if isinstance(e, MvsepNonRetriableError):
                 logger.error(f"MVSEP {stage_name} non-retriable error: {e}")
@@ -353,6 +362,12 @@ async def _separate_with_mvsep_fallback(
         # After resume: back to top of while loop to retry Stage 1
 
     if stage1_result is None:
+        if settings.SOW_FREE_ONLY_MODE:
+            raise StemSeparationWorkerError(
+                f"MVSEP Stage 1 permanently unavailable in free-only mode "
+                f"(quota not exhausted but retries exhausted). "
+                f"Refusing local fallback. Job: {job.id}"
+            )
         # Stage 1 MVSEP failed — fall back to full local pipeline
         logger.info("MVSEP Stage 1 failed, falling back to full local pipeline")
         _set_job_stage(job, "fallback_local")
@@ -360,12 +375,6 @@ async def _separate_with_mvsep_fallback(
             return await separator_wrapper.separate_stems(input_path, output_dir)
 
     vocals, instrumental = stage1_result
-
-    if not vocals:
-        logger.error("MVSEP Stage 1 succeeded but no vocals file produced")
-        _set_job_stage(job, "fallback_local")
-        async with optional_semaphore(local_model_semaphore):
-            return await separator_wrapper.separate_stems(input_path, output_dir)
 
     # --- Stage 2: De-reverb (optional) ---
     stage2_enabled = mvsep_client.stage2_sep_type is not None
@@ -402,6 +411,12 @@ async def _separate_with_mvsep_fallback(
             continue
 
     if stage2_result is None:
+        if settings.SOW_FREE_ONLY_MODE:
+            raise StemSeparationWorkerError(
+                f"MVSEP Stage 2 permanently unavailable in free-only mode "
+                f"(quota not exhausted but retries exhausted). "
+                f"Refusing local Stage 2 fallback. Job: {job.id}"
+            )
         # Stage 2 MVSEP failed — local Stage 2 only (cross-backend handoff)
         logger.info("MVSEP Stage 2 failed, using local Stage 2 fallback")
         _set_job_stage(job, "fallback_local_stage2")
