@@ -2513,7 +2513,7 @@ def check_status(
                             db_client.update_recording_lrc(
                                 hash_prefix=rec.hash_prefix,
                                 r2_lrc_url=lrc_url,
-                                visibility_status="review",
+                                visibility_status=None,
                             )
                             reconciled_lrc += 1
                             console.print(
@@ -4943,7 +4943,7 @@ def _submit_lrc_for_song(
             db_client.update_recording_lrc(
                 recording.hash_prefix,
                 lrc_url,
-                visibility_status="review",
+                visibility_status=None,
             )
             results[song_id]["lrc"] = "completed"
             results[song_id]["lrc_source"] = "r2_preexisting"
@@ -5561,7 +5561,7 @@ def _handle_lrc_404(
         db_client.update_recording_lrc(
             recording.hash_prefix,
             lrc_url,
-            visibility_status="review",
+            visibility_status=None,
         )
         results[song_id]["lrc"] = "completed"
 
@@ -6528,7 +6528,7 @@ def _reconcile_on_interrupt(
             db_client.update_recording_lrc(
                 hash_prefix,
                 lrc_url,
-                visibility_status="review",
+                visibility_status=None,
             )
             results[song_id]["lrc"] = "completed"
 
