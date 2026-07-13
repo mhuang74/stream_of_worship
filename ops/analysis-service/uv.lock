@@ -2499,7 +2499,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "audio-separator", marker = "extra == 'admin'", specifier = ">=0.30.0" },
     { name = "beautifulsoup4", marker = "extra == 'admin'", specifier = ">=4.14.3" },
     { name = "beautifulsoup4", marker = "extra == 'scraper'", specifier = ">=4.14.0" },
     { name = "boto3", marker = "extra == 'admin'", specifier = ">=1.34.0" },
@@ -2510,7 +2509,6 @@ requires-dist = [
     { name = "lxml", marker = "extra == 'scraper'", specifier = ">=6.0.0" },
     { name = "miniaudio", marker = "extra == 'admin'", specifier = ">=1.59" },
     { name = "numpy", marker = "extra == 'admin'", specifier = ">=1.24.0" },
-    { name = "onnxruntime", marker = "extra == 'admin'", specifier = ">=1.17.0" },
     { name = "pathlib", specifier = ">=1.0.0" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'admin'", specifier = ">=3.2.0" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2.0" },
