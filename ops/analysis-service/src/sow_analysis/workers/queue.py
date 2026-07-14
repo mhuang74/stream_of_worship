@@ -100,9 +100,18 @@ try:
     )
     from ..services.qwen3_asr_client import Qwen3AsrError, Qwen3AsrQuotaExhaustedError
 except ImportError:
-    LRCWorkerError = Exception
-    Qwen3AsrError = Exception
-    Qwen3AsrQuotaExhaustedError = Exception
+    class _DummyLRCWorkerError(Exception):
+        pass
+
+    class _DummyQwen3AsrError(Exception):
+        pass
+
+    class _DummyQwen3AsrQuotaExhaustedError(_DummyQwen3AsrError):
+        pass
+
+    LRCWorkerError = _DummyLRCWorkerError
+    Qwen3AsrError = _DummyQwen3AsrError
+    Qwen3AsrQuotaExhaustedError = _DummyQwen3AsrQuotaExhaustedError
     build_qwen3_asr_cache_key = None
     build_whisper_transcription_cache_key = None
     generate_lrc = None
