@@ -605,3 +605,79 @@ async def test_embedding_job_with_result(job_store: JobStore) -> None:
     assert len(retrieved.result.line_embeddings) == 1
     assert retrieved.result.line_embeddings[0].line_text == "Lyrics here"
     assert retrieved.result.content_hash == "emb_hash_002"
+
+
+@pytest.mark.asyncio
+async def test_waiting_status_in_enum() -> None:
+    """Verify JobStatus.WAITING exists and equals 'waiting'."""
+    assert JobStatus.WAITING == "waiting"
+    assert JobStatus.WAITING.value == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_waiting_job_not_treated_as_interrupted(job_store: JobStore) -> None:
+    """Verify get_interrupted_jobs() does not return WAITING jobs."""
+    await job_store.insert_job(
+        Job(
+            id="job_waiting",
+            type=JobType.ANALYZE,
+            status=JobStatus.WAITING,
+            request=AnalyzeJobRequest(audio_url="s3://test/wait.mp3", content_hash="wait1"),
+        )
+    )
+    await job_store.insert_job(
+        Job(
+            id="job_processing",
+            type=JobType.ANALYZE,
+            status=JobStatus.PROCESSING,
+            request=AnalyzeJobRequest(audio_url="s3://test/proc.mp3", content_hash="proc1"),
+        )
+    )
+
+    interrupted = await job_store.get_interrupted_jobs()
+    assert len(interrupted) == 1
+    assert interrupted[0].id == "job_processing"
+
+
+@pytest.mark.asyncio
+async def test_get_waiting_jobs(job_store: JobStore) -> None:
+    """Verify get_waiting_jobs() returns only WAITING-status jobs."""
+    await job_store.insert_job(
+        Job(
+            id="job_waiting1",
+            type=JobType.ANALYZE,
+            status=JobStatus.WAITING,
+            request=AnalyzeJobRequest(audio_url="s3://test/w1.mp3", content_hash="w1"),
+        )
+    )
+    await job_store.insert_job(
+        Job(
+            id="job_waiting2",
+            type=JobType.LRC,
+            status=JobStatus.WAITING,
+            request=LrcJobRequest(
+                audio_url="s3://test/w2.mp3", content_hash="w2", lyrics_text="lyrics"
+            ),
+        )
+    )
+    await job_store.insert_job(
+        Job(
+            id="job_queued",
+            type=JobType.ANALYZE,
+            status=JobStatus.QUEUED,
+            request=AnalyzeJobRequest(audio_url="s3://test/q.mp3", content_hash="q1"),
+        )
+    )
+    await job_store.insert_job(
+        Job(
+            id="job_processing",
+            type=JobType.ANALYZE,
+            status=JobStatus.PROCESSING,
+            request=AnalyzeJobRequest(audio_url="s3://test/p.mp3", content_hash="p1"),
+        )
+    )
+
+    waiting = await job_store.get_waiting_jobs()
+    assert len(waiting) == 2
+    waiting_ids = {job.id for job in waiting}
+    assert waiting_ids == {"job_waiting1", "job_waiting2"}

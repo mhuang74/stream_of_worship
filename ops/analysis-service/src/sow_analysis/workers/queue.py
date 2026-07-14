@@ -263,6 +263,26 @@ class JobQueue:
         if queued:
             logger.info(f"Loaded {len(queued)} queued jobs from database")
 
+        # Recover WAITING jobs (dequeued but hadn't started real work)
+        waiting = await self.job_store.get_waiting_jobs()
+        for job in waiting:
+            job.status = JobStatus.QUEUED
+            job.stage = "requeued"
+            job.progress = 0.0
+            job.updated_at = datetime.now(timezone.utc)
+
+            self._jobs[job.id] = job
+            await self._queue.put(job.id)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="queued", progress=0.0, stage="requeued"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update WAITING job {job.id} during recovery: {e}")
+
+        if waiting:
+            logger.info(f"Recovered {len(waiting)} waiting jobs from database")
+
     async def submit(
         self,
         job_type: JobType,
@@ -386,6 +406,17 @@ class JobQueue:
         if current_job and current_job.status == JobStatus.CANCELLED:
             logger.info(f"Skipping cancelled job {job_id}")
             return
+
+        # Transition from QUEUED to WAITING — job is now dequeued and assigned to a task
+        # but hasn't started real work yet
+        if job.status == JobStatus.QUEUED:
+            job.status = JobStatus.WAITING
+            job.stage = "waiting"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(job.id, status="waiting", stage="waiting")
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} to WAITING in database: {e}")
 
         if job.type == JobType.ANALYZE:
             # Analysis always uses local models (allin1, demucs) - acquire semaphore for entire job
@@ -1866,9 +1897,12 @@ class JobQueue:
         except Exception as e:
             logger.error(f"Failed to update cancelled job {job_id} in database: {e}")
 
-        # Warning if job was processing
+        # Warning if job was processing (running task may continue)
         if previous_status == JobStatus.PROCESSING:
             warning = "Job was PROCESSING. The running task continues until service restart."
+        elif previous_status == JobStatus.WAITING:
+            # WAITING jobs have a running task but no side effects yet — safe to cancel
+            pass
 
         return job, warning
 
@@ -1880,9 +1914,9 @@ class JobQueue:
         """
         cancelled_jobs: list[Job] = []
 
-        # Find all QUEUED and PROCESSING jobs in memory
+        # Find all QUEUED, WAITING, and PROCESSING jobs in memory
         for job_id, job in list(self._jobs.items()):
-            if job.status in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            if job.status in (JobStatus.QUEUED, JobStatus.WAITING, JobStatus.PROCESSING):
                 job.status = JobStatus.CANCELLED
                 job.updated_at = datetime.now(timezone.utc)
                 job.stage = "cancelled"
@@ -1946,6 +1980,23 @@ class JobQueue:
         except Exception as e:
             logger.error(f"Failed to list processing jobs from database: {e}")
 
+        # Also query DB for WAITING jobs not in memory
+        try:
+            db_waiting_jobs = await self.job_store.list_jobs(status=JobStatus.WAITING, limit=1000)
+            for job in db_waiting_jobs:
+                if job.id not in self._jobs:
+                    job.status = JobStatus.CANCELLED
+                    job.updated_at = datetime.now(timezone.utc)
+                    job.stage = "cancelled"
+                    try:
+                        await self.job_store.update_job(job.id, status="cancelled", stage="cancelled")
+                    except Exception as e:
+                        logger.error(f"Failed to update cancelled job {job.id} in database: {e}")
+                    self._jobs[job.id] = job
+                    cancelled_jobs.append(job)
+        except Exception as e:
+            logger.error(f"Failed to list waiting jobs from database: {e}")
+
         return cancelled_jobs
 
     async def stop(self) -> None:
@@ -1974,6 +2025,11 @@ class JobQueue:
                     (now - job.created_at).total_seconds()
                 )
                 has_reportable_jobs = True
+            elif job.status == JobStatus.WAITING:
+                queued_wait_times[job.type].append(
+                    (now - job.created_at).total_seconds()
+                )
+                has_reportable_jobs = True
             elif job.status == JobStatus.PROCESSING:
                 processing_durations[job.type].append(
                     (now - job.updated_at).total_seconds()
@@ -1995,6 +2051,7 @@ class JobQueue:
             s = stats[jt]
             parts.append(
                 f"{jt.name}[queued:{s[JobStatus.QUEUED]},"
+                f"waiting:{s[JobStatus.WAITING]},"
                 f"processing:{s[JobStatus.PROCESSING]},"
                 f"completed:{s[JobStatus.COMPLETED]},"
                 f"failed:{s[JobStatus.FAILED]}]"

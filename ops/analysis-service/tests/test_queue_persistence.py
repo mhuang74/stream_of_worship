@@ -1,12 +1,14 @@
 """Integration tests for job queue persistence."""
 
 import asyncio
+import logging
 from pathlib import Path
 
 import pytest
 
 from sow_analysis.models import (
     AnalyzeJobRequest,
+    Job,
     JobStatus,
     JobType,
 )
@@ -411,5 +413,252 @@ async def test_clear_queue_skips_completed_failed_cancelled(temp_dir: Path) -> N
 
     assert completed_job.status == JobStatus.COMPLETED
     assert cancelled_job.status == JobStatus.CANCELLED
+
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_waiting_job_recovered_as_queued(temp_dir: Path) -> None:
+    """Test that a WAITING job is recovered as QUEUED on restart."""
+    db_path = temp_dir / "jobs.db"
+
+    # Create queue and submit job
+    queue1 = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=db_path,
+    )
+    await queue1.initialize()
+
+    request = AnalyzeJobRequest(
+        audio_url="s3://test-bucket/audio.mp3",
+        content_hash="wait123",
+    )
+
+    job = await queue1.submit(JobType.ANALYZE, request)
+
+    # Manually set job to WAITING (simulating it was dequeued but not started)
+    await queue1.job_store.update_job(job.id, status="waiting", stage="waiting")
+
+    # Stop queue
+    await queue1.stop()
+
+    # Create second queue
+    queue2 = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=db_path,
+    )
+    await queue2.initialize()
+
+    # Job should be recovered as QUEUED (not WAITING)
+    recovered = await queue2.get_job(job.id)
+    assert recovered is not None
+    assert recovered.status == JobStatus.QUEUED
+    assert recovered.stage == "requeued"
+    assert recovered.progress == 0.0
+
+    await queue2.stop()
+
+
+@pytest.mark.asyncio
+async def test_cancel_waiting_job_no_warning(temp_dir: Path) -> None:
+    """Test that cancelling a WAITING job returns no warning (unlike PROCESSING)."""
+    queue = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    request = AnalyzeJobRequest(
+        audio_url="s3://test/wait.mp3",
+        content_hash="cancel_wait1",
+    )
+
+    job = await queue.submit(JobType.ANALYZE, request)
+
+    # Set job to WAITING
+    job.status = JobStatus.WAITING
+    job.stage = "waiting"
+    await queue.job_store.update_job(job.id, status="waiting", stage="waiting")
+
+    # Cancel the WAITING job
+    cancelled_job, warning = await queue.cancel_job(job.id)
+
+    assert cancelled_job is not None
+    assert cancelled_job.status == JobStatus.CANCELLED
+    # No warning for WAITING jobs
+    assert warning is None
+
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_cancel_processing_job_has_warning(temp_dir: Path) -> None:
+    """Test that cancelling a PROCESSING job returns a warning (contrast with WAITING)."""
+    queue = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    request = AnalyzeJobRequest(
+        audio_url="s3://test/proc.mp3",
+        content_hash="cancel_proc1",
+    )
+
+    job = await queue.submit(JobType.ANALYZE, request)
+
+    # Set job to PROCESSING
+    job.status = JobStatus.PROCESSING
+    job.stage = "analyzing"
+    await queue.job_store.update_job(job.id, status="processing", stage="analyzing")
+
+    # Cancel the PROCESSING job
+    cancelled_job, warning = await queue.cancel_job(job.id)
+
+    assert cancelled_job is not None
+    assert cancelled_job.status == JobStatus.CANCELLED
+    # Warning for PROCESSING jobs
+    assert warning is not None
+    assert "PROCESSING" in warning
+
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_clear_queue_cancels_waiting(temp_dir: Path) -> None:
+    """Test that clear_queue cancels WAITING jobs."""
+    queue = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    # Submit a job and set it to WAITING
+    waiting_job = await queue.submit(
+        JobType.ANALYZE,
+        AnalyzeJobRequest(audio_url="s3://test/waiting.mp3", content_hash="clear_wait1"),
+    )
+    waiting_job.status = JobStatus.WAITING
+    waiting_job.stage = "waiting"
+    await queue.job_store.update_job(waiting_job.id, status="waiting", stage="waiting")
+
+    # Clear queue should cancel the WAITING job
+    cancelled = await queue.clear_queue()
+    cancelled_ids = {j.id for j in cancelled}
+    assert waiting_job.id in cancelled_ids
+
+    # Verify status in memory
+    assert waiting_job.status == JobStatus.CANCELLED
+
+    # Verify status in DB
+    db_waiting = await queue.job_store.get_job(waiting_job.id)
+    assert db_waiting.status == JobStatus.CANCELLED
+
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_job_set_to_waiting_on_dequeue(temp_dir: Path) -> None:
+    """Test that a job is set to WAITING after dequeue but before semaphore.
+
+    We verify that _process_job_with_semaphore sets WAITING status before
+    calling the processor. We use a mock processor that blocks on a semaphore
+    so the WAITING state is observable.
+    """
+    queue = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    request = AnalyzeJobRequest(
+        audio_url="s3://test/dequeue.mp3",
+        content_hash="dequeue1",
+    )
+    job = await queue.submit(JobType.ANALYZE, request)
+
+    # Manually invoke _process_job_with_semaphore and check that WAITING is set
+    # before the processor runs. We use an event to synchronize: the test
+    # checks the status after _process_job_with_semaphore sets WAITING but
+    # before the processor (which we mock) runs.
+    import unittest.mock
+
+    status_before_processor = []
+
+    async def mock_processor(j: Job) -> None:
+        status_before_processor.append(j.status)
+
+    # Patch the analysis processor path
+    with unittest.mock.patch.object(queue, "_process_analysis_job", side_effect=mock_processor):
+        # Acquire the semaphore first so the job blocks on it
+        async with queue._local_model_semaphore:
+            # Start processing in background
+            task = asyncio.create_task(queue._process_job_with_semaphore(job))
+            # Give it time to set WAITING and block on the semaphore
+            await asyncio.sleep(0.1)
+            # Job should be WAITING (set before semaphore acquisition)
+            assert job.status == JobStatus.WAITING
+            # Release the semaphore so the processor can run
+        # Wait for the task to complete
+        await task
+
+    # The processor should have seen the job as WAITING (before it sets PROCESSING)
+    # Actually, the processor sets PROCESSING as its first action, so the status
+    # captured inside the mock is WAITING (the state just before the processor runs).
+    # But since our mock doesn't set PROCESSING, the status stays WAITING.
+    assert len(status_before_processor) == 1
+
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_log_queue_state_shows_waiting(temp_dir: Path) -> None:
+    """Test that _log_queue_state() output includes 'waiting:N' count."""
+    queue = JobQueue(
+        max_concurrent_local_model=1,
+        cache_dir=temp_dir,
+        db_path=temp_dir / "jobs.db",
+    )
+    await queue.initialize()
+
+    # Submit jobs and set one to WAITING
+    waiting_job = await queue.submit(
+        JobType.ANALYZE,
+        AnalyzeJobRequest(audio_url="s3://test/wait.mp3", content_hash="log_wait1"),
+    )
+    waiting_job.status = JobStatus.WAITING
+    waiting_job.stage = "waiting"
+
+    # Capture log output
+    import logging
+    import io
+
+    log_stream = io.StringIO()
+    handler = logging.StreamHandler(log_stream)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(message)s")
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger("sow_analysis.workers.queue")
+    old_level = logger.level
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+
+    try:
+        queue._log_queue_state()
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+
+    # Check that the log output contains "waiting:"
+    log_text = log_stream.getvalue()
+    assert "waiting:" in log_text
+    assert "waiting:1" in log_text
 
     await queue.stop()
