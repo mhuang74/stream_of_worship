@@ -190,7 +190,7 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "ANALYZE[queued:1,processing:0,completed:0,failed:0]" in messages[0]
+        assert "ANALYZE[queued:1,waiting:0,processing:0,completed:0,failed:0]" in messages[0]
         assert "ANALYZE queued=[" in messages[0]
 
     def test_log_queue_state_emits_for_processing_job(self, tmp_path, caplog):
@@ -203,7 +203,7 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "ANALYZE[queued:0,processing:1,completed:0,failed:0]" in messages[0]
+        assert "ANALYZE[queued:0,waiting:0,processing:1,completed:0,failed:0]" in messages[0]
         assert "ANALYZE processing=" in messages[0]
 
     def test_log_queue_state_emits_for_recent_failed_job(self, tmp_path, caplog):
@@ -216,7 +216,7 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "ANALYZE[queued:0,processing:0,completed:0,failed:1]" in messages[0]
+        assert "ANALYZE[queued:0,waiting:0,processing:0,completed:0,failed:1]" in messages[0]
 
     def test_log_queue_state_skips_stale_failed_job(self, tmp_path, caplog):
         queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
@@ -242,7 +242,7 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "EMBEDDING[queued:1,processing:0,completed:0,failed:0]" in messages[0]
+        assert "EMBEDDING[queued:1,waiting:0,processing:0,completed:0,failed:0]" in messages[0]
         assert "EMBEDDING queued=[" in messages[0]
 
     def test_log_queue_state_handles_embedding_processing_job(self, tmp_path, caplog):
@@ -256,7 +256,7 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "EMBEDDING[queued:0,processing:1,completed:0,failed:0]" in messages[0]
+        assert "EMBEDDING[queued:0,waiting:0,processing:1,completed:0,failed:0]" in messages[0]
         assert "EMBEDDING processing=" in messages[0]
 
 
@@ -272,7 +272,7 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert f"{job_type.name}[queued:1,processing:0,completed:0,failed:0]" in messages[0]
+        assert f"{job_type.name}[queued:1,waiting:0,processing:0,completed:0,failed:0]" in messages[0]
         assert f"{job_type.name} queued=[" in messages[0]
 
 

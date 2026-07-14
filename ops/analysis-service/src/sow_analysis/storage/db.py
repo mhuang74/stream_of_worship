@@ -78,7 +78,7 @@ class JobStore:
 
                 content_hash    TEXT NOT NULL,
 
-                CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled')),
+                CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
                 CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
             );
 
@@ -588,6 +588,24 @@ class JobStore:
 
         jobs = [self._row_to_job(row) for row in rows]
         logger.info(f"Found {len(jobs)} queued jobs in database")
+        return jobs
+
+    async def get_waiting_jobs(self) -> list[Job]:
+        """Return jobs with status WAITING (for restart recovery).
+
+        WAITING jobs were dequeued but hadn't started real work.
+        On restart, they are re-queued like QUEUED jobs.
+        """
+        if not self._db:
+            raise RuntimeError("JobStore not initialized")
+
+        async with self._db.execute(
+            "SELECT * FROM jobs WHERE status = 'waiting'"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        jobs = [self._row_to_job(row) for row in rows]
+        logger.info(f"Found {len(jobs)} waiting jobs in database")
         return jobs
 
     async def get_cancelled_jobs(self) -> list[Job]:
