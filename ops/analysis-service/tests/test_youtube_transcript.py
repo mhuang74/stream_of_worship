@@ -13,6 +13,7 @@ from sow_analysis.workers.youtube_transcript import (
     _find_best_transcript,
     _is_rate_limited_error,
     _is_transient_connection_error,
+    _is_permanently_unavailable_error,
     _rate_limiter,
     _YouTubeRateLimiter,
     build_correction_prompt,
@@ -433,6 +434,197 @@ class TestFetchYoutubeTranscript:
             result = await fetch_youtube_transcript("testVideoId")
 
         assert len(result) == 1
+
+
+class TestFetchYoutubeTranscriptPermanentErrors:
+    """Tests for fetch_youtube_transcript() short-circuit on permanent errors."""
+
+    @pytest.mark.asyncio
+    async def test_subtitles_disabled_short_circuits_list_fallback(self):
+        """TranscriptsDisabled → YouTubeTranscriptError raised, list NOT called."""
+        from unittest.mock import patch
+
+        from sow_analysis.workers.youtube_transcript import YouTubeTranscriptError
+
+        class TranscriptsDisabled(Exception):
+            pass  # Class name matches the real library exception type
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = TranscriptsDisabled("Subtitles are disabled")
+
+            with pytest.raises(YouTubeTranscriptError, match="permanently unavailable"):
+                await fetch_youtube_transcript("testVideoId")
+
+            # CRITICAL: list() must not be called (the short-circuit)
+            mock_api.list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_video_unavailable_short_circuits_list_fallback(self):
+        """VideoUnavailable → YouTubeTranscriptError raised, list NOT called."""
+        from unittest.mock import patch
+
+        from sow_analysis.workers.youtube_transcript import YouTubeTranscriptError
+
+        class VideoUnavailable(Exception):
+            pass
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = VideoUnavailable("The video is no longer available")
+
+            with pytest.raises(YouTubeTranscriptError, match="permanently unavailable"):
+                await fetch_youtube_transcript("testVideoId")
+
+            mock_api.list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_video_id_short_circuits_list_fallback(self):
+        """InvalidVideoId → YouTubeTranscriptError raised, list NOT called."""
+        from unittest.mock import patch
+
+        from sow_analysis.workers.youtube_transcript import YouTubeTranscriptError
+
+        class InvalidVideoId(Exception):
+            pass
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = InvalidVideoId("invalid id")
+
+            with pytest.raises(YouTubeTranscriptError, match="permanently unavailable"):
+                await fetch_youtube_transcript("testVideoId")
+
+            mock_api.list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_age_restricted_short_circuits_list_fallback(self):
+        """AgeRestricted → YouTubeTranscriptError raised, list NOT called."""
+        from unittest.mock import patch
+
+        from sow_analysis.workers.youtube_transcript import YouTubeTranscriptError
+
+        class AgeRestricted(Exception):
+            pass
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = AgeRestricted("age-restricted")
+
+            with pytest.raises(YouTubeTranscriptError, match="permanently unavailable"):
+                await fetch_youtube_transcript("testVideoId")
+
+            mock_api.list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_video_unplayable_short_circuits_list_fallback(self):
+        """VideoUnplayable → YouTubeTranscriptError raised, list NOT called."""
+        from unittest.mock import patch
+
+        from sow_analysis.workers.youtube_transcript import YouTubeTranscriptError
+
+        class VideoUnplayable(Exception):
+            pass
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = VideoUnplayable("unplayable")
+
+            with pytest.raises(YouTubeTranscriptError, match="permanently unavailable"):
+                await fetch_youtube_transcript("testVideoId")
+
+            mock_api.list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_transcript_found_still_tries_list_fallback(self):
+        """NoTranscriptFound must NOT short-circuit — it's the fallback's purpose."""
+        from unittest.mock import patch
+
+        mock_snippet = type("Snippet", (), {"text": "我要看見", "start": 15.0})()
+        mock_fetched = [mock_snippet]
+
+        mock_transcript_obj = type(
+            "Transcript",
+            (),
+            {
+                "language_code": "zh-TW",
+                "language": "Chinese (Taiwan)",
+                "is_generated": False,
+                "fetch": lambda s: mock_fetched,
+            },
+        )()
+
+        class NoTranscriptFound(Exception):
+            pass
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi:
+            mock_api = MockApi.return_value
+            mock_api.fetch.side_effect = NoTranscriptFound("No transcripts found")
+            mock_api.list.return_value = [mock_transcript_obj]
+
+            result = await fetch_youtube_transcript("testVideoId")
+
+        assert len(result) == 1
+        mock_api.list.assert_called_once_with("testVideoId")
+
+
+class TestIsPermanentlyUnavailableError:
+    """Tests for _is_permanently_unavailable_error()."""
+
+    @pytest.mark.parametrize(
+        "exception_class_name,should_match",
+        [
+            ("TranscriptsDisabled", True),
+            ("VideoUnavailable", True),
+            ("VideoUnplayable", True),
+            ("InvalidVideoId", True),
+            ("AgeRestricted", True),
+            ("NoTranscriptFound", False),
+            ("RequestBlocked", False),
+            ("IpBlocked", False),
+            ("PoTokenRequired", False),
+            ("FailedToCreateConsentCookie", False),
+            ("YouTubeRequestFailed", False),
+            ("YouTubeDataUnparsable", False),
+            ("NotTranslatable", False),
+            ("TranslationLanguageNotAvailable", False),
+            ("GenericException", False),
+        ],
+    )
+    def test_exception_class_name_detection(self, exception_class_name, should_match):
+        # Dynamically create an exception class with the given name
+        exc_type = type(exception_class_name, (Exception,), {})
+        exc = exc_type("test message")
+        assert _is_permanently_unavailable_error(exc) is should_match
+
+    def test_detects_wrapped_exception_in_cause_chain(self):
+        """Permanent error wrapped in another exception is still detected."""
+
+        class TranscriptsDisabled(Exception):
+            pass
+
+        primary = RuntimeError("wrapper")
+        primary.__cause__ = TranscriptsDisabled("subtitles disabled")
+        assert _is_permanently_unavailable_error(primary) is True
+
+    def test_detects_wrapped_exception_in_context_chain(self):
+        """Permanent error in __context__ chain is detected."""
+
+        class VideoUnavailable(Exception):
+            pass
+
+        primary = ValueError("wrapper")
+        primary.__context__ = VideoUnavailable("video removed")
+        assert _is_permanently_unavailable_error(primary) is True
+
+    def test_handles_circular_exception_chain(self):
+        """Circular __cause__/__context__ chain doesn't infinite-loop."""
+        exc_a = Exception("a")
+        exc_b = Exception("b")
+        exc_a.__cause__ = exc_b
+        exc_b.__cause__ = exc_a
+        # Should return False without hanging
+        assert _is_permanently_unavailable_error(exc_a) is False
 
 
 class TestRotatingProxyConfig:
