@@ -60,6 +60,9 @@ class JobStore:
         # Check if we need to migrate from old schema (without 'fast_analyze' job type)
         await self._migrate_fast_analyze_type()
 
+        # Check if we need to migrate from old schema (without 'waiting' status)
+        await self._migrate_waiting_status()
+
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -379,6 +382,80 @@ class JobStore:
 
         except Exception as e:
             logger.error(f"Database migration for fast_analyze type failed: {e}")
+            raise
+
+    async def _migrate_waiting_status(self) -> None:
+        """Migrate old schema to support 'waiting' status.
+
+        SQLite doesn't support ALTER TABLE for CHECK constraints,
+        so we need to recreate the table if it has the old schema.
+        """
+        if not self._db:
+            return
+
+        try:
+            async with self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return  # Table doesn't exist yet, will be created normally
+
+            async with self._db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                schema = row[0]
+                if "'waiting'" in schema:
+                    return  # Already has waiting
+
+                logger.warning(
+                    "Migrating database schema to support WAITING status"
+                )
+
+                await self._db.executescript(
+                    """
+                    DROP TABLE IF EXISTS jobs_old;
+
+                    ALTER TABLE jobs RENAME TO jobs_old;
+
+                    CREATE TABLE jobs (
+                        id              TEXT PRIMARY KEY,
+                        type            TEXT NOT NULL,
+                        status          TEXT NOT NULL DEFAULT 'queued',
+                        progress        REAL NOT NULL DEFAULT 0.0,
+                        stage           TEXT NOT NULL DEFAULT '',
+                        error_message   TEXT,
+
+                        request_json    TEXT NOT NULL,
+                        result_json     TEXT,
+
+                        created_at      TEXT NOT NULL,
+                        updated_at      TEXT NOT NULL,
+
+                        content_hash    TEXT NOT NULL,
+
+                        CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
+                        CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
+                    );
+
+                    INSERT INTO jobs SELECT * FROM jobs_old;
+
+                    DROP TABLE jobs_old;
+
+                    CREATE INDEX idx_jobs_status ON jobs(status);
+                    CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                    CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+                    """
+                )
+                await self._db.commit()
+                logger.info("Database migration for waiting status complete")
+
+        except Exception as e:
+            logger.error(f"Database migration for waiting status failed: {e}")
             raise
 
     async def insert_job(self, job: Job) -> None:
