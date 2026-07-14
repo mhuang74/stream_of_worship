@@ -143,6 +143,43 @@ def _is_transient_connection_error(e: Exception) -> bool:
     return False
 
 
+def _is_permanently_unavailable_error(e: Exception) -> bool:
+    """Check if an exception indicates the video will never have a usable transcript.
+
+    These errors are permanent at the video level — the list fallback
+    (Phase 2 of fetch_youtube_transcript) will also fail, so we short-circuit
+    to avoid:
+
+    - The 2-second asyncio.sleep proxy rotation delay
+    - A second rate-limiter-throttled HTTP round-trip to YouTube
+    - A second exception log line
+
+    Detects youtube-transcript-api exception types by class name (avoids
+    importing the library at module level):
+
+    - TranscriptsDisabled: subtitles are disabled for this video
+    - VideoUnavailable: video has been removed
+    - VideoUnplayable: video cannot be played
+    - InvalidVideoId: the video ID is malformed
+    - AgeRestricted: video is age-restricted (requires auth)
+    """
+    permanently_unavailable_types = {
+        "TranscriptsDisabled",
+        "VideoUnavailable",
+        "VideoUnplayable",
+        "InvalidVideoId",
+        "AgeRestricted",
+    }
+    visited: set[int] = set()
+    exc: Optional[Exception] = e
+    while exc is not None and id(exc) not in visited:
+        visited.add(id(exc))
+        if type(exc).__name__ in permanently_unavailable_types:
+            return True
+        exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    return False
+
+
 class _YouTubeRateLimiter:
     """Module-level rate limiter for YouTube transcript API calls.
 
@@ -699,6 +736,14 @@ async def fetch_youtube_transcript(
             logger.info(f"Fetched {len(transcript)} transcript segments from YouTube")
             return transcript
     except Exception as e:
+        if _is_permanently_unavailable_error(e):
+            logger.warning(
+                f"Direct fetch failed for {video_id} with permanent error "
+                f"(transcript will never be available), skipping list fallback: {e}"
+            )
+            raise YouTubeTranscriptError(
+                f"Transcript permanently unavailable for video {video_id}: {e}"
+            ) from e
         logger.error(f"Direct fetch failed for {video_id}, trying list fallback: {e}")
         # Brief delay to allow proxy IP rotation before list fallback
         await asyncio.sleep(2.0)
