@@ -149,10 +149,14 @@ def _is_llm_retryable_error(e: Exception) -> bool:
     exc: Optional[Exception] = e
     while exc is not None and id(exc) not in visited:
         visited.add(id(exc))
-        if getattr(exc, "status_code", None) == 429:
-            return False
-        if getattr(exc, "code", None) == 429:
-            return False
+        for attr in ("status_code", "code"):
+            val = getattr(exc, attr, None)
+            if val is not None:
+                try:
+                    if int(val) == 429:
+                        return False
+                except (TypeError, ValueError):
+                    pass
         exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
 
     retryable_status_codes = {500, 502, 503, 504, 520, 521, 522, 523, 524, 529}
@@ -162,12 +166,14 @@ def _is_llm_retryable_error(e: Exception) -> bool:
     exc = e
     while exc is not None and id(exc) not in visited:
         visited.add(id(exc))
-        status_code = getattr(exc, "status_code", None)
-        if status_code in retryable_status_codes:
-            return True
-        code = getattr(exc, "code", None)
-        if code in retryable_status_codes:
-            return True
+        for attr in ("status_code", "code"):
+            val = getattr(exc, attr, None)
+            if val is not None:
+                try:
+                    if int(val) in retryable_status_codes:
+                        return True
+                except (TypeError, ValueError):
+                    pass
         exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
 
     # Strategy 2: Check exception type name (OpenAI SDK exception types)
