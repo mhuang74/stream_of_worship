@@ -170,6 +170,15 @@ class Settings(BaseSettings):
     # every 1s, this primarily controls how aggressively the poller
     # re-evaluates; it is an optimization, not a hard dependency.
 
+    # Parent job wait timeout for child stem separation
+    SOW_PARENT_STEM_WAIT_TIMEOUT_SECONDS: int = 7200
+    # Wall-clock budget (seconds) a parent job (LRC, forced alignment)
+    # waits for an auto-triggered child stem separation job to complete
+    # before giving up. In SOW_FREE_ONLY_MODE, this budget is suspended
+    # (reset to zero) while the child job is in the
+    # "waiting_for_mvsep_quota_reset" stage, so the parent does not time
+    # out while MVSEP quota is legitimately exhausted for the day.
+
     # Stage 1 (Vocal Separation)
     SOW_MVSEP_STAGE1_SEP_TYPE: int = 48
     SOW_MVSEP_STAGE1_ADD_OPT1: int = 11
