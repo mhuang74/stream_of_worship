@@ -895,6 +895,7 @@ class JobQueue:
         await self._update_stage(job, f"awaiting_stem_separation:{child_id}")
 
         wait_start = time.time()
+        last_suspend_log = 0.0
         while True:
             await asyncio.sleep(3.0)
             if job.status == JobStatus.CANCELLED:
@@ -906,7 +907,28 @@ class JobQueue:
                 break
             if child_job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
                 break
-            if time.time() - wait_start > 7200.0:
+            # In free-only mode, suspend the parent's wait-timeout budget
+            # while the child stem separation job is blocked on MVSEP quota
+            # reset. The quota resets once per UTC day, which may be many
+            # hours away; the timeout budget must not elapse during that
+            # legitimate wait, otherwise the parent would erroneously fall
+            # back to full-mix audio (which yields very poor ASR results).
+            if (
+                settings.SOW_FREE_ONLY_MODE
+                and child_job.stage == "waiting_for_mvsep_quota_reset"
+            ):
+                now = time.time()
+                # Log suspension once per 5 minutes to avoid log spam
+                if now - last_suspend_log > 300.0:
+                    last_suspend_log = now
+                    logger.info(
+                        "Parent job %s suspending stem-separation wait timeout "
+                        "while child %s waits for MVSEP quota reset",
+                        job.id,
+                        child_id,
+                    )
+                wait_start = now
+            if time.time() - wait_start > settings.SOW_PARENT_STEM_WAIT_TIMEOUT_SECONDS:
                 logger.warning("Timeout waiting for child stem separation job %s", child_id)
                 break
 
@@ -925,8 +947,32 @@ class JobQueue:
                 logger.info("Using %s for transcription: %s", stem_kind, url)
                 return ResolvedTranscriptionAudio(stem_path, url, stem_kind, is_clean)
 
-        logger.warning("Stem resolution failed or incomplete; using full mix")
-        return ResolvedTranscriptionAudio(audio_path, None, "full_mix", False)
+        # If the parent job was cancelled during the wait, return full-mix
+        # so the caller can detect the cancelled status and exit gracefully.
+        if job.status == JobStatus.CANCELLED:
+            logger.info("Parent job %s cancelled; returning full-mix for transcription", job.id)
+            return ResolvedTranscriptionAudio(audio_path, None, "full_mix", False)
+
+        # Never fall back to full-mix audio for transcription. Un-separated
+        # audio yields very poor ASR results (qwen3 ASR returns
+        # SUCCESS_WITH_NO_VALID_FRAGMENT on full mix). Fail the job instead
+        # so the operator can retry once MVSEP quota is available.
+        child_status = child_job.status.value if child_job else "missing"
+        child_stage = child_job.stage if child_job else "missing"
+        logger.error(
+            "Stem resolution failed or incomplete for job %s "
+            "(child %s status=%s stage=%s); refusing to fall back to full mix audio",
+            job.id,
+            child_id,
+            child_status,
+            child_stage,
+        )
+        raise LRCWorkerError(
+            f"Stem resolution failed or incomplete for job {job.id}; "
+            f"refusing to fall back to full mix audio for transcription. "
+            f"Child stem separation job {child_id} did not produce usable "
+            f"vocal stems (status={child_status}, stage={child_stage})."
+        )
 
     async def _process_lrc_job(self, job: Job) -> None:
         """Process an LRC generation job.
