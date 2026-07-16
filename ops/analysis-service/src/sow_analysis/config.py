@@ -170,6 +170,14 @@ class Settings(BaseSettings):
     # every 1s, this primarily controls how aggressively the poller
     # re-evaluates; it is an optimization, not a hard dependency.
 
+    SOW_QUOTA_WAIT_QUIESCENT_LOG_INTERVAL_SECONDS: int = 1800
+    # When every active job is blocked on a free-tier API quota reset (MVSEP or
+    # Qwen3 ASR), back off QuotaWaiter and queue-state periodic logging to this
+    # interval (default 30 min) instead of the normal 30s/60s cadence. The first
+    # log on entering quiescence still fires immediately; subsequent identical
+    # "still waiting" lines are suppressed until the interval elapses. Tunable so
+    # operators can shorten during debugging.
+
     # Parent job wait timeout for child stem separation
     SOW_PARENT_STEM_WAIT_TIMEOUT_SECONDS: int = 7200
     # Wall-clock budget (seconds) a parent job (LRC, forced alignment)

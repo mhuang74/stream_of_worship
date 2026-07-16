@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 FINISHED_JOB_MEMORY_RETENTION_SECONDS = 300.0
 
+_QUOTA_WAIT_STAGES = frozenset(
+    {
+        "waiting_for_mvsep_quota_reset",
+        "waiting_for_qwen3_asr_quota_reset",
+    }
+)
+
 
 @dataclass
 class ResolvedTranscriptionAudio:
@@ -187,6 +194,7 @@ class JobQueue:
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
+        self._last_quiescent_log_time: float = 0.0
 
         # Persistent job store
         db_path = db_path if db_path is not None else cache_dir / "jobs.db"
@@ -236,6 +244,10 @@ class JobQueue:
         """
         self._mvsep_quota_waiter = mvsep
         self._qwen3_quota_waiter = qwen3
+        if mvsep is not None:
+            mvsep.is_quiescent_fn = self._is_quota_wait_quiescent
+        if qwen3 is not None:
+            qwen3.is_quiescent_fn = self._is_quota_wait_quiescent
 
     def set_qwen3_client(self, qwen3_client: Any) -> None:
         """Set the Qwen3 ASR client singleton for LRC jobs.
@@ -2182,6 +2194,41 @@ class JobQueue:
             await self._forced_aligner_wrapper.cleanup()
         await self.job_store.close()
 
+    def _is_quota_wait_quiescent(self) -> bool:
+        """True when every active (non-finished) job is blocked on a quota reset.
+
+        Returns True iff:
+          - there is >=1 in-memory job with status PROCESSING and stage in
+            _QUOTA_WAIT_STAGES, AND
+          - all other reportable jobs (QUEUED / WAITING / PROCESSING / recently
+            FAILED) are also PROCESSING with a quota-wait stage.
+
+        Empty queue -> False (the early-return in _log_queue_state already
+        suppresses logging when there is nothing to report).
+        """
+        now = datetime.now(timezone.utc)
+        has_active_quota_wait = False
+        for job in self._jobs.values():
+            is_recent_failed = (
+                job.status == JobStatus.FAILED
+                and (now - job.updated_at).total_seconds()
+                <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
+            )
+            is_finished = job.status in (
+                JobStatus.COMPLETED,
+                JobStatus.FAILED,
+                JobStatus.CANCELLED,
+            ) and not is_recent_failed
+            if is_finished:
+                continue
+            # Active (reportable) job: QUEUED, WAITING, PROCESSING, or recently FAILED
+            if job.status == JobStatus.PROCESSING and job.stage in _QUOTA_WAIT_STAGES:
+                has_active_quota_wait = True
+                continue
+            # Any active job not in a quota-wait stage -> not quiescent
+            return False
+        return has_active_quota_wait
+
     def _log_queue_state(self) -> None:
         """Log current queue state statistics."""
         now = datetime.now(timezone.utc)
@@ -2214,6 +2261,22 @@ class JobQueue:
 
         if not has_reportable_jobs:
             return
+
+        # Suppress log emission during quota-wait quiescence: when every active
+        # job is blocked on a quota reset, nothing changes between ticks, so
+        # back off to the quiescent interval. The first quiescent tick still
+        # logs (so operators see the state transition), then suppression kicks in.
+        quiescent = self._is_quota_wait_quiescent()
+        if quiescent:
+            now_mono = time.monotonic()
+            if (
+                now_mono - self._last_quiescent_log_time
+                < settings.SOW_QUOTA_WAIT_QUIESCENT_LOG_INTERVAL_SECONDS
+            ):
+                return
+            self._last_quiescent_log_time = now_mono
+        else:
+            self._last_quiescent_log_time = 0.0
 
         parts: list[str] = []
         wait_parts: list[str] = []
