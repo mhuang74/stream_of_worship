@@ -1,6 +1,7 @@
 """Unit tests for QuotaWaiter."""
 
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -215,3 +216,122 @@ async def test_periodic_logging_emits_waiting_count():
     # (we can't easily capture log output, but we verify no crash)
     await asyncio.gather(t1, t2, return_exceptions=True)
     await waiter.stop()
+
+
+# ── Quiescent throttling tests ──
+
+
+def _patch_wait_for_immediate_timeout(monkeypatch):
+    """Patch asyncio.wait_for in quota_waiter module to raise TimeoutError instantly."""
+    import sow_analysis.workers.quota_waiter as qw_mod
+
+    async def _fake_wait_for(awaitable, timeout):
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr(asyncio, "wait_for", _fake_wait_for)
+
+
+def _make_monotonic_stepper(start: float, step: float):
+    """Return a fake monotonic() that advances by `step` on each call."""
+    state = [start]
+
+    def _fake():
+        val = state[0]
+        state[0] += step
+        return val
+
+    return _fake, state
+
+
+@pytest.mark.asyncio
+async def test_quiescent_fn_none_uses_normal_interval(monkeypatch, caplog):
+    """With is_quiescent_fn=None (default), logging fires every 30s as before."""
+    import sow_analysis.workers.quota_waiter as qw_mod
+
+    _patch_wait_for_immediate_timeout(monkeypatch)
+    fake_mono, _ = _make_monotonic_stepper(start=30.0, step=30.0)
+    monkeypatch.setattr(qw_mod.time, "monotonic", fake_mono)
+
+    waiter = QuotaWaiter("test", lambda: False, poll_interval=100)
+    job = _FakeJob("job_001")
+    caplog.set_level(logging.INFO, logger="sow_analysis.workers.quota_waiter")
+
+    await waiter.wait(job, lambda: False, max_wait_seconds=5)
+    await waiter.stop()
+
+    waiting_logs = [r for r in caplog.records if "waiting for quota reset" in r.message]
+    assert len(waiting_logs) == 5  # one per 30s tick
+
+
+@pytest.mark.asyncio
+async def test_quiescent_fn_true_uses_quiescent_interval(monkeypatch, caplog):
+    """With is_quiescent_fn=lambda: True, only one log per 30-min interval."""
+    import sow_analysis.workers.quota_waiter as qw_mod
+
+    _patch_wait_for_immediate_timeout(monkeypatch)
+    # Start at 1800 so first tick logs (1800 - 0 >= 1800); advance 60s/tick
+    fake_mono, _ = _make_monotonic_stepper(start=1800.0, step=60.0)
+    monkeypatch.setattr(qw_mod.time, "monotonic", fake_mono)
+
+    waiter = QuotaWaiter("test", lambda: False, poll_interval=100, is_quiescent_fn=lambda: True)
+    job = _FakeJob("job_001")
+    caplog.set_level(logging.INFO, logger="sow_analysis.workers.quota_waiter")
+
+    # 40 ticks × 60s = 2400s = 40 min; quiescent interval = 1800s (30 min)
+    await waiter.wait(job, lambda: False, max_wait_seconds=40)
+    await waiter.stop()
+
+    waiting_logs = [r for r in caplog.records if "waiting for quota reset" in r.message]
+    # First log at tick 1 (now=1800), second at tick 31 (now=3600) -> 2 logs
+    assert len(waiting_logs) == 2
+
+
+@pytest.mark.asyncio
+async def test_quiescent_transition_logs_backoff_notice(monkeypatch, caplog):
+    """On the first quiescent tick, the 'backing off' transition line is emitted."""
+    import sow_analysis.workers.quota_waiter as qw_mod
+
+    _patch_wait_for_immediate_timeout(monkeypatch)
+    fake_mono, _ = _make_monotonic_stepper(start=1800.0, step=60.0)
+    monkeypatch.setattr(qw_mod.time, "monotonic", fake_mono)
+
+    waiter = QuotaWaiter("test", lambda: False, poll_interval=100, is_quiescent_fn=lambda: True)
+    job = _FakeJob("job_001")
+    caplog.set_level(logging.INFO, logger="sow_analysis.workers.quota_waiter")
+
+    await waiter.wait(job, lambda: False, max_wait_seconds=3)
+    await waiter.stop()
+
+    backoff_logs = [r for r in caplog.records if "backing off periodic log" in r.message]
+    assert len(backoff_logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_quiescent_to_active_resumes_cadence(monkeypatch, caplog):
+    """After quiescent period, flipping to non-quiescent emits 'resuming' line."""
+    import sow_analysis.workers.quota_waiter as qw_mod
+
+    _patch_wait_for_immediate_timeout(monkeypatch)
+    fake_mono, _ = _make_monotonic_stepper(start=1800.0, step=60.0)
+    monkeypatch.setattr(qw_mod.time, "monotonic", fake_mono)
+
+    quiescent = [True]
+    waiter = QuotaWaiter(
+        "test", lambda: False, poll_interval=100, is_quiescent_fn=lambda: quiescent[0]
+    )
+    job = _FakeJob("job_001")
+    caplog.set_level(logging.INFO, logger="sow_analysis.workers.quota_waiter")
+
+    # 2 quiescent ticks
+    await waiter.wait(job, lambda: False, max_wait_seconds=2)
+    assert waiter._was_quiescent is True
+
+    # Flip to non-quiescent and run 1 more tick
+    quiescent[0] = False
+    await waiter.wait(job, lambda: False, max_wait_seconds=1)
+    await waiter.stop()
+
+    resume_logs = [r for r in caplog.records if "resuming normal log cadence" in r.message]
+    assert len(resume_logs) == 1

@@ -46,6 +46,9 @@ class QuotaWaiter:
         name: str,
         probe_fn: Callable[[], bool],
         poll_interval: int,
+        log_interval_seconds: float = 30.0,
+        quiescent_log_interval_seconds: float = 1800.0,
+        is_quiescent_fn: Optional[Callable[[], bool]] = None,
     ) -> None:
         self._name = name
         self._probe_fn = probe_fn
@@ -55,6 +58,10 @@ class QuotaWaiter:
         self._poller_task: Optional[asyncio.Task] = None
         self._waiting_jobs: set[str] = set()
         self._last_log_time: float = 0.0
+        self._log_interval = log_interval_seconds
+        self._quiescent_log_interval = quiescent_log_interval_seconds
+        self._is_quiescent_fn: Optional[Callable[[], bool]] = is_quiescent_fn
+        self._was_quiescent: bool = False
 
     async def mark_exhausted(self) -> None:
         """Called when a job detects quota exhaustion. Clears event, starts poller."""
@@ -98,16 +105,36 @@ class QuotaWaiter:
                 if self._probe_fn():
                     self._event.set()
                     return True
-                # Periodic logging every 30s
+                # Periodic logging with adaptive (quiescent-aware) interval
                 now = time.monotonic()
-                if now - self._last_log_time >= 30.0:
+                quiescent = self._is_quiescent_fn is not None and self._is_quiescent_fn()
+                effective_interval = (
+                    self._quiescent_log_interval if quiescent else self._log_interval
+                )
+                if quiescent and not self._was_quiescent:
+                    logger.info(
+                        "QuotaWaiter[%s]: all jobs blocked on quota reset; "
+                        "backing off periodic log to %.0fmin",
+                        self._name,
+                        effective_interval / 60.0,
+                    )
+                if not quiescent and self._was_quiescent:
+                    logger.info(
+                        "QuotaWaiter[%s]: resuming normal log cadence",
+                        self._name,
+                    )
+                self._was_quiescent = quiescent
+                if now - self._last_log_time >= effective_interval:
                     self._last_log_time = now
                     sample = list(self._waiting_jobs)[:5]
                     logger.info(
-                        "QuotaWaiter[%s]: %d jobs waiting for quota reset (sample: %s)",
+                        "QuotaWaiter[%s]: %d jobs waiting for quota reset (sample: %s)%s",
                         self._name,
                         len(self._waiting_jobs),
                         sample,
+                        " [quiescent; next log in %.0fmin]" % (effective_interval / 60.0)
+                        if quiescent
+                        else "",
                     )
                 try:
                     await asyncio.wait_for(self._event.wait(), timeout=1.0)
