@@ -66,7 +66,7 @@ def test_diagnostics_counts_hard_rule_rejections():
             song_id="s1",
             title="Soft Opener",
             recording_hash_prefix="d001",
-            tempo_bpm=100,
+            tempo_bpm=85,
             musical_key="C",
             musical_mode="maj",
             phase=1,
@@ -161,14 +161,14 @@ def test_relax_h3_raises_ceiling_allows_loud_closer():
 
 def test_relax_h2_lowers_floor_allows_slow_opener():
     pool = [
-        _candidate("o1", "SlowOpener", "o1", 95, "G", "maj", 1),
-        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 2),
+        _candidate("o1", "SlowOpener", "o1", 85, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 3),
         _candidate("m2", "Mid2", "m2", 95, "A", "maj", 3),
         _candidate("c1", "Closer1", "c1", 80, "E", "min", 4),
         _candidate("c2", "Closer2", "c2", 78, "B", "min", 5),
     ]
     matrix = _matrix(pool)
-    strict_config = RunConfig(no_llm=True, auto_relax=False)
+    strict_config = RunConfig(no_llm=True, auto_relax=False, relax_h1=False)
     pool = compute_fan_out(pool, matrix, strict_config)
 
     assert search(pool, strict_config, matrix) == []
@@ -320,8 +320,8 @@ def test_relax_h1_opener_accepts_phase_2():
 
 def test_beam_rejects_h4_violating_middle_pair():
     pool = [
-        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
-        _candidate("m1", "Mid1", "m1", 102, "E", "maj", 2),
+        _candidate("o1", "Opener", "o1", 131, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 95, "E", "maj", 2),
         _candidate("m2", "Mid2", "m2", 92, "A", "maj", 3),
         _candidate("c1", "Closer1", "c1", 82, "B", "min", 4),
         _candidate("c2", "Closer2", "c2", 78, "E", "min", 5),
@@ -536,11 +536,11 @@ def test_to_dict_preserves_relax_h4_h5():
 
 def test_compute_fan_out_uses_config_limits():
     pool = [
-        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
-        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 2),
-        _candidate("m2", "Mid2", "m2", 76, "A", "maj", 3),
-        _candidate("c1", "Closer1", "c1", 52, "E", "min", 4),
-        _candidate("c2", "Closer2", "c2", 28, "B", "min", 5),
+        _candidate("o1", "Opener", "o1", 160, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 120, "D", "maj", 2),
+        _candidate("m2", "Mid2", "m2", 80, "A", "maj", 3),
+        _candidate("c1", "Closer1", "c1", 40, "E", "min", 4),
+        _candidate("c2", "Closer2", "c2", 0, "B", "min", 5),
     ]
     matrix = _matrix(pool)
 

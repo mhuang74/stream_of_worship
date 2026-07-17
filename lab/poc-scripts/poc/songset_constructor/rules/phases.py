@@ -66,16 +66,16 @@ def apply_seasonal_bias(fused: dict[str, float], season: str | None) -> dict[str
 def infer_phase(fused: dict[str, float], tempo_bpm: float | None = None) -> int:
     if fused and max(fused.values(), default=0.0) > 0:
         theme = max(fused.items(), key=lambda item: (item[1], item[0]))[0]
-        if theme == "圣灵" and tempo_bpm is not None and tempo_bpm < 82:
+        if theme == "圣灵" and tempo_bpm is not None and tempo_bpm < 70:
             return 4
         return THEME_TO_PHASE.get(theme, 3)
     if tempo_bpm is None:
         return 3
-    if tempo_bpm >= 118:
-        return 1
     if tempo_bpm >= 100:
+        return 1
+    if tempo_bpm >= 90:
         return 2
-    if tempo_bpm >= 84:
+    if tempo_bpm >= 70:
         return 3
     return 4
 

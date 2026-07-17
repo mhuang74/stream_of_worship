@@ -113,7 +113,7 @@ def _sequences(
                         config.h4_limit
                         if transition
                         and (transition.crossfade_duration_seconds > 0 or transition.gap_beats > 4)
-                        else min(15, config.h4_limit)
+                        else min(25, config.h4_limit)
                     )
                     if bpm_delta > allowed:
                         continue
@@ -239,7 +239,7 @@ def search(
                 "relax_h3_bpm": (
                     config.relax_h3_bpm
                     if config.relax_h3_bpm is not None
-                    else (100 if config.intimate else 120)
+                    else (90 if config.intimate else 100)
                 ),
                 "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
                 "relax_h4": True,
@@ -265,7 +265,7 @@ def search(
                 "relax_h3_bpm": (
                     config.relax_h3_bpm
                     if config.relax_h3_bpm is not None
-                    else (100 if config.intimate else 120)
+                    else (90 if config.intimate else 100)
                 ),
                 "relax_h2_bpm": config.relax_h2_bpm if config.relax_h2_bpm is not None else 80,
                 "relax_h4": True,
