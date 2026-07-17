@@ -27,6 +27,17 @@ uv run --project lab/poc-scripts --extra songset_constructor \
 
 Each successful run writes `proposals.json`, `proposal_report.md`, `candidate_pool.csv`, `graph_trace.jsonl`, and `songset_review.md` under the selected `--output-dir`.
 
+## Diagnostics
+
+Print phase/tempo distribution of the catalog pool and explain why no valid closers (phase 4/5 with tempo at or below `closing_limit`) are found. Also runs a small beam-search smoke test.
+
+```bash
+uv run --project lab/poc-scripts --extra songset_constructor \
+  python lab/poc-scripts/diagnose_closers.py
+```
+
+This script also depends on the `songset_constructor` extra (which provides `python-dotenv`, `langgraph`, etc.), so `--extra songset_constructor` is required to avoid `ModuleNotFoundError: No module named 'dotenv'`.
+
 ## Theme Anchors
 
 Regenerate anchors only with a working embedding gateway:
