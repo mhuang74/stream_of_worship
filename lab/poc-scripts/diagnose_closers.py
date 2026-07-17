@@ -62,18 +62,16 @@ def main() -> None:
             tempo_buckets["None"] += 1
         elif c.tempo_bpm < 70:
             tempo_buckets["<70"] += 1
-        elif c.tempo_bpm < 84:
-            tempo_buckets["70-83"] += 1
         elif c.tempo_bpm < 90:
-            tempo_buckets["84-89"] += 1
+            tempo_buckets["70-89"] += 1
         elif c.tempo_bpm < 100:
             tempo_buckets["90-99"] += 1
         elif c.tempo_bpm < 110:
             tempo_buckets["100-109"] += 1
-        elif c.tempo_bpm < 118:
-            tempo_buckets["110-117"] += 1
+        elif c.tempo_bpm < 120:
+            tempo_buckets["110-119"] += 1
         else:
-            tempo_buckets[">=118"] += 1
+            tempo_buckets[">=120"] += 1
     print(dict(sorted(tempo_buckets.items())))
 
     print("\n-- top themes for slowest songs --")
@@ -87,7 +85,7 @@ def main() -> None:
 
 
 def test_beam_search() -> None:
-    from poc.songset_constructor.rules.beam import _sequences, _template, compute_fan_out
+    from poc.songset_constructor.rules.beam import _template, compute_fan_out
     from poc.songset_constructor.rules.transitions import recommend_transition
     from poc.songset_constructor.rules.embeddings import load_theme_anchors
     from poc.songset_constructor.rules.phases import infer_phase

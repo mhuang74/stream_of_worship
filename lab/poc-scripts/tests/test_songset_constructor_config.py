@@ -54,14 +54,14 @@ def test_config_closing_limit_respects_intimate_and_override():
 
 
 def test_config_opening_floor_override():
-    assert RunConfig().opening_floor == 110
-    assert RunConfig(relax_h2_bpm=90).opening_floor == 90
+    assert RunConfig().opening_floor == 90
+    assert RunConfig(relax_h2_bpm=80).opening_floor == 80
     assert RunConfig(relax_h2_bpm=0).opening_floor == 0
 
 
 def test_config_h4_limit_property():
-    assert RunConfig().h4_limit == 20
-    assert RunConfig(relax_h4=True).h4_limit == 25
+    assert RunConfig().h4_limit == 35
+    assert RunConfig(relax_h4=True).h4_limit == 40
     assert RunConfig(relax_h4_bpm=30).h4_limit == 30
     assert RunConfig(relax_h4=True, relax_h4_bpm=30).h4_limit == 30
 

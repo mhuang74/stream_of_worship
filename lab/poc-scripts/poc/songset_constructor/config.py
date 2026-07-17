@@ -104,13 +104,13 @@ class RunConfig:
     def opening_floor(self) -> int:
         if self.relax_h2_bpm is not None:
             return self.relax_h2_bpm
-        return 110
+        return 90
 
     @property
     def h4_limit(self) -> int:
         if self.relax_h4_bpm is not None:
             return self.relax_h4_bpm
-        return 25 if self.relax_h4 else 20
+        return 40 if self.relax_h4 else 35
 
     @property
     def h5_limit(self) -> int:
