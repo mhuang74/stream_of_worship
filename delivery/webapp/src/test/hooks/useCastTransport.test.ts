@@ -67,8 +67,6 @@ function setupCastSdkMock(opts?: {
     removeEventListener: vi.fn((type: string, handler: (e: unknown) => void) => {
       handlers.get(type)?.delete(handler);
     }),
-    play: vi.fn(),
-    pause: vi.fn(),
     seek: vi.fn(),
     stop: vi.fn(),
     setVolumeLevel: vi.fn(),
@@ -885,9 +883,11 @@ describe("useCastTransport", () => {
   describe("transport error telemetry", () => {
     it("play() throw → lastError set, onError fired, POSTs kind:cast_transport", async () => {
       const onError = vi.fn();
-      const { result, controller } = await mountHook({ media: MEDIA, onError });
-      // Re-mock controller.play to throw.
-      controller.play.mockImplementation(() => {
+      const { result, controller } = await mountHook({ media: MEDIA, onError }, {
+        player: { playerState: "paused", isPaused: true },
+      });
+      // Re-mock controller.playOrPause to throw.
+      controller.playOrPause.mockImplementation(() => {
         throw new Error("receiver play blew up");
       });
       fetchSpy.mockClear();
@@ -923,8 +923,10 @@ describe("useCastTransport", () => {
     it("reports castAppIdMode='default' when env app id is unset (Default Media Receiver fallback)", async () => {
       vi.stubEnv("NEXT_PUBLIC_CAST_RECEIVER_APP_ID", "");
       const onError = vi.fn();
-      const { result, controller } = await mountHook({ media: MEDIA, onError });
-      controller.play.mockImplementation(() => {
+      const { result, controller } = await mountHook({ media: MEDIA, onError }, {
+        player: { playerState: "paused", isPaused: true },
+      });
+      controller.playOrPause.mockImplementation(() => {
         throw new Error("boom");
       });
       fetchSpy.mockClear();
@@ -948,8 +950,10 @@ describe("useCastTransport", () => {
         videoUrl: `https://r2.example.com/renders/job-1/video.mp4?X-Amz-Date=${past}&X-Amz-Expires=3600`,
       };
       const onError = vi.fn();
-      const { result, controller } = await mountHook({ media: mediaWithExpiredUrl, onError });
-      controller.play.mockImplementation(() => {
+      const { result, controller } = await mountHook({ media: mediaWithExpiredUrl, onError }, {
+        player: { playerState: "paused", isPaused: true },
+      });
+      controller.playOrPause.mockImplementation(() => {
         throw new Error("boom");
       });
       fetchSpy.mockClear();
@@ -1005,6 +1009,129 @@ describe("useCastTransport", () => {
         result.current.setMuted(false);
       });
       expect(controller.muteOrUnmute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("play/pause state guards", () => {
+    it("pause() no-ops when already paused", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "paused", isPaused: true },
+      });
+      await act(async () => {
+        result.current.pause();
+      });
+      expect(controller.playOrPause).not.toHaveBeenCalled();
+    });
+
+    it("pause() calls playOrPause when playing", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "playing", isPaused: false },
+      });
+      await act(async () => {
+        result.current.pause();
+      });
+      expect(controller.playOrPause).toHaveBeenCalledTimes(1);
+    });
+
+    it("play() no-ops when already playing", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "playing", isPaused: false },
+      });
+      await act(async () => {
+        result.current.play();
+      });
+      expect(controller.playOrPause).not.toHaveBeenCalled();
+    });
+
+    it("play() calls playOrPause when paused", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "paused", isPaused: true },
+      });
+      await act(async () => {
+        result.current.play();
+      });
+      expect(controller.playOrPause).toHaveBeenCalledTimes(1);
+    });
+
+    it("pause() no-ops when state hasn't synced yet (empty playerState)", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "", isPaused: false },
+      });
+      await act(async () => {
+        result.current.pause();
+      });
+      expect(controller.playOrPause).not.toHaveBeenCalled();
+    });
+
+    it("play() no-ops when state hasn't synced yet (empty playerState)", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "", isPaused: false },
+      });
+      await act(async () => {
+        result.current.play();
+      });
+      expect(controller.playOrPause).not.toHaveBeenCalled();
+    });
+
+    it("pause() surfaces SDK sync throw via reportTransportError", async () => {
+      const onError = vi.fn();
+      const { result, controller } = await mountHook({ media: MEDIA, onError }, {
+        player: { playerState: "playing", isPaused: false },
+      });
+      controller.playOrPause.mockImplementation(() => {
+        throw new Error("receiver pause blew up");
+      });
+      fetchSpy.mockClear();
+      await act(async () => {
+        result.current.pause();
+      });
+      expect(result.current.lastError).toBe("receiver pause blew up");
+      expect(onError).toHaveBeenCalledWith("receiver pause blew up");
+      const post = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].endsWith("/api/log-client-error"),
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body.kind).toBe("cast_transport");
+    });
+
+    it("play() mirrors the throw funnel", async () => {
+      const onError = vi.fn();
+      const { result, controller } = await mountHook({ media: MEDIA, onError }, {
+        player: { playerState: "paused", isPaused: true },
+      });
+      controller.playOrPause.mockImplementation(() => {
+        throw new Error("receiver play blew up");
+      });
+      fetchSpy.mockClear();
+      await act(async () => {
+        result.current.play();
+      });
+      expect(result.current.lastError).toBe("receiver play blew up");
+      expect(onError).toHaveBeenCalledWith("receiver play blew up");
+    });
+
+    it("pause() handles UPPERCASE PLAYING from real receiver", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "PLAYING", isPaused: false },
+      });
+      await act(async () => {
+        result.current.pause();
+      });
+      expect(controller.playOrPause).toHaveBeenCalledTimes(1);
+    });
+
+    it("catches the original bug: pause() does not reference controller.pause (removed method)", async () => {
+      const { result, controller } = await mountHook(undefined, {
+        player: { playerState: "playing", isPaused: false },
+      });
+      // The controller mock must NOT have a pause property after the fix.
+      expect(controller).not.toHaveProperty("pause");
+      expect(controller).not.toHaveProperty("play");
+      // Calling pause() must not throw "not a function".
+      await act(async () => {
+        expect(() => result.current.pause()).not.toThrow();
+      });
     });
   });
 

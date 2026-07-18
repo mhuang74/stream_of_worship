@@ -54,6 +54,9 @@ function makeTransport(overrides: Partial<CastTransportResult> = {}): CastTransp
     resumeProposal: null,
     start: vi.fn(),
     stop: vi.fn(),
+    // play/pause are OUR adapter methods (not SDK methods).
+    // The SDK uses playOrPause(); our transport exposes separate play/pause
+    // for a cleaner dispatch contract.
     play: vi.fn(),
     pause: vi.fn(),
     seek: vi.fn(),

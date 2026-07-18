@@ -778,8 +778,18 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   }, []);
 
   const play = useCallback(() => {
+    const p = playerRef.current;
+    const c = controllerRef.current;
+    if (!c) return;
+    // playOrPause() is a stateless toggle. Skip if already playing so we
+    // don't accidentally pause. isPaused is the SDK-mirrored receiver field;
+    // back it up with the normalized playerState for resilience.
+    const state = p ? normalizePlayerState(p.playerState) : "";
+    // If state hasn't synced yet (empty string), don't issue a toggle —
+    // the user can tap again after the first status event arrives.
+    if (state === "" || p?.isPaused === false || state === "playing") return;
     try {
-      controllerRef.current?.play();
+      c.playOrPause();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Cast play failed";
       reportTransportError(msg, "cast_transport");
@@ -787,8 +797,16 @@ export function useCastTransport({ media, onError }: UseCastTransportOptions): C
   }, [reportTransportError]);
 
   const pause = useCallback(() => {
+    const p = playerRef.current;
+    const c = controllerRef.current;
+    if (!c) return;
+    // Skip if already paused — playOrPause() is a toggle.
+    const state = p ? normalizePlayerState(p.playerState) : "";
+    // If state hasn't synced yet (empty string), don't issue a toggle —
+    // the user can tap again after the first status event arrives.
+    if (state === "" || p?.isPaused === true || state === "paused" || state === "idle") return;
     try {
-      controllerRef.current?.pause();
+      c.playOrPause();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Cast pause failed";
       reportTransportError(msg, "cast_transport");

@@ -249,8 +249,6 @@ declare namespace cast.framework {
       type: RemotePlayerEventType,
       handler: (event: RemotePlayerChangedEvent) => void,
     ): void;
-    play(): void;
-    pause(): void;
     seek(): void;
     stop(): void;
     setVolumeLevel(volume: number): void;
