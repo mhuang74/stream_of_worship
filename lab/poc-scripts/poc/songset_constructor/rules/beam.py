@@ -66,6 +66,67 @@ def _phase_score(candidate: SongCandidate, target_phase: int) -> int:
     return abs((candidate.phase or 3) - target_phase)
 
 
+def _sort_key_phase_tempo(seq: list[SongCandidate], target: tuple[int, ...]) -> tuple:
+    """Original strategy: minimize phase mismatch and tempo delta."""
+    return (
+        sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
+        sum(
+            abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
+            for index in range(len(seq) - 1)
+        ),
+        tuple(item.recording_hash_prefix for item in seq),
+    )
+
+
+def _sort_key_theme_diverse(seq: list[SongCandidate], target: tuple[int, ...]) -> tuple:
+    """Strategy: same validity base, but break ties toward more unique themes."""
+    theme_count = len({t for item in seq for t in (item.themes or {})})
+    return (
+        sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
+        sum(
+            abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
+            for index in range(len(seq) - 1)
+        ),
+        -theme_count,
+        tuple(item.recording_hash_prefix for item in seq),
+    )
+
+
+def _sort_key_tempo_dynamic(seq: list[SongCandidate], target: tuple[int, ...]) -> tuple:
+    """Strategy: same validity base, but break ties toward wider BPM range."""
+    bpms = [item.tempo_bpm or 0 for item in seq]
+    bpm_range = max(bpms) - min(bpms) if bpms else 0
+    return (
+        sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
+        sum(
+            abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
+            for index in range(len(seq) - 1)
+        ),
+        -bpm_range,
+        tuple(item.recording_hash_prefix for item in seq),
+    )
+
+
+def _sort_key_hash_reversed(seq: list[SongCandidate], target: tuple[int, ...]) -> tuple:
+    """Strategy: same validity base, but reversed hash tiebreaker."""
+    return (
+        sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
+        sum(
+            abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
+            for index in range(len(seq) - 1)
+        ),
+        tuple(reversed([item.recording_hash_prefix for item in seq])),
+    )
+
+
+_SORT_STRATEGIES = (
+    _sort_key_phase_tempo,
+    _sort_key_theme_diverse,
+    _sort_key_tempo_dynamic,
+    _sort_key_hash_reversed,
+)
+
+
 def _sequences(
     pool: list[SongCandidate],
     config: RunConfig,
@@ -122,17 +183,67 @@ def _sequences(
                     if distance > config.h5_limit and not shifted_ok:
                         continue
                 expanded.append([*beam, by_hash[candidate.recording_hash_prefix]])
-        expanded.sort(
-            key=lambda seq: (
-                sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
-                sum(
-                    abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0))
-                    for index in range(len(seq) - 1)
-                ),
-                tuple(item.recording_hash_prefix for item in seq),
-            )
-        )
-        beams = expanded[: max(width, 1)]
+        if position == 1:
+            # At the opener position, keep ALL valid openers (up to width)
+            # so downstream phases extend from diverse starting songs instead
+            # of converging on a single best-sorted opener.
+            expanded.sort(key=lambda seq: _sort_key_phase_tempo(seq, target))
+            beams = expanded[: max(width, 1)]
+        else:
+            # Two-level diverse selection: ensure both opener diversity AND
+            # middle-song diversity. Use a round-robin approach that alternates
+            # between openers, and within each opener, alternates between
+            # middle-song signatures.
+            opener_groups: dict[str, list[list[SongCandidate]]] = {}
+            for seq in expanded:
+                opener_key = seq[0].recording_hash_prefix
+                opener_groups.setdefault(opener_key, []).append(seq)
+            # For each opener, sort middle groups by quality
+            opener_ranked: list[list[list[SongCandidate]]] = []
+            for group_seqs in opener_groups.values():
+                middle_groups: dict[tuple[str, ...], list[list[SongCandidate]]] = {}
+                for seq in group_seqs:
+                    mid_key = tuple(c.recording_hash_prefix for c in seq[1:])
+                    middle_groups.setdefault(mid_key, []).append(seq)
+                ranked_middle: list[list[SongCandidate]] = []
+                for mg in middle_groups.values():
+                    mg.sort(key=lambda seq: _sort_key_phase_tempo(seq, target))
+                    ranked_middle.append(mg)
+                ranked_middle.sort(key=lambda mg: _sort_key_phase_tempo(mg[0], target))
+                opener_ranked.append(ranked_middle)
+            # Sort openers by their best sequence's quality
+            opener_ranked.sort(key=lambda mg_list: _sort_key_phase_tempo(mg_list[0][0], target))
+            # Round-robin: take one sequence from each opener in turn,
+            # cycling through middle signatures within each opener
+            selected: list[list[SongCandidate]] = []
+            seen_keys: set[tuple[str, ...]] = set()
+            indices = [0] * len(opener_ranked)
+            while len(selected) < width:
+                made_progress = False
+                for oi, mg_list in enumerate(opener_ranked):
+                    if indices[oi] >= len(mg_list):
+                        continue
+                    mg = mg_list[indices[oi]]
+                    best_seq = mg[0]
+                    seq_key = tuple(c.recording_hash_prefix for c in best_seq)
+                    if seq_key not in seen_keys:
+                        seen_keys.add(seq_key)
+                        selected.append(best_seq)
+                        made_progress = True
+                        if len(selected) >= width:
+                            break
+                    indices[oi] += 1
+                if not made_progress:
+                    break
+            # If we have room, fill with best remaining sequences across all groups
+            if len(selected) < width:
+                remaining = [
+                    s
+                    for s in sorted(expanded, key=lambda seq: _sort_key_phase_tempo(seq, target))
+                    if tuple(c.recording_hash_prefix for c in s) not in seen_keys
+                ]
+                selected.extend(remaining[: width - len(selected)])
+            beams = selected[: max(width, 1)]
         if not beams:
             return
     yield from beams
@@ -291,7 +402,7 @@ def search(
                 relax_h1=True,
             ).passed:
                 proposals.append(proposal)
-    return rank_proposals(proposals, pool, config.top_k)
+    return rank_proposals(proposals, pool, config.top_k, config=config, matrix=matrix)
 
 
 def exhaustive_fallback(
@@ -304,4 +415,4 @@ def exhaustive_fallback(
         proposal = _proposal_for_sequence(list(sequence), config, matrix)
         if validate(proposal, config, matrix).passed:
             proposals.append(proposal)
-    return rank_proposals(proposals, pool, config.top_k)
+    return rank_proposals(proposals, pool, config.top_k, config=config, matrix=matrix)

@@ -304,7 +304,7 @@ def _run_graph_with_traces(graph: Any, input_value: Any, graph_config: dict) -> 
 @app.command()
 def construct(
     songs: Annotated[int, typer.Option("--songs", min=2, max=5)] = 3,
-    top_k: Annotated[int, typer.Option("--top-k", min=1, max=10)] = 3,
+    top_k: Annotated[int, typer.Option("--top-k", min=1, max=20)] = 3,
     pool_limit: Annotated[int, typer.Option("--pool-limit", min=4)] = 200,
     output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
     album_series: Annotated[list[str] | None, typer.Option("--album-series")] = None,

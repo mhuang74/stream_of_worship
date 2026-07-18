@@ -61,6 +61,13 @@ def f_diversity(proposal: SongsetProposal) -> float:
     return _clamp(0.7 * song_part + 0.3 * theme_part)
 
 
+def middle_song_ids(proposal: SongsetProposal) -> set[str]:
+    """Return song IDs for middle positions (excluding opener and closer)."""
+    if len(proposal.items) <= 2:
+        return set()
+    return {item.song_id for item in proposal.items[1:-1]}
+
+
 def score(
     proposal: SongsetProposal,
     config: RunConfig,
@@ -78,3 +85,27 @@ def score(
         f_diversity=round(diversity, 4),
         total=round(total, 4),
     )
+
+
+def score_with_diversity_penalty(
+    proposal: SongsetProposal,
+    config: RunConfig,
+    matrix: dict[tuple[str, str], TransitionCandidate],
+    *,
+    used_middle_songs: set[str],
+    penalty_weight: float = 0.15,
+) -> ScoreBreakdown:
+    """Score a proposal with a diversity penalty for reusing middle songs.
+
+    The penalty reduces the total score proportionally to how many middle-position
+    songs overlap with the ``used_middle_songs`` set. This encourages the ranker
+    to prefer proposals whose middle slots introduce songs not yet seen in
+    earlier-ranked proposals.
+    """
+    base = score(proposal, config, matrix)
+    middle = middle_song_ids(proposal)
+    if not middle:
+        return base
+    overlap = len(middle & used_middle_songs)
+    penalty = penalty_weight * (overlap / len(middle))
+    return base.model_copy(update={"total": round(max(0.0, base.total - penalty), 4)})

@@ -15,7 +15,7 @@ def test_cli_traces_no_proposals_without_writing_artifacts(tmp_path, synthetic_p
     )
     monkeypatch.setattr(
         "poc.songset_constructor.graph.nodes.search",
-        lambda _pool, _config, _transition_matrix: [],
+        lambda _pool, _config, _transition_matrix, **_kwargs: [],
     )
 
     result = CliRunner().invoke(
@@ -53,7 +53,7 @@ def test_cli_uses_llm_to_summarize_no_results(tmp_path, synthetic_pool, monkeypa
     )
     monkeypatch.setattr(
         "poc.songset_constructor.graph.nodes.search",
-        lambda _pool, _config, _transition_matrix: [],
+        lambda _pool, _config, _transition_matrix, **_kwargs: [],
     )
     prompts = []
 
@@ -180,7 +180,7 @@ def test_llm_no_results_prompt_includes_rule_descriptions(tmp_path, synthetic_po
     )
     monkeypatch.setattr(
         "poc.songset_constructor.graph.nodes.search",
-        lambda _pool, _config, _transition_matrix: [],
+        lambda _pool, _config, _transition_matrix, **_kwargs: [],
     )
     prompts = []
 

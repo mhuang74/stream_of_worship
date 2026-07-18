@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from poc.songset_constructor.models import DraftItem, ProposalItem, SongCandidate, SongsetDraft, SongsetProposal
+from poc.songset_constructor.config import RunConfig
+from poc.songset_constructor.models import (
+    DraftItem,
+    ProposalItem,
+    SongCandidate,
+    SongsetDraft,
+    SongsetProposal,
+    TransitionCandidate,
+)
+from poc.songset_constructor.rules.fitness import middle_song_ids, score_with_diversity_penalty
 
 from .phases import top_themes
 
@@ -87,6 +96,9 @@ def rank_proposals(
     proposals: Sequence[SongsetProposal],
     pool: Sequence[SongCandidate],
     top_k: int,
+    *,
+    config: RunConfig | None = None,
+    matrix: dict[tuple[str, str], TransitionCandidate] | None = None,
 ) -> list[SongsetProposal]:
     unique: dict[tuple[str, ...], SongsetProposal] = {}
     for proposal in proposals:
@@ -100,5 +112,53 @@ def rank_proposals(
             -composer_diversity(proposal, pool),
             proposal_hash_sequence(proposal),
         ),
-    )[:top_k]
-    return [proposal.model_copy(update={"rank": index}) for index, proposal in enumerate(ranked, start=1)]
+    )
+    if top_k <= 1 or len(ranked) <= top_k:
+        selected = ranked[:top_k]
+    elif config is not None and matrix is not None:
+        # Greedy diverse selection with middle-song diversity penalty:
+        # pick the highest-scoring proposal, add its middle songs to a used set,
+        # then re-score remaining proposals with a penalty for overlapping
+        # middle songs. This spreads middle-slot variety across the top-k.
+        selected: list[SongsetProposal] = []
+        used_middle: set[str] = set()
+        remaining = list(ranked)
+        while remaining and len(selected) < top_k:
+            best: SongsetProposal | None = None
+            best_score = -1.0
+            best_idx = 0
+            for idx, proposal in enumerate(remaining):
+                penalized = score_with_diversity_penalty(
+                    proposal, config, matrix, used_middle_songs=used_middle
+                )
+                if penalized.total > best_score or (
+                    penalized.total == best_score and best is not None
+                ):
+                    best = proposal.model_copy(update={"score": penalized})
+                    best_score = penalized.total
+                    best_idx = idx
+            assert best is not None
+            selected.append(best)
+            used_middle.update(middle_song_ids(best))
+            remaining.pop(best_idx)
+    else:
+        # Fallback: greedy diverse selection by song overlap (no penalty scoring)
+        selected: list[SongsetProposal] = []
+        used_songs: set[str] = set()
+        remaining = list(ranked)
+        while remaining and len(selected) < top_k:
+            best: SongsetProposal | None = None
+            best_overlap = float("inf")
+            best_idx = 0
+            for idx, proposal in enumerate(remaining):
+                proposal_songs = {item.song_id for item in proposal.items}
+                overlap = len(proposal_songs & used_songs)
+                if overlap < best_overlap or (overlap == best_overlap and best is not None):
+                    best = proposal
+                    best_overlap = overlap
+                    best_idx = idx
+            assert best is not None
+            selected.append(best)
+            used_songs.update(item.song_id for item in best.items)
+            remaining.pop(best_idx)
+    return [proposal.model_copy(update={"rank": index}) for index, proposal in enumerate(selected, start=1)]

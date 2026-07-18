@@ -105,7 +105,14 @@ def build_transition_matrix(state: ConstructorState) -> dict:
 
 
 def beam_seed_candidates(state: ConstructorState) -> dict:
-    proposals = search(state.get("pool", []), state["config"], state.get("transition_matrix", {}))
+    config = state["config"]
+    beam_width = max(config.top_k * 5, 40)
+    proposals = search(
+        state.get("pool", []),
+        state["config"],
+        state.get("transition_matrix", {}),
+        width=beam_width,
+    )
     diagnostics = (
         beam_diagnostics(state.get("pool", []), state["config"], state.get("transition_matrix", {}))
         if not proposals
@@ -250,10 +257,13 @@ def llm_refine(state: ConstructorState) -> dict:
 
 
 def finalize_rank_node(state: ConstructorState) -> dict:
+    config = state["config"]
     proposals = rank_proposals(
         state.get("beam_candidates", []),
         state.get("pool", []),
-        state["config"].top_k,
+        config.top_k,
+        config=config,
+        matrix=state.get("transition_matrix", {}),
     )
     return {
         "final_proposals": proposals,
