@@ -255,6 +255,25 @@ def _print_output_files(paths: dict[str, str]) -> None:
         console.print(f"  {output_path.name}: {output_path}")
 
 
+def _print_brief_summaries(config: RunConfig, result: Any) -> None:
+    proposals = result.get("final_proposals", []) or []
+    pool = result.get("pool", []) or []
+    if not proposals:
+        return
+    from poc.songset_constructor.artifacts import writer as writer_mod
+
+    narratives = writer_mod.get_cached_narratives(config.thread_id)
+    if narratives is None:
+        narratives = writer_mod.generate_brief_summaries(config, proposals)
+    console.print("[green]Proposed songsets (brief):[/green]")
+    for proposal, narrative in zip(proposals, narratives):
+        block = writer_mod.brief_summary_block(
+            proposal, config=config, pool=pool, llm_narrative=narrative
+        )
+        console.rule(f"Rank {proposal.rank}")
+        console.print("\n".join(block))
+
+
 def _run_graph_with_traces(graph: Any, input_value: Any, graph_config: dict) -> dict:
     started_at: dict[str, float] = {}
     latest_values: dict[str, Any] = {}
@@ -385,6 +404,8 @@ def construct(
     _print_output_files(paths)
     if not paths:
         _print_no_results_summary(config, result)
+    else:
+        _print_brief_summaries(config, result)
 
 
 def main() -> None:
