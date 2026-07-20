@@ -11,6 +11,28 @@ from textual.containers import Horizontal
 from textual.widgets import Footer, Static
 
 
+def format_key_display(key: str) -> str:
+    if key.startswith("ctrl+"):
+        return "^" + key[5:].upper()
+    if key == "shift+left":
+        return "⇧←"
+    if key == "shift+right":
+        return "⇧→"
+    if key == "left":
+        return "←"
+    if key == "right":
+        return "→"
+    if key == "up":
+        return "↑"
+    if key == "down":
+        return "↓"
+    if key == "space":
+        return "⎵"
+    if key == "escape":
+        return "Esc"
+    return key
+
+
 class _BindingGroup(Static):
     def __init__(self, label: str, bindings: list[Binding]) -> None:
         self._group_label = label
@@ -20,25 +42,7 @@ class _BindingGroup(Static):
     def _format_content(self) -> Text:
         parts: list[str] = [f"[bold]{self._group_label}[/bold] "]
         for i, b in enumerate(self._bindings):
-            key_display = b.key
-            if key_display.startswith("ctrl+"):
-                key_display = "^" + key_display[5:].upper()
-            elif key_display == "shift+left":
-                key_display = "⇧←"
-            elif key_display == "shift+right":
-                key_display = "⇧→"
-            elif key_display == "left":
-                key_display = "←"
-            elif key_display == "right":
-                key_display = "→"
-            elif key_display == "up":
-                key_display = "↑"
-            elif key_display == "down":
-                key_display = "↓"
-            elif key_display == "space":
-                key_display = "⎵"
-            elif key_display == "escape":
-                key_display = "Esc"
+            key_display = format_key_display(b.key)
             parts.append(f"[dim]{key_display}[/dim]={b.description}")
             if i < len(self._bindings) - 1:
                 parts.append("[dim] │ [/dim]")
