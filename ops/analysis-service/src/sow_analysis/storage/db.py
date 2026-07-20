@@ -442,7 +442,14 @@ class JobStore:
                         CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
                     );
 
-                    INSERT INTO jobs SELECT * FROM jobs_old;
+                    INSERT INTO jobs (
+                        id, type, status, progress, stage, error_message,
+                        request_json, result_json, created_at, updated_at, content_hash
+                    )
+                    SELECT
+                        id, type, status, progress, stage, error_message,
+                        request_json, result_json, created_at, updated_at, content_hash
+                    FROM jobs_old;
 
                     DROP TABLE jobs_old;
 
