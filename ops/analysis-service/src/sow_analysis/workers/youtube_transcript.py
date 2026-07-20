@@ -174,7 +174,7 @@ def _is_permanently_unavailable_error(e: Exception) -> bool:
     exc: Optional[Exception] = e
     while exc is not None and id(exc) not in visited:
         visited.add(id(exc))
-        if type(exc).__name__ in permanently_unavailable_types:
+        if any(t.__name__ in permanently_unavailable_types for t in type(exc).__mro__):
             return True
         exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
     return False

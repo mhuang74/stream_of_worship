@@ -131,9 +131,7 @@ def rank_proposals(
                 penalized = score_with_diversity_penalty(
                     proposal, config, matrix, used_middle_songs=used_middle
                 )
-                if penalized.total > best_score or (
-                    penalized.total == best_score and best is not None
-                ):
+                if penalized.total > best_score:
                     best = proposal.model_copy(update={"score": penalized})
                     best_score = penalized.total
                     best_idx = idx
@@ -153,7 +151,7 @@ def rank_proposals(
             for idx, proposal in enumerate(remaining):
                 proposal_songs = {item.song_id for item in proposal.items}
                 overlap = len(proposal_songs & used_songs)
-                if overlap < best_overlap or (overlap == best_overlap and best is not None):
+                if overlap < best_overlap:
                     best = proposal
                     best_overlap = overlap
                     best_idx = idx

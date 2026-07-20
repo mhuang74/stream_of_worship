@@ -927,6 +927,7 @@ class JobQueue:
             # back to full-mix audio (which yields very poor ASR results).
             if (
                 settings.SOW_FREE_ONLY_MODE
+                and child_job
                 and child_job.stage == "waiting_for_mvsep_quota_reset"
             ):
                 now = time.time()
@@ -2211,7 +2212,7 @@ class JobQueue:
         for job in self._jobs.values():
             is_recent_failed = (
                 job.status == JobStatus.FAILED
-                and (now - job.updated_at).total_seconds()
+                and (now.replace(tzinfo=None) - job.updated_at.replace(tzinfo=None)).total_seconds()
                 <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
             )
             is_finished = job.status in (
