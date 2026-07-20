@@ -11,7 +11,7 @@ from textual.widgets import DataTable, Input
 
 from stream_of_worship.admin.editor.app import LRCEditorApp
 from stream_of_worship.admin.editor.footer import GroupedFooter
-from stream_of_worship.admin.editor.screen import CurrentLyricDisplay, StatusIndicator
+from stream_of_worship.admin.editor.screen import CurrentLyricDisplay, LRCEditorScreen, StatusIndicator
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.services.lrc_parser import LRCLine
 from stream_of_worship.admin.services.playback import PlaybackState
@@ -458,6 +458,40 @@ async def test_paste_after_selection_and_terminal_duplicate_suppression():
             "Line 4",
         ]
         assert state.selected_index == 2
+
+
+@pytest.mark.asyncio
+async def test_show_keymap_dialog_lists_all_bindings_grouped():
+    app, _ = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        app.screen.action_show_keymap()
+        await pilot.pause()
+
+        from textual.screen import ModalScreen
+
+        assert isinstance(app.screen, ModalScreen)
+        container = app.screen.query_one("#keymap-container")
+
+        labels = [label.render().plain for label in container.query("Label")]
+        rendered = "\n".join(labels)
+
+        for group_label in ("Playback", "Lyrics", "Timecode", "General"):
+            assert group_label in rendered
+
+        for b in LRCEditorScreen.BINDINGS:
+            assert b.description in rendered
+
+        # Dismiss by pressing `?` so the full App._check_bindings dispatch path
+        # is exercised (regression for the KeymapDialog._bindings clobber bug,
+        # where overwriting Textual's BindingsMap with a plain list caused
+        # AttributeError on key dispatch).
+        await pilot.press("?")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, ModalScreen)
 
 
 @pytest.mark.asyncio

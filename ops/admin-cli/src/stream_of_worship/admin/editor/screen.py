@@ -28,7 +28,7 @@ from textual.css.query import NoMatches
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.autosave import AutosaveState, save_autosave
-from stream_of_worship.admin.editor.footer import GroupedFooter
+from stream_of_worship.admin.editor.footer import GroupedFooter, format_key_display
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.editor.upload import (
     check_transcribed_changed,
@@ -244,6 +244,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("ctrl+y", "redo", "Redo"),
         Binding("escape", "quit_editor", "Quit"),
         Binding("q", "quit_editor", "Quit"),
+        Binding("?", "show_keymap", "Keymap"),
     ]
 
     BINDING_GROUPS: dict[str, list[str]] = {
@@ -276,6 +277,7 @@ class LRCEditorScreen(Screen[None]):
             "undo",
             "redo",
             "quit_editor",
+            "show_keymap",
         ],
     }
 
@@ -1332,6 +1334,48 @@ class LRCEditorScreen(Screen[None]):
             SaveUploadDialog(validation, revised, self, etag_changed, etag_reason),
             _handle_dialog_result,
         )
+
+    def action_show_keymap(self) -> None:
+        if self._is_edit_active():
+            return  # let `?` go into the input
+
+        from textual.screen import ModalScreen
+
+        class KeymapDialog(ModalScreen[None]):
+            BINDINGS = [
+                Binding("escape", "close", "Close"),
+                Binding("?", "close", "Close"),
+            ]
+
+            def __init__(
+                self, groups: dict[str, list[str]], all_bindings: list[Binding]
+            ) -> None:
+                super().__init__()
+                self._groups = groups
+                self._all_bindings = all_bindings
+
+            def compose(self) -> ComposeResult:
+                binding_map: dict[str, Binding] = {b.action: b for b in self._all_bindings}
+                with Vertical(id="keymap-container"):
+                    yield Label("Keymap", classes="dialog-title")
+                    for group_label, action_names in self._groups.items():
+                        yield Label(f"[bold]{group_label}[/bold]")
+                        for action_name in action_names:
+                            b = binding_map.get(action_name)
+                            if b is None:
+                                continue
+                            yield Label(
+                                f"[dim]{format_key_display(b.key)}[/dim]={b.description}"
+                            )
+                        yield Label("")
+                    yield Label(
+                        "[d]Press [bold]?[/bold] or [bold]Esc[/bold] to close[/]"
+                    )
+
+            def action_close(self) -> None:
+                self.dismiss(None)
+
+        self.app.push_screen(KeymapDialog(self.BINDING_GROUPS, self.BINDINGS))
 
     def action_quit_editor(self) -> None:
         if self._is_edit_active():
