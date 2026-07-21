@@ -1213,7 +1213,7 @@ def list_recordings(
         "album",
         "--sort",
         "-s",
-        help="Sort order (album|series|title|imported)",
+        help="Sort order (album|series|title|imported|updated)",
     ),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum number of results"),
@@ -1251,7 +1251,7 @@ def list_recordings(
             raise typer.Exit(1)
 
     # Validate sort option
-    valid_sorts = {"album", "series", "title", "imported"}
+    valid_sorts = {"album", "series", "title", "imported", "updated"}
     if sort not in valid_sorts:
         console.print(
             f"[red]Invalid sort option: {sort}. Choose from: {', '.join(sorted(valid_sorts))}[/red]"
@@ -1311,6 +1311,8 @@ def list_recordings(
         table.add_column("Song ID", style="dim", no_wrap=True)
         table.add_column("Filename", style="yellow")
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
+        if sort == "updated":
+            table.add_column("Updated", style="dim", no_wrap=True)
 
         for rec, song_title, album_name, _album_series in enriched:
             song_id = rec.song_id or "-"
@@ -1340,6 +1342,7 @@ def list_recordings(
                 song_id,
                 rec.original_filename,
                 rec.hash_prefix,
+                rec.updated_at[:16] if sort == "updated" and rec.updated_at else "",
             )
 
         console.print(table)

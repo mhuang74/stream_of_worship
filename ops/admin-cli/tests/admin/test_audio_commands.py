@@ -783,6 +783,110 @@ class TestAudioListCommand:
 
         _drop_all_tables(make_test_provider)
 
+    @pytest.mark.integration
+    def test_list_sort_by_updated(self, make_test_provider, postgres_url, tmp_path):
+        """Sort by updated orders recordings by updated_at DESC, showing Updated column."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+
+        for sid, title in [("song_001", "第一首歌"), ("song_002", "第二首歌")]:
+            client.insert_song(Song(id=sid, title=title, source_url=f"https://example.com/{sid}",
+                                    scraped_at="2024-01-01T00:00:00"))
+
+        client.insert_recording(Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="song1.mp3", file_size_bytes=1024000,
+            imported_at="2024-01-15T10:30:00"))
+        client.insert_recording(Recording(
+            content_hash="b" * 64, hash_prefix="bbbbbbbbbbbb", song_id="song_002",
+            original_filename="song2.mp3", file_size_bytes=2048000,
+            imported_at="2024-01-16T10:30:00"))
+
+        # Make recording A newer by updating its updated_at via direct SQL
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET updated_at = NOW() + INTERVAL '1 day' WHERE hash_prefix = 'aaaaaaaaaaaa'"
+            )
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path), "--sort", "updated"],
+            env=WIDE_ENV,
+        )
+
+        assert result.exit_code == 0
+        # A should appear before B in output (A has newer updated_at)
+        pos_a = result.output.index("aaaaaaaaaaaa")
+        pos_b = result.output.index("bbbbbbbbbbbb")
+        assert pos_a < pos_b
+        # Updated column header should be present
+        assert "Updated" in result.output
+        # Timestamps should appear in output
+        assert "2024" in result.output
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_sort_by_updated_ids_format(self, make_test_provider, postgres_url, tmp_path):
+        """Sort by updated with ids format outputs correct order."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+
+        for sid, title in [("song_001", "第一首歌"), ("song_002", "第二首歌")]:
+            client.insert_song(Song(id=sid, title=title, source_url=f"https://example.com/{sid}",
+                                    scraped_at="2024-01-01T00:00:00"))
+
+        client.insert_recording(Recording(
+            content_hash="a" * 64, hash_prefix="aaaaaaaaaaaa", song_id="song_001",
+            original_filename="song1.mp3", file_size_bytes=1024000,
+            imported_at="2024-01-15T10:30:00"))
+        client.insert_recording(Recording(
+            content_hash="b" * 64, hash_prefix="bbbbbbbbbbbb", song_id="song_002",
+            original_filename="song2.mp3", file_size_bytes=2048000,
+            imported_at="2024-01-16T10:30:00"))
+
+        # Make recording A newer
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET updated_at = NOW() + INTERVAL '1 day' WHERE hash_prefix = 'aaaaaaaaaaaa'"
+            )
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path), "--sort", "updated", "--format", "ids"],
+        )
+
+        assert result.exit_code == 0
+        ids = result.output.strip().split("\n")
+        assert ids == ["song_001", "song_002"]
+
+        _drop_all_tables(make_test_provider)
+
+    def test_list_sort_updated_validation(self, tmp_path, monkeypatch):
+        """`--sort updated` passes CLI validation; invalid values are rejected."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\n')
+
+        # --sort updated should pass validation (fails at DB, not validation)
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path), "--sort", "updated"],
+        )
+        assert "Invalid sort option" not in result.output
+
+        # Invalid sort should be rejected
+        result = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path), "--sort", "bogus"],
+        )
+        assert result.exit_code == 1
+        assert "Invalid sort option" in result.output
+
+        _drop_all_tables(monkeypatch)
+
 
 class TestAudioShowCommand:
     """Tests for 'audio show' command."""
