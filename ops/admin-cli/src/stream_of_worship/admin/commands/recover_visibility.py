@@ -111,9 +111,23 @@ def _get_db_client(config: AdminConfig) -> DatabaseClient:
     return DatabaseClient(provider)
 
 
+def _to_iso_str(value: Any) -> Optional[str]:
+    """Normalize a datetime-or-string value to an ISO-format string.
+
+    psycopg returns `datetime` objects for TIMESTAMP columns, and boto3 returns
+    `datetime` for R2 LastModified. Rich's Table and CSV writer require strings,
+    so this helper guarantees a string (or None) for downstream consumers.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
 def _parse_iso_datetime(s) -> Optional[datetime]:
     """Parse an ISO-format datetime string or datetime object to a timezone-aware UTC datetime."""
-    if s is None:
+    if not s:
         return None
     if isinstance(s, datetime):
         dt = s
@@ -230,7 +244,7 @@ def _run_report(
         for row in db_rows:
             rec = dict(zip(columns, row))
             hash_prefix = rec["hash_prefix"]
-            db_updated_at_str = rec["db_updated_at"]
+            db_updated_at_str = _to_iso_str(rec["db_updated_at"])
             db_updated_at = _parse_iso_datetime(db_updated_at_str)
             identity = r2_identities.get(hash_prefix, R2ObjectIdentity(exists=False))
             r2_last_modified_str = identity.last_modified if identity.exists else None
@@ -251,7 +265,7 @@ def _run_report(
     for idx, row in enumerate(db_rows):
         rec = dict(zip(columns, row))
         hash_prefix = rec["hash_prefix"]
-        db_updated_at_str = rec["db_updated_at"]
+        db_updated_at_str = _to_iso_str(rec["db_updated_at"])
         db_updated_at = _parse_iso_datetime(db_updated_at_str)
 
         # R2 lookup from batch result
