@@ -13,6 +13,7 @@ Usage:
 
 import csv
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -28,10 +29,80 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
     AnalysisServiceError,
 )
-from stream_of_worship.admin.services.r2 import R2Client
+from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
+progress_console = Console(stderr=True)
+R2_LOOKUP_WORKERS = 20
+ANALYSIS_LOOKUP_WORKERS = 10
+
+
+def _lookup_rlc_identity(r2_client: R2Client, hash_prefix: str) -> R2ObjectIdentity:
+    """Look up R2 LRC identity, swallowing all exceptions."""
+    try:
+        return r2_client.get_lrc_identity(hash_prefix)
+    except Exception:
+        return R2ObjectIdentity(exists=False)
+
+
+def _batch_lookup_r2(
+    r2_client: R2Client, hash_prefixes: list[str],
+) -> dict[str, R2ObjectIdentity]:
+    """Concurrently look up R2 LRC identities for all hash prefixes."""
+    results: dict[str, R2ObjectIdentity] = {}
+    total = len(hash_prefixes)
+    progress_console.print(f"[dim]R2 lookups: {total} files ({R2_LOOKUP_WORKERS} workers)[/dim]")
+    with ThreadPoolExecutor(max_workers=R2_LOOKUP_WORKERS) as pool:
+        futures = {
+            pool.submit(_lookup_rlc_identity, r2_client, hp): hp
+            for hp in hash_prefixes
+        }
+        completed = 0
+        for future in as_completed(futures):
+            hp = futures[future]
+            results[hp] = future.result()
+            completed += 1
+            if completed % 50 == 0 or completed == total:
+                progress_console.print(f"[dim]  R2 lookups: {completed}/{total}[/dim]")
+    return results
+
+
+def _lookup_analysis_job(
+    analysis_client: AnalysisClient, job_id: str,
+) -> tuple[Optional[str], Optional[str]]:
+    """Look up analysis job, returning (updated_at, note) or (None, note) on error."""
+    try:
+        job = analysis_client.get_job(job_id)
+        return (job.updated_at, None)
+    except AnalysisServiceError as e:
+        if getattr(e, "status_code", None) == 404:
+            return (None, "job purged — relying on R2/DB timestamps only")
+        return (None, f"analysis error: {e}")
+    except Exception as e:
+        return (None, f"unexpected error: {e}")
+
+
+def _batch_lookup_analysis(
+    analysis_client: AnalysisClient, job_ids: list[str],
+) -> dict[str, tuple[Optional[str], Optional[str]]]:
+    """Concurrently look up analysis jobs for all job IDs."""
+    results: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    total = len(job_ids)
+    progress_console.print(f"[dim]Analysis lookups: {total} jobs ({ANALYSIS_LOOKUP_WORKERS} workers)[/dim]")
+    with ThreadPoolExecutor(max_workers=ANALYSIS_LOOKUP_WORKERS) as pool:
+        futures = {
+            pool.submit(_lookup_analysis_job, analysis_client, jid): jid
+            for jid in job_ids if jid
+        }
+        completed = 0
+        for future in as_completed(futures):
+            jid = futures[future]
+            results[jid] = future.result()
+            completed += 1
+            if completed % 50 == 0 or completed == total:
+                progress_console.print(f"[dim]  Analysis lookups: {completed}/{total}[/dim]")
+    return results
 
 
 def _get_db_client(config: AdminConfig) -> DatabaseClient:
@@ -40,10 +111,17 @@ def _get_db_client(config: AdminConfig) -> DatabaseClient:
     return DatabaseClient(provider)
 
 
-def _parse_iso_datetime(s: Optional[str]) -> Optional[datetime]:
-    """Parse an ISO-format datetime string to a timezone-aware UTC datetime."""
-    if not s:
+def _parse_iso_datetime(s) -> Optional[datetime]:
+    """Parse an ISO-format datetime string or datetime object to a timezone-aware UTC datetime."""
+    if s is None:
         return None
+    if isinstance(s, datetime):
+        dt = s
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
     try:
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
@@ -85,7 +163,7 @@ def _build_candidate_query(
         params.append(until)
 
     if album:
-        query += " AND s.album = %s"
+        query += " AND s.album_name = %s"
         params.append(album)
 
     query += " ORDER BY r.updated_at DESC"
@@ -142,77 +220,93 @@ def _run_report(
             columns = [desc[0] for desc in cur.description]
             db_rows = cur.fetchall()
 
+    # Batch R2 lookups concurrently
+    hash_prefixes = [dict(zip(columns, row))["hash_prefix"] for row in db_rows]
+    r2_identities = _batch_lookup_r2(r2_client, hash_prefixes)
+
+    # Collect SUSPECTED_BUG_REVERT job IDs for batch analysis lookup
+    suspect_job_ids: list[str] = []
+    if with_analysis and analysis_client:
         for row in db_rows:
             rec = dict(zip(columns, row))
             hash_prefix = rec["hash_prefix"]
             db_updated_at_str = rec["db_updated_at"]
             db_updated_at = _parse_iso_datetime(db_updated_at_str)
+            identity = r2_identities.get(hash_prefix, R2ObjectIdentity(exists=False))
+            r2_last_modified_str = identity.last_modified if identity.exists else None
+            if r2_last_modified_str and db_updated_at:
+                r2_last_modified = _parse_iso_datetime(r2_last_modified_str)
+                if r2_last_modified:
+                    delta_hours = (db_updated_at - r2_last_modified).total_seconds() / 3600.0
+                    v, _ = _compute_verdict(delta_hours, min_delta_hours, max_delta_hours)
+                    if v == "SUSPECTED_BUG_REVERT":
+                        lrc_job_id = rec.get("lrc_job_id")
+                        if lrc_job_id:
+                            suspect_job_ids.append(lrc_job_id)
 
-            # R2 lookup
-            r2_last_modified_str: Optional[str] = None
-            r2_missing = False
-            try:
-                identity = r2_client.get_lrc_identity(hash_prefix)
-                if identity.exists and identity.last_modified:
-                    r2_last_modified_str = identity.last_modified
-                else:
-                    r2_missing = True
-            except Exception as e:
-                console.print(f"[dim]Warning: R2 lookup failed for {hash_prefix}: {e}[/dim]")
-                r2_missing = True
+    analysis_results: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    if with_analysis and analysis_client and suspect_job_ids:
+        analysis_results = _batch_lookup_analysis(analysis_client, suspect_job_ids)
 
-            # Compute verdict
-            if r2_missing or db_updated_at is None:
+    for idx, row in enumerate(db_rows):
+        rec = dict(zip(columns, row))
+        hash_prefix = rec["hash_prefix"]
+        db_updated_at_str = rec["db_updated_at"]
+        db_updated_at = _parse_iso_datetime(db_updated_at_str)
+
+        # R2 lookup from batch result
+        identity = r2_identities.get(hash_prefix, R2ObjectIdentity(exists=False))
+        r2_last_modified_str: Optional[str] = None
+        r2_missing = not identity.exists
+        if identity.exists and identity.last_modified:
+            r2_last_modified_str = identity.last_modified
+
+        # Compute verdict
+        if r2_missing or db_updated_at is None:
+            verdict = "INCONCLUSIVE"
+            recommendation = "R2 file missing or DB timestamp invalid"
+            delta_hours = float("nan")
+        else:
+            r2_last_modified = _parse_iso_datetime(r2_last_modified_str)
+            if r2_last_modified is None:
                 verdict = "INCONCLUSIVE"
-                recommendation = "R2 file missing or DB timestamp invalid"
+                recommendation = "Could not parse R2 LastModified"
                 delta_hours = float("nan")
             else:
-                r2_last_modified = _parse_iso_datetime(r2_last_modified_str)
-                if r2_last_modified is None:
-                    verdict = "INCONCLUSIVE"
-                    recommendation = "Could not parse R2 LastModified"
-                    delta_hours = float("nan")
-                else:
-                    delta_seconds = (db_updated_at - r2_last_modified).total_seconds()
-                    delta_hours = delta_seconds / 3600.0
-                    verdict, recommendation = _compute_verdict(delta_hours, min_delta_hours, max_delta_hours)
+                delta_seconds = (db_updated_at - r2_last_modified).total_seconds()
+                delta_hours = delta_seconds / 3600.0
+                verdict, recommendation = _compute_verdict(delta_hours, min_delta_hours, max_delta_hours)
 
-            # Optional analysis service cross-check
-            job_completed_at_str: Optional[str] = None
-            job_note: Optional[str] = None
-            if with_analysis and analysis_client and verdict == "SUSPECTED_BUG_REVERT":
-                lrc_job_id = rec.get("lrc_job_id")
-                if lrc_job_id:
-                    try:
-                        job = analysis_client.get_job(lrc_job_id)
-                        job_completed_at_str = job.updated_at
-                    except AnalysisServiceError as e:
-                        if getattr(e, "status_code", None) == 404:
-                            job_note = "job purged — relying on R2/DB timestamps only"
-                        else:
-                            job_note = f"analysis error: {e}"
-                    except Exception as e:
-                        job_note = f"unexpected error: {e}"
-                else:
-                    job_note = "no lrc_job_id"
-            elif with_analysis and analysis_client:
-                # For non-SUSPECTED rows, skip analysis lookup per spec
-                pass
+        # Analysis service cross-check from batch result
+        job_completed_at_str: Optional[str] = None
+        job_note: Optional[str] = None
+        if with_analysis and analysis_client and verdict == "SUSPECTED_BUG_REVERT":
+            lrc_job_id = rec.get("lrc_job_id")
+            if lrc_job_id and lrc_job_id in analysis_results:
+                job_completed_at_str, job_note = analysis_results[lrc_job_id]
+            elif lrc_job_id:
+                job_note = "no lrc_job_id"
 
-            rows.append({
-                "hash_prefix": hash_prefix,
-                "song_id": rec.get("song_id") or "",
-                "album": rec.get("song_album") or "",
-                "title": rec.get("song_title") or "",
-                "db_updated_at": db_updated_at_str or "",
-                "r2_last_modified": r2_last_modified_str or "",
-                "delta_h": round(delta_hours, 2) if not (isinstance(delta_hours, float) and delta_hours != delta_hours) else "",
-                "lrc_job_id": rec.get("lrc_job_id") or "",
-                "job_completed_at": job_completed_at_str or "",
-                "job_note": job_note or "",
-                "verdict": verdict,
-                "recommendation": recommendation,
-            })
+        db_updated_at_display = ""
+        if db_updated_at is not None:
+            db_updated_at_display = db_updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        elif isinstance(db_updated_at_str, str):
+            db_updated_at_display = db_updated_at_str
+
+        rows.append({
+            "hash_prefix": hash_prefix,
+            "song_id": rec.get("song_id") or "",
+            "album": rec.get("song_album") or "",
+            "title": rec.get("song_title") or "",
+            "db_updated_at": db_updated_at_display,
+            "r2_last_modified": r2_last_modified_str or "",
+            "delta_h": round(delta_hours, 2) if not (isinstance(delta_hours, float) and delta_hours != delta_hours) else "",
+            "lrc_job_id": rec.get("lrc_job_id") or "",
+            "job_completed_at": job_completed_at_str or "",
+            "job_note": job_note or "",
+            "verdict": verdict,
+            "recommendation": recommendation,
+        })
 
     return rows
 
