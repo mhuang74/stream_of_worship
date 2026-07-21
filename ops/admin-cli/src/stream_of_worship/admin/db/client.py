@@ -850,6 +850,7 @@ class DatabaseClient:
             "title": "s.title ASC NULLS LAST",
             "imported": "r.imported_at DESC",
             "created": "r.created_at ASC NULLS LAST, r.hash_prefix ASC",
+            "updated": "r.updated_at DESC NULLS LAST",
         }
         query += f" ORDER BY {order_map.get(sort_by, 'r.imported_at DESC')}"
 
