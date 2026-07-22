@@ -14,9 +14,10 @@ Usage:
 import csv
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
+from dataclasses import dataclass
 
 import typer
 from rich.console import Console
@@ -157,6 +158,7 @@ def _build_candidate_query(
         SELECT r.hash_prefix, r.song_id, r.lrc_job_id, r.r2_lrc_url,
                r.visibility_status, r.lrc_status,
                r.updated_at AS db_updated_at, r.imported_at,
+               r.analysis_job_id, r.key_detected_at,
                s.title AS song_title, s.album_name AS song_album
         FROM recordings r
         LEFT JOIN songs s ON r.song_id = s.id
@@ -185,17 +187,101 @@ def _build_candidate_query(
     return query, params
 
 
-def _compute_verdict(delta_hours: float, min_h: float, max_h: float) -> tuple[str, str]:
-    """Compute verdict and recommendation based on delta hours.
+@dataclass
+class CandidateSignals:
+    db_updated_at: Optional[datetime]
+    r2_lm: Optional[datetime]
+    lrc_job_done: Optional[datetime]   # None if --with-analysis off OR job purged
+    analyze_job_done: Optional[datetime]
+    key_detected_at: Optional[datetime]
+    with_analysis: bool
+    bump_tolerance_s: float
+
+
+def _compute_verdict(sig: CandidateSignals) -> tuple[str, str, dict[str, Any]]:
+    """Compute verdict and recommendation based on new signal model.
 
     Returns:
-        (verdict, recommendation) tuple
+        (verdict, recommendation, debug_notes)
     """
-    if abs(delta_hours) <= 0.1:
-        return ("OK_FRESH_LRC", "—")
-    if min_h <= delta_hours <= max_h:
-        return ("SUSPECTED_BUG_REVERT", "set-visibility published")
-    return ("INCONCLUSIVE", "—")
+    # Informational deltas
+    delta_h = 0.0
+    if sig.db_updated_at and sig.r2_lm:
+        delta_h = (sig.db_updated_at - sig.r2_lm).total_seconds() / 3600.0
+
+    # OK_FRESH_LRC: abs(delta_h) <= 0.1 (kept from v1)
+    if abs(delta_h) <= 0.1:
+        return "OK_FRESH_LRC", "—", {"delta_h": delta_h}
+
+    # Analyze bump detection
+    analyze_bump = False
+    bump_source = "none"
+
+    if sig.analyze_job_done and sig.db_updated_at:
+        if abs((sig.db_updated_at - sig.analyze_job_done).total_seconds()) <= sig.bump_tolerance_s:
+            analyze_bump = True
+            bump_source = "analysis_job"
+    elif sig.key_detected_at and sig.db_updated_at:
+        if abs((sig.db_updated_at - sig.key_detected_at).total_seconds()) <= sig.bump_tolerance_s:
+            analyze_bump = True
+            bump_source = "key_detected_at"
+
+    # Manual edit check: r2_lm > lrc_job_done
+    manual_edit_after_autogen = "unknown"
+    if sig.with_analysis and sig.lrc_job_done and sig.r2_lm:
+        if sig.r2_lm > sig.lrc_job_done:
+            manual_edit_after_autogen = "yes"
+        else:
+            manual_edit_after_autogen = "no"
+
+    # Verdict Matrix
+    if not sig.r2_lm or not sig.db_updated_at:
+        return "INCONCLUSIVE", "eyes-on", {
+            "delta_h": delta_h,
+            "analyze_bump": analyze_bump,
+            "bump_source": bump_source,
+            "manual_edit_after_autogen": manual_edit_after_autogen,
+        }
+
+    if manual_edit_after_autogen == "yes" and analyze_bump:
+        return "SUSPECTED_BUG_REVERT", "set-visibility published", {
+            "delta_h": delta_h,
+            "analyze_bump": analyze_bump,
+            "bump_source": bump_source,
+            "manual_edit_after_autogen": manual_edit_after_autogen,
+        }
+
+    if manual_edit_after_autogen == "yes" and not analyze_bump:
+        # This is the "smoking gun" from v1, but still a bug revert
+        return "SUSPECTED_BUG_REVERT", "set-visibility published", {
+            "delta_h": delta_h,
+            "analyze_bump": analyze_bump,
+            "bump_source": bump_source,
+            "manual_edit_after_autogen": manual_edit_after_autogen,
+        }
+
+    if analyze_bump and manual_edit_after_autogen == "unknown":
+        return "SUSPECTED_POST_ANALYZE", "needs --with-analysis to resolve", {
+            "delta_h": delta_h,
+            "analyze_bump": analyze_bump,
+            "bump_source": bump_source,
+            "manual_edit_after_autogen": manual_edit_after_autogen,
+        }
+
+    if analyze_bump and manual_edit_after_autogen == "no":
+        return "NO_SIGNAL_POST_ANALYZE", "likely not bug-reverted", {
+            "delta_h": delta_h,
+            "analyze_bump": analyze_bump,
+            "bump_source": bump_source,
+            "manual_edit_after_autogen": manual_edit_after_autogen,
+        }
+
+    return "INCONCLUSIVE", "eyes-on", {
+        "delta_h": delta_h,
+        "analyze_bump": analyze_bump,
+        "bump_source": bump_source,
+        "manual_edit_after_autogen": manual_edit_after_autogen,
+    }
 
 
 def _run_report(
@@ -206,6 +292,7 @@ def _run_report(
     min_delta_hours: float,
     max_delta_hours: float,
     with_analysis: bool,
+    bump_tolerance_s: float,
 ) -> list[dict[str, Any]]:
     """Run the dry-run report and return rows as dicts."""
     db_client = _get_db_client(config)
@@ -238,29 +325,21 @@ def _run_report(
     hash_prefixes = [dict(zip(columns, row))["hash_prefix"] for row in db_rows]
     r2_identities = _batch_lookup_r2(r2_client, hash_prefixes)
 
-    # Collect SUSPECTED_BUG_REVERT job IDs for batch analysis lookup
-    suspect_job_ids: list[str] = []
+    # Collect both LRC and Analysis job IDs for batch analysis lookup
+    all_job_ids: set[str] = set()
     if with_analysis and analysis_client:
         for row in db_rows:
             rec = dict(zip(columns, row))
-            hash_prefix = rec["hash_prefix"]
-            db_updated_at_str = _to_iso_str(rec["db_updated_at"])
-            db_updated_at = _parse_iso_datetime(db_updated_at_str)
-            identity = r2_identities.get(hash_prefix, R2ObjectIdentity(exists=False))
-            r2_last_modified_str = identity.last_modified if identity.exists else None
-            if r2_last_modified_str and db_updated_at:
-                r2_last_modified = _parse_iso_datetime(r2_last_modified_str)
-                if r2_last_modified:
-                    delta_hours = (db_updated_at - r2_last_modified).total_seconds() / 3600.0
-                    v, _ = _compute_verdict(delta_hours, min_delta_hours, max_delta_hours)
-                    if v == "SUSPECTED_BUG_REVERT":
-                        lrc_job_id = rec.get("lrc_job_id")
-                        if lrc_job_id:
-                            suspect_job_ids.append(lrc_job_id)
+            lrc_jid = rec.get("lrc_job_id")
+            analysis_jid = rec.get("analysis_job_id")
+            if lrc_jid:
+                all_job_ids.add(lrc_jid)
+            if analysis_jid:
+                all_job_ids.add(analysis_jid)
 
     analysis_results: dict[str, tuple[Optional[str], Optional[str]]] = {}
-    if with_analysis and analysis_client and suspect_job_ids:
-        analysis_results = _batch_lookup_analysis(analysis_client, suspect_job_ids)
+    if with_analysis and analysis_client and all_job_ids:
+        analysis_results = _batch_lookup_analysis(analysis_client, list(all_job_ids))
 
     for idx, row in enumerate(db_rows):
         rec = dict(zip(columns, row))
@@ -271,41 +350,52 @@ def _run_report(
         # R2 lookup from batch result
         identity = r2_identities.get(hash_prefix, R2ObjectIdentity(exists=False))
         r2_last_modified_str: Optional[str] = None
-        r2_missing = not identity.exists
         if identity.exists and identity.last_modified:
             r2_last_modified_str = identity.last_modified
 
+        r2_last_modified = _parse_iso_datetime(r2_last_modified_str) if r2_last_modified_str else None
+
+        # Resolve Analysis Job timestamps
+        lrc_job_done = None
+        analysis_job_done = None
+        if with_analysis and analysis_client:
+            # LRC job
+            lrc_jid = rec.get("lrc_job_id")
+            if lrc_jid and lrc_jid in analysis_results:
+                lrc_job_done_str, _ = analysis_results[lrc_jid]
+                lrc_job_done = _parse_iso_datetime(lrc_job_done_str)
+            # Analysis job
+            ana_jid = rec.get("analysis_job_id")
+            if ana_jid and ana_jid in analysis_results:
+                ana_job_done_str, _ = analysis_results[ana_jid]
+                analysis_job_done = _parse_iso_datetime(ana_job_done_str)
+
+        # DB timestamp
+        key_detected_at_str = _to_iso_str(rec.get("key_detected_at"))
+        key_detected_at = _parse_iso_datetime(key_detected_at_str) if key_detected_at_str else None
+
         # Compute verdict
-        if r2_missing or db_updated_at is None:
-            verdict = "INCONCLUSIVE"
-            recommendation = "R2 file missing or DB timestamp invalid"
-            delta_hours = float("nan")
-        else:
-            r2_last_modified = _parse_iso_datetime(r2_last_modified_str)
-            if r2_last_modified is None:
-                verdict = "INCONCLUSIVE"
-                recommendation = "Could not parse R2 LastModified"
-                delta_hours = float("nan")
-            else:
-                delta_seconds = (db_updated_at - r2_last_modified).total_seconds()
-                delta_hours = delta_seconds / 3600.0
-                verdict, recommendation = _compute_verdict(delta_hours, min_delta_hours, max_delta_hours)
+        sig = CandidateSignals(
+            db_updated_at=db_updated_at,
+            r2_lm=r2_last_modified,
+            lrc_job_done=lrc_job_done,
+            analyze_job_done=analysis_job_done,
+            key_detected_at=key_detected_at,
+            with_analysis=with_analysis,
+            bump_tolerance_s=bump_tolerance_s,
+        )
+        verdict, recommendation, notes = _compute_verdict(sig)
 
-        # Analysis service cross-check from batch result
-        job_completed_at_str: Optional[str] = None
-        job_note: Optional[str] = None
-        if with_analysis and analysis_client and verdict == "SUSPECTED_BUG_REVERT":
-            lrc_job_id = rec.get("lrc_job_id")
-            if lrc_job_id and lrc_job_id in analysis_results:
-                job_completed_at_str, job_note = analysis_results[lrc_job_id]
-            elif lrc_job_id:
-                job_note = "no lrc_job_id"
-
+        # Display conversions
         db_updated_at_display = ""
         if db_updated_at is not None:
             db_updated_at_display = db_updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
         elif isinstance(db_updated_at_str, str):
             db_updated_at_display = db_updated_at_str
+
+        analyze_job_done_display = ""
+        if analysis_job_done:
+            analyze_job_done_display = analysis_job_done.strftime("%Y-%m-%d %H:%M:%S UTC")
 
         rows.append({
             "hash_prefix": hash_prefix,
@@ -314,10 +404,15 @@ def _run_report(
             "title": rec.get("song_title") or "",
             "db_updated_at": db_updated_at_display,
             "r2_last_modified": r2_last_modified_str or "",
-            "delta_h": round(delta_hours, 2) if not (isinstance(delta_hours, float) and delta_hours != delta_hours) else "",
+            "delta_h": notes.get("delta_h", 0.0),
             "lrc_job_id": rec.get("lrc_job_id") or "",
-            "job_completed_at": job_completed_at_str or "",
-            "job_note": job_note or "",
+            "analyze_job_id": rec.get("analysis_job_id") or "",
+            "key_detected_at": key_detected_at_str or "",
+            "analyze_job_done": analyze_job_done_display,
+            "job_completed_at": _to_iso_str(lrc_job_done) if lrc_job_done else "",
+            "analyze_bump": notes.get("analyze_bump", "unknown"),
+            "bump_source": notes.get("bump_source", "none"),
+            "manual_edit_after_autogen": notes.get("manual_edit_after_autogen", "unknown"),
             "verdict": verdict,
             "recommendation": recommendation,
         })
@@ -335,16 +430,18 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
     table.add_column("album", style="white", max_width=20)
     table.add_column("db_updated_at", style="dim", width=24)
     table.add_column("r2_last_modified", style="dim", width=24)
-    table.add_column("delta_h", style="yellow", width=8, justify="right")
-    table.add_column("lrc_job_id", style="dim", width=14)
-    table.add_column("job_completed_at", style="dim", width=24)
-    table.add_column("verdict", style="bold", width=18)
-    table.add_column("recommendation", style="green", max_width=24)
+    table.add_column("delta_h", style="dim", width=8, justify="right")
+    table.add_column("analyze_bump", style="dim", width=10)
+    table.add_column("manual_edit", style="dim", width=10)
+    table.add_column("verdict", style="bold", width=22)
+    table.add_column("recommendation", style="green", max_width=26)
 
     for row in rows:
         verdict_style = {
             "SUSPECTED_BUG_REVERT": "red",
             "OK_FRESH_LRC": "green",
+            "SUSPECTED_POST_ANALYZE": "yellow",
+            "NO_SIGNAL_POST_ANALYZE": "dim",
             "INCONCLUSIVE": "yellow",
         }.get(row["verdict"], "white")
 
@@ -355,9 +452,9 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
             row["album"][:18] if len(row["album"]) > 18 else row["album"],
             row["db_updated_at"],
             row["r2_last_modified"],
-            str(row["delta_h"]) if row["delta_h"] != "" else "",
-            row["lrc_job_id"],
-            row["job_completed_at"],
+            f"{row['delta_h']:.2f}" if isinstance(row["delta_h"], float) else str(row["delta_h"]),
+            str(row["analyze_bump"]),
+            str(row["manual_edit_after_autogen"]),
             f"[{verdict_style}]{row['verdict']}[/{verdict_style}]",
             row["recommendation"],
         )
@@ -367,13 +464,17 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
     # Summary
     total = len(rows)
     suspect_count = sum(1 for r in rows if r["verdict"] == "SUSPECTED_BUG_REVERT")
+    post_analyze_count = sum(1 for r in rows if r["verdict"] == "SUSPECTED_POST_ANALYZE")
     ok_count = sum(1 for r in rows if r["verdict"] == "OK_FRESH_LRC")
+    no_signal_count = sum(1 for r in rows if r["verdict"] == "NO_SIGNAL_POST_ANALYZE")
     inconclusive_count = sum(1 for r in rows if r["verdict"] == "INCONCLUSIVE")
 
     console.print(Panel(
         f"[cyan]Total candidates:[/cyan] {total}  |  "
         f"[red]SUSPECTED_BUG_REVERT:[/red] {suspect_count}  |  "
+        f"[yellow]SUSPECTED_POST_ANALYZE:[/yellow] {post_analyze_count}  |  "
         f"[green]OK_FRESH_LRC:[/green] {ok_count}  |  "
+        f"[dim]NO_SIGNAL_POST_ANALYZE:[/dim] {no_signal_count}  |  "
         f"[yellow]INCONCLUSIVE:[/yellow] {inconclusive_count}",
         border_style="cyan",
     ))
@@ -383,14 +484,20 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
         console.print("[yellow]Recommendation:[/yellow] Review SUSPECTED_BUG_REVERT rows and run:")
         console.print("  [dim]sow-admin audio set-visibility <song_id> published[/dim]")
 
+    if post_analyze_count > 0:
+        console.print()
+        console.print("[yellow]Note:[/yellow] Re-run with `--with-analysis` to resolve `SUSPECTED_POST_ANALYZE` rows.")
+
 
 def _print_csv(rows: list[dict[str, Any]]) -> None:
     """Print rows as CSV to stdout."""
     fieldnames = [
         "hash_prefix", "song_id", "album", "title",
         "db_updated_at", "r2_last_modified", "delta_h",
-        "lrc_job_id", "job_completed_at", "verdict",
-        "recommendation", "job_note",
+        "lrc_job_id", "analyze_job_id", "key_detected_at",
+        "analyze_job_done", "job_completed_at", "analyze_bump",
+        "bump_source", "manual_edit_after_autogen", "verdict",
+        "recommendation",
     ]
     writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
@@ -407,6 +514,7 @@ def main(
     with_analysis: bool = typer.Option(False, "--with-analysis", "-A", help="Cross-check with analysis service job timestamps"),
     csv_output: bool = typer.Option(False, "--csv", "-c", help="Output as CSV instead of Rich table"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-C", help="Path to config file"),
+    bump_tolerance_seconds: float = typer.Option(60.0, "--bump-tolerance-seconds", help="Tolerance in seconds for detect analyze-bump"),
 ) -> None:
     """Identify recordings whose visibility_status was reverted by the audio-batch bug.
 
@@ -435,7 +543,7 @@ def main(
     console.print()
 
     try:
-        rows = _run_report(config, since, until, album, min_delta_hours, max_delta_hours, with_analysis)
+        rows = _run_report(config, since, until, album, min_delta_hours, max_delta_hours, with_analysis, bump_tolerance_seconds)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
