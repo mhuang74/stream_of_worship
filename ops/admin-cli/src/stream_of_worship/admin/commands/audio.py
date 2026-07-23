@@ -1462,19 +1462,53 @@ def show_recording(
 
 @app.command("set-visibility")
 def set_visibility(
-    song_id: str = typer.Argument(..., help="Song ID to update visibility for"),
+    song_id: Optional[str] = typer.Argument(
+        None, help="Song ID to update visibility for (omit when using --stdin)"
+    ),
     status: str = typer.Option(
         ..., "--status", "-s", help="Visibility status (published|review|hold)"
     ),
+    stdin: bool = typer.Option(
+        False,
+        "--stdin",
+        help="Read song IDs from stdin (one per line). "
+        "Use for batch: cat songids.txt | sow-admin audio set-visibility --status published --stdin",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
-    """Set the visibility status for a recording.
+    """Set the visibility status for one or more recordings.
 
     Controls whether a recording appears in the User App browse list.
     - published: Visible to users (auto-set when LRC completes)
     - review: Hidden, needs manual review
     - hold: Hidden, on hold
+
+    Batch mode: pass --stdin to read song IDs from stdin (one per line).
+    Blank lines and lines starting with '#' are ignored.
     """
+    # Validate status early
+    valid_statuses = {"published", "review", "hold"}
+    if status not in valid_statuses:
+        console.print(
+            f"[red]Invalid status: {status}. Must be one of: {', '.join(valid_statuses)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Resolve the list of song IDs
+    if stdin:
+        raw = sys.stdin.read().splitlines()
+        song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
+        if not song_ids:
+            console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
+            raise typer.Exit(1)
+    elif song_id is None:
+        console.print(
+            "[red]A song ID is required, or use --stdin to read IDs from stdin[/red]"
+        )
+        raise typer.Exit(1)
+    else:
+        song_ids = [song_id]
+
     # Standard config/db boilerplate
     try:
         config = AdminConfig.load(config_path)
@@ -1484,31 +1518,37 @@ def set_visibility(
 
     db_client = get_db_client(config)
 
-    # Look up recording by song_id
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(
-            f"[red]No recording found for {song_id}. "
-            f"Run 'sow-admin audio download {song_id}' first.[/red]"
-        )
-        raise typer.Exit(1)
+    # Process each song ID
+    succeeded: list[str] = []
+    failed: list[tuple[str, str]] = []
 
-    # Validate status
-    valid_statuses = {"published", "review", "hold"}
-    if status not in valid_statuses:
-        console.print(
-            f"[red]Invalid status: {status}. Must be one of: {', '.join(valid_statuses)}[/red]"
-        )
-        raise typer.Exit(1)
+    for sid in song_ids:
+        recording = db_client.get_recording_by_song_id(sid)
+        if not recording:
+            msg = f"No recording found (run 'sow-admin audio download {sid}' first)"
+            console.print(f"[red]{sid}: {msg}[/red]")
+            failed.append((sid, msg))
+            continue
 
-    # Update visibility
-    try:
-        db_client.update_recording_visibility(recording.hash_prefix, status)
+        try:
+            db_client.update_recording_visibility(recording.hash_prefix, status)
+            console.print(f"[green]{sid}: Updated visibility to {_colorize_visibility(status)}[/green]")
+            succeeded.append(sid)
+        except ValueError as e:
+            console.print(f"[red]{sid}: {e}[/red]")
+            failed.append((sid, str(e)))
+
+    # Summary for batch mode
+    if len(song_ids) > 1:
         console.print(
-            f"[green]Updated visibility for {song_id}: {_colorize_visibility(status)}[/green]"
+            f"\n[bold]Summary:[/bold] {len(succeeded)} succeeded, {len(failed)} failed"
         )
-    except ValueError as e:
-        console.print(f"[red]Error: {e}[/red]")
+        if failed:
+            console.print("[red]Failed:[/red]")
+            for sid, msg in failed:
+                console.print(f"  - {sid}: {msg}")
+            raise typer.Exit(1)
+    elif failed:
         raise typer.Exit(1)
 
 
