@@ -58,6 +58,10 @@ class AnalysisResult:
     stems_url: Optional[str] = None
     lrc_url: Optional[str] = None
     lrc_source: Optional[str] = None
+    line_count: Optional[int] = None
+    vocals_dry_url: Optional[str] = None
+    vocals_url: Optional[str] = None
+    instrumental_url: Optional[str] = None
 
 
 @dataclass
@@ -836,6 +840,10 @@ class AnalysisClient:
                     stems_url=result_data.get("stems_url"),
                     lrc_url=result_data.get("lrc_url"),
                     lrc_source=result_data.get("lrc_source"),
+                    line_count=result_data.get("line_count"),
+                    vocals_dry_url=result_data.get("vocals_dry_url"),
+                    vocals_url=result_data.get("vocals_url"),
+                    instrumental_url=result_data.get("instrumental_url"),
                 )
 
         return JobInfo(
