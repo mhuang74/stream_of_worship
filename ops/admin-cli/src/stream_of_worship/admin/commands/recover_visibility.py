@@ -29,6 +29,7 @@ from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
     AnalysisServiceError,
+    JobInfo,
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.db.connection import ConnectionProvider
@@ -37,6 +38,7 @@ console = Console()
 progress_console = Console(stderr=True)
 R2_LOOKUP_WORKERS = 20
 ANALYSIS_LOOKUP_WORKERS = 10
+ANALYSIS_STUCK_THRESHOLD_HOURS = 12
 
 
 def _lookup_rlc_identity(r2_client: R2Client, hash_prefix: str) -> R2ObjectIdentity:
@@ -71,24 +73,19 @@ def _batch_lookup_r2(
 
 def _lookup_analysis_job(
     analysis_client: AnalysisClient, job_id: str,
-) -> tuple[Optional[str], Optional[str]]:
-    """Look up analysis job, returning (updated_at, note) or (None, note) on error."""
+) -> Optional[JobInfo]:
+    """Look up analysis job, returning JobInfo or None on error (404/exception)."""
     try:
-        job = analysis_client.get_job(job_id)
-        return (job.updated_at, None)
-    except AnalysisServiceError as e:
-        if getattr(e, "status_code", None) == 404:
-            return (None, "job purged — relying on R2/DB timestamps only")
-        return (None, f"analysis error: {e}")
-    except Exception as e:
-        return (None, f"unexpected error: {e}")
+        return analysis_client.get_job(job_id)
+    except (AnalysisServiceError, Exception):
+        return None
 
 
 def _batch_lookup_analysis(
     analysis_client: AnalysisClient, job_ids: list[str],
-) -> dict[str, tuple[Optional[str], Optional[str]]]:
+) -> dict[str, Optional[JobInfo]]:
     """Concurrently look up analysis jobs for all job IDs."""
-    results: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    results: dict[str, Optional[JobInfo]] = {}
     total = len(job_ids)
     progress_console.print(f"[dim]Analysis lookups: {total} jobs ({ANALYSIS_LOOKUP_WORKERS} workers)[/dim]")
     with ThreadPoolExecutor(max_workers=ANALYSIS_LOOKUP_WORKERS) as pool:
@@ -197,9 +194,38 @@ class CandidateSignals:
     with_analysis: bool
     bump_tolerance_s: float
 
+    # from LRC JobInfo (REST, formerly discarded)
+    lrc_status: Optional[str]
+    lrc_stage: Optional[str]
+    lrc_error: Optional[str]
+    lrc_created_at: Optional[datetime]
+    lrc_result_url: Optional[str]               # AnalysisResult.lrc_url
+    lrc_source: Optional[str]
+    lrc_line_count: Optional[int]
+    lrc_result_key_detected_at: Optional[datetime]   # not present on lrc jobs in practice; None
+
+    # from Analysis JobInfo (REST, formerly discarded)
+    analyze_status: Optional[str]
+    analyze_stage: Optional[str]
+    analyze_error: Optional[str]
+    analyze_result_key_detected_at: Optional[datetime]  # cross-check vs PG
+    analyze_stems_present: Optional[bool]       # stems_url non-null
+
+    # PG-side reference values for diagnostic drift comparison
+    pg_r2_lrc_url: Optional[str]
+
 
 def _compute_verdict(sig: CandidateSignals) -> tuple[str, str, dict[str, Any]]:
     """Compute verdict and recommendation based on new signal model.
+
+    Layer A — verdict-changing branches (only override INCONCLUSIVE):
+      1. LRC_JOB_FAILED — lrc_status in ("failed", "cancelled")
+      2. LRC_JOB_STUCK  — lrc_status in ("processing", "queued", "waiting")
+         AND lrc_created_at older than ANALYSIS_STUCK_THRESHOLD_HOURS
+
+    Layer B — diagnostic-only signals (never alter verdict):
+      - lrc_url_drift, stem_bump_attributable_to_stems,
+        transcript_source_bias, key_detected_at_drift
 
     Returns:
         (verdict, recommendation, debug_notes)
@@ -234,54 +260,95 @@ def _compute_verdict(sig: CandidateSignals) -> tuple[str, str, dict[str, Any]]:
         else:
             manual_edit_after_autogen = "no"
 
-    # Verdict Matrix
-    if not sig.r2_lm or not sig.db_updated_at:
-        return "INCONCLUSIVE", "eyes-on", {
-            "delta_h": delta_h,
-            "analyze_bump": analyze_bump,
-            "bump_source": bump_source,
-            "manual_edit_after_autogen": manual_edit_after_autogen,
-        }
-
-    if manual_edit_after_autogen == "yes" and analyze_bump:
-        return "SUSPECTED_BUG_REVERT", "set-visibility published", {
-            "delta_h": delta_h,
-            "analyze_bump": analyze_bump,
-            "bump_source": bump_source,
-            "manual_edit_after_autogen": manual_edit_after_autogen,
-        }
-
-    if manual_edit_after_autogen == "yes" and not analyze_bump:
-        # This is the "smoking gun" from v1, but still a bug revert
-        return "SUSPECTED_BUG_REVERT", "set-visibility published", {
-            "delta_h": delta_h,
-            "analyze_bump": analyze_bump,
-            "bump_source": bump_source,
-            "manual_edit_after_autogen": manual_edit_after_autogen,
-        }
-
-    if analyze_bump and manual_edit_after_autogen == "unknown":
-        return "SUSPECTED_POST_ANALYZE", "needs --with-analysis to resolve", {
-            "delta_h": delta_h,
-            "analyze_bump": analyze_bump,
-            "bump_source": bump_source,
-            "manual_edit_after_autogen": manual_edit_after_autogen,
-        }
-
-    if analyze_bump and manual_edit_after_autogen == "no":
-        return "NO_SIGNAL_POST_ANALYZE", "likely not bug-reverted", {
-            "delta_h": delta_h,
-            "analyze_bump": analyze_bump,
-            "bump_source": bump_source,
-            "manual_edit_after_autogen": manual_edit_after_autogen,
-        }
-
-    return "INCONCLUSIVE", "eyes-on", {
+    # --- Layer B diagnostics (computed for every row, never alter verdict) ---
+    debug_notes: dict[str, Any] = {
         "delta_h": delta_h,
         "analyze_bump": analyze_bump,
         "bump_source": bump_source,
         "manual_edit_after_autogen": manual_edit_after_autogen,
     }
+
+    # lrc_url_drift: lrc_result_url differs from PG pg_r2_lrc_url
+    lrc_url_drift = False
+    if (sig.lrc_result_url is not None
+            and sig.pg_r2_lrc_url is not None
+            and sig.lrc_result_url != sig.pg_r2_lrc_url):
+        lrc_url_drift = True
+        debug_notes["lrc_url_drift"] = True
+        debug_notes["lrc_url_drift_details"] = (
+            f"svc={sig.lrc_result_url} pg={sig.pg_r2_lrc_url}"
+        )
+
+    # stem_bump_attributable_to_stems: analyze_bump AND stems_url present
+    stem_bump_attributable_to_stems = False
+    if analyze_bump and sig.analyze_stems_present:
+        stem_bump_attributable_to_stems = True
+        debug_notes["stem_bump_attributable_to_stems"] = True
+        debug_notes["stem_bump_attributable_to_stems_details"] = (
+            "stems_url present"
+        )
+
+    # transcript_source_bias: manual_edit_after_autogen == "yes" AND lrc_source == "youtube_transcript"
+    transcript_source_bias = False
+    if (manual_edit_after_autogen == "yes"
+            and sig.lrc_source == "youtube_transcript"):
+        transcript_source_bias = True
+        debug_notes["transcript_source_bias"] = True
+        debug_notes["transcript_source_bias_details"] = (
+            "manual_edit=yes, source=youtube_transcript"
+        )
+
+    # key_detected_at_drift: analyze_result_key_detected_at differs from PG
+    key_detected_at_drift = False
+    if (sig.analyze_result_key_detected_at is not None
+            and sig.key_detected_at is not None
+            and sig.analyze_result_key_detected_at != sig.key_detected_at):
+        key_detected_at_drift = True
+        debug_notes["key_detected_at_drift"] = True
+        debug_notes["key_detected_at_drift_details"] = (
+            f"analyze={sig.analyze_result_key_detected_at.isoformat()} "
+            f"pg={sig.key_detected_at.isoformat()}"
+        )
+
+    # --- Original verdict logic (from pre-v2) ---
+    if not sig.r2_lm or not sig.db_updated_at:
+        verdict = "INCONCLUSIVE"
+        recommendation = "eyes-on"
+    elif manual_edit_after_autogen == "yes":
+        verdict = "SUSPECTED_BUG_REVERT"
+        recommendation = "set-visibility published"
+    elif analyze_bump and manual_edit_after_autogen == "unknown":
+        verdict = "SUSPECTED_POST_ANALYZE"
+        recommendation = "needs --with-analysis to resolve"
+    elif analyze_bump and manual_edit_after_autogen == "no":
+        verdict = "NO_SIGNAL_POST_ANALYZE"
+        recommendation = "likely not bug-reverted"
+    else:
+        verdict = "INCONCLUSIVE"
+        recommendation = "eyes-on"
+
+    # --- Layer A verdict branches (only override INCONCLUSIVE) ---
+    if verdict == "INCONCLUSIVE" and sig.lrc_status in ("failed", "cancelled"):
+        verdict = "LRC_JOB_FAILED"
+        error_detail = sig.lrc_error or sig.lrc_status
+        recommendation = f"eyes-on (lrc {sig.lrc_status})"
+        debug_notes["lrc_job_failed"] = True
+        debug_notes["lrc_job_failed_error"] = error_detail
+
+    elif (verdict == "INCONCLUSIVE"
+          and sig.lrc_status in ("processing", "queued", "waiting")
+          and sig.lrc_created_at is not None):
+        threshold = timedelta(hours=ANALYSIS_STUCK_THRESHOLD_HOURS)
+        if (datetime.now(timezone.utc) - sig.lrc_created_at) > threshold:
+            verdict = "LRC_JOB_STUCK"
+            recommendation = "restart analysis worker"
+            debug_notes["lrc_job_stuck"] = True
+            debug_notes["lrc_job_stuck_stage"] = sig.lrc_status
+            debug_notes["lrc_job_stuck_created_at"] = (
+                sig.lrc_created_at.isoformat()
+            )
+
+    return verdict, recommendation, debug_notes
 
 
 def _run_report(
@@ -355,24 +422,62 @@ def _run_report(
 
         r2_last_modified = _parse_iso_datetime(r2_last_modified_str) if r2_last_modified_str else None
 
-        # Resolve Analysis Job timestamps
+        # Resolve Analysis Job timestamps and extract JobInfo fields
         lrc_job_done = None
         analysis_job_done = None
+        lrc_job: Optional[JobInfo] = None
+        ana_job: Optional[JobInfo] = None
         if with_analysis and analysis_client:
             # LRC job
             lrc_jid = rec.get("lrc_job_id")
             if lrc_jid and lrc_jid in analysis_results:
-                lrc_job_done_str, _ = analysis_results[lrc_jid]
-                lrc_job_done = _parse_iso_datetime(lrc_job_done_str)
+                lrc_job = analysis_results[lrc_jid]
+                if lrc_job is not None:
+                    lrc_job_done = _parse_iso_datetime(lrc_job.updated_at)
             # Analysis job
             ana_jid = rec.get("analysis_job_id")
             if ana_jid and ana_jid in analysis_results:
-                ana_job_done_str, _ = analysis_results[ana_jid]
-                analysis_job_done = _parse_iso_datetime(ana_job_done_str)
+                ana_job = analysis_results[ana_jid]
+                if ana_job is not None:
+                    analysis_job_done = _parse_iso_datetime(ana_job.updated_at)
 
         # DB timestamp
         key_detected_at_str = _to_iso_str(rec.get("key_detected_at"))
         key_detected_at = _parse_iso_datetime(key_detected_at_str) if key_detected_at_str else None
+
+        # Extract LRC JobInfo fields
+        lrc_status = lrc_job.status if lrc_job else None
+        lrc_stage = lrc_job.stage if lrc_job else None
+        lrc_error = lrc_job.error_message if lrc_job else None
+        lrc_created_at = _parse_iso_datetime(lrc_job.created_at) if lrc_job else None
+        lrc_result_url = None
+        lrc_source = None
+        lrc_line_count = None
+        lrc_result_key_detected_at = None
+        if lrc_job and lrc_job.result:
+            lrc_result_url = lrc_job.result.lrc_url
+            lrc_source = lrc_job.result.lrc_source
+            lrc_line_count = lrc_job.result.line_count
+            if lrc_job.result.key_detected_at:
+                lrc_result_key_detected_at = _parse_iso_datetime(
+                    lrc_job.result.key_detected_at
+                )
+
+        # Extract Analysis JobInfo fields
+        analyze_status = ana_job.status if ana_job else None
+        analyze_stage = ana_job.stage if ana_job else None
+        analyze_error = ana_job.error_message if ana_job else None
+        analyze_result_key_detected_at = None
+        analyze_stems_present = None
+        if ana_job and ana_job.result:
+            if ana_job.result.key_detected_at:
+                analyze_result_key_detected_at = _parse_iso_datetime(
+                    ana_job.result.key_detected_at
+                )
+            analyze_stems_present = ana_job.result.stems_url is not None
+
+        # PG-side LRC URL for drift comparison
+        pg_r2_lrc_url = rec.get("r2_lrc_url")
 
         # Compute verdict
         sig = CandidateSignals(
@@ -383,6 +488,20 @@ def _run_report(
             key_detected_at=key_detected_at,
             with_analysis=with_analysis,
             bump_tolerance_s=bump_tolerance_s,
+            lrc_status=lrc_status,
+            lrc_stage=lrc_stage,
+            lrc_error=lrc_error,
+            lrc_created_at=lrc_created_at,
+            lrc_result_url=lrc_result_url,
+            lrc_source=lrc_source,
+            lrc_line_count=lrc_line_count,
+            lrc_result_key_detected_at=lrc_result_key_detected_at,
+            analyze_status=analyze_status,
+            analyze_stage=analyze_stage,
+            analyze_error=analyze_error,
+            analyze_result_key_detected_at=analyze_result_key_detected_at,
+            analyze_stems_present=analyze_stems_present,
+            pg_r2_lrc_url=pg_r2_lrc_url,
         )
         verdict, recommendation, notes = _compute_verdict(sig)
 
@@ -413,6 +532,18 @@ def _run_report(
             "analyze_bump": notes.get("analyze_bump", "unknown"),
             "bump_source": notes.get("bump_source", "none"),
             "manual_edit_after_autogen": notes.get("manual_edit_after_autogen", "unknown"),
+            "lrc_status": lrc_status or "",
+            "analyze_status": analyze_status or "",
+            "lrc_error": lrc_error or "",
+            "analyze_error": analyze_error or "",
+            "lrc_result_url": lrc_result_url or "",
+            "lrc_source": lrc_source or "",
+            "lrc_line_count": lrc_line_count if lrc_line_count is not None else "",
+            "key_detected_at_drift": notes.get("key_detected_at_drift", False),
+            "lrc_url_drift": notes.get("lrc_url_drift", False),
+            "stem_bump_attributable_to_stems": notes.get("stem_bump_attributable_to_stems", False),
+            "transcript_source_bias": notes.get("transcript_source_bias", False),
+            "debug_notes": notes,
             "verdict": verdict,
             "recommendation": recommendation,
         })
@@ -433,6 +564,16 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
     table.add_column("delta_h", style="dim", width=8, justify="right")
     table.add_column("analyze_bump", style="dim", width=10)
     table.add_column("manual_edit", style="dim", width=10)
+    table.add_column("lrc_status", style="dim", width=10)
+    table.add_column("analyze_status", style="dim", width=10)
+    table.add_column("lrc_error", style="dim", max_width=20)
+    table.add_column("analyze_error", style="dim", max_width=20)
+    table.add_column("lrc_result_url", style="dim", max_width=20)
+    table.add_column("lrc_source", style="dim", width=14)
+    table.add_column("key_detected_at_drift", style="dim", width=6)
+    table.add_column("lrc_url_drift", style="dim", width=6)
+    table.add_column("stem_bump", style="dim", width=6)
+    table.add_column("transcript_bias", style="dim", width=6)
     table.add_column("verdict", style="bold", width=22)
     table.add_column("recommendation", style="green", max_width=26)
 
@@ -443,6 +584,8 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
             "SUSPECTED_POST_ANALYZE": "yellow",
             "NO_SIGNAL_POST_ANALYZE": "dim",
             "INCONCLUSIVE": "yellow",
+            "LRC_JOB_FAILED": "red",
+            "LRC_JOB_STUCK": "yellow",
         }.get(row["verdict"], "white")
 
         table.add_row(
@@ -455,6 +598,16 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
             f"{row['delta_h']:.2f}" if isinstance(row["delta_h"], float) else str(row["delta_h"]),
             str(row["analyze_bump"]),
             str(row["manual_edit_after_autogen"]),
+            row["lrc_status"],
+            row["analyze_status"],
+            row["lrc_error"][:18] if row["lrc_error"] and len(row["lrc_error"]) > 18 else row["lrc_error"],
+            row["analyze_error"][:18] if row["analyze_error"] and len(row["analyze_error"]) > 18 else row["analyze_error"],
+            row["lrc_result_url"][:18] if row["lrc_result_url"] and len(row["lrc_result_url"]) > 18 else row["lrc_result_url"],
+            row["lrc_source"],
+            str(row["key_detected_at_drift"]),
+            str(row["lrc_url_drift"]),
+            str(row["stem_bump_attributable_to_stems"]),
+            str(row["transcript_source_bias"]),
             f"[{verdict_style}]{row['verdict']}[/{verdict_style}]",
             row["recommendation"],
         )
@@ -468,6 +621,8 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
     ok_count = sum(1 for r in rows if r["verdict"] == "OK_FRESH_LRC")
     no_signal_count = sum(1 for r in rows if r["verdict"] == "NO_SIGNAL_POST_ANALYZE")
     inconclusive_count = sum(1 for r in rows if r["verdict"] == "INCONCLUSIVE")
+    lrc_failed_count = sum(1 for r in rows if r["verdict"] == "LRC_JOB_FAILED")
+    lrc_stuck_count = sum(1 for r in rows if r["verdict"] == "LRC_JOB_STUCK")
 
     console.print(Panel(
         f"[cyan]Total candidates:[/cyan] {total}  |  "
@@ -475,7 +630,9 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
         f"[yellow]SUSPECTED_POST_ANALYZE:[/yellow] {post_analyze_count}  |  "
         f"[green]OK_FRESH_LRC:[/green] {ok_count}  |  "
         f"[dim]NO_SIGNAL_POST_ANALYZE:[/dim] {no_signal_count}  |  "
-        f"[yellow]INCONCLUSIVE:[/yellow] {inconclusive_count}",
+        f"[yellow]INCONCLUSIVE:[/yellow] {inconclusive_count}  |  "
+        f"[red]LRC_JOB_FAILED:[/red] {lrc_failed_count}  |  "
+        f"[yellow]LRC_JOB_STUCK:[/yellow] {lrc_stuck_count}",
         border_style="cyan",
     ))
 
@@ -488,6 +645,10 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
         console.print()
         console.print("[yellow]Note:[/yellow] Re-run with `--with-analysis` to resolve `SUSPECTED_POST_ANALYZE` rows.")
 
+    if lrc_failed_count > 0:
+        console.print()
+        console.print("[yellow]Note:[/yellow] LRC_JOB_FAILED rows: check analysis service for job errors.")
+
 
 def _print_csv(rows: list[dict[str, Any]]) -> None:
     """Print rows as CSV to stdout."""
@@ -496,8 +657,13 @@ def _print_csv(rows: list[dict[str, Any]]) -> None:
         "db_updated_at", "r2_last_modified", "delta_h",
         "lrc_job_id", "analyze_job_id", "key_detected_at",
         "analyze_job_done", "job_completed_at", "analyze_bump",
-        "bump_source", "manual_edit_after_autogen", "verdict",
-        "recommendation",
+        "bump_source", "manual_edit_after_autogen",
+        "lrc_status", "analyze_status", "lrc_error", "analyze_error",
+        "lrc_result_url", "lrc_source", "lrc_line_count",
+        "key_detected_at_drift", "lrc_url_drift",
+        "stem_bump_attributable_to_stems", "transcript_source_bias",
+        "debug_notes",
+        "verdict", "recommendation",
     ]
     writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
@@ -556,6 +722,16 @@ def main(
         _print_csv(rows)
     else:
         _print_table(rows)
+
+    if not with_analysis:
+        inconclusive_count = sum(1 for r in rows if r["verdict"] == "INCONCLUSIVE")
+        if inconclusive_count > 0:
+            console.print(
+                f"[dim]INCONCLUSIVE rows present; re-run with "
+                f"--with-analysis to surface service-side job status "
+                f"and reduce inconclusive count.[/dim]",
+                file=sys.stderr,
+            )
 
 
 if __name__ == "__main__":
