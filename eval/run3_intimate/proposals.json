@@ -1,0 +1,517 @@
+{
+  "run_id": "songset-20260726T071038Z-4s-top5",
+  "config": {
+    "songs": 4,
+    "top_k": 5,
+    "pool_limit": 500,
+    "output_dir": "eval/run3_intimate",
+    "album_series": [],
+    "include_cpw": false,
+    "intimate": true,
+    "hymnal_mode": false,
+    "season": null,
+    "interactive_review": false,
+    "resume_thread_id": null,
+    "no_llm": true,
+    "llm_judge": false,
+    "llm_model": "qwen3.6-35b",
+    "thread_id": "songset-20260726T071038Z-4s-top5",
+    "env_file": "/opt/sow/.env",
+    "relax_h3_bpm": null,
+    "relax_h2_bpm": null,
+    "relax_h1": true,
+    "auto_relax": true,
+    "relax_h4": false,
+    "relax_h5": false,
+    "relax_h4_bpm": null,
+    "relax_h5_cfd": null
+  },
+  "generated_at": "2026-07-26T07:11:20.865641+00:00",
+  "proposals": [
+    {
+      "rank": 1,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "196669aa37bd",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "mei_hao_de_chuang_zao_3d42d76e",
+          "title": "美好的創造",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "敬拜"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.5537899
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "0ba597e7429a",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "fu_xing_sheng_jie_53a90875",
+          "title": "復興聖潔",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "复兴"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.53314394
+        },
+        {
+          "position": 4,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.9375,
+        "f_tempo": 0.684,
+        "f_harmony": 0.7967,
+        "f_diversity": 1.0,
+        "total": 0.8395
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 2,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "d6f97bacbe31",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "xing_qi_wei_ye_su_b4ed0bf0",
+          "title": "興起為耶穌",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "奉献"
+          ],
+          "bpm": 103.4,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.8965413
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "0ba597e7429a",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "fu_xing_sheng_jie_53a90875",
+          "title": "復興聖潔",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "复兴"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.53314394
+        },
+        {
+          "position": 4,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.9375,
+        "f_tempo": 0.684,
+        "f_harmony": 0.75,
+        "f_diversity": 1.0,
+        "total": 0.6802
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 3,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "fe07e3d2998e",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "ye_he_hua_shi_ying_dang_cheng_song_de_2a5b5904",
+          "title": "耶和華是應當稱頌的",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "敬拜"
+          ],
+          "bpm": 103.4,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.19261935
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "0ba597e7429a",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "fu_xing_sheng_jie_53a90875",
+          "title": "復興聖潔",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "复兴"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.53314394
+        },
+        {
+          "position": 4,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.9375,
+        "f_tempo": 0.684,
+        "f_harmony": 0.75,
+        "f_diversity": 1.0,
+        "total": 0.6802
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 4,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "4a88f7d5ab9d",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhen_dong_tian_di_47044855",
+          "title": "震動天地",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "敬拜"
+          ],
+          "bpm": 103.4,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.71004
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "0ba597e7429a",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "fu_xing_sheng_jie_53a90875",
+          "title": "復興聖潔",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "复兴"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.53314394
+        },
+        {
+          "position": 4,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.9375,
+        "f_tempo": 0.684,
+        "f_harmony": 0.75,
+        "f_diversity": 1.0,
+        "total": 0.6802
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 5,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "97d239087362",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "mi_de_qi_min_4fa4c59e",
+          "title": "祢的器皿",
+          "phase": 2,
+          "themes": [
+            "感恩",
+            "圣灵"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.8539129
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "0ba597e7429a",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "fu_xing_sheng_jie_53a90875",
+          "title": "復興聖潔",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "复兴"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.53314394
+        },
+        {
+          "position": 4,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.875,
+        "f_tempo": 0.684,
+        "f_harmony": 0.8233,
+        "f_diversity": 1.0,
+        "total": 0.6699
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    }
+  ]
+}

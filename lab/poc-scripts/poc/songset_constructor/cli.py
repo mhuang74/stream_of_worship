@@ -255,6 +255,18 @@ def _print_output_files(paths: dict[str, str]) -> None:
         console.print(f"  {output_path.name}: {output_path}")
 
 
+def _print_enrichment_summary(config: RunConfig, result: Any) -> None:
+    from poc.songset_constructor.artifacts.enrichment_report import render_console_summary
+
+    metrics = result.get("enrichment_metrics")
+    paths = result.get("artifact_paths", {})
+    report_path = paths.get("enrichment_report", "")
+    if not metrics:
+        console.print("[yellow]Enrichment metrics unavailable.[/yellow]")
+        return
+    console.print(render_console_summary(metrics, report_path))
+
+
 def _print_brief_summaries(config: RunConfig, result: Any) -> None:
     proposals = result.get("final_proposals", []) or []
     pool = result.get("pool", []) or []
@@ -347,6 +359,9 @@ def construct(
     relax_h5: Annotated[bool, typer.Option("--relax-h5/--no-relax-h5")] = False,
     relax_h4_bpm: Annotated[int | None, typer.Option("--relax-h4-bpm", min=0)] = None,
     relax_h5_cfd: Annotated[int | None, typer.Option("--relax-h5-cfd", min=0)] = None,
+    only_evaluate_pool_enrichment: Annotated[
+        bool, typer.Option("--only-evaluate-pool-enrichment/--full-run")
+    ] = False,
 ) -> None:
     """Construct Chinese worship songset proposal artifacts."""
     try:
@@ -374,8 +389,10 @@ def construct(
             relax_h5=relax_h5,
             relax_h4_bpm=relax_h4_bpm,
             relax_h5_cfd=relax_h5_cfd,
+            only_evaluate_pool_enrichment=only_evaluate_pool_enrichment,
         )
-        config.validate_environment()
+        if not config.only_evaluate_pool_enrichment:
+            config.validate_environment()
     except Exception as exc:
         console.print(f"[red]Configuration error:[/red] {exc}")
         raise typer.Exit(2) from exc
@@ -401,6 +418,10 @@ def construct(
         raise typer.Exit(1) from exc
 
     paths = result.get("artifact_paths", {})
+    if config.only_evaluate_pool_enrichment:
+        _print_enrichment_summary(config, result)
+        _print_output_files(paths)
+        return
     _print_output_files(paths)
     if not paths:
         _print_no_results_summary(config, result)

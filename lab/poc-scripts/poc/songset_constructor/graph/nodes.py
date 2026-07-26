@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from difflib import get_close_matches
+from pathlib import Path
 
 from langgraph.types import interrupt
 
+from poc.songset_constructor.artifacts.enrichment_report import build_enrichment_report
 from poc.songset_constructor.artifacts.trace import event
 from poc.songset_constructor.artifacts.writer import write_artifacts as write_output_artifacts
 from poc.songset_constructor.db import fetch_catalog_pool
@@ -84,6 +86,38 @@ def enrich_pool(state: ConstructorState) -> dict:
             },
         ),
     }
+
+
+def write_enrichment_report(state: ConstructorState) -> dict:
+    config = state["config"]
+    pool = state.get("pool", [])
+    trace_events = state.get("trace", [])
+    load_trace = _latest_trace_data(trace_events, "load_catalog")
+    enrich_trace = _latest_trace_data(trace_events, "enrich_pool")
+    metrics, report_text = build_enrichment_report(
+        pool=pool,
+        config=config,
+        load_trace=load_trace,
+        enrich_trace=enrich_trace,
+    )
+    output_dir = Path(config.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "enrichment_report.md"
+    report_path.write_text(report_text, encoding="utf-8")
+    return {
+        "artifact_paths": {"enrichment_report": str(report_path)},
+        "enrichment_metrics": metrics,
+        "trace": _trace(state, "write_enrichment_report", "exit", {"report": str(report_path)}),
+    }
+
+
+def _latest_trace_data(trace_events: list[dict], node: str) -> dict:
+    for entry in reversed(trace_events):
+        if not isinstance(entry, dict) or entry.get("node") != node:
+            continue
+        data = entry.get("data")
+        return data if isinstance(data, dict) else {}
+    return {}
 
 
 def build_transition_matrix(state: ConstructorState) -> dict:
@@ -354,6 +388,12 @@ def write_artifacts(state: ConstructorState) -> dict:
         trace=trace,
     )
     return {"artifact_paths": paths, "trace": _trace(state, "write_artifacts", "exit", paths)}
+
+
+def route_after_enrich(state: ConstructorState) -> str:
+    if state["config"].only_evaluate_pool_enrichment:
+        return "write_enrichment_report"
+    return "build_transition_matrix"
 
 
 def route_after_beam(state: ConstructorState) -> str:

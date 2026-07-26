@@ -29,5 +29,6 @@ class ConstructorState(TypedDict, total=False):
     approved: bool | None
     edits: dict[str, Any] | None
     artifact_paths: dict[str, str]
+    enrichment_metrics: dict[str, Any]
     llm: Any
     judge_llm: Any

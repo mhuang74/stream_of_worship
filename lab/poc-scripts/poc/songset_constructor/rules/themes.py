@@ -9,21 +9,21 @@ import numpy as np
 
 from .embeddings import cosine
 
-THEMES = ("赞美", "感恩", "敬拜", "奉献", "认罪", "差遣", "信心", "祈祷", "复兴", "圣灵", "十字架", "跟随")
+THEMES = ("讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨")
 
 THEME_VOCAB: dict[str, tuple[str, ...]] = {
-    "赞美": ("赞美", "讚美", "歌唱", "欢呼", "hallelujah", "praise", "zan mei"),
-    "感恩": ("感恩", "感谢", "謝謝", "恩典", "grace", "thanks", "gan en"),
-    "敬拜": ("敬拜", "俯伏", "尊崇", "荣耀", "worship", "adore", "jing bai"),
-    "奉献": ("奉献", "献上", "擺上", "祭", "offering", "dedicate", "feng xian"),
-    "认罪": ("认罪", "悔改", "赦免", "洁净", "forgive", "repent", "ren zui"),
-    "差遣": ("差遣", "宣教", "传扬", "万民", "send", "mission", "chai qian"),
+    "讚美": ("讚美", "歌唱", "歡呼", "hallelujah", "praise", "zan mei"),
+    "感恩": ("感恩", "感謝", "謝謝", "恩典", "grace", "thanks", "gan en"),
+    "敬拜": ("敬拜", "俯伏", "尊崇", "榮耀", "worship", "adore", "jing bai"),
+    "奉獻": ("奉獻", "獻上", "擺上", "祭", "offering", "dedicate", "feng xian"),
+    "認罪": ("認罪", "悔改", "赦免", "潔淨", "forgive", "repent", "ren zui"),
+    "差遣": ("差遣", "宣教", "傳揚", "萬民", "send", "mission", "chai qian"),
     "信心": ("信心", "相信", "倚靠", "盼望", "faith", "trust", "xin xin"),
-    "祈祷": ("祷告", "祈祷", "呼求", "垂听", "prayer", "pray", "qi dao"),
-    "复兴": ("复兴", "復興", "更新", "燃烧", "revival", "renew", "fu xing"),
-    "圣灵": ("圣灵", "聖靈", "灵火", "充满", "holy spirit", "sheng ling"),
-    "十字架": ("十字架", "宝血", "羔羊", "救赎", "cross", "blood", "shi zi jia"),
-    "跟随": ("跟随", "跟從", "道路", "门徒", "follow", "disciple", "gen sui"),
+    "祈禱": ("禱告", "祈禱", "呼求", "垂聽", "prayer", "pray", "qi dao"),
+    "復興": ("復興", "更新", "燃燒", "revival", "renew", "fu xing"),
+    "聖靈": ("聖靈", "靈火", "充滿", "holy spirit", "sheng ling"),
+    "十字架": ("十字架", "寶血", "羔羊", "救贖", "cross", "blood", "shi zi jia"),
+    "跟隨": ("跟隨", "跟從", "道路", "門徒", "follow", "disciple", "gen sui"),
 }
 
 

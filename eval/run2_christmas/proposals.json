@@ -1,0 +1,417 @@
+{
+  "run_id": "songset-20260726T070948Z-3s-top5",
+  "config": {
+    "songs": 3,
+    "top_k": 5,
+    "pool_limit": 500,
+    "output_dir": "eval/run2_christmas",
+    "album_series": [],
+    "include_cpw": false,
+    "intimate": false,
+    "hymnal_mode": false,
+    "season": "christmas",
+    "interactive_review": false,
+    "resume_thread_id": null,
+    "no_llm": true,
+    "llm_judge": false,
+    "llm_model": "qwen3.6-35b",
+    "thread_id": "songset-20260726T070948Z-3s-top5",
+    "env_file": "/opt/sow/.env",
+    "relax_h3_bpm": null,
+    "relax_h2_bpm": null,
+    "relax_h1": true,
+    "auto_relax": true,
+    "relax_h4": false,
+    "relax_h5": false,
+    "relax_h4_bpm": null,
+    "relax_h5_cfd": null
+  },
+  "generated_at": "2026-07-26T07:10:36.304931+00:00",
+  "proposals": [
+    {
+      "rank": 1,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "91abc3a4d403",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wan_guo_de_zhi_mi_de_jiu_en_8d93862c",
+          "title": "萬國得知祢的救恩",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "差遣"
+          ],
+          "bpm": 92.3,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.8027611
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "33b8c5a4ee53",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "xi_le_quan_yuan_88cd7a75",
+          "title": "喜樂泉源",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 95.7,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.8064439
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "dbd506660aa3",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+          "title": "主啊，我要跟隨祢",
+          "phase": 5,
+          "themes": [
+            "跟随",
+            "奉献"
+          ],
+          "bpm": 71.8,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.48618513
+        }
+      ],
+      "score": {
+        "f_theme": 1.0,
+        "f_tempo": 0.5905,
+        "f_harmony": 0.89,
+        "f_diversity": 1.0,
+        "total": 0.8551
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 2,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "97d239087362",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "mi_de_qi_min_4fa4c59e",
+          "title": "祢的器皿",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "感恩"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.8539129
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": 1,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.9167,
+        "f_tempo": 0.526,
+        "f_harmony": 0.66,
+        "f_diversity": 1.0,
+        "total": 0.7565
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 3,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "c04e746de0fa",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "pi_shang_zan_mei_yi_9621c199",
+          "title": "披上讚美衣",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "感恩"
+          ],
+          "bpm": 95.7,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.78527653
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "33b8c5a4ee53",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "xi_le_quan_yuan_88cd7a75",
+          "title": "喜樂泉源",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 95.7,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.8064439
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "dbd506660aa3",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+          "title": "主啊，我要跟隨祢",
+          "phase": 5,
+          "themes": [
+            "跟随",
+            "奉献"
+          ],
+          "bpm": 71.8,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.48618513
+        }
+      ],
+      "score": {
+        "f_theme": 1.0,
+        "f_tempo": 0.6415,
+        "f_harmony": 0.78,
+        "f_diversity": 1.0,
+        "total": 0.6985
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 4,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "1e9a0a814cb4",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "dan_qin_ge_chang_zan_mei_mi_5dd9d103",
+          "title": "彈琴歌唱讚美祢",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "感恩"
+          ],
+          "bpm": 92.3,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.3882065
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "33b8c5a4ee53",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "xi_le_quan_yuan_88cd7a75",
+          "title": "喜樂泉源",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 95.7,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.8064439
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "dbd506660aa3",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+          "title": "主啊，我要跟隨祢",
+          "phase": 5,
+          "themes": [
+            "跟随",
+            "奉献"
+          ],
+          "bpm": 71.8,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.48618513
+        }
+      ],
+      "score": {
+        "f_theme": 1.0,
+        "f_tempo": 0.5905,
+        "f_harmony": 0.78,
+        "f_diversity": 1.0,
+        "total": 0.6831
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 5,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "1c172aa74bfe",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhu_de_xi_le_shi_wo_li_liang_e1084c5e",
+          "title": "主的喜樂是我力量",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "信心"
+          ],
+          "bpm": 95.7,
+          "key": "E",
+          "mode": "major",
+          "key_confidence": 0.7800655
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "33b8c5a4ee53",
+          "key_shift_semitones": 2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "xi_le_quan_yuan_88cd7a75",
+          "title": "喜樂泉源",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 95.7,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.8064439
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "dbd506660aa3",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+          "title": "主啊，我要跟隨祢",
+          "phase": 5,
+          "themes": [
+            "跟随",
+            "奉献"
+          ],
+          "bpm": 71.8,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.48618513
+        }
+      ],
+      "score": {
+        "f_theme": 1.0,
+        "f_tempo": 0.6415,
+        "f_harmony": 0.665,
+        "f_diversity": 1.0,
+        "total": 0.6755
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    }
+  ]
+}

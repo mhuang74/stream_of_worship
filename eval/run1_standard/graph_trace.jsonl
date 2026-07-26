@@ -1,0 +1,6 @@
+{"ts": "2026-07-26T07:09:36.101711+00:00", "node": "load_catalog", "event": "exit", "iteration": 0, "data": {"pool_size": 438}}
+{"ts": "2026-07-26T07:09:40.161576+00:00", "node": "enrich_pool", "event": "exit", "iteration": 0, "data": {"pool_size": 438, "dropped": 0, "drop_reasons": {}, "dropped_samples": []}}
+{"ts": "2026-07-26T07:09:46.122372+00:00", "node": "build_transition_matrix", "event": "exit", "iteration": 0, "data": {"transitions": 191406}}
+{"ts": "2026-07-26T07:09:46.286995+00:00", "node": "beam_seed_candidates", "event": "exit", "iteration": 0, "data": {"candidates": 5}}
+{"ts": "2026-07-26T07:09:46.344320+00:00", "node": "finalize_rank", "event": "exit", "iteration": 0, "data": {"proposals": 5}}
+{"ts": "2026-07-26T07:09:46.394608+00:00", "node": "write_artifacts", "event": "artifact_written", "iteration": 0, "data": {}}

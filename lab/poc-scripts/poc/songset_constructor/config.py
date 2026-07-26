@@ -57,6 +57,7 @@ class RunConfig:
     relax_h5: bool = False
     relax_h4_bpm: int | None = None
     relax_h5_cfd: int | None = None
+    only_evaluate_pool_enrichment: bool = False
 
     def __post_init__(self) -> None:
         self.env_file = load_runtime_env(self.env_file)
@@ -166,4 +167,5 @@ class RunConfig:
             "relax_h5": self.relax_h5,
             "relax_h4_bpm": self.relax_h4_bpm,
             "relax_h5_cfd": self.relax_h5_cfd,
+            "only_evaluate_pool_enrichment": self.only_evaluate_pool_enrichment,
         }
