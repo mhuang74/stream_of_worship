@@ -44,38 +44,80 @@ uv run --project lab/poc-scripts --extra songset_constructor \
 | `--interactive-review` / `--no-interactive-review` | `--no-interactive-review` | — | Pause for human approve/reject of top proposal |
 | `--output-dir` | auto-timestamped | path | Override output directory |
 
+## Two Operating Modes
+
+The songset constructor is a LangGraph state machine that runs in two modes:
+
+| Mode | Flag | Behavior |
+|------|------|----------|
+| **Deterministic** | `--no-llm` | Pure beam search + scoring, no LLM needed |
+| **Agentic** | `--llm` (default) | LLM plans/refines a draft, validated against hard constraints |
+
+Both modes share the same pipeline stages (1–4, 7–11). Only stages 5–6 (`llm_plan`, `validate_score`, `llm_refine`) are exclusive to agentic mode.
+
+## 5-Phase Worship Arc
+
+Songs are classified into 5 phases based on **fused theme scores** (title 35% + lyrics 25% + song embedding 25% + line embedding 15%):
+
+| Phase | Theme |
+|-------|-------|
+| 1 | 赞美 (Praise) |
+| 2 | 感恩 (Thanksgiving) |
+| 3 | 敬拜/祈祷/信心/圣灵 (Worship) |
+| 4 | 奉献/认罪/十字架 (Response) |
+| 5 | 差遣/跟随/复兴 (Commission) |
+
+**Seasonal bias** (`--season`) boosts relevant themes. For example:
+- `christmas` → 赞美/感恩
+- `lent` → 认罪/十字架
+
+## 8 Hard Constraints (H0–H8)
+
+| Code | Rule | Default |
+|------|------|---------|
+| H0 | Correct song count | — |
+| H1 | One phase-1 opener, worship/response middle, phase 4/5 closer | — |
+| H2 | Opener tempo >= 90 BPM | 90 |
+| H3 | Closer tempo <= 90 BPM (80 intimate) | 90/80 |
+| H4 | Adjacent BPM delta <= 35 (25 without crossfade/gap) | 35/25 |
+| H5 | Circle-of-fifths distance <= 2 | 2 |
+| H6 | No duplicate song IDs | — |
+| H7 | Phase drops by at most 1 between adjacent songs | 1 |
+| H8 | Low key-confidence songs (<0.6) can't be transposed | 0.6 |
+
 ## Pipeline Architecture
 
 The constructor runs as a LangGraph state machine with these stages:
 
 ```
 load_catalog → enrich_pool → build_transition_matrix → beam_seed_candidates
-                                                          ↓
-                                            ┌─────────────┴──────────────┐
-                                            │                            │
-                                      --no-llm                      LLM mode
-                                            │                            │
-                                    finalize_rank              llm_plan → validate_score
-                                            │                    ↓               ↓
-                                            │              Accepted         Refine (loop ≤3)
-                                            │                    ↓               ↓
-                                            │            finalize_rank ←────────┘
-                                            │                    ↓
-                                            │         ┌──────────┴──────────┐
-                                            │    --llm-judge         default
-                                            │         │                   │
-                                            │    llm_judge                │
-                                            │         │                   │
-                                            └─────────┴───────────────────┘
-                                                      ↓
-                                              write_artifacts
+                                                              ↓
+                                                    ┌─────────┴──────────┐
+                                                  --no-llm              LLM mode
+                                                    │                      │
+                                              finalize_rank          llm_plan → validate_score
+                                                    │                 ↓               ↓
+                                                    │           Accepted         Refine (loop ≤3)
+                                                    │                    ↓               ↓
+                                                    │            finalize_rank ←────────┘
+                                                    │                    ↓
+                                                    │         ┌──────────┴──────────┐
+                                                    │    --llm-judge         default
+                                                    │         │                   │
+                                                    │    llm_judge                │
+                                                    │         │                   │
+                                                    └─────────┴───────────────────┘
+                                                              ↓
+                                                   interactive_review (optional)
+                                                              ↓
+                                                       write_artifacts
 ```
 
 ### Stage Details
 
 1. **load_catalog** — Fetches songs from PostgreSQL via read-only `SELECT`. Loads songs with published/review recordings that have LRC lyrics. Pool size is bounded by `--pool-limit`.
 
-2. **enrich_pool** — Classifies each song's themes (from title, lyrics, embeddings), infers worship phase (1=call, 2=adoration, 3=praise, 4=cross/response, 5=commitment), and applies seasonal bias. Drops songs lacking both tempo and key metadata.
+2. **enrich_pool** — Classifies each song's themes (from title, lyrics, embeddings), infers worship phase (1=call, 2=adoration, 3=praise, 4=cross/response, 5=commitment), and applies seasonal bias. Drops songs lacking both tempo and key metadata. See [enrich_pool Deep Dive](#enrich_pool-deep-dive) below for implementation details.
 
 3. **build_transition_matrix** — Computes pairwise transition recommendations (BPM delta, circle-of-fifths distance, suggested key shift, crossfade/gap settings) for all song pairs where CFD ≤ 6. Also computes fan-out (how many valid transitions each song has) and marks dead-end songs.
 
@@ -90,6 +132,192 @@ load_catalog → enrich_pool → build_transition_matrix → beam_seed_candidate
 8. **llm_judge** (optional) — LLM re-ranks finalists and adds judge reasons/scores without changing deterministic order.
 
 9. **write_artifacts** — Writes 5 output files (see below).
+
+### enrich_pool Deep Dive
+
+The `enrich_pool` node (`poc/songset_constructor/graph/nodes.py:47-86`) enriches each raw `SongCandidate` with computed themes, inferred phase, and hymn flag. It runs four classification steps per song and fuses the results.
+
+#### Step 1: Drop songs with no metadata
+
+```python
+for candidate in state.get("pool", []):
+    if candidate.tempo_bpm is None and candidate.musical_key is None:
+        dropped += 1
+        continue
+```
+
+Songs missing both tempo and key metadata are dropped immediately — they cannot participate in transition scoring or phase inference.
+
+#### Step 2: Classify themes from four sources
+
+Each song is classified by **four independent theme classifiers**, each returning a `dict[str, float]` mapping 12 themes to scores in [0, 1]:
+
+```python
+title = classify_title_themes(candidate.title, candidate.title_pinyin)
+lyrics = classify_lyrics_themes(candidate.lyrics_raw)
+song_emb, line_emb = classify_embedding_themes(
+    candidate.song_embedding,
+    candidate.line_embeddings,
+    anchors,
+)
+```
+
+**Title classification** (`rules/themes.py:35-41`) — keyword matching against a bilingual vocabulary (Chinese + pinyin + English):
+
+```python
+THEME_VOCAB: dict[str, tuple[str, ...]] = {
+    "赞美": ("赞美", "讚美", "歌唱", "欢呼", "hallelujah", "praise", "zan mei"),
+    "感恩": ("感恩", "感谢", "謝謝", "恩典", "grace", "thanks", "gan en"),
+    "敬拜": ("敬拜", "俯伏", "尊崇", "荣耀", "worship", "adore", "jing bai"),
+    # ... 9 more themes
+}
+
+def classify_title_themes(title: str | None, title_pinyin: str | None = None) -> dict[str, float]:
+    text = " ".join(part for part in [title or "", title_pinyin or ""] if part)
+    hits = {theme: _matches(text, terms) for theme, terms in THEME_VOCAB.items()}
+    max_hits = max(hits.values(), default=0)
+    if max_hits == 0:
+        return {theme: 0.0 for theme in THEMES}
+    return {theme: value / max_hits for theme, value in hits.items()}
+```
+
+**Lyrics classification** (`rules/themes.py:44-56`) — sliding 2-line window over lyrics, counting keyword hits per theme, then normalizing by total hits:
+
+```python
+def classify_lyrics_themes(lyrics_raw: str | None) -> dict[str, float]:
+    lines = [line.strip() for line in lyrics_raw.splitlines() if line.strip()]
+    windows = [" ".join(lines[i : i + 2]) for i in range(max(1, len(lines) - 1))]
+    counter: Counter[str] = Counter()
+    for window in windows or [lyrics_raw]:
+        for theme, terms in THEME_VOCAB.items():
+            counter[theme] += _matches(window, terms)
+    total = sum(counter.values())
+    if total == 0:
+        return {theme: 0.0 for theme in THEMES}
+    return {theme: counter[theme] / total for theme in THEMES}
+```
+
+**Embedding classification** (`rules/themes.py:70-79`) — cosine similarity against 1536-dimensional theme anchor vectors (from `text-embedding-3-small`), for both the song-level embedding and the best line-level embedding per theme:
+
+```python
+def classify_embedding_themes(
+    song_vec: list[float] | np.ndarray | None,
+    line_vecs: list[list[float]] | list[np.ndarray] | None,
+    theme_anchors: dict[str, np.ndarray],
+) -> tuple[dict[str, float], dict[str, float]]:
+    song_scores = {theme: cosine(song_vec, anchor) for theme, anchor in theme_anchors.items()}
+    line_scores: dict[str, float] = {}
+    for theme, anchor in theme_anchors.items():
+        line_scores[theme] = max((cosine(vec, anchor) for vec in (line_vecs or [])), default=0.0)
+    return (_normalise_cosine_scores(song_scores), _normalise_cosine_scores(line_scores))
+```
+
+The cosine scores are min-max normalized (`_normalise_cosine_scores`) so the best theme scores 1.0 and the worst is shifted to 0.
+
+#### Step 3: Fuse themes with weighted averaging
+
+```python
+fused = apply_seasonal_bias(fuse_themes(title, lyrics, song_emb, line_emb), config.season)
+```
+
+**Theme fusion** (`rules/phases.py:23-45`) — reliability-ordered weighted average: title (35%) + lyrics (25%) + song embedding (25%) + line embedding (15%). Only non-empty sources contribute, and weights are dynamically normalized:
+
+```python
+def fuse_themes(
+    title: dict[str, float],
+    lyrics: dict[str, float],
+    song_emb: dict[str, float],
+    line_emb: dict[str, float],
+) -> dict[str, float]:
+    weighted_sources = [
+        (0.35, title),
+        (0.25, lyrics),
+        (0.25, song_emb),
+        (0.15, line_emb),
+    ]
+    totals = {theme: 0.0 for theme in THEMES}
+    weights = {theme: 0.0 for theme in THEMES}
+    for weight, source in weighted_sources:
+        if any(value > 0 for value in source.values()):
+            for theme in THEMES:
+                totals[theme] += weight * source.get(theme, 0.0)
+                weights[theme] += weight
+    return {
+        theme: (totals[theme] / weights[theme] if weights[theme] else 0.0)
+        for theme in THEMES
+    }
+```
+
+**Seasonal bias** (`rules/phases.py:48-63`) — after fusion, certain themes are boosted for liturgical seasons:
+
+```python
+def apply_seasonal_bias(fused: dict[str, float], season: str | None) -> dict[str, float]:
+    if season not in {"advent", "christmas", "lent", "easter", "pentecost"}:
+        return fused
+    biased = dict(fused)
+    if season in {"advent", "christmas"}:
+        biased["赞美"] = max(biased.get("赞美", 0.0), 0.7)
+        biased["感恩"] = max(biased.get("感恩", 0.0), 0.5)
+    elif season == "lent":
+        biased["认罪"] = max(biased.get("认罪", 0.0), 0.7)
+        biased["十字架"] = max(biased.get("十字架", 0.0), 0.65)
+    elif season == "easter":
+        biased["复兴"] = max(biased.get("复兴", 0.0), 0.65)
+        biased["赞美"] = max(biased.get("赞美", 0.0), 0.65)
+    elif season == "pentecost":
+        biased["圣灵"] = max(biased.get("圣灵", 0.0), 0.75)
+    return biased
+```
+
+#### Step 4: Infer phase from fused themes
+
+```python
+phase = infer_phase(fused, candidate.tempo_bpm)
+```
+
+**Phase inference** (`rules/phases.py:66-80`) — the dominant theme (highest fused score) maps to a phase via `THEME_TO_PHASE`. If no themes are active, tempo-based fallback is used:
+
+```python
+THEME_TO_PHASE = {
+    "赞美": 1, "感恩": 2,
+    "敬拜": 3, "祈祷": 3, "信心": 3, "圣灵": 3,
+    "奉献": 4, "认罪": 4, "十字架": 4,
+    "差遣": 5, "跟随": 5, "复兴": 5,
+}
+
+def infer_phase(fused: dict[str, float], tempo_bpm: float | None = None) -> int:
+    if fused and max(fused.values(), default=0.0) > 0:
+        theme = max(fused.items(), key=lambda item: (item[1], item[0]))[0]
+        if theme == "圣灵" and tempo_bpm is not None and tempo_bpm < 70:
+            return 4  # slow 圣灵 → Response instead of Worship
+        return THEME_TO_PHASE.get(theme, 3)
+    # Fallback: tempo-only inference
+    if tempo_bpm is None:
+        return 3
+    if tempo_bpm >= 100:
+        return 1
+    if tempo_bpm >= 90:
+        return 2
+    if tempo_bpm >= 70:
+        return 3
+    return 4
+```
+
+#### Step 5: Enrich the candidate
+
+```python
+enriched.append(
+    candidate.model_copy(
+        update={
+            "themes": fused,
+            "phase": infer_phase(fused, candidate.tempo_bpm),
+            "is_hymn": candidate.album_series == "HYMN",
+        }
+    )
+)
+```
+
+The enriched `SongCandidate` now carries `themes`, `phase`, and `is_hymn` fields used by downstream stages.
 
 ## How Diverse Beam Search Works
 
@@ -369,9 +597,12 @@ Low harmony scores (< 0.50) indicate key incompatibility between adjacent songs.
 | `poc/songset_constructor/rules/proposals.py` | Proposal ranking with greedy diverse selection |
 | `poc/songset_constructor/rules/hard_constraints.py` | H0–H8 validation |
 | `poc/songset_constructor/rules/transitions.py` | Pairwise transition recommendation |
-| `poc/songset_constructor/rules/phases.py` | Theme classification and phase inference |
+| `poc/songset_constructor/rules/phases.py` | Theme fusion, seasonal bias, phase inference |
+| `poc/songset_constructor/rules/themes.py` | Title/lyrics/embedding theme classification |
+| `poc/songset_constructor/rules/embeddings.py` | Cosine similarity + anchor loading |
 | `poc/songset_constructor/db.py` | Read-only catalog pool query |
 | `poc/songset_constructor/artifacts/writer.py` | Output file generation |
+| `poc/songset_constructor/data/theme_anchors.json` | 1536-dim theme anchor vectors (text-embedding-3-small) |
 
 ## Read-Only Guarantee
 
