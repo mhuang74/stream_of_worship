@@ -100,7 +100,7 @@ def test_llm_plan_trace_records_full_prompt(synthetic_pool):
     prompt = update["trace"][0]["data"]["prompt"]
     assert prompt == planner.prompt
     assert "Select a 5-song Chinese worship set using only these hash prefixes." in prompt
-    assert "h001: 赞美主" in prompt
+    assert "h001: 讚美主" in prompt
 
 
 def test_validate_score_propagates_relax_h4_h5(synthetic_pool, monkeypatch):

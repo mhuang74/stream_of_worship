@@ -24,9 +24,9 @@ def _proposal(llm_origin: bool = False) -> SongsetProposal:
                 position=1,
                 recording_hash_prefix="h001",
                 song_id="s1",
-                title="赞美主",
+                title="讚美主",
                 phase=1,
-                themes=["赞美"],
+                themes=["讚美"],
                 bpm=124,
                 key="G",
                 mode="maj",
@@ -60,7 +60,7 @@ def test_review_report_uses_llm_markdown(synthetic_pool):
     class FakeChat:
         def invoke(self, prompt):
             assert "Factual payload:" in prompt
-            assert "赞美主" in prompt
+            assert "讚美主" in prompt
             return (
                 "# Songset Constructor Review\n\n"
                 "## Key Findings\n\n"
@@ -72,7 +72,7 @@ def test_review_report_uses_llm_markdown(synthetic_pool):
                 "## How Filters Were Applied\n\n"
                 "relaxed_h4 mattered.\n\n"
                 "## Proposal 1\n\n"
-                "| # | Title |\n|---|---|\n| 1 | 赞美主 |\n"
+                "| # | Title |\n|---|---|\n| 1 | 讚美主 |\n"
             )
 
     report = build_review_report(
@@ -85,7 +85,7 @@ def test_review_report_uses_llm_markdown(synthetic_pool):
 
     assert "Fake LLM prose" in report
     assert "## Key Findings" in report
-    assert "赞美主" in report
+    assert "讚美主" in report
 
 
 def test_review_report_fallback_no_llm_contains_required_sections(synthetic_pool):
@@ -106,7 +106,7 @@ def test_review_report_fallback_no_llm_contains_required_sections(synthetic_pool
     assert report.startswith("# Songset Constructor Review")
     assert "## Key Findings" in report
     assert "## Proposal 1" in report
-    assert "| 1 | 赞美主 | 1 | 124 | G maj | 赞美 | shift 0, gap 2 beats |" in report
+    assert "| 1 | 讚美主 | 1 | 124 | G maj | 讚美 | shift 0, gap 2 beats |" in report
     assert "Score components: theme 0.800, tempo 0.700, harmony 0.900, diversity 0.600." in report
     assert "relax_h4=True" in report
     assert "relaxed_h4" in report
@@ -127,7 +127,7 @@ def test_review_report_falls_back_when_llm_raises(synthetic_pool):
 
     assert "LLM report generation failed; fallback report used." in report
     assert "## Proposal 1" in report
-    assert "赞美主" in report
+    assert "讚美主" in report
 
 
 def test_write_artifacts_returns_review_path(tmp_path, synthetic_pool):
@@ -149,7 +149,7 @@ def test_write_artifacts_returns_review_path(tmp_path, synthetic_pool):
 
 def _item(
     position: int,
-    title: str = "赞美主",
+    title: str = "讚美主",
     song_id: str = "s1",
     phase: int = 1,
     themes: list[str] | None = None,
@@ -163,7 +163,7 @@ def _item(
         song_id=song_id,
         title=title,
         phase=phase,
-        themes=themes if themes is not None else ["赞美"],
+        themes=themes if themes is not None else ["讚美"],
         bpm=bpm,
         key=key,
         mode=mode,
@@ -251,7 +251,7 @@ def test_score_warnings_line_without_warnings():
 def test_deterministic_arc_narrative_1_3_5():
     proposal = _proposal_with_items(
         [
-            _item(1, phase=1, themes=["赞美"]),
+            _item(1, phase=1, themes=["讚美"]),
             _item(2, phase=3, themes=["敬拜"]),
             _item(3, phase=5, themes=["差遣"]),
         ]
@@ -259,14 +259,14 @@ def test_deterministic_arc_narrative_1_3_5():
     narrative = _deterministic_arc_narrative(proposal)
     assert "Phase 1 → 3 → 5" in narrative
     assert "call → worship → commitment" in narrative
-    assert "赞美" in narrative
+    assert "讚美" in narrative
     assert "敬拜" in narrative
     assert "差遣" in narrative
 
 
 def test_deterministic_arc_narrative_1_4():
     proposal = _proposal_with_items(
-        [_item(1, phase=1, themes=["赞美"]), _item(2, phase=4, themes=["奉献"])]
+        [_item(1, phase=1, themes=["讚美"]), _item(2, phase=4, themes=["奉獻"])]
     )
     narrative = _deterministic_arc_narrative(proposal)
     assert "Phase 1 → 4" in narrative
@@ -278,7 +278,7 @@ def test_deterministic_arc_narrative_2_3_4_5():
         [
             _item(1, phase=2, themes=["感恩"]),
             _item(2, phase=3, themes=["敬拜"]),
-            _item(3, phase=4, themes=["认罪"]),
+            _item(3, phase=4, themes=["認罪"]),
             _item(4, phase=5, themes=["差遣"]),
         ]
     )
@@ -301,7 +301,7 @@ def test_deterministic_arc_narrative_single_phase():
 
 def test_brief_summary_block_deterministic(synthetic_pool):
     proposal = _proposal_with_items(
-        [_item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj")]
+        [_item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj")]
     )
     config = RunConfig(no_llm=True, thread_id="test-block-det")
     block = brief_summary_block(proposal, config=config, pool=synthetic_pool)
@@ -317,7 +317,7 @@ def test_brief_summary_block_deterministic(synthetic_pool):
 
 def test_brief_summary_block_with_llm(synthetic_pool):
     proposal = _proposal_with_items(
-        [_item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj")]
+        [_item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj")]
     )
     config = RunConfig(no_llm=True, thread_id="test-block-llm")
     llm_text = "Opens with an uplifting call, settles into intimate adoration."
@@ -357,13 +357,13 @@ def test_generate_brief_summaries_llm_success(monkeypatch, synthetic_pool):
     monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
     proposals = [
         _proposal_with_items(
-            [_item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj")]
+            [_item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj")]
         ),
         _proposal_with_items(
             [_item(1, "感恩的心", "s2", 2, ["感恩"], 112, "D", "maj")]
         ),
         _proposal_with_items(
-            [_item(1, "跟随主", "s3", 5, ["跟随"], 78, "B", "min")]
+            [_item(1, "跟隨主", "s3", 5, ["跟隨"], 78, "B", "min")]
         ),
     ]
     config = RunConfig(no_llm=False, thread_id="test-llm-success")
@@ -399,9 +399,9 @@ def test_generate_brief_summaries_llm_malformed(monkeypatch, synthetic_pool):
     monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
     monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
     proposals = [
-        _proposal_with_items([_item(1, "赞美主", "s1", 1)]),
+        _proposal_with_items([_item(1, "讚美主", "s1", 1)]),
         _proposal_with_items([_item(1, "感恩的心", "s2", 2)]),
-        _proposal_with_items([_item(1, "跟随主", "s3", 5)]),
+        _proposal_with_items([_item(1, "跟隨主", "s3", 5)]),
     ]
     config = RunConfig(no_llm=False, thread_id="test-llm-malformed")
 
@@ -421,9 +421,9 @@ def test_generate_brief_summaries_llm_wrong_count(monkeypatch, synthetic_pool):
     monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
     monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
     proposals = [
-        _proposal_with_items([_item(1, "赞美主", "s1", 1)]),
+        _proposal_with_items([_item(1, "讚美主", "s1", 1)]),
         _proposal_with_items([_item(1, "感恩的心", "s2", 2)]),
-        _proposal_with_items([_item(1, "跟随主", "s3", 5)]),
+        _proposal_with_items([_item(1, "跟隨主", "s3", 5)]),
     ]
     config = RunConfig(no_llm=False, thread_id="test-llm-wrong-count")
 
@@ -446,7 +446,7 @@ def test_generate_brief_summaries_llm_exception(monkeypatch, synthetic_pool):
     monkeypatch.setenv("SOW_LLM_API_KEY", "test-key")
     monkeypatch.setenv("SOW_LLM_MODEL", "test-model")
     proposals = [
-        _proposal_with_items([_item(1, "赞美主", "s1", 1)]),
+        _proposal_with_items([_item(1, "讚美主", "s1", 1)]),
         _proposal_with_items([_item(1, "感恩的心", "s2", 2)]),
     ]
     config = RunConfig(no_llm=False, thread_id="test-llm-exception")
@@ -473,7 +473,7 @@ def test_diversity_summary_empty(synthetic_pool):
 
 
 def test_diversity_summary_single(synthetic_pool):
-    proposal = _proposal_with_items([_item(1, "赞美主", "s1", 1)])
+    proposal = _proposal_with_items([_item(1, "讚美主", "s1", 1)])
     assert _diversity_summary([proposal], synthetic_pool) == []
 
 
@@ -481,25 +481,25 @@ def test_diversity_summary_three_overlapping(synthetic_pool):
     proposals = [
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj"),
+                _item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj"),
                 _item(2, "感恩的心", "s2", 2, ["感恩"], 112, "D", "maj"),
-                _item(3, "跟随主", "s5", 5, ["跟随"], 78, "B", "min"),
+                _item(3, "跟隨主", "s5", 5, ["跟隨"], 78, "B", "min"),
             ],
             rank=1,
         ),
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj"),
+                _item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj"),
                 _item(2, "敬拜你", "s3", 3, ["敬拜"], 98, "A", "maj"),
-                _item(3, "跟随主", "s5", 5, ["跟随"], 78, "B", "min"),
+                _item(3, "跟隨主", "s5", 5, ["跟隨"], 78, "B", "min"),
             ],
             rank=2,
         ),
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj"),
+                _item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj"),
                 _item(2, "十字架", "s4", 4, ["十字架"], 86, "E", "min"),
-                _item(3, "复兴", "s6", 5, ["复兴"], 82, "F#", "min"),
+                _item(3, "復興", "s6", 5, ["復興"], 82, "F#", "min"),
             ],
             rank=3,
         ),
@@ -517,7 +517,7 @@ def test_diversity_summary_three_overlapping(synthetic_pool):
     assert "### Song Frequency" in text
     assert "### Theme Coverage" in text
     assert "### Bottlenecks" in text
-    assert "赞美主" in text
+    assert "讚美主" in text
 
 
 def test_song_overlap_matrix_symmetric():
@@ -548,7 +548,7 @@ def test_bottleneck_lines_none(synthetic_pool):
     proposals = [
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"]),
+                _item(1, "讚美主", "s1", 1, ["讚美"]),
                 _item(2, "感恩的心", "s2", 2, ["感恩"]),
                 _item(3, "敬拜你", "s3", 3, ["敬拜"]),
             ]
@@ -556,8 +556,8 @@ def test_bottleneck_lines_none(synthetic_pool):
         _proposal_with_items(
             [
                 _item(1, "十字架", "s4", 4, ["十字架"]),
-                _item(2, "跟随主", "s5", 5, ["跟随"]),
-                _item(3, "复兴", "s6", 5, ["复兴"]),
+                _item(2, "跟隨主", "s5", 5, ["跟隨"]),
+                _item(3, "復興", "s6", 5, ["復興"]),
             ]
         ),
     ]
@@ -575,25 +575,25 @@ def test_write_report_with_summary(tmp_path, synthetic_pool):
     proposals = [
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj"),
+                _item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj"),
                 _item(2, "感恩的心", "s2", 2, ["感恩"], 112, "D", "maj"),
-                _item(3, "跟随主", "s5", 5, ["跟随"], 78, "B", "min"),
+                _item(3, "跟隨主", "s5", 5, ["跟隨"], 78, "B", "min"),
             ],
             rank=1,
         ),
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj"),
+                _item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj"),
                 _item(2, "敬拜你", "s3", 3, ["敬拜"], 98, "A", "maj"),
-                _item(3, "复兴", "s6", 5, ["复兴"], 82, "F#", "min"),
+                _item(3, "復興", "s6", 5, ["復興"], 82, "F#", "min"),
             ],
             rank=2,
         ),
         _proposal_with_items(
             [
-                _item(1, "赞美主", "s1", 1, ["赞美"], 124, "G", "maj"),
+                _item(1, "讚美主", "s1", 1, ["讚美"], 124, "G", "maj"),
                 _item(2, "十字架", "s4", 4, ["十字架"], 86, "E", "min"),
-                _item(3, "跟随主", "s5", 5, ["跟随"], 78, "B", "min"),
+                _item(3, "跟隨主", "s5", 5, ["跟隨"], 78, "B", "min"),
             ],
             rank=3,
         ),
@@ -613,7 +613,7 @@ def test_write_report_with_summary(tmp_path, synthetic_pool):
 
 def test_write_report_returns_narratives(tmp_path, synthetic_pool):
     proposals = [
-        _proposal_with_items([_item(1, "赞美主", "s1", 1)]),
+        _proposal_with_items([_item(1, "讚美主", "s1", 1)]),
         _proposal_with_items([_item(1, "感恩的心", "s2", 2)]),
     ]
     config = RunConfig(no_llm=True, output_dir=tmp_path, thread_id="test-narratives")

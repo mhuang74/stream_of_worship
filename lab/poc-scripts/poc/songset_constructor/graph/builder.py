@@ -17,12 +17,14 @@ from poc.songset_constructor.graph.nodes import (
     load_catalog,
     optional_review,
     route_after_beam,
+    route_after_enrich,
     route_after_judge,
     route_finalize,
     route_review,
     route_validation,
     validate_score,
     write_artifacts,
+    write_enrichment_report,
 )
 from poc.songset_constructor.graph.state import ConstructorState
 
@@ -40,10 +42,19 @@ def build_graph(config: RunConfig):
     builder.add_node("llm_judge", llm_judge)
     builder.add_node("optional_review", optional_review)
     builder.add_node("write_artifacts", write_artifacts)
+    builder.add_node("write_enrichment_report", write_enrichment_report)
 
     builder.add_edge(START, "load_catalog")
     builder.add_edge("load_catalog", "enrich_pool")
-    builder.add_edge("enrich_pool", "build_transition_matrix")
+    builder.add_conditional_edges(
+        "enrich_pool",
+        route_after_enrich,
+        {
+            "write_enrichment_report": "write_enrichment_report",
+            "build_transition_matrix": "build_transition_matrix",
+        },
+    )
+    builder.add_edge("write_enrichment_report", END)
     builder.add_edge("build_transition_matrix", "beam_seed_candidates")
     builder.add_conditional_edges(
         "beam_seed_candidates",

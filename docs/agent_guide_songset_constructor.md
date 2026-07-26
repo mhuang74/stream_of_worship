@@ -42,6 +42,7 @@ uv run --project lab/poc-scripts --extra songset_constructor \
 | `--relax-h4` / `--no-relax-h4` | `--no-relax-h4` | — | Widen tempo jump limit from 35 to 40 BPM |
 | `--relax-h5` / `--no-relax-h5` | `--no-relax-h5` | — | Widen circle-of-fifths distance from 2 to 3 |
 | `--interactive-review` / `--no-interactive-review` | `--no-interactive-review` | — | Pause for human approve/reject of top proposal |
+| `--only-evaluate-pool-enrichment` / `--full-run` | `--full-run` | — | Run only through `enrich_pool` and write a distribution report (no LLM required) |
 | `--output-dir` | auto-timestamped | path | Override output directory |
 
 ## Two Operating Modes
@@ -61,15 +62,15 @@ Songs are classified into 5 phases based on **fused theme scores** (title 35% + 
 
 | Phase | Theme |
 |-------|-------|
-| 1 | 赞美 (Praise) |
+| 1 | 讚美 (Praise) |
 | 2 | 感恩 (Thanksgiving) |
-| 3 | 敬拜/祈祷/信心/圣灵 (Worship) |
-| 4 | 奉献/认罪/十字架 (Response) |
-| 5 | 差遣/跟随/复兴 (Commission) |
+| 3 | 敬拜/祈禱/信心/聖靈 (Worship) |
+| 4 | 奉獻/認罪/十字架 (Response) |
+| 5 | 差遣/跟隨/復興 (Commission) |
 
 **Seasonal bias** (`--season`) boosts relevant themes. For example:
-- `christmas` → 赞美/感恩
-- `lent` → 认罪/十字架
+- `christmas` → 讚美/感恩
+- `lent` → 認罪/十字架
 
 ## 8 Hard Constraints (H0–H8)
 
@@ -91,26 +92,29 @@ The constructor runs as a LangGraph state machine with these stages:
 
 ```
 load_catalog → enrich_pool → build_transition_matrix → beam_seed_candidates
-                                                              ↓
-                                                    ┌─────────┴──────────┐
-                                                  --no-llm              LLM mode
-                                                    │                      │
-                                              finalize_rank          llm_plan → validate_score
-                                                    │                 ↓               ↓
-                                                    │           Accepted         Refine (loop ≤3)
-                                                    │                    ↓               ↓
-                                                    │            finalize_rank ←────────┘
-                                                    │                    ↓
-                                                    │         ┌──────────┴──────────┐
-                                                    │    --llm-judge         default
-                                                    │         │                   │
-                                                    │    llm_judge                │
-                                                    │         │                   │
-                                                    └─────────┴───────────────────┘
-                                                              ↓
-                                                   interactive_review (optional)
-                                                              ↓
-                                                       write_artifacts
+                    │                                               ↓
+                    │                                     ┌─────────┴──────────┐
+                    │                                   --no-llm              LLM mode
+                    │                                     │                      │
+                    │                               finalize_rank          llm_plan → validate_score
+                    │                                     │                 ↓               ↓
+                    │                                Accepted         Refine (loop ≤3)
+                    │                                     ↓               ↓               ↓
+                    │                            finalize_rank ←────────┘
+                    │                                     ↓
+                    │                            ┌──────────┴──────────┐
+                    │                       --llm-judge         default
+                    │                            │                   │
+                    │                       llm_judge                │
+                    │                            │                   │
+                    └────────────────────────────┴───────────────────┘
+                                                               ↓
+                                                    interactive_review (optional)
+                                                               ↓
+                                                        write_artifacts
+
+--only-evaluate-pool-enrichment:
+load_catalog → enrich_pool → write_enrichment_report → END
 ```
 
 ### Stage Details
@@ -166,7 +170,7 @@ song_emb, line_emb = classify_embedding_themes(
 
 ```python
 THEME_VOCAB: dict[str, tuple[str, ...]] = {
-    "赞美": ("赞美", "讚美", "歌唱", "欢呼", "hallelujah", "praise", "zan mei"),
+    "讚美": ("讚美", "讚美", "歌唱", "欢呼", "hallelujah", "praise", "zan mei"),
     "感恩": ("感恩", "感谢", "謝謝", "恩典", "grace", "thanks", "gan en"),
     "敬拜": ("敬拜", "俯伏", "尊崇", "荣耀", "worship", "adore", "jing bai"),
     # ... 9 more themes
@@ -256,16 +260,16 @@ def apply_seasonal_bias(fused: dict[str, float], season: str | None) -> dict[str
         return fused
     biased = dict(fused)
     if season in {"advent", "christmas"}:
-        biased["赞美"] = max(biased.get("赞美", 0.0), 0.7)
+        biased["讚美"] = max(biased.get("讚美", 0.0), 0.7)
         biased["感恩"] = max(biased.get("感恩", 0.0), 0.5)
     elif season == "lent":
-        biased["认罪"] = max(biased.get("认罪", 0.0), 0.7)
+        biased["認罪"] = max(biased.get("認罪", 0.0), 0.7)
         biased["十字架"] = max(biased.get("十字架", 0.0), 0.65)
     elif season == "easter":
-        biased["复兴"] = max(biased.get("复兴", 0.0), 0.65)
-        biased["赞美"] = max(biased.get("赞美", 0.0), 0.65)
+        biased["復興"] = max(biased.get("復興", 0.0), 0.65)
+        biased["讚美"] = max(biased.get("讚美", 0.0), 0.65)
     elif season == "pentecost":
-        biased["圣灵"] = max(biased.get("圣灵", 0.0), 0.75)
+        biased["聖靈"] = max(biased.get("聖靈", 0.0), 0.75)
     return biased
 ```
 
@@ -279,17 +283,17 @@ phase = infer_phase(fused, candidate.tempo_bpm)
 
 ```python
 THEME_TO_PHASE = {
-    "赞美": 1, "感恩": 2,
-    "敬拜": 3, "祈祷": 3, "信心": 3, "圣灵": 3,
-    "奉献": 4, "认罪": 4, "十字架": 4,
-    "差遣": 5, "跟随": 5, "复兴": 5,
+    "讚美": 1, "感恩": 2,
+    "敬拜": 3, "祈禱": 3, "信心": 3, "聖靈": 3,
+    "奉獻": 4, "認罪": 4, "十字架": 4,
+    "差遣": 5, "跟隨": 5, "復興": 5,
 }
 
 def infer_phase(fused: dict[str, float], tempo_bpm: float | None = None) -> int:
     if fused and max(fused.values(), default=0.0) > 0:
         theme = max(fused.items(), key=lambda item: (item[1], item[0]))[0]
-        if theme == "圣灵" and tempo_bpm is not None and tempo_bpm < 70:
-            return 4  # slow 圣灵 → Response instead of Worship
+        if theme == "聖靈" and tempo_bpm is not None and tempo_bpm < 70:
+            return 4  # slow 聖靈 → Response instead of Worship
         return THEME_TO_PHASE.get(theme, 3)
     # Fallback: tempo-only inference
     if tempo_bpm is None:
@@ -318,6 +322,58 @@ enriched.append(
 ```
 
 The enriched `SongCandidate` now carries `themes`, `phase`, and `is_hymn` fields used by downstream stages.
+
+## Traditional Chinese Matching Rationale
+
+All theme keys, matching terms, and embedding anchor texts in the songset constructor use **Traditional Chinese only**. This is because:
+
+1. **Catalog lyrics are Traditional Chinese.** All SOP.org song lyrics are in Traditional Chinese. Simplified-only keywords (e.g., `宝血`, `传扬`, `门徒`) would never match the actual lyric text, resulting in missed theme classifications.
+2. **Eliminates duplicate term pairs.** The previous vocab had both Simplified and Traditional forms of the same word (e.g., `赞美` and `讚美` in the same tuple), creating redundant matching with no benefit.
+3. **Ensures correct matching.** With Traditional-only keywords, the title and lyrics classifiers match against the actual character forms present in the catalog.
+
+The conversion was validated by running `--only-evaluate-pool-enrichment` before and after the conversion. Results (documented in `reports/enrichment_eval_comparison.md`):
+
+- **Title hits**: 76 → 106 (+30 songs now have title theme hits)
+- **Lyrics hits**: 342 → 372 (+30 songs now have lyrics theme hits)
+- **Zero-theme songs**: remained at 0 (all songs still get a theme via embeddings)
+
+The embedding anchor vectors in `data/theme_anchors.json` were key-renamed from Simplified to Traditional (vectors unchanged) because the embedding endpoint was unavailable. A full regeneration with Traditional anchor texts should happen when `SOW_EMBEDDING_API_KEY` / `SOW_EMBEDDING_BASE_URL` are available.
+
+## Pool Enrichment Evaluation
+
+The `--only-evaluate-pool-enrichment` flag runs the graph only through `load_catalog` → `enrich_pool` → `write_enrichment_report`, skipping all downstream stages (transition matrix, beam search, LLM, artifact writing). It requires no LLM credentials.
+
+### What it reports
+
+The enrichment report (`enrichment_report.md` + console summary) includes:
+
+- **Pool Overview**: loaded count, enriched count, dropped count with reasons
+- **Phase Distribution**: count and percentage per phase (1–5), with underrepresented flags (< 15%)
+- **Theme Dominance**: how many songs have each theme as their dominant (highest fused score) theme, with underrepresented flags (< 2%)
+- **Phase Inference Source**: how many songs had phase inferred from themes vs tempo-only fallback
+- **Theme Signal Coverage**: how many songs have title hits, lyrics hits, song embeddings, line embeddings
+- **Tempo & Key Coverage**: known vs missing, BPM range, low-confidence keys
+- **Album Series Distribution**: count per album series
+- **Diversity Assessment**: unique theme coverage, Shannon theme entropy (max log₂(12) ≈ 3.585), Shannon phase entropy (max log₂(5) ≈ 2.322)
+
+### How to interpret the metrics
+
+- **Phase 3 (敬拜) dominance > 40%**: indicates the 敬拜 theme is over-represented. Consider expanding THEME_VOCAB for underrepresented themes or adjusting fusion weights.
+- **Zero-theme songs > 10%**: indicates keyword gaps. Songs with no theme hits fall to tempo-only phase inference, creating artificial phase clusters.
+- **Theme entropy < 2.5 bits**: indicates low theme diversity. The ideal is close to max (3.585).
+- **Title hits < 25%**: many songs have titles that don't contain any theme keywords. This is expected for songs with metaphorical or poetic titles.
+- **Lyrics hits < 70%**: indicates THEME_VOCAB keyword gaps. Expanding the vocabulary with more Traditional Chinese worship terms will improve coverage.
+
+### Recipe
+
+```bash
+set -a && source /opt/sow/.env && set +a
+uv run --project lab/poc-scripts --extra songset_constructor \
+  python lab/poc-scripts/construct_songset_agent.py \
+  --pool-limit 500 --only-evaluate-pool-enrichment
+```
+
+The report is written to `lab/poc-scripts/output/songset_constructor/<timestamp>/enrichment_report.md` and a summary is printed to console.
 
 ## How Diverse Beam Search Works
 
@@ -543,6 +599,17 @@ uv run --project lab/poc-scripts --extra songset_constructor \
 ```
 
 If this produces 0 proposals, the catalog lacks songs that satisfy all strict H1–H5 constraints simultaneously. Re-enable `--auto-relax` or manually relax specific constraints (e.g., `--relax-h4 --relax-h5`).
+
+### Evaluate pool enrichment distribution
+
+```bash
+set -a && source /opt/sow/.env && set +a
+uv run --project lab/poc-scripts --extra songset_constructor \
+  python lab/poc-scripts/construct_songset_agent.py \
+  --pool-limit 500 --only-evaluate-pool-enrichment
+```
+
+Runs only `load_catalog` → `enrich_pool` → `write_enrichment_report`. No LLM required. Prints a phase/theme/signal-coverage summary to console and writes `enrichment_report.md` to the output directory. Use this to diagnose theme classification gaps and phase imbalance before running full construction.
 
 ### Interactive review (human-in-the-loop)
 

@@ -1,0 +1,417 @@
+{
+  "run_id": "songset-20260726T071123Z-3s-top5",
+  "config": {
+    "songs": 3,
+    "top_k": 5,
+    "pool_limit": 500,
+    "output_dir": "eval/run4_energetic",
+    "album_series": [],
+    "include_cpw": false,
+    "intimate": false,
+    "hymnal_mode": false,
+    "season": null,
+    "interactive_review": false,
+    "resume_thread_id": null,
+    "no_llm": true,
+    "llm_judge": false,
+    "llm_model": "qwen3.6-35b",
+    "thread_id": "songset-20260726T071123Z-3s-top5",
+    "env_file": "/opt/sow/.env",
+    "relax_h3_bpm": null,
+    "relax_h2_bpm": 110,
+    "relax_h1": true,
+    "auto_relax": true,
+    "relax_h4": false,
+    "relax_h5": false,
+    "relax_h4_bpm": null,
+    "relax_h5_cfd": null
+  },
+  "generated_at": "2026-07-26T07:12:05.046756+00:00",
+  "proposals": [
+    {
+      "rank": 1,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "925f3622ec4f",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "ji_da_de_sheng_yin_789c2e90",
+          "title": "極大的聲音",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "祈祷"
+          ],
+          "bpm": 112.3,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.6319822
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "1835741ecfc8",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhu_ci_fu_ru_chun_yu_d1fce01c",
+          "title": "主賜福如春雨",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.8238487
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "a8daf6bb4666",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+          "title": "我的救贖者活著",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "赞美"
+          ],
+          "bpm": 71.8,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.84013903
+        }
+      ],
+      "score": {
+        "f_theme": 0.9167,
+        "f_tempo": 0.3925,
+        "f_harmony": 0.735,
+        "f_diversity": 1.0,
+        "total": 0.7314
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 2,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "925f3622ec4f",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "ji_da_de_sheng_yin_789c2e90",
+          "title": "極大的聲音",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "祈祷"
+          ],
+          "bpm": 112.3,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.6319822
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "7edb61d3a179",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zui_hao_de_peng_you_f598b650",
+          "title": "最好的朋友",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "感恩"
+          ],
+          "bpm": 69.8,
+          "key": "D",
+          "mode": "major",
+          "key_confidence": 0.65476227
+        }
+      ],
+      "score": {
+        "f_theme": 0.9167,
+        "f_tempo": 0.3625,
+        "f_harmony": 0.665,
+        "f_diversity": 1.0,
+        "total": 0.7084
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 3,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "925f3622ec4f",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "ji_da_de_sheng_yin_789c2e90",
+          "title": "極大的聲音",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "祈祷"
+          ],
+          "bpm": 112.3,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.6319822
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "1c320a3ed6b0",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "dao_gao_de_da_jun_8e329f27",
+          "title": "禱告的大軍",
+          "phase": 3,
+          "themes": [
+            "祈祷",
+            "圣灵"
+          ],
+          "bpm": 103.4,
+          "key": "A",
+          "mode": "major",
+          "key_confidence": 0.75101495
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "6dbcc6ca83f4",
+          "key_shift_semitones": 2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "rong_yao_gao_yang_d73e0a3e",
+          "title": "榮耀羔羊",
+          "phase": 4,
+          "themes": [
+            "十字架",
+            "敬拜"
+          ],
+          "bpm": 69.8,
+          "key": "C",
+          "mode": "major",
+          "key_confidence": 0.8405664
+        }
+      ],
+      "score": {
+        "f_theme": 0.9167,
+        "f_tempo": 0.3625,
+        "f_harmony": 0.665,
+        "f_diversity": 1.0,
+        "total": 0.7084
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 4,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "925f3622ec4f",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "ji_da_de_sheng_yin_789c2e90",
+          "title": "極大的聲音",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "祈祷"
+          ],
+          "bpm": 112.3,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.6319822
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "81b9463d882b",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "zhuan_ai_4669c315",
+          "title": "專愛",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "敬拜"
+          ],
+          "bpm": 69.8,
+          "key": "D",
+          "mode": "major",
+          "key_confidence": 0.6650975
+        }
+      ],
+      "score": {
+        "f_theme": 0.9167,
+        "f_tempo": 0.3625,
+        "f_harmony": 0.665,
+        "f_diversity": 1.0,
+        "total": 0.5584
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    },
+    {
+      "rank": 5,
+      "items": [
+        {
+          "position": 1,
+          "recording_hash_prefix": "925f3622ec4f",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "ji_da_de_sheng_yin_789c2e90",
+          "title": "極大的聲音",
+          "phase": 1,
+          "themes": [
+            "赞美",
+            "祈祷"
+          ],
+          "bpm": 112.3,
+          "key": "G",
+          "mode": "major",
+          "key_confidence": 0.6319822
+        },
+        {
+          "position": 2,
+          "recording_hash_prefix": "00ab201f126c",
+          "key_shift_semitones": 0,
+          "crossfade_enabled": false,
+          "crossfade_duration_seconds": 0.0,
+          "gap_beats": 2.0,
+          "tempo_ratio": 1.0,
+          "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+          "title": "我們愛戴的王",
+          "phase": 3,
+          "themes": [
+            "敬拜",
+            "赞美"
+          ],
+          "bpm": 103.4,
+          "key": "F",
+          "mode": "major",
+          "key_confidence": 0.4545791
+        },
+        {
+          "position": 3,
+          "recording_hash_prefix": "8cc896c679d4",
+          "key_shift_semitones": -2,
+          "crossfade_enabled": true,
+          "crossfade_duration_seconds": 4.0,
+          "gap_beats": 4.0,
+          "tempo_ratio": 1.0,
+          "song_id": "geng_shen_ke_mu_mi_76959512",
+          "title": "更深渴慕祢",
+          "phase": 4,
+          "themes": [
+            "奉献",
+            "祈祷"
+          ],
+          "bpm": 69.8,
+          "key": "D",
+          "mode": "major",
+          "key_confidence": 0.8356193
+        }
+      ],
+      "score": {
+        "f_theme": 0.9167,
+        "f_tempo": 0.3625,
+        "f_harmony": 0.665,
+        "f_diversity": 1.0,
+        "total": 0.5584
+      },
+      "rationale": "Deterministic beam seed.",
+      "hard_constraint_warnings": [],
+      "llm_origin": false,
+      "judge_reason": null,
+      "judge_score": null
+    }
+  ]
+}

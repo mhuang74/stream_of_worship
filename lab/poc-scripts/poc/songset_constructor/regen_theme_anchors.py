@@ -14,18 +14,18 @@ from pathlib import Path
 from langchain_openai import OpenAIEmbeddings
 
 ANCHOR_TEXTS = {
-    "赞美": "赞美 歌唱 哈利路亚 praise worship joyful song",
-    "感恩": "感恩 感谢 恩典 grace thanksgiving thank you Lord",
-    "敬拜": "敬拜 尊崇 荣耀 俯伏 worship adore glory",
-    "奉献": "奉献 献上 摆上 offering dedicate surrender",
-    "认罪": "认罪 悔改 赦免 洁净 repentance confession forgiveness",
-    "差遣": "差遣 宣教 传扬 万民 mission send proclaim",
+    "讚美": "讚美 歌唱 哈利路亞 praise worship joyful song",
+    "感恩": "感恩 感謝 恩典 grace thanksgiving thank you Lord",
+    "敬拜": "敬拜 尊崇 榮耀 俯伏 worship adore glory",
+    "奉獻": "奉獻 獻上 擺上 offering dedicate surrender",
+    "認罪": "認罪 悔改 赦免 潔淨 repentance confession forgiveness",
+    "差遣": "差遣 宣教 傳揚 萬民 mission send proclaim",
     "信心": "信心 相信 倚靠 盼望 faith trust hope",
-    "祈祷": "祷告 祈祷 呼求 垂听 prayer intercession cry out",
-    "复兴": "复兴 更新 燃烧 revival renewal awaken",
-    "圣灵": "圣灵 充满 灵火 Holy Spirit fill fire",
-    "十字架": "十字架 宝血 羔羊 救赎 cross blood lamb redemption",
-    "跟随": "跟随 道路 门徒 顺服 follow disciple obedience",
+    "祈禱": "禱告 祈禱 呼求 垂聽 prayer intercession cry out",
+    "復興": "復興 更新 燃燒 revival renewal awaken",
+    "聖靈": "聖靈 充滿 靈火 Holy Spirit fill fire",
+    "十字架": "十字架 寶血 羔羊 救贖 cross blood lamb redemption",
+    "跟隨": "跟隨 道路 門徒 順服 follow disciple obedience",
 }
 
 

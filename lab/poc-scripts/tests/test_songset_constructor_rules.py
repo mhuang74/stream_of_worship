@@ -27,10 +27,10 @@ def _matrix(pool):
 
 
 def test_theme_fusion_and_phase_inference():
-    title = classify_title_themes("赞美主")
-    lyrics = classify_lyrics_themes("我要赞美\n感谢你的恩典")
+    title = classify_title_themes("讚美主")
+    lyrics = classify_lyrics_themes("我要讚美\n感謝你的恩典")
     fused = fuse_themes(title, lyrics, {}, {})
-    assert max(fused, key=fused.get) == "赞美"
+    assert max(fused, key=fused.get) == "讚美"
     assert infer_phase(fused, 124) == 1
 
 
