@@ -24,9 +24,12 @@ def _clamp(value: float) -> float:
 
 def f_theme(proposal: SongsetProposal, songs: int) -> float:
     template = _THEME_TEMPLATES[songs]
-    distances = [
-        abs((item.phase or 3) - template[index]) for index, item in enumerate(proposal.items)
-    ]
+    distances = []
+    for index, item in enumerate(proposal.items):
+        if template[index] == item.phase or template[index] in item.secondary_phases:
+            distances.append(0)
+        else:
+            distances.append(abs((item.phase or 3) - template[index]))
     return _clamp(1.0 - sum(distances) / (4.0 * len(template)))
 
 

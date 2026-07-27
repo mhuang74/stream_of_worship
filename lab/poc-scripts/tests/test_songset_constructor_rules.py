@@ -1,7 +1,9 @@
 from poc.songset_constructor.config import RunConfig
-from poc.songset_constructor.models import ScoreBreakdown, SongCandidate
+from poc.songset_constructor.models import ScoreBreakdown, SongCandidate, ProposalItem
 from poc.songset_constructor.rules.beam import (
     _candidate_sort_key,
+    _phase_matches,
+    _phase_score,
     _proposal_for_sequence,
     _sequences,
     _template,
@@ -11,7 +13,7 @@ from poc.songset_constructor.rules.beam import (
 from poc.songset_constructor.rules.diagnostics import beam_diagnostics, hard_rule_rejection_counts
 from poc.songset_constructor.rules.fitness import f_theme, score
 from poc.songset_constructor.rules.hard_constraints import validate
-from poc.songset_constructor.rules.phases import fuse_themes, infer_phase
+from poc.songset_constructor.rules.phases import fuse_themes, infer_phase, infer_secondary_phases
 from poc.songset_constructor.rules.proposals import draft_from_candidates, proposal_from_draft
 from poc.songset_constructor.rules.themes import classify_lyrics_themes, classify_title_themes
 from poc.songset_constructor.rules.transitions import recommend_transition
@@ -626,3 +628,166 @@ def test_f_theme_uses_correct_template_for_short_sets():
     assert f_theme(proposal, songs=3) == 1.0
     # Sanity: the denominator uses len(template)==3, not the legacy 5-phase value.
     assert score(proposal, RunConfig(songs=3, no_llm=True), matrix).f_theme == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Agreement-based fusion shutoff tests
+# ---------------------------------------------------------------------------
+
+
+def test_fuse_themes_reduces_embedding_when_title_lyrics_agree():
+    title = {"認罪": 1.0}
+    for theme in ("讚美", "感恩", "敬拜", "奉獻", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"):
+        title[theme] = 0.0
+    lyrics = dict(title)
+    song_emb = {"敬拜": 1.0}
+    for theme in ("讚美", "感恩", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"):
+        song_emb[theme] = 0.0
+    line_emb = dict(song_emb)
+    fused = fuse_themes(title, lyrics, song_emb, line_emb)
+    assert max(fused, key=fused.get) == "認罪"
+    fused_ren_zui = fused["認罪"]
+    fused_jing_bai = fused["敬拜"]
+    assert fused_ren_zui > fused_jing_bai
+
+
+def test_fuse_themes_preserves_embedding_when_title_lyrics_disagree():
+    title = {"讚美": 1.0}
+    for theme in ("感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"):
+        title[theme] = 0.0
+    lyrics = {"敬拜": 1.0}
+    for theme in ("讚美", "感恩", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"):
+        lyrics[theme] = 0.0
+    song_emb = {"敬拜": 1.0}
+    for theme in ("讚美", "感恩", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"):
+        song_emb[theme] = 0.0
+    line_emb = dict(song_emb)
+    fused = fuse_themes(title, lyrics, song_emb, line_emb)
+    assert max(fused, key=fused.get) == "敬拜"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Multi-phase tagging tests
+# ---------------------------------------------------------------------------
+
+
+def test_infer_secondary_phases_returns_empty_for_dominant_theme():
+    fused = {theme: 0.0 for theme in (
+        "讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"
+    )}
+    fused["敬拜"] = 1.0
+    fused["讚美"] = 0.3
+    assert infer_secondary_phases(fused, primary_phase=3) == []
+
+
+def test_infer_secondary_phases_returns_near_secondary_when_close():
+    fused = {theme: 0.0 for theme in (
+        "讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"
+    )}
+    fused["敬拜"] = 0.45
+    fused["讚美"] = 0.42
+    secondary = infer_secondary_phases(fused, primary_phase=3)
+    assert 1 in secondary
+
+
+def test_infer_secondary_phases_respects_threshold():
+    fused = {theme: 0.0 for theme in (
+        "讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"
+    )}
+    fused["敬拜"] = 0.45
+    fused["讚美"] = 0.35
+    assert infer_secondary_phases(fused, primary_phase=3) == []
+
+
+def test_infer_secondary_phases_caps_at_max_secondary():
+    fused = {theme: 0.0 for theme in (
+        "讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨"
+    )}
+    fused["敬拜"] = 0.50
+    fused["讚美"] = 0.48
+    fused["奉獻"] = 0.47
+    fused["差遣"] = 0.46
+    secondary = infer_secondary_phases(fused, primary_phase=3, max_secondary=2)
+    assert len(secondary) <= 2
+
+
+def test_phase_matches_helper():
+    c = SongCandidate(
+        song_id="s1", title="T", recording_hash_prefix="h1",
+        phase=3, secondary_phases=[1, 5],
+    )
+    assert _phase_matches(c, {1})
+    assert _phase_matches(c, {5})
+    assert _phase_matches(c, {3})
+    assert not _phase_matches(c, {2})
+
+
+def test_phase_score_zero_for_secondary_match():
+    c = SongCandidate(
+        song_id="s1", title="T", recording_hash_prefix="h1",
+        phase=3, secondary_phases=[1],
+    )
+    assert _phase_score(c, 1) == 0
+    assert _phase_score(c, 5) == 2
+
+
+def test_beam_search_uses_secondary_phase_for_opener():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 3, themes={"敬拜": 1.0}),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 3),
+        _candidate("m2", "Mid2", "m2", 95, "A", "maj", 4),
+        _candidate("c1", "Closer1", "c1", 85, "B", "min", 5),
+    ]
+    pool[0] = pool[0].model_copy(update={"secondary_phases": [1]})
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False, relax_h1=False)
+    pool_fan = compute_fan_out(pool, matrix, config)
+    proposals = search(pool_fan, config, matrix)
+    assert proposals
+    assert proposals[0].items[0].recording_hash_prefix == "o1"
+
+
+def test_beam_search_uses_secondary_phase_for_closer():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 3),
+        _candidate("m2", "Mid2", "m2", 95, "A", "maj", 4),
+        _candidate("c1", "Closer1", "c1", 85, "B", "min", 3, themes={"敬拜": 1.0}),
+    ]
+    pool[3] = pool[3].model_copy(update={"secondary_phases": [5]})
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    pool_fan = compute_fan_out(pool, matrix, config)
+    proposals = search(pool_fan, config, matrix)
+    assert proposals
+    assert proposals[0].items[-1].recording_hash_prefix == "c1"
+
+
+def test_h7_allows_secondary_phase_connection():
+    pool = [
+        _candidate("o1", "Opener", "o1", 124, "G", "maj", 1),
+        _candidate("m1", "Mid1", "m1", 100, "D", "maj", 3),
+        _candidate("m2", "Mid2", "m2", 95, "A", "maj", 4),
+        _candidate("c1", "Closer1", "c1", 85, "B", "min", 5, themes={"差遣": 1.0}),
+    ]
+    pool[3] = pool[3].model_copy(update={"secondary_phases": [4]})
+    matrix = _matrix(pool)
+    config = RunConfig(no_llm=True, auto_relax=False)
+    pool_fan = compute_fan_out(pool, matrix, config)
+    proposals = search(pool_fan, config, matrix)
+    assert proposals
+
+
+def test_proposal_item_includes_secondary_phases():
+    item = ProposalItem(
+        position=1,
+        recording_hash_prefix="h001",
+        song_id="s1",
+        title="Test",
+        phase=3,
+        secondary_phases=[1, 5],
+        themes=["敬拜"],
+    )
+    dumped = item.model_dump()
+    assert "secondary_phases" in dumped
+    assert dumped["secondary_phases"] == [1, 5]

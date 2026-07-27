@@ -24,6 +24,7 @@ class SongCandidate(BaseModel):
     line_embeddings: list[list[float]] = Field(default_factory=list)
     themes: dict[str, float] = Field(default_factory=dict)
     phase: int = 0
+    secondary_phases: list[int] = Field(default_factory=list)
     fan_out: int = 0
     is_dead_end: bool = False
     is_hymn: bool = False
@@ -62,6 +63,7 @@ class ProposalItem(DraftItem):
     song_id: str
     title: str
     phase: int
+    secondary_phases: list[int] = Field(default_factory=list)
     themes: list[str] = Field(default_factory=list)
     bpm: float | None = None
     key: str | None = None

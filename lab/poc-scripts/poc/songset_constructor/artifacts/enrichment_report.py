@@ -83,6 +83,10 @@ def build_enrichment_report(
     dropped_samples = enrich_trace.get("dropped_samples") or []
 
     phase_counts: Counter[int] = Counter(candidate.phase for candidate in pool)
+    secondary_phase_counts: Counter[int] = Counter()
+    for c in pool:
+        for p in c.secondary_phases:
+            secondary_phase_counts[p] += 1
     theme_dominance: Counter[str] = Counter()
     zero_theme_count = 0
     for candidate in pool:
@@ -155,11 +159,13 @@ def build_enrichment_report(
     for phase in sorted(PHASE_NAMES):
         count = phase_counts.get(phase, 0)
         pct = (count / enriched_size * 100) if enriched_size else 0.0
+        secondary_count = secondary_phase_counts.get(phase, 0)
         phase_distribution.append(
             {
                 "phase": phase,
                 "label": _phase_label(phase),
                 "count": count,
+                "secondary_count": secondary_count,
                 "pct": pct,
                 "underrepresented": pct < UNDERREPRESENTED_PHASE_PCT if enriched_size else False,
             }
@@ -216,6 +222,7 @@ def build_enrichment_report(
             "max_theme_entropy": max_theme_entropy,
             "phase_entropy": phase_entropy,
             "max_phase_entropy": max_phase_entropy,
+            "secondary_phase_counts": dict(sorted(secondary_phase_counts.items())),
         },
     }
 
@@ -255,13 +262,13 @@ def _render_markdown(metrics: dict[str, Any], config: RunConfig) -> str:
 
     lines.append("## Phase Distribution")
     lines.append("")
-    lines.append("| Phase | Count | % | Balance | Bar |")
-    lines.append("|---|---:|---:|---|---|")
+    lines.append("| Phase | Count | Secondary | % | Balance | Bar |")
+    lines.append("|---|---:|---:|---:|---|---|")
     for entry in metrics["phase_distribution"]:
         balance = "underrepresented" if entry["underrepresented"] else "ok"
         lines.append(
-            f"| {entry['label']} | {entry['count']} | {entry['pct']:.1f}% | "
-            f"{balance} | {_bar(entry['pct'])} |"
+            f"| {entry['label']} | {entry['count']} | {entry.get('secondary_count', 0)} | "
+            f"{entry['pct']:.1f}% | {balance} | {_bar(entry['pct'])} |"
         )
     lines.append("")
 
@@ -361,8 +368,10 @@ def render_console_summary(metrics: dict[str, Any], report_path: str) -> str:
     lines.append("Phase Distribution:")
     for entry in metrics["phase_distribution"]:
         marker = " ← underrepresented" if entry["underrepresented"] else ""
+        sec = entry.get("secondary_count", 0)
+        sec_str = f" (+{sec} sec)" if sec else ""
         lines.append(
-            f"  {entry['label']:<22} {entry['count']:>4} songs "
+            f"  {entry['label']:<22} {entry['count']:>4} songs{sec_str} "
             f"({entry['pct']:>5.1f}%)  {_bar(entry['pct'])}{marker}"
         )
     lines.append("")
