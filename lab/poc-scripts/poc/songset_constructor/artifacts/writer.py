@@ -127,8 +127,11 @@ def _proposal_structured_data(proposal: SongsetProposal) -> str:
         mode = item.mode or "?"
         bpm = item.bpm if item.bpm is not None else "?"
         themes = ", ".join(item.themes) if item.themes else "none"
+        phase_str = f"phase {item.phase}"
+        if item.secondary_phases:
+            phase_str += f" (also: {', '.join(str(p) for p in sorted(item.secondary_phases))})"
         lines.append(
-            f"  {item.position}. {item.title} | phase {item.phase} | "
+            f"  {item.position}. {item.title} | {phase_str} | "
             f"themes: {themes} | key {key} mode {mode} | bpm {bpm}"
         )
     lines.append(
@@ -234,7 +237,11 @@ def _diversity_metrics(proposals: list[SongsetProposal], pool: list[SongCandidat
         for item in p.items
         if by_song.get(item.song_id) and by_song[item.song_id].composer
     }
-    unique_phases = {item.phase for p in proposals for item in p.items}
+    unique_phases = set()
+    for p in proposals:
+        for item in p.items:
+            unique_phases.add(item.phase)
+            unique_phases.update(item.secondary_phases)
     middle_sets = [middle_song_ids(p) for p in proposals]
     unique_middle_songs = set().union(*middle_sets) if middle_sets else set()
     total_middle_slots = sum(len(s) for s in middle_sets)
@@ -490,8 +497,11 @@ def write_report(
         for item in proposal.items:
             key = " ".join(part for part in [item.key, item.mode] if part)
             transition = f"shift {item.key_shift_semitones}, gap {item.gap_beats:g} beats"
+            phase_display = str(item.phase)
+            if item.secondary_phases:
+                phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
             lines.append(
-                f"| {item.position} | {item.title} | {item.phase} | {item.bpm or ''} | {key} | {', '.join(item.themes)} | {transition} |"
+                f"| {item.position} | {item.title} | {phase_display} | {item.bpm or ''} | {key} | {', '.join(item.themes)} | {transition} |"
             )
         lines.extend(
             [
@@ -526,6 +536,7 @@ def write_pool_csv(path: Path, pool: list[SongCandidate]) -> None:
         "key_confidence",
         "loudness_db",
         "phase",
+        "secondary_phases",
         "top_themes",
         "fan_out",
         "is_dead_end",
@@ -551,6 +562,7 @@ def write_pool_csv(path: Path, pool: list[SongCandidate]) -> None:
                     "key_confidence": candidate.key_confidence,
                     "loudness_db": candidate.loudness_db,
                     "phase": candidate.phase,
+                    "secondary_phases": ";".join(str(p) for p in sorted(candidate.secondary_phases)),
                     "top_themes": ",".join(theme for theme, score in top if score > 0),
                     "fan_out": candidate.fan_out,
                     "is_dead_end": candidate.is_dead_end,
@@ -735,9 +747,15 @@ def _candidate_pool_summary(pool: list[SongCandidate], trace: list[dict]) -> dic
     bpm_values = [
         round(candidate.tempo_bpm) for candidate in pool if candidate.tempo_bpm is not None
     ]
+    phase_counts = Counter(candidate.phase for candidate in pool)
+    secondary_phase_counts: Counter[int] = Counter()
+    for c in pool:
+        for p in c.secondary_phases:
+            secondary_phase_counts[p] += 1
     return {
         "total": len(pool),
-        "phase_counts": dict(sorted(Counter(candidate.phase for candidate in pool).items())),
+        "phase_counts": dict(sorted(phase_counts.items())),
+        "secondary_phase_counts": dict(sorted(secondary_phase_counts.items())),
         "known_bpm_count": len(bpm_values),
         "missing_bpm_count": len(pool) - len(bpm_values),
         "common_bpm_values": Counter(bpm_values).most_common(8),
@@ -862,13 +880,16 @@ def _proposal_section(proposal: SongsetProposal) -> list[str]:
     for item in proposal.items:
         key = " ".join(part for part in [item.key, item.mode] if part)
         transition = f"shift {item.key_shift_semitones}, gap {item.gap_beats:g} beats"
+        phase_display = str(item.phase)
+        if item.secondary_phases:
+            phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
         lines.append(
             "| "
             + " | ".join(
                 [
                     str(item.position),
                     _md_cell(item.title),
-                    str(item.phase),
+                    phase_display,
                     "" if item.bpm is None else f"{item.bpm:g}",
                     _md_cell(key),
                     _md_cell(", ".join(item.themes)),

@@ -23,7 +23,12 @@ from poc.songset_constructor.rules.beam import compute_fan_out, search
 from poc.songset_constructor.rules.diagnostics import beam_diagnostics, enrichment_drop_diagnostics
 from poc.songset_constructor.rules.fitness import score
 from poc.songset_constructor.rules.hard_constraints import validate
-from poc.songset_constructor.rules.phases import apply_seasonal_bias, fuse_themes, infer_phase
+from poc.songset_constructor.rules.phases import (
+    apply_seasonal_bias,
+    fuse_themes,
+    infer_phase,
+    infer_secondary_phases,
+)
 from poc.songset_constructor.rules.proposals import proposal_from_draft, rank_proposals
 from poc.songset_constructor.rules.themes import (
     classify_embedding_themes,
@@ -64,11 +69,14 @@ def enrich_pool(state: ConstructorState) -> dict:
             anchors,
         )
         fused = apply_seasonal_bias(fuse_themes(title, lyrics, song_emb, line_emb), config.season)
+        primary_phase = infer_phase(fused, candidate.tempo_bpm)
+        secondary = infer_secondary_phases(fused, primary_phase, candidate.tempo_bpm)
         enriched.append(
             candidate.model_copy(
                 update={
                     "themes": fused,
-                    "phase": infer_phase(fused, candidate.tempo_bpm),
+                    "phase": primary_phase,
+                    "secondary_phases": secondary,
                     "is_hymn": candidate.album_series == "HYMN",
                 }
             )
@@ -167,8 +175,11 @@ def _pool_prompt(state: ConstructorState) -> str:
     rows = []
     for candidate in state.get("pool", []):
         themes = ", ".join(sorted(candidate.themes, key=candidate.themes.get, reverse=True)[:2])
+        phase_str = f"phase {candidate.phase}"
+        if candidate.secondary_phases:
+            phase_str += f" (also: {', '.join(str(p) for p in sorted(candidate.secondary_phases))})"
         rows.append(
-            f"{candidate.recording_hash_prefix}: {candidate.title}, phase {candidate.phase}, "
+            f"{candidate.recording_hash_prefix}: {candidate.title}, {phase_str}, "
             f"{candidate.tempo_bpm} BPM, key {candidate.musical_key} {candidate.musical_mode}, themes {themes}"
         )
     return "\n".join(rows[: state["config"].pool_limit])

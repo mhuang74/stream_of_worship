@@ -623,3 +623,48 @@ def test_write_report_returns_narratives(tmp_path, synthetic_pool):
     )
     assert isinstance(narratives, list)
     assert len(narratives) == len(proposals)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: CSV pool writer secondary_phases column
+# ---------------------------------------------------------------------------
+
+
+def test_csv_pool_writer_includes_secondary_phases_column(tmp_path):
+    import csv
+
+    from poc.songset_constructor.artifacts.writer import write_pool_csv
+    from poc.songset_constructor.models import SongCandidate
+
+    pool = [
+        SongCandidate(
+            song_id="s1",
+            title="Test Song",
+            recording_hash_prefix="h001",
+            tempo_bpm=120,
+            musical_key="C",
+            musical_mode="maj",
+            phase=3,
+            secondary_phases=[1, 5],
+            themes={"敬拜": 1.0},
+        ),
+        SongCandidate(
+            song_id="s2",
+            title="No Secondary",
+            recording_hash_prefix="h002",
+            tempo_bpm=90,
+            musical_key="G",
+            musical_mode="min",
+            phase=4,
+            secondary_phases=[],
+            themes={"奉獻": 1.0},
+        ),
+    ]
+    csv_path = tmp_path / "candidate_pool.csv"
+    write_pool_csv(csv_path, pool)
+    with csv_path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    assert "secondary_phases" in rows[0]
+    assert rows[0]["secondary_phases"] == "1;5"
+    assert rows[1]["secondary_phases"] == ""

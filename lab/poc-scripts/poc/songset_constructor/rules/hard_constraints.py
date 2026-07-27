@@ -32,7 +32,11 @@ def validate(
     relax_h1: bool = False,
 ) -> ValidationFeedback:
     failures: list[tuple[str, str, str]] = []
-    phases = [item.phase for item in proposal.items]
+    item_phases: list[set[int]] = []
+    for item in proposal.items:
+        phases = {item.phase}
+        phases.update(item.secondary_phases)
+        item_phases.append(phases)
     bpms = [item.bpm for item in proposal.items]
 
     # H0: Cardinality — the proposal must have exactly the requested song count.
@@ -51,12 +55,12 @@ def validate(
         )
 
     if relax_h1:
-        h1_failed = phases[-1] not in {4, 5}
+        h1_failed = not (item_phases[-1] & {4, 5})
     else:
         h1_failed = (
-            phases.count(1) != 1
-            or not any(phase in {3, 4} for phase in phases)
-            or phases[-1] not in {4, 5}
+            sum(1 for phases in item_phases if 1 in phases) != 1
+            or not any(phases & {3, 4} for phases in item_phases[1:-1])
+            or not (item_phases[-1] & {4, 5})
         )
     if h1_failed:
         failures.append(("H1", "Phase coverage must include one opener, worship/response, and phase 4/5 closer.", "Adjust ordering to follow phases 1-5."))
@@ -82,9 +86,11 @@ def validate(
 
     if len({item.song_id for item in proposal.items}) != len(proposal.items):
         failures.append(("H6", "Songset cannot contain duplicate song IDs.", "Replace the duplicate song."))
-    for left, right in zip(proposal.items, proposal.items[1:]):
-        if right.phase < left.phase - 1:
-            failures.append(("H7", f"Phase drops too far from {left.phase} to {right.phase}.", "Reorder to avoid a sharp backwards worship arc."))
+    for i in range(len(proposal.items) - 1):
+        left_phases = item_phases[i]
+        right_phases = item_phases[i + 1]
+        if not any(r >= l - 1 for l in left_phases for r in right_phases):
+            failures.append(("H7", f"Phase drops too far from {proposal.items[i].phase} to {proposal.items[i + 1].phase}.", "Reorder to avoid a sharp backwards worship arc."))
     for item in proposal.items:
         if item.key_confidence is not None and item.key_confidence < 0.6 and item.key_shift_semitones != 0:
             failures.append(("H8", f"{item.title} has low key confidence and cannot be transposed.", "Set key_shift_semitones to 0 or choose a song with reliable key analysis."))

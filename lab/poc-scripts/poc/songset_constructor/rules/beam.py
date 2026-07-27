@@ -62,7 +62,14 @@ def _candidate_sort_key(candidate: SongCandidate) -> tuple:
     )
 
 
+def _phase_matches(candidate: SongCandidate, acceptable: set[int]) -> bool:
+    """Return True if candidate's primary or secondary phase is in acceptable."""
+    return candidate.phase in acceptable or any(p in acceptable for p in candidate.secondary_phases)
+
+
 def _phase_score(candidate: SongCandidate, target_phase: int) -> int:
+    if candidate.phase == target_phase or target_phase in candidate.secondary_phases:
+        return 0
     return abs((candidate.phase or 3) - target_phase)
 
 
@@ -145,18 +152,20 @@ def _sequences(
                     continue
                 if position == 1:
                     if config.relax_h1:
-                        if candidate.phase not in {1, 2}:
+                        if not _phase_matches(candidate, {1, 2}):
                             continue
-                    elif candidate.phase != 1:
+                    elif not _phase_matches(candidate, {1}):
                         continue
                     if candidate.tempo_bpm is None or candidate.tempo_bpm < config.opening_floor:
                         continue
                 if position == len(target):
-                    if candidate.phase not in {4, 5}:
+                    if not _phase_matches(candidate, {4, 5}):
                         continue
                     if candidate.tempo_bpm is None or candidate.tempo_bpm > config.closing_limit:
                         continue
-                if beam and candidate.phase < beam[-1].phase - 1:
+                if beam and candidate.phase < beam[-1].phase - 1 and not any(
+                    p >= beam[-1].phase - 1 for p in candidate.secondary_phases
+                ):
                     continue
                 if candidate.is_dead_end and position != len(target):
                     continue

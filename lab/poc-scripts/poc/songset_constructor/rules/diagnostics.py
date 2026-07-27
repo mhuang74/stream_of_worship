@@ -47,18 +47,28 @@ def role_eligibility_counts(
     opening_floor = config.opening_floor
     return {
         "valid_openers_h2": sum(
-            1 for candidate in pool if candidate.phase == 1 and (candidate.tempo_bpm or 0) >= opening_floor
+            1 for candidate in pool
+            if (candidate.phase == 1 or 1 in candidate.secondary_phases)
+            and (candidate.tempo_bpm or 0) >= opening_floor
         ),
         "valid_closers_h3": sum(
             1
             for candidate in pool
-            if candidate.phase in {4, 5}
+            if (candidate.phase in {4, 5} or any(p in {4, 5} for p in candidate.secondary_phases))
             and candidate.tempo_bpm is not None
             and candidate.tempo_bpm <= closing_limit
         ),
-        "phase_1_candidates_h1": sum(1 for candidate in pool if candidate.phase == 1),
-        "phase_3_or_4_candidates_h1": sum(1 for candidate in pool if candidate.phase in {3, 4}),
-        "phase_4_or_5_candidates_h1": sum(1 for candidate in pool if candidate.phase in {4, 5}),
+        "phase_1_candidates_h1": sum(
+            1 for candidate in pool if candidate.phase == 1 or 1 in candidate.secondary_phases
+        ),
+        "phase_3_or_4_candidates_h1": sum(
+            1 for candidate in pool
+            if candidate.phase in {3, 4} or any(p in {3, 4} for p in candidate.secondary_phases)
+        ),
+        "phase_4_or_5_candidates_h1": sum(
+            1 for candidate in pool
+            if candidate.phase in {4, 5} or any(p in {4, 5} for p in candidate.secondary_phases)
+        ),
         "compatible_transitions_h5": sum(
             1 for transition in matrix.values() if transition.cfd <= 2
         ),
