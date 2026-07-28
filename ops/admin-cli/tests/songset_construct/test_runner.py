@@ -2,7 +2,104 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from stream_of_worship.admin.songset_constructor.config import RunConfig
+
+
+def _make_config(**overrides) -> RunConfig:
+    kwargs = dict(count=3, proposals=3, pool=200)
+    kwargs.update(overrides)
+    return RunConfig(**kwargs)
+
+
+def test_run_extracts_final_state():
+    """runner.run() extracts final_proposals, pool, trace, enrichment_metrics."""
+    config = _make_config(use_cache=False)
+    mock_read_client = MagicMock()
+    mock_pool = MagicMock()
+    mock_pool.__len__.return_value = 5
+    mock_pool.__iter__.return_value = iter([])
+
+    with (
+        patch("stream_of_worship.admin.songset_constructor.runner.cache.try_load_pool", return_value=None),
+        patch("stream_of_worship.admin.songset_constructor.runner.fetch_catalog_pool", return_value=mock_pool),
+        patch("stream_of_worship.admin.songset_constructor.runner.cache.save_pool"),
+        patch("stream_of_worship.admin.songset_constructor.runner.build_graph") as mock_build_graph,
+    ):
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "final_proposals": ["p1", "p2"],
+            "pool": mock_pool,
+            "trace": [{"node": "test", "event": "exit"}],
+            "enrichment_metrics": {"pool_size": 5},
+        }
+        mock_build_graph.return_value = mock_graph
+
+        from stream_of_worship.admin.songset_constructor.runner import run
+
+        result = run(config, mock_read_client)
+
+    assert result["final_proposals"] == ["p1", "p2"]
+    assert result["pool"] == mock_pool
+    assert result["trace"] == [{"node": "test", "event": "exit"}]
+    assert result["enrichment_metrics"] == {"pool_size": 5}
+    mock_graph.invoke.assert_called_once()
+
+
+def test_run_cache_hit():
+    """runner.run() uses cached pool when cache hit."""
+    config = _make_config(use_cache=True, cache_ttl=24.0)
+    mock_read_client = MagicMock()
+    mock_pool = MagicMock()
+    mock_pool.__len__.return_value = 5
+    mock_pool.__iter__.return_value = iter([])
+
+    with (
+        patch("stream_of_worship.admin.songset_constructor.runner.cache.try_load_pool", return_value=mock_pool),
+        patch("stream_of_worship.admin.songset_constructor.runner.cache.cache_path") as mock_cache_path,
+        patch("stream_of_worship.admin.songset_constructor.runner.build_graph") as mock_build_graph,
+        patch("stream_of_worship.admin.songset_constructor.runner.time.time", return_value=1000),
+    ):
+        mock_path = MagicMock()
+        mock_path.stat().st_mtime = 500
+        mock_cache_path.return_value = mock_path
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {"final_proposals": [], "trace": []}
+        mock_build_graph.return_value = mock_graph
+
+        from stream_of_worship.admin.songset_constructor.runner import run
+
+        result = run(config, mock_read_client)
+
+    assert "final_proposals" in result
+    mock_graph.invoke.assert_called_once()
+
+
+def test_run_cache_miss():
+    """runner.run() fetches from DB when cache miss."""
+    config = _make_config(use_cache=True, cache_ttl=24.0)
+    mock_read_client = MagicMock()
+    mock_pool = MagicMock()
+    mock_pool.__len__.return_value = 5
+    mock_pool.__iter__.return_value = iter([])
+
+    with (
+        patch("stream_of_worship.admin.songset_constructor.runner.cache.try_load_pool", return_value=None),
+        patch("stream_of_worship.admin.songset_constructor.runner.fetch_catalog_pool", return_value=mock_pool),
+        patch("stream_of_worship.admin.songset_constructor.runner.cache.save_pool") as mock_save,
+        patch("stream_of_worship.admin.songset_constructor.runner.build_graph") as mock_build_graph,
+    ):
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {"final_proposals": [], "trace": []}
+        mock_build_graph.return_value = mock_graph
+
+        from stream_of_worship.admin.songset_constructor.runner import run
+
+        result = run(config, mock_read_client)
+
+    assert "final_proposals" in result
+    mock_save.assert_called_once_with(config, mock_pool)
 
 
 def test_run_config_defaults():

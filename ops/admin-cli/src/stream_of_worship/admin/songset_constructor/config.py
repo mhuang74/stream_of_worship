@@ -11,6 +11,7 @@ VALID_SEASONS = {"advent", "christmas", "lent", "easter", "pentecost"}
 DEFAULT_ALBUM_SERIES: tuple[str, ...] = ()
 
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "sow" / "songset_constructor"
+DEFAULT_REPORT_DIR = Path.cwd() / "output" / "songset_constructor"
 
 
 @dataclass(slots=True)

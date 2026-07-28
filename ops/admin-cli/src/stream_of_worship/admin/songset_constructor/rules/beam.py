@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from itertools import combinations
-from typing import Iterable
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import (
@@ -14,7 +14,11 @@ from stream_of_worship.admin.songset_constructor.models import (
 )
 from stream_of_worship.admin.songset_constructor.rules.fitness import score
 from stream_of_worship.admin.songset_constructor.rules.hard_constraints import validate
-from stream_of_worship.admin.songset_constructor.rules.proposals import draft_from_candidates, proposal_from_draft, rank_proposals
+from stream_of_worship.admin.songset_constructor.rules.proposals import (
+    draft_from_candidates,
+    proposal_from_draft,
+    rank_proposals,
+)
 
 _TEMPLATES: dict[int, tuple[int, ...]] = {
     2: (1, 4),

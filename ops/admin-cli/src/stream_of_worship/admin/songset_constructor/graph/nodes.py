@@ -7,10 +7,13 @@ from pathlib import Path
 
 from langgraph.types import interrupt
 
-from stream_of_worship.admin.songset_constructor.artifacts.enrichment_report import build_enrichment_report
+from stream_of_worship.admin.songset_constructor.artifacts.enrichment_report import (
+    build_enrichment_report,
+)
 from stream_of_worship.admin.songset_constructor.artifacts.trace import event
-from stream_of_worship.admin.songset_constructor.artifacts.writer import write_artifacts as write_output_artifacts
 from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool
+from stream_of_worship.admin.songset_constructor.graph.llm import build_chat_model, structured
+from stream_of_worship.admin.songset_constructor.graph.state import ConstructorState
 from stream_of_worship.admin.songset_constructor.models import (
     DraftItem,
     JudgeRanking,
@@ -20,7 +23,10 @@ from stream_of_worship.admin.songset_constructor.models import (
     ValidationFeedback,
 )
 from stream_of_worship.admin.songset_constructor.rules.beam import compute_fan_out, search
-from stream_of_worship.admin.songset_constructor.rules.diagnostics import beam_diagnostics, enrichment_drop_diagnostics
+from stream_of_worship.admin.songset_constructor.rules.diagnostics import (
+    beam_diagnostics,
+    enrichment_drop_diagnostics,
+)
 from stream_of_worship.admin.songset_constructor.rules.fitness import score
 from stream_of_worship.admin.songset_constructor.rules.hard_constraints import validate
 from stream_of_worship.admin.songset_constructor.rules.phases import (
@@ -29,15 +35,16 @@ from stream_of_worship.admin.songset_constructor.rules.phases import (
     infer_phase,
     infer_secondary_phases,
 )
-from stream_of_worship.admin.songset_constructor.rules.proposals import proposal_from_draft, rank_proposals
+from stream_of_worship.admin.songset_constructor.rules.proposals import (
+    proposal_from_draft,
+    rank_proposals,
+)
 from stream_of_worship.admin.songset_constructor.rules.themes import (
     classify_lyrics_themes,
     classify_title_themes,
     normalise_cosine_scores,
 )
 from stream_of_worship.admin.songset_constructor.rules.transitions import recommend_transition
-from stream_of_worship.admin.songset_constructor.graph.llm import build_chat_model, structured
-from stream_of_worship.admin.songset_constructor.graph.state import ConstructorState
 
 
 def _trace(state: ConstructorState, node: str, name: str, data: dict | None = None) -> list[dict]:
@@ -383,17 +390,6 @@ def optional_review(state: ConstructorState) -> dict:
     }
 
 
-def write_artifacts(state: ConstructorState) -> dict:
-    trace = [*state.get("trace", []), *_trace(state, "write_artifacts", "artifact_written")]
-    paths = write_output_artifacts(
-        config=state["config"],
-        proposals=state.get("final_proposals", []),
-        pool=state.get("pool", []),
-        trace=trace,
-    )
-    return {"artifact_paths": paths, "trace": _trace(state, "write_artifacts", "exit", paths)}
-
-
 def route_after_enrich(state: ConstructorState) -> str:
     if state["config"].only_evaluate_pool_enrichment:
         return "write_enrichment_report"
@@ -422,11 +418,11 @@ def route_finalize(state: ConstructorState) -> str:
         return "judge"
     if state["config"].interactive_review:
         return "review"
-    return "write"
+    return "end"
 
 
 def route_after_judge(state: ConstructorState) -> str:
-    return "review" if state["config"].interactive_review else "write"
+    return "review" if state["config"].interactive_review else "end"
 
 
 def route_review(state: ConstructorState) -> str:

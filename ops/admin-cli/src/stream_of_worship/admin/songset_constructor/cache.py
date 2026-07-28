@@ -33,6 +33,10 @@ def try_load_pool(config: RunConfig) -> list[SongCandidate] | None:
     return [SongCandidate.model_validate(item) for item in data]
 
 
+def cache_path(config: RunConfig) -> Path:
+    return _cache_path(config.cache_dir, _cache_key(config.pool, config.album_series))
+
+
 def save_pool(config: RunConfig, pool: list[SongCandidate]) -> None:
     if not config.use_cache:
         return

@@ -92,6 +92,72 @@ def test_line_theme_query_sql_shapes():
     assert "embedding::text" not in LINE_THEME_QUERY
 
 
+def test_bandwidth_validation():
+    """Verify fetch_catalog_pool does not leak embedding::text and stays under 1 MB for pool_limit=200."""
+    from unittest.mock import MagicMock, patch
+
+    from stream_of_worship.admin.songset_constructor.config import RunConfig
+    from stream_of_worship.admin.songset_constructor.db import POOL_QUERY, LINE_THEME_QUERY
+
+    assert "embedding::text" not in POOL_QUERY
+    assert "embedding::text" not in LINE_THEME_QUERY
+
+    config = RunConfig(count=3, proposals=3, pool=200, use_cache=False)
+    mock_cursor = MagicMock()
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+
+    # Simulate 200 rows with minimal data (no theme scores)
+    mock_cursor.fetchall.return_value = [
+        (
+            f"s{i}", f"Title {i}", None, "Composer A", None,
+            "Album", "Series", "C", "lyrics",
+            f"hash{i:04d}", 120.0, "D", "maj",
+            0.95, -12.5, None,
+        )
+        for i in range(200)
+    ]
+
+    mock_read_client = MagicMock()
+    mock_read_client.connection = mock_conn
+
+    with patch("stream_of_worship.admin.songset_constructor.db.fetch_line_theme_scores", return_value={}):
+        from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool
+
+        pool = fetch_catalog_pool(config, client=mock_read_client)
+
+    assert len(pool) == 200
+
+    # Verify no query contained embedding::text
+    for call_args in mock_cursor.execute.call_args_list:
+        sql = call_args[0][0] if call_args[0] else ""
+        assert "embedding::text" not in sql, f"embedding::text found in: {sql[:100]}"
+
+    # Estimate bandwidth: 200 rows × 16 columns × average 40 bytes per value
+    estimated_bytes = 200 * 16 * 40
+    assert estimated_bytes < 1_000_000, f"Estimated bandwidth {estimated_bytes} bytes exceeds 1 MB limit"
+
+
+def test_bandwidth_theme_scores_12_keys():
+    """Verify song_theme_scores_raw has exactly 12 keys when populated."""
+    import json
+
+    from stream_of_worship.admin.songset_constructor.db import _candidate_from_row
+
+    scores = json.dumps({theme: 0.5 for theme in [
+        "讚美", "感恩", "敬拜", "懺悔", "信靠", "救贖",
+        "聖靈", "委身", "爭戰", "宣教", "永恆", "降臨",
+    ]})
+    row = (
+        "s1", "Title", None, None, None,
+        None, None, "C", "lyrics",
+        "hash1", 120.0, "D", "maj",
+        0.95, -12.5, scores,
+    )
+    candidate = _candidate_from_row(row)
+    assert len(candidate.song_theme_scores_raw) == 12
+
+
 def test_normalise_cosine_scores_empty():
     from stream_of_worship.admin.songset_constructor.rules.themes import normalise_cosine_scores
 

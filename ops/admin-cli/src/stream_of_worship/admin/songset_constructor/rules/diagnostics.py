@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Iterable
+from collections.abc import Iterable
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import (
@@ -15,7 +15,10 @@ from stream_of_worship.admin.songset_constructor.models import (
 from stream_of_worship.admin.songset_constructor.rules.beam import _candidate_sort_key, _sequences
 from stream_of_worship.admin.songset_constructor.rules.fitness import score
 from stream_of_worship.admin.songset_constructor.rules.hard_constraints import validate
-from stream_of_worship.admin.songset_constructor.rules.proposals import draft_from_candidates, proposal_from_draft
+from stream_of_worship.admin.songset_constructor.rules.proposals import (
+    draft_from_candidates,
+    proposal_from_draft,
+)
 
 MISSING_TEMPO_AND_KEY_METADATA = "missing_tempo_and_key_metadata"
 

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
-from stream_of_worship.admin.songset_constructor.models import SongsetProposal, TransitionCandidate, ValidationFeedback
+from stream_of_worship.admin.songset_constructor.models import (
+    SongsetProposal,
+    TransitionCandidate,
+    ValidationFeedback,
+)
 
 RULE_DESCRIPTIONS: dict[str, str] = {
     "H1": "Phase coverage: the set must include exactly one phase-1 opener, at least one phase 3/4 "

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
-from stream_of_worship.admin.songset_constructor.models import ScoreBreakdown, SongsetProposal, TransitionCandidate
+from stream_of_worship.admin.songset_constructor.models import (
+    ScoreBreakdown,
+    SongsetProposal,
+    TransitionCandidate,
+)
 
 TEMPLATE_PHASES_5 = (1, 2, 3, 4, 5)
 TEMPLATE_PHASES_4 = (1, 3, 4, 5)

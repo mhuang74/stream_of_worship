@@ -13,7 +13,10 @@ from stream_of_worship.admin.songset_constructor.models import (
     SongsetProposal,
     TransitionCandidate,
 )
-from stream_of_worship.admin.songset_constructor.rules.fitness import middle_song_ids, score_with_diversity_penalty
+from stream_of_worship.admin.songset_constructor.rules.fitness import (
+    middle_song_ids,
+    score_with_diversity_penalty,
+)
 from stream_of_worship.admin.songset_constructor.rules.phases import top_themes
 
 

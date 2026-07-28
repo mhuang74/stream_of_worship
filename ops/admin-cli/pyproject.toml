@@ -9,6 +9,7 @@ dependencies = [
     "pathlib>=1.0.0",
     "dataclasses>=0.0",
     "typing>=3.0.0",
+    "ruff[test]>=0.16.0",
 ]
 
 [project.optional-dependencies]

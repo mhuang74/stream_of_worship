@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from stream_of_worship.admin.songset_constructor.models import SongCandidate, TransitionCandidate
-from stream_of_worship.admin.songset_constructor.rules.harmony import cfd, key_compatibility_score, suggest_key_shift
+from stream_of_worship.admin.songset_constructor.rules.harmony import (
+    cfd,
+    key_compatibility_score,
+    suggest_key_shift,
+)
 
 
 def recommend_transition(from_cand: SongCandidate, to_cand: SongCandidate) -> TransitionCandidate:

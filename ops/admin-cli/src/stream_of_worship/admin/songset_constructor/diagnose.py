@@ -2,8 +2,18 @@
 
 from __future__ import annotations
 
+from stream_of_worship.admin.songset_constructor.artifacts.writer import (
+    _bottleneck_lines,
+    _diversity_metrics,
+    _song_frequency_table,
+    _song_overlap_matrix,
+    _theme_coverage_lines,
+)
 from stream_of_worship.admin.songset_constructor.config import RunConfig
-from stream_of_worship.admin.songset_constructor.rules.diagnostics import diagnostic_lines as _diagnostic_lines
+from stream_of_worship.admin.songset_constructor.rules.diagnostics import (
+    diagnostic_lines as _diagnostic_lines,
+)
+from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
 
 def assemble_report_sections(config: RunConfig, result: dict) -> list[str]:
@@ -12,7 +22,6 @@ def assemble_report_sections(config: RunConfig, result: dict) -> list[str]:
     load_data = _latest_trace_data(trace, "load_catalog")
     enrich_data = _latest_trace_data(trace, "enrich_pool")
     beam_data = _latest_trace_data(trace, "beam_seed_candidates")
-    finalize_data = _latest_trace_data(trace, "finalize_rank")
 
     lines.append("## Pool Enrichment Metrics")
     if enrich_data:
@@ -49,6 +58,38 @@ def assemble_report_sections(config: RunConfig, result: dict) -> list[str]:
         lines.append("")
 
     proposals = result.get("final_proposals", [])
+
+    if len(proposals) > 1:
+        pool = result.get("pool", [])
+        metrics = _diversity_metrics(proposals, pool)
+        lines.append("## Diversity Matrix")
+        lines.append(f"\nAcross {len(proposals)} proposals ({metrics['total_slots']} song slots total):\n")
+        lines.append("| Metric | Value |")
+        lines.append("|---|---|")
+        unique_pct = round(len(metrics["unique_songs"]) / metrics["total_slots"] * 100) if metrics["total_slots"] else 0
+        lines.append(f"| Unique songs | {len(metrics['unique_songs'])} / {metrics['total_slots']} ({unique_pct}%) |")
+        lines.append(f"| Unique themes | {len(metrics['unique_themes'])} / {len(THEMES)} |")
+        lines.append(f"| Unique composers | {len(metrics['unique_composers'])} |")
+        lines.append(f"| Unique phases | {len(metrics['unique_phases'])} / 5 |")
+        lines.append(f"| Middle-song reuse | {metrics['middle_reuse_count']} (across {metrics['total_middle_slots']} middle slots) |")
+        lines.append("")
+        lines.append("### Song Overlap Matrix")
+        lines.append("")
+        lines.extend(_song_overlap_matrix(proposals))
+        lines.append("")
+        lines.append("### Song Frequency")
+        lines.append("")
+        lines.extend(_song_frequency_table(proposals))
+        lines.append("")
+        lines.append("### Theme Coverage")
+        lines.append("")
+        lines.extend(_theme_coverage_lines(proposals))
+        bottlenecks = _bottleneck_lines(metrics, proposals, pool)
+        if bottlenecks:
+            lines.extend(["", "### Bottlenecks", ""])
+            lines.extend(f"- {line}" for line in bottlenecks)
+        lines.append("")
+
     if proposals:
         lines.append(f"## Proposals ({len(proposals)} total)")
         for p in proposals:
