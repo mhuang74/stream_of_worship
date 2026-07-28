@@ -19,6 +19,12 @@ The end goal is to:
 # Admin CLI (lightweight, no ML)
 uv run --project ops/admin-cli --extra admin sow-admin --help
 
+# Admin CLI with songset constructor (extra deps for beam search + LLM)
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct --help
+
+# Populate theme_anchors table (required before first `construct` run)
+uv run --project ops/admin-cli --extra admin sow-admin theme-anchors sync
+
 # Lab User App TUI
 uv run --project lab/sow-app sow-app --help
 
