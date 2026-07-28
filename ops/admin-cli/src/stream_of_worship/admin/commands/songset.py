@@ -6,6 +6,11 @@ Provides CLI commands for listing songsets with their items, songs, and recordin
 from pathlib import Path
 from typing import Optional
 
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Optional
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -191,3 +196,330 @@ def list_songsets(
                 )
 
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# construct subcommand — lazily loaded songset_constructor subpackage
+# ---------------------------------------------------------------------------
+
+
+def _import_constructor():
+    try:
+        from stream_of_worship.admin.songset_constructor.config import RunConfig  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.graph.builder import build_graph  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool, check_theme_anchors  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.runner import run  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.persist import persist_proposals  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.cache import try_load_pool  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.diagnose import assemble_report_sections  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "constructor extra not installed. Run: "
+            "`uv sync --project ops/admin-cli --extra admin --extra constructor`"
+        ) from exc
+
+
+def _parse_relax(value: str) -> dict:
+    """Parse --relax token string into a dict of relax_* overrides."""
+    result: dict = {}
+    tokens = [t.strip() for t in value.split(",") if t.strip()]
+    for token in tokens:
+        if ":" in token:
+            key, val = token.split(":", 1)
+            key = key.strip()
+            val = val.strip()
+        else:
+            key = token
+            val = None
+        if key == "h1":
+            result["relax_h1"] = True
+        elif key == "h2":
+            result["relax_h2_bpm"] = int(val) if val else None
+        elif key == "h3":
+            result["relax_h3_bpm"] = int(val) if val else None
+        elif key == "h4":
+            if val:
+                result["relax_h4"] = True
+                result["relax_h4_bpm"] = int(val)
+            else:
+                result["relax_h4"] = True
+        elif key == "h5":
+            if val:
+                result["relax_h5"] = True
+                result["relax_h5_cfd"] = int(val)
+            else:
+                result["relax_h5"] = True
+        else:
+            console.print(f"[yellow]Unknown relax token: {token}[/yellow]")
+    return result
+
+
+def _load_constraints_file(path: Path) -> dict:
+    raw = path.read_text(encoding="utf-8")
+    if path.suffix in (".yaml", ".yml"):
+        try:
+            import yaml
+            return yaml.safe_load(raw) or {}
+        except ImportError:
+            console.print("[red]PyYAML not installed. Install with `uv add pyyaml`.[/red]")
+            raise typer.Exit(1)
+    return json.loads(raw)
+
+
+@app.command("construct")
+def construct_songset(
+    user: str = typer.Option(
+        ...,
+        "--user",
+        help="Email of the user to own the constructed songsets",
+    ),
+    count: int = typer.Option(
+        3,
+        "--count",
+        "-n",
+        help="Number of songs per songset (2-5)",
+        min=2,
+        max=5,
+    ),
+    proposals: int = typer.Option(
+        3,
+        "--proposals",
+        "-k",
+        help="Number of proposals to generate (1-20)",
+        min=1,
+        max=20,
+    ),
+    pool: int = typer.Option(
+        200,
+        "--pool",
+        "-p",
+        help="Maximum pool size",
+        min=4,
+    ),
+    album_series: Optional[list[str]] = typer.Option(
+        None,
+        "--album-series",
+        help="Filter by album series (can be specified multiple times)",
+    ),
+    include_cpw: bool = typer.Option(
+        False,
+        "--include-cpw",
+        help="Include CPW album series",
+    ),
+    intimate: bool = typer.Option(
+        False,
+        "--intimate",
+        help="Intimate mode (lower closing BPM)",
+    ),
+    hymnal_mode: bool = typer.Option(
+        False,
+        "--hymnal-mode",
+        help="Hymnal mode",
+    ),
+    season: Optional[str] = typer.Option(
+        None,
+        "--season",
+        help="Seasonal bias (advent, christmas, lent, easter, pentecost)",
+    ),
+    llm: bool = typer.Option(
+        False,
+        "--llm/--no-llm",
+        help="Enable LLM-based planning",
+    ),
+    llm_judge: bool = typer.Option(
+        False,
+        "--llm-judge/--no-llm-judge",
+        help="Enable LLM judge",
+    ),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="LLM model name",
+    ),
+    relax: Optional[str] = typer.Option(
+        None,
+        "--relax",
+        help="Relax syntax: comma-separated tokens like h2:90,h3:80,h4,h5:3",
+    ),
+    constraints_file: Optional[Path] = typer.Option(
+        None,
+        "--constraints-file",
+        help="YAML/JSON file with relax overrides",
+        exists=True,
+    ),
+    report: bool = typer.Option(
+        False,
+        "--report",
+        help="Write diagnose_report.md",
+    ),
+    report_dir: Optional[Path] = typer.Option(
+        None,
+        "--report-dir",
+        help="Report output directory",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Skip DB writes",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        help="Auto-save without prompting",
+    ),
+    no_cache: bool = typer.Option(
+        False,
+        "--no-cache",
+        help="Bypass pool cache",
+    ),
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Cache directory",
+    ),
+    cache_ttl: float = typer.Option(
+        24.0,
+        "--cache-ttl",
+        help="Cache TTL in hours (0 disables cache)",
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to config file",
+    ),
+) -> None:
+    """Construct songsets using the songset-constructor graph.
+
+    Runs beam search + optional LLM planning to generate songset proposals.
+    Requires the ``constructor`` extra and the ``theme_anchors`` table
+    to be populated (run ``sow-admin theme-anchors sync`` first).
+    """
+    _import_constructor()
+
+    from stream_of_worship.admin.songset_constructor.config import RunConfig
+    from stream_of_worship.admin.songset_constructor.db import check_theme_anchors
+    from stream_of_worship.admin.songset_constructor.runner import run
+    from stream_of_worship.admin.songset_constructor.persist import persist_proposals
+    from stream_of_worship.admin.songset_constructor.report_writer import write_report
+
+    # Resolve relax overrides
+    relax_overrides: dict = {}
+    if constraints_file:
+        relax_overrides.update(_load_constraints_file(constraints_file))
+    if relax:
+        relax_overrides.update(_parse_relax(relax))
+
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    connection_provider = ConnectionProvider(config.get_connection_url())
+
+    # Step 1 — Resolve user
+    user_client = UserClient(connection_provider)
+    resolved_user = user_client.get_user_by_email(user)
+    if resolved_user is None:
+        console.print(f"[red]User not found: {user}[/red]")
+        raise typer.Exit(1)
+
+    # Step 2 — Build ReadOnlyClient
+    from stream_of_worship.db.app.read_client import ReadOnlyClient
+
+    read_client = ReadOnlyClient(connection_provider)
+
+    # Step 3 — Validate theme_anchors table
+    anchor_count = check_theme_anchors(read_client)
+    if anchor_count != 12:
+        console.print(
+            f"[red]theme_anchors table has {anchor_count} rows (expected 12). "
+            "Run: sow-admin theme-anchors sync[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Step 4 — Build RunConfig
+    run_config = RunConfig(
+        count=count,
+        proposals=proposals,
+        pool=pool,
+        album_series=album_series or [],
+        include_cpw=include_cpw,
+        intimate=intimate,
+        hymnal_mode=hymnal_mode,
+        season=season,
+        llm_enabled=llm,
+        llm_judge=llm_judge,
+        llm_model=llm_model,
+        use_cache=not no_cache and cache_ttl > 0,
+        cache_dir=cache_dir or Path.home() / ".cache" / "sow" / "songset_constructor",
+        cache_ttl=cache_ttl,
+        output_dir=report_dir,
+        interactive_review=False,
+        only_evaluate_pool_enrichment=False,
+        **relax_overrides,
+    )
+
+    run_config.validate_environment()
+
+    # Step 5 — Run graph
+    result = run(run_config, read_client)
+
+    proposals = result.get("final_proposals", [])
+
+    # Step 6 — Print summary
+    if proposals:
+        table = Table(title=f"Proposals ({len(proposals)} total)")
+        table.add_column("Rank", style="green", justify="right")
+        table.add_column("Score", style="cyan")
+        table.add_column("Sequence")
+        table.add_column("BPM/Key Arc")
+        table.add_column("Warnings", style="yellow")
+        for p in proposals:
+            seq = " → ".join(f"{i.title}(P{i.phase})" for i in p.items)
+            bpms = " → ".join(str(round(i.bpm)) if i.bpm else "?" for i in p.items)
+            keys = " → ".join(f"{i.key or '?'}" for i in p.items)
+            warnings = ", ".join(p.hard_constraint_warnings) or "—"
+            table.add_row(
+                str(p.rank),
+                f"{p.score.total:.4f}",
+                seq,
+                f"{keys} | {bpms} BPM",
+                warnings,
+            )
+        console.print(table)
+    else:
+        console.print("[yellow]No valid proposals generated.[/yellow]")
+
+    # Step 7 — Report
+    if report:
+        report_path = write_report(
+            run_config,
+            result,
+            report_dir or Path("output") / "songset_constructor" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+        )
+        console.print(f"[dim]Report written to: {report_path}[/dim]")
+
+    # Step 8 — Save flow
+    if dry_run:
+        console.print("[yellow]Dry run: skipping DB writes.[/yellow]")
+        return
+
+    if not yes:
+        confirmed = typer.confirm(
+            f"Save {len(proposals)} songset(s) to user {user}?",
+            default=False,
+        )
+        if not confirmed:
+            console.print("[yellow]Aborted.[/yellow]")
+            return
+
+    if proposals:
+        songset_client = SongsetClient(connection_provider, user_id=resolved_user.id)
+        created = persist_proposals(run_config, proposals, songset_client)
+        if created:
+            console.print(f"\n[green]Created {len(created)} songset(s).[/green]")
+        else:
+            console.print("[red]Failed to create any songsets.[/red]")
+            raise typer.Exit(1)

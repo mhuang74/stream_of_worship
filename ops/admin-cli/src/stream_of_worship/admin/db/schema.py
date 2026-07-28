@@ -193,6 +193,16 @@ CREATE TRIGGER trg_recordings_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 """
 
+# Theme anchors table (12 anchor vectors for in-DB theme classification)
+CREATE_THEME_ANCHORS_TABLE = """
+CREATE TABLE IF NOT EXISTS theme_anchors (
+    theme         TEXT PRIMARY KEY,
+    embedding     vector(1536) NOT NULL,
+    model_version TEXT NOT NULL DEFAULT 'text-embedding-3-small',
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
     CREATE_SONGS_TABLE,
@@ -201,6 +211,7 @@ ALL_SCHEMA_STATEMENTS = [
     CREATE_SONG_EMBEDDING_TABLE,
     CREATE_SONG_LINE_EMBEDDING_TABLE,
     *CREATE_EMBEDDING_INDEXES,
+    CREATE_THEME_ANCHORS_TABLE,
     CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_RECORDINGS_UPDATE_TRIGGER,
