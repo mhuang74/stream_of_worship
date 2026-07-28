@@ -128,3 +128,27 @@ FROM songset_items
 WHERE songset_id = %s
 ORDER BY position;
 """
+
+# SQL to get songset items with songs + recordings JOINs (admin list command).
+# Uses a recording_pick CTE to select the most recently imported active
+# recording per song_id (matches webapp convention).
+SONGSET_ITEMS_FULL_QUERY_WITH_JOINS = """
+WITH recording_pick AS (
+    SELECT DISTINCT ON (song_id) song_id, duration_seconds, tempo_bpm,
+           musical_key, NULL::REAL AS loudness_db
+    FROM recordings
+    WHERE deleted_at IS NULL
+    ORDER BY song_id, imported_at DESC
+)
+SELECT
+    si.id, si.songset_id, si.song_id, si.recording_hash_prefix, si.position,
+    si.gap_beats, si.crossfade_enabled, si.crossfade_duration_seconds,
+    si.key_shift_semitones, si.tempo_ratio, si.created_at,
+    s.title, s.musical_key, rp.duration_seconds, rp.tempo_bpm,
+    rp.musical_key, rp.loudness_db
+FROM songset_items si
+LEFT JOIN songs s ON s.id = si.song_id AND s.deleted_at IS NULL
+LEFT JOIN recording_pick rp ON rp.song_id = si.song_id
+WHERE si.songset_id = ANY(%s)
+ORDER BY si.songset_id, si.position;
+"""
