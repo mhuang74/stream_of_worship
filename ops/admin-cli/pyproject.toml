@@ -38,6 +38,15 @@ admin = [
     "textual>=0.44.0",
     "numpy>=1.24.0",
 ]
+constructor = [
+    "langgraph>=0.2.50",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "numpy>=1.26.0",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.2.2",
+    "rapidfuzz>=3.0.0",
+]
 test = [
     "pytest>=7.4.0",
     "pytest-mock>=3.12.0",
