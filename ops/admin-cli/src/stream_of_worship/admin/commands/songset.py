@@ -121,17 +121,18 @@ def list_songsets(
         console.print("[yellow]No songsets found.[/yellow]")
         return
 
+    # Short-circuit ids format before the owner/items round-trips
+    if format == "ids":
+        for songset in songsets:
+            console.print(songset.id)
+        return
+
     # Resolve owner emails in one round-trip
     owner_emails = _resolve_owner_emails(connection_provider, songsets)
 
     # Batch-fetch items with song/recording data
     songset_ids = [s.id for s in songsets]
     items_by_songset = songset_client.list_songset_items_with_song_recording(songset_ids)
-
-    if format == "ids":
-        for songset in songsets:
-            console.print(songset.id)
-        return
 
     # Table format: one row per songset item
     total_items = sum(len(items) for items in items_by_songset.values())
@@ -167,7 +168,7 @@ def list_songsets(
                 "--:--",
                 "-",
                 "--",
-                songset.id,
+                "-",
             )
         else:
             for item in items:

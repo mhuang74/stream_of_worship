@@ -184,6 +184,8 @@ class TestSongsetListCommand:
         assert "ss1" in result.output
         assert "ss2" in result.output
         assert "Worship Set" not in result.output
+        # ids format must not trigger the items batch fetch
+        mock_client.list_songset_items_with_song_recording.assert_not_called()
 
     def test_list_orphaned_items(self):
         """Test orphaned items render dashes."""
@@ -243,6 +245,9 @@ class TestSongsetListCommand:
         assert result.exit_code == 0
         assert "Empty Set" in result.output
         assert "(no songs)" in result.output
+        # Empty songset row must render dashes in the Song ID column,
+        # not the songset id
+        assert "ss1" not in result.output
 
     def test_list_with_limit(self):
         """Test --limit propagates to client."""
