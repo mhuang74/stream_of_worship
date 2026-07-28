@@ -11,7 +11,10 @@ from typing import Any, Callable, Generator, Optional, TypeVar
 import psycopg
 
 from stream_of_worship.db.app.models import Songset, SongsetItem
-from stream_of_worship.db.app.schema import SONGSET_ITEMS_QUERY
+from stream_of_worship.db.app.schema import (
+    SONGSET_ITEMS_FULL_QUERY_WITH_JOINS,
+    SONGSET_ITEMS_QUERY,
+)
 from stream_of_worship.db.connection import ConnectionProvider
 
 T = TypeVar("T")
@@ -690,3 +693,87 @@ class SongsetClient:
         result = {row[0]: row[1] for row in cursor.fetchall()}
         # Ensure all requested IDs have an entry (0 if not in result)
         return {sid: result.get(sid, 0) for sid in songset_ids}
+
+    # ------------------------------------------------------------------
+    # Admin-level read methods (not user-scoped)
+    # ------------------------------------------------------------------
+
+    def list_all_songsets(self, limit: Optional[int] = None) -> list[Songset]:
+        """List all songsets across all users.
+
+        Args:
+            limit: Maximum number of results.
+
+        Returns:
+            List of songsets ordered by ``updated_at`` desc.
+        """
+        cursor = self.connection.cursor()
+
+        query = (
+            f"SELECT {self._SONGSET_COLUMNS} FROM songsets "
+            "ORDER BY updated_at DESC"
+        )
+        params: list = []
+
+        if limit:
+            query += " LIMIT %s"
+            params.append(int(limit))
+
+        cursor.execute(query, params)
+
+        return [Songset.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def list_songsets_for_user_id(self, user_id: int, limit: Optional[int] = None) -> list[Songset]:
+        """List songsets for a specific user (admin-level, not scoped to self.user_id).
+
+        Args:
+            user_id: The user ID to filter by.
+            limit: Maximum number of results.
+
+        Returns:
+            List of songsets ordered by ``updated_at`` desc.
+        """
+        cursor = self.connection.cursor()
+
+        query = (
+            f"SELECT {self._SONGSET_COLUMNS} FROM songsets "
+            "WHERE user_id = %s ORDER BY updated_at DESC"
+        )
+        params: list = [user_id]
+
+        if limit:
+            query += " LIMIT %s"
+            params.append(int(limit))
+
+        cursor.execute(query, params)
+
+        return [Songset.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def list_songset_items_with_song_recording(
+        self, songset_ids: list[str]
+    ) -> dict[str, list[SongsetItem]]:
+        """Batch-fetch songset items with joined song/recording data.
+
+        Args:
+            songset_ids: List of songset IDs to fetch items for.
+
+        Returns:
+            Dict keyed by songset_id mapping to list of ``SongsetItem``
+            (ordered by position). Missing IDs get an empty list.
+        """
+        if not songset_ids:
+            return {}
+
+        cursor = self.connection.cursor()
+        cursor.execute(
+            SONGSET_ITEMS_FULL_QUERY_WITH_JOINS,
+            (songset_ids,),
+        )
+
+        result: dict[str, list[SongsetItem]] = {sid: [] for sid in songset_ids}
+
+        for row in cursor.fetchall():
+            item = SongsetItem.from_row(tuple(row), detailed=True)
+            result.setdefault(item.songset_id, []).append(item)
+
+        return result
