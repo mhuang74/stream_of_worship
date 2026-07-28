@@ -7,9 +7,7 @@ table from the bundled JSON file.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
-import numpy as np
 import typer
 from rich.console import Console
 
@@ -35,7 +33,7 @@ def sync_theme_anchors(
         "--force",
         help="Re-insert even if 12 rows already exist",
     ),
-    config_path: Optional[Path] = typer.Option(
+    config_path: Path | None = typer.Option(
         None,
         "--config",
         "-c",

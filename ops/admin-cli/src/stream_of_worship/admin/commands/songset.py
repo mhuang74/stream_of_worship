@@ -3,19 +3,16 @@
 Provides CLI commands for listing songsets with their items, songs, and recordings.
 """
 
-from pathlib import Path
-from typing import Optional
-
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from stream_of_worship.admin.config import AdminConfig
+from stream_of_worship.admin.songset_constructor.config import DEFAULT_REPORT_DIR
 from stream_of_worship.db.app.songset_client import SongsetClient
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.user_client import UserClient
@@ -65,13 +62,13 @@ def _resolve_owner_emails(
 
 @app.command("list")
 def list_songsets(
-    user: Optional[str] = typer.Option(
+    user: str | None = typer.Option(
         None,
         "--user",
         "-u",
         help="Filter songsets to one user, resolved by email",
     ),
-    limit: Optional[int] = typer.Option(
+    limit: int | None = typer.Option(
         None,
         "--limit",
         "-l",
@@ -83,7 +80,7 @@ def list_songsets(
         "-f",
         help="Output format (table|ids)",
     ),
-    config_path: Optional[Path] = typer.Option(
+    config_path: Path | None = typer.Option(
         None,
         "--config",
         "-c",
@@ -151,7 +148,7 @@ def list_songsets(
     table.add_column("BPM", style="white")
     table.add_column("Song ID", style="dim")
 
-    current_songset: Optional[str] = None
+    current_songset: str | None = None
 
     for songset in songsets:
         items = items_by_songset.get(songset.id, [])
@@ -205,13 +202,22 @@ def list_songsets(
 
 def _import_constructor():
     try:
-        from stream_of_worship.admin.songset_constructor.config import RunConfig  # noqa: F401
-        from stream_of_worship.admin.songset_constructor.graph.builder import build_graph  # noqa: F401
-        from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool, check_theme_anchors  # noqa: F401
-        from stream_of_worship.admin.songset_constructor.runner import run  # noqa: F401
-        from stream_of_worship.admin.songset_constructor.persist import persist_proposals  # noqa: F401
         from stream_of_worship.admin.songset_constructor.cache import try_load_pool  # noqa: F401
-        from stream_of_worship.admin.songset_constructor.diagnose import assemble_report_sections  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.config import RunConfig  # noqa: F401
+        from stream_of_worship.admin.songset_constructor.db import (  # noqa: F401
+            check_theme_anchors,
+            fetch_catalog_pool,
+        )
+        from stream_of_worship.admin.songset_constructor.diagnose import (
+            assemble_report_sections,  # noqa: F401
+        )
+        from stream_of_worship.admin.songset_constructor.graph.builder import (
+            build_graph,  # noqa: F401
+        )
+        from stream_of_worship.admin.songset_constructor.persist import (
+            persist_proposals,  # noqa: F401
+        )
+        from stream_of_worship.admin.songset_constructor.runner import run  # noqa: F401
     except ImportError as exc:
         raise RuntimeError(
             "constructor extra not installed. Run: "
@@ -296,7 +302,7 @@ def construct_songset(
         help="Maximum pool size",
         min=4,
     ),
-    album_series: Optional[list[str]] = typer.Option(
+    album_series: list[str] | None = typer.Option(
         None,
         "--album-series",
         help="Filter by album series (can be specified multiple times)",
@@ -316,7 +322,7 @@ def construct_songset(
         "--hymnal-mode",
         help="Hymnal mode",
     ),
-    season: Optional[str] = typer.Option(
+    season: str | None = typer.Option(
         None,
         "--season",
         help="Seasonal bias (advent, christmas, lent, easter, pentecost)",
@@ -331,17 +337,17 @@ def construct_songset(
         "--llm-judge/--no-llm-judge",
         help="Enable LLM judge",
     ),
-    llm_model: Optional[str] = typer.Option(
+    llm_model: str | None = typer.Option(
         None,
         "--llm-model",
         help="LLM model name",
     ),
-    relax: Optional[str] = typer.Option(
+    relax: str | None = typer.Option(
         None,
         "--relax",
         help="Relax syntax: comma-separated tokens like h2:90,h3:80,h4,h5:3",
     ),
-    constraints_file: Optional[Path] = typer.Option(
+    constraints_file: Path | None = typer.Option(
         None,
         "--constraints-file",
         help="YAML/JSON file with relax overrides",
@@ -352,7 +358,7 @@ def construct_songset(
         "--report",
         help="Write diagnose_report.md",
     ),
-    report_dir: Optional[Path] = typer.Option(
+    report_dir: Path | None = typer.Option(
         None,
         "--report-dir",
         help="Report output directory",
@@ -372,7 +378,7 @@ def construct_songset(
         "--no-cache",
         help="Bypass pool cache",
     ),
-    cache_dir: Optional[Path] = typer.Option(
+    cache_dir: Path | None = typer.Option(
         None,
         "--cache-dir",
         help="Cache directory",
@@ -382,7 +388,7 @@ def construct_songset(
         "--cache-ttl",
         help="Cache TTL in hours (0 disables cache)",
     ),
-    config_path: Optional[Path] = typer.Option(
+    config_path: Path | None = typer.Option(
         None,
         "--config",
         "-c",
@@ -399,9 +405,9 @@ def construct_songset(
 
     from stream_of_worship.admin.songset_constructor.config import RunConfig
     from stream_of_worship.admin.songset_constructor.db import check_theme_anchors
-    from stream_of_worship.admin.songset_constructor.runner import run
     from stream_of_worship.admin.songset_constructor.persist import persist_proposals
     from stream_of_worship.admin.songset_constructor.report_writer import write_report
+    from stream_of_worship.admin.songset_constructor.runner import run
 
     # Resolve relax overrides
     relax_overrides: dict = {}
@@ -497,7 +503,7 @@ def construct_songset(
         report_path = write_report(
             run_config,
             result,
-            report_dir or Path("output") / "songset_constructor" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+            report_dir or DEFAULT_REPORT_DIR / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         )
         console.print(f"[dim]Report written to: {report_path}[/dim]")
 

@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import SongCandidate
-from stream_of_worship.admin.songset_constructor.rules.themes import THEMES, classify_lyrics_themes, classify_title_themes
+from stream_of_worship.admin.songset_constructor.rules.themes import (
+    THEMES,
+    classify_lyrics_themes,
+    classify_title_themes,
+)
 
 PHASE_NAMES: dict[int, str] = {1: "讚美", 2: "感恩", 3: "敬拜", 4: "奉獻", 5: "差遣"}
 UNDERREPRESENTED_PHASE_PCT = 15.0

@@ -672,6 +672,95 @@ class SongsetClient:
         result = cursor.fetchone()
         return result[0] if result else 0
 
+    def create_songset_with_items(
+        self,
+        name: str,
+        description: str,
+        items: list[dict],
+    ) -> Songset:
+        """Create a songset and its items atomically in a single transaction.
+
+        Unlike calling ``create_songset`` then ``add_item`` in a loop (which
+        commits after each call), this method wraps everything in one
+        transaction so that a failure mid-way rolls back the entire operation.
+
+        Args:
+            name: Display name for the songset.
+            description: Optional description.
+            items: List of item dicts with keys: song_id, recording_hash_prefix,
+                position, gap_beats, crossfade_enabled, crossfade_duration_seconds,
+                key_shift_semitones, tempo_ratio.
+
+        Returns:
+            Created ``Songset`` instance.
+
+        Raises:
+            MissingReferenceError: If a recording_hash_prefix is not found.
+        """
+        songset = Songset(
+            id=Songset.generate_id(),
+            user_id=self.user_id,
+            name=name,
+            description=description,
+            created_at=datetime.now().isoformat(),
+            updated_at=datetime.now().isoformat(),
+        )
+
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO songsets (id, user_id, name, description, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    songset.id,
+                    songset.user_id,
+                    songset.name,
+                    songset.description,
+                    songset.created_at,
+                    songset.updated_at,
+                ),
+            )
+            for item_data in items:
+                item = SongsetItem(
+                    id=SongsetItem.generate_id(),
+                    songset_id=songset.id,
+                    song_id=item_data["song_id"],
+                    recording_hash_prefix=item_data.get("recording_hash_prefix"),
+                    position=item_data.get("position", 0),
+                    gap_beats=item_data.get("gap_beats", 2.0),
+                    crossfade_enabled=item_data.get("crossfade_enabled", False),
+                    crossfade_duration_seconds=item_data.get("crossfade_duration_seconds"),
+                    key_shift_semitones=item_data.get("key_shift_semitones", 0),
+                    tempo_ratio=item_data.get("tempo_ratio", 1.0),
+                    created_at=datetime.now().isoformat(),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO songset_items
+                    (id, songset_id, song_id, recording_hash_prefix, position, gap_beats,
+                     crossfade_enabled, crossfade_duration_seconds, key_shift_semitones,
+                     tempo_ratio, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        item.id,
+                        item.songset_id,
+                        item.song_id,
+                        item.recording_hash_prefix,
+                        item.position,
+                        item.gap_beats,
+                        1 if item.crossfade_enabled else 0,
+                        item.crossfade_duration_seconds,
+                        item.key_shift_semitones,
+                        item.tempo_ratio,
+                        item.created_at,
+                    ),
+                )
+
+        return songset
+
     def get_item_counts_batch(self, songset_ids: list[str]) -> dict[str, int]:
         """Batch-fetch item counts for multiple songsets.
 

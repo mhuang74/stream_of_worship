@@ -68,7 +68,6 @@ def classify_embedding_themes(
     line_vecs: list[list[float]] | None,
     theme_anchors: dict[str, any],
 ) -> tuple[dict[str, float], dict[str, float]]:
-    from stream_of_worship.admin.songset_constructor.rules.embeddings import load_theme_anchors
     import numpy as np
 
     def cosine(a, b):

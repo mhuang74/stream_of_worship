@@ -504,13 +504,13 @@ Renamed (same as v2):
 
 ```python
 def _candidate_from_row(row: tuple) -> SongCandidate:
-    # Tuple layout (15 columns):
-    # 0: s.id          5: s.album_name    10: r.tempo_bpm
-    # 1: s.title       6: s.album_series  11: r.musical_mode
-    # 2: s.title_pinyin 7: s.musical_key  12: r.key_confidence
-    # 3: s.composer    8: s.lyrics_raw    13: r.loudness_db
-    # 4: s.lyricist    9: r.hash_prefix   14: song_theme_scores_raw (JSON or None)
-    raw_scores = row[14]
+    # Tuple layout (16 columns):
+    # 0: s.id          5: s.album_name    10: r.tempo_bpm          15: song_theme_scores_raw (JSON or None)
+    # 1: s.title       6: s.album_series  11: r_musical_key
+    # 2: s.title_pinyin 7: s.musical_key  12: r.musical_mode
+    # 3: s.composer    8: s.lyrics_raw    13: r.key_confidence
+    # 4: s.lyricist    9: r.hash_prefix   14: r.loudness_db
+    raw_scores = row[15]
     song_theme_scores_raw = json.loads(raw_scores) if raw_scores else {}
     return SongCandidate(
         song_id=row[0],
@@ -520,12 +520,12 @@ def _candidate_from_row(row: tuple) -> SongCandidate:
         lyricist=row[4],
         album_name=row[5],
         album_series=row[6],
-        musical_key=row[10] or row[7],  # recording.musical_key or song.musical_key
         recording_hash_prefix=row[9],
         tempo_bpm=row[10],
-        musical_mode=row[11],
-        key_confidence=row[12],
-        loudness_db=row[13],
+        musical_key=row[11] or row[7],  # recording.musical_key or song.musical_key
+        musical_mode=row[12],
+        key_confidence=row[13],
+        loudness_db=row[14],
         lyrics_raw=row[8],
         song_theme_scores_raw=song_theme_scores_raw,
         is_hymn=row[6] == "HYMN",

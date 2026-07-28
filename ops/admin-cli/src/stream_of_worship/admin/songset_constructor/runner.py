@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import time
+
+from rich.console import Console
+
 from stream_of_worship.admin.songset_constructor import cache
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool
@@ -9,18 +13,22 @@ from stream_of_worship.admin.songset_constructor.graph.builder import build_grap
 from stream_of_worship.admin.songset_constructor.graph.state import ConstructorState
 from stream_of_worship.db.app.read_client import ReadOnlyClient
 
+console = Console()
+
 
 def run(config: RunConfig, read_client: ReadOnlyClient) -> dict:
     cached_pool = cache.try_load_pool(config)
     if cached_pool is not None:
         pool = cached_pool
-        from rich.console import Console
-        Console().print("[dim]Pool loaded from cache[/dim]")
+        try:
+            age_h = (time.time() - cache.cache_path(config).stat().st_mtime) / 3600
+            console.print(f"[dim]Pool loaded from cache (age: {age_h:.0f}h)[/dim]")
+        except (FileNotFoundError, OSError):
+            console.print("[dim]Pool loaded from cache[/dim]")
     else:
         pool = fetch_catalog_pool(config, client=read_client)
         cache.save_pool(config, pool)
-        from rich.console import Console
-        Console().print(f"[dim]Pool fetched from DB ({len(pool)} songs)[/dim]")
+        console.print(f"[dim]Pool fetched from DB ({len(pool)} songs)[/dim]")
 
     graph = build_graph(config)
 
@@ -35,13 +43,11 @@ def run(config: RunConfig, read_client: ReadOnlyClient) -> dict:
         "final_proposals": [],
     }
 
-    events = list(graph.stream(initial_state, stream_mode="debug"))
-    final_state = events[-1][1] if len(events) == 1 else events[-1]
+    result = graph.invoke(initial_state)
 
-    result = {
-        "final_proposals": final_state.get("final_proposals", []),
-        "pool": final_state.get("pool", pool),
-        "trace": final_state.get("trace", []),
-        "enrichment_metrics": final_state.get("enrichment_metrics", {}),
+    return {
+        "final_proposals": result.get("final_proposals", []),
+        "pool": result.get("pool", pool),
+        "trace": result.get("trace", []),
+        "enrichment_metrics": result.get("enrichment_metrics", {}),
     }
-    return result

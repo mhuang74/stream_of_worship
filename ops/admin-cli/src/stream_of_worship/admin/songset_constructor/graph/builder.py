@@ -23,7 +23,6 @@ from stream_of_worship.admin.songset_constructor.graph.nodes import (
     route_review,
     route_validation,
     validate_score,
-    write_artifacts,
     write_enrichment_report,
 )
 from stream_of_worship.admin.songset_constructor.graph.state import ConstructorState
@@ -41,7 +40,6 @@ def build_graph(config: RunConfig):
     builder.add_node("finalize_rank", finalize_rank_node)
     builder.add_node("llm_judge", llm_judge)
     builder.add_node("optional_review", optional_review)
-    builder.add_node("write_artifacts", write_artifacts)
     builder.add_node("write_enrichment_report", write_enrichment_report)
 
     builder.add_edge(START, "load_catalog")
@@ -71,17 +69,16 @@ def build_graph(config: RunConfig):
     builder.add_conditional_edges(
         "finalize_rank",
         route_finalize,
-        {"judge": "llm_judge", "review": "optional_review", "write": "write_artifacts", "end_no_proposals": END},
+        {"judge": "llm_judge", "review": "optional_review", "end": END, "end_no_proposals": END},
     )
     builder.add_conditional_edges(
         "llm_judge",
         route_after_judge,
-        {"review": "optional_review", "write": "write_artifacts"},
+        {"review": "optional_review", "end": END},
     )
     builder.add_conditional_edges(
         "optional_review",
         route_review,
-        {"approve": "write_artifacts", "reject": END, "edit": "validate_score"},
+        {"approve": END, "reject": END, "edit": "validate_score"},
     )
-    builder.add_edge("write_artifacts", END)
     return builder.compile(checkpointer=choose_checkpointer(config))
