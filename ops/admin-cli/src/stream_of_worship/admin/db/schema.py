@@ -203,6 +203,12 @@ CREATE TABLE IF NOT EXISTS theme_anchors (
 );
 """
 
+# HNSW index for theme_anchors cosine similarity queries
+CREATE_THEME_ANCHORS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_theme_anchors_embedding_cosine
+ON theme_anchors USING hnsw (embedding vector_cosine_ops);
+"""
+
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
     CREATE_SONGS_TABLE,
@@ -212,6 +218,7 @@ ALL_SCHEMA_STATEMENTS = [
     CREATE_SONG_LINE_EMBEDDING_TABLE,
     *CREATE_EMBEDDING_INDEXES,
     CREATE_THEME_ANCHORS_TABLE,
+    CREATE_THEME_ANCHORS_INDEX,
     CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_RECORDINGS_UPDATE_TRIGGER,

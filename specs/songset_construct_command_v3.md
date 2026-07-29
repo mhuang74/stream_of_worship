@@ -658,7 +658,7 @@ Call `runner.run(config, read_client)` which:
 2. **Fetch pool:** `fetch_catalog_pool(config, client=read_client)` — executes `POOL_QUERY` + `LINE_THEME_QUERY`.
 3. **Save to cache:** `cache.save_pool(config, pool)`.
 4. **Build graph:** `build_graph(config)` with `InMemorySaver`.
-5. **Stream:** `stream_mode="debug"` (for console progress only).
+5. **Invoke:** `graph.invoke(initial_state)` (synchronous; `invoke()` is preferred over `stream_mode="debug"` for robustness — see Round B review).
 6. **Return:** `{"final_proposals": ..., "pool": ..., "trace": ..., "enrichment_metrics": ...}`.
 
 Print `[dim]Pool loaded from cache (age: Nh)[/dim]` or `[dim]Pool fetched from DB (N songs)[/dim]` accordingly.
@@ -791,7 +791,7 @@ A test that runs `fetch_catalog_pool` against a test database with pgvector, and
 | `theme_anchors` drift (anchors updated) | `sow-admin theme-anchors sync --force` re-populates; `model_version` column tracks provenance; cache TTL ensures stale pools expire. |
 | Pool cache returns stale data (new songs added) | TTL (24h default) bounds staleness; `--no-cache` bypasses; constructor is offline tool — staleness is acceptable. |
 | `SongsetClient` does not support atomic create+items | Add `create_songset_with_items` or use raw SQL transaction in `persist.py`. |
-| LangGraph debug streaming is slow / noisy | Acceptable for CLI; keep `stream_mode="debug"` for user feedback. |
+| LangGraph debug streaming is slow / noisy | `invoke()` used instead of `stream_mode="debug"` for robustness (Round B). |
 | Stale recording_hash_prefix between construct and save | Validate all recordings inside the atomic transaction before inserting. |
 | `--user` not-yet-existing | Early `UserClient.get_user_by_email` check before running graph. |
 | Heavy LLM deps under default install | Kept in `constructor` extra only; lazy-import guard. |

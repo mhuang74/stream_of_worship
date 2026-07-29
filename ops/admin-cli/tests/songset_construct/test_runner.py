@@ -190,3 +190,28 @@ def test_run_config_to_dict():
     assert d["proposals"] == 3
     assert d["pool"] == 200
     assert d["llm_enabled"] is False
+
+
+def test_run_config_include_cpw_without_album_series():
+    """include_cpw should add CPW to album_series even when album_series is empty."""
+    config = RunConfig(count=3, proposals=3, pool=200, include_cpw=True)
+    assert "CPW" in config.album_series
+
+
+def test_run_config_hymnal_mode_without_album_series():
+    """hymnal_mode should add HYMN to album_series even when album_series is empty."""
+    config = RunConfig(count=3, proposals=3, pool=200, hymnal_mode=True)
+    assert "HYMN" in config.album_series
+
+
+def test_run_config_include_cpw_with_album_series():
+    """include_cpw should add CPW alongside existing album_series."""
+    config = RunConfig(count=3, proposals=3, pool=200, album_series=["SOP"], include_cpw=True)
+    assert "CPW" in config.album_series
+    assert "SOP" in config.album_series
+
+
+def test_run_config_include_cpw_no_duplicate():
+    """include_cpw should not add CPW if already present."""
+    config = RunConfig(count=3, proposals=3, pool=200, album_series=["CPW"], include_cpw=True)
+    assert config.album_series.count("CPW") == 1
