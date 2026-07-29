@@ -27,7 +27,7 @@ def postgres_url():
     from testcontainers.postgres import PostgresContainer
 
     try:
-        container = PostgresContainer("postgres:16-alpine")
+        container = PostgresContainer("pgvector/pgvector:pg16")
         container.start()
     except Exception:
         pytest.skip("Docker not available; skipping integration test")
