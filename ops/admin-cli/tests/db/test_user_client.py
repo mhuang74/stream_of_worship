@@ -28,10 +28,12 @@ def user_client(postgres_url):
                 DROP TABLE IF EXISTS songset_share, lyric_mark,
                     user_lrc_override, user_settings,
                     songset_items, songsets,
+                    theme_anchors, song_line_embedding, song_embedding,
                     recordings, songs,
                     "session", "account", "verification", "user" CASCADE;
                 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
                 DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
+                DROP EXTENSION IF EXISTS vector CASCADE;
                 """
             )
         cleanup_provider.close()

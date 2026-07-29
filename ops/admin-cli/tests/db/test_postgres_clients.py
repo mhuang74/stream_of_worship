@@ -51,6 +51,9 @@ def db_clients(make_test_provider, seed_user):
                 DROP TABLE IF EXISTS user_settings CASCADE;
                 DROP TABLE IF EXISTS songset_items CASCADE;
                 DROP TABLE IF EXISTS songsets CASCADE;
+                DROP TABLE IF EXISTS theme_anchors CASCADE;
+                DROP TABLE IF EXISTS song_line_embedding CASCADE;
+                DROP TABLE IF EXISTS song_embedding CASCADE;
                 DROP TABLE IF EXISTS recordings CASCADE;
                 DROP TABLE IF EXISTS songs CASCADE;
                 DROP TABLE IF EXISTS "session" CASCADE;
@@ -59,6 +62,7 @@ def db_clients(make_test_provider, seed_user):
                 DROP TABLE IF EXISTS "user" CASCADE;
                 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
                 DROP FUNCTION IF EXISTS update_updatedat_column CASCADE;
+                DROP EXTENSION IF EXISTS vector CASCADE;
             """)
         cleanup_provider.close()
     except Exception:
