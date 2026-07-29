@@ -125,6 +125,9 @@ CREATE_INDEXES = [
     """,
 ]
 
+# Enable pgvector extension (must precede any vector(...) column DDL)
+CREATE_EXTENSION_VECTOR = "CREATE EXTENSION IF NOT EXISTS vector;"
+
 # Song embedding table (pgvector for semantic search)
 CREATE_SONG_EMBEDDING_TABLE = """
 CREATE TABLE IF NOT EXISTS song_embedding (
@@ -211,6 +214,7 @@ ON theme_anchors USING hnsw (embedding vector_cosine_ops);
 
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
+    CREATE_EXTENSION_VECTOR,
     CREATE_SONGS_TABLE,
     CREATE_RECORDINGS_TABLE,
     *CREATE_INDEXES,

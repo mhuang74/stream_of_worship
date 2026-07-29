@@ -12,6 +12,11 @@ import typer
 from rich.console import Console
 
 from stream_of_worship.admin.config import AdminConfig
+from stream_of_worship.admin.db.schema import (
+    CREATE_EXTENSION_VECTOR,
+    CREATE_THEME_ANCHORS_INDEX,
+    CREATE_THEME_ANCHORS_TABLE,
+)
 from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
@@ -57,6 +62,11 @@ def sync_theme_anchors(
     connection_provider = _get_connection_provider(config)
     conn = connection_provider.get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(CREATE_EXTENSION_VECTOR)
+    cursor.execute(CREATE_THEME_ANCHORS_TABLE)
+    cursor.execute(CREATE_THEME_ANCHORS_INDEX)
+    conn.commit()
 
     if not force:
         cursor.execute(
