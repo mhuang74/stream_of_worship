@@ -43,7 +43,10 @@ def run(config: RunConfig, read_client: ReadOnlyClient) -> dict:
         "final_proposals": [],
     }
 
-    result = graph.invoke(initial_state)
+    result = graph.invoke(
+        initial_state,
+        config={"configurable": {"thread_id": config.thread_id}},
+    )
 
     return {
         "final_proposals": result.get("final_proposals", []),
