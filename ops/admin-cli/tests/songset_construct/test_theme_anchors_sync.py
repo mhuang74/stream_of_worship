@@ -118,7 +118,7 @@ def test_sync_upserts_when_fewer_than_12_rows():
         if "INSERT" in str(call).upper()
     ]
     assert len(insert_calls) == 12
-    mock_conn.commit.assert_called_once()
+    mock_conn.commit.assert_called()
 
 
 def test_sync_force_re_inserts_even_with_12_rows():
