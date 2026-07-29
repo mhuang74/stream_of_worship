@@ -143,11 +143,9 @@ def test_bandwidth_theme_scores_12_keys():
     import json
 
     from stream_of_worship.admin.songset_constructor.db import _candidate_from_row
+    from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
-    scores = json.dumps({theme: 0.5 for theme in [
-        "讚美", "感恩", "敬拜", "懺悔", "信靠", "救贖",
-        "聖靈", "委身", "爭戰", "宣教", "永恆", "降臨",
-    ]})
+    scores = json.dumps({theme: 0.5 for theme in THEMES})
     row = (
         "s1", "Title", None, None, None,
         None, None, "C", "lyrics",
@@ -156,6 +154,7 @@ def test_bandwidth_theme_scores_12_keys():
     )
     candidate = _candidate_from_row(row)
     assert len(candidate.song_theme_scores_raw) == 12
+    assert set(candidate.song_theme_scores_raw.keys()) == set(THEMES)
 
 
 def test_normalise_cosine_scores_empty():
@@ -174,3 +173,33 @@ def test_normalise_cosine_scores_identity():
     assert abs(result["讚美"] - 1.0) < 1e-6
     assert abs(result["感恩"] - 0.333333) < 1e-3
     assert result["敬拜"] == 0.0
+
+
+def test_pgvector_python_cosine_tolerance():
+    """Verify normalise_cosine_scores produces equivalent results
+    whether raw scores come from pgvector or Python cosine."""
+    from stream_of_worship.admin.songset_constructor.rules.themes import (
+        THEMES,
+        normalise_cosine_scores,
+    )
+
+    pgvector_scores = {
+        "讚美": 0.850001, "感恩": 0.750000, "敬拜": 0.650000,
+        "奉獻": 0.550000, "認罪": 0.450000, "差遣": 0.350000,
+        "信心": 0.250000, "祈禱": 0.150000, "復興": 0.050000,
+        "聖靈": 0.000001, "十字架": 0.000000, "跟隨": 0.000000,
+    }
+    python_scores = {
+        "讚美": 0.850000, "感恩": 0.750000, "敬拜": 0.650000,
+        "奉獻": 0.550000, "認罪": 0.450000, "差遣": 0.350000,
+        "信心": 0.250000, "祈禱": 0.150000, "復興": 0.050000,
+        "聖靈": 0.000000, "十字架": 0.000000, "跟隨": 0.000000,
+    }
+
+    result_pv = normalise_cosine_scores(pgvector_scores)
+    result_py = normalise_cosine_scores(python_scores)
+
+    for theme in THEMES:
+        assert abs(result_pv[theme] - result_py[theme]) < 1e-5, (
+            f"Theme {theme}: pgvector={result_pv[theme]}, python={result_py[theme]}"
+        )

@@ -11,7 +11,6 @@ from stream_of_worship.admin.songset_constructor.artifacts.enrichment_report imp
     build_enrichment_report,
 )
 from stream_of_worship.admin.songset_constructor.artifacts.trace import event
-from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool
 from stream_of_worship.admin.songset_constructor.graph.llm import build_chat_model, structured
 from stream_of_worship.admin.songset_constructor.graph.state import ConstructorState
 from stream_of_worship.admin.songset_constructor.models import (
@@ -49,12 +48,6 @@ from stream_of_worship.admin.songset_constructor.rules.transitions import recomm
 
 def _trace(state: ConstructorState, node: str, name: str, data: dict | None = None) -> list[dict]:
     return [event(node, name, data, int(state.get("iterations", 0) or 0))]
-
-
-def load_catalog(state: ConstructorState) -> dict:
-    config = state["config"]
-    pool = fetch_catalog_pool(config, client=state.get("_read_client"))
-    return {"pool": pool, "trace": _trace(state, "load_catalog", "exit", {"pool_size": len(pool)})}
 
 
 def enrich_pool(state: ConstructorState) -> dict:

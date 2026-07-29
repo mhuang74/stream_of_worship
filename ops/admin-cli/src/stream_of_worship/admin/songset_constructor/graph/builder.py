@@ -14,7 +14,6 @@ from stream_of_worship.admin.songset_constructor.graph.nodes import (
     llm_judge,
     llm_plan,
     llm_refine,
-    load_catalog,
     optional_review,
     route_after_beam,
     route_after_enrich,
@@ -30,7 +29,6 @@ from stream_of_worship.admin.songset_constructor.graph.state import ConstructorS
 
 def build_graph(config: RunConfig):
     builder = StateGraph(ConstructorState)
-    builder.add_node("load_catalog", load_catalog)
     builder.add_node("enrich_pool", enrich_pool)
     builder.add_node("build_transition_matrix", build_transition_matrix)
     builder.add_node("beam_seed_candidates", beam_seed_candidates)
@@ -42,8 +40,7 @@ def build_graph(config: RunConfig):
     builder.add_node("optional_review", optional_review)
     builder.add_node("write_enrichment_report", write_enrichment_report)
 
-    builder.add_edge(START, "load_catalog")
-    builder.add_edge("load_catalog", "enrich_pool")
+    builder.add_edge(START, "enrich_pool")
     builder.add_conditional_edges(
         "enrich_pool",
         route_after_enrich,

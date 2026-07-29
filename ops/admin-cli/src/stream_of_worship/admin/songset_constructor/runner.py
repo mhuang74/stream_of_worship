@@ -7,6 +7,7 @@ import time
 from rich.console import Console
 
 from stream_of_worship.admin.songset_constructor import cache
+from stream_of_worship.admin.songset_constructor.artifacts.trace import event
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool
 from stream_of_worship.admin.songset_constructor.graph.builder import build_graph
@@ -35,8 +36,7 @@ def run(config: RunConfig, read_client: ReadOnlyClient) -> dict:
     initial_state: ConstructorState = {
         "config": config,
         "pool": pool,
-        "_read_client": read_client,
-        "trace": [],
+        "trace": [event("load_catalog", "exit", {"pool_size": len(pool)})],
         "iterations": 0,
         "beam_candidates": [],
         "llm_drafts": [],

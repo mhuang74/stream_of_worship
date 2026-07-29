@@ -68,11 +68,9 @@ class RunConfig:
             self.cache_dir = Path(self.cache_dir)
         self.album_series = list(dict.fromkeys(self.album_series or DEFAULT_ALBUM_SERIES))
         if self.include_cpw and "CPW" not in self.album_series:
-            if self.album_series:
-                self.album_series.append("CPW")
+            self.album_series.append("CPW")
         if self.hymnal_mode and "HYMN" not in self.album_series:
-            if self.album_series:
-                self.album_series.append("HYMN")
+            self.album_series.append("HYMN")
         self.llm_model = self.llm_model or os.environ.get("SOW_LLM_MODEL")
         if not self.thread_id:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")

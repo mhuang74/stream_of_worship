@@ -309,17 +309,17 @@ def construct_songset(
     ),
     include_cpw: bool = typer.Option(
         False,
-        "--include-cpw",
+        "--include-cpw/--no-include-cpw",
         help="Include CPW album series",
     ),
     intimate: bool = typer.Option(
         False,
-        "--intimate",
+        "--intimate/--no-intimate",
         help="Intimate mode (lower closing BPM)",
     ),
     hymnal_mode: bool = typer.Option(
         False,
-        "--hymnal-mode",
+        "--hymnal-mode/--no-hymnal-mode",
         help="Hymnal mode",
     ),
     season: str | None = typer.Option(
@@ -526,6 +526,7 @@ def construct_songset(
         created = persist_proposals(run_config, proposals, songset_client)
         if created:
             console.print(f"\n[green]Created {len(created)} songset(s).[/green]")
-        else:
-            console.print("[red]Failed to create any songsets.[/red]")
+        if len(created) < len(proposals):
+            failed = len(proposals) - len(created)
+            console.print(f"[red]{failed} proposal(s) failed to save.[/red]")
             raise typer.Exit(1)
