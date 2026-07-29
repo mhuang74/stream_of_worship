@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 
 
@@ -113,35 +115,23 @@ def test_run_config_defaults():
 
 def test_run_config_count_validation():
     for invalid in (1, 6):
-        try:
+        with pytest.raises(ValueError):
             RunConfig(count=invalid, proposals=3, pool=200)
-            assert False, f"Expected ValueError for count={invalid}"
-        except ValueError:
-            pass
 
 
 def test_run_config_proposals_validation():
-    try:
+    with pytest.raises(ValueError):
         RunConfig(count=3, proposals=0, pool=200)
-        assert False, "Expected ValueError for proposals=0"
-    except ValueError:
-        pass
 
 
 def test_run_config_pool_validation():
-    try:
+    with pytest.raises(ValueError):
         RunConfig(count=5, proposals=3, pool=3)
-        assert False, "Expected ValueError for pool < count"
-    except ValueError:
-        pass
 
 
 def test_run_config_season_validation():
-    try:
+    with pytest.raises(ValueError):
         RunConfig(count=3, proposals=3, pool=200, season="invalid")
-        assert False, "Expected ValueError for invalid season"
-    except ValueError:
-        pass
     config = RunConfig(count=3, proposals=3, pool=200, season="advent")
     assert config.season == "advent"
 
@@ -151,11 +141,8 @@ def test_run_config_llm_judge_without_llm():
         count=3, proposals=3, pool=200,
         llm_enabled=False, llm_judge=True,
     )
-    try:
+    with pytest.raises(RuntimeError):
         config.validate_environment()
-        assert False, "Expected RuntimeError for llm_judge without llm"
-    except RuntimeError:
-        pass
 
 
 def test_run_config_llm_enabled_ok():
@@ -215,3 +202,79 @@ def test_run_config_include_cpw_no_duplicate():
     """include_cpw should not add CPW if already present."""
     config = RunConfig(count=3, proposals=3, pool=200, album_series=["CPW"], include_cpw=True)
     assert config.album_series.count("CPW") == 1
+
+
+# ---------------------------------------------------------------------------
+# CliRunner mapping tests for `sow-admin songset construct`
+# ---------------------------------------------------------------------------
+
+def test_construct_missing_user_exits_2():
+    """--user is required; omitting it should exit with code 2 (Typer)."""
+    from typer.testing import CliRunner
+
+    from stream_of_worship.admin.commands.songset import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["construct", "--dry-run"])
+    assert result.exit_code == 2
+
+
+def test_construct_runconfig_mapping_from_typer_options():
+    """Verify RunConfig maps correctly from Typer options with mocked internals."""
+    from typer.testing import CliRunner
+
+    from stream_of_worship.admin.commands.songset import app
+
+    runner = CliRunner()
+
+    mock_run_config = MagicMock()
+
+    with (
+        patch("stream_of_worship.admin.commands.songset._import_constructor"),
+        patch("stream_of_worship.admin.commands.songset.AdminConfig") as mock_admin_cfg,
+        patch("stream_of_worship.admin.commands.songset.ConnectionProvider"),
+        patch("stream_of_worship.admin.commands.songset.UserClient") as mock_user_cls,
+        patch("stream_of_worship.admin.commands.songset.SongsetClient"),
+        patch(
+            "stream_of_worship.admin.songset_constructor.config.RunConfig"
+        ) as mock_rc_cls,
+        patch(
+            "stream_of_worship.admin.songset_constructor.db.check_theme_anchors",
+            return_value=12,
+        ),
+        patch(
+            "stream_of_worship.admin.songset_constructor.runner.run",
+            return_value={"final_proposals": [], "pool": [], "trace": [], "enrichment_metrics": {}},
+        ),
+        patch(
+            "stream_of_worship.admin.songset_constructor.persist.persist_proposals",
+            return_value=[],
+        ),
+    ):
+        mock_admin_cfg.load.return_value = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = 1
+        mock_user_cls.return_value.get_user_by_email.return_value = mock_user
+        mock_rc_cls.return_value = mock_run_config
+        mock_run_config.validate_environment = MagicMock()
+
+        result = runner.invoke(app, [
+            "construct",
+            "--user", "test@example.com",
+            "--count", "4",
+            "--proposals", "5",
+            "--pool", "100",
+            "--no-llm",
+            "--no-cache",
+            "--dry-run",
+        ])
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    mock_rc_cls.assert_called_once()
+    call_kwargs = mock_rc_cls.call_args
+    assert call_kwargs.kwargs["count"] == 4
+    assert call_kwargs.kwargs["proposals"] == 5
+    assert call_kwargs.kwargs["pool"] == 100
+    assert call_kwargs.kwargs["llm_enabled"] is False
+    assert call_kwargs.kwargs["use_cache"] is False
+    assert call_kwargs.kwargs["output_dir"] is None

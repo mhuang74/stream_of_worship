@@ -12,7 +12,6 @@ from rich.console import Console
 from rich.table import Table
 
 from stream_of_worship.admin.config import AdminConfig
-from stream_of_worship.admin.songset_constructor.config import DEFAULT_REPORT_DIR
 from stream_of_worship.db.app.songset_client import SongsetClient
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.user_client import UserClient
@@ -240,19 +239,35 @@ def _parse_relax(value: str) -> dict:
         if key == "h1":
             result["relax_h1"] = True
         elif key == "h2":
-            result["relax_h2_bpm"] = int(val) if val else None
+            try:
+                result["relax_h2_bpm"] = int(val) if val else None
+            except ValueError:
+                console.print(f"[red]Invalid relax value for h2: '{val}' (expected integer)[/red]")
+                raise typer.Exit(1)
         elif key == "h3":
-            result["relax_h3_bpm"] = int(val) if val else None
+            try:
+                result["relax_h3_bpm"] = int(val) if val else None
+            except ValueError:
+                console.print(f"[red]Invalid relax value for h3: '{val}' (expected integer)[/red]")
+                raise typer.Exit(1)
         elif key == "h4":
             if val:
                 result["relax_h4"] = True
-                result["relax_h4_bpm"] = int(val)
+                try:
+                    result["relax_h4_bpm"] = int(val)
+                except ValueError:
+                    console.print(f"[red]Invalid relax value for h4: '{val}' (expected integer)[/red]")
+                    raise typer.Exit(1)
             else:
                 result["relax_h4"] = True
         elif key == "h5":
             if val:
                 result["relax_h5"] = True
-                result["relax_h5_cfd"] = int(val)
+                try:
+                    result["relax_h5_cfd"] = int(val)
+                except ValueError:
+                    console.print(f"[red]Invalid relax value for h5: '{val}' (expected integer)[/red]")
+                    raise typer.Exit(1)
             else:
                 result["relax_h5"] = True
         else:
@@ -416,6 +431,15 @@ def construct_songset(
     if relax:
         relax_overrides.update(_parse_relax(relax))
 
+    # Filter unknown keys from constraints-file against RunConfig fields
+    if relax_overrides:
+        from stream_of_worship.admin.songset_constructor.config import RunConfig as _RC
+        valid_keys = set(_RC.__dataclass_fields__.keys())
+        unknown = {k: v for k, v in relax_overrides.items() if k not in valid_keys}
+        for k in unknown:
+            console.print(f"[yellow]Unknown constraints key '{k}' — ignored.[/yellow]")
+            relax_overrides.pop(k)
+
     try:
         config = AdminConfig.load(config_path)
     except FileNotFoundError:
@@ -437,7 +461,16 @@ def construct_songset(
     read_client = ReadOnlyClient(connection_provider)
 
     # Step 3 — Validate theme_anchors table
-    anchor_count = check_theme_anchors(read_client)
+    from stream_of_worship.admin.songset_constructor.db import ThemeAnchorsTableMissing
+
+    try:
+        anchor_count = check_theme_anchors(read_client)
+    except ThemeAnchorsTableMissing:
+        console.print(
+            "[red]theme_anchors table does not exist. "
+            "Run: sow-admin db init && sow-admin theme-anchors sync[/red]"
+        )
+        raise typer.Exit(1)
     if anchor_count != 12:
         console.print(
             f"[red]theme_anchors table has {anchor_count} rows (expected 12). "
@@ -446,28 +479,32 @@ def construct_songset(
         raise typer.Exit(1)
 
     # Step 4 — Build RunConfig
-    run_config = RunConfig(
-        count=count,
-        proposals=proposals,
-        pool=pool,
-        album_series=album_series or [],
-        include_cpw=include_cpw,
-        intimate=intimate,
-        hymnal_mode=hymnal_mode,
-        season=season,
-        llm_enabled=llm,
-        llm_judge=llm_judge,
-        llm_model=llm_model,
-        use_cache=not no_cache and cache_ttl > 0,
-        cache_dir=cache_dir or Path.home() / ".cache" / "sow" / "songset_constructor",
-        cache_ttl=cache_ttl,
-        output_dir=report_dir,
-        interactive_review=False,
-        only_evaluate_pool_enrichment=False,
-        **relax_overrides,
-    )
+    try:
+        run_config = RunConfig(
+            count=count,
+            proposals=proposals,
+            pool=pool,
+            album_series=album_series or [],
+            include_cpw=include_cpw,
+            intimate=intimate,
+            hymnal_mode=hymnal_mode,
+            season=season,
+            llm_enabled=llm,
+            llm_judge=llm_judge,
+            llm_model=llm_model,
+            use_cache=not no_cache and cache_ttl > 0,
+            cache_dir=cache_dir or Path.home() / ".cache" / "sow" / "songset_constructor",
+            cache_ttl=cache_ttl,
+            output_dir=report_dir if report else None,
+            interactive_review=False,
+            only_evaluate_pool_enrichment=False,
+            **relax_overrides,
+        )
 
-    run_config.validate_environment()
+        run_config.validate_environment()
+    except (ValueError, RuntimeError, TypeError) as e:
+        console.print(f"[red]Configuration error: {e}[/red]")
+        raise typer.Exit(1)
 
     # Step 5 — Run graph
     result = run(run_config, read_client)
@@ -500,6 +537,8 @@ def construct_songset(
 
     # Step 7 — Report
     if report:
+        from stream_of_worship.admin.songset_constructor.config import DEFAULT_REPORT_DIR
+
         report_path = write_report(
             run_config,
             result,

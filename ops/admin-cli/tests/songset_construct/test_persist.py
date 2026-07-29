@@ -148,4 +148,21 @@ def test_proposal_items_passed_correctly():
     assert items[0]["recording_hash_prefix"] == "hash001"
     assert items[0]["position"] == 0
     assert items[1]["song_id"] == "s2"
+    assert items[1]["position"] == 1
     assert items[2]["song_id"] == "s3"
+    assert items[2]["position"] == 2
+
+
+def test_persisted_positions_are_zero_based():
+    """Positions must be 0-based at the persistence boundary (DB convention)."""
+    config = _make_config()
+    proposal = _make_proposal(rank=1)
+    mock_client = MagicMock()
+    mock_client.create_songset_with_items.return_value = _make_songset("ss1")
+
+    persist_proposals(config, [proposal], mock_client)
+
+    call_kwargs = mock_client.create_songset_with_items.call_args
+    items = call_kwargs.kwargs["items"]
+    positions = [item["position"] for item in items]
+    assert positions == [0, 1, 2]

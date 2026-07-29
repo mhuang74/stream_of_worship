@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from typing import Any
 
 THEMES = ("讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣", "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨")
 
@@ -66,8 +67,15 @@ def normalise_cosine_scores(scores: dict[str, float]) -> dict[str, float]:
 def classify_embedding_themes(
     song_vec: list[float] | None,
     line_vecs: list[list[float]] | None,
-    theme_anchors: dict[str, any],
+    theme_anchors: dict[str, Any],
 ) -> tuple[dict[str, float], dict[str, float]]:
+    """Classify themes using cosine similarity against anchor vectors.
+
+    .. deprecated::
+        Theme scoring is now computed in-DB via pgvector's ``<=>`` operator
+        in ``db.py`` (POOL_QUERY + LINE_THEME_QUERY). This function is kept
+        for reference and testing only; production code does not call it.
+    """
     import numpy as np
 
     def cosine(a, b):

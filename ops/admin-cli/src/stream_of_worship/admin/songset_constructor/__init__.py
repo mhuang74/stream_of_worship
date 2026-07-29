@@ -1,9 +1,6 @@
 """Songset constructor subpackage for sow-admin.
 
 Lazily loaded when ``sow-admin songset construct`` is invoked.
+Submodules (config, cache, db, etc.) are imported on demand to avoid
+requiring the ``constructor`` extra (pydantic, langgraph) at CLI startup.
 """
-
-from stream_of_worship.admin.songset_constructor.config import RunConfig
-from stream_of_worship.admin.songset_constructor.models import SongCandidate
-
-__all__ = ["RunConfig", "SongCandidate"]

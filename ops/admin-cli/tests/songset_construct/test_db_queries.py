@@ -45,7 +45,8 @@ def test_candidate_from_row_basic():
 
 
 def test_candidate_from_row_with_scores():
-    scores = json.dumps({"讚美": 0.95, "感恩": 0.80, "敬拜": 0.75})
+    """psycopg3 delivers json columns as parsed dicts — test the faithful path."""
+    scores = {"讚美": 0.95, "感恩": 0.80, "敬拜": 0.75}
     row = (
         "s2", "Test 2", None, None, None,
         None, None, "D", "lyrics",
@@ -57,6 +58,35 @@ def test_candidate_from_row_with_scores():
     assert candidate.song_id == "s2"
     assert candidate.song_theme_scores_raw == {"讚美": 0.95, "感恩": 0.80, "敬拜": 0.75}
     assert candidate.musical_key == "E"
+
+
+def test_candidate_from_row_with_scores_as_str():
+    """Raw JSON string form (psycopg2 / test harnesses) is also handled."""
+    scores = json.dumps({"讚美": 0.95, "感恩": 0.80})
+    row = (
+        "s2b", "Test 2b", None, None, None,
+        None, None, "D", "lyrics",
+        "hash2b", 100.0, "E", "min",
+        0.8, -10.0,
+        scores,
+    )
+    candidate = _candidate_from_row(row)
+    assert candidate.song_theme_scores_raw == {"讚美": 0.95, "感恩": 0.80}
+
+
+def test_candidate_from_row_with_null_values():
+    """json_object_agg may emit JSON null values; these must be filtered out."""
+    scores = {"讚美": 0.95, "感恩": None, "敬拜": 0.75}
+    row = (
+        "s2c", "Test 2c", None, None, None,
+        None, None, "D", "lyrics",
+        "hash2c", 100.0, "E", "min",
+        0.8, -10.0,
+        scores,
+    )
+    candidate = _candidate_from_row(row)
+    assert candidate.song_theme_scores_raw == {"讚美": 0.95, "敬拜": 0.75}
+    assert "感恩" not in candidate.song_theme_scores_raw
 
 
 def test_candidate_from_row_key_fallback():
@@ -81,6 +111,7 @@ def test_pool_query_sql_shapes():
     assert "theme_anchors" in POOL_QUERY
     assert "embedding <=>" in POOL_QUERY
     assert "embedding::text" not in POOL_QUERY
+    assert "WHERE se.embedding IS NOT NULL" in POOL_QUERY
 
 
 def test_line_theme_query_sql_shapes():
@@ -140,12 +171,10 @@ def test_bandwidth_validation():
 
 def test_bandwidth_theme_scores_12_keys():
     """Verify song_theme_scores_raw has exactly 12 keys when populated."""
-    import json
-
     from stream_of_worship.admin.songset_constructor.db import _candidate_from_row
     from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
-    scores = json.dumps({theme: 0.5 for theme in THEMES})
+    scores = {theme: 0.5 for theme in THEMES}
     row = (
         "s1", "Title", None, None, None,
         None, None, "C", "lyrics",

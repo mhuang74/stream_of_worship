@@ -330,6 +330,29 @@ export const songLineEmbeddings = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// theme_anchors table (managed by admin CLI's `sow-admin theme-anchors sync`)
+// Declared here so drizzle-kit push does not propose dropping it.
+// The HNSW index is created by the SQL migration (0018_theme_anchors.sql).
+// ---------------------------------------------------------------------------
+
+export const themeAnchors = pgTable(
+  "theme_anchors",
+  {
+    theme: text("theme").primaryKey(),
+    embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+    modelVersion: text("model_version")
+      .notNull()
+      .default("text-embedding-3-small"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    index("idx_theme_anchors_embedding_cosine").on(
+      sql`${t.embedding} vector_cosine_ops`
+    ),
+  ]
+);
+
+// ---------------------------------------------------------------------------
 // Per-user data tables (matching existing Python schema table names)
 // ---------------------------------------------------------------------------
 

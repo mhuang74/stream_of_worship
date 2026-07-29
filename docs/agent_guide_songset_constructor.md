@@ -1,21 +1,29 @@
 # Agent Guide: Songset Constructor — Generating and Evaluating Diverse Songsets
 
-This guide explains how to use the songset constructor POC to generate diverse Chinese worship songsets and evaluate the quality of the results.
+This guide explains how to use the songset constructor to generate diverse Chinese worship songsets and evaluate the quality of the results.
 
 ## Quick Start
 
+The production path is the `sow-admin songset construct` command in the admin CLI:
+
 ```bash
+# Prerequisite: populate theme_anchors table (one-time)
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin theme-anchors sync
+
 # Deterministic mode (no LLM required)
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --no-llm
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache
 
 # Agentic mode (LLM planning + optional judge)
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --llm-judge
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --llm --llm-judge --yes
 ```
+
+> **Deprecated:** The POC script `lab/poc-scripts/construct_songset_agent.py` is
+> retained for reference but is no longer the primary path. Use
+> `sow-admin songset construct` for all production work. The admin CLI
+> subpackage at `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/`
+> is the source of truth.
 
 ## Prerequisites
 
@@ -543,73 +551,64 @@ To compare diversity across different configurations, run multiple times and com
 
 ## Recipes
 
+> The recipes below use the production `sow-admin songset construct` command.
+> The POC script equivalents (`lab/poc-scripts/construct_songset_agent.py`)
+> are deprecated but still functional.
+
 ### Generate 20 diverse 4-song sets from the full catalog
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --no-llm
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache
 ```
 
 ### Generate 10 LLM-judged 5-song sets
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 5 --pool-limit 500 --top-k 10 --llm-judge
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 5 --pool 500 --proposals 10 --llm --llm-judge --yes
 ```
 
 ### Generate intimate worship sets (slow closers)
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --no-llm --intimate
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --intimate --no-cache
 ```
 
 ### Generate Christmas-season sets
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --no-llm --season christmas
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --season christmas --no-cache
 ```
 
 ### Generate sets from a specific album series
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --no-llm \
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache \
   --album-series "敬拜讚美 (1)" --album-series "敬拜讚美 (2)"
 ```
 
 ### Debug: strict-only mode (no auto-relax)
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 20 --no-llm --no-auto-relax
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache \
+  --relax h1
 ```
 
-If this produces 0 proposals, the catalog lacks songs that satisfy all strict H1–H5 constraints simultaneously. Re-enable `--auto-relax` or manually relax specific constraints (e.g., `--relax-h4 --relax-h5`).
+If this produces 0 proposals, the catalog lacks songs that satisfy all strict H1–H5 constraints simultaneously. Re-enable auto-relax (default) or manually relax specific constraints (e.g., `--relax h4,h5`).
 
 ### Evaluate pool enrichment distribution
 
 ```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --pool-limit 500 --only-evaluate-pool-enrichment
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --pool 500 --dry-run --no-cache --report
 ```
 
-Runs only `load_catalog` → `enrich_pool` → `write_enrichment_report`. No LLM required. Prints a phase/theme/signal-coverage summary to console and writes `enrichment_report.md` to the output directory. Use this to diagnose theme classification gaps and phase imbalance before running full construction.
+Runs `load_catalog` → `enrich_pool` → graph. No LLM required. Use `--report` to write a diagnose report. Use this to diagnose theme classification gaps and phase imbalance before running full construction.
 
 ### Interactive review (human-in-the-loop)
 
@@ -652,24 +651,31 @@ Low harmony scores (< 0.50) indicate key incompatibility between adjacent songs.
 
 ## Key Source Files
 
+The production source of truth is the admin CLI subpackage at
+`ops/admin-cli/src/stream_of_worship/admin/songset_constructor/`.
+
 | File | Purpose |
 |------|---------|
-| `lab/poc-scripts/construct_songset_agent.py` | CLI entrypoint |
-| `poc/songset_constructor/cli.py` | Typer CLI with all options |
-| `poc/songset_constructor/config.py` | RunConfig dataclass, tempo/CFD limits |
-| `poc/songset_constructor/graph/builder.py` | LangGraph state machine definition |
-| `poc/songset_constructor/graph/nodes.py` | Graph node implementations |
-| `poc/songset_constructor/rules/beam.py` | Diverse beam search with round-robin selection |
-| `poc/songset_constructor/rules/fitness.py` | Scoring functions + diversity penalty |
-| `poc/songset_constructor/rules/proposals.py` | Proposal ranking with greedy diverse selection |
-| `poc/songset_constructor/rules/hard_constraints.py` | H0–H8 validation |
-| `poc/songset_constructor/rules/transitions.py` | Pairwise transition recommendation |
-| `poc/songset_constructor/rules/phases.py` | Theme fusion, seasonal bias, phase inference |
-| `poc/songset_constructor/rules/themes.py` | Title/lyrics/embedding theme classification |
-| `poc/songset_constructor/rules/embeddings.py` | Cosine similarity + anchor loading |
-| `poc/songset_constructor/db.py` | Read-only catalog pool query |
-| `poc/songset_constructor/artifacts/writer.py` | Output file generation |
-| `poc/songset_constructor/data/theme_anchors.json` | 1536-dim theme anchor vectors (text-embedding-3-small) |
+| `commands/songset.py` | CLI command (`sow-admin songset construct`) |
+| `songset_constructor/config.py` | RunConfig dataclass, tempo/CFD limits |
+| `songset_constructor/graph/builder.py` | LangGraph state machine definition |
+| `songset_constructor/graph/nodes.py` | Graph node implementations |
+| `songset_constructor/rules/beam.py` | Diverse beam search with round-robin selection |
+| `songset_constructor/rules/fitness.py` | Scoring functions + diversity penalty |
+| `songset_constructor/rules/proposals.py` | Proposal ranking with greedy diverse selection |
+| `songset_constructor/rules/hard_constraints.py` | H0–H8 validation |
+| `songset_constructor/rules/transitions.py` | Pairwise transition recommendation |
+| `songset_constructor/rules/phases.py` | Theme fusion, seasonal bias, phase inference |
+| `songset_constructor/rules/themes.py` | Title/lyrics/embedding theme classification |
+| `songset_constructor/rules/embeddings.py` | Cosine similarity + anchor loading |
+| `songset_constructor/db.py` | Read-only catalog pool query (in-DB pgvector scoring) |
+| `songset_constructor/persist.py` | Atomic songset persistence |
+| `songset_constructor/cache.py` | Pool cache (atomic write, corruption-tolerant) |
+| `songset_constructor/data/theme_anchors.json` | 1536-dim theme anchor vectors (text-embedding-3-small) |
+
+> **Deprecated:** The POC files under `lab/poc-scripts/poc/songset_constructor/`
+> and `lab/poc-scripts/construct_songset_agent.py` are retained for reference
+> but are no longer the primary path.
 
 ## Read-Only Guarantee
 

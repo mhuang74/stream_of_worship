@@ -7,7 +7,7 @@ from rich.progress import BarColumn, Progress, TextColumn
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import SongsetProposal
-from stream_of_worship.db.app.songset_client import SongsetClient
+from stream_of_worship.db.app.songset_client import MissingReferenceError, SongsetClient
 
 
 def persist_proposals(
@@ -28,11 +28,11 @@ def persist_proposals(
             name = f"Constructed rank {proposal.rank}/{total} ({len(proposal.items)}-song)"
             description = (proposal.rationale or "")[:200] or f"Songset constructed via beam search (rank {proposal.rank})"
             items = []
-            for item in proposal.items:
+            for idx, item in enumerate(proposal.items):
                 items.append({
                     "song_id": item.song_id,
                     "recording_hash_prefix": item.recording_hash_prefix,
-                    "position": item.position,
+                    "position": idx,
                     "gap_beats": item.gap_beats,
                     "crossfade_enabled": item.crossfade_enabled,
                     "crossfade_duration_seconds": item.crossfade_duration_seconds,
@@ -47,7 +47,7 @@ def persist_proposals(
                 )
                 created_ids.append(songset.id)
                 Console().print(f"[green]Created songset {songset.id} (rank {proposal.rank})[/green]")
-            except Exception as e:
+            except MissingReferenceError as e:
                 Console().print(f"[red]Failed to save rank {proposal.rank}: {e}[/red]")
             progress.advance(task)
     return created_ids
