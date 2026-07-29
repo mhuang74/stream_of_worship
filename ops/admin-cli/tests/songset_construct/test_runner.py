@@ -9,6 +9,13 @@ import pytest
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 
 
+def _verify_thread_id_in_kwargs(mock_graph, config) -> None:
+    """Assert invoke was called with config containing thread_id matching RunConfig."""
+    args, kwargs = mock_graph.invoke.call_args
+    assert "config" in kwargs
+    assert kwargs["config"]["configurable"]["thread_id"] == config.thread_id
+
+
 def _make_config(**overrides) -> RunConfig:
     kwargs = dict(count=3, proposals=3, pool=200)
     kwargs.update(overrides)
@@ -47,6 +54,7 @@ def test_run_extracts_final_state():
     assert result["trace"] == [{"node": "test", "event": "exit"}]
     assert result["enrichment_metrics"] == {"pool_size": 5}
     mock_graph.invoke.assert_called_once()
+    _verify_thread_id_in_kwargs(mock_graph, config)
 
 
 def test_run_cache_hit():
