@@ -23,6 +23,7 @@ SELECT {CONSTRUCTOR_SONG_COLUMNS},
        (
            SELECT json_object_agg(ta.theme, 1 - (se.embedding <=> ta.embedding))
            FROM theme_anchors ta
+           WHERE se.embedding IS NOT NULL
        ) AS song_theme_scores_raw
 FROM songs s
 JOIN recordings r ON s.id = r.song_id
@@ -54,9 +55,26 @@ GROUP BY song_id
 THEME_ANCHORS_COUNT_QUERY = "SELECT COUNT(*) FROM theme_anchors"
 
 
+def _parse_json_scores(raw) -> dict[str, float]:
+    """Parse a ``json``/``jsonb`` column value into ``dict[str, float]``.
+
+    psycopg 3 auto-parses ``json``/``jsonb`` columns into Python ``dict``
+    via ``json.loads``; psycopg 2 and some test harnesses may deliver raw
+    strings.  This helper handles both forms defensively, filters out
+    ``None`` values (which ``json_object_agg`` emits as JSON ``null`` for
+    NULL aggregates), and coerces values to ``float``.
+    """
+    if raw is None:
+        return {}
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): float(v) for k, v in raw.items() if v is not None}
+
+
 def _candidate_from_row(row: tuple) -> SongCandidate:
-    raw_scores = row[15]
-    song_theme_scores_raw = json.loads(raw_scores) if raw_scores else {}
+    song_theme_scores_raw = _parse_json_scores(row[15])
     return SongCandidate(
         song_id=row[0],
         title=row[1],
@@ -96,12 +114,21 @@ def fetch_line_theme_scores(song_ids: list[str], *, client: ReadOnlyClient) -> d
     cursor.execute(LINE_THEME_QUERY, (song_ids,))
     result: dict[str, dict[str, float]] = {}
     for song_id, scores_json in cursor.fetchall():
-        result[song_id] = json.loads(scores_json) if scores_json else {}
+        result[song_id] = _parse_json_scores(scores_json)
     return result
 
 
 def check_theme_anchors(client: ReadOnlyClient) -> int:
     cursor = client.connection.cursor()
-    cursor.execute(THEME_ANCHORS_COUNT_QUERY)
+    try:
+        cursor.execute(THEME_ANCHORS_COUNT_QUERY)
+    except Exception as exc:
+        if "UndefinedTable" in type(exc).__name__:
+            raise ThemeAnchorsTableMissing() from exc
+        raise
     row = cursor.fetchone()
     return row[0] if row else 0
+
+
+class ThemeAnchorsTableMissing(Exception):
+    """Raised when the theme_anchors table does not exist in the database."""

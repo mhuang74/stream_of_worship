@@ -338,10 +338,11 @@ SELECT s.id, s.title, s.title_pinyin, s.composer, s.lyricist,
        s.album_name, s.album_series, s.musical_key, s.lyrics_raw,
        r.hash_prefix, r.tempo_bpm, r.musical_key AS r_musical_key,
        r.musical_mode, r.key_confidence, r.loudness_db,
-       (
-           SELECT json_object_agg(ta.theme, 1 - (se.embedding <=> ta.embedding))
-           FROM theme_anchors ta
-       ) AS song_theme_scores_raw
+        (
+            SELECT json_object_agg(ta.theme, 1 - (se.embedding <=> ta.embedding))
+            FROM theme_anchors ta
+            WHERE se.embedding IS NOT NULL
+        ) AS song_theme_scores_raw
 FROM songs s
 JOIN recordings r ON s.id = r.song_id
 LEFT JOIN song_embedding se ON se.song_id = s.id
@@ -358,7 +359,7 @@ LIMIT %s
 
 **For 200 rows:** ~300 KB (vs v2's 4.3 MB).
 
-When `song_embedding` is NULL (no embedding), the subquery returns NULL. The Python `_candidate_from_row` handles this as an empty dict.
+When `song_embedding` is NULL (no embedding), the subquery returns NULL (the `WHERE se.embedding IS NOT NULL` filter ensures `json_object_agg` aggregates zero rows, producing SQL NULL rather than 12 JSON nulls). The Python `_candidate_from_row` handles this as an empty dict.
 
 #### New Line Theme Query (`LINE_THEME_QUERY`)
 
@@ -384,6 +385,8 @@ GROUP BY song_id
 **For 200 songs:** ~42 KB (vs v2's 64.5 MB).
 
 Songs with no line embeddings are simply absent from the result set; the Python code defaults to an empty dict.
+
+> **JSON-type contract:** psycopg 3 parses `json`/`jsonb` result columns natively into Python `dict` (or `None` for SQL NULL). No `json.loads()` on fetched `json_object_agg` values is needed. The `_parse_json_scores` helper handles both driver-parsed `dict` and raw `str` forms defensively, and filters out any JSON `null` values.
 
 #### Performance Note
 
@@ -511,7 +514,7 @@ def _candidate_from_row(row: tuple) -> SongCandidate:
     # 3: s.composer    8: s.lyrics_raw    13: r.key_confidence
     # 4: s.lyricist    9: r.hash_prefix   14: r.loudness_db
     raw_scores = row[15]
-    song_theme_scores_raw = json.loads(raw_scores) if raw_scores else {}
+    song_theme_scores_raw = _parse_json_scores(raw_scores)
     return SongCandidate(
         song_id=row[0],
         title=row[1],
@@ -558,7 +561,7 @@ def fetch_line_theme_scores(song_ids: list[str], *, client: ReadOnlyClient) -> d
     cursor.execute(LINE_THEME_QUERY, (song_ids,))
     result: dict[str, dict[str, float]] = {}
     for song_id, scores_json in cursor.fetchall():
-        result[song_id] = json.loads(scores_json) if scores_json else {}
+        result[song_id] = _parse_json_scores(scores_json)
     return result
 ```
 
@@ -787,7 +790,7 @@ A test that runs `fetch_catalog_pool` against a test database with pgvector, and
 |---|---|
 | `theme_anchors` table not populated | Startup validation (Step 3) checks row count; clear error message with sync command. |
 | pgvector `<=>` performance with `CROSS JOIN` | 12-row theme_anchors table is trivial; HNSW index on `song_line_embedding.embedding` accelerates individual distance computation; 48K computations is fast in C/SIMD. |
-| `json_object_agg` returns NULL when `song_embedding` is NULL | `_candidate_from_row` handles NULL → empty dict; `normalise_cosine_scores` returns zeros for empty dict (existing behavior). |
+| `json_object_agg` returns NULL when `song_embedding` is NULL | `WHERE se.embedding IS NOT NULL` filter in the subquery ensures zero rows are aggregated (→ SQL NULL); `_parse_json_scores` handles NULL → empty dict and filters any residual JSON null values; `normalise_cosine_scores` returns zeros for empty dict (existing behavior). |
 | `theme_anchors` drift (anchors updated) | `sow-admin theme-anchors sync --force` re-populates; `model_version` column tracks provenance; cache TTL ensures stale pools expire. |
 | Pool cache returns stale data (new songs added) | TTL (24h default) bounds staleness; `--no-cache` bypasses; constructor is offline tool — staleness is acceptable. |
 | `SongsetClient` does not support atomic create+items | Add `create_songset_with_items` or use raw SQL transaction in `persist.py`. |

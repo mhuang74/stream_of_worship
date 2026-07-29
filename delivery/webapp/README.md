@@ -77,6 +77,10 @@ npx drizzle-kit generate   # Generate migration files
 npx drizzle-kit migrate    # Run pending migrations
 ```
 
+> **Note:** The `theme_anchors` table (migration `0018_theme_anchors`) is
+> declared in `src/db/schema.ts` but populated by the admin CLI via
+> `sow-admin theme-anchors sync`. Do not drop it with `drizzle-kit push`.
+
 ## Routes
 
 | Path | Description |

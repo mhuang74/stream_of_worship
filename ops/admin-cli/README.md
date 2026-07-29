@@ -304,6 +304,35 @@ sow-admin audio lrc HASH_PREFIX [--force]
 sow-admin audio status [JOB_ID]
 ```
 
+### Theme Anchors Commands
+
+```bash
+# Populate the theme_anchors table from the bundled JSON (required before songset construct)
+sow-admin theme-anchors sync
+sow-admin theme-anchors sync --force   # Re-insert even if 12 rows exist
+```
+
+### Songset Construct Command
+
+```bash
+# Prerequisite: theme_anchors table must be populated
+sow-admin theme-anchors sync
+
+# Dry run (no DB writes)
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 3 --proposals 3 --dry-run --no-cache
+
+# Full run with auto-save
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 3 --proposals 3 --yes
+
+# List constructed songsets
+sow-admin songset list --user me@example.com
+```
+
+The `construct` command requires the `constructor` extra (`pydantic`, `langgraph`).
+Without it, a clear `RuntimeError` with install instructions is raised.
+
 ### Sync Commands (Phase 7)
 
 ```bash

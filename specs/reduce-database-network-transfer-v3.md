@@ -165,6 +165,13 @@ Set `skip_line_embeddings = False` (or use `--include-line-embeddings` flag). No
 
 ## Phase 2 — Constructor: In-DB pgvector Theme Scoring (Long-Term Fix)
 
+> **Note:** This phase has been superseded by the production implementation in
+> `specs/songset_construct_command_v3.md`. The in-DB pgvector scoring is
+> implemented directly in the admin CLI subpackage at
+> `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/db.py`,
+> not in the POC scripts. The POC-level fix described below is retained for
+> historical reference only.
+
 **Goal:** Eliminate all vector transfers by computing cosine similarity against theme anchors directly in PostgreSQL using pgvector's `<#>` (negative inner product) or `<=>` (cosine distance) operator. Per-run transfer drops from ~68.8 MB to ~1 MB (just song + recording columns).
 
 ### Files

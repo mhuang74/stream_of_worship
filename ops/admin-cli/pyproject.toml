@@ -67,6 +67,9 @@ where = ["src"]
 include = ["stream_of_worship*"]
 exclude = ["tests*", "test*"]
 
+[tool.setuptools.package-data]
+"stream_of_worship.admin.songset_constructor" = ["data/*.json"]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

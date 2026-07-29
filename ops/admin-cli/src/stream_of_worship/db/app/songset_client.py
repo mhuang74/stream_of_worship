@@ -708,6 +708,30 @@ class SongsetClient:
 
         with self.transaction() as conn:
             cursor = conn.cursor()
+
+            # Validate recording_hash_prefix references before inserting items.
+            hash_prefixes = list({
+                item_data.get("recording_hash_prefix")
+                for item_data in items
+                if item_data.get("recording_hash_prefix")
+            })
+            if hash_prefixes:
+                cursor.execute(
+                    "SELECT hash_prefix FROM recordings "
+                    "WHERE hash_prefix = ANY(%s) AND deleted_at IS NULL",
+                    (hash_prefixes,),
+                )
+                found = {r[0] for r in cursor.fetchall()}
+                missing = [
+                    hp for hp in hash_prefixes if hp not in found
+                ]
+                if missing:
+                    raise MissingReferenceError(
+                        f"Recordings not found: {missing}",
+                        "recording",
+                        ",".join(missing),
+                    )
+
             cursor.execute(
                 """
                 INSERT INTO songsets (id, user_id, name, description, created_at, updated_at)
