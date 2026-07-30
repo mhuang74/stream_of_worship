@@ -7,6 +7,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -416,6 +418,8 @@ def construct_songset(
     Requires the ``constructor`` extra and the ``theme_anchors`` table
     to be populated (run ``sow-admin theme-anchors sync`` first).
     """
+    load_dotenv("/opt/sow/.env", override=False)
+
     _import_constructor()
 
     from stream_of_worship.admin.songset_constructor.config import RunConfig
@@ -449,11 +453,14 @@ def construct_songset(
     connection_provider = ConnectionProvider(config.get_connection_url())
 
     # Step 1 — Resolve user
+    console.print(f"Resolving user [cyan]{user}[/cyan] ... ", end="")
     user_client = UserClient(connection_provider)
     resolved_user = user_client.get_user_by_email(user)
     if resolved_user is None:
+        console.print("[red]not found[/red]")
         console.print(f"[red]User not found: {user}[/red]")
         raise typer.Exit(1)
+    console.print("[green]done[/green]")
 
     # Step 2 — Build ReadOnlyClient
     from stream_of_worship.db.app.read_client import ReadOnlyClient
@@ -463,20 +470,24 @@ def construct_songset(
     # Step 3 — Validate theme_anchors table
     from stream_of_worship.admin.songset_constructor.db import ThemeAnchorsTableMissing
 
+    console.print("Checking theme_anchors ... ", end="")
     try:
         anchor_count = check_theme_anchors(read_client)
     except ThemeAnchorsTableMissing:
+        console.print("[red]missing[/red]")
         console.print(
             "[red]theme_anchors table does not exist. "
             "Run: sow-admin db init && sow-admin theme-anchors sync[/red]"
         )
         raise typer.Exit(1)
     if anchor_count != 12:
+        console.print(f"[red]{anchor_count}/12[/red]")
         console.print(
             f"[red]theme_anchors table has {anchor_count} rows (expected 12). "
             "Run: sow-admin theme-anchors sync[/red]"
         )
         raise typer.Exit(1)
+    console.print(f"[green]{anchor_count}/12[/green]")
 
     # Step 4 — Build RunConfig
     try:
@@ -507,11 +518,13 @@ def construct_songset(
         raise typer.Exit(1)
 
     # Step 5 — Run graph
+    console.print("Constructing songsets ...")
     result = run(run_config, read_client)
 
     proposals = result.get("final_proposals", [])
 
     # Step 6 — Print summary
+    console.print(f"[dim]Generated {len(proposals)} proposals[/dim]")
     if proposals:
         table = Table(title=f"Proposals ({len(proposals)} total)")
         table.add_column("Rank", style="green", justify="right")
