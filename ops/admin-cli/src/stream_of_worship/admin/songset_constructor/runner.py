@@ -18,19 +18,21 @@ console = Console()
 
 
 def run(config: RunConfig, read_client: ReadOnlyClient) -> dict:
+    console.print("Loading song pool ... ", end="")
     cached_pool = cache.try_load_pool(config)
     if cached_pool is not None:
         pool = cached_pool
         try:
             age_h = (time.time() - cache.cache_path(config).stat().st_mtime) / 3600
-            console.print(f"[dim]Pool loaded from cache (age: {age_h:.0f}h)[/dim]")
+            console.print(f"[dim]{len(pool)} songs (from cache, age: {age_h:.0f}h)[/dim]")
         except (FileNotFoundError, OSError):
-            console.print("[dim]Pool loaded from cache[/dim]")
+            console.print(f"[dim]{len(pool)} songs (from cache)[/dim]")
     else:
         pool = fetch_catalog_pool(config, client=read_client)
         cache.save_pool(config, pool)
-        console.print(f"[dim]Pool fetched from DB ({len(pool)} songs)[/dim]")
+        console.print(f"[dim]{len(pool)} songs (from DB)[/dim]")
 
+    console.print("Building constructor graph ...")
     graph = build_graph(config)
 
     initial_state: ConstructorState = {

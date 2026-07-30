@@ -6,6 +6,9 @@ from difflib import get_close_matches
 from pathlib import Path
 
 from langgraph.types import interrupt
+from rich.console import Console
+
+console = Console()
 
 from stream_of_worship.admin.songset_constructor.artifacts.enrichment_report import (
     build_enrichment_report,
@@ -55,6 +58,8 @@ def enrich_pool(state: ConstructorState) -> dict:
     enriched = []
     dropped = 0
     drop_diagnostics = enrichment_drop_diagnostics(state.get("pool", []))
+    pool_size = len(state.get("pool", []))
+    console.print(f"  [dim]Enriching pool ({pool_size} songs) with themes/phases ... [/dim]", end="")
     for candidate in state.get("pool", []):
         if candidate.tempo_bpm is None and candidate.musical_key is None:
             dropped += 1
@@ -76,6 +81,7 @@ def enrich_pool(state: ConstructorState) -> dict:
                 }
             )
         )
+    console.print(f"[dim]{len(enriched)} songs enriched, {dropped} dropped[/dim]")
     return {
         "pool": enriched,
         "trace": _trace(
@@ -125,6 +131,7 @@ def _latest_trace_data(trace_events: list[dict], node: str) -> dict:
 
 def build_transition_matrix(state: ConstructorState) -> dict:
     pool = state.get("pool", [])
+    console.print(f"  [dim]Building transition matrix ({len(pool)} songs) ... [/dim]", end="")
     matrix = {}
     for left in pool:
         for right in pool:
@@ -134,6 +141,7 @@ def build_transition_matrix(state: ConstructorState) -> dict:
             if transition.cfd <= 6:
                 matrix[(left.recording_hash_prefix, right.recording_hash_prefix)] = transition
     pool = compute_fan_out(pool, matrix, state["config"])
+    console.print(f"[dim]{len(matrix)} valid transitions[/dim]")
     return {
         "pool": pool,
         "transition_matrix": matrix,
@@ -144,6 +152,7 @@ def build_transition_matrix(state: ConstructorState) -> dict:
 def beam_seed_candidates(state: ConstructorState) -> dict:
     config = state["config"]
     beam_width = max(config.proposals * 5, 40)
+    console.print(f"  [dim]Running beam search (width={beam_width}) ... [/dim]", end="")
     proposals = search(
         state.get("pool", []),
         state["config"],
@@ -155,6 +164,7 @@ def beam_seed_candidates(state: ConstructorState) -> dict:
         if not proposals
         else {}
     )
+    console.print(f"[dim]{len(proposals)} candidates found[/dim]")
     return {
         "beam_candidates": proposals,
         "trace": _trace(
@@ -198,6 +208,7 @@ def _coerce_known_hashes(draft: SongsetDraft, known: set[str]) -> tuple[SongsetD
 
 def llm_plan(state: ConstructorState) -> dict:
     config = state["config"]
+    console.print("  [dim]LLM planning ... [/dim]", end="")
     injected = state.get("llm")
     planner = (
         injected if injected is not None else structured(build_chat_model(config), SongsetDraft)
@@ -209,6 +220,7 @@ def llm_plan(state: ConstructorState) -> dict:
     draft = planner.invoke(prompt)
     known = {candidate.recording_hash_prefix for candidate in state.get("pool", [])}
     draft, repairs = _coerce_known_hashes(draft, known)
+    console.print("[dim]done[/dim]")
     return {
         "current_draft": draft,
         "llm_drafts": [draft],
@@ -225,9 +237,11 @@ def _draft_to_proposal(state: ConstructorState, draft: SongsetDraft) -> SongsetP
 
 
 def validate_score(state: ConstructorState) -> dict:
+    console.print("  [dim]Validating score ... [/dim]", end="")
     draft = state.get("current_draft")
     if draft is None:
         feedback = ValidationFeedback(passed=False, errors=["No current draft."])
+        console.print("[red]no draft[/red]")
         return {
             "feedback": feedback,
             "trace": _trace(
@@ -266,12 +280,17 @@ def validate_score(state: ConstructorState) -> dict:
         ),
     }
     if feedback.passed:
+        console.print("[green]passed ✓[/green]")
         update["beam_candidates"] = [proposal]
+    else:
+        console.print(f"[yellow]failed ({len(feedback.errors)} errors)[/yellow]")
     return update
 
 
 def llm_refine(state: ConstructorState) -> dict:
     config = state["config"]
+    iteration = int(state.get("iterations", 0) or 0) + 1
+    console.print(f"  [dim]LLM refining (iteration {iteration}/3) ... [/dim]", end="")
     injected = state.get("llm")
     refiner = (
         injected if injected is not None else structured(build_chat_model(config), SongsetDraft)
@@ -285,7 +304,7 @@ def llm_refine(state: ConstructorState) -> dict:
     draft = refiner.invoke(prompt)
     known = {candidate.recording_hash_prefix for candidate in state.get("pool", [])}
     draft, repairs = _coerce_known_hashes(draft, known)
-    iteration = int(state.get("iterations", 0) or 0) + 1
+    console.print("[dim]done[/dim]")
     return {
         "current_draft": draft,
         "llm_drafts": [draft],
@@ -298,6 +317,7 @@ def llm_refine(state: ConstructorState) -> dict:
 
 def finalize_rank_node(state: ConstructorState) -> dict:
     config = state["config"]
+    console.print("  [dim]Finalizing & ranking proposals ... [/dim]", end="")
     proposals = rank_proposals(
         state.get("beam_candidates", []),
         state.get("pool", []),
@@ -305,6 +325,7 @@ def finalize_rank_node(state: ConstructorState) -> dict:
         config=config,
         matrix=state.get("transition_matrix", {}),
     )
+    console.print(f"[dim]{len(proposals)} proposals ranked[/dim]")
     return {
         "final_proposals": proposals,
         "trace": _trace(state, "finalize_rank", "exit", {"proposals": len(proposals)}),
@@ -313,6 +334,7 @@ def finalize_rank_node(state: ConstructorState) -> dict:
 
 def llm_judge(state: ConstructorState) -> dict:
     config = state["config"]
+    console.print("  [dim]LLM judging proposals ... [/dim]", end="")
     injected = state.get("judge_llm") or state.get("llm")
     judge = injected if injected is not None else structured(build_chat_model(config), JudgeRanking)
     prompt = "Rank these finalist songsets without changing deterministic order:\n" + "\n".join(
@@ -331,6 +353,7 @@ def llm_judge(state: ConstructorState) -> dict:
         proposals.append(
             proposal.model_copy(update={"judge_reason": reason, "judge_score": judge_score})
         )
+    console.print("[dim]done[/dim]")
     return {
         "final_proposals": proposals,
         "trace": _trace(
