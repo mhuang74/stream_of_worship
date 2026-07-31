@@ -33,7 +33,7 @@ class RunConfig:
     thread_id: str | None = None
     relax_h3_bpm: int | None = None
     relax_h2_bpm: int | None = None
-    relax_h1: bool = True
+    relax_h1: bool = False
     auto_relax: bool = True
     relax_h4: bool = False
     relax_h5: bool = False

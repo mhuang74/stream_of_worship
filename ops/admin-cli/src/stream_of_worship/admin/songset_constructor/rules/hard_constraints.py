@@ -77,7 +77,7 @@ def validate(
     for left, right in zip(proposal.items, proposal.items[1:]):
         transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
         bpm_delta = transition.bpm_delta if transition else abs((right.bpm or 0) - (left.bpm or 0))
-        allowed = h4_limit if (right.crossfade_duration_seconds > 0 or right.gap_beats > 4) else min(25, h4_limit)
+        allowed = h4_limit if (right.crossfade_duration_seconds > 0 or right.gap_beats > 0) else min(25, h4_limit)
         if bpm_delta > allowed:
             failures.append(("H4", f"Tempo jump {bpm_delta:.1f} BPM from {left.title} to {right.title} exceeds {allowed}.", "Use a crossfade/gap or choose a closer tempo neighbor."))
         h5_limit = config.h5_limit
