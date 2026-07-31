@@ -50,6 +50,13 @@ def fuse_themes(
             (0.25, song_emb),
             (0.15, line_emb),
         ]
+    if not any(v > 0 for v in line_emb.values()):
+        line_weight = next(w for w, s in weighted_sources if s is line_emb)
+        active = [(w, s) for w, s in weighted_sources if s is not line_emb]
+        total_active = sum(w for w, _ in active)
+        weighted_sources = [
+            (w + (line_weight * w / total_active), s) for w, s in active
+        ]
     totals = {theme: 0.0 for theme in THEMES}
     weights = {theme: 0.0 for theme in THEMES}
     for weight, source in weighted_sources:

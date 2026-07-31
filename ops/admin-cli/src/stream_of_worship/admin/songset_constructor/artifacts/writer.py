@@ -12,7 +12,7 @@ from typing import Any
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import SongCandidate, SongsetProposal
-from stream_of_worship.admin.songset_constructor.rules.fitness import middle_song_ids
+from stream_of_worship.admin.songset_constructor.rules.fitness import _THEME_TEMPLATES, middle_song_ids
 from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
 PHASE_NAMES = {1: "call", 2: "thanksgiving", 3: "worship", 4: "response", 5: "commitment"}
@@ -247,7 +247,7 @@ def _theme_coverage_lines(proposals: list[SongsetProposal]) -> list[str]:
     return [f"Present ({len(present_sorted)}): {', '.join(present_sorted)}", f"Missing ({len(missing)}): {', '.join(missing)}"]
 
 
-def _bottleneck_lines(metrics: dict, proposals: list[SongsetProposal], pool: list[SongCandidate]) -> list[str]:
+def _bottleneck_lines(metrics: dict, proposals: list[SongsetProposal], pool: list[SongCandidate], *, config: RunConfig | None = None) -> list[str]:
     lines: list[str] = []
     by_song = {candidate.song_id: candidate for candidate in pool}
     song_usage: dict[str, set[int]] = {}
@@ -259,10 +259,12 @@ def _bottleneck_lines(metrics: dict, proposals: list[SongsetProposal], pool: lis
     for song_id, times in overused:
         title = next((item.title for p in proposals for item in p.items if item.song_id == song_id), song_id)
         lines.append(f'Most-reused song: "{title}" appears in {times}/{len(proposals)} songsets.')
+    template = _THEME_TEMPLATES.get(config.count, (1, 2, 3, 4, 5)) if config else (1, 2, 3, 4, 5)
     for phase in range(1, 6):
         if phase not in metrics["unique_phases"]:
-            label = PHASE_NAMES.get(phase, "unknown")
-            lines.append(f"Phase gap: Phase {phase} ({label}) absent from all top-k songsets.")
+            if phase in template:
+                label = PHASE_NAMES.get(phase, "unknown")
+                lines.append(f"Phase gap: Phase {phase} ({label}) absent from all top-k songsets.")
     total_slots = metrics["total_slots"]
     if total_slots > 0:
         composer_counts: dict[str, int] = {}
@@ -311,7 +313,7 @@ def _diversity_summary(proposals: list[SongsetProposal], pool: list[SongCandidat
     lines.append("### Theme Coverage")
     lines.append("")
     lines.extend(_theme_coverage_lines(proposals))
-    bottlenecks = _bottleneck_lines(metrics, proposals, pool)
+    bottlenecks = _bottleneck_lines(metrics, proposals, pool, config=config)
     if bottlenecks:
         lines.extend(["", "### Bottlenecks", ""])
         lines.extend(f"- {line}" for line in bottlenecks)
@@ -325,6 +327,7 @@ def write_artifacts(
     proposals: list[SongsetProposal],
     pool: list[SongCandidate],
     trace: list[dict],
+    summary: str = "",
 ) -> dict[str, str]:
     output_dir = Path(config.output_dir) if config.output_dir else Path("output") / "songset_constructor" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -336,7 +339,7 @@ def write_artifacts(
         "review": output_dir / "songset_review.md",
     }
     write_proposals(paths["proposals"], config, proposals)
-    write_report(paths["report"], config=config, proposals=proposals, pool=pool)
+    write_report(paths["report"], config=config, proposals=proposals, pool=pool, summary=summary)
     write_pool_csv(paths["pool"], pool)
     paths["trace"].write_text("\n".join(json.dumps(item, ensure_ascii=False, default=_json_default) for item in trace) + "\n", encoding="utf-8")
     paths["review"].write_text(build_review_report(config=config, proposals=proposals, pool=pool, trace=trace), encoding="utf-8")
@@ -353,12 +356,17 @@ def write_proposals(path: Path, config: RunConfig, proposals: list[SongsetPropos
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default), encoding="utf-8")
 
 
-def write_report(path: Path, *, config: RunConfig, proposals: list[SongsetProposal], pool: list[SongCandidate]) -> list[str]:
+def write_report(path: Path, *, config: RunConfig, proposals: list[SongsetProposal], pool: list[SongCandidate], summary: str = "") -> list[str]:
     narratives = generate_brief_summaries(config, proposals)
     cache_narratives(config.thread_id, narratives)
     lines = ["# Songset Proposals", ""]
+    if summary:
+        lines.extend(["## Agent Summary", "", summary, ""])
     if not proposals:
         lines.extend(["No valid proposals generated.", ""])
+    if proposals and all(p.rank == 0 for p in proposals):
+        for i, p in enumerate(proposals, start=1):
+            p.rank = i
     for index, proposal in enumerate(proposals):
         narrative = narratives[index] if index < len(narratives) else None
         lines.extend([f"## Rank {proposal.rank} - Score {proposal.score.total:.4f}", ""])
@@ -366,7 +374,10 @@ def write_report(path: Path, *, config: RunConfig, proposals: list[SongsetPropos
         lines.extend(["", "### Details", "", "| # | Title | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
         for item in proposal.items:
             key = " ".join(part for part in [item.key, item.mode] if part)
-            transition = f"shift {item.key_shift_semitones}, gap {item.gap_beats:g} beats"
+            parts = [f"shift {item.key_shift_semitones}", f"gap {item.gap_beats:g} beats"]
+            if item.crossfade_duration_seconds > 0:
+                parts.append(f"crossfade {item.crossfade_duration_seconds:g}s")
+            transition = ", ".join(parts)
             phase_display = str(item.phase)
             if item.secondary_phases:
                 phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
@@ -538,7 +549,10 @@ def _proposal_section(proposal: SongsetProposal) -> list[str]:
     lines.extend(["", "| # | Title | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
     for item in proposal.items:
         key = " ".join(part for part in [item.key, item.mode] if part)
-        transition = f"shift {item.key_shift_semitones}, gap {item.gap_beats:g} beats"
+        parts = [f"shift {item.key_shift_semitones}", f"gap {item.gap_beats:g} beats"]
+        if item.crossfade_duration_seconds > 0:
+            parts.append(f"crossfade {item.crossfade_duration_seconds:g}s")
+        transition = ", ".join(parts)
         phase_display = str(item.phase)
         if item.secondary_phases:
             phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
