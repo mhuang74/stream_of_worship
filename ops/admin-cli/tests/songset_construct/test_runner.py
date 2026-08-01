@@ -174,7 +174,7 @@ def test_run_config_relax_overrides():
     )
     assert config.opening_floor == 80
     assert config.closing_limit == 100
-    assert config.h4_limit == 40
+    assert config.h4_limit == 55
     assert config.h5_limit == 3
 
 

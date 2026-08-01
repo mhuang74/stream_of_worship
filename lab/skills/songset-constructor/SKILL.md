@@ -42,7 +42,7 @@ Run `scripts/preflight.sh` to verify:
 - `theme_anchors` table populated (must have exactly 12 rows)
 - R2 credentials available (for LRC lyrics access)
 
-If any check fails, report the issue to the user and stop.
+DB-unreachable is a WARN (not a hard fail) when a valid `pool_*.json` cache exists. The agent proceeds from cache and reports this to the user. If absolutely no cache exists and DB is unreachable, the run cannot proceed.
 
 ### Step 2 — Fetch Catalog Pool
 
@@ -50,8 +50,11 @@ Run `scripts/fetch_pool.py` with appropriate flags:
 - `--pool-limit 500` for the full catalog (default)
 - `--album-series "敬拜讚美 (1)"` to filter by album series (repeatable)
 - `--no-cache` to bypass the pool cache
+- `--prefer-fresh` to attempt DB first and only fall back to cache on DB error
 
 This returns a JSON array of raw SongCandidate objects (pre-enrichment). Each song has: `song_id`, `title`, `title_pinyin`, `tempo_bpm`, `musical_key`, `musical_mode`, `key_confidence`, `lyrics_raw`, `song_theme_scores_raw`, `line_theme_scores_raw`, `recording_hash_prefix`, etc.
+
+`fetch_pool.py` serves cached pool by default, even when stale, when DB read fails. Use `--no-cache` to force a fresh DB query, `--prefer-fresh` to attempt DB first and only fall back to cache on DB error. If the preflight DB check WARN-flagged cache availability, accept the stale cache and note the staleness in the run summary.
 
 ### Step 3 — Enrich Pool
 
@@ -94,18 +97,18 @@ You are the LLM planner. Using the enriched pool and transition matrix, plan a s
 | Code | Rule | Default |
 |------|------|---------|
 | H0 | Correct song count (must match requested count) | — |
-| H1 | One phase-1 opener, worship/response middle, phase 4/5 closer | relaxable (opt-in via --relax-h1) |
+| H1 | One phase-1 *primary* opener (primary only, not secondary_phases), middle worship/response, phase 4/5 closer (primary or secondary) | relaxable (opt-in via --relax-h1) |
 | H2 | Opener tempo ≥ 90 BPM | 90 (relaxable) |
 | H3 | Closer tempo ≤ 90 BPM (80 if intimate) | 90/80 (relaxable) |
-| H4 | Adjacent BPM delta ≤ 35 (25 without crossfade or gap; 40 if relaxed) | 35 |
-| H5 | Circle-of-fifths distance ≤ 2 (3 if relaxed) unless key shift applied | 2 |
+| H4 | Adjacent BPM delta ≤ 45 (40 without crossfade; 55 if relaxed) — gap_beats > 0 (any gap) triggers crossfade-tier cap | 45/40 |
+| H5 | Circle-of-fifths distance ≤ 3 (4 if relaxed) unless key shift applied | 3 |
 | H6 | No duplicate song IDs | — |
 | H7 | Phase drops by at most 1 between adjacent songs | — |
 | H8 | Songs with key confidence < 0.6 cannot be transposed (key_shift must be 0) | 0.6 |
 
 **Planning guidelines:**
 - Select an opener: phase 1 (or 2), tempo ≥ 90 BPM, not a dead-end song
-- Select middle songs: phase matches template position, BPM delta ≤ 35 from previous, CFD ≤ 2 (or apply key shift if CFD > 2 and key confidence ≥ 0.6)
+- Select middle songs: phase matches template position, BPM delta ≤ 45 from previous (40 without crossfade), CFD ≤ 3 (or apply key shift if CFD > 3 and key confidence ≥ 0.6)
 - Select a closer: phase 4 or 5, tempo ≤ 90 BPM (80 if intimate)
 - Ensure phase doesn't drop by more than 1 between adjacent songs (H7)
 - Maximize theme diversity across the set
@@ -150,8 +153,8 @@ If validation fails or total score < 0.70:
 - Repeat up to 3 iterations
 
 If constraints are too strict (no valid proposals after 3 iterations), consider relaxation:
-- Relax H4 (BPM delta 35 → 40)
-- Relax H5 (CFD 2 → 3)
+- Relax H4 (BPM delta 45 → 55)
+- Relax H5 (CFD 3 → 4)
 - Relax H2 (opener BPM floor 90 → 80)
 - Relax H3 (closer BPM ceiling 90 → 100)
 - Relax H1 (drop strict phase-1 opener requirement)
@@ -201,3 +204,4 @@ After writing the report, provide a concise summary to the user:
 - Top proposal: song sequence, phase arc, total score
 - Key findings: diversity assessment, any constraints that required relaxation, any concerns
 - Path to the output report file
+- If preflight WARN-flagged DB unreachability, report the DB↔cache source used (cached-stale-fresh indicator) in the summary

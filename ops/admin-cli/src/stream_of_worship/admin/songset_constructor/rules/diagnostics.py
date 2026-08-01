@@ -68,7 +68,7 @@ def role_eligibility_counts(
             if candidate.phase in {4, 5} or any(p in {4, 5} for p in candidate.secondary_phases)
         ),
         "compatible_transitions_h5": sum(
-            1 for transition in matrix.values() if transition.cfd <= 2
+            1 for transition in matrix.values() if transition.cfd <= config.h5_limit
         ),
     }
 

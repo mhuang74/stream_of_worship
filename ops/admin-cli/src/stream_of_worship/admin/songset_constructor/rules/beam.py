@@ -168,8 +168,8 @@ def _sequences(
                     )
                     allowed = (
                         config.h4_limit
-                        if transition and (transition.crossfade_duration_seconds > 0 or transition.gap_beats > 4)
-                        else min(25, config.h4_limit)
+                        if transition and (transition.crossfade_duration_seconds > 0 or transition.gap_beats > 0)
+                        else config.h4_no_crossfade_limit
                     )
                     if bpm_delta > allowed:
                         continue
