@@ -10,15 +10,17 @@ from stream_of_worship.admin.songset_constructor.models import (
 )
 
 RULE_DESCRIPTIONS: dict[str, str] = {
-    "H1": "Phase coverage: the set must include exactly one phase-1 opener, at least one phase 3/4 "
-    "worship/response song, and end on a phase 4/5 closer. Relaxable: when relaxed, the strict "
-    "phase-1 count and phase 3/4 requirements are dropped, retaining only the phase 4/5 closer.",
+    "H1": "Phase coverage: the set must include exactly one phase-1 *primary* opener, at least one "
+    "phase 3/4 worship/response song (primary or secondary), and end on a phase 4/5 closer "
+    "(primary or secondary). Relaxable: when relaxed, the strict phase-1 count and phase 3/4 "
+    "requirements are dropped, retaining only the phase 4/5 closer.",
     "H2": "Opening tempo: the first song must be phase 1 with tempo >= 90 BPM (a strong opener). "
     "Relaxable: the floor can be lowered via --relax-h2-bpm.",
     "H3": "Closing tempo: the last song must be phase 4/5 with tempo <= 90 BPM (80 BPM in intimate "
     "mode) — a calm closer. Relaxable: the ceiling can be raised via --relax-h3-bpm.",
-    "H4": "Tempo jump: adjacent songs' BPM delta must stay <= 35 (25 without crossfade/gap; 40 if relaxed).",
-    "H5": "Circle-of-fifths distance: adjacent keys must be within CFD 2 (3 if relaxed) unless the next "
+    "H4": "Tempo jump: adjacent songs' BPM delta must stay <= 45 (40 without crossfade/gap; 55 if relaxed). "
+    "gap_beats > 0 (any gap) triggers the crossfade-tier cap.",
+    "H5": "Circle-of-fifths distance: adjacent keys must be within CFD 3 (4 if relaxed) unless the next "
     "song is transposed to match the suggested shift.",
     "H6": "Uniqueness: no duplicate song IDs allowed in the set.",
     "H7": "Phase arc: phase may drop by at most 1 between adjacent songs (no sharp backwards worship arc).",
@@ -36,6 +38,7 @@ def validate(
     relax_h1: bool = False,
 ) -> ValidationFeedback:
     failures: list[tuple[str, str, str]] = []
+    primary_phases = [item.phase for item in proposal.items]
     item_phases: list[set[int]] = []
     for item in proposal.items:
         phases = {item.phase}
@@ -60,7 +63,7 @@ def validate(
         h1_failed = not (item_phases[-1] & {4, 5})
     else:
         h1_failed = (
-            sum(1 for phases in item_phases if 1 in phases) != 1
+            sum(1 for p in primary_phases if p == 1) != 1
             or not any(phases & {3, 4} for phases in item_phases[1:-1])
             or not (item_phases[-1] & {4, 5})
         )
@@ -77,7 +80,11 @@ def validate(
     for left, right in zip(proposal.items, proposal.items[1:]):
         transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
         bpm_delta = transition.bpm_delta if transition else abs((right.bpm or 0) - (left.bpm or 0))
-        allowed = h4_limit if (right.crossfade_duration_seconds > 0 or right.gap_beats > 0) else min(25, h4_limit)
+        allowed = (
+            config.h4_limit
+            if (right.crossfade_duration_seconds > 0 or right.gap_beats > 0)
+            else config.h4_no_crossfade_limit
+        )
         if bpm_delta > allowed:
             failures.append(("H4", f"Tempo jump {bpm_delta:.1f} BPM from {left.title} to {right.title} exceeds {allowed}.", "Use a crossfade/gap or choose a closer tempo neighbor."))
         h5_limit = config.h5_limit

@@ -39,6 +39,9 @@ class RunConfig:
     relax_h5: bool = False
     relax_h4_bpm: int | None = None
     relax_h5_cfd: int | None = None
+    h4_strict: int = 45
+    h4_no_crossfade: int = 40
+    h5_strict: int = 3
     only_evaluate_pool_enrichment: bool = False
     use_cache: bool = True
     cache_dir: Path = field(default_factory=lambda: DEFAULT_CACHE_DIR)
@@ -92,13 +95,19 @@ class RunConfig:
     def h4_limit(self) -> int:
         if self.relax_h4_bpm is not None:
             return self.relax_h4_bpm
-        return 40 if self.relax_h4 else 35
+        if self.relax_h4:
+            return 55
+        return self.h4_strict
+
+    @property
+    def h4_no_crossfade_limit(self) -> int:
+        return min(self.h4_no_crossfade, self.h4_limit)
 
     @property
     def h5_limit(self) -> int:
         if self.relax_h5_cfd is not None:
             return self.relax_h5_cfd
-        return 3 if self.relax_h5 else 2
+        return 4 if self.relax_h5 else self.h5_strict
 
     def validate_environment(self) -> None:
         if not self.llm_enabled and self.llm_judge:
@@ -145,6 +154,9 @@ class RunConfig:
             "relax_h5": self.relax_h5,
             "relax_h4_bpm": self.relax_h4_bpm,
             "relax_h5_cfd": self.relax_h5_cfd,
+            "h4_strict": self.h4_strict,
+            "h4_no_crossfade": self.h4_no_crossfade,
+            "h5_strict": self.h5_strict,
             "only_evaluate_pool_enrichment": self.only_evaluate_pool_enrichment,
             "use_cache": self.use_cache,
             "cache_dir": str(self.cache_dir),

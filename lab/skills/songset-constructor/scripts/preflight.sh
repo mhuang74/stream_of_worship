@@ -13,6 +13,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 ADMIN_CLI="$PROJECT_ROOT/ops/admin-cli"
 
 FAIL_COUNT=0
+WARN_COUNT=0
 
 run_check() {
     local label="$1"
@@ -25,6 +26,9 @@ run_check() {
     elif [ "$status" = "FAIL" ]; then
         printf "[FAIL] %s: %s\n" "$label" "$detail"
         FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif [ "$status" = "WARN" ]; then
+        printf "[WARN] %s: %s\n" "$label" "$detail"
+        WARN_COUNT=$((WARN_COUNT + 1))
     else
         printf "[INFO] %s: %s\n" "$label" "$detail"
     fi
@@ -54,6 +58,34 @@ fi
 # ---------------------------------------------------------------------------
 # Check 2: Database reachable + theme_anchors count
 # ---------------------------------------------------------------------------
+# Pre-scan pool cache so DB-unreachable can be downgraded to WARN when cache exists.
+CACHE_DIR="$HOME/.cache/sow/songset_constructor"
+CACHE_NOT_NEEDED=false
+POOL_CACHE_FILES=""
+POOL_CACHE_AGE_HOURS=""
+POOL_CACHE_SONG_COUNT=""
+if [ -d "$CACHE_DIR" ]; then
+    POOL_CACHE_FILES=$(find "$CACHE_DIR" -name 'pool_*.json' -type f 2>/dev/null)
+    if [ -n "$POOL_CACHE_FILES" ]; then
+        NEWEST_CACHE=$(find "$CACHE_DIR" -name 'pool_*.json' -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1)
+        if [ -n "$NEWEST_CACHE" ]; then
+            CACHE_MTIME=$(echo "$NEWEST_CACHE" | cut -d' ' -f1)
+            NOW=$(date +%s)
+            AGE_SECS=$((NOW - CACHE_MTIME))
+            POOL_CACHE_AGE_HOURS=$((AGE_SECS / 3600))
+            CACHE_FILE=$(echo "$NEWEST_CACHE" | cut -d' ' -f2-)
+            POOL_CACHE_SONG_COUNT=$(uv run --project "$ADMIN_CLI" --extra admin python -c "
+import json, sys
+try:
+    data = json.load(open('$CACHE_FILE'))
+    print(len(data))
+except:
+    print(0)
+" 2>/dev/null)
+        fi
+    fi
+fi
+
 if [ "$DB_URL_SET" = "yes" ]; then
     DB_CHECK=$(uv run --project "$ADMIN_CLI" --extra admin python -c '
 import sys
@@ -92,7 +124,12 @@ except Exception as e:
     if [ "$db_status" = "DB_OK" ]; then
         run_check "Database reachable" "OK" ""
     else
-        run_check "Database reachable" "FAIL" "$anchor_count"
+        if [ -n "$POOL_CACHE_FILES" ]; then
+            run_check "Database reachable" "WARN" "DB unreachable — proceeding from cached pool (age: ${POOL_CACHE_AGE_HOURS}h, ${POOL_CACHE_SONG_COUNT} songs)"
+            CACHE_NOT_NEEDED=true
+        else
+            run_check "Database reachable" "FAIL" "$anchor_count"
+        fi
     fi
 
     if [ "$anchor_status" = "ANCHORS_OK" ]; then
@@ -120,34 +157,11 @@ fi
 # ---------------------------------------------------------------------------
 # Check 4: Pool cache status
 # ---------------------------------------------------------------------------
-CACHE_DIR="$HOME/.cache/sow/songset_constructor"
-if [ -d "$CACHE_DIR" ]; then
-    CACHE_FILES=$(find "$CACHE_DIR" -name 'pool_*.json' -type f 2>/dev/null)
-    if [ -n "$CACHE_FILES" ]; then
-        CACHE_COUNT=$(find "$CACHE_DIR" -name 'pool_*.json' -type f 2>/dev/null | wc -l | tr -d ' ')
-        NEWEST_CACHE=$(find "$CACHE_DIR" -name 'pool_*.json' -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1)
-        if [ -n "$NEWEST_CACHE" ]; then
-            CACHE_MTIME=$(echo "$NEWEST_CACHE" | cut -d' ' -f1)
-            NOW=$(date +%s)
-            AGE_SECS=$((NOW - CACHE_MTIME))
-            AGE_HOURS=$((AGE_SECS / 3600))
-            # Count songs in the newest cache file
-            CACHE_FILE=$(echo "$NEWEST_CACHE" | cut -d' ' -f2-)
-            SONG_COUNT=$(uv run --project "$ADMIN_CLI" --extra admin python -c "
-import json, sys
-try:
-    data = json.load(open('$CACHE_FILE'))
-    print(len(data))
-except:
-    print(0)
-" 2>/dev/null)
-            run_check "Pool cache" "INFO" "${SONG_COUNT} songs cached (${CACHE_COUNT} file(s), age: ${AGE_HOURS}h)"
-        else
-            run_check "Pool cache" "INFO" "cache directory exists but no valid cache files"
-        fi
-    else
-        run_check "Pool cache" "INFO" "no cache files found"
-    fi
+if [ -n "$POOL_CACHE_FILES" ]; then
+    CACHE_COUNT=$(find "$CACHE_DIR" -name 'pool_*.json' -type f 2>/dev/null | wc -l | tr -d ' ')
+    run_check "Pool cache" "INFO" "${POOL_CACHE_SONG_COUNT} songs cached (${CACHE_COUNT} file(s), age: ${POOL_CACHE_AGE_HOURS}h)"
+elif [ -d "$CACHE_DIR" ]; then
+    run_check "Pool cache" "INFO" "cache directory exists but no valid cache files"
 else
     run_check "Pool cache" "INFO" "no cache directory (will be created on first fetch)"
 fi
@@ -156,9 +170,13 @@ fi
 # Summary
 # ---------------------------------------------------------------------------
 if [ "$FAIL_COUNT" -gt 0 ]; then
-    printf "\n%d check(s) failed. Resolve issues before constructing songsets.\n" "$FAIL_COUNT"
+    printf "\n%d check(s) failed, %d warning(s). Resolve failures before constructing songsets.\n" "$FAIL_COUNT" "$WARN_COUNT"
     exit 1
 fi
 
-printf "\nAll critical checks passed.\n"
+if [ "$WARN_COUNT" -gt 0 ]; then
+    printf "\nAll critical checks passed with %d warning(s).\n" "$WARN_COUNT"
+else
+    printf "\nAll critical checks passed.\n"
+fi
 exit 0
