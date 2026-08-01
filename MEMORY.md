@@ -1,3 +1,22 @@
+## 2026-07-31
+
+- Generated a combined songset-constructor proposal report with **25 distinct themed
+  small-group worship songsets** (4-song Call→Worship→Cross→Commitment template,
+  phases 1-3-4-5) at `output/songset_constructor/20260731T165726Z/proposal_report.md`.
+  Themes span all 12 base catalog themes plus combined-focus variations; all 25 sets
+  pass H0-H8 with f_theme=1.00 and f_diversity=1.00; total fitness 0.851-0.927.
+  Cross-set diversity: 25 distinct openers, 94 unique songs, all 5 phases, all 12
+  themes, 41 unique composers, only 2 middle-slot reuses. Full catalog (438 songs),
+  no seasonal bias, standard (non-intimate) mode, no relaxation needed.
+- Fixed two pre-existing report-rendering bugs: `_diversity_summary` in
+  `ops/admin-cli/.../artifacts/writer.py` referenced an undefined `config` (added
+  backward-compatible optional `config=None` param) and `write_report.py` now passes
+  `config` through to it. Without this the combined report could not be rendered.
+- Note: the skill's `preflight.sh` computes PROJECT_ROOT one dir too high in both the
+  `lab/` and `.agents/` hardlinked copies, causing a false "DB unreachable / theme_anchors
+  missing" report when run through that script; verified DB + theme_anchors (12 rows)
+  directly instead and ran the pipeline scripts directly with correct paths.
+
 ## 2026-07-04
 
 - Split chat and embedding OpenAI-compatible configuration per
