@@ -275,6 +275,7 @@ tmp/
 poc_output*/
 tmp_input/*
 tmp_output/*
+output/*
 
 ## Graphify
 # keep graph outputs, skip heavy/local-only files
@@ -302,4 +303,4 @@ delivery/render-worker/secrets/
 .planning/
 .dex/
 .vercel/
-.env.local
+.env*
