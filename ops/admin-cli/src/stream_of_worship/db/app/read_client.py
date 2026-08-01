@@ -302,6 +302,27 @@ class ReadOnlyClient:
             return Recording.from_row(tuple(row))
         return None
 
+    def list_active_recordings_by_song_id(
+        self, song_id: str, include_deleted: bool = False
+    ) -> list[Recording]:
+        """List all (optionally active) recordings for a song, latest first.
+
+        Args:
+            song_id: The song ID.
+            include_deleted: If False (default), exclude soft-deleted recordings.
+
+        Returns:
+            List of Recordings ordered by ``imported_at DESC``. Empty if none.
+        """
+        cursor = self.connection.cursor()
+        deleted_clause = "" if include_deleted else " AND deleted_at IS NULL"
+        cursor.execute(
+            f"SELECT {RECORDING_COLUMNS_SELECT} FROM recordings "
+            f"WHERE song_id = %s{deleted_clause} ORDER BY imported_at DESC",
+            (song_id,),
+        )
+        return [Recording.from_row(tuple(r)) for r in cursor.fetchall()]
+
     def list_recordings(
         self,
         status: Optional[str] = None,

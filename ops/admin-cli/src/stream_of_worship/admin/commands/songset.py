@@ -4,17 +4,31 @@ Provides CLI commands for listing songsets with their items, songs, and recordin
 """
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
+from stream_of_worship.admin.commands._songset_create_helpers import (
+    _dedupe_songset_name,
+    _format_duration,
+    _sanitize_title_for_name,
+    resolve_song_token,
+)
 from stream_of_worship.admin.config import AdminConfig
-from stream_of_worship.db.app.songset_client import SongsetClient
+from stream_of_worship.admin.constants import (
+    SONGSET_MAX_DURATION_SECONDS,
+    SONGSET_MAX_SONGS,
+)
+from stream_of_worship.db.app.read_client import ReadOnlyClient
+from stream_of_worship.db.app.songset_client import (
+    MissingReferenceError,
+    SongsetClient,
+)
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.user_client import UserClient
 
@@ -582,3 +596,257 @@ def construct_songset(
             failed = len(proposals) - len(created)
             console.print(f"[red]{failed} proposal(s) failed to save.[/red]")
             raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# create subcommand — hand-pick an ordered songset from IDs / titles
+# ---------------------------------------------------------------------------
+
+
+@app.command("create")
+def create_songset(
+    songs: list[str] = typer.Argument(
+        ...,
+        help="Ordered song IDs and/or titles (resolved in order)",
+        min=1,
+    ),
+    user: str | None = typer.Option(
+        None,
+        "--user",
+        "-u",
+        help="Email of the user to own the songset. Falls back to "
+        "SOW_DEFAULT_USER env var if omitted.",
+    ),
+    name: str | None = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Songset name. If omitted, chained from resolved song titles "
+        "(song1_song2_song3). If a songset with this name already "
+        "exists for the same owner, a numeric suffix (_2, _3, ...) is "
+        "appended.",
+    ),
+    description: str | None = typer.Option(
+        None,
+        "--description",
+        "-d",
+        help="Optional songset description",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Non-interactive: skip y/N confirmation only. Ambiguous title "
+        "matches still error (use song_id); the summary table is "
+        "always printed.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Resolve + validate but skip DB writes",
+    ),
+    config_path: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to config file",
+    ),
+) -> None:
+    """Create a songset from an explicit, ordered list of songs.
+
+    Each positional argument is a song ID (exact match) or a title (fuzzy
+    match via title + title_pinyin). Ambiguous title matches prompt for an
+    interactive pick unless --yes is set. The songset is persisted under the
+    user identified by --user (resolved by email; falls back to
+    SOW_DEFAULT_USER env var if --user is omitted).
+
+    Enforces SONGSET_MAX_SONGS=5 and SONGSET_MAX_DURATION_SECONDS=1500
+    (25 min total recording duration) at create time. This is STRICTER than
+    the webapp editor, which only enforces total duration at render time
+    (POST /api/render-jobs). The webapp editor allows oversize sets that
+    then fail at render; this command surfaces the failure earlier.
+
+    When a song has multiple active recordings, the latest one (by imported_at)
+    is selected — the "latest-active-wins" rule.
+
+    Examples:
+      sow-admin songset create --user alice@example.com \\
+          song_0123 "信實偉大" "song_0089" "恩典之路"
+
+      sow-admin songset create -u bob@example.com -n "Sunday_Set_1" \\
+          song_0123 song_0044 song_0089 --yes
+
+      # Use env var for batch:
+      export SOW_DEFAULT_USER=alice@example.com
+      sow-admin songset create song_0123 song_0089 -y
+    """
+    # Step 1 — Resolve --user (flag or SOW_DEFAULT_USER env var)
+    resolved_email = user
+    if resolved_email is None:
+        resolved_email = os.environ.get("SOW_DEFAULT_USER")
+    if not resolved_email:
+        console.print(
+            "[red]No user specified. Pass --user or set SOW_DEFAULT_USER env var.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Step 2 — Load config
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    connection_provider = _get_connection_provider(config)
+
+    # Step 3 — Resolve user
+    user_client = UserClient(connection_provider)
+    resolved_user = user_client.get_user_by_email(resolved_email)
+    if resolved_user is None:
+        console.print(f"[red]User not found: {resolved_email}[/red]")
+        raise typer.Exit(1)
+
+    # Step 4 — Business-rule validation (cheap, pre-DB)
+    if len(songs) > SONGSET_MAX_SONGS:
+        console.print(
+            f"[red]songset exceeds maximum of {SONGSET_MAX_SONGS} songs "
+            f"(got {len(songs)}). Trim the list or split into two songsets.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Step 5 — Resolve every token
+    read_client = ReadOnlyClient(connection_provider)
+
+    console.print(f"Resolving {len(songs)} song tokens ...")
+    resolved: list[tuple] = []
+    for token in songs:
+        song, recording = resolve_song_token(
+            token, read_client, console, non_interactive=yes
+        )
+        resolved.append((song, recording))
+
+    # Step 6 — Duration check
+    total_duration = sum(r.duration_seconds for _, r in resolved)
+    if total_duration > SONGSET_MAX_DURATION_SECONDS:
+        console.print(
+            f"[red]Songset exceeds maximum duration of 25 minutes "
+            f"(got {_format_duration(total_duration)}). "
+            f"Drop one song or pick shorter recordings.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Step 7 — Auto-name
+    if name is None:
+        sanitized_parts: list[str] = []
+        for song, _ in resolved:
+            part = _sanitize_title_for_name(song.title)
+            if not part:
+                part = song.id
+            sanitized_parts.append(part)
+        name = "_".join(sanitized_parts)
+
+    # Step 8 — Deduplicate name within owner
+    songset_client = SongsetClient(connection_provider, user_id=resolved_user.id)
+    existing_songsets = songset_client.list_songsets_for_user_id(resolved_user.id)
+    existing_names = {s.name for s in existing_songsets}
+    name = _dedupe_songset_name(name, existing_names)
+
+    # Step 9 — Truncate name
+    if len(name) > 255:
+        name = name[:252] + "..."
+
+    # Step 10 — Confirmation summary table (always printed)
+    seen_song_ids: dict[str, list[int]] = {}
+    for i, (song, _) in enumerate(resolved, 1):
+        seen_song_ids.setdefault(song.id, []).append(i)
+
+    for song_id, positions in seen_song_ids.items():
+        if len(positions) > 1:
+            console.print(
+                f"[yellow]⚠ song {song_id} appears multiple times "
+                f"(positions {', '.join(str(p) for p in positions)})[/yellow]"
+            )
+
+    table = Table(title=f"Songset '{name}' ({len(resolved)} songs)")
+    table.add_column("#", style="dim", justify="right")
+    table.add_column("Song ID", style="dim")
+    table.add_column("Title", style="cyan")
+    table.add_column("Album")
+    table.add_column("Key", style="magenta")
+    table.add_column("BPM", style="white")
+    table.add_column("Duration", style="yellow")
+    table.add_column("Recording Hash Prefix", style="dim")
+
+    for i, (song, recording) in enumerate(resolved, 1):
+        label = str(i)
+        if len(seen_song_ids.get(song.id, [])) > 1:
+            label = f"{i} (dup)"
+        table.add_row(
+            label,
+            song.id,
+            song.title,
+            song.album_name or "-",
+            song.musical_key or "-",
+            str(round(recording.tempo_bpm)) if recording.tempo_bpm else "--",
+            _format_duration(recording.duration_seconds),
+            recording.hash_prefix,
+        )
+    console.print(table)
+    console.print(
+        f"[dim]Total duration: {_format_duration(total_duration)} / "
+        f"{_format_duration(SONGSET_MAX_DURATION_SECONDS)}[/dim]"
+    )
+
+    # Step 11 — Confirm
+    if not yes:
+        confirmed = typer.confirm(
+            f"Save songset '{name}' ({len(resolved)} songs, "
+            f"{_format_duration(total_duration)}) for {resolved_email}?",
+            default=False,
+        )
+        if not confirmed:
+            console.print("[yellow]Aborted.[/yellow]")
+            return
+
+    # Step 12 — Dry-run
+    if dry_run:
+        console.print("[yellow]Dry run: skipping DB writes.[/yellow]")
+        return
+
+    # Step 13 — Persist
+    try:
+        songset = songset_client.create_songset_with_items(
+            name=name,
+            description=description or "",
+            items=[
+                {
+                    "song_id": song.id,
+                    "recording_hash_prefix": recording.hash_prefix,
+                    "position": i,
+                    "gap_beats": 2.0,
+                    "crossfade_enabled": False,
+                    "crossfade_duration_seconds": None,
+                    "key_shift_semitones": 0,
+                    "tempo_ratio": 1.0,
+                }
+                for i, (song, recording) in enumerate(resolved)
+            ],
+        )
+    except MissingReferenceError as e:
+        console.print(
+            f"[red]Persistence failed: recording reference missing: {e}[/red]"
+        )
+        console.print(
+            "[red]A recording may have been soft-deleted after resolution. "
+            "Retry the command.[/red]"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Persistence failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Step 14 — Output
+    console.print(
+        f"[green]✓ Created songset {songset.id} '{name}' "
+        f"({len(resolved)} songs, {_format_duration(total_duration)})[/green]"
+    )
