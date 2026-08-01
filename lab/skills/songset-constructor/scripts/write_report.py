@@ -110,7 +110,7 @@ def _build_report(
         lines.extend(_proposal_section(proposal, config, pool))
 
     # Diversity Summary
-    lines.extend(_diversity_summary(proposals, pool))
+    lines.extend(_diversity_summary(proposals, pool, config=config))
 
     # Agent Summary
     if summary_text:

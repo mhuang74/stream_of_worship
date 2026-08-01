@@ -281,7 +281,9 @@ def _bottleneck_lines(metrics: dict, proposals: list[SongsetProposal], pool: lis
     return lines
 
 
-def _diversity_summary(proposals: list[SongsetProposal], pool: list[SongCandidate]) -> list[str]:
+def _diversity_summary(
+    proposals: list[SongsetProposal], pool: list[SongCandidate], *, config: RunConfig | None = None
+) -> list[str]:
     if len(proposals) <= 1:
         return []
     metrics = _diversity_metrics(proposals, pool)
