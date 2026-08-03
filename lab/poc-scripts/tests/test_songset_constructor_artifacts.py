@@ -106,7 +106,7 @@ def test_review_report_fallback_no_llm_contains_required_sections(synthetic_pool
     assert report.startswith("# Songset Constructor Review")
     assert "## Key Findings" in report
     assert "## Proposal 1" in report
-    assert "| 1 | 讚美主 | 1 | 124 | G maj | 讚美 | shift 0, gap 2 beats |" in report
+    assert "| 1 | 讚美主 |  | 1 | 124 | G maj | 讚美 | shift 0, gap 2 beats |" in report
     assert "Score components: theme 0.800, tempo 0.700, harmony 0.900, diversity 0.600." in report
     assert "relax_h4=True" in report
     assert "relaxed_h4" in report
@@ -190,12 +190,12 @@ def test_song_sequence_line():
     proposal = _proposal_with_items(
         [_item(1, "主你荣耀"), _item(2, "恩典已降临"), _item(3, "耶稣我爱祢")]
     )
-    assert _song_sequence_line(proposal) == "1. 主你荣耀  →  2. 恩典已降临  →  3. 耶稣我爱祢"
+    assert _song_sequence_line(proposal) == '"主你荣耀" "恩典已降临" "耶稣我爱祢"'
 
 
 def test_song_sequence_line_single():
     proposal = _proposal_with_items([_item(1, "唯一")])
-    assert _song_sequence_line(proposal) == "1. 唯一"
+    assert _song_sequence_line(proposal) == '"唯一"'
 
 
 def test_song_sequence_line_empty():
