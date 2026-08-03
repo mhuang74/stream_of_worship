@@ -73,7 +73,7 @@ def resolve_song_token(
                     f"supply the song_id directly.[/red]"
                 )
                 raise typer.Exit(1)
-            song = _pick_song_interactive(token, matches, console)
+            song = _pick_song_interactive(token, matches, console, read_client)
 
     recordings = read_client.list_active_recordings_by_song_id(
         song.id, include_deleted=False
@@ -98,7 +98,7 @@ def resolve_song_token(
 
 
 def _pick_song_interactive(
-    token: str, matches: list[Song], console: Console
+    token: str, matches: list[Song], console: Console, read_client: ReadOnlyClient
 ) -> Song:
     """Render a table of matches and prompt the user to pick one.
 
@@ -106,6 +106,7 @@ def _pick_song_interactive(
         token: The original search token.
         matches: List of matching songs.
         console: Rich console.
+        read_client: Used to fetch the latest recording's `tempo_bpm` for each matched song so the BPM column shows real tempo values.
 
     Returns:
         The chosen ``Song``.
@@ -119,13 +120,16 @@ def _pick_song_interactive(
     table.add_column("Key", style="magenta")
     table.add_column("BPM", style="white")
     for i, s in enumerate(matches, 1):
+        recordings = read_client.list_active_recordings_by_song_id(s.id, include_deleted=False)
+        bpm = recordings[0].tempo_bpm if recordings else None
+        bpm_val = str(round(bpm)) if bpm is not None else "-"
         table.add_row(
             str(i),
             s.id,
             s.title,
             s.album_name or "-",
             s.musical_key or "-",
-            str(round(s.musical_key_start_pitch_class)) if s.musical_key_start_pitch_class else "-",
+            bpm_val,
         )
     console.print(table)
 
