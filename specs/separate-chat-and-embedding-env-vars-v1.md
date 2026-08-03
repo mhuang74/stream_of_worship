@@ -510,12 +510,12 @@ SOW_EMBEDDING_MODEL="text-embedding-3-small"
 
 ```bash
 # Chat (LRC alignment, YouTube transcript, songset agent)
-SOW_LLM_API_KEY="sk-70c8f64afdb90795753083cd0aaed698cdddd3c2cb0ed6d1b604fa08a3deeaa2"
+SOW_LLM_API_KEY="sk-..."
 SOW_LLM_BASE_URL="https://api.neuralwatt.com/v1"
 SOW_LLM_MODEL="qwen3.6-35b"
 
 # Embeddings (semantic search, song embedding generation)
-SOW_EMBEDDING_API_KEY="sk-nano-41d07084-21ce-40bb-8565-83bea22e98b9"
+SOW_EMBEDDING_API_KEY="sk-..."
 SOW_EMBEDDING_BASE_URL="https://nano-gpt.com/api/v1"
 SOW_EMBEDDING_MODEL="text-embedding-3-small"
 ```
@@ -539,12 +539,12 @@ SOW_EMBEDDING_MODEL="text-embedding-3-small"
 
 ```bash
 # Chat (LRC alignment, YouTube transcript, songset agent)
-SOW_LLM_API_KEY="sk-70c8f64afdb90795753083cd0aaed698cdddd3c2cb0ed6d1b604fa08a3deeaa2"
+SOW_LLM_API_KEY="sk-..."
 SOW_LLM_BASE_URL="https://api.neuralwatt.com/v1"
 SOW_LLM_MODEL="qwen3.6-35b"
 
 # Embeddings (semantic search, song embedding generation)
-SOW_EMBEDDING_API_KEY="sk-nano-41d07084-21ce-40bb-8565-83bea22e98b9"
+SOW_EMBEDDING_API_KEY="sk-..."
 SOW_EMBEDDING_BASE_URL="https://nano-gpt.com/api/v1"
 SOW_EMBEDDING_MODEL="text-embedding-3-small"
 ```
