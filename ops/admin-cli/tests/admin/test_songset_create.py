@@ -281,10 +281,11 @@ def test_resolve_token_title_multiple_matches_non_interactive_exits():
 def test_resolve_token_title_multiple_matches_interactive_picks(monkeypatch):
     song1 = _song(song_id="song_0044", title="恩典之路")
     song2 = _song(song_id="song_0072", title="恩典之路 (Live)")
-    recording = _recording(song_id="song_0044")
+    rec1 = _recording(song_id="song_0044", bpm=72.0)
+    rec2 = _recording(song_id="song_0072", bpm=80.0)
     read_client = FakeReadClient(
         search_results={"恩典之路": [song1, song2]},
-        recordings={song1.id: [recording]},
+        recordings={song1.id: [rec1], song2.id: [rec2]},
     )
     console = MagicMock()
 
