@@ -76,6 +76,20 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// Mock useSongLyrics
+vi.mock("@/hooks/useSongLyrics", () => ({
+  useSongLyrics: () => ({
+    lrcContent: null,
+    lines: null,
+    loading: false,
+    error: null,
+  }),
+  clearLyricsCache: vi.fn(),
+}));
+
+// jsdom doesn't implement scrollIntoView
+Element.prototype.scrollIntoView = vi.fn();
+
 describe("SongList", () => {
   const mockItems: SongListItem[] = [
     {
@@ -134,7 +148,6 @@ describe("SongList", () => {
     onReorder: vi.fn(),
     onRemove: vi.fn(),
     onEditTransition: vi.fn(),
-    onSelectSong: vi.fn(),
   };
 
   const renderList = (props = {}) => {
@@ -187,18 +200,6 @@ describe("SongList", () => {
 
       await waitFor(() => {
         expect(onRemove).toHaveBeenCalledWith("item-1");
-      });
-    });
-
-    it("calls onSelectSong when song is clicked", async () => {
-      const onSelectSong = vi.fn();
-      renderList({ onSelectSong });
-
-      // Click on the first song title
-      fireEvent.click(screen.getByText("Amazing Grace"));
-
-      await waitFor(() => {
-        expect(onSelectSong).toHaveBeenCalledWith("item-1");
       });
     });
 
