@@ -36,8 +36,8 @@ def _json_default(value):
 def _song_sequence_line(proposal: SongsetProposal) -> str:
     if not proposal.items:
         return "(no songs)"
-    parts = [f"{item.position}. {item.title}" for item in proposal.items]
-    return "  →  ".join(parts)
+    parts = [f'"{item.title}"' for item in proposal.items]
+    return " ".join(parts)
 
 
 def _key_tempo_journey_line(proposal: SongsetProposal) -> str:
@@ -373,7 +373,7 @@ def write_report(path: Path, *, config: RunConfig, proposals: list[SongsetPropos
         narrative = narratives[index] if index < len(narratives) else None
         lines.extend([f"## Rank {proposal.rank} - Score {proposal.score.total:.4f}", ""])
         lines.extend(brief_summary_block(proposal, config=config, pool=pool, llm_narrative=narrative))
-        lines.extend(["", "### Details", "", "| # | Title | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
+        lines.extend(["", "### Details", "", "| # | Title | Album | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
         for item in proposal.items:
             key = " ".join(part for part in [item.key, item.mode] if part)
             parts = [f"shift {item.key_shift_semitones}", f"gap {item.gap_beats:g} beats"]
@@ -383,7 +383,7 @@ def write_report(path: Path, *, config: RunConfig, proposals: list[SongsetPropos
             phase_display = str(item.phase)
             if item.secondary_phases:
                 phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
-            lines.append(f"| {item.position} | {item.title} | {phase_display} | {item.bpm or ''} | {key} | {', '.join(item.themes)} | {transition} |")
+            lines.append(f"| {item.position} | {item.title} | {_md_cell(item.album_name or '')} | {phase_display} | {item.bpm or ''} | {key} | {', '.join(item.themes)} | {transition} |")
         lines.extend(["", f"Rationale: {proposal.rationale or 'Deterministic beam ranking.'}", "", f"Score: theme {proposal.score.f_theme:.3f}, tempo {proposal.score.f_tempo:.3f}, harmony {proposal.score.f_harmony:.3f}, diversity {proposal.score.f_diversity:.3f}.", ""])
         if proposal.hard_constraint_warnings:
             lines.extend([f"Warnings: {', '.join(proposal.hard_constraint_warnings)}", ""])
@@ -548,7 +548,7 @@ def _proposal_section(proposal: SongsetProposal) -> list[str]:
     lines = [f"## Proposal {proposal.rank}", "", f"Score: {proposal.score.total:.4f}", f"Score components: theme {proposal.score.f_theme:.3f}, tempo {proposal.score.f_tempo:.3f}, harmony {proposal.score.f_harmony:.3f}, diversity {proposal.score.f_diversity:.3f}.", f"Origin: {'LLM-origin proposal' if proposal.llm_origin else 'deterministic beam ranking'}.", f"Warnings: {warnings}.", f"Rationale: {proposal.rationale or 'Deterministic beam ranking.'}"]
     if proposal.judge_reason:
         lines.append(f"Judge note: {proposal.judge_reason}")
-    lines.extend(["", "| # | Title | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
+    lines.extend(["", "| # | Title | Album | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
     for item in proposal.items:
         key = " ".join(part for part in [item.key, item.mode] if part)
         parts = [f"shift {item.key_shift_semitones}", f"gap {item.gap_beats:g} beats"]
@@ -558,7 +558,7 @@ def _proposal_section(proposal: SongsetProposal) -> list[str]:
         phase_display = str(item.phase)
         if item.secondary_phases:
             phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
-        lines.append(f"| {item.position} | {_md_cell(item.title)} | {phase_display} | {'' if item.bpm is None else f'{item.bpm:g}'} | {_md_cell(key)} | {_md_cell(', '.join(item.themes))} | {_md_cell(transition)} |")
+        lines.append(f"| {item.position} | {_md_cell(item.title)} | {_md_cell(item.album_name or '')} | {phase_display} | {'' if item.bpm is None else f'{item.bpm:g}'} | {_md_cell(key)} | {_md_cell(', '.join(item.themes))} | {_md_cell(transition)} |")
     lines.append("")
     return lines
 

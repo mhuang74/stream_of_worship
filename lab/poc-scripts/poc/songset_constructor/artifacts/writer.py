@@ -45,8 +45,8 @@ def _json_default(value):
 def _song_sequence_line(proposal: SongsetProposal) -> str:
     if not proposal.items:
         return "(no songs)"
-    parts = [f"{item.position}. {item.title}" for item in proposal.items]
-    return "  →  ".join(parts)
+    parts = [f'"{item.title}"' for item in proposal.items]
+    return " ".join(parts)
 
 
 def _key_tempo_journey_line(proposal: SongsetProposal) -> str:
@@ -490,7 +490,7 @@ def write_report(
                 "",
                 "### Details",
                 "",
-                "| # | Title | Phase | BPM | Key | Themes | Transition |",
+                "| # | Title | Album | Phase | BPM | Key | Themes | Transition |",
                 "|---|---|---:|---:|---|---|---|",
             ]
         )
@@ -501,7 +501,7 @@ def write_report(
             if item.secondary_phases:
                 phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
             lines.append(
-                f"| {item.position} | {item.title} | {phase_display} | {item.bpm or ''} | {key} | {', '.join(item.themes)} | {transition} |"
+                f"| {item.position} | {item.title} | {_md_cell(item.album_name or '')} | {phase_display} | {item.bpm or ''} | {key} | {', '.join(item.themes)} | {transition} |"
             )
         lines.extend(
             [
@@ -873,7 +873,7 @@ def _proposal_section(proposal: SongsetProposal) -> list[str]:
     lines.extend(
         [
             "",
-            "| # | Title | Phase | BPM | Key | Themes | Transition |",
+            "| # | Title | Album | Phase | BPM | Key | Themes | Transition |",
             "|---|---|---:|---:|---|---|---|",
         ]
     )
@@ -889,6 +889,7 @@ def _proposal_section(proposal: SongsetProposal) -> list[str]:
                 [
                     str(item.position),
                     _md_cell(item.title),
+                    _md_cell(item.album_name or ""),
                     phase_display,
                     "" if item.bpm is None else f"{item.bpm:g}",
                     _md_cell(key),

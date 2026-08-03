@@ -195,7 +195,7 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
 
     lines = [f"## Rank {proposal.rank} - Score {proposal.score.total:.4f}", ""]
     lines.extend(brief_summary_block(proposal, config=config, pool=pool))
-    lines.extend(["", "### Details", "", "| # | Title | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
+    lines.extend(["", "### Details", "", "| # | Title | Album | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
 
     for item in proposal.items:
         key = " ".join(part for part in [item.key, item.mode] if part)
@@ -205,7 +205,7 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
             phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
         themes = ", ".join(item.themes) if item.themes else "none"
         bpm = f"{item.bpm:g}" if item.bpm is not None else ""
-        lines.append(f"| {item.position} | {item.title} | {phase_display} | {bpm} | {key} | {themes} | {transition} |")
+        lines.append(f"| {item.position} | {item.title} | {item.album_name or ''} | {phase_display} | {bpm} | {key} | {themes} | {transition} |")
 
     lines.extend([
         "",

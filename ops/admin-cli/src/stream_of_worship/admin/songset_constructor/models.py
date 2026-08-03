@@ -62,6 +62,7 @@ class SongsetDraft(BaseModel):
 class ProposalItem(DraftItem):
     song_id: str
     title: str
+    album_name: str | None = None
     phase: int
     secondary_phases: list[int] = Field(default_factory=list)
     themes: list[str] = Field(default_factory=list)
