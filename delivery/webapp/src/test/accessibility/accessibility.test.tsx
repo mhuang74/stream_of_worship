@@ -134,6 +134,23 @@ vi.mock("@dnd-kit/utilities", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/r2/public-url", () => ({
+  getPublicAudioUrl: vi.fn(() => null),
+}));
+
+vi.mock("@/hooks/useSongLyrics", () => ({
+  useSongLyrics: () => ({
+    lrcContent: null,
+    lines: null,
+    loading: false,
+    error: null,
+  }),
+  clearLyricsCache: vi.fn(),
+}));
+
+// jsdom doesn't implement scrollIntoView
+Element.prototype.scrollIntoView = vi.fn();
+
 // ---------------------------------------------------------------------------
 // Component imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -381,47 +398,42 @@ describe("Accessibility (Task 8.2)", () => {
       expect(removeButton).toBeInTheDocument();
     });
 
-    it("song info area has role=button and aria-label when onSelectSong is provided", () => {
+    it("chevron expand button has aria-expanded attribute", () => {
       render(
         <SongList
           items={mockSongListItems}
           onReorder={vi.fn()}
           onRemove={vi.fn()}
-          onSelectSong={vi.fn()}
         />
       );
-      const selectButton = screen.getByRole("button", { name: /select amazing grace/i });
-      expect(selectButton).toBeInTheDocument();
+      const chevron = screen.getByRole("button", { name: /expand lyrics for amazing grace/i });
+      expect(chevron).toHaveAttribute("aria-expanded", "false");
     });
 
-    it("song info area is keyboard-accessible with Enter key", () => {
-      const onSelectSong = vi.fn();
+    it("chevron expand button toggles aria-expanded", () => {
       render(
         <SongList
           items={mockSongListItems}
           onReorder={vi.fn()}
           onRemove={vi.fn()}
-          onSelectSong={onSelectSong}
         />
       );
-      const selectButton = screen.getByRole("button", { name: /select amazing grace/i });
-      fireEvent.keyDown(selectButton, { key: "Enter" });
-      expect(onSelectSong).toHaveBeenCalledWith("item-1");
+      const chevron = screen.getByRole("button", { name: /expand lyrics for amazing grace/i });
+      fireEvent.click(chevron);
+      expect(chevron).toHaveAttribute("aria-expanded", "true");
     });
 
-    it("song info area is keyboard-accessible with Space key", () => {
-      const onSelectSong = vi.fn();
+    it("expanded lyrics panel has role=region", () => {
       render(
         <SongList
           items={mockSongListItems}
           onReorder={vi.fn()}
           onRemove={vi.fn()}
-          onSelectSong={onSelectSong}
         />
       );
-      const selectButton = screen.getByRole("button", { name: /select amazing grace/i });
-      fireEvent.keyDown(selectButton, { key: " " });
-      expect(onSelectSong).toHaveBeenCalledWith("item-1");
+      const chevron = screen.getByRole("button", { name: /expand lyrics for amazing grace/i });
+      fireEvent.click(chevron);
+      expect(screen.getByRole("region")).toBeInTheDocument();
     });
 
     it("transition edit button has descriptive aria-label", () => {

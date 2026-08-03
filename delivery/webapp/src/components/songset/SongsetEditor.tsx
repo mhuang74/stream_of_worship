@@ -407,7 +407,6 @@ export function SongsetEditor({
           onReorder={handleReorder}
           onRemove={handleRemove}
           onEditTransition={handleEditTransition}
-          onSelectSong={() => {}}
           isRemoving={isRemoving}
         />
       </main>
