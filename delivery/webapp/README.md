@@ -22,6 +22,15 @@ Copy `.env.example` to `.env.local` and configure:
 - `NEXT_PUBLIC_BASE_URL` — Base URL of the app (for share links)
 - `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` — (optional) Google Cast Web Sender SDK receiver app ID. Omit to use Google's Default Media Receiver, which is the only supported v3 Cast mode (lyrics are baked into the MP4, so no custom Cast receiver UI is required). See the "Google Cast SDK Setup" section below.
 
+> **Note on LLM vs. embedding env vars:** This app does **not** use the
+> `SOW_LLM_API_KEY` / `SOW_LLM_MODEL` / `SOW_LLM_BASE_URL` variables — those
+> belong to the Python **Analysis Service** (chat for LRC/transcript workers and
+> agentic songset construction). The only LLM-adjacent feature here is semantic
+> song search, which uses the separate `SOW_EMBEDDING_API_KEY` /
+> `SOW_EMBEDDING_BASE_URL` / `SOW_EMBEDDING_MODEL` variables. If `SOW_LLM_*` is
+> set on Vercel for this app, it is unused/dormant and can be ignored (or
+> removed).
+
 See `.env.production.example` for a full description of every variable.
 
 ## Development

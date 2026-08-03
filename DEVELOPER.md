@@ -733,6 +733,15 @@ export SOW_ANALYSIS_API_KEY="your-api-key"
 
 See [delivery/webapp/.env.production.example](delivery/webapp/.env.production.example) for full documentation of all environment variables.
 
+> **Important:** The Web App does **not** use the `SOW_LLM_*` variables
+> (`SOW_LLM_API_KEY`, `SOW_LLM_MODEL`, `SOW_LLM_BASE_URL`). Those are consumed
+> only by the Python **Analysis Service** (chat for LRC/transcript workers and
+> agentic songset construction). The Web App's only LLM-adjacent feature is
+> semantic song search, which uses the separate `SOW_EMBEDDING_*` variables
+> (`SOW_EMBEDDING_API_KEY`, `SOW_EMBEDDING_BASE_URL`, `SOW_EMBEDDING_MODEL`).
+> Setting `SOW_LLM_*` on Vercel for the webapp has no effect — it is
+> unused/dormant there. See the [LLM / Embedding Environment Variables](#llm--embedding-environment-variables) section for the full per-component breakdown.
+
 **Required:**
 ```bash
 SOW_DATABASE_URL=postgresql://...       # Neon PostgreSQL connection string

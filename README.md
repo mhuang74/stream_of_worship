@@ -166,6 +166,14 @@ pnpm dev   # → http://localhost:8080
 
 See [delivery/webapp/.env.production.example](delivery/webapp/.env.production.example) for documentation of all environment variables.
 
+> **Note on LLM vs. embedding env vars:** The Web App does **not** use the
+> `SOW_LLM_API_KEY` / `SOW_LLM_MODEL` / `SOW_LLM_BASE_URL` variables. Those
+> belong to the Python **Analysis Service** (chat for LRC/transcript workers and
+> agentic songset construction). The Web App's only LLM-adjacent feature is
+> semantic song search, which uses the separate `SOW_EMBEDDING_API_KEY` /
+> `SOW_EMBEDDING_BASE_URL` / `SOW_EMBEDDING_MODEL` variables. If you see
+> `SOW_LLM_*` set on Vercel for the webapp, it is currently unused/dormant there.
+
 ### Development Commands
 
 ```bash
