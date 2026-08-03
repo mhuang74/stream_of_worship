@@ -333,6 +333,31 @@ sow-admin songset list --user me@example.com
 The `construct` command requires the `constructor` extra (`pydantic`, `langgraph`).
 Without it, a clear `RuntimeError` with install instructions is raised.
 
+#### LLM Configuration (optional)
+
+`construct` runs beam search deterministically by default. LLM-based planning is
+enabled with `--llm` (and `--llm-judge` for the LLM judge). When LLM mode is
+enabled, the following environment variables are used:
+
+| Variable | Purpose |
+|----------|---------|
+| `SOW_LLM_API_KEY` | API key for the OpenAI-compatible chat provider (required when `--llm`) |
+| `SOW_LLM_MODEL` | Chat model name (required when `--llm`; no hardcoded default — set via env or `--llm-model`) |
+| `SOW_LLM_BASE_URL` | Optional base URL for an OpenAI-compatible gateway |
+
+The CLI auto-loads `/opt/sow/.env` (already-exported shell variables take
+precedence). The chat model is built with `temperature=0.2` and `max_retries=2`.
+If `--llm` is set and `SOW_LLM_API_KEY` or `SOW_LLM_MODEL` is missing, the
+command fails fast with a clear configuration error.
+
+```bash
+# Example: LLM-based planning
+export SOW_LLM_API_KEY="sk-..."
+export SOW_LLM_MODEL="your-model"
+uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
+  --user me@example.com --count 3 --proposals 3 --llm --yes
+```
+
 ### Sync Commands (Phase 7)
 
 ```bash
