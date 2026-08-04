@@ -2,9 +2,9 @@
 """Retrieve LRC lyrics for a specific recording from R2 or DB.
 
 Usage:
-    python get_lyrics.py --hash-prefix a1b2c3d4e5f6
-    python get_lyrics.py --song-id abc123 --source raw
-    python get_lyrics.py --hash-prefix a1b2c3d4e5f6 --source auto
+    uv run --project ops/admin-cli --extra admin --extra constructor python get_lyrics.py --hash-prefix a1b2c3d4e5f6
+    uv run --project ops/admin-cli --extra admin --extra constructor python get_lyrics.py --song-id abc123 --source raw
+    uv run --project ops/admin-cli --extra admin --extra constructor python get_lyrics.py --hash-prefix a1b2c3d4e5f6 --source auto
 
 Output: LRC or raw lyrics text (UTF-8) to stdout.
 """

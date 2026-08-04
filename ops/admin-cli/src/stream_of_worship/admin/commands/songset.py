@@ -714,14 +714,14 @@ def create_songset(
 
     Examples:
       sow-admin songset create --user alice@example.com \\
-          song_0123 "信實偉大" "song_0089" "恩典之路"
+          wo_de_ye_su_4c27d159 "信實偉大" en_dian_zhi_lu_a1b2c3d4 "恩典之路"
 
       sow-admin songset create -u bob@example.com -n "Sunday_Set_1" \\
-          song_0123 song_0044 song_0089 --yes
+          wo_de_ye_su_4c27d159 en_dian_zhi_lu_a1b2c3d4 shi_jie_de_jie_zhi_d4e5f6a7 --yes
 
       # Use env var for batch:
       export SOW_DEFAULT_USER=alice@example.com
-      sow-admin songset create song_0123 song_0089 -y
+      sow-admin songset create wo_de_ye_su_4c27d159 en_dian_zhi_lu_a1b2c3d4 -y
     """
     # Step 1 — Resolve --user (flag or SOW_DEFAULT_USER env var)
     resolved_email = user

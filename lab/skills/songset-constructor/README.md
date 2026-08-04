@@ -42,3 +42,37 @@ The chat model is built in `graph/llm.py` with `temperature=0.2` and
 `max_retries=2`. Agentic mode fails fast if `SOW_LLM_API_KEY` or
 `SOW_LLM_MODEL` is missing. This is distinct from the skill itself, which needs
 no LLM credentials.
+
+## Script Reference
+
+| Script | Input | Output |
+|--------|-------|--------|
+| `preflight.sh` | none | exit code 0/1 + diagnostic text to stdout |
+| `fetch_pool.py` | CLI flags | JSON array of SongCandidate (stdout) |
+| `enrich_pool.py` | JSON array of SongCandidate (stdin/`--input`) | JSON array of enriched SongCandidate (stdout) |
+| `build_transitions.py` | JSON array of enriched SongCandidate (stdin/`--input`) | JSON object `{"transitions": [...], "pool": [...]}` (stdout) |
+| `score_songset.py` | JSON object `{"items": [...], "pool": [...], "transitions": [...], "config": {...}}` (stdin/`--input`) | JSON object `{"score": {...}, "validation": {...}, "proposal": {...}}` (stdout) |
+| `semantic_search.py` | CLI flags (`--query`, `--album-series` repeatable, `--limit`, etc.) | JSON array of song dicts (stdout) |
+| `get_lyrics.py` | CLI flags (`--hash-prefix` or `--song-id`) | LRC/raw lyrics text (stdout) |
+| `write_report.py` | JSON object `{"proposals": [...], "pool": [...], "config": {...}, "transitions": [...], "summary": "..."}` (stdin) | file path to `proposal_report.md` (stdout) |
+
+## Pipeline Data Flow
+
+```
+fetch_pool.py → [raw pool array]
+    ↓
+enrich_pool.py → [enriched pool array]
+    ↓
+build_transitions.py → {"transitions": [...], "pool": [...]}
+    ↓
+(score_songset.py needs items + pool + transitions + config merged into one object)
+    ↓
+write_report.py → proposal_report.md
+```
+
+## Persisting a Songset
+
+See SKILL.md Step 12 for using `sow-admin songset create` to persist the
+top-ranked proposal. Use the `song_id` field (format: `{slug}_{8-hex}`,
+e.g., `wo_de_ye_su_4c27d159`) from SongCandidate objects — not
+`recording_hash_prefix`.

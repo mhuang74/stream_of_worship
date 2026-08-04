@@ -3,7 +3,7 @@
 
 Usage:
     echo '{"proposals": [...], "pool": [...], "config": {...}, "transitions": [...]}' | \
-        python write_report.py --output-dir output/songset_constructor/<timestamp>/
+        uv run --project ops/admin-cli --extra admin --extra constructor python write_report.py --output-dir output/songset_constructor/<timestamp>/
 
 Input (stdin JSON):
     {

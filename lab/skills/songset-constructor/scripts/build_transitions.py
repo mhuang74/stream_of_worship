@@ -4,8 +4,8 @@
 Also computes fan-out and dead-end status for each song.
 
 Usage:
-    cat enriched_pool.json | python build_transitions.py
-    python build_transitions.py --input enriched_pool.json
+    cat enriched_pool.json | uv run --project ops/admin-cli --extra admin --extra constructor python build_transitions.py
+    uv run --project ops/admin-cli --extra admin --extra constructor python build_transitions.py --input enriched_pool.json
 
 Input: JSON array of enriched SongCandidate objects.
 Output: JSON object with "transitions" (list) and "pool" (updated SongCandidate objects) to stdout.
