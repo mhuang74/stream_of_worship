@@ -151,4 +151,79 @@ describe("useSongLyrics", () => {
     abortSpy.mockRestore();
     void rerender;
   });
+
+  describe("v6 LRU eviction", () => {
+    it("evicts oldest entry when cache exceeds 50 entries", async () => {
+      // Fill cache with 50 entries
+      for (let i = 0; i < 50; i++) {
+        const hash = `hash-${i}`;
+        mockFetch.mockResolvedValue(
+          new Response(JSON.stringify({ lrcContent: `lyrics-${i}`, lines: null }), {
+            status: 200,
+          })
+        );
+        const { result, unmount } = renderHook(() => useSongLyrics(hash));
+        await waitFor(() => {
+          expect(result.current.lrcContent).toBe(`lyrics-${i}`);
+        });
+        unmount();
+        mockFetch.mockClear();
+      }
+
+      // Insert 51st entry — should evict hash-0 (oldest)
+      mockFetch.mockResolvedValue(
+        new Response(JSON.stringify({ lrcContent: "lyrics-50", lines: null }), {
+          status: 200,
+        })
+      );
+      const { result: result51, unmount: unmount51 } = renderHook(() => useSongLyrics("hash-50"));
+      await waitFor(() => {
+        expect(result51.current.lrcContent).toBe("lyrics-50");
+      });
+      unmount51();
+      mockFetch.mockClear();
+
+      // Accessing hash-0 should trigger a refetch (it was evicted)
+      mockFetch.mockResolvedValue(
+        new Response(JSON.stringify({ lrcContent: "lyrics-0-refetched", lines: null }), {
+          status: 200,
+        })
+      );
+      const { result: resultRefetch, unmount: unmountRefetch } = renderHook(() => useSongLyrics("hash-0"));
+      expect(resultRefetch.current.loading).toBe(true);
+      await waitFor(() => {
+        expect(resultRefetch.current.lrcContent).toBe("lyrics-0-refetched");
+      });
+      unmountRefetch();
+    });
+
+    it("cache size stays at 50 after eviction", async () => {
+      for (let i = 0; i < 51; i++) {
+        const hash = `evict-hash-${i}`;
+        mockFetch.mockResolvedValue(
+          new Response(JSON.stringify({ lrcContent: `lyrics-${i}`, lines: null }), {
+            status: 200,
+          })
+        );
+        const { result, unmount } = renderHook(() => useSongLyrics(hash));
+        await waitFor(() => {
+          expect(result.current.lrcContent).toBe(`lyrics-${i}`);
+        });
+        unmount();
+        mockFetch.mockClear();
+      }
+
+      // Accessing a cached entry should not refetch
+      mockFetch.mockResolvedValue(
+        new Response(JSON.stringify({ lrcContent: "should-not-be-called", lines: null }), {
+          status: 200,
+        })
+      );
+      const { result: resultCached, unmount: unmountCached } = renderHook(() => useSongLyrics("evict-hash-50"));
+      expect(resultCached.current.loading).toBe(false);
+      expect(resultCached.current.lrcContent).toBe("lyrics-50");
+      expect(mockFetch).not.toHaveBeenCalled();
+      unmountCached();
+    });
+  });
 });

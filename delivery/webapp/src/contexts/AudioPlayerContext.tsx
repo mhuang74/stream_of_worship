@@ -20,6 +20,7 @@ export interface AudioTrack {
   duration?: number;
   loopStart?: number;
   loopEnd?: number;
+  recordingContentHash?: string;
 }
 
 export interface AudioPlayerState {

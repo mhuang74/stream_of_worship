@@ -545,6 +545,7 @@ describe("SemanticSearch", () => {
           src: "https://pub-test.r2.dev/abc/audio.mp3",
           type: "song",
           duration: 180,
+          recordingContentHash: "abc123",
         });
       });
     });

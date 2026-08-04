@@ -177,7 +177,16 @@ export function groupLyricsBySong(
  */
 export function isValidLRC(lrcContent: string): boolean {
   const pattern = /\[\d{2}:\d{2}\.\d{2,3}\]/;
-  return pattern.test(lrcContent);
+  let matchCount = 0;
+  for (const line of lrcContent.split('\n')) {
+    if (pattern.test(line)) {
+      matchCount++;
+      if (matchCount >= 2) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

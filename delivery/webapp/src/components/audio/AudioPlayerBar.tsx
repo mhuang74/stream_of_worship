@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -13,8 +15,19 @@ import {
   Repeat,
   X,
   Music,
+  AlignLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PlayerLyricsPanel } from "./PlayerLyricsPanel";
+import { LyricsErrorBoundary } from "./LyricsErrorBoundary";
+
+function LyricsErrorFallback() {
+  return (
+    <div className="px-3 lg:px-4 py-2">
+      <p className="text-sm text-muted-foreground">Lyrics unavailable</p>
+    </div>
+  );
+}
 
 export function AudioPlayerBar() {
   const {
@@ -35,6 +48,94 @@ export function AudioPlayerBar() {
     stop,
     seekRelative,
   } = useAudioPlayer();
+
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [isLyricsMounted, setIsLyricsMounted] = useState(false);
+  const pathname = usePathname();
+
+  // Ref to track currentTrack without re-attaching listener
+  const currentTrackRef = useRef(currentTrack);
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+
+  // Auto-collapse on track change / stop
+  useEffect(() => {
+    if (!currentTrack?.recordingContentHash) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowLyrics(false);
+    }
+  }, [currentTrack?.recordingContentHash]);
+
+  // Mount content when expanding; keep mounted during collapse transition
+  useEffect(() => {
+    if (showLyrics && currentTrack?.recordingContentHash) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsLyricsMounted(true);
+    }
+  }, [showLyrics, currentTrack?.recordingContentHash]);
+
+  // Unmount content after collapse transition completes
+  const handleTransitionEnd = () => {
+    if (!showLyrics) {
+      setIsLyricsMounted(false);
+    }
+  };
+
+  // Keyboard shortcut ('L') — v6: modal-aware, stable listener, no-op preventDefault
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const track = currentTrackRef.current;
+      if (!track) return;
+
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      if (
+        document.querySelector('[role="dialog"]') ||
+        document.querySelector('[data-slot="sheet"]')
+      ) {
+        return;
+      }
+
+      if (e.key === "l" || e.key === "L") {
+        if (track.recordingContentHash) {
+          e.preventDefault();
+          setShowLyrics((prev) => !prev);
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Auto-collapse on route change
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowLyrics(false);
+  }, [pathname]);
+
+  // Auto-collapse on modal/sheet open
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const modalOpen =
+        document.querySelector('[role="dialog"]') ||
+        document.querySelector('[data-slot="sheet"]');
+      if (modalOpen) {
+        setShowLyrics(false);
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   // Don't show if no track is loaded
   if (!currentTrack) {
@@ -60,6 +161,30 @@ export function AudioPlayerBar() {
       )}
       data-testid="audio-player-bar"
     >
+      {/* Animated lyrics panel — always in DOM for transition */}
+      <div
+        onTransitionEnd={handleTransitionEnd}
+        className={cn(
+          "overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out border-t bg-background/95 backdrop-blur-sm",
+          showLyrics && currentTrack?.recordingContentHash
+            ? "max-h-[40dvh] md:max-h-[400px] opacity-100"
+            : "max-h-0 opacity-0 border-t-0"
+        )}
+      >
+        {isLyricsMounted && currentTrack?.recordingContentHash && (
+          <div
+            id="player-lyrics-panel"
+            role="region"
+            aria-label={`Lyrics for ${currentTrack.title}`}
+            className="overflow-y-auto overscroll-y-contain h-full"
+          >
+            <LyricsErrorBoundary fallback={<LyricsErrorFallback />}>
+              <PlayerLyricsPanel recordingContentHash={currentTrack.recordingContentHash} />
+            </LyricsErrorBoundary>
+          </div>
+        )}
+      </div>
+
       {/* Seek bar (full width, taller for touch) */}
       <div className="w-full px-3 pt-2 lg:pt-3">
         <Slider
@@ -218,6 +343,23 @@ export function AudioPlayerBar() {
             </div>
           </div>
         </div>
+
+        {/* Lyrics toggle button */}
+        {currentTrack.recordingContentHash && (
+          <Button
+            variant={showLyrics ? "secondary" : "ghost"}
+            size="icon"
+            className="size-8 lg:size-10 shrink-0"
+            onClick={() => setShowLyrics((prev) => !prev)}
+            aria-expanded={showLyrics}
+            aria-controls="player-lyrics-panel"
+            aria-label={showLyrics ? "Hide lyrics" : "Show lyrics"}
+            data-testid="lyrics-toggle-button"
+            title="Lyrics (L)"
+          >
+            <AlignLeft className="size-4 lg:size-5" />
+          </Button>
+        )}
 
         {/* Close button */}
         <Button

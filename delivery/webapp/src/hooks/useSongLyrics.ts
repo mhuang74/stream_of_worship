@@ -16,6 +16,8 @@ interface CachedResult {
 
 const lyricsCache = new Map<string, CachedResult>();
 
+const MAX_CACHE_SIZE = 50;
+
 const NULL_RESULT: SongLyricsResult = {
   lrcContent: null,
   lines: null,
@@ -71,6 +73,12 @@ export function useSongLyrics(recordingContentHash: string | undefined): SongLyr
         const data = (await res.json()) as CachedResult;
         if (abortController.signal.aborted) return;
 
+        if (lyricsCache.size >= MAX_CACHE_SIZE) {
+          const oldestKey = lyricsCache.keys().next().value;
+          if (oldestKey !== undefined) {
+            lyricsCache.delete(oldestKey);
+          }
+        }
         lyricsCache.set(recordingContentHash, {
           lrcContent: data.lrcContent,
           lines: data.lines,

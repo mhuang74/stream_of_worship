@@ -363,10 +363,9 @@ describe("groupLyricsBySong", () => {
 });
 
 describe("isValidLRC", () => {
-  it("returns true for valid LRC content", () => {
-    expect(isValidLRC("[00:00.00]Text")).toBe(true);
-    expect(isValidLRC("[00:10.50]Valid")).toBe(true);
-    expect(isValidLRC("[01:05.234]Content")).toBe(true);
+  it("returns true for valid LRC content with 2+ timestamped lines", () => {
+    expect(isValidLRC("[00:00.00]Text\n[00:10.50]Valid")).toBe(true);
+    expect(isValidLRC("[00:10.50]Valid\n[01:05.234]Content")).toBe(true);
   });
 
   it("returns false for invalid content without brackets", () => {
@@ -381,14 +380,14 @@ describe("isValidLRC", () => {
     expect(isValidLRC("[:05.50]Invalid minutes")).toBe(false);
   });
 
-  it("returns true for valid Chinese characters", () => {
-    expect(isValidLRC("[00:00.00]中文歌词")).toBe(true);
-    expect(isValidLRC("[01:05.50]测试文本")).toBe(true);
+  it("returns true for valid Chinese characters with 2+ lines", () => {
+    expect(isValidLRC("[00:00.00]中文歌词\n[00:10.50]第二行")).toBe(true);
+    expect(isValidLRC("[01:05.50]测试文本\n[02:00.00]另一行")).toBe(true);
   });
 
   it("returns true for valid with extra content", () => {
     expect(isValidLRC("[00:00.00]Lyrics \n [01:00.00]More")).toBe(true);
-    expect(isValidLRC("Artist: Name\n[00:00.00]Start")).toBe(true);
+    expect(isValidLRC("Artist: Name\n[00:00.00]Start\n[00:10.00]Second")).toBe(true);
   });
 
   it("returns true for combined with other text", () => {
@@ -401,6 +400,25 @@ describe("isValidLRC", () => {
 
   it("returns false for text without timestamp bracket", () => {
     expect(isValidLRC("Some text with [00.10.50] but text only")).toBe(false);
+  });
+
+  it("v6: returns false for content with only 1 timestamped line", () => {
+    expect(isValidLRC("[00:00.00]Text")).toBe(false);
+    expect(isValidLRC("[00:10.50]Valid")).toBe(false);
+    expect(isValidLRC("[01:05.234]Content")).toBe(false);
+  });
+
+  it("v6: returns false for plain text with a single timestamp reference", () => {
+    expect(isValidLRC("bridge at [01:00.00] and then more text")).toBe(false);
+    expect(isValidLRC("Some text with [00:10.50] reference")).toBe(false);
+  });
+
+  it("v6: returns true for content with exactly 2 timestamped lines", () => {
+    expect(isValidLRC("[00:00.00]First\n[00:10.50]Second")).toBe(true);
+  });
+
+  it("v6: returns false for content with 0 timestamped lines", () => {
+    expect(isValidLRC("Just plain text\nNo timestamps here")).toBe(false);
   });
 });
 
