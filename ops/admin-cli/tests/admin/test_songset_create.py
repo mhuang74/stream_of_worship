@@ -36,7 +36,7 @@ runner = CliRunner()
 
 
 def _song(
-    song_id: str = "song_0001",
+    song_id: str = "test_song_a1b2c3d4",
     title: str = "Test Song",
     album: str = "敬拜讚美15",
     key: str = "G",
@@ -53,7 +53,7 @@ def _song(
 
 def _recording(
     hash_prefix: str = "abc123def456",
-    song_id: str = "song_0001",
+    song_id: str = "test_song_a1b2c3d4",
     duration: float = 240.0,
     bpm: float = 72.0,
     imported_at: str = "2024-01-01T00:00:00",
@@ -217,35 +217,59 @@ def test_resolve_token_exact_song_id():
     console = MagicMock()
 
     result_song, result_recording = resolve_song_token(
-        "song_0001", read_client, console, non_interactive=False
+        "test_song_a1b2c3d4", read_client, console, non_interactive=False
     )
     assert result_song.id == song.id
     assert result_recording.hash_prefix == recording.hash_prefix
 
 
-def test_resolve_token_song_id_not_found_warns_then_title_search():
-    song = _song(song_id="song_0099", title="song_0001")
-    recording = _recording(song_id="song_0099")
+def test_resolve_token_slug_id_multiple_underscores():
+    song = _song(song_id="wei_da_de_shen_a1b2c3d4")
+    recording = _recording(song_id="wei_da_de_shen_a1b2c3d4")
     read_client = FakeReadClient(
-        songs={},
-        search_results={"song_0001": [song]},
+        songs={song.id: song},
         recordings={song.id: [recording]},
     )
     console = MagicMock()
 
     result_song, _result_recording = resolve_song_token(
-        "song_0001", read_client, console, non_interactive=False
+        "wei_da_de_shen_a1b2c3d4", read_client, console, non_interactive=False
     )
-    assert result_song.id == "song_0099"
-    console.print.assert_any_call(
-        "[yellow]Token 'song_0001' looks like an ID but no song exists "
-        "with that ID — falling back to title search.[/yellow]"
+    assert result_song.id == "wei_da_de_shen_a1b2c3d4"
+
+
+def test_resolve_token_slug_id_uppercase_hex_not_matched():
+    song = _song(song_id="test_song_0045_a1b2c3d4", title="wo_de_ye_su_4C27D159")
+    recording = _recording(song_id="test_song_0045_a1b2c3d4")
+    read_client = FakeReadClient(
+        search_results={"wo_de_ye_su_4C27D159": [song]},
+        recordings={song.id: [recording]},
     )
+    console = MagicMock()
+
+    result_song, _result_recording = resolve_song_token(
+        "wo_de_ye_su_4C27D159", read_client, console, non_interactive=False
+    )
+    assert result_song.id == "test_song_0045_a1b2c3d4"
+
+
+def test_resolve_token_slug_id_not_found_exits():
+    read_client = FakeReadClient(
+        songs={},
+        search_results={"test_song_a1b2c3d4": [_song(song_id="test_song_0099_a1b2c3d4")]},
+    )
+    console = MagicMock()
+
+    with pytest.raises(typer.Exit):
+        resolve_song_token(
+            "test_song_a1b2c3d4", read_client, console, non_interactive=False
+        )
+    console.print.assert_any_call("[red]No song found with ID 'test_song_a1b2c3d4'.[/red]")
 
 
 def test_resolve_token_title_single_match():
-    song = _song(song_id="song_0045", title="信實偉大")
-    recording = _recording(song_id="song_0045")
+    song = _song(song_id="test_song_0045_a1b2c3d4", title="信實偉大")
+    recording = _recording(song_id="test_song_0045_a1b2c3d4")
     read_client = FakeReadClient(
         search_results={"信實偉大": [song]},
         recordings={song.id: [recording]},
@@ -255,7 +279,7 @@ def test_resolve_token_title_single_match():
     result_song, _result_recording = resolve_song_token(
         "信實偉大", read_client, console, non_interactive=False
     )
-    assert result_song.id == "song_0045"
+    assert result_song.id == "test_song_0045_a1b2c3d4"
 
 
 def test_resolve_token_title_zero_matches_exits():
@@ -267,8 +291,8 @@ def test_resolve_token_title_zero_matches_exits():
 
 
 def test_resolve_token_title_multiple_matches_non_interactive_exits():
-    song1 = _song(song_id="song_0044", title="恩典之路")
-    song2 = _song(song_id="song_0072", title="恩典之路 (Live)")
+    song1 = _song(song_id="test_song_0044_a1b2c3d4", title="恩典之路")
+    song2 = _song(song_id="test_song_0072_a1b2c3d4", title="恩典之路 (Live)")
     read_client = FakeReadClient(
         search_results={"恩典之路": [song1, song2]},
     )
@@ -279,10 +303,10 @@ def test_resolve_token_title_multiple_matches_non_interactive_exits():
 
 
 def test_resolve_token_title_multiple_matches_interactive_picks(monkeypatch):
-    song1 = _song(song_id="song_0044", title="恩典之路")
-    song2 = _song(song_id="song_0072", title="恩典之路 (Live)")
-    rec1 = _recording(song_id="song_0044", bpm=72.0)
-    rec2 = _recording(song_id="song_0072", bpm=80.0)
+    song1 = _song(song_id="test_song_0044_a1b2c3d4", title="恩典之路")
+    song2 = _song(song_id="test_song_0072_a1b2c3d4", title="恩典之路 (Live)")
+    rec1 = _recording(song_id="test_song_0044_a1b2c3d4", bpm=72.0)
+    rec2 = _recording(song_id="test_song_0072_a1b2c3d4", bpm=80.0)
     read_client = FakeReadClient(
         search_results={"恩典之路": [song1, song2]},
         recordings={song1.id: [rec1], song2.id: [rec2]},
@@ -294,7 +318,7 @@ def test_resolve_token_title_multiple_matches_interactive_picks(monkeypatch):
     result_song, _result_recording = resolve_song_token(
         "恩典之路", read_client, console, non_interactive=False
     )
-    assert result_song.id == "song_0044"
+    assert result_song.id == "test_song_0044_a1b2c3d4"
 
 
 def test_resolve_token_no_active_recordings_exits():
@@ -339,8 +363,8 @@ def test_resolve_token_missing_duration_exits():
 
 
 def test_resolve_token_title_pinyin_match():
-    song = _song(song_id="song_0050", title="恩典之路")
-    recording = _recording(song_id="song_0050")
+    song = _song(song_id="test_song_0050_a1b2c3d4", title="恩典之路")
+    recording = _recording(song_id="test_song_0050_a1b2c3d4")
     read_client = FakeReadClient(
         search_results={"endian": [song]},
         recordings={song.id: [recording]},
@@ -350,7 +374,7 @@ def test_resolve_token_title_pinyin_match():
     result_song, _ = resolve_song_token(
         "endian", read_client, console, non_interactive=False
     )
-    assert result_song.id == "song_0050"
+    assert result_song.id == "test_song_0050_a1b2c3d4"
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +389,7 @@ def test_create_songset_no_user_no_env_exits():
         patch.dict(os.environ, {}, clear=False),
     ):
         os.environ.pop("SOW_DEFAULT_USER", None)
-        result = runner.invoke(app, ["songset", "create", "song_0001"])
+        result = runner.invoke(app, ["songset", "create", "test_song_a1b2c3d4"])
 
     assert result.exit_code == 1
     assert "No user specified" in result.output
@@ -395,7 +419,7 @@ def test_create_songset_env_var_user(monkeypatch):
             id=1, name="Alice", email="alice@example.com"
         )
         result = runner.invoke(
-            app, ["songset", "create", "song_0001", "-y"]
+            app, ["songset", "create", "test_song_a1b2c3d4", "-y"]
         )
 
     assert result.exit_code == 0
@@ -427,7 +451,7 @@ def test_create_songset_flag_user_takes_precedence(monkeypatch):
             id=1, name="Alice", email="alice@example.com"
         )
         result = runner.invoke(
-            app, ["songset", "create", "-u", "alice@example.com", "song_0001", "-y"]
+            app, ["songset", "create", "-u", "alice@example.com", "test_song_a1b2c3d4", "-y"]
         )
 
     assert result.exit_code == 0
@@ -435,10 +459,10 @@ def test_create_songset_flag_user_takes_precedence(monkeypatch):
 
 
 def test_create_songset_auto_name_from_titles(monkeypatch):
-    song1 = _song(song_id="song_0001", title="信實偉大")
-    song2 = _song(song_id="song_0002", title="恩典之路")
-    rec1 = _recording(song_id="song_0001", hash_prefix="hash000000001")
-    rec2 = _recording(song_id="song_0002", hash_prefix="hash000000002")
+    song1 = _song(song_id="test_song_a1b2c3d4", title="信實偉大")
+    song2 = _song(song_id="test_song_0002_a1b2c3d4", title="恩典之路")
+    rec1 = _recording(song_id="test_song_a1b2c3d4", hash_prefix="hash000000001")
+    rec2 = _recording(song_id="test_song_0002_a1b2c3d4", hash_prefix="hash000000002")
     read_client = FakeReadClient(
         songs={song1.id: song1, song2.id: song2},
         recordings={song1.id: [rec1], song2.id: [rec2]},
@@ -459,7 +483,7 @@ def test_create_songset_auto_name_from_titles(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "song_0001", "song_0002", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "test_song_a1b2c3d4", "test_song_0002_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 0
@@ -489,7 +513,7 @@ def test_create_songset_explicit_name(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "-n", "Custom", "song_0001", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "-n", "Custom", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 0
@@ -513,7 +537,8 @@ def test_create_songset_oversize_count_exits_early(monkeypatch):
             app,
             [
                 "songset", "create", "-u", "alice@example.com",
-                "song_001", "song_002", "song_003", "song_004", "song_005", "song_006",
+                "test_song_a1b2c3d4", "test_song_0002_a1b2c3d4", "test_song_0003_a1b2c3d4",
+                "test_song_0004_a1b2c3d4", "test_song_0005_a1b2c3d4", "test_song_0006_a1b2c3d4",
             ],
         )
 
@@ -522,10 +547,17 @@ def test_create_songset_oversize_count_exits_early(monkeypatch):
 
 
 def test_create_songset_oversize_duration_exits(monkeypatch):
-    songs = {f"song_000{i}": _song(song_id=f"song_000{i}", title=f"Song{i}") for i in range(1, 6)}
+    song_ids = [
+        "test_song_a1b2c3d4",
+        "test_song_0002_a1b2c3d4",
+        "test_song_0003_a1b2c3d4",
+        "test_song_0004_a1b2c3d4",
+        "test_song_0005_a1b2c3d4",
+    ]
+    songs = {sid: _song(song_id=sid, title=f"Song{i}") for i, sid in enumerate(song_ids, 1)}
     recordings = {
-        f"song_000{i}": [_recording(song_id=f"song_000{i}", hash_prefix=f"hash00000000{i}", duration=320.0)]
-        for i in range(1, 6)
+        sid: [_recording(song_id=sid, hash_prefix=f"hash00000000{i}", duration=320.0)]
+        for i, sid in enumerate(song_ids, 1)
     }
     read_client = FakeReadClient(songs=songs, recordings=recordings)
 
@@ -545,7 +577,7 @@ def test_create_songset_oversize_duration_exits(monkeypatch):
             app,
             [
                 "songset", "create", "-u", "alice@example.com", "-y",
-                "song_0001", "song_0002", "song_0003", "song_0004", "song_0005",
+                "test_song_a1b2c3d4", "test_song_0002_a1b2c3d4", "test_song_0003_a1b2c3d4", "test_song_0004_a1b2c3d4", "test_song_0005_a1b2c3d4",
             ],
         )
 
@@ -576,7 +608,7 @@ def test_create_songset_dry_run_no_persist(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "--dry-run", "song_0001", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "--dry-run", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 0
@@ -610,7 +642,7 @@ def test_create_songset_missing_reference_error(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "song_0001", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 1
@@ -641,7 +673,7 @@ def test_create_songset_generic_exception(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "song_0001", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 1
@@ -671,7 +703,7 @@ def test_create_songset_duplicate_song_warns(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "song_0001", "song_0001", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "test_song_a1b2c3d4", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 0
@@ -681,8 +713,8 @@ def test_create_songset_duplicate_song_warns(monkeypatch):
 
 
 def test_create_songset_yes_ambiguous_title_exits(monkeypatch):
-    song1 = _song(song_id="song_0044", title="恩典之路")
-    song2 = _song(song_id="song_0072", title="恩典之路 (Live)")
+    song1 = _song(song_id="test_song_0044_a1b2c3d4", title="恩典之路")
+    song2 = _song(song_id="test_song_0072_a1b2c3d4", title="恩典之路 (Live)")
     read_client = FakeReadClient(
         search_results={"恩典之路": [song1, song2]},
     )
@@ -732,7 +764,7 @@ def test_create_songset_name_collision_auto_suffix(monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "alice@example.com", "song_0001", "-y"],
+            ["songset", "create", "-u", "alice@example.com", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 0
@@ -748,7 +780,7 @@ def test_create_songset_user_not_found_exits(monkeypatch):
         uc_cls.return_value.get_user_by_email.return_value = None
         result = runner.invoke(
             app,
-            ["songset", "create", "-u", "nobody@example.com", "song_0001", "-y"],
+            ["songset", "create", "-u", "nobody@example.com", "test_song_a1b2c3d4", "-y"],
         )
 
     assert result.exit_code == 1

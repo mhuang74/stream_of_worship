@@ -12,7 +12,7 @@ from rich.table import Table
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.db.app.read_client import ReadOnlyClient
 
-_SONG_ID_RE = re.compile(r"^song_\d+$")
+_SLUG_SONG_ID_RE = re.compile(r"^[a-z0-9_]+_[0-9a-f]{8}$")
 
 
 def resolve_song_token(
@@ -22,12 +22,13 @@ def resolve_song_token(
     *,
     non_interactive: bool = False,
 ) -> tuple[Song, Recording]:
-    """Resolve a song token (ID or title) to a ``(Song, Recording)`` pair.
+    """Resolve a song token (slug ID or title) to a ``(Song, Recording)`` pair.
 
     Flow:
-      1. If token matches ``^song_\\d+$``, try ``get_song``. If None, warn and
-         fall through to title search.
-      2. Treat token as a title; search via ``search_songs(field="title")``.
+      1. If token matches ``^[a-z0-9_]+_[0-9a-f]{8}$`` (a slug ID like
+         ``wo_de_ye_su_4c27d159``), try ``get_song``. If None, error out —
+         slug IDs are deterministic, so a miss means the song doesn't exist.
+      2. Otherwise treat token as a title; search via ``search_songs(field="title")``.
       3. Zero matches → ``typer.Exit(1)``.
       4. One match → use it.
       5. Multiple matches → interactive picker (or error in non-interactive mode).
@@ -36,7 +37,7 @@ def resolve_song_token(
       8. Verify ``recording.duration_seconds`` is not None.
 
     Args:
-        token: Song ID (``song_0123``) or title string.
+        token: Song slug ID (``wo_de_ye_su_4c27d159``) or title string.
         read_client: Read-only DB client.
         console: Rich console for output.
         non_interactive: If True, ambiguous titles raise instead of prompting.
@@ -49,13 +50,11 @@ def resolve_song_token(
     """
     song: Song | None = None
 
-    if _SONG_ID_RE.match(token):
+    if _SLUG_SONG_ID_RE.match(token):
         song = read_client.get_song(token)
         if song is None:
-            console.print(
-                f"[yellow]Token '{token}' looks like an ID but no song exists "
-                f"with that ID — falling back to title search.[/yellow]"
-            )
+            console.print(f"[red]No song found with ID '{token}'.[/red]")
+            raise typer.Exit(1)
 
     if song is None:
         matches = read_client.search_songs(
