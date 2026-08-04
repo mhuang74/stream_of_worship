@@ -5,7 +5,7 @@ import { SongsetsClient } from "@/app/songsets/SongsetsClient";
 import SettingsPage from "@/app/settings/page";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({}),
   usePathname: () => "/",
 }));
@@ -24,7 +24,7 @@ describe("HomePage", () => {
 
 describe("SongsetsPage", () => {
   it("renders heading", () => {
-    render(<SongsetsClient initialData={{ songsets: [], total: 0 }} />);
+    render(<SongsetsClient initialData={{ songsets: [], total: 0 }} currentPage={1} pageSize={20} initialSearch="" />);
     expect(screen.getByRole("heading", { name: /songsets/i })).toBeInTheDocument();
   });
 });

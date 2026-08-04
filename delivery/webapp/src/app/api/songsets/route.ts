@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(isNaN(rawLimit) ? 50 : rawLimit, 100);
     const rawOffset = parseInt(searchParams.get("offset") ?? "0");
     const offset = isNaN(rawOffset) ? 0 : rawOffset;
+    const search = searchParams.get("search")?.trim() || undefined;
 
-    const result = await listSongsetSummaries(Number(session.user.id), limit, offset);
+    const result = await listSongsetSummaries(Number(session.user.id), limit, offset, search);
 
     return NextResponse.json(result);
   } catch (error) {
