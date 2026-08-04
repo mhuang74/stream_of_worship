@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { SongsetRow } from "./SongsetRow";
 import { RenderState } from "./RenderStatusBadge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SongsetListSkeleton } from "./SongsetListSkeleton";
 
@@ -48,6 +48,12 @@ interface SongsetListProps {
   onDownloadAudio?: (id: string) => void;
   onDownloadVideo?: (id: string) => void;
   onDelete?: (id: string) => Promise<void>;
+  currentPage?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
+  search?: string;
+  onSearchChange?: (value: string) => void;
+  isSearching?: boolean;
   className?: string;
 }
 
@@ -65,6 +71,12 @@ export function SongsetList({
   onDownloadAudio,
   onDownloadVideo,
   onDelete,
+  currentPage = 1,
+  totalPages = 1,
+  onPageChange,
+  search = "",
+  onSearchChange,
+  isSearching = false,
   className,
 }: SongsetListProps) {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -81,6 +93,59 @@ export function SongsetList({
   const [songsetToRename, setSongsetToRename] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+
+  const pageNumbers = useMemo(() => {
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const half = Math.floor(maxVisible / 2);
+    let start = Math.max(1, currentPage - half);
+    const end = Math.min(totalPages, start + maxVisible - 1);
+
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [currentPage, totalPages]);
+
+  const renderSearchBar = (containerClassName?: string) => (
+    <div className={cn("relative", containerClassName)}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+      <Input
+        type="text"
+        value={search}
+        onChange={(e) => onSearchChange?.(e.target.value)}
+        placeholder="Search songsets by name or description..."
+        className="pl-9 pr-10"
+        aria-label="Search songsets"
+        data-testid="songset-search-input"
+      />
+      {search.length > 0 && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="absolute right-2 top-1/2 -translate-y-1/2"
+          onClick={() => onSearchChange?.("")}
+          aria-label="Clear search"
+          data-testid="songset-clear-search-button"
+        >
+          <X className="size-4" />
+        </Button>
+      )}
+      {isSearching && (
+        <Loader2
+          className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground"
+          aria-hidden="true"
+        />
+      )}
+      {isSearching && (
+        <span className="sr-only" role="status" aria-live="polite">Searching songsets...</span>
+      )}
+    </div>
+  );
 
   const handleCreate = useCallback(async () => {
     if (!newSongsetName.trim()) return;
@@ -166,15 +231,21 @@ export function SongsetList({
   }
 
   if (songsets.length === 0) {
+    const isSearchActive = search.trim().length > 0;
     return (
       <div className={cn("text-center py-12", className)}>
+        {renderSearchBar("mb-4 max-w-md mx-auto")}
         <p className="text-muted-foreground mb-4">
-          No songsets yet. Create one to get started.
+          {isSearchActive
+            ? "No songsets match your search."
+            : "No songsets yet. Create one to get started."}
         </p>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="size-4 mr-2" />
-          Create Songset
-        </Button>
+        {!isSearchActive && (
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="size-4 mr-2" />
+            Create Songset
+          </Button>
+        )}
 
         {/* Create Dialog */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -240,6 +311,8 @@ export function SongsetList({
 
   return (
     <>
+      {renderSearchBar("mb-4")}
+
       <div className={cn("space-y-3", className)}>
         {songsets.map((songset) => (
           <SongsetRow
@@ -257,6 +330,51 @@ export function SongsetList({
           />
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <nav
+          aria-label="Songset pagination"
+          className="flex items-center justify-center gap-2 mt-6"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange?.(currentPage - 1)}
+            disabled={currentPage <= 1}
+            aria-label="Previous page"
+            data-testid="pagination-prev"
+          >
+            <ChevronLeft className="size-4" />
+            Prev
+          </Button>
+
+          {pageNumbers.map((pageNum) => (
+            <Button
+              key={pageNum}
+              variant={pageNum === currentPage ? "default" : "outline"}
+              size="icon-sm"
+              onClick={() => onPageChange?.(pageNum)}
+              aria-current={pageNum === currentPage ? "page" : undefined}
+              aria-label={`Page ${pageNum}`}
+              data-testid={`pagination-page-${pageNum}`}
+            >
+              {pageNum}
+            </Button>
+          ))}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange?.(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+            aria-label="Next page"
+            data-testid="pagination-next"
+          >
+            Next
+            <ChevronRight className="size-4" />
+          </Button>
+        </nav>
+      )}
 
       {/* FAB for creating new songset */}
       <Button

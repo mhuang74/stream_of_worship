@@ -41,6 +41,12 @@ describe("SongsetList", () => {
     onDuplicate: vi.fn(),
     onShare: vi.fn(),
     onDelete: vi.fn(),
+    currentPage: 1,
+    totalPages: 1,
+    onPageChange: vi.fn(),
+    search: "",
+    onSearchChange: vi.fn(),
+    isSearching: false,
   };
 
   const renderList = (props = {}) => {
@@ -246,6 +252,144 @@ describe("SongsetList", () => {
       });
       
       expect(onShare).toHaveBeenCalledWith("songset-1");
+    });
+  });
+
+  describe("search bar", () => {
+    it("renders search input with aria-label", () => {
+      renderList();
+      expect(screen.getByLabelText(/search songsets/i)).toBeInTheDocument();
+    });
+
+    it("calls onSearchChange when typing in search input", () => {
+      const onSearchChange = vi.fn();
+      renderList({ onSearchChange });
+
+      const input = screen.getByLabelText(/search songsets/i);
+      fireEvent.change(input, { target: { value: "Sunday" } });
+
+      expect(onSearchChange).toHaveBeenCalledWith("Sunday");
+    });
+
+    it("does not show clear button when search is empty", () => {
+      renderList({ search: "" });
+      expect(screen.queryByLabelText(/clear search/i)).not.toBeInTheDocument();
+    });
+
+    it("shows clear button when search has text", () => {
+      renderList({ search: "Sunday" });
+      expect(screen.getByLabelText(/clear search/i)).toBeInTheDocument();
+    });
+
+    it("calls onSearchChange with empty string when clear button clicked", () => {
+      const onSearchChange = vi.fn();
+      renderList({ search: "Sunday", onSearchChange });
+
+      fireEvent.click(screen.getByLabelText(/clear search/i));
+
+      expect(onSearchChange).toHaveBeenCalledWith("");
+    });
+
+    it("shows loading spinner when isSearching is true", () => {
+      renderList({ search: "Sun", isSearching: true });
+      expect(screen.getByRole("status")).toHaveTextContent(/searching songsets/i);
+    });
+
+    it("does not show loading spinner when isSearching is false", () => {
+      renderList({ isSearching: false });
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("pagination", () => {
+    it("does not render pagination when totalPages <= 1", () => {
+      renderList({ totalPages: 1, currentPage: 1 });
+      expect(screen.queryByLabelText(/songset pagination/i)).not.toBeInTheDocument();
+    });
+
+    it("renders pagination nav when totalPages > 1", () => {
+      renderList({ totalPages: 3, currentPage: 1 });
+      expect(screen.getByLabelText(/songset pagination/i)).toBeInTheDocument();
+    });
+
+    it("renders correct page number buttons", () => {
+      renderList({ totalPages: 3, currentPage: 1 });
+      expect(screen.getByTestId("pagination-page-1")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-page-2")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-page-3")).toBeInTheDocument();
+    });
+
+    it("marks current page with aria-current=page", () => {
+      renderList({ totalPages: 3, currentPage: 2 });
+      expect(screen.getByTestId("pagination-page-2")).toHaveAttribute("aria-current", "page");
+    });
+
+    it("does not mark non-current pages with aria-current", () => {
+      renderList({ totalPages: 3, currentPage: 2 });
+      expect(screen.getByTestId("pagination-page-1")).not.toHaveAttribute("aria-current");
+      expect(screen.getByTestId("pagination-page-3")).not.toHaveAttribute("aria-current");
+    });
+
+    it("calls onPageChange with currentPage - 1 when Prev clicked", () => {
+      const onPageChange = vi.fn();
+      renderList({ totalPages: 3, currentPage: 2, onPageChange });
+
+      fireEvent.click(screen.getByTestId("pagination-prev"));
+
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it("calls onPageChange with currentPage + 1 when Next clicked", () => {
+      const onPageChange = vi.fn();
+      renderList({ totalPages: 3, currentPage: 2, onPageChange });
+
+      fireEvent.click(screen.getByTestId("pagination-next"));
+
+      expect(onPageChange).toHaveBeenCalledWith(3);
+    });
+
+    it("disables Prev button on first page", () => {
+      renderList({ totalPages: 3, currentPage: 1 });
+      expect(screen.getByTestId("pagination-prev")).toBeDisabled();
+    });
+
+    it("disables Next button on last page", () => {
+      renderList({ totalPages: 3, currentPage: 3 });
+      expect(screen.getByTestId("pagination-next")).toBeDisabled();
+    });
+
+    it("shows limited page numbers when totalPages > 5", () => {
+      renderList({ totalPages: 10, currentPage: 5 });
+      // Should show 5 page buttons around current page
+      expect(screen.getByTestId("pagination-page-3")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-page-4")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-page-5")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-page-6")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-page-7")).toBeInTheDocument();
+      expect(screen.queryByTestId("pagination-page-1")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("pagination-page-10")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("empty state with search", () => {
+    it("shows no-match message when search is non-empty and list is empty", () => {
+      renderList({ songsets: [], search: "nonexistent" });
+      expect(screen.getByText(/no songsets match your search/i)).toBeInTheDocument();
+    });
+
+    it("shows default empty message when search is empty and list is empty", () => {
+      renderList({ songsets: [], search: "" });
+      expect(screen.getByText(/no songsets yet/i)).toBeInTheDocument();
+    });
+
+    it("hides create button when search is active and no results", () => {
+      renderList({ songsets: [], search: "nonexistent" });
+      expect(screen.queryByRole("button", { name: /create songset/i })).not.toBeInTheDocument();
+    });
+
+    it("shows search bar in empty state when search yields no results", () => {
+      renderList({ songsets: [], search: "nonexistent" });
+      expect(screen.getByLabelText(/search songsets/i)).toBeInTheDocument();
     });
   });
 });

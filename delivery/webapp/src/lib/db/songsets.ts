@@ -8,7 +8,7 @@ import {
   recordings,
   userSettings,
 } from "@/db/schema";
-import { eq, and, desc, gt, sql, asc } from "drizzle-orm";
+import { eq, and, desc, gt, sql, asc, ilike, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 import { sanitizeRenderErrorMessage } from "@/lib/render/error-message";
@@ -337,9 +337,21 @@ function mapRenderJobSummary(row: typeof renderJobs.$inferSelect | null | undefi
 export async function listSongsetSummaries(
   userId: number,
   limit = 50,
-  offset = 0
+  offset = 0,
+  search?: string
 ): Promise<{ songsets: SongsetListItem[]; total: number }> {
   return timePageLoad("listSongsetSummaries", async () => {
+    const trimmedSearch = search?.trim();
+    const whereCondition = trimmedSearch
+      ? and(
+          eq(songsets.userId, userId),
+          or(
+            ilike(songsets.name, `%${trimmedSearch}%`),
+            ilike(songsets.description, `%${trimmedSearch}%`)
+          )
+        )
+      : eq(songsets.userId, userId);
+
     const rows = await db
       .select({
         id: songsets.id,
@@ -363,7 +375,7 @@ export async function listSongsetSummaries(
       .leftJoin(songsetItems, eq(songsetItems.songsetId, songsets.id))
       .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
       .leftJoin(renderJobs, eq(renderJobs.id, songsets.latestRenderJobId))
-      .where(eq(songsets.userId, userId))
+      .where(whereCondition)
       .groupBy(
         songsets.id,
         renderJobs.id
@@ -375,7 +387,7 @@ export async function listSongsetSummaries(
     const countResult = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(songsets)
-      .where(eq(songsets.userId, userId));
+      .where(whereCondition);
 
     return {
       total: Number(countResult[0]?.count ?? 0),

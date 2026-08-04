@@ -4,14 +4,29 @@ import { auth } from "@/lib/auth";
 import { listSongsetSummaries } from "@/lib/db/songsets";
 import { SongsetsClient } from "./SongsetsClient";
 
-export default async function SongsetsPage() {
+export default async function SongsetsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; search?: string }>;
+}) {
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user) {
     redirect("/login");
   }
 
-  const result = await listSongsetSummaries(Number(session.user.id), 50, 0);
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page ?? "1") || 1);
+  const search = params.search?.trim() || undefined;
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+
+  const result = await listSongsetSummaries(
+    Number(session.user.id),
+    pageSize,
+    offset,
+    search
+  );
 
   return (
     <SongsetsClient
@@ -24,6 +39,9 @@ export default async function SongsetsPage() {
           failedAt: songset.failedAt?.toISOString() ?? null,
         })),
       }}
+      currentPage={page}
+      pageSize={pageSize}
+      initialSearch={search ?? ""}
     />
   );
 }

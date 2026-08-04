@@ -54,21 +54,40 @@ function transformSongsets(songsets: ApiSongset[]): Songset[] {
 
 interface SongsetsClientProps {
   initialData: ApiResponse;
+  currentPage: number;
+  pageSize: number;
+  initialSearch: string;
 }
 
-export function SongsetsClient({ initialData }: SongsetsClientProps) {
+export function SongsetsClient({
+  initialData,
+  currentPage,
+  pageSize,
+  initialSearch,
+}: SongsetsClientProps) {
   const router = useRouter();
   const [songsets, setSongsets] = useState<Songset[]>(() => transformSongsets(initialData.songsets));
+  const [total, setTotal] = useState(initialData.total);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [page, setPage] = useState(currentPage);
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<{
     id: string; name: string; durationSeconds: number | null;
   } | null>(null);
 
   useEffect(() => {
-    if (refreshKey === 0) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadSongsets() {
@@ -76,7 +95,16 @@ export function SongsetsClient({ initialData }: SongsetsClientProps) {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch("/api/songsets");
+        const offset = (page - 1) * pageSize;
+        const params = new URLSearchParams({
+          limit: String(pageSize),
+          offset: String(offset),
+        });
+        if (debouncedSearch.trim()) {
+          params.set("search", debouncedSearch.trim());
+        }
+
+        const response = await fetch(`/api/songsets?${params}`);
 
         if (!response.ok) {
           if (response.status === 401) {
@@ -90,6 +118,7 @@ export function SongsetsClient({ initialData }: SongsetsClientProps) {
         if (cancelled) return;
 
         setSongsets(transformSongsets(data.songsets));
+        setTotal(data.total);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load songsets");
@@ -106,10 +135,27 @@ export function SongsetsClient({ initialData }: SongsetsClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [page, debouncedSearch, pageSize, refreshKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    const qs = params.toString();
+    router.replace(qs ? `/songsets?${qs}` : "/songsets");
+  }, [page, debouncedSearch, router]);
 
   const refreshSongsets = useCallback(() => {
     setRefreshKey((k) => k + 1);
+  }, []);
+
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
   }, []);
 
   const handleCreateSongset = useCallback(
@@ -284,6 +330,12 @@ export function SongsetsClient({ initialData }: SongsetsClientProps) {
         onDownloadAudio={handleDownloadAudio}
         onDownloadVideo={handleDownloadVideo}
         onDelete={handleDelete}
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(total / pageSize))}
+        onPageChange={handlePageChange}
+        search={search}
+        onSearchChange={handleSearchChange}
+        isSearching={isLoading && search !== debouncedSearch}
       />
 
       {shareTarget && (

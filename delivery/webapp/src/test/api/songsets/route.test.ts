@@ -92,7 +92,7 @@ describe("GET /api/songsets", () => {
     );
     await GET(request);
 
-    expect(listSongsetSummaries).toHaveBeenCalledWith(1, 10, 5);
+    expect(listSongsetSummaries).toHaveBeenCalledWith(1, 10, 5, undefined);
   });
 
   it("caps limit at 100", async () => {
@@ -110,7 +110,7 @@ describe("GET /api/songsets", () => {
     );
     await GET(request);
 
-    expect(listSongsetSummaries).toHaveBeenCalledWith(1, 100, 0);
+    expect(listSongsetSummaries).toHaveBeenCalledWith(1, 100, 0, undefined);
   });
 
   it("returns 500 on error", async () => {

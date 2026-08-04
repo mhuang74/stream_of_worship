@@ -164,6 +164,7 @@ import { SongSearch } from "@/components/songset/SongSearch";
 import { LyricsReviewSheet } from "@/components/lyrics/LyricsReviewSheet";
 import { PlaybackControls } from "@/components/play/PlaybackControls";
 import { SongCard } from "@/components/songset/SongCard";
+import { SongsetList } from "@/components/songset/SongsetList";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -622,6 +623,92 @@ describe("Accessibility (Task 8.2)", () => {
       // The Button component applies focus-visible:ring-3 via buttonVariants
       const cls = playButton.getAttribute("class") ?? "";
       expect(cls).toContain("focus-visible:");
+    });
+  });
+
+  // SongsetList search + pagination
+  describe("SongsetList", () => {
+    const mockSongsets = [
+      {
+        id: "songset-1",
+        name: "Sunday Worship",
+        itemCount: 5,
+        durationSeconds: 1200,
+        updatedAt: new Date("2024-01-15T10:30:00Z"),
+        renderState: "fresh" as const,
+        latestRenderJobId: null,
+        lastCompletedRenderJobId: null,
+      },
+    ];
+
+    it("search input has aria-label", () => {
+      render(
+        <SongsetList
+          songsets={mockSongsets}
+          search=""
+          onSearchChange={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("textbox", { name: /search songsets/i })).toBeInTheDocument();
+    });
+
+    it("clear search button has aria-label", () => {
+      render(
+        <SongsetList
+          songsets={mockSongsets}
+          search="test"
+          onSearchChange={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: /clear search/i })).toBeInTheDocument();
+    });
+
+    it("pagination nav has aria-label", () => {
+      render(
+        <SongsetList
+          songsets={mockSongsets}
+          currentPage={1}
+          totalPages={3}
+          onPageChange={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("navigation", { name: /songset pagination/i })).toBeInTheDocument();
+    });
+
+    it("active page button has aria-current=page", () => {
+      render(
+        <SongsetList
+          songsets={mockSongsets}
+          currentPage={2}
+          totalPages={3}
+          onPageChange={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("pagination-page-2")).toHaveAttribute("aria-current", "page");
+    });
+
+    it("prev button has descriptive aria-label", () => {
+      render(
+        <SongsetList
+          songsets={mockSongsets}
+          currentPage={2}
+          totalPages={3}
+          onPageChange={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: /previous page/i })).toBeInTheDocument();
+    });
+
+    it("next button has descriptive aria-label", () => {
+      render(
+        <SongsetList
+          songsets={mockSongsets}
+          currentPage={2}
+          totalPages={3}
+          onPageChange={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: /next page/i })).toBeInTheDocument();
     });
   });
 
