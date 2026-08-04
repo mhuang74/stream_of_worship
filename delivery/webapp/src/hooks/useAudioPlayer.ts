@@ -13,6 +13,7 @@ interface PlaySongOptions {
   artist: string;
   src: string;
   duration?: number;
+  recordingContentHash?: string;
 }
 
 interface PlayTransitionOptions {
@@ -31,6 +32,7 @@ interface PlayLyricsLoopOptions {
   duration: number;
   loopStartSeconds: number;
   loopDurationSeconds: number;
+  recordingContentHash?: string;
 }
 
 export function useAudioPlayer() {
@@ -58,6 +60,7 @@ export function useAudioPlayer() {
         src: options.src,
         type: "song" as AudioTrackType,
         duration: options.duration,
+        recordingContentHash: options.recordingContentHash,
       };
       play(track);
     },
@@ -90,6 +93,7 @@ export function useAudioPlayer() {
         duration: options.duration,
         loopStart: options.loopStartSeconds,
         loopEnd: options.loopStartSeconds + options.loopDurationSeconds,
+        recordingContentHash: options.recordingContentHash,
       };
       play(track);
     },

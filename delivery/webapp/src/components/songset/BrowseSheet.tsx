@@ -274,6 +274,7 @@ export function BrowseSheet({
           src: publicUrl,
           type: "song",
           duration: recording.durationSeconds ?? undefined,
+          recordingContentHash: recording.contentHash,
         });
         setPlayingSongId(songId);
         return;
@@ -304,6 +305,7 @@ export function BrowseSheet({
           src: data.url,
           type: "song",
           duration: recording.durationSeconds ?? undefined,
+          recordingContentHash: recording.contentHash,
         });
 
         setPlayingSongId(songId);

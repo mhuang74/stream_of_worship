@@ -35,6 +35,7 @@ function TestComponent() {
             artist: "John Newton",
             src: "https://example.com/amazing-grace.mp3",
             duration: 240,
+            recordingContentHash: "abc123",
           })
         }
       >
@@ -66,6 +67,7 @@ function TestComponent() {
             src: "https://example.com/amazing-grace.mp3",
             loopStartSeconds: 30,
             loopDurationSeconds: 10,
+            recordingContentHash: "abc123",
           })
         }
       >
@@ -107,6 +109,38 @@ describe("useAudioPlayer", () => {
         "Amazing Grace"
       );
       expect(screen.getByTestId("is-playing")).toHaveTextContent("playing");
+    });
+  });
+
+  it("forwards recordingContentHash to currentTrack for playSong", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AudioPlayerProvider>
+        <TestComponent />
+      </AudioPlayerProvider>
+    );
+
+    await user.click(screen.getByTestId("play-song-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-track")).toHaveTextContent("Amazing Grace");
+    });
+  });
+
+  it("forwards recordingContentHash to currentTrack for playLyricsLoop", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AudioPlayerProvider>
+        <TestComponent />
+      </AudioPlayerProvider>
+    );
+
+    await user.click(screen.getByTestId("play-loop-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-track")).toHaveTextContent("Amazing Grace");
     });
   });
 

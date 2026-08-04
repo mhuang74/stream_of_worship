@@ -21,13 +21,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Trash2, Music, Clock, ChevronRight, ChevronDown, Play, Pause, Loader2 } from "lucide-react";
+import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { toast } from "sonner";
-import { useSongLyrics } from "@/hooks/useSongLyrics";
-import { parseLRC, isValidLRC, type LRCLine } from "@/lib/render/lrc-parser";
 
 export interface SongListItem {
   id: string;
@@ -76,8 +74,6 @@ interface SortableSongItemProps {
   index: number;
   onRemove: (itemId: string) => void;
   onEditTransition?: (itemId: string) => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
   readOnly?: boolean;
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
@@ -88,95 +84,11 @@ interface SortableSongItemProps {
   isRemoving?: boolean;
 }
 
-function formatTimestamp(timeSeconds: number): string {
-  const minutes = Math.floor(timeSeconds / 60);
-  const seconds = Math.floor(timeSeconds % 60);
-  const hundredths = Math.floor((timeSeconds % 1) * 100);
-  return `[${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${hundredths.toString().padStart(2, "0")}]`;
-}
-
-function LyricsPanel({ item }: { item: SongListItem }) {
-  const lyricsPanelId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const recordingContentHash = item.recording?.contentHash;
-  const { lrcContent, lines, loading, error } = useSongLyrics(recordingContentHash);
-
-  useEffect(() => {
-    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, []);
-
-  if (!item.recording) {
-    return (
-      <div
-        ref={panelRef}
-        id={lyricsPanelId}
-        role="region"
-        className="max-h-[40vh] md:max-h-[400px] overflow-y-auto px-3 pb-3 pt-1"
-      >
-        <p className="text-sm text-muted-foreground">
-          No lyrics available — recording missing.
-        </p>
-      </div>
-    );
-  }
-
-  let content: React.ReactNode;
-  if (loading) {
-    content = (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        Loading lyrics…
-      </div>
-    );
-  } else if (error) {
-    content = <p className="text-sm text-muted-foreground">Lyrics unavailable</p>;
-  } else if (lrcContent !== null && isValidLRC(lrcContent)) {
-    const parsed: LRCLine[] = parseLRC(lrcContent);
-    content = (
-      <div className="space-y-1">
-        {parsed.map((line, i) => (
-          <div key={i} className="flex flex-col md:flex-row md:items-baseline md:gap-2">
-            <span className="font-mono text-xs text-muted-foreground block md:w-16 md:shrink-0">
-              {formatTimestamp(line.timeSeconds)}
-            </span>
-            <span className="text-sm break-words block">{line.text}</span>
-          </div>
-        ))}
-      </div>
-    );
-  } else if (lines !== null && lines.length > 0) {
-    content = (
-      <pre className="text-sm whitespace-pre-wrap break-words">{lines.join("\n")}</pre>
-    );
-  } else if (lrcContent !== null) {
-    content = (
-      <pre className="text-sm whitespace-pre-wrap break-words">{lrcContent}</pre>
-    );
-  } else {
-    content = (
-      <p className="text-sm text-muted-foreground">No lyrics available for this recording.</p>
-    );
-  }
-
-  return (
-    <div
-      ref={panelRef}
-      id={lyricsPanelId}
-      role="region"
-      className="max-h-[40vh] md:max-h-[400px] overflow-y-auto px-3 pb-3 pt-1"
-    >
-      {content}
-    </div>
-  );
-}
-
 function SortableSongItem({
   item,
   index,
   onRemove,
   onEditTransition,
-  isExpanded,
-  onToggleExpand,
   readOnly = false,
   isPlaying = false,
   isPreviewLoading = false,
@@ -295,24 +207,6 @@ function SortableSongItem({
               </div>
             </div>
 
-            {/* Expand/collapse lyrics chevron */}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0"
-              onClick={onToggleExpand}
-              aria-expanded={isExpanded}
-              aria-controls={`lyrics-panel-${item.id}`}
-              aria-label={isExpanded ? `Collapse lyrics for ${item.song?.title || "song"}` : `Expand lyrics for ${item.song?.title || "song"}`}
-            >
-              <ChevronDown
-                className={cn(
-                  "size-4 text-muted-foreground transition-transform duration-200",
-                  isExpanded && "rotate-180"
-                )}
-              />
-            </Button>
-
             {/* Transition indicator (for non-first songs) */}
             {index > 0 && (
               <Button
@@ -357,9 +251,6 @@ function SortableSongItem({
               </div>
             )}
           </div>
-          {isExpanded && (
-            <LyricsPanel item={item} />
-          )}
         </CardContent>
       </Card>
     </div>
@@ -378,7 +269,6 @@ export function SongList({
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const dndContextId = useId();
 
   useEffect(() => {
@@ -419,6 +309,7 @@ export function SongList({
           src: publicUrl,
           type: "song",
           duration: recording.durationSeconds ?? undefined,
+          recordingContentHash: recording.contentHash,
         });
         setPlayingSongId(songId);
         return;
@@ -447,6 +338,7 @@ export function SongList({
           src: data.url,
           type: "song",
           duration: recording.durationSeconds ?? undefined,
+          recordingContentHash: recording.contentHash,
         });
 
         setPlayingSongId(songId);
@@ -489,14 +381,6 @@ export function SongList({
     })
   );
 
-  const handleDragStart = useCallback(() => {
-    setExpandedItemId(null);
-  }, []);
-
-  const handleToggleExpand = useCallback((itemId: string) => {
-    setExpandedItemId((prev) => (prev === itemId ? null : itemId));
-  }, []);
-
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -533,7 +417,6 @@ export function SongList({
       id={dndContextId}
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       <SortableContext
@@ -548,8 +431,6 @@ export function SongList({
               index={index}
               onRemove={onRemove}
               onEditTransition={onEditTransition}
-              isExpanded={expandedItemId === item.id}
-              onToggleExpand={() => handleToggleExpand(item.id)}
               readOnly={readOnly}
               isPlaying={playingSongId === item.songId}
               isPreviewLoading={previewLoadingSongId === item.songId}

@@ -398,44 +398,6 @@ describe("Accessibility (Task 8.2)", () => {
       expect(removeButton).toBeInTheDocument();
     });
 
-    it("chevron expand button has aria-expanded attribute", () => {
-      render(
-        <SongList
-          items={mockSongListItems}
-          onReorder={vi.fn()}
-          onRemove={vi.fn()}
-        />
-      );
-      const chevron = screen.getByRole("button", { name: /expand lyrics for amazing grace/i });
-      expect(chevron).toHaveAttribute("aria-expanded", "false");
-    });
-
-    it("chevron expand button toggles aria-expanded", () => {
-      render(
-        <SongList
-          items={mockSongListItems}
-          onReorder={vi.fn()}
-          onRemove={vi.fn()}
-        />
-      );
-      const chevron = screen.getByRole("button", { name: /expand lyrics for amazing grace/i });
-      fireEvent.click(chevron);
-      expect(chevron).toHaveAttribute("aria-expanded", "true");
-    });
-
-    it("expanded lyrics panel has role=region", () => {
-      render(
-        <SongList
-          items={mockSongListItems}
-          onReorder={vi.fn()}
-          onRemove={vi.fn()}
-        />
-      );
-      const chevron = screen.getByRole("button", { name: /expand lyrics for amazing grace/i });
-      fireEvent.click(chevron);
-      expect(screen.getByRole("region")).toBeInTheDocument();
-    });
-
     it("transition edit button has descriptive aria-label", () => {
       render(
         <SongList
