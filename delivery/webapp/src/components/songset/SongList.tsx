@@ -204,6 +204,9 @@ function SortableSongItem({
                 {(item.song?.effectiveKey ?? item.song?.musicalKey) && (
                   <span>• {item.song?.effectiveKey ?? item.song?.musicalKey}</span>
                 )}
+                {item.recording?.tempoBpm && (
+                  <span>• {Math.round(item.recording.tempoBpm)} BPM</span>
+                )}
               </div>
             </div>
 
