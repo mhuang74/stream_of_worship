@@ -4,8 +4,8 @@
 Drops songs missing both tempo and key metadata.
 
 Usage:
-    cat raw_pool.json | python enrich_pool.py [--season christmas]
-    python enrich_pool.py --input raw_pool.json [--season christmas]
+    cat raw_pool.json | uv run --project ops/admin-cli --extra admin --extra constructor python enrich_pool.py [--season christmas]
+    uv run --project ops/admin-cli --extra admin --extra constructor python enrich_pool.py --input raw_pool.json [--season christmas]
 
 Input: JSON array of raw SongCandidate objects (from fetch_pool.py).
 Output: JSON array of enriched SongCandidate objects to stdout.

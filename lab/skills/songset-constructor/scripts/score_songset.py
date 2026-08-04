@@ -2,8 +2,8 @@
 """Score a proposed songset against fitness functions and validate hard constraints H0-H8.
 
 Usage:
-    echo '{"items": [...], "pool": [...], "transitions": [...], "config": {...}}' | python score_songset.py
-    python score_songset.py --input draft.json
+    echo '{"items": [...], "pool": [...], "transitions": [...], "config": {...}}' | uv run --project ops/admin-cli --extra admin --extra constructor python score_songset.py
+    uv run --project ops/admin-cli --extra admin --extra constructor python score_songset.py --input draft.json
 
 Input (stdin JSON):
     {

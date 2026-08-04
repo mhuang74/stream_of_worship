@@ -4,7 +4,7 @@
 Wraps ``fetch_catalog_pool`` from the songset_constructor package.
 
 Usage:
-    python fetch_pool.py [--pool-limit 500] [--album-series "敬拜讚美 (1)"] [--no-cache]
+    uv run --project ops/admin-cli --extra admin --extra constructor python fetch_pool.py [--pool-limit 500] [--album-series "敬拜讚美 (1)"] [--no-cache]
 
 Output: JSON array of raw SongCandidate objects (pre-enrichment) to stdout.
 Diagnostics (pool size, cache hit/miss) to stderr.

@@ -4,9 +4,10 @@
 Uses pgvector semantic similarity (if embedding API available) or keyword ILIKE search.
 
 Usage:
-    python semantic_search.py --query "感恩" --limit 20
-    python semantic_search.py --query "cross" --field title --mode keyword
-    python semantic_search.py --query "holy spirit" --mode auto
+    uv run --project ops/admin-cli --extra admin --extra constructor python semantic_search.py --query "感恩" --limit 20
+    uv run --project ops/admin-cli --extra admin --extra constructor python semantic_search.py --query "cross" --field title --mode keyword
+    uv run --project ops/admin-cli --extra admin --extra constructor python semantic_search.py --query "holy spirit" --mode auto
+    uv run --project ops/admin-cli --extra admin --extra constructor python semantic_search.py --query "感恩" --album-series "敬拜讚美 (1)" --limit 5
 
 Output: JSON array of matching songs to stdout.
 """
@@ -43,7 +44,14 @@ def main() -> None:
         choices=["semantic", "keyword", "auto"],
         help="Search mode: semantic (pgvector), keyword (ILIKE), or auto",
     )
+    parser.add_argument(
+        "--album-series",
+        action="append",
+        default=None,
+        help='Filter by album series (e.g., "敬拜讚美 (1)"). Repeatable.',
+    )
     args = parser.parse_args()
+    album_series = args.album_series or []
 
     from stream_of_worship.admin.config import AdminConfig
     from stream_of_worship.admin.songset_constructor.rules.themes import THEME_VOCAB
@@ -57,13 +65,13 @@ def main() -> None:
 
     try:
         if args.mode == "keyword" or (args.mode == "auto" and args.field):
-            results = _keyword_search(read_client, args.query, args.field or "all", args.limit)
+            results = _keyword_search(read_client, args.query, args.field or "all", args.limit, album_series)
         elif args.mode == "semantic":
-            results = _semantic_search(read_client, args.query, args.limit)
+            results = _semantic_search(read_client, args.query, args.limit, album_series)
         else:  # auto
-            results = _semantic_search(read_client, args.query, args.limit)
+            results = _semantic_search(read_client, args.query, args.limit, album_series)
             if not results:
-                results = _keyword_search(read_client, args.query, "all", args.limit)
+                results = _keyword_search(read_client, args.query, "all", args.limit, album_series)
 
         json.dump(results, sys.stdout, ensure_ascii=False, indent=2)
     finally:
@@ -75,11 +83,14 @@ def _keyword_search(
     query: str,
     field: str,
     limit: int,
+    album_series: list[str],
 ) -> list[dict]:
     """Keyword search using ReadOnlyClient.search_songs (ILIKE)."""
     songs = read_client.search_songs(query, field=field, limit=limit)
     results = []
     for song in songs:
+        if album_series and song.album_series not in album_series:
+            continue
         recording = read_client.get_recording_by_song_id(song.id)
         results.append(
             {
@@ -103,6 +114,7 @@ def _semantic_search(
     read_client: ReadOnlyClient,
     query: str,
     limit: int,
+    album_series: list[str],
 ) -> list[dict]:
     """Semantic search using pgvector or theme-vocab fallback."""
     import os
@@ -111,12 +123,12 @@ def _semantic_search(
     base_url = os.environ.get("SOW_EMBEDDING_BASE_URL")
 
     if api_key and base_url:
-        results = _pgvector_search(read_client, query, limit, api_key, base_url)
+        results = _pgvector_search(read_client, query, limit, api_key, base_url, album_series)
         if results:
             return results
 
     # Fallback: match query against THEME_VOCAB keywords, then query songs with high theme scores
-    return _theme_vocab_search(read_client, query, limit)
+    return _theme_vocab_search(read_client, query, limit, album_series)
 
 
 def _pgvector_search(
@@ -125,6 +137,7 @@ def _pgvector_search(
     limit: int,
     api_key: str,
     base_url: str,
+    album_series: list[str],
 ) -> list[dict]:
     """Generate embedding for query and search via pgvector cosine distance."""
     try:
@@ -161,10 +174,11 @@ def _pgvector_search(
           AND r.visibility_status IN ('published', 'review')
           AND r.deleted_at IS NULL
           AND s.deleted_at IS NULL
+          AND (cardinality(%s::text[]) = 0 OR s.album_series = ANY(%s))
         ORDER BY se.embedding <=> %s::vector
         LIMIT %s
         """,
-        (str(embedding), str(embedding), limit),
+        (str(embedding), album_series, album_series, str(embedding), limit),
     )
     rows = cursor.fetchall()
 
@@ -192,6 +206,7 @@ def _theme_vocab_search(
     read_client: ReadOnlyClient,
     query: str,
     limit: int,
+    album_series: list[str],
 ) -> list[dict]:
     """Match query against THEME_VOCAB to identify themes, then find songs with high theme scores."""
     from stream_of_worship.admin.songset_constructor.rules.themes import THEME_VOCAB
@@ -206,7 +221,7 @@ def _theme_vocab_search(
 
     if not matched_themes:
         # Fall back to keyword search
-        return _keyword_search(read_client, query, "all", limit)
+        return _keyword_search(read_client, query, "all", limit, album_series)
 
     conn = read_client.connection
     cursor = conn.cursor()
@@ -226,12 +241,13 @@ def _theme_vocab_search(
           AND r.visibility_status IN ('published', 'review')
           AND r.deleted_at IS NULL
           AND s.deleted_at IS NULL
+          AND (cardinality(%s::text[]) = 0 OR s.album_series = ANY(%s))
         GROUP BY s.id, s.title, s.title_pinyin, s.album_name, s.album_series,
                  s.musical_key, r.hash_prefix, r.tempo_bpm, r.musical_mode
         ORDER BY score DESC
         LIMIT %s
         """,
-        (matched_themes, limit),
+        (matched_themes, album_series, album_series, limit),
     )
     rows = cursor.fetchall()
 

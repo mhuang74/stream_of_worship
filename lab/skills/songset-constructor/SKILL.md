@@ -26,12 +26,30 @@ You are a worship songset constructor agent. Your job is to plan, validate, and 
 
 ## Script Invocation
 
+> **CRITICAL:** Bare `python` is NOT on PATH in this environment. All scripts
+> MUST be run via `uv run`. Omitting `uv run` will silently produce empty
+> output files (the shell redirect creates the file before `python` fails,
+> leaving a 0-byte file that breaks downstream JSON parsing).
+
 All Python scripts run via:
 ```bash
 uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/<script>.py [OPTIONS]
 ```
 
-All scripts accept JSON via stdin or `--input <file>` and output JSON to stdout (diagnostics to stderr).
+**Extra groups required:**
+- `--extra admin` — psycopg3, typer, rich, boto3, miniaudio, numpy (DB access, R2, config)
+- `--extra constructor` — langgraph, pydantic, rapidfuzz, numpy (theme fusion, beam search, scoring)
+
+Both are required for all skill scripts. The `preflight.sh` script already uses
+`uv run` internally — invoke it with `bash lab/skills/songset-constructor/scripts/preflight.sh`
+(no `uv run` prefix needed for the shell script itself).
+
+**Troubleshooting empty output files:** If a downstream script fails with
+`json.JSONDecodeError` on a file that should contain JSON, check that the
+upstream command was invoked with `uv run` and that the file is not 0 bytes.
+
+All scripts accept JSON via stdin or `--input <file>` and output JSON to stdout
+(diagnostics to stderr).
 
 ## Workflow
 
@@ -45,6 +63,16 @@ Run `scripts/preflight.sh` to verify:
 DB-unreachable is a WARN (not a hard fail) when a valid `pool_*.json` cache exists. The agent proceeds from cache and reports this to the user. If absolutely no cache exists and DB is unreachable, the run cannot proceed.
 
 ### Step 2 — Fetch Catalog Pool
+
+**Discovering available album series:**
+Before using `--album-series`, find valid values via the Admin CLI:
+```bash
+uv run --project ops/admin-cli --extra admin sow-admin catalog list --albums --sort series
+```
+This prints a table of album names, album series, and song counts. Use the
+exact `album_series` string (e.g., `敬拜讚美 (1)`, `HYMN`, `CPW`) as the
+`--album-series` argument. The `--albums` flag shows aggregated counts;
+omit it to list individual songs.
 
 Run `scripts/fetch_pool.py` with appropriate flags:
 - `--pool-limit 500` for the full catalog (default)
@@ -60,7 +88,9 @@ This returns a JSON array of raw SongCandidate objects (pre-enrichment). Each so
 
 Pipe the raw pool JSON into `scripts/enrich_pool.py`:
 ```bash
-scripts/fetch_pool.py ... | scripts/enrich_pool.py --season christmas
+uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/fetch_pool.py \
+    --pool-limit 500 --prefer-fresh \
+    | uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/enrich_pool.py --season christmas
 ```
 
 This applies theme fusion (title 35% + lyrics 25% + song embedding 25% + line embedding 15%), seasonal bias, and phase inference. Songs missing both tempo and key are dropped. The enriched pool has `themes` (dict[str,float]), `phase` (1-5), `secondary_phases` (list[int]), and `is_hymn` populated.
@@ -76,8 +106,23 @@ If the pool has 0 valid openers (phase 1/2 with BPM ≥ 90) or 0 valid closers (
 
 Pipe the enriched pool into `scripts/build_transitions.py`:
 ```bash
-scripts/enrich_pool.py ... | scripts/build_transitions.py
+uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/enrich_pool.py ... \
+    | uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/build_transitions.py
 ```
+
+**Output shape:** `build_transitions.py` outputs a JSON **object** (not a bare array):
+```json
+{
+  "transitions": [...],
+  "pool": [...]
+}
+```
+The `pool` array is the enriched pool with `fan_out` and `is_dead_end` fields
+updated. The `transitions` array contains TransitionCandidate objects keyed
+by `(from_hash_prefix, to_hash_prefix)`.
+
+**Important:** This wrapper object cannot be piped directly into
+`score_songset.py`. See Step 6 for bridging instructions.
 
 This computes pairwise transition recommendations for all song pairs where circle-of-fifths distance (CFD) ≤ 6. Each transition includes: `cfd`, `bpm_delta`, `key_compat` (0-1), `suggested_key_shift` (semitones), `transition_technique` (pivot/direct/relative/transposition/vamp/direct_modulation), `crossfade_enabled`, `crossfade_duration_seconds`, `gap_beats`. Also computes `fan_out` (how many valid transitions each song has) and marks `is_dead_end` songs.
 
@@ -111,12 +156,14 @@ You are the LLM planner. Using the enriched pool and transition matrix, plan a s
 - Select middle songs: phase matches template position, BPM delta ≤ 45 from previous (40 without crossfade), CFD ≤ 3 (or apply key shift if CFD > 3 and key confidence ≥ 0.6)
 - Select a closer: phase 4 or 5, tempo ≤ 90 BPM (80 if intimate)
 - Ensure phase doesn't drop by more than 1 between adjacent songs (H7)
+- **Hard cap: `count ≤ 5`** (enforced by `SONGSET_MAX_SONGS`; exceeding this fails at `songset create` time, not earlier). Never draft a proposal with more than 5 songs.
 - Maximize theme diversity across the set
 - Consider tempo arc: opener should be faster than closer
 
 **Optional tools during planning:**
 - Use `scripts/get_lyrics.py --hash-prefix <hash>` to inspect how a song starts and ends — this helps you plan smoother transitions (e.g., if a song ends quietly, the next can start softly)
 - Use `scripts/semantic_search.py --query "感恩" --limit 20` to find songs matching a specific theme you need to fill a template slot
+  - Add `--album-series "敬拜讚美 (1)"` (repeatable) to restrict search to specific album series, mirroring `fetch_pool.py`'s filter
 
 **When to use optional tools:**
 - If pool diversity for a given template slot is low (fewer than 3 candidates), run `semantic_search.py` with a theme query to find more candidates.
@@ -124,9 +171,49 @@ You are the LLM planner. Using the enriched pool and transition matrix, plan a s
 
 ### Step 6 — Score and Validate
 
+**Bridging from `build_transitions.py` output to `score_songset.py` input:**
+
+`build_transitions.py` outputs `{"transitions": [...], "pool": [...]}`.
+`score_songset.py` expects `{"items": [...], "pool": [...], "transitions": [...], "config": {...}}`.
+
+You must merge the transitions+pool from build_transitions with your draft
+items and config. Example using a quoted heredoc (preferred over multi-line
+`python -c "..."` strings because the quoted sentinel `<<'EOF'` suppresses
+shell interpolation):
+
+```bash
+# Save build_transitions output to a file
+uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/enrich_pool.py ... \
+    | uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/build_transitions.py \
+    > /tmp/transitions_pool.json
+
+# Build the score_songset input by merging with your draft items.
+uv run --project ops/admin-cli --extra admin --extra constructor python <<'EOF'
+import json
+
+tp = json.load(open('/tmp/transitions_pool.json'))
+payload = {
+    'items': [
+        {'position': 1, 'recording_hash_prefix': 'a1b2c3d4e5f6', 'key_shift_semitones': 0},
+        # ... more draft items in position order ...
+    ],
+    'pool': tp['pool'],
+    'transitions': tp['transitions'],
+    'config': {'count': 4, 'intimate': False, 'relax_h1': True},
+}
+with open('/tmp/score_input.json', 'w') as f:
+    json.dump(payload, f, ensure_ascii=False)
+EOF
+
+# Score the draft
+uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/score_songset.py \
+    --input /tmp/score_input.json
+```
+
 Submit your draft songset to `scripts/score_songset.py`:
 ```bash
-echo '{"items": [...], "pool": [...], "transitions": [...], "config": {"count": 4, "intimate": false, ...}}' | scripts/score_songset.py
+echo '{"items": [...], "pool": [...], "transitions": [...], "config": {"count": 4, "intimate": false}}' \
+    | uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/score_songset.py
 ```
 
 The script returns:
@@ -188,7 +275,9 @@ Pass this as the `summary` field in the JSON payload to `write_report.py`.
 
 Run `scripts/write_report.py` with the final proposals, pool, transitions, and config:
 ```bash
-echo '{"proposals": [...], "pool": [...], "config": {...}, "transitions": [...]}' | scripts/write_report.py --output-dir output/songset_constructor/<timestamp>/
+echo '{"proposals": [...], "pool": [...], "config": {...}, "transitions": [...], "summary": "..."}' \
+    | uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/write_report.py \
+        --output-dir output/songset_constructor/<timestamp>/
 ```
 
 This writes a single `proposal_report.md` containing:
@@ -205,3 +294,68 @@ After writing the report, provide a concise summary to the user:
 - Key findings: diversity assessment, any constraints that required relaxation, any concerns
 - Path to the output report file
 - If preflight WARN-flagged DB unreachability, report the DB↔cache source used (cached-stale-fresh indicator) in the summary
+
+### Step 12 — Persist Songset to DB (Optional)
+
+If the user wants to persist the top-ranked proposal as a songset in the
+database, use the Admin CLI `songset create` command.
+
+**Song ID format:** The `song_id` field in SongCandidate objects follows the
+format `{slug}_{8-char-hex}` (e.g., `wo_de_ye_su_4c27d159`). This is the
+correct token to pass to `songset create`. Do NOT pass
+`recording_hash_prefix` (a 12-char hex like `a1b2c3d4e5f6`) — it is not a
+valid song ID.
+
+> **Note:** The `songset create` docstring example previously used `song_0123`
+> as a placeholder. Real song IDs are slug-based (e.g., `wo_de_ye_su_4c27d159`),
+> not numeric `song_XXXX` IDs.
+
+**Defensive trim:** Step 5 already constrains `count ≤ 5` at plan time. As a
+belt-and-suspenders check, verify the top proposal has ≤ 5 items before
+calling `songset create`; if it does not, keep items by `position` ascending
+and truncate to 5.
+
+**Extract song_ids from the top proposal:**
+The top proposal's `items` list contains `song_id` fields in position order.
+Extract them and pass to `songset create`:
+
+```bash
+# Set the user email (or pass --user each time)
+export SOW_DEFAULT_USER=alice@example.com
+
+# Extract song_ids from the top proposal (assumes /tmp/top_proposal.json).
+# Quoted heredoc suppresses shell interpolation inside the Python source.
+SONG_IDS=$(uv run --project ops/admin-cli --extra admin --extra constructor python <<'EOF'
+import json
+p = json.load(open('/tmp/top_proposal.json'))
+print(' '.join(item['song_id'] for item in sorted(p['items'], key=lambda x: x['position'])))
+EOF
+)
+
+# Defensive trim: keep first 5 if oversize slipped through
+SONG_IDS=$(echo "$SONG_IDS" | awk '{for(i=1;i<=5 && i<=NF;i++) printf "%s%s", $i, (i<5 && i<NF ? OFS : ORS)}')
+
+# Dry-run first to validate resolution
+uv run --project ops/admin-cli --extra admin sow-admin songset create \
+    $SONG_IDS --dry-run --yes
+
+# Persist for real
+uv run --project ops/admin-cli --extra admin sow-admin songset create \
+    $SONG_IDS --name "Sunday_Worship_Set_1" --yes
+```
+
+**Flags:**
+- `--user <email>` / `-u` — Owner email (or set `SOW_DEFAULT_USER` env var)
+- `--name <name>` / `-n` — Custom songset name (auto-generated from titles if omitted)
+- `--yes` / `-y` — Skip confirmation prompt (required for non-interactive agent runs)
+- `--dry-run` — Resolve + validate but skip DB writes (recommended first)
+- `--description <text>` / `-d` — Optional description
+
+**Constraints enforced by songset create:**
+- Max 5 songs (`SONGSET_MAX_SONGS`)
+- Max 25 minutes total recording duration (`SONGSET_MAX_DURATION_SECONDS=1500`)
+- Latest active recording selected automatically (latest-active-wins rule)
+
+**Avoiding ambiguous title matches:** If you pass a title instead of a song_id
+and multiple songs match, the command errors in `--yes` mode. Always use the
+`song_id` field from SongCandidate for deterministic resolution.
