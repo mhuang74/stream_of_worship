@@ -270,3 +270,125 @@ class TestSongsetListCommand:
 
         assert result.exit_code == 0
         mock_client.list_all_songsets.assert_called_once_with(limit=5)
+
+    def test_list_format_json(self):
+        """Test listing with --format json outputs nested JSON."""
+        import json
+
+        songset1 = _make_songset("ss1", 1, "Worship Set 1")
+        item1 = _make_item("item1", "ss1", "song1", 0, song_title="Test Song")
+
+        with patch("stream_of_worship.admin.commands.songset.AdminConfig.load") as mock_config, \
+             patch("stream_of_worship.admin.commands.songset.ConnectionProvider") as mock_conn_prov_cls, \
+             patch("stream_of_worship.admin.commands.songset.SongsetClient") as mock_client_cls:
+            mock_config.return_value.get_connection_url.return_value = "postgresql://test"
+            mock_conn_prov_cls.return_value = MagicMock()
+
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.list_all_songsets.return_value = [songset1]
+            mock_client.list_songset_items_with_song_recording.return_value = {
+                "ss1": [item1],
+            }
+
+            result = runner.invoke(app, ["songset", "list", "--format", "json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 1
+        songset = data[0]
+        assert songset["id"] == "ss1"
+        assert songset["name"] == "Worship Set 1"
+        assert songset["user_id"] == 1
+        assert songset["owner_email"] == "?"
+        assert songset["description"] is None
+        assert "created_at" in songset
+        assert "updated_at" in songset
+        assert len(songset["items"]) == 1
+        item = songset["items"][0]
+        assert item["position"] == 1
+        assert item["song_id"] == "song1"
+        assert item["song_title"] == "Test Song"
+        assert item["display_key"] == "G"
+        assert item["tempo_bpm"] == 120
+        assert item["duration"] == "4:00"
+        assert item["duration_seconds"] == 240.0
+
+    def test_list_format_json_empty_songset(self):
+        """Test empty songset renders as empty items array in JSON."""
+        import json
+
+        songset1 = _make_songset("ss1", 1, "Empty Set")
+
+        with patch("stream_of_worship.admin.commands.songset.AdminConfig.load") as mock_config, \
+             patch("stream_of_worship.admin.commands.songset.ConnectionProvider") as mock_conn_prov_cls, \
+             patch("stream_of_worship.admin.commands.songset.SongsetClient") as mock_client_cls:
+            mock_config.return_value.get_connection_url.return_value = "postgresql://test"
+            mock_conn_prov_cls.return_value = MagicMock()
+
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.list_all_songsets.return_value = [songset1]
+            mock_client.list_songset_items_with_song_recording.return_value = {
+                "ss1": [],
+            }
+
+            result = runner.invoke(app, ["songset", "list", "--format", "json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["items"] == []
+
+    def test_list_format_json_orphaned_item(self):
+        """Test orphaned item renders nulls in JSON."""
+        import json
+
+        songset1 = _make_songset("ss1", 1, "Set with Orphan")
+        orphan_item = SongsetItem(
+            id="item1",
+            songset_id="ss1",
+            song_id="missing_song",
+            position=0,
+            song_title=None,
+            song_key=None,
+            duration_seconds=None,
+            tempo_bpm=None,
+            recording_key=None,
+        )
+
+        with patch("stream_of_worship.admin.commands.songset.AdminConfig.load") as mock_config, \
+             patch("stream_of_worship.admin.commands.songset.ConnectionProvider") as mock_conn_prov_cls, \
+             patch("stream_of_worship.admin.commands.songset.SongsetClient") as mock_client_cls:
+            mock_config.return_value.get_connection_url.return_value = "postgresql://test"
+            mock_conn_prov_cls.return_value = MagicMock()
+
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.list_all_songsets.return_value = [songset1]
+            mock_client.list_songset_items_with_song_recording.return_value = {
+                "ss1": [orphan_item],
+            }
+
+            result = runner.invoke(app, ["songset", "list", "--format", "json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        item = data[0]["items"][0]
+        assert item["song_title"] is None
+        assert item["display_key"] is None
+        assert item["tempo_bpm"] is None
+        assert item["duration"] == "--:--"
+        assert item["duration_seconds"] is None
+
+    def test_list_invalid_format(self):
+        """Test invalid --format value exits 1 with an error."""
+        with patch("stream_of_worship.admin.commands.songset.AdminConfig.load") as mock_config, \
+             patch("stream_of_worship.admin.commands.songset.ConnectionProvider") as mock_conn_prov_cls:
+            mock_config.return_value.get_connection_url.return_value = "postgresql://test"
+            mock_conn_prov_cls.return_value = MagicMock()
+
+            result = runner.invoke(app, ["songset", "list", "--format", "yaml"])
+
+        assert result.exit_code == 1
+        assert "--format must be one of" in result.output

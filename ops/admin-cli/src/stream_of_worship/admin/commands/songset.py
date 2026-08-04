@@ -35,6 +35,14 @@ from stream_of_worship.db.user_client import UserClient
 console = Console()
 app = typer.Typer(help="Songset operations")
 
+SONGSET_FORMAT_VALUES = {"table", "json", "ids"}
+
+
+def _validate_choice(value: str, choices: set[str], name: str) -> None:
+    if value not in choices:
+        console.print(f"[red]{name} must be one of: {', '.join(sorted(choices))}[/red]")
+        raise typer.Exit(1)
+
 
 def _get_connection_provider(config: AdminConfig) -> ConnectionProvider:
     """Get a ConnectionProvider from config.
@@ -93,7 +101,7 @@ def list_songsets(
         "table",
         "--format",
         "-f",
-        help="Output format (table|ids)",
+        help="Output format (table|json|ids)",
     ),
     config_path: Path | None = typer.Option(
         None,
@@ -113,6 +121,8 @@ def list_songsets(
     except FileNotFoundError:
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
+
+    _validate_choice(format, SONGSET_FORMAT_VALUES, "--format")
 
     connection_provider = _get_connection_provider(config)
     songset_client = SongsetClient(connection_provider, user_id=0)
@@ -150,6 +160,39 @@ def list_songsets(
     # Batch-fetch items with song/recording data
     songset_ids = [s.id for s in songsets]
     items_by_songset = songset_client.list_songset_items_with_song_recording(songset_ids)
+
+    # JSON format: nested songset objects with their items
+    if format == "json":
+        rows = []
+        for songset in songsets:
+            items = items_by_songset.get(songset.id, [])
+            rows.append(
+                {
+                    "id": songset.id,
+                    "name": songset.name,
+                    "user_id": songset.user_id,
+                    "owner_email": owner_emails.get(songset.user_id, "?"),
+                    "description": songset.description,
+                    "created_at": songset.created_at,
+                    "updated_at": songset.updated_at,
+                    "items": [
+                        {
+                            "position": item.position + 1,
+                            "song_id": item.song_id,
+                            "song_title": item.song_title,
+                            "display_key": item.display_key if item.song_title else None,
+                            "tempo_bpm": round(item.tempo_bpm)
+                            if item.tempo_bpm is not None
+                            else None,
+                            "duration": (item.formatted_duration if item.song_title else "--:--"),
+                            "duration_seconds": item.duration_seconds,
+                        }
+                        for item in items
+                    ],
+                }
+            )
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return
 
     # Table format: one row per songset item
     total_items = sum(len(items) for items in items_by_songset.values())
