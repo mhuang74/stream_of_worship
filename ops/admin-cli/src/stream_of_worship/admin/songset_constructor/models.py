@@ -19,6 +19,7 @@ class SongCandidate(BaseModel):
     musical_mode: str | None = None
     key_confidence: float | None = None
     loudness_db: float | None = None
+    duration_seconds: float | None = None
     lyrics_raw: str | None = None
     song_theme_scores_raw: dict[str, float] = Field(default_factory=dict)
     line_theme_scores_raw: dict[str, float] = Field(default_factory=dict)
@@ -28,6 +29,11 @@ class SongCandidate(BaseModel):
     fan_out: int = 0
     is_dead_end: bool = False
     is_hymn: bool = False
+    in_leader_range: bool = True
+    leader_range_distance: int = 0
+    recommended_key_shift_for_range: int = 0
+    leader_range_pcs: list[int] = Field(default_factory=list)
+    leader_range_label: str | None = None
 
 
 class TransitionCandidate(BaseModel):
@@ -70,6 +76,11 @@ class ProposalItem(DraftItem):
     key: str | None = None
     mode: str | None = None
     key_confidence: float | None = None
+    duration_seconds: float | None = None
+    tonic_pc: int = 0
+    in_leader_range: bool = True
+    leader_range_distance: int = 0
+    recommended_key_shift_for_range: int = 0
 
 
 class ScoreBreakdown(BaseModel):
@@ -78,6 +89,7 @@ class ScoreBreakdown(BaseModel):
     f_harmony: float
     f_diversity: float
     total: float
+    range_penalty: float = 0.0
 
 
 class SongsetProposal(BaseModel):

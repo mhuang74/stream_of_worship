@@ -1,7 +1,8 @@
-"""Hard constraint validation H1-H8."""
+"""Hard constraint validation H1-H9."""
 
 from __future__ import annotations
 
+from stream_of_worship.admin.constants import SONGSET_MAX_DURATION_SECONDS
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import (
     SongsetProposal,
@@ -25,6 +26,8 @@ RULE_DESCRIPTIONS: dict[str, str] = {
     "H6": "Uniqueness: no duplicate song IDs allowed in the set.",
     "H7": "Phase arc: phase may drop by at most 1 between adjacent songs (no sharp backwards worship arc).",
     "H8": "Key confidence: songs with key confidence < 0.6 cannot be transposed (key_shift must stay 0).",
+    "H9": f"Total duration: the sum of all songs' durations must not exceed {SONGSET_MAX_DURATION_SECONDS}s "
+    f"(25 min). Songs with unknown duration (None) contribute 0 and do not trigger H9.",
 }
 
 
@@ -103,6 +106,14 @@ def validate(
     for item in proposal.items:
         if item.key_confidence is not None and item.key_confidence < 0.6 and item.key_shift_semitones != 0:
             failures.append(("H8", f"{item.title} has low key confidence and cannot be transposed.", "Set key_shift_semitones to 0 or choose a song with reliable key analysis."))
+
+    total_duration = sum(item.duration_seconds or 0.0 for item in proposal.items)
+    if total_duration > SONGSET_MAX_DURATION_SECONDS:
+        failures.append((
+            "H9",
+            f"Total duration {total_duration:.0f}s exceeds {SONGSET_MAX_DURATION_SECONDS}s (25 min) limit.",
+            "Replace one song with a shorter alternative, or reduce song count (≤4).",
+        ))
 
     return ValidationFeedback(
         passed=not failures,

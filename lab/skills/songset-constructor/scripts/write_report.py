@@ -31,6 +31,16 @@ if str(ADMIN_CLI_SRC) not in sys.path:
     sys.path.insert(0, str(ADMIN_CLI_SRC))
 
 PHASE_NAMES = {1: "call", 2: "thanksgiving", 3: "worship", 4: "response", 5: "commitment"}
+PC_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+MAX_DURATION_SECONDS = 1500
+
+
+def _format_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "?"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{minutes}m {secs:02d}s"
 
 
 def main() -> None:
@@ -135,7 +145,7 @@ def _run_summary(config: "RunConfig", pool: list) -> list[str]:
         flags.append("relax_h5=true")
     flags_str = ", ".join(flags) if flags else "none"
 
-    return [
+    lines = [
         "## Run Summary",
         "",
         f"- Run ID: {config.thread_id}",
@@ -144,8 +154,17 @@ def _run_summary(config: "RunConfig", pool: list) -> list[str]:
         f"- Top-k: {config.proposals}",
         f"- Pool size: {len(pool)}",
         f"- Flags: {flags_str}",
-        "",
     ]
+
+    leader_label = next((c.leader_range_label for c in pool if c.leader_range_label), None)
+    leader_pcs = next((c.leader_range_pcs for c in pool if c.leader_range_pcs), None)
+    if leader_label or leader_pcs:
+        lines.append(f"- Leader range: {leader_label or 'custom'}")
+        if leader_pcs:
+            pc_names = ", ".join(PC_NAMES[pc] for pc in sorted(leader_pcs))
+            lines.append(f"- Comfortable tonic PCs: {pc_names}")
+    lines.append("")
+    return lines
 
 
 def _pool_overview(pool: list) -> list[str]:
@@ -178,15 +197,25 @@ def _pool_overview(pool: list) -> list[str]:
 
     phase_dist = ", ".join(f"P{p}={phase_counts.get(p, 0)}" for p in range(1, 6))
 
-    return [
+    durations = [c.duration_seconds for c in pool if c.duration_seconds is not None]
+    duration_known = len(durations)
+    duration_missing = total - duration_known
+
+    lines = [
         "## Pool Overview",
         "",
         f"- Total candidates: {total}",
         f"- Phase distribution: {phase_dist}",
         f"- Tempo coverage: {tempo_known} known BPM, {tempo_missing} missing",
-        f"- Theme entropy: {theme_entropy:.2f} bits (max {max_theme_entropy:.3f})",
-        "",
+        f"- Duration coverage: {duration_known} known, {duration_missing} missing",
     ]
+    if durations:
+        avg_dur = sum(durations) / len(durations)
+        max_dur = max(durations)
+        lines.append(f"- Duration stats: avg {_format_duration(avg_dur)}, max {_format_duration(max_dur)}")
+    lines.append(f"- Theme entropy: {theme_entropy:.2f} bits (max {max_theme_entropy:.3f})")
+    lines.append("")
+    return lines
 
 
 def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
@@ -195,7 +224,13 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
 
     lines = [f"## Rank {proposal.rank} - Score {proposal.score.total:.4f}", ""]
     lines.extend(brief_summary_block(proposal, config=config, pool=pool))
-    lines.extend(["", "### Details", "", "| # | Title | Album | Phase | BPM | Key | Themes | Transition |", "|---|---|---:|---:|---|---|---|"])
+    lines.extend([
+        "",
+        "### Details",
+        "",
+        "| # | Title | Album | Phase | BPM | Key | Dur | Themes | Transition |",
+        "|---|---|---:|---:|---|---|---|---|---|",
+    ])
 
     for item in proposal.items:
         key = " ".join(part for part in [item.key, item.mode] if part)
@@ -205,14 +240,59 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
             phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
         themes = ", ".join(item.themes) if item.themes else "none"
         bpm = f"{item.bpm:g}" if item.bpm is not None else ""
-        lines.append(f"| {item.position} | {item.title} | {item.album_name or ''} | {phase_display} | {bpm} | {key} | {themes} | {transition} |")
+        dur = _format_duration(item.duration_seconds) if item.duration_seconds is not None else "?"
+        lines.append(
+            f"| {item.position} | {item.title} | {item.album_name or ''} | {phase_display} | {bpm} | {key} | {dur} | {themes} | {transition} |"
+        )
 
+    # Total duration line
+    total_duration = sum(item.duration_seconds or 0.0 for item in proposal.items)
+    has_unknown = any(item.duration_seconds is None for item in proposal.items)
+    dur_status = "✓"
+    if total_duration > MAX_DURATION_SECONDS:
+        dur_status = "✗ H9 VIOLATED"
+    elif has_unknown:
+        dur_status = "⚠ unknown durations"
     lines.extend([
         "",
-        f"Score: theme {proposal.score.f_theme:.3f}, tempo {proposal.score.f_tempo:.3f}, "
-        f"harmony {proposal.score.f_harmony:.3f}, diversity {proposal.score.f_diversity:.3f}.",
-        "",
+        f"**Total duration:** {_format_duration(total_duration)} ({total_duration:.0f}s / {MAX_DURATION_SECONDS}s limit) {dur_status}",
     ])
+
+    # Singing range subsection
+    leader_pcs = next((c.leader_range_pcs for c in pool if c.leader_range_pcs), None)
+    leader_label = next((c.leader_range_label for c in pool if c.leader_range_label), None)
+    if leader_pcs:
+        pc_names = ", ".join(PC_NAMES[pc] for pc in sorted(leader_pcs))
+        lines.extend([
+            "",
+            f"**Singing range:** {leader_label or 'custom'} (comfortable tonics: {pc_names})",
+            "",
+            "| # | Song | Key | Mode | In range | Applied shift | Range distance |",
+            "|---|------|-----|------|----------|---------------|----------------|",
+        ])
+        for item in proposal.items:
+            in_range = "✓" if item.in_leader_range else "✗"
+            if item.in_leader_range and item.recommended_key_shift_for_range != 0:
+                in_range = "✓ (shifted)"
+            elif item.in_leader_range and item.key_shift_semitones != 0:
+                in_range = "✓ (shifted)"
+            applied_shift = item.key_shift_semitones if item.key_shift_semitones != 0 else (
+                item.recommended_key_shift_for_range if item.recommended_key_shift_for_range != 0 else 0
+            )
+            lines.append(
+                f"| {item.position} | {item.title} | {item.key or '?'} | {item.mode or '?'} | {in_range} | {applied_shift} | {item.leader_range_distance} |"
+            )
+
+    # Score breakdown with range_penalty
+    score_parts = (
+        f"f_theme {proposal.score.f_theme:.3f}, "
+        f"f_tempo {proposal.score.f_tempo:.3f}, "
+        f"f_harmony {proposal.score.f_harmony:.3f}, "
+        f"f_diversity {proposal.score.f_diversity:.3f}"
+    )
+    if proposal.score.range_penalty > 0:
+        score_parts += f", range_penalty -{proposal.score.range_penalty:.3f}"
+    lines.extend(["", f"Score: {score_parts}.", ""])
 
     if proposal.hard_constraint_warnings:
         lines.extend([f"Warnings: {', '.join(proposal.hard_constraint_warnings)}", ""])

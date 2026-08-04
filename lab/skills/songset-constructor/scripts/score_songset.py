@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score a proposed songset against fitness functions and validate hard constraints H0-H8.
+"""Score a proposed songset against fitness functions and validate hard constraints H0-H9.
 
 Usage:
     echo '{"items": [...], "pool": [...], "transitions": [...], "config": {...}}' | uv run --project ops/admin-cli --extra admin --extra constructor python score_songset.py
@@ -90,6 +90,38 @@ def main() -> None:
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
     proposal = proposal_from_draft(draft, pool, placeholder, llm_origin=True)
     proposal = proposal.model_copy(update={"score": score(proposal, config, matrix)})
+
+    # Apply soft range penalty if leader range was provided during enrichment
+    comfortable_pcs: set[int] | None = None
+    for c in pool:
+        if c.leader_range_pcs:
+            comfortable_pcs = set(c.leader_range_pcs)
+            break
+
+    if comfortable_pcs:
+        def _circular_pc_distance(a: int, b: int) -> int:
+            d = abs(a - b) % 12
+            return min(d, 12 - d)
+
+        range_penalty = 0.0
+        for item in proposal.items:
+            shifted_pc = (item.tonic_pc + item.key_shift_semitones) % 12
+            if shifted_pc not in comfortable_pcs:
+                dist = min(_circular_pc_distance(shifted_pc, c) for c in comfortable_pcs)
+                range_penalty += min(0.05 * dist, 0.20)
+
+        if range_penalty > 0:
+            adjusted_total = max(0.0, proposal.score.total - range_penalty)
+            proposal = proposal.model_copy(
+                update={
+                    "score": proposal.score.model_copy(
+                        update={
+                            "total": round(adjusted_total, 4),
+                            "range_penalty": round(range_penalty, 4),
+                        }
+                    )
+                }
+            )
 
     # Validate
     feedback = validate(
