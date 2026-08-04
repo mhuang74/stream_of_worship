@@ -14,7 +14,7 @@ CONSTRUCTOR_SONG_COLUMNS = (
 )
 CONSTRUCTOR_RECORDING_COLUMNS = (
     "r.hash_prefix, r.tempo_bpm, r.musical_key AS r_musical_key, "
-    "r.musical_mode, r.key_confidence, r.loudness_db"
+    "r.musical_mode, r.key_confidence, r.loudness_db, r.duration_seconds"
 )
 
 POOL_QUERY = f"""
@@ -74,7 +74,7 @@ def _parse_json_scores(raw) -> dict[str, float]:
 
 
 def _candidate_from_row(row: tuple) -> SongCandidate:
-    song_theme_scores_raw = _parse_json_scores(row[15])
+    song_theme_scores_raw = _parse_json_scores(row[16])
     return SongCandidate(
         song_id=row[0],
         title=row[1],
@@ -89,6 +89,7 @@ def _candidate_from_row(row: tuple) -> SongCandidate:
         musical_mode=row[12],
         key_confidence=row[13],
         loudness_db=row[14],
+        duration_seconds=row[15],
         lyrics_raw=row[8],
         song_theme_scores_raw=song_theme_scores_raw,
         is_hymn=row[6] == "HYMN",

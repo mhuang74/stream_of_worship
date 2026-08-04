@@ -7,9 +7,9 @@ import json
 from stream_of_worship.admin.songset_constructor.db import _candidate_from_row
 from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
-# Tuple layout (16 columns):
-# 0: s.id           5: s.album_name    10: r.tempo_bpm   15: song_theme_scores_raw
-# 1: s.title        6: s.album_series  11: r_musical_key
+# Tuple layout (17 columns):
+# 0: s.id           5: s.album_name    10: r.tempo_bpm      15: r.duration_seconds
+# 1: s.title        6: s.album_series  11: r_musical_key     16: song_theme_scores_raw
 # 2: s.title_pinyin 7: s.musical_key   12: r.musical_mode
 # 3: s.composer     8: s.lyrics_raw    13: r.key_confidence
 # 4: s.lyricist     9: r.hash_prefix   14: r.loudness_db
@@ -32,7 +32,8 @@ def test_candidate_from_row_basic():
         "maj",                  # 12
         0.95,                   # 13
         -12.5,                  # 14
-        None,                   # 15
+        240.0,                  # 15 — r.duration_seconds
+        None,                   # 16 — song_theme_scores_raw
     )
     candidate = _candidate_from_row(row)
     assert candidate.song_id == "s1"
@@ -41,6 +42,7 @@ def test_candidate_from_row_basic():
     assert candidate.tempo_bpm == 120.0
     assert candidate.musical_key == "D"
     assert candidate.musical_mode == "maj"
+    assert candidate.duration_seconds == 240.0
     assert candidate.song_theme_scores_raw == {}
 
 
@@ -51,13 +53,14 @@ def test_candidate_from_row_with_scores():
         "s2", "Test 2", None, None, None,
         None, None, "D", "lyrics",
         "hash2", 100.0, "E", "min",
-        0.8, -10.0,
+        0.8, -10.0, 180.0,
         scores,
     )
     candidate = _candidate_from_row(row)
     assert candidate.song_id == "s2"
     assert candidate.song_theme_scores_raw == {"讚美": 0.95, "感恩": 0.80, "敬拜": 0.75}
     assert candidate.musical_key == "E"
+    assert candidate.duration_seconds == 180.0
 
 
 def test_candidate_from_row_with_scores_as_str():
@@ -67,7 +70,7 @@ def test_candidate_from_row_with_scores_as_str():
         "s2b", "Test 2b", None, None, None,
         None, None, "D", "lyrics",
         "hash2b", 100.0, "E", "min",
-        0.8, -10.0,
+        0.8, -10.0, 200.0,
         scores,
     )
     candidate = _candidate_from_row(row)
@@ -81,12 +84,13 @@ def test_candidate_from_row_with_null_values():
         "s2c", "Test 2c", None, None, None,
         None, None, "D", "lyrics",
         "hash2c", 100.0, "E", "min",
-        0.8, -10.0,
+        0.8, -10.0, None,
         scores,
     )
     candidate = _candidate_from_row(row)
     assert candidate.song_theme_scores_raw == {"讚美": 0.95, "敬拜": 0.75}
     assert "感恩" not in candidate.song_theme_scores_raw
+    assert candidate.duration_seconds is None
 
 
 def test_candidate_from_row_key_fallback():
@@ -95,12 +99,13 @@ def test_candidate_from_row_key_fallback():
         "s3", "Test 3", None, None, None,
         None, None, "G", "lyrics",
         "hash3", 90.0, None, "maj",
-        0.9, -8.0,
+        0.9, -8.0, 300.0,
         None,
     )
     candidate = _candidate_from_row(row)
     assert candidate.musical_key == "G"
     assert candidate.song_theme_scores_raw == {}
+    assert candidate.duration_seconds == 300.0
 
 
 def test_pool_query_sql_shapes():
@@ -144,7 +149,7 @@ def test_bandwidth_validation():
             f"s{i}", f"Title {i}", None, "Composer A", None,
             "Album", "Series", "C", "lyrics",
             f"hash{i:04d}", 120.0, "D", "maj",
-            0.95, -12.5, None,
+            0.95, -12.5, 240.0, None,
         )
         for i in range(200)
     ]
@@ -164,8 +169,8 @@ def test_bandwidth_validation():
         sql = call_args[0][0] if call_args[0] else ""
         assert "embedding::text" not in sql, f"embedding::text found in: {sql[:100]}"
 
-    # Estimate bandwidth: 200 rows × 16 columns × average 40 bytes per value
-    estimated_bytes = 200 * 16 * 40
+    # Estimate bandwidth: 200 rows × 17 columns × average 40 bytes per value
+    estimated_bytes = 200 * 17 * 40
     assert estimated_bytes < 1_000_000, f"Estimated bandwidth {estimated_bytes} bytes exceeds 1 MB limit"
 
 
@@ -179,7 +184,7 @@ def test_bandwidth_theme_scores_12_keys():
         "s1", "Title", None, None, None,
         None, None, "C", "lyrics",
         "hash1", 120.0, "D", "maj",
-        0.95, -12.5, scores,
+        0.95, -12.5, 250.0, scores,
     )
     candidate = _candidate_from_row(row)
     assert len(candidate.song_theme_scores_raw) == 12

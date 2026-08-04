@@ -17,6 +17,7 @@ from stream_of_worship.admin.songset_constructor.rules.fitness import (
     middle_song_ids,
     score_with_diversity_penalty,
 )
+from stream_of_worship.admin.songset_constructor.rules.harmony import relative_major_pc
 from stream_of_worship.admin.songset_constructor.rules.phases import top_themes
 
 
@@ -34,6 +35,11 @@ def item_from_candidate(candidate: SongCandidate, position: int) -> ProposalItem
         key=candidate.musical_key,
         mode=candidate.musical_mode,
         key_confidence=candidate.key_confidence,
+        duration_seconds=candidate.duration_seconds,
+        tonic_pc=relative_major_pc(candidate.musical_key, candidate.musical_mode),
+        in_leader_range=candidate.in_leader_range,
+        leader_range_distance=candidate.leader_range_distance,
+        recommended_key_shift_for_range=candidate.recommended_key_shift_for_range,
     )
 
 
@@ -73,6 +79,11 @@ def proposal_from_draft(
                 key=candidate.musical_key,
                 mode=candidate.musical_mode,
                 key_confidence=candidate.key_confidence,
+                duration_seconds=candidate.duration_seconds,
+                tonic_pc=relative_major_pc(candidate.musical_key, candidate.musical_mode),
+                in_leader_range=candidate.in_leader_range,
+                leader_range_distance=candidate.leader_range_distance,
+                recommended_key_shift_for_range=candidate.recommended_key_shift_for_range,
             )
         )
     return SongsetProposal(

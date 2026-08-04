@@ -45,6 +45,13 @@ def main() -> None:
         choices=["advent", "christmas", "lent", "easter", "pentecost"],
         help="Seasonal bias",
     )
+    parser.add_argument(
+        "--leader-range",
+        type=str,
+        default=None,
+        help='Leader singing range as JSON: \'{"comfortable_pcs": [0,1,2,3,4,5], "label": "normal male"}\'. '
+        "If omitted, range enrichment is skipped (backwards-compatible).",
+    )
     args = parser.parse_args()
 
     if args.input:
@@ -53,6 +60,7 @@ def main() -> None:
         raw_data = json.load(sys.stdin)
 
     from stream_of_worship.admin.songset_constructor.models import SongCandidate
+    from stream_of_worship.admin.songset_constructor.rules.harmony import relative_major_pc
     from stream_of_worship.admin.songset_constructor.rules.phases import (
         apply_seasonal_bias,
         fuse_themes,
@@ -65,6 +73,60 @@ def main() -> None:
         classify_title_themes,
         normalise_cosine_scores,
     )
+
+    leader_range: dict | None = None
+    if args.leader_range:
+        leader_range = json.loads(args.leader_range)
+        if "comfortable_pcs" not in leader_range:
+            print("[WARN] --leader-range JSON missing 'comfortable_pcs'; skipping range enrichment.", file=sys.stderr)
+            leader_range = None
+
+    comfortable_pcs: set[int] | None = None
+    leader_label: str | None = None
+    if leader_range is not None:
+        comfortable_pcs = set(leader_range.get("comfortable_pcs", []))
+        leader_label = leader_range.get("label")
+
+    def _circular_pc_distance(a: int, b: int) -> int:
+        d = abs(a - b) % 12
+        return min(d, 12 - d)
+
+    def _compute_range_fields(candidate: SongCandidate) -> dict:
+        """Compute in_leader_range, leader_range_distance, recommended_key_shift_for_range."""
+        if comfortable_pcs is None:
+            return {}
+
+        tonic_pc = relative_major_pc(candidate.musical_key, candidate.musical_mode)
+
+        if tonic_pc in comfortable_pcs:
+            return {
+                "in_leader_range": True,
+                "leader_range_distance": 0,
+                "recommended_key_shift_for_range": 0,
+            }
+
+        if candidate.key_confidence is not None and candidate.key_confidence >= 0.6:
+            best_shift = 0
+            best_abs = 99
+            for shift in (-2, -1, 1, 2):
+                shifted_pc = (tonic_pc + shift) % 12
+                if shifted_pc in comfortable_pcs:
+                    if abs(shift) < best_abs:
+                        best_shift = shift
+                        best_abs = abs(shift)
+            if best_shift != 0:
+                return {
+                    "in_leader_range": True,
+                    "leader_range_distance": 0,
+                    "recommended_key_shift_for_range": best_shift,
+                }
+
+        dist = min(_circular_pc_distance(tonic_pc, c) for c in comfortable_pcs)
+        return {
+            "in_leader_range": False,
+            "leader_range_distance": dist,
+            "recommended_key_shift_for_range": 0,
+        }
 
     raw_pool = [SongCandidate.model_validate(item) for item in raw_data]
     loaded_size = len(raw_pool)
@@ -85,16 +147,18 @@ def main() -> None:
         primary_phase = infer_phase(fused, candidate.tempo_bpm)
         secondary = infer_secondary_phases(fused, primary_phase, candidate.tempo_bpm)
 
-        enriched.append(
-            candidate.model_copy(
-                update={
-                    "themes": fused,
-                    "phase": primary_phase,
-                    "secondary_phases": secondary,
-                    "is_hymn": candidate.album_series == "HYMN",
-                }
-            )
-        )
+        update = {
+            "themes": fused,
+            "phase": primary_phase,
+            "secondary_phases": secondary,
+            "is_hymn": candidate.album_series == "HYMN",
+        }
+        update.update(_compute_range_fields(candidate))
+        if comfortable_pcs is not None:
+            update["leader_range_pcs"] = sorted(comfortable_pcs)
+            update["leader_range_label"] = leader_label
+
+        enriched.append(candidate.model_copy(update=update))
 
     enriched_size = len(enriched)
 
@@ -131,6 +195,18 @@ def main() -> None:
     )
     print(f"Title hits: {title_hits}/{enriched_size}, Lyrics hits: {lyrics_hits}/{enriched_size}", file=sys.stderr)
     print(f"Theme entropy: {theme_entropy:.2f} bits (max {max_theme_entropy:.3f})", file=sys.stderr)
+
+    if comfortable_pcs is not None:
+        in_range = sum(1 for c in enriched if c.in_leader_range)
+        out_range = enriched_size - in_range
+        pc_names = ", ".join(
+            ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"][pc] for pc in sorted(comfortable_pcs)
+        )
+        print(
+            f"Singing range: {leader_label or 'custom'} — comfortable tonics: {pc_names}",
+            file=sys.stderr,
+        )
+        print(f"  In range: {in_range}/{enriched_size}, Out of range: {out_range}/{enriched_size}", file=sys.stderr)
 
     json.dump([c.model_dump(mode="json") for c in enriched], sys.stdout, ensure_ascii=False)
 

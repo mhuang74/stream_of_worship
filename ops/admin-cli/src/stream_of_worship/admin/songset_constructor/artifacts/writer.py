@@ -63,6 +63,8 @@ def _score_warnings_line(proposal: SongsetProposal) -> str:
         f"f_harmony {proposal.score.f_harmony:.3f}, "
         f"f_diversity {proposal.score.f_diversity:.3f}"
     )
+    if proposal.score.range_penalty > 0:
+        score_parts += f", range_penalty -{proposal.score.range_penalty:.3f}"
     warnings = ", ".join(proposal.hard_constraint_warnings) if proposal.hard_constraint_warnings else "none"
     return f"{score_parts}  |  Warnings: {warnings}"
 
@@ -395,7 +397,7 @@ def write_report(path: Path, *, config: RunConfig, proposals: list[SongsetPropos
 
 
 def write_pool_csv(path: Path, pool: list[SongCandidate]) -> None:
-    headers = ["song_id", "title", "title_pinyin", "composer", "album_name", "album_series", "recording_hash_prefix", "tempo_bpm", "musical_key", "musical_mode", "key_confidence", "loudness_db", "phase", "secondary_phases", "top_themes", "fan_out", "is_dead_end", "is_hymn"]
+    headers = ["song_id", "title", "title_pinyin", "composer", "album_name", "album_series", "recording_hash_prefix", "tempo_bpm", "musical_key", "musical_mode", "key_confidence", "loudness_db", "duration_seconds", "phase", "secondary_phases", "top_themes", "fan_out", "is_dead_end", "is_hymn", "in_leader_range", "leader_range_distance", "recommended_key_shift_for_range"]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=headers)
         writer.writeheader()
@@ -407,9 +409,12 @@ def write_pool_csv(path: Path, pool: list[SongCandidate]) -> None:
                 "recording_hash_prefix": candidate.recording_hash_prefix, "tempo_bpm": candidate.tempo_bpm,
                 "musical_key": candidate.musical_key, "musical_mode": candidate.musical_mode,
                 "key_confidence": candidate.key_confidence, "loudness_db": candidate.loudness_db,
+                "duration_seconds": candidate.duration_seconds,
                 "phase": candidate.phase, "secondary_phases": ";".join(str(p) for p in sorted(candidate.secondary_phases)),
                 "top_themes": ",".join(theme for theme, score in top if score > 0),
                 "fan_out": candidate.fan_out, "is_dead_end": candidate.is_dead_end, "is_hymn": candidate.is_hymn,
+                "in_leader_range": candidate.in_leader_range, "leader_range_distance": candidate.leader_range_distance,
+                "recommended_key_shift_for_range": candidate.recommended_key_shift_for_range,
             })
 
 
