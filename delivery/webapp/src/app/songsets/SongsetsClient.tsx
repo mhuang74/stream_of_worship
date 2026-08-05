@@ -73,19 +73,11 @@ export function SongsetsClient({
   const [refreshKey, setRefreshKey] = useState(0);
   const [page, setPage] = useState(currentPage);
   const [search, setSearch] = useState(initialSearch);
-  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
+  const [committedSearch, setCommittedSearch] = useState(initialSearch);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<{
     id: string; name: string; durationSeconds: number | null;
   } | null>(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,8 +92,8 @@ export function SongsetsClient({
           limit: String(pageSize),
           offset: String(offset),
         });
-        if (debouncedSearch.trim()) {
-          params.set("search", debouncedSearch.trim());
+        if (committedSearch.trim()) {
+          params.set("search", committedSearch.trim());
         }
 
         const response = await fetch(`/api/songsets?${params}`);
@@ -135,15 +127,15 @@ export function SongsetsClient({
     return () => {
       cancelled = true;
     };
-  }, [page, debouncedSearch, pageSize, refreshKey]);
+  }, [page, committedSearch, pageSize, refreshKey]);
 
   useEffect(() => {
     const params = new URLSearchParams();
     if (page > 1) params.set("page", String(page));
-    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (committedSearch.trim()) params.set("search", committedSearch.trim());
     const qs = params.toString();
     router.replace(qs ? `/songsets?${qs}` : "/songsets");
-  }, [page, debouncedSearch, router]);
+  }, [page, committedSearch, router]);
 
   const refreshSongsets = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -157,6 +149,11 @@ export function SongsetsClient({
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
   }, []);
+
+  const handleSearch = useCallback(() => {
+    setCommittedSearch(search);
+    setPage(1);
+  }, [search]);
 
   const handleCreateSongset = useCallback(
     async (name: string, description?: string) => {
@@ -335,7 +332,8 @@ export function SongsetsClient({
         onPageChange={handlePageChange}
         search={search}
         onSearchChange={handleSearchChange}
-        isSearching={isLoading && search !== debouncedSearch}
+        onSearch={handleSearch}
+        isSearching={isLoading && committedSearch.trim().length > 0}
       />
 
       {shareTarget && (

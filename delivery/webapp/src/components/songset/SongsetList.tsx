@@ -53,6 +53,7 @@ interface SongsetListProps {
   onPageChange?: (page: number) => void;
   search?: string;
   onSearchChange?: (value: string) => void;
+  onSearch?: () => void;
   isSearching?: boolean;
   className?: string;
 }
@@ -76,6 +77,7 @@ export function SongsetList({
   onPageChange,
   search = "",
   onSearchChange,
+  onSearch,
   isSearching = false,
   className,
 }: SongsetListProps) {
@@ -112,38 +114,59 @@ export function SongsetList({
   }, [currentPage, totalPages]);
 
   const renderSearchBar = (containerClassName?: string) => (
-    <div className={cn("relative", containerClassName)}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-      <Input
-        type="text"
-        value={search}
-        onChange={(e) => onSearchChange?.(e.target.value)}
-        placeholder="Search songsets by name or description..."
-        className="pl-9 pr-10"
-        aria-label="Search songsets"
-        data-testid="songset-search-input"
-      />
-      {search.length > 0 && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-2 top-1/2 -translate-y-1/2"
-          onClick={() => onSearchChange?.("")}
-          aria-label="Clear search"
-          data-testid="songset-clear-search-button"
-        >
-          <X className="size-4" />
-        </Button>
-      )}
-      {isSearching && (
-        <Loader2
-          className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground"
-          aria-hidden="true"
+    <div className={cn("flex items-center gap-2", containerClassName)}>
+      <div className="relative flex-1">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+        <Input
+          type="text"
+          value={search}
+          onChange={(e) => onSearchChange?.(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSearch?.();
+            }
+          }}
+          placeholder="Search songsets by name or description..."
+          className="pl-9 pr-10"
+          aria-label="Search songsets"
+          data-testid="songset-search-input"
         />
-      )}
-      {isSearching && (
-        <span className="sr-only" role="status" aria-live="polite">Searching songsets...</span>
-      )}
+        {search.length > 0 && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="absolute right-2 top-1/2 -translate-y-1/2"
+            onClick={() => {
+              onSearchChange?.("");
+              onSearch?.();
+            }}
+            aria-label="Clear search"
+            data-testid="songset-clear-search-button"
+          >
+            <X className="size-4" />
+          </Button>
+        )}
+        {isSearching && (
+          <Loader2
+            className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground"
+            aria-hidden="true"
+          />
+        )}
+        {isSearching && (
+          <span className="sr-only" role="status" aria-live="polite">Searching songsets...</span>
+        )}
+      </div>
+      <Button
+        variant="default"
+        size="default"
+        onClick={() => onSearch?.()}
+        aria-label="Search"
+        data-testid="songset-search-button"
+      >
+        <Search className="size-4 mr-2" />
+        Search
+      </Button>
     </div>
   );
 
@@ -234,7 +257,7 @@ export function SongsetList({
     const isSearchActive = search.trim().length > 0;
     return (
       <div className={cn("text-center py-12", className)}>
-        {renderSearchBar("mb-4 max-w-md mx-auto")}
+        {renderSearchBar("mb-4")}
         <p className="text-muted-foreground mb-4">
           {isSearchActive
             ? "No songsets match your search."
