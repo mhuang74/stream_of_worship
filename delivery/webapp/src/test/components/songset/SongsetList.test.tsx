@@ -46,6 +46,7 @@ describe("SongsetList", () => {
     onPageChange: vi.fn(),
     search: "",
     onSearchChange: vi.fn(),
+    onSearch: vi.fn(),
     isSearching: false,
   };
 
@@ -299,6 +300,63 @@ describe("SongsetList", () => {
       renderList({ isSearching: false });
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
+
+    it("renders a Search button", () => {
+      renderList();
+      expect(screen.getByTestId("songset-search-button")).toBeInTheDocument();
+    });
+
+    it("calls onSearch when Search button clicked", () => {
+      const onSearch = vi.fn();
+      renderList({ onSearch });
+
+      fireEvent.click(screen.getByTestId("songset-search-button"));
+
+      expect(onSearch).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls onSearch when Enter key is pressed in search input", () => {
+      const onSearch = vi.fn();
+      renderList({ onSearch });
+
+      const input = screen.getByLabelText(/search songsets/i);
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(onSearch).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onSearch when non-Enter key is pressed", () => {
+      const onSearch = vi.fn();
+      renderList({ onSearch });
+
+      const input = screen.getByLabelText(/search songsets/i);
+      fireEvent.keyDown(input, { key: "a" });
+
+      expect(onSearch).not.toHaveBeenCalled();
+    });
+
+    it("does not call onSearch when typing in input (only calls onSearchChange)", () => {
+      const onSearch = vi.fn();
+      const onSearchChange = vi.fn();
+      renderList({ onSearch, onSearchChange });
+
+      const input = screen.getByLabelText(/search songsets/i);
+      fireEvent.change(input, { target: { value: "test" } });
+
+      expect(onSearchChange).toHaveBeenCalledWith("test");
+      expect(onSearch).not.toHaveBeenCalled();
+    });
+
+    it("calls onSearch when clear button clicked", () => {
+      const onSearch = vi.fn();
+      const onSearchChange = vi.fn();
+      renderList({ search: "Sunday", onSearch, onSearchChange });
+
+      fireEvent.click(screen.getByLabelText(/clear search/i));
+
+      expect(onSearchChange).toHaveBeenCalledWith("");
+      expect(onSearch).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("pagination", () => {
@@ -390,6 +448,20 @@ describe("SongsetList", () => {
     it("shows search bar in empty state when search yields no results", () => {
       renderList({ songsets: [], search: "nonexistent" });
       expect(screen.getByLabelText(/search songsets/i)).toBeInTheDocument();
+    });
+
+    it("search bar in empty state has same full-width layout as normal state", () => {
+      const { rerender } = renderList();
+      const normalSearchContainer = screen.getByTestId("songset-search-input").closest("div.flex");
+      expect(normalSearchContainer).toHaveClass("flex", "items-center", "gap-2");
+
+      rerender(
+        <SongsetList {...defaultProps} songsets={[]} search="nonexistent" />
+      );
+      const emptySearchContainer = screen.getByTestId("songset-search-input").closest("div.flex");
+      expect(emptySearchContainer).toHaveClass("flex", "items-center", "gap-2");
+
+      expect(emptySearchContainer?.className).not.toContain("max-w-md");
     });
   });
 });
