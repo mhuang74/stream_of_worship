@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS theme_anchors (
     model_version TEXT NOT NULL DEFAULT 'text-embedding-3-small',
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+--> statement-breakpoint
 
 -- HNSW index for fast cosine distance computation
 CREATE INDEX IF NOT EXISTS idx_theme_anchors_embedding_cosine
