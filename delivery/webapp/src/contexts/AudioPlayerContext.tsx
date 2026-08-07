@@ -21,6 +21,10 @@ export interface AudioTrack {
   loopStart?: number;
   loopEnd?: number;
   recordingContentHash?: string;
+  /** Set for type "song" tracks so the player bar can identify the source song. */
+  songId?: string;
+  /** The songset from which playback was initiated, if any. */
+  originSongsetId?: string;
 }
 
 export interface AudioPlayerState {

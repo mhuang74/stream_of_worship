@@ -78,6 +78,7 @@ export interface SongsetEditorProps {
   onAddSongs: () => void;
   isRemoving?: boolean;
   className?: string;
+  highlightSongId?: string | null;
 }
 
 export function SongsetEditor({
@@ -97,6 +98,7 @@ export function SongsetEditor({
   onAddSongs,
   isRemoving = false,
   className,
+  highlightSongId,
 }: SongsetEditorProps) {
   const router = useRouter();
   const [isStaleBannerDismissed, setIsStaleBannerDismissed] = useState(false);
@@ -408,6 +410,8 @@ export function SongsetEditor({
           onRemove={handleRemove}
           onEditTransition={handleEditTransition}
           isRemoving={isRemoving}
+          songsetId={songset.id}
+          highlightSongId={highlightSongId}
         />
       </main>
 

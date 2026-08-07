@@ -14,6 +14,7 @@ interface PlaySongOptions {
   src: string;
   duration?: number;
   recordingContentHash?: string;
+  originSongsetId?: string;
 }
 
 interface PlayTransitionOptions {
@@ -61,6 +62,8 @@ export function useAudioPlayer() {
         type: "song" as AudioTrackType,
         duration: options.duration,
         recordingContentHash: options.recordingContentHash,
+        songId: options.songId,
+        originSongsetId: options.originSongsetId,
       };
       play(track);
     },

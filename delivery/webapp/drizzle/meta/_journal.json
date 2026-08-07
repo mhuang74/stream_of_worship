@@ -134,6 +134,13 @@
       "when": 1783161600000,
       "tag": "0018_theme_anchors",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786117016421,
+      "tag": "0019_plain_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

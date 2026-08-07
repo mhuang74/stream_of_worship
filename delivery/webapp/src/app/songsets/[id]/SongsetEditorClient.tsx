@@ -113,6 +113,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const router = useRouter();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
+  const highlightSongId = searchParams.get("highlightSong");
 
   const [songset, setSongset] = useState<ApiSongset | null>(() => ({
     id: initialData.id,
@@ -146,6 +147,18 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       router.replace(`/songsets/${songsetId}`);
     }
   }, [songsetId, router, isNew, items.length]);
+
+  // Consume the ephemeral ?highlightSong= param: strip it from the URL while
+  // preserving any other query params (e.g. ?new=true, ?share=true). The
+  // highlightSongId value is retained in component state via the SongsetEditor
+  // prop until the scroll/highlight effect in SongList has run.
+  useEffect(() => {
+    if (!highlightSongId) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("highlightSong");
+    const query = next.toString();
+    router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
+  }, [highlightSongId, songsetId, searchParams, router]);
 
   const markStale = useCallback(() => {
     setSongset((prev) =>
@@ -523,6 +536,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onDownloadVideo={handleDownloadVideo}
         onAddSongs={handleAddSongs}
         isRemoving={isRemoving}
+        highlightSongId={highlightSongId}
       />
       <BrowseSheet
         isOpen={isBrowseSheetOpen}

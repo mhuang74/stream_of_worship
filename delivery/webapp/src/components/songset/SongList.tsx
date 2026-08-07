@@ -67,6 +67,8 @@ interface SongListProps {
   readOnly?: boolean;
   className?: string;
   isRemoving?: boolean;
+  songsetId?: string;
+  highlightSongId?: string | null;
 }
 
 interface SortableSongItemProps {
@@ -82,6 +84,7 @@ interface SortableSongItemProps {
   onRequestConfirm: () => void;
   onCancelConfirm: () => void;
   isRemoving?: boolean;
+  isHighlighted?: boolean;
 }
 
 function SortableSongItem({
@@ -97,6 +100,7 @@ function SortableSongItem({
   onRequestConfirm,
   onCancelConfirm,
   isRemoving = false,
+  isHighlighted = false,
 }: SortableSongItemProps) {
   const {
     attributes,
@@ -132,6 +136,7 @@ function SortableSongItem({
     <div
       ref={setNodeRef}
       style={style}
+      data-song-id={item.songId}
       className={cn(
         "group",
         isDragging && "opacity-50"
@@ -140,7 +145,8 @@ function SortableSongItem({
       <Card className={cn(
         "border-border/50 hover:border-border transition-colors",
         isPlaying && "border-primary/30 bg-primary/5",
-        confirmRemove && "border-destructive/40 bg-destructive/5"
+        confirmRemove && "border-destructive/40 bg-destructive/5",
+        isHighlighted && "ring-2 ring-primary border-primary animate-pulse"
       )}>
         <CardContent className="p-3">
           <div className="flex items-center gap-3">
@@ -268,11 +274,14 @@ export function SongList({
   readOnly = false,
   className,
   isRemoving = false,
+  songsetId,
+  highlightSongId,
 }: SongListProps) {
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
   const dndContextId = useId();
+  const [highlightedSongId, setHighlightedSongId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!confirmingItemId || isRemoving) return;
@@ -313,6 +322,8 @@ export function SongList({
           type: "song",
           duration: recording.durationSeconds ?? undefined,
           recordingContentHash: recording.contentHash,
+          songId: songId,
+          originSongsetId: songsetId,
         });
         setPlayingSongId(songId);
         return;
@@ -342,6 +353,8 @@ export function SongList({
           type: "song",
           duration: recording.durationSeconds ?? undefined,
           recordingContentHash: recording.contentHash,
+          songId: songId,
+          originSongsetId: songsetId,
         });
 
         setPlayingSongId(songId);
@@ -351,7 +364,7 @@ export function SongList({
         setPreviewLoadingSongId(null);
       }
     },
-    [localItems, playingSongId, currentTrack, playerState.isPlaying, play, pause]
+    [localItems, playingSongId, currentTrack, playerState.isPlaying, play, pause, songsetId]
   );
 
   useEffect(() => {
@@ -372,6 +385,44 @@ export function SongList({
       setLocalItems(items);
     }
   }, [items]);
+
+  // Scroll to and highlight the target song when highlightSongId is provided.
+  // Uses requestAnimationFrame with a short retry loop to handle drag-and-drop
+  // layout shifts and slow hydration reliably.
+  useEffect(() => {
+    if (!highlightSongId) return;
+
+    let raf: number;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const tryScroll = () => {
+      const el = document.querySelector(
+        `[data-song-id="${globalThis.CSS.escape(highlightSongId)}"]`
+      );
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHighlightedSongId(highlightSongId);
+        return;
+      }
+      if (++attempts < maxAttempts) {
+        timeoutId = setTimeout(() => {
+          raf = requestAnimationFrame(tryScroll);
+        }, 50);
+      }
+    };
+
+    raf = requestAnimationFrame(tryScroll);
+
+    const dismissTimer = setTimeout(() => setHighlightedSongId(null), 3000);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timeoutId);
+      clearTimeout(dismissTimer);
+    };
+  }, [highlightSongId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -442,6 +493,7 @@ export function SongList({
               onRequestConfirm={() => setConfirmingItemId(item.id)}
               onCancelConfirm={() => setConfirmingItemId(null)}
               isRemoving={isRemoving}
+              isHighlighted={highlightedSongId === item.songId}
             />
           ))}
         </div>
