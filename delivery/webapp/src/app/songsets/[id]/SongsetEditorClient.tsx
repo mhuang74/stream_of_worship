@@ -113,7 +113,10 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const router = useRouter();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
-  const highlightSongId = searchParams.get("highlightSong");
+  const highlightSongParam = searchParams.get("highlightSong");
+  const [highlightSongId, setHighlightSongId] = useState<string | null>(
+    highlightSongParam
+  );
 
   const [songset, setSongset] = useState<ApiSongset | null>(() => ({
     id: initialData.id,
@@ -150,15 +153,17 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
   // Consume the ephemeral ?highlightSong= param: strip it from the URL while
   // preserving any other query params (e.g. ?new=true, ?share=true). The
-  // highlightSongId value is retained in component state via the SongsetEditor
-  // prop until the scroll/highlight effect in SongList has run.
+  // highlightSongId value is retained in component state (not derived from
+  // searchParams) so URL cleanup does not null it out mid-effect. It is
+  // cleared only after SongList's scroll/highlight effect has run, via
+  // onHighlightConsumed.
   useEffect(() => {
-    if (!highlightSongId) return;
+    if (!highlightSongParam) return;
     const next = new URLSearchParams(searchParams.toString());
     next.delete("highlightSong");
     const query = next.toString();
     router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
-  }, [highlightSongId, songsetId, searchParams, router]);
+  }, [highlightSongParam, songsetId, searchParams, router]);
 
   const markStale = useCallback(() => {
     setSongset((prev) =>
@@ -537,6 +542,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onAddSongs={handleAddSongs}
         isRemoving={isRemoving}
         highlightSongId={highlightSongId}
+        onHighlightConsumed={() => setHighlightSongId(null)}
       />
       <BrowseSheet
         isOpen={isBrowseSheetOpen}

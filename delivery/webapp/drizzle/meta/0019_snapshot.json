@@ -1686,23 +1686,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "idx_theme_anchors_embedding_cosine": {
-          "name": "idx_theme_anchors_embedding_cosine",
-          "columns": [
-            {
-              "expression": "\"embedding\" vector_cosine_ops",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

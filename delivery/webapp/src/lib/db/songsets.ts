@@ -152,6 +152,8 @@ export async function findSongsetsContainingSong(
             count: sql<number>`count(${songsetItems.id})::int`.as("count"),
           })
           .from(songsetItems)
+          .innerJoin(songsets, eq(songsets.id, songsetItems.songsetId))
+          .where(eq(songsets.userId, userId))
           .groupBy(songsetItems.songsetId)
       );
 
@@ -177,7 +179,8 @@ export async function findSongsetsContainingSong(
           eq(songsetItems.songId, songId)
         )
       )
-      .orderBy(desc(songsets.updatedAt));
+      .orderBy(desc(songsets.updatedAt))
+      .limit(50);
 
     const sorted = [...rows].sort((a, b) => {
       if (originSongsetId) {
