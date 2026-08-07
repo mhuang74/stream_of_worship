@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PlayerLyricsPanel } from "./PlayerLyricsPanel";
 import { LyricsErrorBoundary } from "./LyricsErrorBoundary";
+import { LocateSongsetsPopover } from "./LocateSongsetsPopover";
 
 function LyricsErrorFallback() {
   return (
@@ -226,6 +227,7 @@ export function AudioPlayerBar() {
               )}
             </p>
           </div>
+          <LocateSongsetsPopover />
         </div>
 
         {/* Controls - centered on desktop */}

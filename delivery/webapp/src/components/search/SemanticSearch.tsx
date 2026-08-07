@@ -218,6 +218,7 @@ export function useSemanticSearch({
           type: "song",
           duration: recording.durationSeconds ?? undefined,
           recordingContentHash: recording.contentHash,
+          songId: songId,
         });
         setPlayingSongId(songId);
         return;
@@ -249,6 +250,7 @@ export function useSemanticSearch({
           type: "song",
           duration: recording.durationSeconds ?? undefined,
           recordingContentHash: recording.contentHash,
+          songId: songId,
         });
 
         setPlayingSongId(songId);

@@ -546,6 +546,7 @@ describe("SemanticSearch", () => {
           type: "song",
           duration: 180,
           recordingContentHash: "abc123",
+          songId: "song-1",
         });
       });
     });

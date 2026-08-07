@@ -7,6 +7,7 @@ import {
   songs,
   recordings,
   userSettings,
+  users,
 } from "@/db/schema";
 import { eq, and, desc, gt, sql, asc, ilike, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -114,6 +115,92 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
     lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
     items: publicItems,
   };
+}
+
+export interface SongsetContainingSong {
+  id: string;
+  name: string;
+  description: string | null;
+  updatedAt: Date;
+  itemCount: number;
+  songPosition: number;
+  isOrigin: boolean;
+  owner: {
+    id: number;
+    name: string;
+  };
+}
+
+/**
+ * Finds all songsets owned by `userId` that contain the given `songId`.
+ * If a song appears multiple times in one songset, one row is returned per
+ * occurrence, each with the correct `songPosition`. When `originSongsetId` is
+ * provided, that songset is sorted first.
+ */
+export async function findSongsetsContainingSong(
+  songId: string,
+  userId: number,
+  originSongsetId?: string | null
+): Promise<SongsetContainingSong[]> {
+  return timePageLoad("findSongsetsContainingSong", async () => {
+    const itemCountSubquery = db
+      .$with("item_counts")
+      .as(
+        db
+          .select({
+            songsetId: songsetItems.songsetId,
+            count: sql<number>`count(${songsetItems.id})::int`.as("count"),
+          })
+          .from(songsetItems)
+          .groupBy(songsetItems.songsetId)
+      );
+
+    const rows = await db
+      .with(itemCountSubquery)
+      .select({
+        id: songsets.id,
+        name: songsets.name,
+        description: songsets.description,
+        updatedAt: songsets.updatedAt,
+        itemCount: itemCountSubquery.count,
+        songPosition: songsetItems.position,
+        ownerId: users.id,
+        ownerName: users.name,
+      })
+      .from(songsets)
+      .innerJoin(songsetItems, eq(songsetItems.songsetId, songsets.id))
+      .innerJoin(users, eq(users.id, songsets.userId))
+      .leftJoin(itemCountSubquery, eq(itemCountSubquery.songsetId, songsets.id))
+      .where(
+        and(
+          eq(songsets.userId, userId),
+          eq(songsetItems.songId, songId)
+        )
+      )
+      .orderBy(desc(songsets.updatedAt));
+
+    const sorted = [...rows].sort((a, b) => {
+      if (originSongsetId) {
+        if (a.id === originSongsetId && b.id !== originSongsetId) return -1;
+        if (b.id === originSongsetId && a.id !== originSongsetId) return 1;
+      }
+      return b.updatedAt.getTime() - a.updatedAt.getTime();
+    });
+
+    return sorted.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      updatedAt: row.updatedAt,
+      itemCount: Number(row.itemCount ?? 0),
+      songPosition: row.songPosition,
+      isOrigin: row.id === originSongsetId,
+      owner: {
+        id: row.ownerId,
+        name: row.ownerName ?? "Unknown",
+      },
+    }));
+  });
 }
 
 export interface SongsetListItem {
