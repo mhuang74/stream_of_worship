@@ -31,6 +31,7 @@ export function LocateSongsetsPopover() {
   const [songsets, setSongsets] = useState<ContainingSongset[]>([]);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const hasOpenedRef = useRef(false);
 
   const songId = currentTrack?.type === "song" ? currentTrack.songId : undefined;
   const originSongsetId = currentTrack?.originSongsetId;
@@ -80,9 +81,11 @@ export function LocateSongsetsPopover() {
     [router, songId]
   );
 
-  // Return focus to trigger when closed.
+  // Return focus to trigger when closed (only after the popover has been opened).
   useEffect(() => {
-    if (!open && triggerRef.current) {
+    if (open) {
+      hasOpenedRef.current = true;
+    } else if (hasOpenedRef.current && triggerRef.current) {
       triggerRef.current.focus();
     }
   }, [open]);
@@ -118,15 +121,14 @@ export function LocateSongsetsPopover() {
           </div>
         ) : (
           <div
-            role="listbox"
+            role="list"
             aria-label="Songsets containing this song"
-            className="flex flex-col max-h-64 overflow-y-auto"
+            className="flex flex-col"
           >
             {songsets.map((ss) => (
               <button
                 key={`${ss.id}-${ss.songPosition}`}
-                role="option"
-                aria-selected={false}
+                role="listitem"
                 tabIndex={0}
                 onClick={() => handleSelect(ss.id)}
                 onKeyDown={(e) => {

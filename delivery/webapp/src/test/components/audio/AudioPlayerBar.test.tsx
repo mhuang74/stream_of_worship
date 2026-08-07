@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AudioPlayerBar } from "@/components/audio/AudioPlayerBar";
@@ -690,6 +690,148 @@ describe("AudioPlayerBar", () => {
       const panel = screen.getByRole("region", { name: /lyrics for test song/i });
       const wrapper = panel.parentElement;
       expect(wrapper?.className).toContain("max-h-[40dvh]");
+    });
+  });
+
+  describe("LocateSongsetsPopover", () => {
+    const songTrack: AudioTrack = {
+      id: "test-1",
+      title: "Test Song",
+      artist: "Test Artist",
+      src: "https://example.com/test.mp3",
+      type: "song",
+      duration: 180,
+      songId: "song-abc",
+    };
+
+    const mockSongsets = Array.from({ length: 6 }, (_, i) => ({
+      id: `ss-${i}`,
+      name: `Songset ${i + 1}`,
+      description: null,
+      updatedAt: new Date().toISOString(),
+      itemCount: 5,
+      songPosition: i,
+      isOrigin: i === 0,
+      owner: { id: 1, name: "Owner" },
+    }));
+
+    let originalFetch: typeof global.fetch;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ songsets: mockSongsets }),
+      });
+      mockUseSongLyrics.mockReturnValue({
+        lrcContent: null,
+        lines: null,
+        loading: false,
+        error: null,
+      });
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it("does not steal focus on initial mount", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      expect(document.activeElement).not.toBe(trigger);
+    });
+
+    it("restores focus to trigger after close", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      await user.click(trigger);
+
+      await user.keyboard("{Escape}");
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(trigger);
+      });
+    });
+
+    it("list container has no max-h-64 or overflow-y-auto", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      await user.click(trigger);
+
+      const list = await screen.findByRole("list", {
+        name: /songsets containing this song/i,
+      });
+
+      expect(list.className).not.toContain("max-h-64");
+      expect(list.className).not.toContain("overflow-y-auto");
+
+      for (const ss of mockSongsets) {
+        expect(screen.getByText(ss.name)).toBeInTheDocument();
+      }
+    });
+
+    it("uses role=list and role=listitem with no aria-selected", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      await user.click(trigger);
+
+      const list = await screen.findByRole("list", {
+        name: /songsets containing this song/i,
+      });
+      expect(list).toBeInTheDocument();
+
+      const items = screen.getAllByRole("listitem");
+      expect(items).toHaveLength(6);
+
+      expect(list.querySelector("[aria-selected]")).toBeNull();
     });
   });
 });
