@@ -41,6 +41,7 @@ export function LocateSongsetsPopover() {
     if (newOpen) {
       setLoading(true);
       setError(null);
+      setSongsets([]);
     }
   }, []);
 

@@ -27,6 +27,16 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { toast } from "sonner";
 
+function escapeCssSelectorValue(value: string): string {
+  const globalCss = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
+  if (typeof globalCss?.escape === "function") {
+    return globalCss.escape(value);
+  }
+  // Fallback for older webviews: escape backslash and double-quote, which are
+  // the only characters that can break out of a quoted CSS attribute selector.
+  return value.replace(/["\\]/g, "\\$&");
+}
+
 export interface SongListItem {
   id: string;
   songId: string;
@@ -69,6 +79,7 @@ interface SongListProps {
   isRemoving?: boolean;
   songsetId?: string;
   highlightSongId?: string | null;
+  onHighlightConsumed?: () => void;
 }
 
 interface SortableSongItemProps {
@@ -276,6 +287,7 @@ export function SongList({
   isRemoving = false,
   songsetId,
   highlightSongId,
+  onHighlightConsumed,
 }: SongListProps) {
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
@@ -388,7 +400,9 @@ export function SongList({
 
   // Scroll to and highlight the target song when highlightSongId is provided.
   // Uses requestAnimationFrame with a short retry loop to handle drag-and-drop
-  // layout shifts and slow hydration reliably.
+  // layout shifts and slow hydration reliably. Once the ring is shown and
+  // dismissed, onHighlightConsumed is called so the parent can clear the
+  // highlight state (decoupled from URL cleanup).
   useEffect(() => {
     if (!highlightSongId) return;
 
@@ -399,30 +413,35 @@ export function SongList({
 
     const tryScroll = () => {
       const el = document.querySelector(
-        `[data-song-id="${globalThis.CSS.escape(highlightSongId)}"]`
+        `[data-song-id="${escapeCssSelectorValue(highlightSongId)}"]`
       );
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         setHighlightedSongId(highlightSongId);
+        dismissTimer = setTimeout(() => {
+          setHighlightedSongId(null);
+          onHighlightConsumed?.();
+        }, 3000);
         return;
       }
       if (++attempts < maxAttempts) {
         timeoutId = setTimeout(() => {
           raf = requestAnimationFrame(tryScroll);
         }, 50);
+      } else {
+        onHighlightConsumed?.();
       }
     };
 
+    let dismissTimer: ReturnType<typeof setTimeout>;
     raf = requestAnimationFrame(tryScroll);
-
-    const dismissTimer = setTimeout(() => setHighlightedSongId(null), 3000);
 
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(timeoutId);
       clearTimeout(dismissTimer);
     };
-  }, [highlightSongId]);
+  }, [highlightSongId, onHighlightConsumed]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

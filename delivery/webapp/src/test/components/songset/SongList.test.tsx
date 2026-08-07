@@ -253,4 +253,31 @@ describe("SongList", () => {
       expect(removeButtons.length).toBe(0);
     });
   });
+
+  describe("highlight", () => {
+    it("calls onHighlightConsumed only after the ring is shown and dismissed", () => {
+      vi.useFakeTimers();
+      try {
+        const onHighlightConsumed = vi.fn();
+        renderList({ highlightSongId: "song-2", onHighlightConsumed });
+
+        // Let the requestAnimationFrame retry loop find the target element.
+        vi.advanceTimersByTime(100);
+        // Ring is shown; highlight must not be consumed yet.
+        expect(onHighlightConsumed).not.toHaveBeenCalled();
+
+        // Advance past the 3s dismiss timer.
+        vi.advanceTimersByTime(3000);
+        expect(onHighlightConsumed).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not call onHighlightConsumed when there is no highlight", () => {
+      const onHighlightConsumed = vi.fn();
+      renderList({ onHighlightConsumed });
+      expect(onHighlightConsumed).not.toHaveBeenCalled();
+    });
+  });
 });

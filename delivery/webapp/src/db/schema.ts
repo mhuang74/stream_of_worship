@@ -333,7 +333,10 @@ export const songLineEmbeddings = pgTable(
 // ---------------------------------------------------------------------------
 // theme_anchors table (managed by admin CLI's `sow-admin theme-anchors sync`)
 // Declared here so drizzle-kit push does not propose dropping it.
-// The HNSW index is created by the SQL migration (0018_theme_anchors.sql).
+// The HNSW cosine index is created by hand-written SQL migration
+// (0018_theme_anchors.sql). Drizzle-kit cannot express vector similarity
+// indexes (HNSW/IVFFlat) — do not add `index().on()` here; it will be
+// mis-generated as `USING btree (... vector_cosine_ops)` which is invalid.
 // ---------------------------------------------------------------------------
 
 export const themeAnchors = pgTable(
@@ -345,12 +348,8 @@ export const themeAnchors = pgTable(
       .notNull()
       .default("text-embedding-3-small"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  },
-  (t) => [
-    index("idx_theme_anchors_embedding_cosine").on(
-      sql`${t.embedding} vector_cosine_ops`
-    ),
-  ]
+  }
+  // no indexes — managed by 0018_theme_anchors.sql
 );
 
 // ---------------------------------------------------------------------------
