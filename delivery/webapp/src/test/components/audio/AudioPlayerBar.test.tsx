@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AudioPlayerBar } from "@/components/audio/AudioPlayerBar";
 import { AudioPlayerProvider, AudioTrack } from "@/contexts/AudioPlayerContext";
+import { PopoverContent } from "@/components/ui/popover";
 
 // Mock useSongLyrics
 const mockUseSongLyrics = vi.fn();
@@ -10,6 +11,15 @@ vi.mock("@/hooks/useSongLyrics", () => ({
   useSongLyrics: (...args: unknown[]) => mockUseSongLyrics(...args),
   clearLyricsCache: vi.fn(),
 }));
+
+// Mock popover to capture PopoverContent props while preserving real rendering
+vi.mock("@/components/ui/popover", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/popover")>();
+  return {
+    ...actual,
+    PopoverContent: vi.fn(actual.PopoverContent),
+  };
+});
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -704,7 +714,7 @@ describe("AudioPlayerBar", () => {
       songId: "song-abc",
     };
 
-    const mockSongsets = Array.from({ length: 6 }, (_, i) => ({
+    const mockSongsets = Array.from({ length: 15 }, (_, i) => ({
       id: `ss-${i}`,
       name: `Songset ${i + 1}`,
       description: null,
@@ -829,9 +839,92 @@ describe("AudioPlayerBar", () => {
       expect(list).toBeInTheDocument();
 
       const items = screen.getAllByRole("listitem");
-      expect(items).toHaveLength(6);
+      expect(items).toHaveLength(15);
 
       expect(list.querySelector("[aria-selected]")).toBeNull();
+    });
+
+    it("passes side='top' to PopoverContent", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      await user.click(trigger);
+
+      await screen.findByRole("list", {
+        name: /songsets containing this song/i,
+      });
+
+      const calls = vi.mocked(PopoverContent).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const lastCallProps = calls[calls.length - 1][0] as Record<string, unknown>;
+      expect(lastCallProps).toMatchObject({ side: "top" });
+    });
+
+    it("passes collisionAvoidance with side='none' and fallbackAxisSide='none'", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      await user.click(trigger);
+
+      await screen.findByRole("list", {
+        name: /songsets containing this song/i,
+      });
+
+      const calls = vi.mocked(PopoverContent).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const lastCallProps = calls[calls.length - 1][0] as Record<string, unknown>;
+      expect(lastCallProps).toMatchObject({
+        collisionAvoidance: { side: "none", fallbackAxisSide: "none" },
+      });
+    });
+
+    it("renders all 15 songset names", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole("button", {
+        name: /find containing songsets/i,
+      });
+      await user.click(trigger);
+
+      const list = await screen.findByRole("list", {
+        name: /songsets containing this song/i,
+      });
+      expect(list).toBeInTheDocument();
+
+      for (const ss of mockSongsets) {
+        expect(screen.getByText(ss.name)).toBeInTheDocument();
+      }
     });
   });
 });
