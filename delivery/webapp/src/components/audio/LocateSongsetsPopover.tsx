@@ -107,11 +107,13 @@ export function LocateSongsetsPopover() {
           <MapPin className="size-4" />
         </Button>
       </PopoverTrigger>
+      {/* Disable flip intentionally to avoid v3's side="right" overlap with the player bar. min-h-[240px] on the Popup is the mitigation for short viewports. */}
       <PopoverContent
-        className="w-72 p-0"
+        className="w-72 p-0 min-h-[240px]"
         align="start"
         side="top"
         collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
+        positionerClassName="z-[65]"
       >
         {loading ? (
           <div className="flex items-center justify-center py-6">
