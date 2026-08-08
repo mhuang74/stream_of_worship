@@ -107,7 +107,12 @@ export function LocateSongsetsPopover() {
           <MapPin className="size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
+      <PopoverContent
+        className="w-72 p-0"
+        align="start"
+        side="top"
+        collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
+      >
         {loading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
