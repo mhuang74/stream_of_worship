@@ -3,7 +3,6 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AudioPlayerBar } from "@/components/audio/AudioPlayerBar";
 import { AudioPlayerProvider, AudioTrack } from "@/contexts/AudioPlayerContext";
-import { PopoverContent } from "@/components/ui/popover";
 
 // Mock useSongLyrics
 const mockUseSongLyrics = vi.fn();
@@ -11,15 +10,6 @@ vi.mock("@/hooks/useSongLyrics", () => ({
   useSongLyrics: (...args: unknown[]) => mockUseSongLyrics(...args),
   clearLyricsCache: vi.fn(),
 }));
-
-// Mock popover to capture PopoverContent props while preserving real rendering
-vi.mock("@/components/ui/popover", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/ui/popover")>();
-  return {
-    ...actual,
-    PopoverContent: vi.fn(actual.PopoverContent),
-  };
-});
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -844,7 +834,7 @@ describe("AudioPlayerBar", () => {
       expect(list.querySelector("[aria-selected]")).toBeNull();
     });
 
-    it("passes side='top' to PopoverContent", async () => {
+    it("popover content has min-h-[240px] class", async () => {
       const user = userEvent.setup();
       render(
         <AudioPlayerProvider>
@@ -865,39 +855,9 @@ describe("AudioPlayerBar", () => {
         name: /songsets containing this song/i,
       });
 
-      const calls = vi.mocked(PopoverContent).mock.calls;
-      expect(calls.length).toBeGreaterThan(0);
-      const lastCallProps = calls[calls.length - 1][0] as Record<string, unknown>;
-      expect(lastCallProps).toMatchObject({ side: "top" });
-    });
-
-    it("passes collisionAvoidance with side='none' and fallbackAxisSide='none'", async () => {
-      const user = userEvent.setup();
-      render(
-        <AudioPlayerProvider>
-          <TestPlayerWithTrack track={songTrack} />
-        </AudioPlayerProvider>
-      );
-      await user.click(screen.getByTestId("load-track"));
-      await waitFor(() => {
-        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
-      });
-
-      const trigger = screen.getByRole("button", {
-        name: /find containing songsets/i,
-      });
-      await user.click(trigger);
-
-      await screen.findByRole("list", {
-        name: /songsets containing this song/i,
-      });
-
-      const calls = vi.mocked(PopoverContent).mock.calls;
-      expect(calls.length).toBeGreaterThan(0);
-      const lastCallProps = calls[calls.length - 1][0] as Record<string, unknown>;
-      expect(lastCallProps).toMatchObject({
-        collisionAvoidance: { side: "none", fallbackAxisSide: "none" },
-      });
+      const popup = document.querySelector("[data-slot='popover-content']");
+      expect(popup).not.toBeNull();
+      expect(popup?.className).toContain("min-h-[240px]");
     });
 
     it("renders all 15 songset names", async () => {

@@ -28,3 +28,5 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **ORM**: Drizzle ORM with PostgreSQL
 - **Auth**: Better Auth
 - **Storage**: Cloudflare R2
+
+> When modifying `components/ui/popover.tsx`, you must perform manual DevTools verification at desktop (1280×776) and mobile (375×667) widths, plus Safari iOS Simulator. Paste screenshots in the PR description.
