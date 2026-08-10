@@ -411,6 +411,34 @@ To enable GPU acceleration for Demucs and Whisper:
 
 If you don't have a GPU, the service will run fine on CPU with the default configuration.
 
+## Component Analysis (v5)
+
+The analysis service performs chorus/verse component extraction via the
+`component-analysis` job endpoint. The worker (`workers/components.py`) uses
+cached allin1 sections or LRC lyrics repetition to identify components, then
+computes per-component features (BPM, key, groove, backbeat, energy,
+confidence).
+
+### v5 Options (opt-in)
+
+The v5 pipeline adds rich per-component metadata (theme, vocal posture,
+per-field confidence, energy-aware roles, downbeat snapping). All v5 options
+are **opt-in** — when none are specified, the stable v3 path runs unchanged.
+
+| Option | Cost |
+|--------|------|
+| `use_stems` | **Heavy ML.** Triggers Demucs stem separation (CPU/GPU + storage per song). |
+| `classify_theme` | **LLM cost.** One LLM call per component (12 Chinese themes). Requires `SOW_LLM_*` env vars. |
+| `classify_vocal_posture` | **LLM cost.** One LLM call per component (3 posture categories). Requires `SOW_LLM_*` env vars. |
+| `snap_to_downbeat` | **NN inference.** Runs madmom two-stage RNN downbeat detector if downbeats not cached. Falls back to beat-only on failure. |
+| `energy_aware_roles` | **Compute.** Energy-based role assignment using drums stem (`0.4×rms + 0.3×drums_onset + 0.3×backbeat`). Best combined with `use_stems`. |
+
+These options are submitted by the admin CLI (`sow-admin audio components`)
+and passed through in the job payload `options` dict. See the
+[admin CLI README](../../ops/admin-cli/README.md#audio-components) for CLI usage
+and `reports/chorus_component_metadata_v5_impl_summary.md` for implementation
+details.
+
 ## Stopping the Service
 
 ```bash
