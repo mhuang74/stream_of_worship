@@ -11,6 +11,8 @@ from pytest_mock import MockerFixture
 from sow_analysis.models import (
     AnalyzeJobRequest,
     AnalyzeOptions,
+    ComponentAnalysisJobRequest,
+    ComponentAnalysisOptions,
     EmbeddingJobRequest,
     EmbeddingJobResult,
     FastAnalyzeJobRequest,
@@ -681,3 +683,109 @@ async def test_get_waiting_jobs(job_store: JobStore) -> None:
     assert len(waiting) == 2
     waiting_ids = {job.id for job in waiting}
     assert waiting_ids == {"job_waiting1", "job_waiting2"}
+
+@pytest.mark.asyncio
+async def test_component_analysis_migration_accepts_type(job_store: JobStore) -> None:
+    """Verify the CHECK constraint accepts 'component_analysis' after initialize()."""
+    request = ComponentAnalysisJobRequest(
+        audio_url="s3://test-bucket/audio.mp3",
+        content_hash="comp123",
+    )
+    job = Job(
+        id="job_comp_mig_test",
+        type=JobType.COMPONENT_ANALYSIS,
+        status=JobStatus.QUEUED,
+        request=request,
+    )
+    await job_store.insert_job(job)
+    retrieved = await job_store.get_job("job_comp_mig_test")
+    assert retrieved is not None
+    assert retrieved.type == JobType.COMPONENT_ANALYSIS
+
+
+@pytest.mark.asyncio
+async def test_component_analysis_migration_recreates_indexes(temp_db_path: Path) -> None:
+    """Verify migrated indexes are attached to the recreated jobs table after
+    component_analysis migration."""
+    async with aiosqlite.connect(temp_db_path) as db:
+        await db.executescript(
+            """
+            CREATE TABLE jobs (
+                id              TEXT PRIMARY KEY,
+                type            TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'queued',
+                progress        REAL NOT NULL DEFAULT 0.0,
+                stage           TEXT NOT NULL DEFAULT '',
+                error_message   TEXT,
+                request_json    TEXT NOT NULL,
+                result_json     TEXT,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                content_hash    TEXT NOT NULL,
+                CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
+            );
+            CREATE INDEX idx_jobs_status ON jobs(status);
+            CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+            CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+            """
+        )
+        await db.commit()
+
+    store = JobStore(temp_db_path)
+    await store.initialize()
+    try:
+        assert store._db is not None
+        async with store._db.execute(
+            """
+            SELECT name, tbl_name
+            FROM sqlite_master
+            WHERE type='index' AND name IN (
+                'idx_jobs_status',
+                'idx_jobs_content_hash',
+                'idx_jobs_created_at'
+            )
+            ORDER BY name
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        await store.close()
+
+    assert rows == [
+        ("idx_jobs_content_hash", "jobs"),
+        ("idx_jobs_created_at", "jobs"),
+        ("idx_jobs_status", "jobs"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_insert_and_get_component_analysis_job(job_store: JobStore) -> None:
+    """Test round-trip for component_analysis job."""
+    request = ComponentAnalysisJobRequest(
+        audio_url="s3://test-bucket/audio.mp3",
+        content_hash="comp456",
+        song_id="song_001",
+        options=ComponentAnalysisOptions(force=True, use_stems=True),
+    )
+
+    job = Job(
+        id="job_comp_test",
+        type=JobType.COMPONENT_ANALYSIS,
+        status=JobStatus.QUEUED,
+        request=request,
+    )
+
+    await job_store.insert_job(job)
+
+    retrieved = await job_store.get_job("job_comp_test")
+    assert retrieved is not None
+    assert retrieved.id == "job_comp_test"
+    assert retrieved.type == JobType.COMPONENT_ANALYSIS
+    assert retrieved.status == JobStatus.QUEUED
+    assert isinstance(retrieved.request, ComponentAnalysisJobRequest)
+    assert retrieved.request.audio_url == "s3://test-bucket/audio.mp3"
+    assert retrieved.request.song_id == "song_001"
+    assert retrieved.request.options.force is True
+    assert retrieved.request.options.use_stems is True
+
