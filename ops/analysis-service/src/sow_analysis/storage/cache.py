@@ -10,6 +10,10 @@ from typing import Optional
 
 from ..config import settings
 
+# Bump when the components.json payload shape changes. Cached payloads with a
+# mismatched version are treated as cache misses and recomputed.
+COMPONENT_SCHEMA_VERSION = 1
+
 
 class CacheManager:
     """Manages local disk cache for analysis results and stems."""
@@ -300,3 +304,46 @@ class CacheManager:
             shutil.rmtree(self.cache_dir)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             (self.cache_dir / "stems").mkdir(exist_ok=True)
+
+    def get_component_result(self, content_hash: str) -> Optional[dict]:
+        """Check if component analysis result exists in local cache.
+
+        Checks for ``{hash_prefix}_components.json`` in the local cache directory.
+        Returns None if not found, the file is corrupt, OR the cached
+        ``schema_version`` does not match COMPONENT_SCHEMA_VERSION (v3).
+
+        Args:
+            content_hash: Full SHA-256 content hash.
+
+        Returns:
+            Cached result dict or None.
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        cache_file = self.cache_dir / f"{hash_prefix}_components.json"
+        if cache_file.exists():
+            try:
+                payload = json.loads(cache_file.read_text())
+            except (json.JSONDecodeError, IOError):
+                return None
+            if payload.get("schema_version") != COMPONENT_SCHEMA_VERSION:
+                return None  # treat as cache miss; stale shape
+            return payload
+        return None
+
+    def save_component_result(self, content_hash: str, result: dict) -> Path:
+        """Save component analysis result to local cache.
+
+        Stores as ``{hash_prefix}_components.json`` in the local cache directory.
+        The ``result`` dict MUST include ``schema_version=COMPONENT_SCHEMA_VERSION``.
+
+        Args:
+            content_hash: Full SHA-256 content hash.
+            result: Component result dictionary.
+
+        Returns:
+            Path to saved cache file.
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        cache_file = self.cache_dir / f"{hash_prefix}_components.json"
+        cache_file.write_text(json.dumps(result, indent=2))
+        return cache_file

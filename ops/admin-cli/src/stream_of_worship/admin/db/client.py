@@ -13,7 +13,7 @@ from typing import Generator, Optional
 import psycopg
 import psycopg.errors
 
-from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song
+from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song, SongComponent
 from stream_of_worship.admin.db.schema import (
     ACTIVE_ROW_COUNT_QUERY,
     RECORDING_COLUMNS_FOR_JOIN,
@@ -23,6 +23,7 @@ from stream_of_worship.admin.db.schema import (
     SONG_COLUMNS_FOR_JOIN,
     SONG_COLUMNS_SELECT,
     SONG_COLUMN_COUNT,
+    SONG_COMPONENT_COLUMNS_SELECT,
 )
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.helpers import to_str
@@ -1959,3 +1960,144 @@ class DatabaseClient:
         )
         row = cursor.fetchone()
         return row[0] if row else None
+
+    # ── song_components ──────────────────────────────────────────────────
+
+    def upsert_song_components(
+        self,
+        song_id: str,
+        content_hash: str,
+        components: list[SongComponent],
+    ) -> int:
+        """Bulk upsert component rows for a recording.
+
+        Deletes existing rows for (song_id, content_hash) then inserts the
+        new set. Uses a single transaction. Returns the number of rows inserted.
+
+        v3: the unique index includes ``role``, so callers MAY persist two
+        rows with the same (song_id, component_type, occurrence_index) and
+        differing role (e.g. entry+exit for a single-chorus song).
+
+        Args:
+            song_id: Song ID.
+            content_hash: Recording content hash.
+            components: List of SongComponent instances to persist.
+
+        Returns:
+            Number of rows inserted.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM song_components WHERE song_id = %s AND content_hash = %s",
+                (song_id, content_hash),
+            )
+            if not components:
+                return 0
+            values = [
+                (
+                    c.song_id or song_id,
+                    c.content_hash or content_hash,
+                    c.component_type,
+                    c.occurrence_index,
+                    c.role,
+                    c.start_time,
+                    c.end_time,
+                    c.bpm,
+                    c.key,
+                    c.groove_density,
+                    c.backbeat_strength,
+                    c.energy_level,
+                    c.confidence,
+                )
+                for c in components
+            ]
+            cursor.executemany(
+                """
+                INSERT INTO song_components (
+                    song_id, content_hash, component_type, occurrence_index,
+                    role, start_time, end_time, bpm, key, groove_density,
+                    backbeat_strength, energy_level, confidence
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                values,
+            )
+            return len(values)
+
+    def get_song_components(self, song_id: str) -> list[SongComponent]:
+        """Return all component rows for a song, ordered by start_time.
+
+        Args:
+            song_id: Song ID.
+
+        Returns:
+            List of SongComponent instances.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            f"SELECT {SONG_COMPONENT_COLUMNS_SELECT} FROM song_components "
+            "WHERE song_id = %s ORDER BY start_time NULLS LAST",
+            (song_id,),
+        )
+        return [SongComponent.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def get_song_components_by_role(
+        self, song_id: str, role: str
+    ) -> list[SongComponent]:
+        """Return component rows matching a role (e.g., 'entry', 'exit').
+
+        Args:
+            song_id: Song ID.
+            role: Role to filter by.
+
+        Returns:
+            List of SongComponent instances.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            f"SELECT {SONG_COMPONENT_COLUMNS_SELECT} FROM song_components "
+            "WHERE song_id = %s AND role = %s ORDER BY start_time NULLS LAST",
+            (song_id, role),
+        )
+        return [SongComponent.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def get_song_components_by_type(
+        self, song_id: str, component_type: str
+    ) -> list[SongComponent]:
+        """Return component rows of a given type (e.g., 'chorus').
+
+        Args:
+            song_id: Song ID.
+            component_type: Component type to filter by.
+
+        Returns:
+            List of SongComponent instances.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(
+            f"SELECT {SONG_COMPONENT_COLUMNS_SELECT} FROM song_components "
+            "WHERE song_id = %s AND component_type = %s "
+            "ORDER BY occurrence_index, start_time NULLS LAST",
+            (song_id, component_type),
+        )
+        return [SongComponent.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def get_song_components_entry_exit(
+        self, song_id: str
+    ) -> tuple[Optional[SongComponent], Optional[SongComponent]]:
+        """Return (entry_component, exit_component) for a song.
+
+        For single-chorus songs persisted as two rows (role='entry' and
+        role='exit', same occurrence_index=1), both are returned.
+
+        Args:
+            song_id: Song ID.
+
+        Returns:
+            Tuple of (entry_component or None, exit_component or None).
+        """
+        entry_rows = self.get_song_components_by_role(song_id, "entry")
+        exit_rows = self.get_song_components_by_role(song_id, "exit")
+        entry = entry_rows[0] if entry_rows else None
+        exit_comp = exit_rows[0] if exit_rows else None
+        return (entry, exit_comp)

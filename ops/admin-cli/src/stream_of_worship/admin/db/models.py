@@ -531,3 +531,90 @@ class SongLineEmbedding:
     line_text: str = ""
     embedding: list[float] = field(default_factory=list)
     model_version: str = "text-embedding-3-small"
+
+
+@dataclass
+class SongComponent:
+    """One row per detected/tagged component instance.
+
+    Attributes:
+        id: Auto-increment PK (None for not-yet-persisted).
+        song_id: FK to songs.id.
+        content_hash: FK to recordings.content_hash.
+        component_type: 'chorus' | 'verse' | 'prechorus' | 'bridge' | ...
+        occurrence_index: 1st chorus, 2nd chorus, etc.
+        role: 'entry' | 'exit' | 'loop_target' | 'entry_exit' | 'none'.
+            v3: 'entry_exit' is reserved for persistence-time convenience if a
+            single row is preferred over two rows for single-chorus songs. The
+            default persistence path emits two rows ('entry' + 'exit') for
+            single-chorus songs, enabled by the v3 unique index that includes
+            role.
+        start_time: Start time in seconds.
+        end_time: End time in seconds.
+        bpm: Per-component tempo (may differ from global).
+        key: Per-component detected key (e.g., "G").
+        groove_density: Onset/note density metric for this segment.
+        backbeat_strength: Backbeat (beats 2&4) accent strength.
+        energy_level: RMS/energy for this segment.
+        confidence: Detection confidence (0.0–1.0).
+        created_at: Row creation timestamp.
+        updated_at: Row update timestamp.
+    """
+
+    id: Optional[int] = None
+    song_id: str = ""
+    content_hash: str = ""
+    component_type: str = ""
+    occurrence_index: int = 1
+    role: str = "none"
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    bpm: Optional[float] = None
+    key: Optional[str] = None
+    groove_density: Optional[float] = None
+    backbeat_strength: Optional[float] = None
+    energy_level: Optional[float] = None
+    confidence: Optional[float] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    @classmethod
+    def from_row(cls, row: tuple) -> "SongComponent":
+        return cls(
+            id=row[0],
+            song_id=row[1],
+            content_hash=row[2],
+            component_type=row[3],
+            occurrence_index=row[4],
+            role=row[5],
+            start_time=row[6],
+            end_time=row[7],
+            bpm=row[8],
+            key=row[9],
+            groove_density=row[10],
+            backbeat_strength=row[11],
+            energy_level=row[12],
+            confidence=row[13],
+            created_at=_to_str(row[14]),
+            updated_at=_to_str(row[15]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "song_id": self.song_id,
+            "content_hash": self.content_hash,
+            "component_type": self.component_type,
+            "occurrence_index": self.occurrence_index,
+            "role": self.role,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "bpm": self.bpm,
+            "key": self.key,
+            "groove_density": self.groove_density,
+            "backbeat_strength": self.backbeat_strength,
+            "energy_level": self.energy_level,
+            "confidence": self.confidence,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
