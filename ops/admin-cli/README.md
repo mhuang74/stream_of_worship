@@ -301,8 +301,106 @@ sow-admin audio list [--status pending|completed|failed]
 sow-admin audio show HASH_PREFIX
 sow-admin audio analyze HASH_PREFIX [--force] [--no-stems]
 sow-admin audio lrc HASH_PREFIX [--force]
+sow-admin audio components SONG_ID [v5 options]
 sow-admin audio status [JOB_ID]
 ```
+
+#### Audio Components
+
+Extracts and displays chorus/verse component metadata for a song: component type,
+occurrence, role, start/end time, BPM, key, groove, backbeat, energy, and
+confidence. Submits a component analysis job to the analysis service (using
+cached allin1 sections or LRC lyrics repetition with multi-cue disambiguation),
+then displays the results in a Rich table.
+
+If a cached `components.json` already exists in R2 with the current schema
+version, it is returned directly (unless `--force` is specified).
+
+```bash
+# Single song (v3 path — fast, no extra deps)
+sow-admin audio components song_0001
+
+# Single song with all v5 options enabled
+sow-admin audio components song_0001 \
+    --classify-theme --classify-posture --snap-to-downbeat --energy-roles --use-stems
+
+# Batch backfill via stdin
+sow-admin audio list --analysis completed --format ids \
+  | sow-admin audio components --stdin \
+    --use-stems --snap-to-downbeat --energy-roles --classify-theme --classify-posture
+
+# View persisted results
+sow-admin audio show song_0001
+```
+
+Common flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--force` / `-f` | off | Force re-extraction (bypass cache) |
+| `--no-wait` | off | Submit without waiting for completion |
+| `--stdin` | off | Read song IDs from stdin (one per line) for batch backfill |
+
+##### v5 Options (opt-in, all default off)
+
+All v5 flags are **opt-in** (default `False`). When none are specified, the
+stable v3 path runs unchanged — fast and dependency-free. Enabling v5 options
+adds rich per-component metadata (theme, vocal posture, per-field confidence,
+energy-aware roles, downbeat snapping) at the cost of significantly more compute,
+latency, and (for LLM flags) recurring API billing.
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--snap-to-downbeat` | off | Snap component boundaries to downbeats (runs madmom NN if downbeats not provided) |
+| `--energy-roles` | off | Use energy-based entry/exit role assignment (drums stem signal) |
+| `--use-stems` | off | Use Demucs stems for feature extraction |
+| `--classify-theme` | off | LLM theme classification (12 Chinese themes) |
+| `--classify-posture` | off | LLM vocal posture classification (3 categories) |
+
+###### Why these flags are expensive
+
+These flags were deliberately designed as opt-in to avoid changing the stable
+v3 path. Enabling them turns a fast, dependency-free run into a slow, costly,
+ML/LLM-heavy pipeline. Per-flag cost breakdown:
+
+- **`--use-stems`** — Most expensive locally. Triggers Demucs stem separation
+  (heavy ML model inference per song; CPU/GPU + storage). The recording must
+  have stems available or they will be generated on demand. This contradicts
+  the admin-CLI's lightweight design — the actual work happens in the
+  analysis-service container, not in the CLI itself.
+
+- **`--classify-theme` / `--classify-posture`** — Recurring **financial** cost.
+  Makes **one LLM API call per component** (parallelized via a shared
+  semaphore with `asyncio.gather`). Cost and latency scale with
+  `songs × components`. Adds nondeterminism and possible retries on JSON parse
+  failure. Requires `SOW_LLM_API_KEY`, `SOW_LLM_BASE_URL`, and `SOW_LLM_MODEL`
+  to be configured on the analysis service (see
+  [analysis-service README](../../ops/analysis-service/README.md)).
+
+- **`--snap-to-downbeat`** — Runs madmom's two-stage RNN downbeat detector
+  (`RNNDownBeatProcessor` → `DBNDownBeatTrackingProcessor`) when downbeats are
+  not already cached. Adds NN inference time per job. Can fail (falls back to
+  beat-only snapping if madmom errors).
+
+- **`--energy-roles`** — Computes energy-based entry/exit role assignment using
+  a composite score (`0.4×rms + 0.3×drums_onset + 0.3×backbeat`). Best used
+  **together with `--use-stems`** — without the drums stem, the energy signal
+  is weaker and the benefit is marginal.
+
+###### Cost guidance
+
+- Enable expensive flags **per-song or on targeted subsets**, not on full-library
+  backfills, unless you genuinely need v5 metadata everywhere.
+- `--classify-theme` / `--classify-posture` are the recurring-cost (LLM-billed)
+  items — use sparingly and prefer them for songs where semantic metadata
+  matters most (e.g., songset construction input).
+- `--energy-roles` without `--use-stems` gives a weaker signal; consider
+  combining them.
+- Changing v5 option usage triggers `COMPONENT_SCHEMA_VERSION = 2` cache
+  invalidation, so re-runs will re-analyze even if a stale v1 cache exists.
+
+See `reports/chorus_component_metadata_v5_impl_summary.md` for the full
+implementation details.
 
 ### Theme Anchors Commands
 

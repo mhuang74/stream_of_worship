@@ -1999,7 +1999,7 @@ def _submit_component_analysis_job(
     if recording.has_lrc:
         try:
             config = AdminConfig.load(None)
-            r2 = R2Client(config.r2_endpoint_url, config.r2_bucket)
+            r2 = R2Client(config.r2_bucket, config.r2_endpoint_url)
             lrc_content = r2.download_lrc_content(recording.hash_prefix)
         except Exception as e:
             console.print(f"[yellow]Could not fetch LRC from R2: {e}[/yellow]")
@@ -2007,7 +2007,7 @@ def _submit_component_analysis_job(
     # Check R2 for cached components.json (unless force).
     if not force:
         try:
-            client = AnalysisClient(analysis_url)
+            client = AnalysisClient(analysis_url, timeout=300)
             cached = client.get_cached_component_result(recording.hash_prefix)
             if cached is not None:
                 console.print(
@@ -2025,7 +2025,7 @@ def _submit_component_analysis_job(
 
     # Submit the job.
     try:
-        client = AnalysisClient(analysis_url)
+        client = AnalysisClient(analysis_url, timeout=300)
     except ValueError as e:
         console.print(f"[red]Analysis service not configured: {e}[/red]")
         return None
@@ -2057,7 +2057,7 @@ def _submit_component_analysis_job(
 
     # Poll for completion.
     try:
-        final_job = client.wait_for_completion(job.job_id, poll_interval=5.0, timeout=300.0)
+        final_job = client.wait_for_completion(job.job_id, poll_interval=5.0, timeout=600.0)
     except AnalysisServiceError as e:
         console.print(f"[red]{e}[/red]")
         return None
