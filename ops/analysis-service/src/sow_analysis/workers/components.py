@@ -13,6 +13,7 @@ import asyncio
 import logging
 import re
 import string
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -135,6 +136,161 @@ class ComponentInstance:
     # v5: LLM reasoning fields
     theme_reasoning: Optional[str] = None
     posture_reasoning: Optional[str] = None
+
+
+@dataclass
+class GlobalFeatures:
+    """Pre-computed global audio features for per-component slicing."""
+
+    y: np.ndarray
+    sr: int
+    duration: float
+    onset_env: np.ndarray
+    onset_frames: np.ndarray
+    onset_times: np.ndarray
+    rms: np.ndarray
+    rms_times: np.ndarray
+    y_harmonic: np.ndarray
+    chroma: np.ndarray
+    drums_y: Optional[np.ndarray]
+    drums_onset_env: Optional[np.ndarray]
+    drums_rms: Optional[np.ndarray]
+    drums_rms_times: Optional[np.ndarray]
+    vocals_y: Optional[np.ndarray]
+
+
+def _precompute_global_features(
+    audio_path: Path,
+    hop_length: int = 512,
+    stems_dir: Optional[Path] = None,
+) -> GlobalFeatures:
+    """Load audio once and compute all expensive global features.
+
+    This replaces the per-component librosa.load + hpss + chroma_cqt + onset
+    + rms calls with a single pass over the full audio.
+
+    Audio is loaded with sr=None to preserve the native sample rate,
+    matching the existing extract_components behavior.
+    """
+    y, sr = librosa.load(str(audio_path), sr=None, mono=True)
+    duration = float(librosa.get_duration(y=y, sr=sr))
+
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+    onset_times = librosa.frames_to_time(
+        np.arange(len(onset_env)), sr=sr, hop_length=hop_length
+    )
+
+    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
+    rms_times = librosa.frames_to_time(
+        np.arange(len(rms)), sr=sr, hop_length=hop_length
+    )
+
+    y_harmonic, _ = librosa.effects.hpss(y)
+
+    chroma = librosa.feature.chroma_cqt(
+        y=y_harmonic, sr=sr, hop_length=hop_length
+    )
+
+    drums_y = None
+    drums_onset_env = None
+    drums_rms = None
+    drums_rms_times = None
+    vocals_y = None
+    if stems_dir is not None:
+        drums_path = stems_dir / "drums.wav"
+        if drums_path.exists():
+            try:
+                drums_y, _ = librosa.load(str(drums_path), sr=sr, mono=True)
+                drums_onset_env = librosa.onset.onset_strength(
+                    y=drums_y, sr=sr, hop_length=hop_length
+                )
+                drums_rms = librosa.feature.rms(
+                    y=drums_y, frame_length=2048, hop_length=hop_length
+                )[0]
+                drums_rms_times = librosa.frames_to_time(
+                    np.arange(len(drums_rms)), sr=sr, hop_length=hop_length
+                )
+            except Exception as e:
+                logger.debug(f"Could not load drums stem: {e}")
+        vocals_path = stems_dir / "vocals.wav"
+        if vocals_path.exists():
+            try:
+                vocals_y, _ = librosa.load(str(vocals_path), sr=sr, mono=True)
+            except Exception as e:
+                logger.debug(f"Could not load vocals stem: {e}")
+
+    return GlobalFeatures(
+        y=y,
+        sr=sr,
+        duration=duration,
+        onset_env=onset_env,
+        onset_frames=np.arange(len(onset_env)),
+        onset_times=onset_times,
+        rms=rms,
+        rms_times=rms_times,
+        y_harmonic=y_harmonic,
+        chroma=chroma,
+        drums_y=drums_y,
+        drums_onset_env=drums_onset_env,
+        drums_rms=drums_rms,
+        drums_rms_times=drums_rms_times,
+        vocals_y=vocals_y,
+    )
+
+
+def _detect_key_from_precomputed_chroma(
+    chroma: np.ndarray,
+    rms: np.ndarray,
+    sr: int,
+    hop_length: int,
+    start_time: float,
+    end_time: float,
+    rms_times: np.ndarray,
+) -> tuple[Optional[str], Optional[float]]:
+    """Detect key from pre-computed full-track chroma, sliced to [start, end].
+
+    Returns (key, score_margin) — the two fields needed by
+    compute_component_features, avoiding a second detect_key_segment_vote call.
+
+    Note: This function replicates the window filtering logic from
+    detect_key_segment_vote (analyzer.py:120) but omits the weighted voting
+    logic. This is valid because compute_component_features always calls key
+    detection with a single segment
+    (segments=[{"start": 0.0, "end": segment_duration}]), so there is only
+    one window and voting is a no-op.
+
+    CQT is a sliding window transform, so slicing the full-track chroma to
+    the component frame range is near-identical to computing chroma_cqt on
+    the audio slice directly.
+    """
+    duration = end_time - start_time
+    if duration < 8.0:
+        return None, None
+
+    start_frame = librosa.time_to_frames(start_time, sr=sr, hop_length=hop_length)
+    end_frame = librosa.time_to_frames(end_time, sr=sr, hop_length=hop_length)
+    if end_frame <= start_frame:
+        return None, None
+
+    window_chroma = chroma[:, start_frame:end_frame]
+    window_rms = rms[start_frame:end_frame]
+
+    if window_rms.size and float(np.mean(window_rms)) < float(np.percentile(rms, 10)):
+        return None, None
+
+    chroma_avg = np.mean(window_chroma, axis=1)
+    if float(np.max(chroma_avg) - np.min(chroma_avg)) < 0.1:
+        return None, None
+
+    from .analyzer import _score_chroma
+
+    scores = sorted(_score_chroma(chroma_avg), key=lambda x: x[2], reverse=True)
+    if len(scores) > 1 and scores[0][2] - scores[1][2] < 0.03:
+        return None, None
+
+    mode, key, score = scores[0]
+    margin = float(scores[0][2] - scores[1][2]) if len(scores) > 1 else None
+    return key, margin
 
 
 def _snap_to_beat(time_seconds: float, beats: list[float]) -> float:
@@ -819,15 +975,17 @@ def identify_from_lyrics_repetition(
 
 
 def compute_component_features(
-    y: np.ndarray,
-    sr: int,
+    gf: GlobalFeatures,
     component: ComponentInstance,
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
-    stems_dir: Optional[Path] = None,
     hop_length: int = 512,
 ) -> ComponentInstance:
     """Compute per-component BPM, key, groove_density, backbeat_strength, energy_level.
+
+    Uses pre-computed global features (GlobalFeatures) and slices them per
+    component, eliminating redundant librosa.load + hpss + chroma_cqt +
+    onset_strength + rms calls.
 
     v5 changes:
       - Uses cached Demucs stems (drums, vocals, bass, other) when available.
@@ -837,60 +995,58 @@ def compute_component_features(
     Mutates and returns the component in place.
 
     Args:
-        y: Full audio time series.
-        sr: Sample rate.
+        gf: Pre-computed global features (full-track audio + librosa arrays).
         component: ComponentInstance to compute features for.
         beats: Optional global beat timestamps.
         downbeats: Optional global downbeat timestamps.
-        stems_dir: Optional path to cached stems directory.
         hop_length: Hop length for onset strength computation.
 
     Returns:
         The same ComponentInstance with features and per-field confidences populated.
     """
+    sr = gf.sr
     start_sample = int(component.start_time * sr)
     end_sample = int(component.end_time * sr)
     if end_sample <= start_sample:
-        end_sample = min(start_sample + 1, len(y))
-    y_slice = y[start_sample:end_sample]
+        end_sample = min(start_sample + 1, len(gf.y))
+    y_slice = gf.y[start_sample:end_sample]
     if len(y_slice) == 0:
         return component
 
     segment_duration = component.end_time - component.start_time
+    has_stems = gf.drums_y is not None
 
-    # Load stems if available.
-    drums_y: Optional[np.ndarray] = None
-    vocals_y: Optional[np.ndarray] = None
-    if stems_dir is not None:
-        drums_path = stems_dir / "drums.wav"
-        if drums_path.exists():
-            try:
-                drums_y, _ = librosa.load(str(drums_path), sr=sr, mono=True)
-            except Exception as e:
-                logger.debug(f"Could not load drums stem: {e}")
-        vocals_path = stems_dir / "vocals.wav"
-        if vocals_path.exists():
-            try:
-                vocals_y, _ = librosa.load(str(vocals_path), sr=sr, mono=True)
-            except Exception as e:
-                logger.debug(f"Could not load vocals stem: {e}")
+    # Frame range for slicing global features.
+    start_frame = librosa.time_to_frames(
+        component.start_time, sr=sr, hop_length=hop_length
+    )
+    end_frame = librosa.time_to_frames(
+        component.end_time, sr=sr, hop_length=hop_length
+    )
+    if end_frame <= start_frame:
+        end_frame = start_frame + 1
 
-    has_stems = drums_y is not None
+    # Slice global onset_env and rms for this component (cheap numpy views).
+    onset_env_slice = gf.onset_env[start_frame:end_frame]
+    rms_slice = gf.rms[start_frame:end_frame]
 
-    # BPM: re-estimate from onset strength on the slice.
+    # BPM: re-estimate from onset strength slice.
     try:
         if segment_duration >= 8.0:
-            onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
             tempo = librosa.beat.tempo(
-                onset_envelope=onset_env, sr=sr, hop_length=hop_length, start_bpm=80.0
+                onset_envelope=onset_env_slice,
+                sr=sr,
+                hop_length=hop_length,
+                start_bpm=80.0,
             )
             if hasattr(tempo, "__iter__"):
                 tempo = float(tempo[0])
             component.bpm = float(tempo)
         else:
-            # Too short — use global beats if available.
             if beats:
-                seg_beats = [b for b in beats if component.start_time <= b <= component.end_time]
+                seg_beats = [
+                    b for b in beats if component.start_time <= b <= component.end_time
+                ]
                 if len(seg_beats) >= 2:
                     intervals = np.diff(seg_beats)
                     if len(intervals) > 0:
@@ -898,50 +1054,61 @@ def compute_component_features(
     except Exception as e:
         logger.debug(f"BPM estimation failed for component: {e}")
 
-    # Key: use detect_key_segment_vote with the single segment as window.
+    # Key: detect from pre-computed chroma (single call for key + margin).
+    # Eliminates the duplicate detect_key_segment_vote call.
+    margin: Optional[float] = None
     try:
-        from .analyzer import detect_key_segment_vote
-
-        key_result = detect_key_segment_vote(
-            y_slice, sr, segments=[{"start": 0.0, "end": segment_duration}]
+        key, margin = _detect_key_from_precomputed_chroma(
+            gf.chroma,
+            gf.rms,
+            gf.sr,
+            hop_length,
+            component.start_time,
+            component.end_time,
+            gf.rms_times,
         )
-        component.key = key_result.key
+        if key is None:
+            from .analyzer import detect_key_fulltrack
+
+            ft_result = detect_key_fulltrack(gf.y_harmonic, gf.sr)
+            key = ft_result.key
+            margin = ft_result.score_margin
+        component.key = key
     except Exception as e:
         logger.debug(f"Key detection failed for component: {e}")
 
-    # groove_density: from drums stem onset strength (if stems available), else full mix.
+    # groove_density: from drums stem onset (if stems), else full mix onset.
     try:
-        if drums_y is not None:
-            drums_slice = drums_y[start_sample:end_sample] if end_sample <= len(drums_y) else np.array([])
-            if len(drums_slice) > 0:
-                onset_env = librosa.onset.onset_strength(
-                    y=drums_slice, sr=sr, hop_length=hop_length
-                )
-            else:
-                onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
+        if gf.drums_onset_env is not None:
+            drums_onset_slice = gf.drums_onset_env[start_frame:end_frame]
+            onset_for_groove = (
+                drums_onset_slice if drums_onset_slice.size else onset_env_slice
+            )
         else:
-            onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
-        if segment_duration > 0:
-            component.groove_density = float(np.mean(onset_env) / segment_duration)
+            onset_for_groove = onset_env_slice
+        if segment_duration > 0 and onset_for_groove.size:
+            component.groove_density = float(np.mean(onset_for_groove) / segment_duration)
     except Exception as e:
         logger.debug(f"Groove density failed for component: {e}")
 
     # backbeat_strength: mean RMS at beat positions 2&4 vs 1&3.
     try:
         if beats:
-            seg_beats = [b for b in beats if component.start_time <= b <= component.end_time]
+            seg_beats = [
+                b for b in beats if component.start_time <= b <= component.end_time
+            ]
             if len(seg_beats) >= 4:
-                source_y = drums_y if drums_y is not None else y_slice
-                rms = librosa.feature.rms(y=source_y, frame_length=2048, hop_length=hop_length)[0]
-                rms_times = librosa.frames_to_time(
-                    np.arange(len(rms)), sr=sr, hop_length=hop_length
-                )
+                if gf.drums_rms is not None and gf.drums_rms_times is not None:
+                    source_rms = gf.drums_rms
+                    source_rms_times = gf.drums_rms_times
+                else:
+                    source_rms = gf.rms
+                    source_rms_times = gf.rms_times
 
                 def _rms_at(t: float) -> float:
-                    idx = int(np.argmin(np.abs(rms_times - (t - component.start_time))))
-                    return float(rms[idx]) if idx < len(rms) else 0.0
+                    idx = int(np.argmin(np.abs(source_rms_times - t)))
+                    return float(source_rms[idx]) if idx < len(source_rms) else 0.0
 
-                # Group beats into 4-beat groups; compare beats 2&4 vs 1&3.
                 backbeat_vals = []
                 frontbeat_vals = []
                 for group_start in range(0, len(seg_beats) - 3, 4):
@@ -960,20 +1127,26 @@ def compute_component_features(
 
     # energy_level: mean RMS in dB.
     try:
-        source_y = vocals_y if vocals_y is not None else y_slice
-        if vocals_y is not None:
-            # Weighted: 0.7 full mix + 0.3 vocals.
-            rms_full = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=hop_length)[0]
-            rms_vocals = librosa.feature.rms(y=vocals_y[start_sample:end_sample] if end_sample <= len(vocals_y) else np.array([]), frame_length=2048, hop_length=hop_length)[0]
-            if rms_full.size and rms_vocals.size:
-                mean_rms = float(0.7 * np.mean(rms_full) + 0.3 * np.mean(rms_vocals))
-            elif rms_full.size:
-                mean_rms = float(np.mean(rms_full))
+        if gf.vocals_y is not None:
+            vocals_slice = (
+                gf.vocals_y[start_sample:end_sample]
+                if end_sample <= len(gf.vocals_y)
+                else np.array([])
+            )
+            if len(vocals_slice) > 0:
+                rms_vocals = librosa.feature.rms(
+                    y=vocals_slice, frame_length=2048, hop_length=hop_length
+                )[0]
+            else:
+                rms_vocals = np.array([])
+            if rms_slice.size and rms_vocals.size:
+                mean_rms = float(0.7 * np.mean(rms_slice) + 0.3 * np.mean(rms_vocals))
+            elif rms_slice.size:
+                mean_rms = float(np.mean(rms_slice))
             else:
                 mean_rms = 0.0
         else:
-            rms = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=hop_length)[0]
-            mean_rms = float(np.mean(rms)) if rms.size else 0.0
+            mean_rms = float(np.mean(rms_slice)) if rms_slice.size else 0.0
         component.energy_level = float(20 * np.log10(mean_rms + 1e-10))
     except Exception as e:
         logger.debug(f"Energy level failed for component: {e}")
@@ -987,20 +1160,10 @@ def compute_component_features(
     else:
         component.bpm_confidence = 0.4
 
-    # key_confidence: from detect_key_segment_vote's key_score_margin, sigmoid-mapped.
-    try:
-        from .analyzer import detect_key_segment_vote
-
-        key_result = detect_key_segment_vote(
-            y_slice, sr, segments=[{"start": 0.0, "end": segment_duration}]
-        )
-        margin = getattr(key_result, "key_score_margin", None)
-        if margin is not None:
-            # Sigmoid mapping: margin of 0 -> 0.5, margin of 0.5 -> ~0.62, margin of 2.0 -> ~0.88
-            component.key_confidence = float(1.0 / (1.0 + np.exp(-2.0 * margin)))
-        else:
-            component.key_confidence = 0.7
-    except Exception:
+    # key_confidence: from margin, sigmoid-mapped.
+    if margin is not None:
+        component.key_confidence = float(1.0 / (1.0 + np.exp(-2.0 * margin)))
+    else:
         component.key_confidence = 0.7
 
     # groove/backbeat/energy confidence: higher if stems available.
@@ -1076,7 +1239,28 @@ async def extract_components(
                     "component_source", "none"
                 )
 
-    # 2. Identification.
+    # 2. Pre-compute global features (single load + all expensive features).
+    stems_dir: Optional[Path] = None
+    if use_stems:
+        stems_dir = cache_manager.get_stems_dir(content_hash)
+        if stems_dir is None:
+            logger.info("Stems not cached; using full-mix features")
+
+    gf: Optional[GlobalFeatures] = None
+    try:
+        loop = asyncio.get_event_loop()
+        precompute_start = time.time()
+        gf = await loop.run_in_executor(
+            None, _precompute_global_features, audio_path, 512, stems_dir
+        )
+        logger.info(
+            f"Global feature precomputation completed in "
+            f"{time.time() - precompute_start:.2f}s"
+        )
+    except Exception as e:
+        logger.warning(f"Global feature precomputation failed: {e}")
+
+    # 3. Identification.
     components: list[ComponentInstance] = []
     source = "none"
 
@@ -1104,23 +1288,20 @@ async def extract_components(
             except Exception as e:
                 logger.warning(f"Inline fast_analyze failed: {e}")
 
-        # Determine song duration for position weighting.
-        song_total_duration = None
-        try:
-            import librosa as _librosa
+        # Use pre-computed duration (eliminates redundant librosa.load).
+        song_total_duration = gf.duration if gf is not None else None
 
-            y_tmp, sr_tmp = _librosa.load(str(audio_path), sr=None, mono=True)
-            song_total_duration = float(_librosa.get_duration(y=y_tmp, sr=sr_tmp))
-            del y_tmp
-        except Exception:
-            pass
-
+        identify_start = time.time()
         components = identify_from_lyrics_repetition(
             lrc_content,
             beats=beats,
             downbeats=downbeats,
             song_total_duration=song_total_duration,
             snap_to_downbeat=snap_to_downbeat,
+        )
+        logger.info(
+            f"Component identification completed in "
+            f"{time.time() - identify_start:.2f}s ({len(components)} components)"
         )
         if components:
             source = "lyrics_repetition"
@@ -1132,36 +1313,27 @@ async def extract_components(
     if not components:
         return ([], "none")
 
-    # 3. Load audio and compute per-component features.
-    try:
-        loop = asyncio.get_event_loop()
+    # 4. Energy-aware role assignment + per-component feature computation.
+    if gf is not None:
+        try:
+            if energy_aware_roles:
+                components = _assign_roles_by_energy(
+                    components, gf.y, gf.sr, stems_dir=stems_dir
+                )
 
-        def _load_audio():
-            y, sr = librosa.load(str(audio_path), sr=None, mono=True)
-            return y, sr
-
-        y, sr = await loop.run_in_executor(None, _load_audio)
-
-        # v5: Load stems directory if use_stems=True.
-        stems_dir: Optional[Path] = None
-        if use_stems:
-            stems_dir = cache_manager.get_stems_dir(content_hash)
-            if stems_dir is None:
-                logger.info("Stems not cached; using full-mix features")
-
-        # v5: Energy-aware role assignment (before feature computation).
-        if energy_aware_roles:
-            components = _assign_roles_by_energy(components, y, sr, stems_dir=stems_dir)
-
-        for component in components:
-            compute_component_features(
-                y, sr, component, beats=beats, downbeats=downbeats,
-                stems_dir=stems_dir,
+            features_start = time.time()
+            for component in components:
+                compute_component_features(
+                    gf, component, beats=beats, downbeats=downbeats
+                )
+            logger.info(
+                f"Per-component feature computation completed in "
+                f"{time.time() - features_start:.2f}s ({len(components)} components)"
             )
-    except Exception as e:
-        logger.warning(f"Audio load / feature computation failed: {e}")
+        except Exception as e:
+            logger.warning(f"Feature computation failed: {e}")
 
-    # 4. Persist to local cache and R2.
+    # 5. Persist to local cache and R2.
     payload = _serialize_components(components, content_hash, hash_prefix, source)
     cache_manager.save_component_result(content_hash, payload)
 
