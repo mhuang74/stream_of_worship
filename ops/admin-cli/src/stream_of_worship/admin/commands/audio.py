@@ -942,6 +942,11 @@ def import_youtube_audio_for_song(
             console=console,
             force=False,
             wait=False,
+            snap_to_downbeat=False,
+            energy_aware_roles=False,
+            use_stems=False,
+            classify_theme=False,
+            classify_vocal_posture=False,
         )
 
     return recording
@@ -1893,6 +1898,8 @@ def _render_components_table(
     table.add_column("Backbeat", justify="right")
     table.add_column("Energy", justify="right")
     table.add_column("Conf.", justify="right")
+    table.add_column("Theme")
+    table.add_column("Posture")
 
     for c in components:
         start_str = f"{c.start_time:.1f}" if c.start_time is not None else "-"
@@ -1903,6 +1910,8 @@ def _render_components_table(
         backbeat_str = f"{c.backbeat_strength:.2f}" if c.backbeat_strength is not None else "-"
         energy_str = f"{c.energy_level:.1f}" if c.energy_level is not None else "-"
         conf_str = f"{c.confidence:.2f}" if c.confidence is not None else "-"
+        theme_str = c.theme or "-"
+        posture_str = c.vocal_posture or "-"
         table.add_row(
             c.component_type,
             str(c.occurrence_index),
@@ -1914,6 +1923,8 @@ def _render_components_table(
             backbeat_str,
             energy_str,
             conf_str,
+            theme_str,
+            posture_str,
         )
 
     console.print(table)
@@ -1927,6 +1938,12 @@ def _submit_component_analysis_job(
     console: Console,
     force: bool = False,
     wait: bool = True,
+    # v5 options
+    snap_to_downbeat: bool = False,
+    energy_aware_roles: bool = False,
+    use_stems: bool = False,
+    classify_theme: bool = False,
+    classify_vocal_posture: bool = False,
 ) -> Optional[list[SongComponent]]:
     """Submit component analysis, wait for completion, persist results.
 
@@ -1946,6 +1963,11 @@ def _submit_component_analysis_job(
         console: Console for output.
         force: Force re-extraction.
         wait: Wait for job completion.
+        snap_to_downbeat: Snap component boundaries to downbeats (madmom if needed).
+        energy_aware_roles: Use energy-based entry/exit role assignment.
+        use_stems: Use Demucs stems for feature extraction.
+        classify_theme: LLM theme classification (12 Chinese themes).
+        classify_vocal_posture: LLM vocal posture classification.
 
     Returns:
         Persisted SongComponent list, or None on failure.
@@ -2018,6 +2040,11 @@ def _submit_component_analysis_job(
             downbeats=downbeats,
             lrc_content=lrc_content,
             force=force,
+            snap_to_downbeat=snap_to_downbeat,
+            energy_aware_roles=energy_aware_roles,
+            use_stems=use_stems,
+            classify_theme=classify_theme,
+            classify_vocal_posture=classify_vocal_posture,
         )
     except AnalysisServiceError as e:
         console.print(f"[red]Failed to submit component analysis: {e}[/red]")
@@ -2095,6 +2122,20 @@ def _parse_component_results(
             backbeat_strength=c.get("backbeat_strength"),
             energy_level=c.get("energy_level"),
             confidence=c.get("confidence"),
+            # v5: per-field confidence
+            bpm_confidence=c.get("bpm_confidence"),
+            key_confidence=c.get("key_confidence"),
+            groove_confidence=c.get("groove_confidence"),
+            backbeat_confidence=c.get("backbeat_confidence"),
+            energy_confidence=c.get("energy_confidence"),
+            # v5: LLM theme/posture
+            theme=c.get("theme"),
+            vocal_posture=c.get("vocal_posture"),
+            theme_confidence=c.get("theme_confidence"),
+            vocal_posture_confidence=c.get("vocal_posture_confidence"),
+            # v5: reasoning
+            theme_reasoning=c.get("theme_reasoning"),
+            posture_reasoning=c.get("posture_reasoning"),
         )
         for c in raw_components
     ]
@@ -2107,6 +2148,22 @@ def components_recording(
     no_wait: bool = typer.Option(False, "--no-wait", help="Submit without waiting"),
     stdin: bool = typer.Option(
         False, "--stdin", help="Read song IDs from stdin (one per line) for batch backfill"
+    ),
+    # v5 options
+    snap_to_downbeat: bool = typer.Option(
+        False, "--snap-to-downbeat", help="Snap component boundaries to downbeats (madmom if needed)"
+    ),
+    energy_roles: bool = typer.Option(
+        False, "--energy-roles", help="Use energy-based entry/exit role assignment"
+    ),
+    use_stems: bool = typer.Option(
+        False, "--use-stems", help="Use Demucs stems for feature extraction"
+    ),
+    classify_theme: bool = typer.Option(
+        False, "--classify-theme", help="LLM theme classification (12 Chinese themes)"
+    ),
+    classify_posture: bool = typer.Option(
+        False, "--classify-posture", help="LLM vocal posture classification"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -2155,6 +2212,11 @@ def components_recording(
             result = _submit_component_analysis_job(
                 recording, sid, config.analysis_url, db_client, console,
                 force=force, wait=not no_wait,
+                snap_to_downbeat=snap_to_downbeat,
+                energy_aware_roles=energy_roles,
+                use_stems=use_stems,
+                classify_theme=classify_theme,
+                classify_vocal_posture=classify_posture,
             )
             if result is not None:
                 succeeded.append(sid)
@@ -2193,6 +2255,11 @@ def components_recording(
     result = _submit_component_analysis_job(
         recording, song_id, config.analysis_url, db_client, console,
         force=force, wait=not no_wait,
+        snap_to_downbeat=snap_to_downbeat,
+        energy_aware_roles=energy_roles,
+        use_stems=use_stems,
+        classify_theme=classify_theme,
+        classify_vocal_posture=classify_posture,
     )
 
     if no_wait:

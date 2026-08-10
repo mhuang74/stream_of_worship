@@ -76,6 +76,15 @@ class ComponentAnalysisOptions(BaseModel):
 
     force: bool = False
     use_stems: bool = False  # If True, prefer stems audio for feature extraction
+    # v5: madmom downbeat snapping (uses existing downbeats if provided,
+    # otherwise runs madmom detection on the audio file)
+    snap_to_downbeat: bool = False
+    # v5: energy-aware entry/exit role assignment
+    energy_aware_roles: bool = False
+    # v5: LLM theme classification (12 Chinese themes)
+    classify_theme: bool = False
+    # v5: LLM vocal posture classification (3 categories)
+    classify_vocal_posture: bool = False
 
 
 class LrcOptions(BaseModel):
@@ -211,6 +220,20 @@ class ComponentResult(BaseModel):
     backbeat_strength: Optional[float] = None
     energy_level: Optional[float] = None
     confidence: Optional[float] = None
+    # v5: per-field confidence scores
+    bpm_confidence: Optional[float] = None
+    key_confidence: Optional[float] = None
+    groove_confidence: Optional[float] = None
+    backbeat_confidence: Optional[float] = None
+    energy_confidence: Optional[float] = None
+    # v5: LLM-derived theme and vocal posture
+    theme: Optional[str] = None
+    vocal_posture: Optional[str] = None
+    theme_confidence: Optional[float] = None
+    vocal_posture_confidence: Optional[float] = None
+    # v5: LLM reasoning fields (for debugging and audit)
+    theme_reasoning: Optional[str] = None
+    posture_reasoning: Optional[str] = None
     source: str = ""  # 'allin1_sections' | 'lyrics_repetition' | 'none'
 
 
