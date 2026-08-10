@@ -32,7 +32,7 @@ from rich.table import Table
 from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
-from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.models import Recording, Song, SongComponent
 from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_FOR_JOIN, RECORDING_COLUMNS_SELECT
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.admin.services.analysis import (
@@ -715,6 +715,7 @@ def import_youtube_audio_for_song(
     skip_video_confirm: bool = False,
     analyze: bool = False,
     lrc: bool = False,
+    components: bool = False,
 ) -> Recording | None:
     """Import a YouTube-backed recording for an existing song."""
     song = db_client.get_song(song_id)
@@ -931,6 +932,18 @@ def import_youtube_audio_for_song(
             force_qwen3_asr=False,
         )
 
+    if components:
+        console.print("[cyan]Submitting for component analysis...[/cyan]")
+        _submit_component_analysis_job(
+            recording=recording,
+            song_id=song_id,
+            analysis_url=config.analysis_url,
+            db_client=db_client,
+            console=console,
+            force=False,
+            wait=False,
+        )
+
     return recording
 
 
@@ -947,8 +960,11 @@ def download_audio(
         False, "--analyze", "-a", help="Submit for analysis after download"
     ),
     lrc: bool = typer.Option(False, "--lrc", "-l", help="Submit for LRC generation after download"),
+    components: bool = typer.Option(
+        False, "--components", help="Submit for component analysis after download"
+    ),
     all: bool = typer.Option(
-        False, "--all", "-A", help="Submit for both analysis and LRC after download"
+        False, "--all", "-A", help="Submit for analysis, LRC, and components after download"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -958,13 +974,14 @@ def download_audio(
     the top result as MP3, hashes it, uploads to R2, and persists a
     recording entry in the local database.
 
-    Use --analyze, --lrc, or --all to automatically submit for processing
-    after successful download.
+    Use --analyze, --lrc, --components, or --all to automatically submit for
+    processing after successful download.
     """
-    # If --all is set, enable both analyze and lrc
+    # If --all is set, enable analyze, lrc, and components
     if all:
         analyze = True
         lrc = True
+        components = True
 
     try:
         config = AdminConfig.load(config_path)
@@ -997,6 +1014,7 @@ def download_audio(
         skip_video_confirm=skip_confirm,
         analyze=analyze,
         lrc=lrc,
+        components=components,
     )
 
 
@@ -1459,6 +1477,17 @@ def show_recording(
         )
     )
 
+    # Display component metadata if available.
+    components = db_client.get_song_components(song_id)
+    if components:
+        console.print("")
+        _render_components_table(components, console, title="Components")
+    elif recording.has_full_analysis or recording.has_lrc:
+        console.print(
+            f"\n[yellow]Components: not yet extracted "
+            f"(run 'sow-admin audio components {song_id}')[/yellow]"
+        )
+
 
 @app.command("set-visibility")
 def set_visibility(
@@ -1561,6 +1590,9 @@ def analyze_recording(
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
     no_stems: bool = typer.Option(False, "--no-stems", help="Skip stem separation (full tier only)"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for analysis to complete"),
+    components: bool = typer.Option(
+        False, "--components", help="Submit component analysis after full analysis completes"
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for analysis.
@@ -1820,6 +1852,360 @@ def analyze_recording(
                 console.print(f"  Key: {final_job.result.musical_key}")
             if final_job.result.duration_seconds:
                 console.print(f"  Duration: {_format_duration(final_job.result.duration_seconds)}")
+
+        # Optional chaining: submit component analysis after full analysis.
+        if components and effective_tier == "full":
+            console.print("[cyan]Submitting for component analysis...[/cyan]")
+            # Re-fetch the recording to get updated sections/beats.
+            updated_recording = db_client.get_recording_by_song_id(song_id)
+            if updated_recording:
+                _submit_component_analysis_job(
+                    recording=updated_recording,
+                    song_id=song_id,
+                    analysis_url=config.analysis_url,
+                    db_client=db_client,
+                    console=console,
+                    force=False,
+                    wait=True,
+                )
+
+
+def _render_components_table(
+    components: list[SongComponent],
+    console: Console,
+    title: str = "Components",
+) -> None:
+    """Render a Rich table of song components.
+
+    Args:
+        components: List of SongComponent instances.
+        console: Console to render to.
+        title: Table title.
+    """
+    table = Table(title=title)
+    table.add_column("Type", style="cyan")
+    table.add_column("Occ.", justify="right")
+    table.add_column("Role")
+    table.add_column("Start-End")
+    table.add_column("BPM", justify="right")
+    table.add_column("Key")
+    table.add_column("Groove", justify="right")
+    table.add_column("Backbeat", justify="right")
+    table.add_column("Energy", justify="right")
+    table.add_column("Conf.", justify="right")
+
+    for c in components:
+        start_str = f"{c.start_time:.1f}" if c.start_time is not None else "-"
+        end_str = f"{c.end_time:.1f}" if c.end_time is not None else "-"
+        bpm_str = f"{c.bpm:.1f}" if c.bpm is not None else "-"
+        key_str = c.key or "-"
+        groove_str = f"{c.groove_density:.2f}" if c.groove_density is not None else "-"
+        backbeat_str = f"{c.backbeat_strength:.2f}" if c.backbeat_strength is not None else "-"
+        energy_str = f"{c.energy_level:.1f}" if c.energy_level is not None else "-"
+        conf_str = f"{c.confidence:.2f}" if c.confidence is not None else "-"
+        table.add_row(
+            c.component_type,
+            str(c.occurrence_index),
+            c.role,
+            f"{start_str}-{end_str}",
+            bpm_str,
+            key_str,
+            groove_str,
+            backbeat_str,
+            energy_str,
+            conf_str,
+        )
+
+    console.print(table)
+
+
+def _submit_component_analysis_job(
+    recording: Recording,
+    song_id: str,
+    analysis_url: str,
+    db_client: DatabaseClient,
+    console: Console,
+    force: bool = False,
+    wait: bool = True,
+) -> Optional[list[SongComponent]]:
+    """Submit component analysis, wait for completion, persist results.
+
+    Gathers cached sections/beats/downbeats from the recording row,
+    fetches LRC content from R2 (if lrc_status='completed'),
+    submits the job, polls, and persists component rows via
+    db_client.upsert_song_components().
+
+    Before submitting, checks R2 for cached {hash_prefix}/components.json.
+    If found and not force, returns the cached result directly.
+
+    Args:
+        recording: Recording instance.
+        song_id: Song ID.
+        analysis_url: Analysis service base URL.
+        db_client: Database client.
+        console: Console for output.
+        force: Force re-extraction.
+        wait: Wait for job completion.
+
+    Returns:
+        Persisted SongComponent list, or None on failure.
+    """
+    # Gather cached data from the recording row.
+    sections: Optional[list[dict]] = None
+    if recording.has_full_analysis and recording.sections:
+        try:
+            sections = json.loads(recording.sections)
+        except (json.JSONDecodeError, TypeError):
+            sections = None
+
+    beats: Optional[list[float]] = None
+    if recording.beats:
+        try:
+            beats = json.loads(recording.beats)
+        except (json.JSONDecodeError, TypeError):
+            beats = None
+
+    downbeats: Optional[list[float]] = None
+    if recording.downbeats:
+        try:
+            downbeats = json.loads(recording.downbeats)
+        except (json.JSONDecodeError, TypeError):
+            downbeats = None
+
+    # Fetch LRC content from R2 if available.
+    lrc_content: Optional[str] = None
+    if recording.has_lrc:
+        try:
+            config = AdminConfig.load(None)
+            r2 = R2Client(config.r2_endpoint_url, config.r2_bucket)
+            lrc_content = r2.download_lrc_content(recording.hash_prefix)
+        except Exception as e:
+            console.print(f"[yellow]Could not fetch LRC from R2: {e}[/yellow]")
+
+    # Check R2 for cached components.json (unless force).
+    if not force:
+        try:
+            client = AnalysisClient(analysis_url)
+            cached = client.get_cached_component_result(recording.hash_prefix)
+            if cached is not None:
+                console.print(
+                    f"[green]Cached component result found in R2 "
+                    f"(schema_version={cached.get('schema_version', '?')})[/green]"
+                )
+                components = _parse_component_results(
+                    cached.get("components", []), song_id, recording.content_hash
+                )
+                if components:
+                    db_client.upsert_song_components(song_id, recording.content_hash, components)
+                return components
+        except Exception:  # noqa: S110 - Fall through to job submission.
+            pass  # Fall through to job submission.
+
+    # Submit the job.
+    try:
+        client = AnalysisClient(analysis_url)
+    except ValueError as e:
+        console.print(f"[red]Analysis service not configured: {e}[/red]")
+        return None
+
+    try:
+        job = client.submit_component_analysis(
+            audio_url=recording.r2_audio_url,
+            content_hash=recording.content_hash,
+            song_id=song_id,
+            sections=sections,
+            beats=beats,
+            downbeats=downbeats,
+            lrc_content=lrc_content,
+            force=force,
+        )
+    except AnalysisServiceError as e:
+        console.print(f"[red]Failed to submit component analysis: {e}[/red]")
+        return None
+
+    console.print(f"[green]Component analysis submitted (job: {job.job_id})[/green]")
+
+    if not wait:
+        return None
+
+    # Poll for completion.
+    try:
+        final_job = client.wait_for_completion(job.job_id, poll_interval=5.0, timeout=300.0)
+    except AnalysisServiceError as e:
+        console.print(f"[red]{e}[/red]")
+        return None
+    except KeyboardInterrupt:
+        console.print(
+            f"\n[yellow]Interrupted — job {job.job_id} is still running server-side.[/yellow]"
+        )
+        return None
+
+    if final_job.status == "failed":
+        error_msg = final_job.error_message or "Unknown error"
+        console.print(f"[red]Component analysis failed: {error_msg}[/red]")
+        return None
+
+    if not final_job.result or not final_job.result.components:
+        console.print(
+            f"[yellow]No components extracted (source: "
+            f"{final_job.result.component_source if final_job.result else 'none'}).[/yellow]"
+        )
+        return []
+
+    # Persist to DB.
+    components = _parse_component_results(
+        final_job.result.components, song_id, recording.content_hash
+    )
+    db_client.upsert_song_components(song_id, recording.content_hash, components)
+
+    console.print(
+        f"[green]Extracted {len(components)} component(s) "
+        f"(source: {final_job.result.component_source})[/green]"
+    )
+    return components
+
+
+def _parse_component_results(
+    raw_components: list[dict],
+    song_id: str,
+    content_hash: str,
+) -> list[SongComponent]:
+    """Parse component result dicts into SongComponent instances.
+
+    Args:
+        raw_components: List of component dicts from the analysis service.
+        song_id: Song ID.
+        content_hash: Recording content hash.
+
+    Returns:
+        List of SongComponent instances.
+    """
+    return [
+        SongComponent(
+            song_id=song_id,
+            content_hash=content_hash,
+            component_type=c.get("component_type", ""),
+            occurrence_index=c.get("occurrence_index", 1),
+            role=c.get("role", "none"),
+            start_time=c.get("start_time"),
+            end_time=c.get("end_time"),
+            bpm=c.get("bpm"),
+            key=c.get("key"),
+            groove_density=c.get("groove_density"),
+            backbeat_strength=c.get("backbeat_strength"),
+            energy_level=c.get("energy_level"),
+            confidence=c.get("confidence"),
+        )
+        for c in raw_components
+    ]
+
+
+@app.command("components")
+def components_recording(
+    song_id: str = typer.Argument(..., help="Song ID to analyze components for"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-extraction"),
+    no_wait: bool = typer.Option(False, "--no-wait", help="Submit without waiting"),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read song IDs from stdin (one per line) for batch backfill"
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Extract and display chorus/verse component metadata for a song.
+
+    Submits a component analysis job to the analysis service (using cached
+    allin1 sections or LRC lyrics repetition with multi-cue disambiguation),
+    then displays the results in a Rich table: component type, occurrence,
+    role, start-end time, BPM, key, groove, backbeat, energy, confidence.
+
+    If a cached components.json already exists in R2 with current
+    schema_version, returns it directly (unless --force is specified).
+
+    Batch mode: pass --stdin to read song IDs from stdin (one per line).
+    """
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    # Batch mode via stdin.
+    if stdin:
+        raw = sys.stdin.read().splitlines()
+        song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
+        if not song_ids:
+            console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
+            raise typer.Exit(1)
+
+        succeeded: list[str] = []
+        failed: list[tuple[str, str]] = []
+        for sid in song_ids:
+            recording = db_client.get_recording_by_song_id(sid)
+            if not recording:
+                failed.append((sid, "No recording found"))
+                continue
+            if not recording.r2_audio_url:
+                failed.append((sid, "No audio URL"))
+                continue
+            if not recording.has_full_analysis and not recording.has_lrc:
+                failed.append((sid, "No sections or LRC available"))
+                continue
+
+            result = _submit_component_analysis_job(
+                recording, sid, config.analysis_url, db_client, console,
+                force=force, wait=not no_wait,
+            )
+            if result is not None:
+                succeeded.append(sid)
+            else:
+                failed.append((sid, "Job failed or no components"))
+
+        console.print(
+            f"\n[bold]Summary:[/bold] {len(succeeded)} succeeded, {len(failed)} failed"
+        )
+        if failed:
+            for sid, msg in failed:
+                console.print(f"  [red]{sid}: {msg}[/red]")
+        return
+
+    # Single song mode.
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    if not recording.r2_audio_url:
+        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
+        raise typer.Exit(1)
+
+    if not recording.has_full_analysis and not recording.has_lrc:
+        console.print(
+            f"[yellow]Song {song_id} has neither full analysis nor LRC. "
+            f"Run 'sow-admin audio analyze {song_id} --analysis-tier full' or "
+            f"'sow-admin audio lrc {song_id}' first.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    result = _submit_component_analysis_job(
+        recording, song_id, config.analysis_url, db_client, console,
+        force=force, wait=not no_wait,
+    )
+
+    if no_wait:
+        console.print("[cyan]Job submitted. Poll with 'sow-admin audio status <job_id>'[/cyan]")
+        return
+
+    if result is not None:
+        # Display existing components from DB.
+        components = db_client.get_song_components(song_id)
+        if components:
+            _render_components_table(components, console, title=f"Components: {song_id}")
+        else:
+            console.print(f"[yellow]No components extracted for {song_id}.[/yellow]")
 
 
 @app.command("lrc")

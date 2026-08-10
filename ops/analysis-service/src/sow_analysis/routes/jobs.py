@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 from ..config import settings
 from ..models import (
     AnalyzeJobRequest,
+    ComponentAnalysisJobRequest,
     EmbeddingJobRequest,
     EmbeddingJobResult,
     FastAnalyzeJobRequest,
@@ -135,6 +136,12 @@ def job_to_response(job, warning: Optional[str] = None) -> JobResponse:
                 vocals_dry_url=job.result.vocals_dry_url,
                 vocals_url=job.result.vocals_url,
                 instrumental_url=job.result.instrumental_url,
+                components=job.result.components if job.type == JobType.COMPONENT_ANALYSIS else None,
+                component_source=(
+                    job.result.component_source
+                    if job.type == JobType.COMPONENT_ANALYSIS
+                    else None
+                ),
             )
 
     return JobResponse(
@@ -194,6 +201,32 @@ async def submit_fast_analysis_job(
         raise HTTPException(500, "Job queue not initialized")
 
     job = await job_queue.submit(JobType.FAST_ANALYZE, request)
+    return job_to_response(job)
+
+
+@router.post("/jobs/component-analysis", response_model=JobResponse)
+async def submit_component_analysis_job(
+    request: ComponentAnalysisJobRequest,
+    api_key: str = Depends(verify_api_key),
+) -> JobResponse:
+    """Submit a component analysis job.
+
+    Identifies chorus/verse components via hybrid strategy (cached allin1
+    sections → lyrics repetition with multi-cue disambiguation) and computes
+    per-component audio features (BPM, key, groove density, backbeat strength,
+    energy).
+
+    Args:
+        request: Component analysis job request.
+        api_key: Validated API key.
+
+    Returns:
+        Job response with status.
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    job = await job_queue.submit(JobType.COMPONENT_ANALYSIS, request)
     return job_to_response(job)
 
 

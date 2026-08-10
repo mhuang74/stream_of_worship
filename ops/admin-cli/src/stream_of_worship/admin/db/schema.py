@@ -212,6 +212,61 @@ CREATE INDEX IF NOT EXISTS idx_theme_anchors_embedding_cosine
 ON theme_anchors USING hnsw (embedding vector_cosine_ops);
 """
 
+# song_components table (normalized long-format: one row per component instance).
+# v3: the unique index now includes `role`, so a single-chorus song can persist
+# two rows (component_type='chorus', occurrence_index=1, role='entry' and 'exit').
+CREATE_SONG_COMPONENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS song_components (
+    id SERIAL PRIMARY KEY,
+    song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    content_hash TEXT NOT NULL REFERENCES recordings(content_hash) ON DELETE CASCADE,
+    component_type TEXT NOT NULL CHECK (component_type IN
+        ('chorus','verse','prechorus','bridge','intro','outro','instrumental')),
+    occurrence_index INTEGER NOT NULL DEFAULT 1,
+    role TEXT NOT NULL DEFAULT 'none' CHECK (role IN
+        ('entry','exit','loop_target','entry_exit','none')),
+    start_time REAL,
+    end_time REAL,
+    bpm REAL,
+    key TEXT,
+    groove_density REAL,
+    backbeat_strength REAL,
+    energy_level REAL,
+    confidence REAL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+CREATE_SONG_COMPONENTS_INDEXES = [
+    """
+    CREATE INDEX IF NOT EXISTS idx_song_components_song_id
+    ON song_components(song_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_song_components_content_hash
+    ON song_components(content_hash);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_song_components_type_role
+    ON song_components(component_type, role);
+    """,
+    # v3: unique constraint now includes `role` so single-chorus songs can store
+    # one row as 'entry' and another as 'exit' with the same occurrence_index=1.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_song_components_unique
+    ON song_components(song_id, component_type, occurrence_index, role);
+    """,
+]
+
+CREATE_SONG_COMPONENTS_UPDATE_TRIGGER = """
+DROP TRIGGER IF EXISTS trg_song_components_updated_at ON song_components;
+CREATE TRIGGER trg_song_components_updated_at
+    BEFORE UPDATE ON song_components
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+"""
+
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
     CREATE_EXTENSION_VECTOR,
@@ -226,7 +281,19 @@ ALL_SCHEMA_STATEMENTS = [
     CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_RECORDINGS_UPDATE_TRIGGER,
+    CREATE_SONG_COMPONENTS_TABLE,
+    *CREATE_SONG_COMPONENTS_INDEXES,
+    CREATE_SONG_COMPONENTS_UPDATE_TRIGGER,
 ]
+
+# Column list for song_components SELECT queries (matches SongComponent.from_row).
+SONG_COMPONENT_COLUMNS_SELECT = """
+    id, song_id, content_hash, component_type, occurrence_index, role,
+    start_time, end_time, bpm, key, groove_density, backbeat_strength,
+    energy_level, confidence, created_at, updated_at
+"""
+
+SONG_COMPONENT_COLUMN_COUNT = 16
 
 # SQL to get table statistics (Postgres-compatible)
 TABLE_STATS_QUERY = """

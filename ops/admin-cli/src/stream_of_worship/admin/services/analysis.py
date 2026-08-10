@@ -62,6 +62,8 @@ class AnalysisResult:
     vocals_dry_url: Optional[str] = None
     vocals_url: Optional[str] = None
     instrumental_url: Optional[str] = None
+    components: Optional[List[Dict[str, Any]]] = None
+    component_source: Optional[str] = None
 
 
 @dataclass
@@ -553,13 +555,138 @@ class AnalysisClient:
                 f"Cannot connect to analysis service at {self.base_url}: {e}"
             )
         except requests.exceptions.RequestException as e:
-            if hasattr(e.response, "status_code"):
+            if hasattr(e, "response") and e.response is not None:
                 status = e.response.status_code
                 raise AnalysisServiceError(
                     f"Forced alignment submission failed (HTTP {status}): {e}",
                     status_code=status,
                 )
             raise AnalysisServiceError(f"Forced alignment submission failed: {e}")
+
+    def submit_component_analysis(
+        self,
+        audio_url: str,
+        content_hash: str,
+        song_id: str = "",
+        sections: Optional[list[dict]] = None,
+        beats: Optional[list[float]] = None,
+        downbeats: Optional[list[float]] = None,
+        lrc_content: Optional[str] = None,
+        force: bool = False,
+    ) -> JobInfo:
+        """Submit a component analysis job to the analysis service.
+
+        Passes cached sections/beats/lrc_content so the service can use the
+        hybrid strategy without re-computation.
+
+        v3 — the worker ALSO checks R2/local cache (defense in depth). Even if
+        this client skips submission (see get_cached_component_result), the
+        worker will re-validate on its side.
+
+        Args:
+            audio_url: R2 URL of the audio file.
+            content_hash: SHA-256 hash of the audio content.
+            song_id: Song ID (optional, for tracking).
+            sections: Cached allin1 sections.
+            beats: Cached beat timestamps.
+            downbeats: Cached downbeat timestamps.
+            lrc_content: Cached LRC text.
+            force: Whether to force re-extraction.
+
+        Returns:
+            JobInfo for the submitted job.
+
+        Raises:
+            AnalysisServiceError: If submission fails.
+        """
+        payload = {
+            "audio_url": audio_url,
+            "content_hash": content_hash,
+            "song_id": song_id,
+            "sections": sections,
+            "beats": beats,
+            "downbeats": downbeats,
+            "lrc_content": lrc_content,
+            "options": {"force": force},
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/component-analysis",
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid API key", status_code=401
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_job_response(data)
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, "response") and e.response is not None:
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Component analysis submission failed (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Component analysis submission failed: {e}")
+
+    def get_cached_component_result(self, hash_prefix: str) -> Optional[dict]:
+        """Check if a component result is already cached in R2.
+
+        Returns the parsed components.json from {hash_prefix}/components.json,
+        or None if not found OR if its schema_version is stale (v3).
+
+        Args:
+            hash_prefix: 12-character content hash prefix.
+
+        Returns:
+            Parsed components.json dict, or None.
+        """
+        # Delegate to the admin R2Client which has download_analysis_json.
+        # This method is a convenience wrapper; the caller should pass an
+        # R2Client-aware path. Here we use a lightweight boto3 call.
+        import os
+
+        import boto3
+        from botocore.exceptions import ClientError
+
+        bucket = os.environ.get("SOW_R2_BUCKET", "sow-audio")
+        endpoint_url = os.environ.get("SOW_R2_ENDPOINT_URL", "")
+        access_key = os.environ.get("SOW_R2_ACCESS_KEY_ID", "")
+        secret_key = os.environ.get("SOW_R2_SECRET_ACCESS_KEY", "")
+
+        if not access_key or not secret_key or not endpoint_url:
+            return None
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+        )
+        s3_key = f"{hash_prefix}/components.json"
+        try:
+            resp = s3.get_object(Bucket=bucket, Key=s3_key)
+            import json
+
+            payload = json.loads(resp["Body"].read().decode("utf-8"))
+            if payload.get("schema_version") != 1:
+                return None
+            return payload
+        except ClientError:
+            return None
+        except (json.JSONDecodeError, IOError):
+            return None
 
     def get_job(self, job_id: str) -> JobInfo:
         """Get information about a job.
@@ -844,6 +971,8 @@ class AnalysisClient:
                     vocals_dry_url=result_data.get("vocals_dry_url"),
                     vocals_url=result_data.get("vocals_url"),
                     instrumental_url=result_data.get("instrumental_url"),
+                    components=result_data.get("components"),
+                    component_source=result_data.get("component_source"),
                 )
 
         return JobInfo(

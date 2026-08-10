@@ -28,6 +28,7 @@ class JobType(str, Enum):
     EMBEDDING = "embedding"
     FORCED_ALIGNMENT = "forced_alignment"
     FAST_ANALYZE = "fast_analyze"
+    COMPONENT_ANALYSIS = "component_analysis"
 
 
 class AnalyzeOptions(BaseModel):
@@ -68,6 +69,13 @@ class FastAnalyzeJobRequest(BaseModel):
     audio_url: str
     content_hash: str
     options: FastAnalyzeOptions = Field(default_factory=FastAnalyzeOptions)
+
+
+class ComponentAnalysisOptions(BaseModel):
+    """Options for component analysis jobs."""
+
+    force: bool = False
+    use_stems: bool = False  # If True, prefer stems audio for feature extraction
 
 
 class LrcOptions(BaseModel):
@@ -165,6 +173,47 @@ class Section(BaseModel):
     end: float
 
 
+class ComponentAnalysisJobRequest(BaseModel):
+    """Request to submit a component analysis job.
+
+    The hybrid extraction strategy prefers cached allin1 sections first,
+    then lyrics-repetition from LRC.
+
+    Callers SHOULD pass cached ``sections``, ``beats``, ``downbeats``, and
+    ``lrc_content`` from the DB/R2 to avoid re-computation.
+
+    v3: If ``beats``/``downbeats`` are absent (tier-2 only), the worker will
+    run analyze_audio_fast() inline to obtain them. Pass them when available
+    to skip that step.
+    """
+
+    audio_url: str
+    content_hash: str
+    song_id: str = ""
+    sections: Optional[List[Section]] = None  # Cached allin1 sections
+    beats: Optional[List[float]] = None  # Cached beat timestamps
+    downbeats: Optional[List[float]] = None  # Cached downbeat timestamps
+    lrc_content: Optional[str] = None  # Cached LRC text
+    options: ComponentAnalysisOptions = Field(default_factory=ComponentAnalysisOptions)
+
+
+class ComponentResult(BaseModel):
+    """A single identified song component with computed features."""
+
+    component_type: str
+    occurrence_index: int = 1
+    role: str = "none"
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    bpm: Optional[float] = None
+    key: Optional[str] = None
+    groove_density: Optional[float] = None
+    backbeat_strength: Optional[float] = None
+    energy_level: Optional[float] = None
+    confidence: Optional[float] = None
+    source: str = ""  # 'allin1_sections' | 'lyrics_repetition' | 'none'
+
+
 class JobResult(BaseModel):
     """Result data for a completed job."""
 
@@ -197,6 +246,10 @@ class JobResult(BaseModel):
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)
     vocals_url: Optional[str] = None  # Stage 1 output (raw vocals)
     instrumental_url: Optional[str] = None  # Stage 1 output (instrumental)
+
+    # Component analysis results
+    components: Optional[List[ComponentResult]] = None
+    component_source: Optional[str] = None
 
 
 class JobResponse(BaseModel):
@@ -257,6 +310,7 @@ class Job:
         EmbeddingJobRequest,
         ForcedAlignmentJobRequest,
         FastAnalyzeJobRequest,
+        "ComponentAnalysisJobRequest",
     ]
     result: Optional[Union[JobResult, EmbeddingJobResult]] = None
     error_message: Optional[str] = None

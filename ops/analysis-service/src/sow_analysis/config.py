@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
     SOW_FAST_ANALYZE_MAX_CONCURRENT: int = 0
 
+    # Component analysis (librosa feature extraction) concurrency. CPU/memory heavy;
+    # distinct from SOW_FAST_ANALYZE_MAX_CONCURRENT so backfill does not starve
+    # live fast_analyze traffic. Default is cgroup-aware on Linux.
+    # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
+    SOW_COMPONENT_MAX_CONCURRENT: int = 0
+
     @field_validator("SOW_LOG_LEVEL")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:
@@ -57,6 +63,22 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_fast_analyze_concurrent(cls, v: int) -> int:
         """Compute cgroup-aware default when not explicitly configured (<=0)."""
+        if v > 0:
+            return v
+        import os
+
+        try:
+            return min(4, max(1, len(os.sched_getaffinity(0)) // 2))
+        except (AttributeError, OSError):  # macOS / unsupported
+            return 1
+
+    @field_validator("SOW_COMPONENT_MAX_CONCURRENT")
+    @classmethod
+    def _validate_component_max_concurrent(cls, v: int) -> int:
+        """Compute cgroup-aware default when not explicitly configured (<=0).
+
+        Same pattern as SOW_FAST_ANALYZE_MAX_CONCURRENT.
+        """
         if v > 0:
             return v
         import os

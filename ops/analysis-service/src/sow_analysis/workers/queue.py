@@ -69,6 +69,8 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str, language: str = 
 
 from ..models import (
     AnalyzeJobRequest,
+    ComponentAnalysisJobRequest,
+    ComponentResult,
     EmbeddingJobRequest,
     EmbeddingJobResult,
     FastAnalyzeJobRequest,
@@ -93,6 +95,13 @@ except ImportError:
     analyze_audio = None
     analyze_audio_fast = None
     separate_stems = None
+
+# Optional component extraction imports - require librosa
+try:
+    from .components import ComponentInstance, extract_components
+except ImportError:
+    extract_components = None
+    ComponentInstance = None
 
 # Optional LRC imports - require whisper and openai
 try:
@@ -191,6 +200,9 @@ class JobQueue:
         # Distinct from _local_model_semaphore (allin1/demucs) so fast and full
         # analysis do not coordinate; operator sizes both together.
         self._fast_analyze_semaphore = asyncio.Semaphore(settings.SOW_FAST_ANALYZE_MAX_CONCURRENT)
+        # Separate semaphore for component analysis (librosa feature extraction, CPU/memory heavy).
+        # Distinct from _fast_analyze_semaphore so backfill does not starve live fast_analyze traffic.
+        self._component_semaphore = asyncio.Semaphore(settings.SOW_COMPONENT_MAX_CONCURRENT)
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
@@ -335,6 +347,7 @@ class JobQueue:
             EmbeddingJobRequest,
             ForcedAlignmentJobRequest,
             FastAnalyzeJobRequest,
+            ComponentAnalysisJobRequest,
         ],
     ) -> Job:
         """Submit a new job to the queue.
@@ -490,6 +503,15 @@ class JobQueue:
                 if latest.status == JobStatus.CANCELLED:
                     return
                 await self._process_fast_analyze_job(job)
+        elif job.type == JobType.COMPONENT_ANALYSIS:
+            # Component analysis (librosa feature extraction) uses a dedicated
+            # semaphore, distinct from _fast_analyze_semaphore so backfill does
+            # not starve live fast_analyze traffic.
+            async with self._component_semaphore:
+                latest = self._jobs.get(job.id, job)
+                if latest.status == JobStatus.CANCELLED:
+                    return
+                await self._process_component_analysis_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -825,6 +847,182 @@ class JobQueue:
             job.error_message = str(e)
             job.stage = "error"
             logger.error(f"Fast analysis job failed: {e}")
+
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", stage="error", error_message=str(e)
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+
+        finally:
+            job.updated_at = datetime.now(timezone.utc)
+
+    async def _process_component_analysis_job(self, job: Job) -> None:
+        """Process a component analysis job.
+
+        Downloads audio from R2, runs hybrid component extraction, uploads
+        results to R2, builds JobResult with components list.
+
+        v3 flow:
+        1. Set status PROCESSING, stage 'downloading'.
+        2. Download audio from R2 (audio_url follows the same convention as
+           analyze jobs — long-lived R2/S3 URLs, not short-lived pre-signed).
+        3. extract_components() re-checks local + R2 cache (defense in depth).
+        4. Convert list[ComponentInstance] → list[ComponentResult].
+        5. Upload component results to R2 as {hash_prefix}/components.json.
+        6. Save to local cache via cache_manager.save_component_result().
+        7. Build JobResult(components=..., component_source=...).
+        8. Set status COMPLETED, stage 'complete'.
+
+        Args:
+            job: Job to process.
+        """
+        set_job_id(job.id)
+        job_start_time = time.time()
+        logger.info(f"Starting component analysis job for audio: {job.request.audio_url}")
+
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "downloading"
+        job.progress = 0.1
+
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="downloading", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        request = job.request
+        if not isinstance(request, ComponentAnalysisJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for component analysis job"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        if extract_components is None:
+            job.status = JobStatus.FAILED
+            job.error_message = "Component extraction dependencies not available (librosa)"
+            job.stage = "missing_dependencies"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="missing_dependencies",
+                    error_message="Component extraction dependencies not available (librosa)",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        try:
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+
+            if not self.r2_client:
+                raise RuntimeError(
+                    "R2 client not configured; cannot download audio for component analysis"
+                )
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                audio_path = temp_path / "audio.mp3"
+
+                logger.info("Downloading audio from R2 for component analysis...")
+                download_start = time.time()
+                await self.r2_client.download_audio(request.audio_url, audio_path)
+                download_elapsed = time.time() - download_start
+                logger.info(f"Audio download completed in {download_elapsed:.2f}s")
+
+                if not audio_path.exists() or audio_path.stat().st_size == 0:
+                    raise RuntimeError("Downloaded audio file is missing or empty")
+
+                job.stage = "extracting"
+                job.progress = 0.3
+                try:
+                    await self.job_store.update_job(job.id, stage="extracting", progress=0.3)
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
+                # Convert Section models to plain dicts for extract_components.
+                sections_dicts: Optional[list[dict]] = None
+                if request.sections:
+                    sections_dicts = [
+                        {"label": s.label, "start": s.start, "end": s.end} for s in request.sections
+                    ]
+
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash=request.content_hash,
+                    cache_manager=self.cache_manager,
+                    r2_client=self.r2_client,
+                    sections=sections_dicts,
+                    lrc_content=request.lrc_content,
+                    beats=request.beats,
+                    downbeats=request.downbeats,
+                    force=request.options.force,
+                )
+
+                # Convert ComponentInstance → ComponentResult.
+                component_results = [
+                    ComponentResult(
+                        component_type=c.component_type,
+                        occurrence_index=c.occurrence_index,
+                        role=c.role,
+                        start_time=c.start_time,
+                        end_time=c.end_time,
+                        bpm=c.bpm,
+                        key=c.key,
+                        groove_density=c.groove_density,
+                        backbeat_strength=c.backbeat_strength,
+                        energy_level=c.energy_level,
+                        confidence=c.confidence,
+                        source=c.source,
+                    )
+                    for c in components
+                ]
+
+                job.result = JobResult(
+                    components=component_results if component_results else None,
+                    component_source=source,
+                )
+
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+
+                total_elapsed = time.time() - job_start_time
+                logger.info(
+                    f"Component analysis job completed in {total_elapsed:.2f}s "
+                    f"(source={source}, {len(component_results)} components)"
+                )
+
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="completed",
+                        progress=1.0,
+                        stage="complete",
+                        result_json=job.result.model_dump_json() if job.result else None,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "error"
+            logger.error(f"Component analysis job failed: {e}")
 
             try:
                 await self.job_store.update_job(
