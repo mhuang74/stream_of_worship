@@ -9,6 +9,7 @@ import aiosqlite
 
 from ..models import (
     AnalyzeJobRequest,
+    ComponentAnalysisJobRequest,
     ForcedAlignmentJobRequest,
     Job,
     JobStatus,
@@ -60,6 +61,9 @@ class JobStore:
         # Check if we need to migrate from old schema (without 'fast_analyze' job type)
         await self._migrate_fast_analyze_type()
 
+        # Check if we need to migrate from old schema (without 'component_analysis' job type)
+        await self._migrate_component_analysis_type()
+
         # Check if we need to migrate from old schema (without 'waiting' status)
         await self._migrate_waiting_status()
 
@@ -82,7 +86,7 @@ class JobStore:
                 content_hash    TEXT NOT NULL,
 
                 CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
-                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze', 'component_analysis'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -384,6 +388,84 @@ class JobStore:
             logger.error(f"Database migration for fast_analyze type failed: {e}")
             raise
 
+    async def _migrate_component_analysis_type(self) -> None:
+        """Migrate old schema to support 'component_analysis' job type."""
+        if not self._db:
+            return
+
+        try:
+            async with self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+            async with self._db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                schema = row[0]
+                if "'component_analysis'" in schema:
+                    return
+
+                logger.warning(
+                    "Migrating database schema to support COMPONENT_ANALYSIS job type"
+                )
+
+                await self._db.executescript(
+                    """
+                    DROP TABLE IF EXISTS jobs_old;
+
+                    ALTER TABLE jobs RENAME TO jobs_old;
+
+                    CREATE TABLE jobs (
+                        id              TEXT PRIMARY KEY,
+                        type            TEXT NOT NULL,
+                        status          TEXT NOT NULL DEFAULT 'queued',
+                        progress        REAL NOT NULL DEFAULT 0.0,
+                        stage           TEXT NOT NULL DEFAULT '',
+                        error_message   TEXT,
+
+                        request_json    TEXT NOT NULL,
+                        result_json     TEXT,
+
+                        created_at      TEXT NOT NULL,
+                        updated_at      TEXT NOT NULL,
+
+                        content_hash    TEXT NOT NULL,
+
+                        CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
+                        CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze', 'component_analysis'))
+                    );
+
+                    INSERT INTO jobs (
+                        id, type, status, progress, stage, error_message,
+                        request_json, result_json, created_at, updated_at, content_hash
+                    )
+                    SELECT
+                        id, type, status, progress, stage, error_message,
+                        request_json, result_json, created_at, updated_at, content_hash
+                    FROM jobs_old;
+
+                    DROP TABLE jobs_old;
+
+                    CREATE INDEX idx_jobs_status ON jobs(status);
+                    CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                    CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+                    """
+                )
+                await self._db.commit()
+                logger.info("Database migration for component_analysis type complete")
+
+        except Exception as e:
+            logger.error(f"Database migration for component_analysis type failed: {e}")
+            raise
+
+
     async def _migrate_waiting_status(self) -> None:
         """Migrate old schema to support 'waiting' status.
 
@@ -439,7 +521,7 @@ class JobStore:
                         content_hash    TEXT NOT NULL,
 
                         CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
-                        CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze'))
+                        CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze', 'component_analysis'))
                     );
 
                     INSERT INTO jobs (
@@ -579,6 +661,8 @@ class JobStore:
             from ..models import FastAnalyzeJobRequest
 
             request = FastAnalyzeJobRequest.model_validate_json(request_json)
+        elif job_type == JobType.COMPONENT_ANALYSIS:
+            request = ComponentAnalysisJobRequest.model_validate_json(request_json)
         else:
             raise ValueError(f"Unknown job type: {job_type}")
 
