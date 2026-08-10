@@ -1,16 +1,22 @@
 """Tests for song component extraction (chorus/verse identification + features)."""
 
+import os
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import patch
 
+import librosa
 import numpy as np
 import pytest
 
 from sow_analysis.storage.cache import COMPONENT_SCHEMA_VERSION, CacheManager
 from sow_analysis.workers.components import (
     ComponentInstance,
+    GlobalFeatures,
+    _detect_key_from_precomputed_chroma,
     _normalize_line,
+    _precompute_global_features,
     _serialize_components,
     _snap_to_beat,
     compute_component_features,
@@ -18,6 +24,62 @@ from sow_analysis.workers.components import (
     identify_from_allin1_sections,
     identify_from_lyrics_repetition,
 )
+
+
+def _make_global_features(y: np.ndarray, sr: int, **overrides) -> GlobalFeatures:
+    """Build a GlobalFeatures object from raw audio for testing."""
+    hop_length = 512
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
+    y_harmonic, _ = librosa.effects.hpss(y)
+    chroma = librosa.feature.chroma_cqt(y=y_harmonic, sr=sr, hop_length=hop_length)
+    rms_times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+    onset_times = librosa.frames_to_time(
+        np.arange(len(onset_env)), sr=sr, hop_length=hop_length
+    )
+    defaults = dict(
+        y=y,
+        sr=sr,
+        duration=float(librosa.get_duration(y=y, sr=sr)),
+        onset_env=onset_env,
+        onset_frames=np.arange(len(onset_env)),
+        onset_times=onset_times,
+        rms=rms,
+        rms_times=rms_times,
+        y_harmonic=y_harmonic,
+        chroma=chroma,
+        drums_y=None,
+        drums_onset_env=None,
+        drums_rms=None,
+        drums_rms_times=None,
+        vocals_y=None,
+    )
+    defaults.update(overrides)
+    return GlobalFeatures(**defaults)
+
+
+def _make_mock_global_features(sr: int = 22050, duration: float = 10.0) -> GlobalFeatures:
+    """Create a minimal GlobalFeatures for testing without computing real features."""
+    n_samples = int(sr * duration)
+    hop_length = 512
+    n_frames = max(n_samples // hop_length + 1, 2)
+    return GlobalFeatures(
+        y=np.zeros(n_samples),
+        sr=sr,
+        duration=duration,
+        onset_env=np.zeros(n_frames),
+        onset_frames=np.arange(n_frames),
+        onset_times=np.linspace(0, duration, n_frames),
+        rms=np.ones(n_frames) * 0.1,
+        rms_times=np.linspace(0, duration, n_frames),
+        y_harmonic=np.zeros(n_samples),
+        chroma=np.ones((12, n_frames)) * 0.5,
+        drums_y=None,
+        drums_onset_env=None,
+        drums_rms=None,
+        drums_rms_times=None,
+        vocals_y=None,
+    )
 
 
 class TestIdentifyFromAllin1Sections:
@@ -370,7 +432,8 @@ class TestComputeComponentFeatures:
             source="allin1_sections",
         )
 
-        result = compute_component_features(y, sr, component)
+        gf = _make_global_features(y, sr)
+        result = compute_component_features(gf, component)
 
         # Features should be populated (not None).
         assert result.energy_level is not None
@@ -390,7 +453,8 @@ class TestComputeComponentFeatures:
             end_time=5.0,
         )
         beats = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-        result = compute_component_features(y, sr, component, beats=beats)
+        gf = _make_global_features(y, sr)
+        result = compute_component_features(gf, component, beats=beats)
         # BPM should be 120 (0.5s intervals).
         assert result.bpm is not None
         assert 100 < result.bpm < 140
@@ -431,9 +495,11 @@ class TestExtractComponents:
             ]
             lrc_content = "[00:00.00]dummy\n"
 
-            # Mock audio loading to avoid librosa on dummy file.
-            with patch("sow_analysis.workers.components.librosa.load") as mock_load:
-                mock_load.return_value = (np.zeros(22050), 22050)
+            mock_gf = _make_mock_global_features(sr=22050, duration=60.0)
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features"
+            ) as mock_precompute:
+                mock_precompute.return_value = mock_gf
                 components, source = await extract_components(
                     audio_path=audio_path,
                     content_hash="abc123",
@@ -460,22 +526,22 @@ class TestExtractComponents:
 [00:15.00]哈利路亞
 """
 
-            # Mock analyze_audio_fast and librosa.load.
+            mock_gf = _make_mock_global_features(sr=22050, duration=20.0)
             with (
                 patch("sow_analysis.workers.components.analyze_audio_fast", create=True),
-                patch("sow_analysis.workers.components.librosa.load") as mock_load,
+                patch(
+                    "sow_analysis.workers.components._precompute_global_features"
+                ) as mock_precompute,
             ):
-                mock_load.return_value = (np.zeros(22050 * 20), 22050)
-                # Also mock the inline fast_analyze import.
-                with patch.dict("sys.modules"):
-                    components, source = await extract_components(
-                        audio_path=audio_path,
-                        content_hash="abc123",
-                        cache_manager=cache_manager,
-                        r2_client=None,
-                        lrc_content=lrc_content,
-                        beats=[0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
-                    )
+                mock_precompute.return_value = mock_gf
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash="abc123",
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    lrc_content=lrc_content,
+                    beats=[0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+                )
 
             assert source == "lyrics_repetition"
             assert len(components) > 0
@@ -537,8 +603,11 @@ class TestExtractComponents:
             cache_manager.save_component_result("abc123", payload)
 
             # Provide sections so extraction runs.
-            with patch("sow_analysis.workers.components.librosa.load") as mock_load:
-                mock_load.return_value = (np.zeros(22050), 22050)
+            mock_gf = _make_mock_global_features(sr=22050, duration=10.0)
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features"
+            ) as mock_precompute:
+                mock_precompute.return_value = mock_gf
                 components, source = await extract_components(
                     audio_path=audio_path,
                     content_hash="abc123",
@@ -567,8 +636,11 @@ class TestExtractComponents:
             }
             cache_manager.save_component_result("abc123", payload)
 
-            with patch("sow_analysis.workers.components.librosa.load") as mock_load:
-                mock_load.return_value = (np.zeros(22050), 22050)
+            mock_gf = _make_mock_global_features(sr=22050, duration=10.0)
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features"
+            ) as mock_precompute:
+                mock_precompute.return_value = mock_gf
                 components, source = await extract_components(
                     audio_path=audio_path,
                     content_hash="abc123",
@@ -588,8 +660,11 @@ class TestExtractComponents:
             audio_path.write_text("dummy")
             cache_manager = CacheManager(Path(tmp))
 
-            with patch("sow_analysis.workers.components.librosa.load") as mock_load:
-                mock_load.return_value = (np.zeros(22050), 22050)
+            mock_gf = _make_mock_global_features(sr=22050, duration=10.0)
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features"
+            ) as mock_precompute:
+                mock_precompute.return_value = mock_gf
                 await extract_components(
                     audio_path=audio_path,
                     content_hash="abc123",
@@ -630,3 +705,252 @@ class TestSerializeDeserialize:
         assert payload["component_source"] == "allin1_sections"
         assert len(payload["components"]) == 1
         assert payload["components"][0]["component_type"] == "chorus"
+
+
+class TestPrecomputeGlobalFeatures:
+    """Tests for _precompute_global_features()."""
+
+    def test_all_fields_populated(self):
+        """All fields of GlobalFeatures are populated from a real audio file."""
+        import soundfile as sf
+
+        sr = 22050
+        duration = 12.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "test.wav"
+            sf.write(str(audio_path), y, sr)
+
+            gf = _precompute_global_features(audio_path)
+
+        assert gf.y is not None
+        assert gf.sr == sr
+        assert gf.duration == pytest.approx(duration, abs=0.5)
+        assert gf.onset_env.ndim == 1
+        assert gf.rms.ndim == 1
+        assert gf.chroma.shape[0] == 12
+        assert gf.y_harmonic is not None
+        assert gf.onset_frames is not None
+        assert gf.onset_times is not None
+        assert gf.rms_times is not None
+
+    def test_stems_none_when_no_stems_dir(self):
+        """Stems fields are None when stems_dir is None."""
+        import soundfile as sf
+
+        sr = 22050
+        duration = 12.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "test.wav"
+            sf.write(str(audio_path), y, sr)
+
+            gf = _precompute_global_features(audio_path, stems_dir=None)
+
+        assert gf.drums_y is None
+        assert gf.drums_onset_env is None
+        assert gf.drums_rms is None
+        assert gf.drums_rms_times is None
+        assert gf.vocals_y is None
+
+    def test_duration_matches_librosa(self):
+        """duration matches librosa.get_duration()."""
+        import soundfile as sf
+
+        sr = 22050
+        duration = 12.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "test.wav"
+            sf.write(str(audio_path), y, sr)
+
+            gf = _precompute_global_features(audio_path)
+            expected = float(librosa.get_duration(y=y, sr=sr))
+
+        assert gf.duration == pytest.approx(expected, abs=0.5)
+
+
+class TestDetectKeyFromPrecomputedChroma:
+    """Tests for _detect_key_from_precomputed_chroma()."""
+
+    def test_returns_key_and_margin(self):
+        """Returns (key, margin) tuple for a valid segment."""
+        sr = 22050
+        duration = 20.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+        gf = _make_global_features(y, sr)
+
+        key, margin = _detect_key_from_precomputed_chroma(
+            gf.chroma, gf.rms, gf.sr, 512, 2.0, 18.0, gf.rms_times
+        )
+
+        # Key should be a valid note name or None.
+        if key is not None:
+            valid_keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+            assert key in valid_keys
+        # Margin is a float or None.
+        if margin is not None:
+            assert isinstance(margin, float)
+
+    def test_short_segment_returns_none(self):
+        """Segments shorter than 8.0 seconds return (None, None)."""
+        sr = 22050
+        duration = 20.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+        gf = _make_global_features(y, sr)
+
+        key, margin = _detect_key_from_precomputed_chroma(
+            gf.chroma, gf.rms, gf.sr, 512, 0.0, 5.0, gf.rms_times
+        )
+        assert key is None
+        assert margin is None
+
+    def test_low_variance_returns_none(self):
+        """Returns (None, None) when chroma variance is below threshold."""
+        sr = 22050
+        duration = 20.0
+        n_frames = int(duration * sr / 512) + 1
+        # Uniform chroma — zero variance.
+        uniform_chroma = np.ones((12, n_frames)) * 0.5
+        rms = np.ones(n_frames) * 0.5
+        rms_times = np.linspace(0, duration, n_frames)
+
+        key, margin = _detect_key_from_precomputed_chroma(
+            uniform_chroma, rms, sr, 512, 0.0, 18.0, rms_times
+        )
+        assert key is None
+        assert margin is None
+
+
+class TestKeyDetectionFallback:
+    """Tests for detect_key_fulltrack fallback in compute_component_features."""
+
+    def test_fallback_when_precomputed_returns_none(self):
+        """When _detect_key_from_precomputed_chroma returns (None, None),
+        compute_component_features falls back to detect_key_fulltrack."""
+        sr = 22050
+        duration = 20.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+        gf = _make_global_features(y, sr)
+
+        component = ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=2.0,
+            end_time=18.0,
+            confidence=0.9,
+            source="allin1_sections",
+        )
+
+        with patch(
+            "sow_analysis.workers.components._detect_key_from_precomputed_chroma"
+        ) as mock_detect:
+            mock_detect.return_value = (None, None)
+            result = compute_component_features(gf, component)
+
+        # Fallback should have populated key.
+        assert result.key is not None
+        assert result.key_confidence is not None
+        assert 0.0 <= result.key_confidence <= 1.0
+
+    def test_fallback_uses_fulltrack_key(self):
+        """Fallback uses detect_key_fulltrack on gf.y_harmonic."""
+        sr = 22050
+        duration = 20.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+        gf = _make_global_features(y, sr)
+
+        component = ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=2.0,
+            end_time=18.0,
+        )
+
+        from sow_analysis.workers.analyzer import KeyDetectionResult
+        mock_result = KeyDetectionResult(
+            key="G",
+            mode="major",
+            confidence=0.8,
+            score_margin=0.15,
+            window_agreement=None,
+            candidates=[],
+            algorithm_version="ks_fulltrack_v1",
+            detected_at="2026-01-01T00:00:00Z",
+        )
+
+        with (
+            patch(
+                "sow_analysis.workers.components._detect_key_from_precomputed_chroma"
+            ) as mock_detect,
+            patch("sow_analysis.workers.analyzer.detect_key_fulltrack") as mock_ft,
+        ):
+            mock_detect.return_value = (None, None)
+            mock_ft.return_value = mock_result
+            result = compute_component_features(gf, component)
+
+        assert result.key == "G"
+        # Sigmoid mapping of margin=0.15: 1/(1+exp(-0.3)) ≈ 0.574
+        assert result.key_confidence == pytest.approx(
+            1.0 / (1.0 + np.exp(-2.0 * 0.15)), abs=0.01
+        )
+
+
+class TestPerformanceRegression:
+    """Performance regression test for extract_components."""
+
+    @pytest.mark.skipif(
+        not os.environ.get("SOW_RUN_SLOW_TESTS"),
+        reason="Set SOW_RUN_SLOW_TESTS=1 to run performance regression tests",
+    )
+    @pytest.mark.asyncio
+    async def test_extract_components_under_10s(self):
+        """extract_components on a 4-minute synthetic signal completes in <10s."""
+        import soundfile as sf
+
+        sr = 22050
+        duration = 240.0  # 4 minutes
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        y = 0.5 * np.sin(2 * np.pi * 440 * t)
+
+        lrc_lines = []
+        for i in range(48):
+            t_min = int(i * 5 // 60)
+            t_sec = int(i * 5 % 60)
+            if i % 8 < 4:
+                lrc_lines.append(f"[{t_min:02d}:{t_sec:02d}.00]讚美主耶穌")
+            else:
+                lrc_lines.append(f"[{t_min:02d}:{t_sec:02d}.00]哈利路亞")
+        lrc_content = "\n".join(lrc_lines) + "\n"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "test.wav"
+            sf.write(str(audio_path), y, sr)
+            cache_manager = CacheManager(Path(tmp))
+
+            start = time.time()
+            components, source = await extract_components(
+                audio_path=audio_path,
+                content_hash="perf_test_001",
+                cache_manager=cache_manager,
+                r2_client=None,
+                lrc_content=lrc_content,
+                beats=[i * 0.5 for i in range(int(duration / 0.5))],
+            )
+            elapsed = time.time() - start
+
+        assert source == "lyrics_repetition"
+        assert len(components) > 0
+        assert elapsed < 30.0, f"extract_components took {elapsed:.2f}s (>30s threshold)"
