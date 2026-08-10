@@ -575,6 +575,20 @@ class SongComponent:
     backbeat_strength: Optional[float] = None
     energy_level: Optional[float] = None
     confidence: Optional[float] = None
+    # v5: per-field confidence scores
+    bpm_confidence: Optional[float] = None
+    key_confidence: Optional[float] = None
+    groove_confidence: Optional[float] = None
+    backbeat_confidence: Optional[float] = None
+    energy_confidence: Optional[float] = None
+    # v5: LLM-derived theme and vocal posture
+    theme: Optional[str] = None
+    vocal_posture: Optional[str] = None
+    theme_confidence: Optional[float] = None
+    vocal_posture_confidence: Optional[float] = None
+    # v5: LLM reasoning fields (for debugging/audit)
+    theme_reasoning: Optional[str] = None
+    posture_reasoning: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -595,8 +609,19 @@ class SongComponent:
             backbeat_strength=row[11],
             energy_level=row[12],
             confidence=row[13],
-            created_at=_to_str(row[14]),
-            updated_at=_to_str(row[15]),
+            bpm_confidence=row[14],
+            key_confidence=row[15],
+            groove_confidence=row[16],
+            backbeat_confidence=row[17],
+            energy_confidence=row[18],
+            theme=row[19],
+            vocal_posture=row[20],
+            theme_confidence=row[21],
+            vocal_posture_confidence=row[22],
+            theme_reasoning=row[23],
+            posture_reasoning=row[24],
+            created_at=_to_str(row[25]),
+            updated_at=_to_str(row[26]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -615,6 +640,17 @@ class SongComponent:
             "backbeat_strength": self.backbeat_strength,
             "energy_level": self.energy_level,
             "confidence": self.confidence,
+            "bpm_confidence": self.bpm_confidence,
+            "key_confidence": self.key_confidence,
+            "groove_confidence": self.groove_confidence,
+            "backbeat_confidence": self.backbeat_confidence,
+            "energy_confidence": self.energy_confidence,
+            "theme": self.theme,
+            "vocal_posture": self.vocal_posture,
+            "theme_confidence": self.theme_confidence,
+            "vocal_posture_confidence": self.vocal_posture_confidence,
+            "theme_reasoning": self.theme_reasoning,
+            "posture_reasoning": self.posture_reasoning,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

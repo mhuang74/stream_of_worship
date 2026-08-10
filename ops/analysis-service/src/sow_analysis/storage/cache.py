@@ -12,7 +12,7 @@ from ..config import settings
 
 # Bump when the components.json payload shape changes. Cached payloads with a
 # mismatched version are treated as cache misses and recomputed.
-COMPONENT_SCHEMA_VERSION = 1
+COMPONENT_SCHEMA_VERSION = 2
 
 
 class CacheManager:

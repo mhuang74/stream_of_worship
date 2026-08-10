@@ -64,8 +64,8 @@ class TestSongComponentsSchema:
         assert "trg_song_components_updated_at" in CREATE_SONG_COMPONENTS_UPDATE_TRIGGER
 
     def test_column_count(self):
-        """SONG_COMPONENT_COLUMN_COUNT is 16."""
-        assert SONG_COMPONENT_COLUMN_COUNT == 16
+        """SONG_COMPONENT_COLUMN_COUNT is 27 (v5: 16 original + 11 new)."""
+        assert SONG_COMPONENT_COLUMN_COUNT == 27
 
     def test_columns_select_includes_all_fields(self):
         """SONG_COMPONENT_COLUMNS_SELECT includes all expected fields."""
@@ -84,6 +84,20 @@ class TestSongComponentsSchema:
             "backbeat_strength",
             "energy_level",
             "confidence",
+            # v5: per-field confidence
+            "bpm_confidence",
+            "key_confidence",
+            "groove_confidence",
+            "backbeat_confidence",
+            "energy_confidence",
+            # v5: LLM theme/posture
+            "theme",
+            "vocal_posture",
+            "theme_confidence",
+            "vocal_posture_confidence",
+            # v5: reasoning
+            "theme_reasoning",
+            "posture_reasoning",
             "created_at",
             "updated_at",
         ):
@@ -114,7 +128,7 @@ class TestSongComponentModel:
         assert c.updated_at is None
 
     def test_from_row(self):
-        """from_row parses a 16-element tuple correctly."""
+        """from_row parses a 27-element tuple correctly (v5 schema)."""
         row = (
             1,  # id
             "song_0001",  # song_id
@@ -130,6 +144,20 @@ class TestSongComponentModel:
             1.12,  # backbeat_strength
             -18.3,  # energy_level
             0.9,  # confidence
+            # v5: per-field confidence
+            0.85,  # bpm_confidence
+            0.80,  # key_confidence
+            0.75,  # groove_confidence
+            0.90,  # backbeat_confidence
+            0.70,  # energy_confidence
+            # v5: LLM theme/posture
+            "讚美",  # theme
+            "To God",  # vocal_posture
+            0.92,  # theme_confidence
+            0.95,  # vocal_posture_confidence
+            # v5: reasoning
+            "Religious pronoun 祢 + praise language",  # theme_reasoning
+            "Direct address to God using 祢",  # posture_reasoning
             "2024-01-15T10:30:00",  # created_at
             "2024-01-15T10:30:00",  # updated_at
         )
@@ -148,6 +176,18 @@ class TestSongComponentModel:
         assert c.backbeat_strength == 1.12
         assert c.energy_level == -18.3
         assert c.confidence == 0.9
+        # v5 fields
+        assert c.bpm_confidence == 0.85
+        assert c.key_confidence == 0.80
+        assert c.groove_confidence == 0.75
+        assert c.backbeat_confidence == 0.90
+        assert c.energy_confidence == 0.70
+        assert c.theme == "讚美"
+        assert c.vocal_posture == "To God"
+        assert c.theme_confidence == 0.92
+        assert c.vocal_posture_confidence == 0.95
+        assert c.theme_reasoning == "Religious pronoun 祢 + praise language"
+        assert c.posture_reasoning == "Direct address to God using 祢"
         assert c.created_at == "2024-01-15T10:30:00"
         assert c.updated_at == "2024-01-15T10:30:00"
 
@@ -180,7 +220,7 @@ class TestSongComponentModel:
         assert d["confidence"] == 0.9
 
     def test_from_row_roundtrip(self):
-        """from_row → to_dict → SongComponent(**dict) roundtrips."""
+        """from_row → to_dict → SongComponent(**dict) roundtrips (v5 schema)."""
         row = (
             42,
             "song_0002",
@@ -196,6 +236,20 @@ class TestSongComponentModel:
             0.95,
             -19.1,
             0.7,
+            # v5: per-field confidence
+            0.82,
+            0.78,
+            0.65,
+            0.88,
+            0.60,
+            # v5: LLM theme/posture
+            "感恩",
+            "About God",
+            0.80,
+            0.85,
+            # v5: reasoning
+            "Describes God's character and works",
+            "Third-person reference to God",
             None,
             None,
         )

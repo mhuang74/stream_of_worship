@@ -573,6 +573,11 @@ class AnalysisClient:
         downbeats: Optional[list[float]] = None,
         lrc_content: Optional[str] = None,
         force: bool = False,
+        snap_to_downbeat: bool = False,
+        energy_aware_roles: bool = False,
+        use_stems: bool = False,
+        classify_theme: bool = False,
+        classify_vocal_posture: bool = False,
     ) -> JobInfo:
         """Submit a component analysis job to the analysis service.
 
@@ -583,6 +588,9 @@ class AnalysisClient:
         this client skips submission (see get_cached_component_result), the
         worker will re-validate on its side.
 
+        v5 — passes new options for downbeat snapping, energy-aware roles,
+        stem features, and LLM theme/posture classification.
+
         Args:
             audio_url: R2 URL of the audio file.
             content_hash: SHA-256 hash of the audio content.
@@ -592,6 +600,11 @@ class AnalysisClient:
             downbeats: Cached downbeat timestamps.
             lrc_content: Cached LRC text.
             force: Whether to force re-extraction.
+            snap_to_downbeat: Snap component boundaries to downbeats.
+            energy_aware_roles: Use energy-based entry/exit role assignment.
+            use_stems: Use Demucs stems for feature extraction.
+            classify_theme: LLM theme classification (12 Chinese themes).
+            classify_vocal_posture: LLM vocal posture classification.
 
         Returns:
             JobInfo for the submitted job.
@@ -607,7 +620,14 @@ class AnalysisClient:
             "beats": beats,
             "downbeats": downbeats,
             "lrc_content": lrc_content,
-            "options": {"force": force},
+            "options": {
+                "force": force,
+                "snap_to_downbeat": snap_to_downbeat,
+                "energy_aware_roles": energy_aware_roles,
+                "use_stems": use_stems,
+                "classify_theme": classify_theme,
+                "classify_vocal_posture": classify_vocal_posture,
+            },
         }
 
         try:

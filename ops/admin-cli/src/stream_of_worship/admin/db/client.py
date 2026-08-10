@@ -2009,6 +2009,17 @@ class DatabaseClient:
                     c.backbeat_strength,
                     c.energy_level,
                     c.confidence,
+                    c.bpm_confidence,
+                    c.key_confidence,
+                    c.groove_confidence,
+                    c.backbeat_confidence,
+                    c.energy_confidence,
+                    c.theme,
+                    c.vocal_posture,
+                    c.theme_confidence,
+                    c.vocal_posture_confidence,
+                    c.theme_reasoning,
+                    c.posture_reasoning,
                 )
                 for c in components
             ]
@@ -2017,8 +2028,12 @@ class DatabaseClient:
                 INSERT INTO song_components (
                     song_id, content_hash, component_type, occurrence_index,
                     role, start_time, end_time, bpm, key, groove_density,
-                    backbeat_strength, energy_level, confidence
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    backbeat_strength, energy_level, confidence,
+                    bpm_confidence, key_confidence, groove_confidence, backbeat_confidence,
+                    energy_confidence, theme, vocal_posture, theme_confidence,
+                    vocal_posture_confidence, theme_reasoning, posture_reasoning
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 values,
             )

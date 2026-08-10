@@ -267,6 +267,23 @@ CREATE TRIGGER trg_song_components_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 """
 
+# v5: ALTER TABLE statements for new columns (idempotent, safe for existing tables).
+ALTER_SONG_COMPONENTS_V5_COLUMNS = """
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS bpm_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS key_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS groove_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS backbeat_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS energy_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS theme TEXT
+    CHECK (theme IN ('讚美','感恩','敬拜','奉獻','認罪','差遣','信心','祈禱','復興','聖靈','十字架','跟隨') OR theme IS NULL);
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS vocal_posture TEXT
+    CHECK (vocal_posture IN ('To God','About God','To Congregation') OR vocal_posture IS NULL);
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS theme_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS vocal_posture_confidence REAL;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS theme_reasoning TEXT;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS posture_reasoning TEXT;
+"""
+
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
     CREATE_EXTENSION_VECTOR,
@@ -284,16 +301,23 @@ ALL_SCHEMA_STATEMENTS = [
     CREATE_SONG_COMPONENTS_TABLE,
     *CREATE_SONG_COMPONENTS_INDEXES,
     CREATE_SONG_COMPONENTS_UPDATE_TRIGGER,
+    ALTER_SONG_COMPONENTS_V5_COLUMNS,
 ]
 
 # Column list for song_components SELECT queries (matches SongComponent.from_row).
+# v5: 16 original + 11 new = 27 columns.
 SONG_COMPONENT_COLUMNS_SELECT = """
     id, song_id, content_hash, component_type, occurrence_index, role,
     start_time, end_time, bpm, key, groove_density, backbeat_strength,
-    energy_level, confidence, created_at, updated_at
+    energy_level, confidence,
+    bpm_confidence, key_confidence, groove_confidence, backbeat_confidence,
+    energy_confidence, theme, vocal_posture, theme_confidence,
+    vocal_posture_confidence, theme_reasoning, posture_reasoning,
+    created_at, updated_at
 """
 
-SONG_COMPONENT_COLUMN_COUNT = 16
+# v5: 16 original + 11 new = 27 columns.
+SONG_COMPONENT_COLUMN_COUNT = 27
 
 # SQL to get table statistics (Postgres-compatible)
 TABLE_STATS_QUERY = """

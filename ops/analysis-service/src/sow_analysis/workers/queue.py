@@ -98,10 +98,11 @@ except ImportError:
 
 # Optional component extraction imports - require librosa
 try:
-    from .components import ComponentInstance, extract_components
+    from .components import ComponentInstance, extract_components, _detect_downbeats_madmom
 except ImportError:
     extract_components = None
     ComponentInstance = None
+    _detect_downbeats_madmom = None
 
 # Optional LRC imports - require whisper and openai
 try:
@@ -961,6 +962,24 @@ class JobQueue:
                         {"label": s.label, "start": s.start, "end": s.end} for s in request.sections
                     ]
 
+                # v5: If snap_to_downbeat requested but downbeats not provided, run madmom.
+                downbeats = request.downbeats
+                if (
+                    request.options.snap_to_downbeat
+                    and not downbeats
+                    and _detect_downbeats_madmom is not None
+                ):
+                    loop = asyncio.get_event_loop()
+                    madmom_downbeats = await loop.run_in_executor(
+                        None, _detect_downbeats_madmom, audio_path
+                    )
+                    if madmom_downbeats:
+                        downbeats = madmom_downbeats
+                    else:
+                        logger.warning(
+                            "madmom downbeat detection returned None; using beat snapping only"
+                        )
+
                 components, source = await extract_components(
                     audio_path=audio_path,
                     content_hash=request.content_hash,
@@ -969,11 +988,30 @@ class JobQueue:
                     sections=sections_dicts,
                     lrc_content=request.lrc_content,
                     beats=request.beats,
-                    downbeats=request.downbeats,
+                    downbeats=downbeats,
                     force=request.options.force,
+                    use_stems=request.options.use_stems,
+                    snap_to_downbeat=request.options.snap_to_downbeat,
+                    energy_aware_roles=request.options.energy_aware_roles,
                 )
 
-                # Convert ComponentInstance → ComponentResult.
+                # v5: LLM theme/posture classification.
+                if (
+                    request.options.classify_theme
+                    or request.options.classify_vocal_posture
+                ):
+                    try:
+                        from .classifier import ThemeClassifier
+
+                        classifier = ThemeClassifier()
+                        components = await classifier.classify_components(
+                            components,
+                            lrc_content=request.lrc_content,
+                        )
+                    except Exception as e:
+                        logger.warning(f"LLM classification failed: {e}")
+
+                # Convert ComponentInstance -> ComponentResult (v5: including new fields).
                 component_results = [
                     ComponentResult(
                         component_type=c.component_type,
@@ -987,6 +1025,20 @@ class JobQueue:
                         backbeat_strength=c.backbeat_strength,
                         energy_level=c.energy_level,
                         confidence=c.confidence,
+                        # v5: per-field confidence
+                        bpm_confidence=c.bpm_confidence,
+                        key_confidence=c.key_confidence,
+                        groove_confidence=c.groove_confidence,
+                        backbeat_confidence=c.backbeat_confidence,
+                        energy_confidence=c.energy_confidence,
+                        # v5: LLM theme/posture
+                        theme=c.theme,
+                        vocal_posture=c.vocal_posture,
+                        theme_confidence=c.theme_confidence,
+                        vocal_posture_confidence=c.vocal_posture_confidence,
+                        # v5: reasoning
+                        theme_reasoning=c.theme_reasoning,
+                        posture_reasoning=c.posture_reasoning,
                         source=c.source,
                     )
                     for c in components

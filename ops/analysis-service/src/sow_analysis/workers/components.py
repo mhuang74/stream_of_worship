@@ -27,6 +27,53 @@ from .lrc_parser import parse_lrc
 logger = logging.getLogger(__name__)
 
 # Lyrical content cues that nudge chorus identification.
+
+
+def _detect_downbeats_madmom(
+    audio_path: Path,
+) -> Optional[list[float]]:
+    """Detect downbeats using madmom's two-stage pipeline.
+
+    madmom API (correct usage):
+      1. RNNDownBeatProcessor() takes a FILE PATH (not numpy array),
+         returns activations array at 100 fps.
+      2. DBNDownBeatTrackingProcessor(beats_per_bar=[3,4], fps=100) takes
+         activations, returns [[time, beat_in_bar], ...].
+      3. Downbeats = rows where beat_in_bar == 1.
+
+    Note: madmom resamples to 44100 Hz internally. fps=100 must match between
+    RNNDownBeatProcessor and DBNDownBeatTrackingProcessor.
+
+    Args:
+        audio_path: Path to audio file.
+
+    Returns:
+        Sorted list of downbeat timestamps, or None if detection fails.
+    """
+    try:
+        from madmom.features.downbeats import (
+            RNNDownBeatProcessor,
+            DBNDownBeatTrackingProcessor,
+        )
+
+        rnn = RNNDownBeatProcessor()
+        activations = rnn(str(audio_path))
+
+        dbn = DBNDownBeatTrackingProcessor(
+            beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
+            fps=100,               # must match RNNDownBeatProcessor's internal fps
+        )
+        beats = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
+
+        # Downbeats are where beat_in_bar == 1
+        downbeat_times = beats[beats[:, 1] == 1][:, 0]
+        return sorted(downbeat_times.tolist())
+    except Exception as e:
+        logger.warning(f"madmom downbeat detection failed: {e}")
+        return None
+
+
+# Lyrical content cues that nudge chorus identification.
 _CHORUS_KEYWORDS = (
     "chorus",
     "赞美",
@@ -74,6 +121,20 @@ class ComponentInstance:
     energy_level: Optional[float] = None
     confidence: Optional[float] = None
     source: str = ""
+    # v5: per-field confidence scores
+    bpm_confidence: Optional[float] = None
+    key_confidence: Optional[float] = None
+    groove_confidence: Optional[float] = None
+    backbeat_confidence: Optional[float] = None
+    energy_confidence: Optional[float] = None
+    # v5: LLM-derived theme and vocal posture
+    theme: Optional[str] = None
+    vocal_posture: Optional[str] = None
+    theme_confidence: Optional[float] = None
+    vocal_posture_confidence: Optional[float] = None
+    # v5: LLM reasoning fields
+    theme_reasoning: Optional[str] = None
+    posture_reasoning: Optional[str] = None
 
 
 def _snap_to_beat(time_seconds: float, beats: list[float]) -> float:
@@ -93,6 +154,284 @@ def _snap_to_beat(time_seconds: float, beats: list[float]) -> float:
     return float(beats_arr[idx])
 
 
+def _snap_to_downbeat(time_seconds: float, downbeats: list[float]) -> float:
+    """Snap a timestamp to the nearest downbeat.
+
+    Args:
+        time_seconds: Timestamp in seconds.
+        downbeats: Sorted list of downbeat timestamps.
+
+    Returns:
+        Nearest downbeat timestamp, or the input if downbeats is empty.
+    """
+    if not downbeats:
+        return time_seconds
+    downbeats_arr = np.asarray(downbeats, dtype=float)
+    idx = int(np.argmin(np.abs(downbeats_arr - time_seconds)))
+    return float(downbeats_arr[idx])
+
+
+def _detect_phrases_via_onset(
+    y: np.ndarray,
+    sr: int,
+    segment_start: float,
+    segment_end: float,
+    hop_length: int = 512,
+) -> list[float]:
+    """Detect phrase boundaries within a segment using onset strength zero-crossings.
+
+    Computes the onset strength envelope, then finds zero-crossings of the
+    derivative (peaks = phrase starts, valleys = phrase ends). Returns a list
+    of absolute timestamp offsets within [segment_start, segment_end].
+
+    Args:
+        y: Full audio time series.
+        sr: Sample rate.
+        segment_start: Start time of the segment.
+        segment_end: End time of the segment.
+        hop_length: Hop length for onset strength computation.
+
+    Returns:
+        List of phrase boundary timestamps (absolute, not relative).
+    """
+    start_sample = int(segment_start * sr)
+    end_sample = int(segment_end * sr)
+    if end_sample <= start_sample:
+        return []
+    y_slice = y[start_sample:end_sample]
+    if len(y_slice) == 0:
+        return []
+
+    try:
+        onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
+        if len(onset_env) < 3:
+            return []
+        # Derivative — zero crossings indicate peaks/valleys.
+        diff = np.diff(onset_env)
+        # Find where derivative crosses zero (positive to negative = peak).
+        crossings = np.where((diff[:-1] > 0) & (diff[1:] <= 0))[0]
+        # Convert frame indices to absolute timestamps.
+        times = librosa.frames_to_time(
+            crossings, sr=sr, hop_length=hop_length
+        )
+        return [float(segment_start + t) for t in times]
+    except Exception as e:
+        logger.debug(f"Phrase detection failed: {e}")
+        return []
+
+
+def _snap_to_edit_point(
+    time_seconds: float,
+    beats: Optional[list[float]] = None,
+    downbeats: Optional[list[float]] = None,
+    y: Optional[np.ndarray] = None,
+    sr: Optional[int] = None,
+    segment_start: Optional[float] = None,
+    segment_end: Optional[float] = None,
+    hop_length: int = 512,
+) -> float:
+    """Snap a timestamp to the best available edit point.
+
+    Priority order:
+      1. Nearest downbeat (from madmom) — most musically meaningful
+      2. Nearest phrase boundary (from onset zero-crossings)
+      3. Nearest beat (from librosa) — fallback
+
+    Args:
+        time_seconds: Timestamp to snap.
+        beats: Optional beat timestamps (librosa).
+        downbeats: Optional downbeat timestamps (madmom).
+        y: Optional audio time series (for phrase detection).
+        sr: Optional sample rate (for phrase detection).
+        segment_start: Optional segment start (for phrase detection context).
+        segment_end: Optional segment end (for phrase detection context).
+        hop_length: Hop length for onset strength computation.
+
+    Returns:
+        Snapped timestamp.
+    """
+    # Priority 1: Nearest downbeat.
+    if downbeats:
+        return _snap_to_downbeat(time_seconds, downbeats)
+
+    # Priority 2: Nearest phrase boundary.
+    if y is not None and sr is not None and segment_start is not None and segment_end is not None:
+        phrase_boundaries = _detect_phrases_via_onset(
+            y, sr, segment_start, segment_end, hop_length=hop_length
+        )
+        if phrase_boundaries:
+            arr = np.asarray(phrase_boundaries, dtype=float)
+            idx = int(np.argmin(np.abs(arr - time_seconds)))
+            return float(arr[idx])
+
+    # Priority 3: Nearest beat.
+    if beats:
+        return _snap_to_beat(time_seconds, beats)
+
+    return time_seconds
+
+
+def _assign_roles_by_energy(
+    components: list[ComponentInstance],
+    y: np.ndarray,
+    sr: int,
+    stems_dir: Optional[Path] = None,
+) -> list[ComponentInstance]:
+    """Reassign entry/exit roles based on energy/instrumentation cues.
+
+    Only operates on chorus components (component_type='chorus'). Verse and
+    other component roles (e.g., loop_target) are preserved unchanged.
+
+    For each unique chorus occurrence (identified by unique start_time/end_time
+    pairs — handles the v3 single-chorus two-row pattern), compute an energy
+    score from:
+      - RMS energy of the audio slice (full mix or vocals stem)
+      - Drum stem onset density (if stems available)
+      - Backbeat strength (if stems available)
+
+    The unique chorus with the LOWEST energy score -> role='entry'
+    The unique chorus with the HIGHEST energy score -> role='exit'
+    Others -> role='none'
+
+    If only 1 unique chorus, keep both 'entry' and 'exit' roles (v3 behavior).
+    If energy scores are identical, fall back to positional: first=entry, last=exit.
+
+    Args:
+        components: List of ALL ComponentInstance objects (function filters
+            to chorus-only internally).
+        y: Full audio time series.
+        sr: Sample rate.
+        stems_dir: Optional path to cached Demucs stems directory.
+
+    Returns:
+        The same list with chorus roles reassigned.
+    """
+    chorus_components = [c for c in components if c.component_type == "chorus"]
+    if len(chorus_components) < 2:
+        return components
+
+    # Deduplicate by unique (start_time, end_time) pairs.
+    unique_pairs: dict[tuple[float, float], list[ComponentInstance]] = {}
+    for c in chorus_components:
+        key = (c.start_time, c.end_time)
+        unique_pairs.setdefault(key, []).append(c)
+
+    if len(unique_pairs) < 2:
+        # Single unique chorus — keep existing entry/exit roles (v3 behavior).
+        return components
+
+    # Load stems if available.
+    drums_y: Optional[np.ndarray] = None
+    if stems_dir is not None:
+        drums_path = stems_dir / "drums.wav"
+        if drums_path.exists():
+            try:
+                drums_y, _ = librosa.load(str(drums_path), sr=sr, mono=True)
+            except Exception as e:
+                logger.debug(f"Could not load drums stem: {e}")
+
+    # Compute energy score for each unique chorus.
+    pair_scores: list[tuple[tuple[float, float], float]] = []
+    for pair, comp_list in unique_pairs.items():
+        start_t, end_t = pair
+        start_sample = int(start_t * sr)
+        end_sample = int(end_t * sr)
+        if end_sample <= start_sample:
+            pair_scores.append((pair, 0.0))
+            continue
+
+        # RMS energy from full mix.
+        y_slice = y[start_sample:end_sample]
+        if len(y_slice) == 0:
+            pair_scores.append((pair, 0.0))
+            continue
+        try:
+            rms = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=512)[0]
+            rms_mean = float(np.mean(rms)) if rms.size else 0.0
+        except Exception:
+            rms_mean = 0.0
+
+        if drums_y is not None:
+            # Drums onset density.
+            drums_slice = drums_y[start_sample:end_sample] if end_sample <= len(drums_y) else np.array([])
+            if len(drums_slice) > 0:
+                try:
+                    drums_onset = librosa.onset.onset_strength(
+                        y=drums_slice, sr=sr, hop_length=512
+                    )
+                    drums_density = float(np.mean(drums_onset)) if drums_onset.size else 0.0
+                except Exception:
+                    drums_density = 0.0
+                # Backbeat strength from drums stem.
+                try:
+                    drums_rms = librosa.feature.rms(
+                        y=drums_slice, frame_length=2048, hop_length=512
+                    )[0]
+                    backbeat_strength = float(np.mean(drums_rms)) if drums_rms.size else 0.0
+                except Exception:
+                    backbeat_strength = 0.0
+            else:
+                drums_density = 0.0
+                backbeat_strength = 0.0
+
+            # Normalize components (simple min-max across all pairs is done later).
+            pair_scores.append((pair, (rms_mean, drums_density, backbeat_strength)))
+        else:
+            pair_scores.append((pair, (rms_mean,)))
+
+    # Normalize and compute final energy scores.
+    if drums_y is not None and len(pair_scores[0][1]) == 3:
+        rms_vals = [s[0] for _, s in pair_scores]
+        drum_vals = [s[1] for _, s in pair_scores]
+        back_vals = [s[2] for _, s in pair_scores]
+
+        def _norm(vals: list[float]) -> list[float]:
+            if not vals or max(vals) == min(vals):
+                return [0.5] * len(vals)
+            mn, mx = min(vals), max(vals)
+            return [(v - mn) / (mx - mn) for v in vals]
+
+        rms_norm = _norm(rms_vals)
+        drum_norm = _norm(drum_vals)
+        back_norm = _norm(back_vals)
+
+        final_scores = [
+            0.4 * rms_norm[i] + 0.3 * drum_norm[i] + 0.3 * back_norm[i]
+            for i in range(len(pair_scores))
+        ]
+    else:
+        rms_vals = [s[0] if isinstance(s, tuple) else s for _, s in pair_scores]
+        if max(rms_vals) == min(rms_vals):
+            final_scores = [0.5] * len(rms_vals)
+        else:
+            mn, mx = min(rms_vals), max(rms_vals)
+            final_scores = [(v - mn) / (mx - mn) for v in rms_vals]
+
+    # Find lowest and highest energy pairs.
+    scored = list(zip(unique_pairs.keys(), final_scores))
+    # Check for identical scores — fall back to positional.
+    if len(set(final_scores)) == 1:
+        # All identical — positional: first=entry, last=exit.
+        sorted_pairs = list(unique_pairs.keys())
+    else:
+        sorted_pairs = [p for p, _ in sorted(scored, key=lambda x: x[1])]
+
+    entry_pair = sorted_pairs[0]
+    exit_pair = sorted_pairs[-1]
+
+    # Reassign roles.
+    for c in chorus_components:
+        key = (c.start_time, c.end_time)
+        if key == entry_pair:
+            c.role = "entry"
+        elif key == exit_pair:
+            c.role = "exit"
+        else:
+            c.role = "none"
+
+    return components
+
+
 def _normalize_line(text: str) -> str:
     """Normalize a lyric line for repetition comparison.
 
@@ -110,24 +449,31 @@ def _normalize_line(text: str) -> str:
 
 def identify_from_allin1_sections(
     sections: list[dict],
+    snap_to_downbeat: bool = False,
+    downbeats: Optional[list[float]] = None,
 ) -> list[ComponentInstance]:
     """Identify chorus/verse components from allin1 section labels.
 
     allin1 labels: 'intro', 'verse', 'chorus', 'bridge', 'outro', 'instrumental'.
 
     Rules:
-    - All sections labeled 'chorus' → list with occurrence_index 1..N.
-    - occurrence_index=1 → role='entry'
-    - occurrence_index=N (last) → role='exit'
-    - v3: If only 1 chorus → persist as TWO ComponentInstance rows
+    - All sections labeled 'chorus' -> list with occurrence_index 1..N.
+    - occurrence_index=1 -> role='entry'
+    - occurrence_index=N (last) -> role='exit'
+    - v3: If only 1 chorus -> persist as TWO ComponentInstance rows
       (occurrence_index=1, role='entry' and occurrence_index=1, role='exit')
       with identical start_time/end_time.
-    - The verse section immediately preceding the first chorus → role='loop_target',
+    - The verse section immediately preceding the first chorus -> role='loop_target',
       occurrence_index=1.
-    - If no verse before first chorus → skip loop_target.
+    - If no verse before first chorus -> skip loop_target.
+
+    v5: When snap_to_downbeat=True and downbeats are provided, start_time/end_time
+    are snapped to nearest downbeat instead of nearest beat.
 
     Args:
         sections: List of section dicts with 'label', 'start', 'end' keys.
+        snap_to_downbeat: If True, snap to downbeats (requires downbeats param).
+        downbeats: Optional downbeat timestamps for snapping.
 
     Returns:
         List of ComponentInstance objects.
@@ -140,16 +486,21 @@ def identify_from_allin1_sections(
     if not chorus_sections:
         return []
 
+    def _snap(t: float) -> float:
+        if snap_to_downbeat and downbeats:
+            return _snap_to_downbeat(t, downbeats)
+        return t
+
     components: list[ComponentInstance] = []
     n_choruses = len(chorus_sections)
 
     for i, chorus in enumerate(chorus_sections):
         occurrence = i + 1
-        start = float(chorus.get("start", 0.0))
-        end = float(chorus.get("end", start))
+        start = _snap(float(chorus.get("start", 0.0)))
+        end = _snap(float(chorus.get("end", start)))
 
         if n_choruses == 1:
-            # v3: single chorus → two rows (entry + exit), same occurrence_index=1.
+            # v3: single chorus -> two rows (entry + exit), same occurrence_index=1.
             components.append(
                 ComponentInstance(
                     component_type="chorus",
@@ -198,13 +549,15 @@ def identify_from_allin1_sections(
             verse_before_chorus = section  # keep the last verse before chorus
 
     if verse_before_chorus is not None:
+        verse_start = _snap(float(verse_before_chorus.get("start", 0.0)))
+        verse_end = _snap(float(verse_before_chorus.get("end", first_chorus_start)))
         components.append(
             ComponentInstance(
                 component_type="verse",
                 occurrence_index=1,
                 role="loop_target",
-                start_time=float(verse_before_chorus.get("start", 0.0)),
-                end_time=float(verse_before_chorus.get("end", first_chorus_start)),
+                start_time=verse_start,
+                end_time=verse_end,
                 confidence=0.9,
                 source="allin1_sections",
             )
@@ -218,11 +571,15 @@ def identify_from_lyrics_repetition(
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
     song_total_duration: Optional[float] = None,
+    snap_to_downbeat: bool = False,
 ) -> list[ComponentInstance]:
     """Identify chorus via repeated-line-group clustering on LRC lines.
 
     v3 — Multi-cue weighting (replaces pure repeat_count scoring, which
     misidentified repeated verses as choruses).
+
+    v5: When snap_to_downbeat=True and downbeats are provided, start_time/end_time
+    are snapped to nearest downbeat instead of nearest beat.
 
     Algorithm:
       1. Parse LRC via the existing workers/lrc_parser.py.
@@ -231,18 +588,19 @@ def identify_from_lyrics_repetition(
          lines and group window-start indices by exact-signature match.
          Also try fuzzy match (rapidfuzz.fuzz.ratio > 85) to catch minor
          lyric variations.
-      4. Multi-cue scoring: repetition_score × position_weight ×
-         length_weight × content_weight.
+      4. Multi-cue scoring: repetition_score x position_weight x
+         length_weight x content_weight.
       5. Best candidate = chorus. Its occurrence positions give N chorus
-         instances (entry/exit roles). Single-chorus → two rows.
+         instances (entry/exit roles). Single-chorus -> two rows.
       6. Verse (loop_target): lines immediately before the first chorus.
       7. Snap start_time/end_time to nearest beat if beats provided.
 
     Args:
         lrc_content: Raw LRC file content.
         beats: Optional list of beat timestamps for snapping.
-        downbeats: Optional list of downbeat timestamps (unused for now).
+        downbeats: Optional list of downbeat timestamps for snapping (preferred).
         song_total_duration: Optional total song duration for position weighting.
+        snap_to_downbeat: If True, snap to downbeats (requires downbeats param).
 
     Returns:
         List of ComponentInstance objects.
@@ -380,7 +738,10 @@ def identify_from_lyrics_repetition(
             end_time = lines[min(start_idx + w - 1, n - 1)].time_seconds + avg_dur
 
         # Snap to beats if provided.
-        if beats:
+        if snap_to_downbeat and downbeats:
+            start_time = _snap_to_downbeat(start_time, downbeats)
+            end_time = _snap_to_downbeat(end_time, downbeats)
+        elif beats:
             start_time = _snap_to_beat(start_time, beats)
             end_time = _snap_to_beat(end_time, beats)
 
@@ -436,7 +797,10 @@ def identify_from_lyrics_repetition(
         if verse_start_idx < verse_end_idx:
             verse_start_time = lines[verse_start_idx].time_seconds
             verse_end_time = lines[verse_end_idx].time_seconds
-            if beats:
+            if snap_to_downbeat and downbeats:
+                verse_start_time = _snap_to_downbeat(verse_start_time, downbeats)
+                verse_end_time = _snap_to_downbeat(verse_end_time, downbeats)
+            elif beats:
                 verse_start_time = _snap_to_beat(verse_start_time, beats)
                 verse_end_time = _snap_to_beat(verse_end_time, beats)
             components.append(
@@ -460,8 +824,15 @@ def compute_component_features(
     component: ComponentInstance,
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
+    stems_dir: Optional[Path] = None,
+    hop_length: int = 512,
 ) -> ComponentInstance:
     """Compute per-component BPM, key, groove_density, backbeat_strength, energy_level.
+
+    v5 changes:
+      - Uses cached Demucs stems (drums, vocals, bass, other) when available.
+      - Computes per-field confidence scores.
+      - Computes composite `confidence` as weighted mean of per-field scores.
 
     Mutates and returns the component in place.
 
@@ -471,9 +842,11 @@ def compute_component_features(
         component: ComponentInstance to compute features for.
         beats: Optional global beat timestamps.
         downbeats: Optional global downbeat timestamps.
+        stems_dir: Optional path to cached stems directory.
+        hop_length: Hop length for onset strength computation.
 
     Returns:
-        The same ComponentInstance with features populated.
+        The same ComponentInstance with features and per-field confidences populated.
     """
     start_sample = int(component.start_time * sr)
     end_sample = int(component.end_time * sr)
@@ -483,11 +856,29 @@ def compute_component_features(
     if len(y_slice) == 0:
         return component
 
-    hop_length = 512
+    segment_duration = component.end_time - component.start_time
+
+    # Load stems if available.
+    drums_y: Optional[np.ndarray] = None
+    vocals_y: Optional[np.ndarray] = None
+    if stems_dir is not None:
+        drums_path = stems_dir / "drums.wav"
+        if drums_path.exists():
+            try:
+                drums_y, _ = librosa.load(str(drums_path), sr=sr, mono=True)
+            except Exception as e:
+                logger.debug(f"Could not load drums stem: {e}")
+        vocals_path = stems_dir / "vocals.wav"
+        if vocals_path.exists():
+            try:
+                vocals_y, _ = librosa.load(str(vocals_path), sr=sr, mono=True)
+            except Exception as e:
+                logger.debug(f"Could not load vocals stem: {e}")
+
+    has_stems = drums_y is not None
 
     # BPM: re-estimate from onset strength on the slice.
     try:
-        segment_duration = component.end_time - component.start_time
         if segment_duration >= 8.0:
             onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
             tempo = librosa.beat.tempo(
@@ -518,10 +909,18 @@ def compute_component_features(
     except Exception as e:
         logger.debug(f"Key detection failed for component: {e}")
 
-    # groove_density: mean onset strength (onsets/sec).
+    # groove_density: from drums stem onset strength (if stems available), else full mix.
     try:
-        onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
-        segment_duration = component.end_time - component.start_time
+        if drums_y is not None:
+            drums_slice = drums_y[start_sample:end_sample] if end_sample <= len(drums_y) else np.array([])
+            if len(drums_slice) > 0:
+                onset_env = librosa.onset.onset_strength(
+                    y=drums_slice, sr=sr, hop_length=hop_length
+                )
+            else:
+                onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
+        else:
+            onset_env = librosa.onset.onset_strength(y=y_slice, sr=sr, hop_length=hop_length)
         if segment_duration > 0:
             component.groove_density = float(np.mean(onset_env) / segment_duration)
     except Exception as e:
@@ -532,7 +931,8 @@ def compute_component_features(
         if beats:
             seg_beats = [b for b in beats if component.start_time <= b <= component.end_time]
             if len(seg_beats) >= 4:
-                rms = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=hop_length)[0]
+                source_y = drums_y if drums_y is not None else y_slice
+                rms = librosa.feature.rms(y=source_y, frame_length=2048, hop_length=hop_length)[0]
                 rms_times = librosa.frames_to_time(
                     np.arange(len(rms)), sr=sr, hop_length=hop_length
                 )
@@ -560,12 +960,68 @@ def compute_component_features(
 
     # energy_level: mean RMS in dB.
     try:
-        rms = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=hop_length)[0]
-        if rms.size:
-            mean_rms = float(np.mean(rms))
-            component.energy_level = float(20 * np.log10(mean_rms + 1e-10))
+        source_y = vocals_y if vocals_y is not None else y_slice
+        if vocals_y is not None:
+            # Weighted: 0.7 full mix + 0.3 vocals.
+            rms_full = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=hop_length)[0]
+            rms_vocals = librosa.feature.rms(y=vocals_y[start_sample:end_sample] if end_sample <= len(vocals_y) else np.array([]), frame_length=2048, hop_length=hop_length)[0]
+            if rms_full.size and rms_vocals.size:
+                mean_rms = float(0.7 * np.mean(rms_full) + 0.3 * np.mean(rms_vocals))
+            elif rms_full.size:
+                mean_rms = float(np.mean(rms_full))
+            else:
+                mean_rms = 0.0
+        else:
+            rms = librosa.feature.rms(y=y_slice, frame_length=2048, hop_length=hop_length)[0]
+            mean_rms = float(np.mean(rms)) if rms.size else 0.0
+        component.energy_level = float(20 * np.log10(mean_rms + 1e-10))
     except Exception as e:
         logger.debug(f"Energy level failed for component: {e}")
+
+    # v5: Per-field confidence scores.
+    # bpm_confidence: based on segment duration.
+    if segment_duration >= 16.0:
+        component.bpm_confidence = 0.9
+    elif segment_duration >= 8.0:
+        component.bpm_confidence = 0.7
+    else:
+        component.bpm_confidence = 0.4
+
+    # key_confidence: from detect_key_segment_vote's key_score_margin, sigmoid-mapped.
+    try:
+        from .analyzer import detect_key_segment_vote
+
+        key_result = detect_key_segment_vote(
+            y_slice, sr, segments=[{"start": 0.0, "end": segment_duration}]
+        )
+        margin = getattr(key_result, "key_score_margin", None)
+        if margin is not None:
+            # Sigmoid mapping: margin of 0 -> 0.5, margin of 0.5 -> ~0.62, margin of 2.0 -> ~0.88
+            component.key_confidence = float(1.0 / (1.0 + np.exp(-2.0 * margin)))
+        else:
+            component.key_confidence = 0.7
+    except Exception:
+        component.key_confidence = 0.7
+
+    # groove/backbeat/energy confidence: higher if stems available.
+    if has_stems:
+        component.groove_confidence = 0.9
+        component.backbeat_confidence = 0.9
+        component.energy_confidence = 0.9
+    else:
+        component.groove_confidence = 0.7
+        component.backbeat_confidence = 0.7
+        component.energy_confidence = 0.7
+
+    # Composite confidence: weighted mean of per-field scores.
+    per_field = [
+        component.bpm_confidence or 0.7,
+        component.key_confidence or 0.7,
+        component.groove_confidence or 0.7,
+        component.backbeat_confidence or 0.7,
+        component.energy_confidence or 0.7,
+    ]
+    component.confidence = float(np.mean(per_field))
 
     return component
 
@@ -580,32 +1036,26 @@ async def extract_components(
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
     force: bool = False,
+    use_stems: bool = False,
+    snap_to_downbeat: bool = False,
+    energy_aware_roles: bool = False,
 ) -> tuple[list[ComponentInstance], str]:
-    """Extract song components using hybrid strategy.
+    """Extract song components using hybrid strategy (v5 enhancements).
 
-    v3 — Cache-aware (defense in depth): the worker re-checks BOTH local cache
-    and R2 for ``{hash_prefix}_components.json`` and ``{hash_prefix}/components.json``
-    respectively, even when the admin CLI already short-circuited.
+    v5 additions:
+      - `use_stems`: If True, load cached Demucs stems for per-component
+        feature extraction.
+      - `snap_to_downbeat`: If True, use downbeats for edit-point snapping.
+      - `energy_aware_roles`: If True, run _assign_roles_by_energy after
+        identification to reassign entry/exit roles based on energy cues.
+
+    Note: `analyze_audio_fast()` does NOT return beats/downbeats. When the
+    tier-2 lyrics path runs and beats are missing, the caller (queue.py)
+    should run madmom downbeat detection BEFORE calling this function to
+    populate the downbeats parameter.
 
     Returns (components, source) where source is one of:
     'allin1_sections', 'lyrics_repetition', 'none'.
-
-    Strategy order:
-      1. UNLESS force=True: check local cache → R2 cache. If a cached
-         components.json exists AND its schema_version matches
-         COMPONENT_SCHEMA_VERSION, return the cached payload.
-      2. If sections provided & non-empty → identify_from_allin1_sections()
-      3. Elif lrc_content provided & non-empty:
-         a. If beats/downbeats NOT provided → run analyze_audio_fast() inline
-            to obtain beats/downbeats/tempo_bpm. Save result via
-            CacheManager.save_fast_analyze_result for reuse.
-         b. identify_from_lyrics_repetition(lrc_content, beats, downbeats, ...)
-      4. If all fail → ([], 'none').
-
-    After identification, ALWAYS load audio and compute per-component features
-    via compute_component_features().
-
-    Finally, persist the result to local cache AND R2 with schema_version.
     """
     hash_prefix = content_hash[:12]
 
@@ -631,7 +1081,9 @@ async def extract_components(
     source = "none"
 
     if sections:
-        components = identify_from_allin1_sections(sections)
+        components = identify_from_allin1_sections(
+            sections, snap_to_downbeat=snap_to_downbeat, downbeats=downbeats
+        )
         if components:
             source = "allin1_sections"
 
@@ -668,6 +1120,7 @@ async def extract_components(
             beats=beats,
             downbeats=downbeats,
             song_total_duration=song_total_duration,
+            snap_to_downbeat=snap_to_downbeat,
         )
         if components:
             source = "lyrics_repetition"
@@ -689,8 +1142,22 @@ async def extract_components(
 
         y, sr = await loop.run_in_executor(None, _load_audio)
 
+        # v5: Load stems directory if use_stems=True.
+        stems_dir: Optional[Path] = None
+        if use_stems:
+            stems_dir = cache_manager.get_stems_dir(content_hash)
+            if stems_dir is None:
+                logger.info("Stems not cached; using full-mix features")
+
+        # v5: Energy-aware role assignment (before feature computation).
+        if energy_aware_roles:
+            components = _assign_roles_by_energy(components, y, sr, stems_dir=stems_dir)
+
         for component in components:
-            compute_component_features(y, sr, component, beats=beats, downbeats=downbeats)
+            compute_component_features(
+                y, sr, component, beats=beats, downbeats=downbeats,
+                stems_dir=stems_dir,
+            )
     except Exception as e:
         logger.warning(f"Audio load / feature computation failed: {e}")
 
@@ -713,7 +1180,7 @@ def _serialize_components(
     hash_prefix: str,
     source: str,
 ) -> dict:
-    """Serialize components to the v3 components.json payload."""
+    """Serialize components to the v5 components.json payload."""
     return {
         "schema_version": COMPONENT_SCHEMA_VERSION,
         "content_hash": content_hash,
@@ -732,6 +1199,20 @@ def _serialize_components(
                 "backbeat_strength": c.backbeat_strength,
                 "energy_level": c.energy_level,
                 "confidence": c.confidence,
+                # v5: per-field confidence
+                "bpm_confidence": c.bpm_confidence,
+                "key_confidence": c.key_confidence,
+                "groove_confidence": c.groove_confidence,
+                "backbeat_confidence": c.backbeat_confidence,
+                "energy_confidence": c.energy_confidence,
+                # v5: LLM theme/posture
+                "theme": c.theme,
+                "vocal_posture": c.vocal_posture,
+                "theme_confidence": c.theme_confidence,
+                "vocal_posture_confidence": c.vocal_posture_confidence,
+                # v5: reasoning
+                "theme_reasoning": c.theme_reasoning,
+                "posture_reasoning": c.posture_reasoning,
             }
             for c in components
         ],
@@ -755,6 +1236,20 @@ def _deserialize_components(payload: dict) -> list[ComponentInstance]:
                 backbeat_strength=c.get("backbeat_strength"),
                 energy_level=c.get("energy_level"),
                 confidence=c.get("confidence"),
+                # v5: per-field confidence
+                bpm_confidence=c.get("bpm_confidence"),
+                key_confidence=c.get("key_confidence"),
+                groove_confidence=c.get("groove_confidence"),
+                backbeat_confidence=c.get("backbeat_confidence"),
+                energy_confidence=c.get("energy_confidence"),
+                # v5: LLM theme/posture
+                theme=c.get("theme"),
+                vocal_posture=c.get("vocal_posture"),
+                theme_confidence=c.get("theme_confidence"),
+                vocal_posture_confidence=c.get("vocal_posture_confidence"),
+                # v5: reasoning
+                theme_reasoning=c.get("theme_reasoning"),
+                posture_reasoning=c.get("posture_reasoning"),
                 source=payload.get("component_source", ""),
             )
         )
