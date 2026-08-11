@@ -9,6 +9,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from sow_analysis.models import (
+    ComponentAnalysisJobRequest,
     AnalyzeJobRequest,
     EmbeddingJobRequest,
     FastAnalyzeJobRequest,
@@ -29,6 +30,19 @@ from sow_analysis.workers.queue import (
 
 def _queue_state_messages(caplog):
     return [record.message for record in caplog.records if "Queue state:" in record.message]
+
+
+def _extract_table_row(message: str, job_type: str) -> dict | None:
+    """Extract table row values for a given job type from the log message."""
+    import re
+
+    pattern = rf"\|\s+{re.escape(job_type)}\s*\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|"
+    match = re.search(pattern, message)
+    if not match:
+        return None
+    keys = ["queued", "waiting", "processing", "completed", "failed"]
+    values = [g.strip() for g in match.groups()]
+    return dict(zip(keys, values))
 
 
 def _make_analysis_job(job_id: str, status: JobStatus) -> Job:
@@ -97,6 +111,16 @@ def _make_job_for_type(job_type: JobType, job_id: str, status: JobStatus) -> Job
             type=job_type,
             status=status,
             request=FastAnalyzeJobRequest(
+                audio_url=f"s3://bucket/{job_id}.mp3",
+                content_hash=job_id,
+            ),
+        )
+    if job_type == JobType.COMPONENT_ANALYSIS:
+        return Job(
+            id=job_id,
+            type=job_type,
+            status=status,
+            request=ComponentAnalysisJobRequest(
                 audio_url=f"s3://bucket/{job_id}.mp3",
                 content_hash=job_id,
             ),
@@ -190,8 +214,14 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "ANALYZE[queued:1,waiting:0,processing:0,completed:0,failed:0]" in messages[0]
-        assert "ANALYZE queued=[" in messages[0]
+        row = _extract_table_row(messages[0], "ANALYZE")
+        assert row is not None
+        assert row["queued"] == "1"
+        assert row["waiting"] == ""
+        assert row["processing"] == ""
+        assert row["completed"] == ""
+        assert row["failed"] == ""
+        assert "queued_wait=[" in messages[0]
 
     def test_log_queue_state_emits_for_processing_job(self, tmp_path, caplog):
         queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
@@ -203,8 +233,14 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "ANALYZE[queued:0,waiting:0,processing:1,completed:0,failed:0]" in messages[0]
-        assert "ANALYZE processing=" in messages[0]
+        row = _extract_table_row(messages[0], "ANALYZE")
+        assert row is not None
+        assert row["queued"] == ""
+        assert row["waiting"] == ""
+        assert row["processing"] == "1"
+        assert row["completed"] == ""
+        assert row["failed"] == ""
+        assert "processing=" in messages[0]
 
     def test_log_queue_state_emits_for_recent_failed_job(self, tmp_path, caplog):
         queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
@@ -216,7 +252,13 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "ANALYZE[queued:0,waiting:0,processing:0,completed:0,failed:1]" in messages[0]
+        row = _extract_table_row(messages[0], "ANALYZE")
+        assert row is not None
+        assert row["queued"] == ""
+        assert row["waiting"] == ""
+        assert row["processing"] == ""
+        assert row["completed"] == ""
+        assert row["failed"] == "1"
 
     def test_log_queue_state_skips_stale_failed_job(self, tmp_path, caplog):
         queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
@@ -242,8 +284,14 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "EMBEDDING[queued:1,waiting:0,processing:0,completed:0,failed:0]" in messages[0]
-        assert "EMBEDDING queued=[" in messages[0]
+        row = _extract_table_row(messages[0], "EMBEDDING")
+        assert row is not None
+        assert row["queued"] == "1"
+        assert row["waiting"] == ""
+        assert row["processing"] == ""
+        assert row["completed"] == ""
+        assert row["failed"] == ""
+        assert "queued_wait=[" in messages[0]
 
     def test_log_queue_state_handles_embedding_processing_job(self, tmp_path, caplog):
         """Regression: EMBEDDING processing jobs must not cause KeyError."""
@@ -256,8 +304,14 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert "EMBEDDING[queued:0,waiting:0,processing:1,completed:0,failed:0]" in messages[0]
-        assert "EMBEDDING processing=" in messages[0]
+        row = _extract_table_row(messages[0], "EMBEDDING")
+        assert row is not None
+        assert row["queued"] == ""
+        assert row["waiting"] == ""
+        assert row["processing"] == "1"
+        assert row["completed"] == ""
+        assert row["failed"] == ""
+        assert "processing=" in messages[0]
 
 
     @pytest.mark.parametrize("job_type", list(JobType))
@@ -272,8 +326,14 @@ class TestJobQueueStateLogging:
 
         messages = _queue_state_messages(caplog)
         assert len(messages) == 1
-        assert f"{job_type.name}[queued:1,waiting:0,processing:0,completed:0,failed:0]" in messages[0]
-        assert f"{job_type.name} queued=[" in messages[0]
+        row = _extract_table_row(messages[0], job_type.name)
+        assert row is not None
+        assert row["queued"] == "1"
+        assert row["waiting"] == ""
+        assert row["processing"] == ""
+        assert row["completed"] == ""
+        assert row["failed"] == ""
+        assert "queued_wait=[" in messages[0]
 
 
 class TestLRCJobProcessing:

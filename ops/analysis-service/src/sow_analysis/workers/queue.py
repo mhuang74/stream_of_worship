@@ -2529,30 +2529,100 @@ class JobQueue:
         else:
             self._last_quiescent_log_time = 0.0
 
-        parts: list[str] = []
-        wait_parts: list[str] = []
+        # Build table of active job types (those with at least one non-zero count)
+        active_types: list[tuple[JobType, Dict[JobStatus, int]]] = []
         for jt in JobType:
             s = stats[jt]
-            parts.append(
-                f"{jt.name}[queued:{s[JobStatus.QUEUED]},"
-                f"waiting:{s[JobStatus.WAITING]},"
-                f"processing:{s[JobStatus.PROCESSING]},"
-                f"completed:{s[JobStatus.COMPLETED]},"
-                f"failed:{s[JobStatus.FAILED]}]"
-            )
+            if any(
+                s[status] > 0
+                for status in (
+                    JobStatus.QUEUED,
+                    JobStatus.WAITING,
+                    JobStatus.PROCESSING,
+                    JobStatus.COMPLETED,
+                    JobStatus.FAILED,
+                )
+            ):
+                active_types.append((jt, s))
+
+        headers = ["Job Type", "Queue", "Wait", "Processing", "Complete", "Failed"]
+        aligns = ["l", "r", "r", "r", "r", "r"]
+
+        def _fmt_cell(v: int) -> str:
+            return str(v) if v > 0 else ""
+
+        col_widths = [len(h) for h in headers]
+        for jt, s in active_types:
+            cells = [
+                jt.name,
+                _fmt_cell(s[JobStatus.QUEUED]),
+                _fmt_cell(s[JobStatus.WAITING]),
+                _fmt_cell(s[JobStatus.PROCESSING]),
+                _fmt_cell(s[JobStatus.COMPLETED]),
+                _fmt_cell(s[JobStatus.FAILED]),
+            ]
+            for i, c in enumerate(cells):
+                col_widths[i] = max(col_widths[i], len(c))
+
+        def _fmt_row(cells: list[str], widths: list[int], aligns: list[str]) -> str:
+            parts = []
+            for cell, width, align in zip(cells, widths, aligns):
+                if align == "r":
+                    parts.append(cell.rjust(width))
+                else:
+                    parts.append(cell.ljust(width))
+            return "| " + " | ".join(parts) + " |"
+
+        def _fmt_sep(widths: list[int]) -> str:
+            return "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+
+        lines: list[str] = []
+
+        if active_types:
+            lines.append("Queue state:")
+            lines.append(_fmt_sep(col_widths))
+            lines.append(_fmt_row(headers, col_widths, aligns))
+            lines.append(_fmt_sep(col_widths))
+            for jt, s in active_types:
+                cells = [
+                    jt.name,
+                    _fmt_cell(s[JobStatus.QUEUED]),
+                    _fmt_cell(s[JobStatus.WAITING]),
+                    _fmt_cell(s[JobStatus.PROCESSING]),
+                    _fmt_cell(s[JobStatus.COMPLETED]),
+                    _fmt_cell(s[JobStatus.FAILED]),
+                ]
+                lines.append(_fmt_row(cells, col_widths, aligns))
+            lines.append(_fmt_sep(col_widths))
+        else:
+            lines.append("Queue state: (no active jobs)")
+
+        # Wait times section
+        wait_lines: list[str] = []
+        max_name_width = max((len(jt.name) for jt, _ in active_types), default=0)
+        for jt in JobType:
             qwt = queued_wait_times[jt]
+            pd = processing_durations[jt]
+            if not qwt and not pd:
+                continue
+            segments: list[str] = []
             if qwt:
                 waits = ",".join(f"{w:.0f}s" for w in qwt[:3])
                 if len(qwt) > 3:
                     waits += f",...+{len(qwt) - 3}more"
-                wait_parts.append(f"{jt.name} queued=[{waits}]")
-            pd = processing_durations[jt]
+                segments.append(f"queued_wait=[{waits}]")
             if pd:
                 avg_dur = sum(pd) / len(pd)
-                wait_parts.append(f"{jt.name} processing={avg_dur:.0f}s")
+                segments.append(f"processing={avg_dur:.0f}s")
+            wait_lines.append(
+                f"  {jt.name.ljust(max_name_width)}  {'  '.join(segments)}"
+            )
 
-        wait_time_str = " " + " ".join(wait_parts) if wait_parts else " none"
-        logger.info(f"Queue state: {' '.join(parts)} | Wait times:{wait_time_str}")
+        if wait_lines:
+            lines.append("Wait times:")
+            lines.extend(wait_lines)
+
+        logger.info("\n".join(lines))
 
     async def _periodic_logging_loop(self) -> None:
         """Background task that logs queue state periodically."""
