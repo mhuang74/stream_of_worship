@@ -60,6 +60,7 @@ from stream_of_worship.admin.services.youtube import (
 from stream_of_worship.music.key import parse_musical_key
 
 console = Console()
+progress_console = Console(stderr=True)
 logger = logging.getLogger("sow_admin.audio")
 app = typer.Typer(help="Audio recording operations")
 key_review_app = typer.Typer(help="Detected/catalog key disagreement review")
@@ -70,6 +71,14 @@ KEY_REVIEW_CAVEAT = (
     "A detector version change + forced analysis re-run will clobber this state. "
     "v3 will introduce an overrides table preserving manual decisions."
 )
+
+COMPONENTS_FORMAT_VALUES = {"table", "json"}
+
+
+def _validate_choice(value: str, choices: set[str], name: str) -> None:
+    if value not in choices:
+        console.print(f"[red]{name} must be one of: {', '.join(sorted(choices))}[/red]")
+        raise typer.Exit(1)
 
 
 # Helper functions for download flow
@@ -2165,6 +2174,12 @@ def components_recording(
     classify_posture: bool = typer.Option(
         False, "--classify-posture", help="LLM vocal posture classification"
     ),
+    compute_all_fields: bool = typer.Option(
+        False,
+        "--compute-all-fields",
+        help="Shortcut: enable snap-to-downbeat, energy-roles, classify-theme, classify-posture",
+    ),
+    format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Extract and display chorus/verse component metadata for a song.
@@ -2177,12 +2192,32 @@ def components_recording(
     If a cached components.json already exists in R2 with current
     schema_version, returns it directly (unless --force is specified).
 
+    Use --compute-all-fields as a shortcut to enable snap-to-downbeat,
+    energy-roles, classify-theme, and classify-posture at once. --use-stems
+    is not included in the shortcut but can be combined with it.
+
+    Use --format json for machine-readable output (JSON arrays to stdout;
+    progress messages go to stderr).
+
     Batch mode: pass --stdin to read song IDs from stdin (one per line).
     """
+    # Flag override: --compute-all-fields enables all advanced flags.
+    if compute_all_fields:
+        snap_to_downbeat = True
+        energy_roles = True
+        classify_theme = True
+        classify_posture = True
+
+    # Validate --format option.
+    _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
+
+    # In JSON mode, route all progress/error messages to stderr.
+    out_console = progress_console if format_ == "json" else console
+
     try:
         config = AdminConfig.load(config_path)
     except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        out_console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
     db_client = get_db_client(config)
@@ -2192,60 +2227,92 @@ def components_recording(
         raw = sys.stdin.read().splitlines()
         song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
         if not song_ids:
-            console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
+            out_console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
             raise typer.Exit(1)
 
-        succeeded: list[str] = []
-        failed: list[tuple[str, str]] = []
+        results: list[dict] = []
         for sid in song_ids:
             recording = db_client.get_recording_by_song_id(sid)
             if not recording:
-                failed.append((sid, "No recording found"))
+                results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
                 continue
             if not recording.r2_audio_url:
-                failed.append((sid, "No audio URL"))
+                results.append({"song_id": sid, "status": "failed", "error": "No audio URL"})
                 continue
             if not recording.has_full_analysis and not recording.has_lrc:
-                failed.append((sid, "No sections or LRC available"))
+                results.append(
+                    {"song_id": sid, "status": "failed", "error": "No sections or LRC available"}
+                )
                 continue
 
-            result = _submit_component_analysis_job(
-                recording, sid, config.analysis_url, db_client, console,
-                force=force, wait=not no_wait,
-                snap_to_downbeat=snap_to_downbeat,
-                energy_aware_roles=energy_roles,
-                use_stems=use_stems,
-                classify_theme=classify_theme,
-                classify_vocal_posture=classify_posture,
-            )
-            if result is not None:
-                succeeded.append(sid)
+            if no_wait:
+                try:
+                    _submit_component_analysis_job(
+                        recording, sid, config.analysis_url, db_client, out_console,
+                        force=force, wait=False,
+                        snap_to_downbeat=snap_to_downbeat,
+                        energy_aware_roles=energy_roles,
+                        use_stems=use_stems,
+                        classify_theme=classify_theme,
+                        classify_vocal_posture=classify_posture,
+                    )
+                    results.append({"song_id": sid, "status": "submitted"})
+                except Exception as e:
+                    results.append({"song_id": sid, "status": "failed", "error": str(e)})
             else:
-                failed.append((sid, "Job failed or no components"))
+                result = _submit_component_analysis_job(
+                    recording, sid, config.analysis_url, db_client, out_console,
+                    force=force, wait=True,
+                    snap_to_downbeat=snap_to_downbeat,
+                    energy_aware_roles=energy_roles,
+                    use_stems=use_stems,
+                    classify_theme=classify_theme,
+                    classify_vocal_posture=classify_posture,
+                )
+                if result is None:
+                    results.append(
+                        {"song_id": sid, "status": "failed", "error": "Job failed or no components"}
+                    )
+                else:
+                    results.append(
+                        {
+                            "song_id": sid,
+                            "status": "succeeded",
+                            "components": [c.to_dict() for c in result],
+                        }
+                    )
 
-        console.print(
-            f"\n[bold]Summary:[/bold] {len(succeeded)} succeeded, {len(failed)} failed"
-        )
-        if failed:
-            for sid, msg in failed:
-                console.print(f"  [red]{sid}: {msg}[/red]")
+        if format_ == "json":
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+        else:
+            succeeded_count = sum(1 for r in results if r["status"] != "failed")
+            failed_count = sum(1 for r in results if r["status"] == "failed")
+            console.print(
+                f"\n[bold]Summary:[/bold] {succeeded_count} succeeded, {failed_count} failed"
+            )
+            for r in results:
+                if r["status"] == "failed":
+                    console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
+
+        if any(r["status"] == "failed" for r in results):
+            raise typer.Exit(1)
         return
 
     # Single song mode.
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(
+        out_console.print(
             f"[red]No recording found for {song_id}. "
             f"Run 'sow-admin audio download {song_id}' first.[/red]"
         )
         raise typer.Exit(1)
 
     if not recording.r2_audio_url:
-        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
+        out_console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
 
     if not recording.has_full_analysis and not recording.has_lrc:
-        console.print(
+        out_console.print(
             f"[yellow]Song {song_id} has neither full analysis nor LRC. "
             f"Run 'sow-admin audio analyze {song_id} --analysis-tier full' or "
             f"'sow-admin audio lrc {song_id}' first.[/yellow]"
@@ -2253,7 +2320,7 @@ def components_recording(
         raise typer.Exit(0)
 
     result = _submit_component_analysis_job(
-        recording, song_id, config.analysis_url, db_client, console,
+        recording, song_id, config.analysis_url, db_client, out_console,
         force=force, wait=not no_wait,
         snap_to_downbeat=snap_to_downbeat,
         energy_aware_roles=energy_roles,
@@ -2263,14 +2330,22 @@ def components_recording(
     )
 
     if no_wait:
-        console.print("[cyan]Job submitted. Poll with 'sow-admin audio status <job_id>'[/cyan]")
+        if format_ == "json":
+            print(json.dumps({"status": "submitted", "song_id": song_id}, ensure_ascii=False))
+        else:
+            out_console.print(
+                "[cyan]Job submitted. Poll with 'sow-admin audio status <job_id>'[/cyan]"
+            )
         return
 
-    if result is not None:
-        # Display existing components from DB.
-        components = db_client.get_song_components(song_id)
-        if components:
-            _render_components_table(components, console, title=f"Components: {song_id}")
+    if result is None:
+        raise typer.Exit(1)
+
+    if format_ == "json":
+        print(json.dumps([c.to_dict() for c in result], ensure_ascii=False, indent=2))
+    else:
+        if result:
+            _render_components_table(result, console, title=f"Components: {song_id}")
         else:
             console.print(f"[yellow]No components extracted for {song_id}.[/yellow]")
 
