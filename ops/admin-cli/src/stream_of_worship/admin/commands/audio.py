@@ -2152,7 +2152,7 @@ def _parse_component_results(
 
 @app.command("components")
 def components_recording(
-    song_id: str = typer.Argument(..., help="Song ID to analyze components for"),
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to analyze components for"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-extraction"),
     no_wait: bool = typer.Option(False, "--no-wait", help="Submit without waiting"),
     stdin: bool = typer.Option(
@@ -2213,6 +2213,14 @@ def components_recording(
 
     # In JSON mode, route all progress/error messages to stderr.
     out_console = progress_console if format_ == "json" else console
+
+    if not song_id and not stdin:
+        out_console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if song_id and stdin:
+        out_console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
 
     try:
         config = AdminConfig.load(config_path)
