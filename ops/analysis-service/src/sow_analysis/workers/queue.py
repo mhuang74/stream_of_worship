@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 from ..config import settings
 from ..logging_config import set_job_id
+from ..step_timer import step_timer
 
 logger = logging.getLogger(__name__)
 
@@ -925,13 +926,14 @@ class JobQueue:
             return
 
         try:
-            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
-                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+            with step_timer("R2 client initialization", logger):
+                if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                    self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
-            if not self.r2_client:
-                raise RuntimeError(
-                    "R2 client not configured; cannot download audio for component analysis"
-                )
+                if not self.r2_client:
+                    raise RuntimeError(
+                        "R2 client not configured; cannot download audio for component analysis"
+                    )
 
             import tempfile
 
@@ -939,11 +941,8 @@ class JobQueue:
                 temp_path = Path(temp_dir)
                 audio_path = temp_path / "audio.mp3"
 
-                logger.info("Downloading audio from R2 for component analysis...")
-                download_start = time.time()
-                await self.r2_client.download_audio(request.audio_url, audio_path)
-                download_elapsed = time.time() - download_start
-                logger.info(f"Audio download completed in {download_elapsed:.2f}s")
+                with step_timer("Audio download from R2", logger):
+                    await self.r2_client.download_audio(request.audio_url, audio_path)
 
                 if not audio_path.exists() or audio_path.stat().st_size == 0:
                     raise RuntimeError("Downloaded audio file is missing or empty")
@@ -969,10 +968,11 @@ class JobQueue:
                     and not downbeats
                     and _detect_downbeats_madmom is not None
                 ):
-                    loop = asyncio.get_event_loop()
-                    madmom_downbeats = await loop.run_in_executor(
-                        None, _detect_downbeats_madmom, audio_path
-                    )
+                    with step_timer("Madmom downbeat detection", logger):
+                        loop = asyncio.get_event_loop()
+                        madmom_downbeats = await loop.run_in_executor(
+                            None, _detect_downbeats_madmom, audio_path
+                        )
                     if madmom_downbeats:
                         downbeats = madmom_downbeats
                     else:
@@ -980,69 +980,68 @@ class JobQueue:
                             "madmom downbeat detection returned None; using beat snapping only"
                         )
 
-                components, source = await extract_components(
-                    audio_path=audio_path,
-                    content_hash=request.content_hash,
-                    cache_manager=self.cache_manager,
-                    r2_client=self.r2_client,
-                    sections=sections_dicts,
-                    lrc_content=request.lrc_content,
-                    beats=request.beats,
-                    downbeats=downbeats,
-                    force=request.options.force,
-                    use_stems=request.options.use_stems,
-                    snap_to_downbeat=request.options.snap_to_downbeat,
-                    energy_aware_roles=request.options.energy_aware_roles,
-                )
+                with step_timer("Component extraction", logger):
+                    components, source = await extract_components(
+                        audio_path=audio_path,
+                        content_hash=request.content_hash,
+                        cache_manager=self.cache_manager,
+                        r2_client=self.r2_client,
+                        sections=sections_dicts,
+                        lrc_content=request.lrc_content,
+                        beats=request.beats,
+                        downbeats=downbeats,
+                        force=request.options.force,
+                        use_stems=request.options.use_stems,
+                        snap_to_downbeat=request.options.snap_to_downbeat,
+                        energy_aware_roles=request.options.energy_aware_roles,
+                    )
 
                 # v5: LLM theme/posture classification.
                 if (
                     request.options.classify_theme
                     or request.options.classify_vocal_posture
                 ):
-                    try:
-                        from .classifier import ThemeClassifier
+                    with step_timer("LLM theme/posture classification", logger):
+                        try:
+                            from .classifier import ThemeClassifier
 
-                        classifier = ThemeClassifier()
-                        components = await classifier.classify_components(
-                            components,
-                            lrc_content=request.lrc_content,
+                            classifier = ThemeClassifier()
+                            components = await classifier.classify_components(
+                                components,
+                                lrc_content=request.lrc_content,
+                            )
+                        except Exception as e:
+                            logger.warning(f"LLM classification failed: {e}")
+
+                with step_timer("Result conversion", logger):
+                    component_results = [
+                        ComponentResult(
+                            component_type=c.component_type,
+                            occurrence_index=c.occurrence_index,
+                            role=c.role,
+                            start_time=c.start_time,
+                            end_time=c.end_time,
+                            bpm=c.bpm,
+                            key=c.key,
+                            groove_density=c.groove_density,
+                            backbeat_strength=c.backbeat_strength,
+                            energy_level=c.energy_level,
+                            confidence=c.confidence,
+                            bpm_confidence=c.bpm_confidence,
+                            key_confidence=c.key_confidence,
+                            groove_confidence=c.groove_confidence,
+                            backbeat_confidence=c.backbeat_confidence,
+                            energy_confidence=c.energy_confidence,
+                            theme=c.theme,
+                            vocal_posture=c.vocal_posture,
+                            theme_confidence=c.theme_confidence,
+                            vocal_posture_confidence=c.vocal_posture_confidence,
+                            theme_reasoning=c.theme_reasoning,
+                            posture_reasoning=c.posture_reasoning,
+                            source=c.source,
                         )
-                    except Exception as e:
-                        logger.warning(f"LLM classification failed: {e}")
-
-                # Convert ComponentInstance -> ComponentResult (v5: including new fields).
-                component_results = [
-                    ComponentResult(
-                        component_type=c.component_type,
-                        occurrence_index=c.occurrence_index,
-                        role=c.role,
-                        start_time=c.start_time,
-                        end_time=c.end_time,
-                        bpm=c.bpm,
-                        key=c.key,
-                        groove_density=c.groove_density,
-                        backbeat_strength=c.backbeat_strength,
-                        energy_level=c.energy_level,
-                        confidence=c.confidence,
-                        # v5: per-field confidence
-                        bpm_confidence=c.bpm_confidence,
-                        key_confidence=c.key_confidence,
-                        groove_confidence=c.groove_confidence,
-                        backbeat_confidence=c.backbeat_confidence,
-                        energy_confidence=c.energy_confidence,
-                        # v5: LLM theme/posture
-                        theme=c.theme,
-                        vocal_posture=c.vocal_posture,
-                        theme_confidence=c.theme_confidence,
-                        vocal_posture_confidence=c.vocal_posture_confidence,
-                        # v5: reasoning
-                        theme_reasoning=c.theme_reasoning,
-                        posture_reasoning=c.posture_reasoning,
-                        source=c.source,
-                    )
-                    for c in components
-                ]
+                        for c in components
+                    ]
 
                 job.result = JobResult(
                     components=component_results if component_results else None,
@@ -1059,16 +1058,17 @@ class JobQueue:
                     f"(source={source}, {len(component_results)} components)"
                 )
 
-                try:
-                    await self.job_store.update_job(
-                        job.id,
-                        status="completed",
-                        progress=1.0,
-                        stage="complete",
-                        result_json=job.result.model_dump_json() if job.result else None,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to update job {job.id} in database: {e}")
+                with step_timer("DB job update (complete)", logger):
+                    try:
+                        await self.job_store.update_job(
+                            job.id,
+                            status="completed",
+                            progress=1.0,
+                            stage="complete",
+                            result_json=job.result.model_dump_json() if job.result else None,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update job {job.id} in database: {e}")
 
         except Exception as e:
             job.status = JobStatus.FAILED
