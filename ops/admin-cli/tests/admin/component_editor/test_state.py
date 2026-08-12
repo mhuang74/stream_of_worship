@@ -224,3 +224,47 @@ class TestSongSession:
     def test_component_for_role_none(self):
         session = _make_session_with_none(exit_comp=None)
         assert session.component_for_role("exit") is None
+
+
+class TestGetSelectedComponent:
+    """v4 NEW: get_selected_component() helper for the Hero panel."""
+
+    def test_returns_entry_when_selected_row_0(self):
+        entry = _make_component("entry", cid=1)
+        exit_comp = _make_component("exit", cid=2)
+        session = _make_session(entry=entry, exit_comp=exit_comp)
+        state = ComponentEditorState(sessions=[session])
+        state.selected_row = 0
+        assert state.get_selected_component() is entry
+
+    def test_returns_exit_when_selected_row_1(self):
+        entry = _make_component("entry", cid=1)
+        exit_comp = _make_component("exit", cid=2)
+        session = _make_session(entry=entry, exit_comp=exit_comp)
+        state = ComponentEditorState(sessions=[session])
+        state.selected_row = 1
+        assert state.get_selected_component() is exit_comp
+
+    def test_returns_none_when_exit_missing(self):
+        """Partial analysis: exit component is None."""
+        session = _make_session_with_none(exit_comp=None)
+        state = ComponentEditorState(sessions=[session])
+        state.selected_row = 1
+        assert state.get_selected_component() is None
+
+    def test_returns_none_when_entry_missing(self):
+        """Partial analysis: entry component is None."""
+        entry = None
+        exit_comp = _make_component("exit", cid=2)
+        session = SongSession(
+            song_id="song_001",
+            song_title="Test Song",
+            hash_prefix="abc123def456",
+            audio_path="/tmp/audio.mp3",
+            audio_duration=180.0,
+            entry_component=entry,
+            exit_component=exit_comp,
+        )
+        state = ComponentEditorState(sessions=[session])
+        state.selected_row = 0
+        assert state.get_selected_component() is None
