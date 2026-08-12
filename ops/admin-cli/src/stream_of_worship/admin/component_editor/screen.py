@@ -607,6 +607,14 @@ class ComponentEditorScreen(Screen[None]):
         self._sync_selection_from_table_cursor()
         self._refresh_hero()  # v4 NEW
 
+    def on_data_table_cell_highlighted(self, event: DataTable.CellHighlighted) -> None:
+        if event.data_table.id != "component-table":
+            return
+        prev_row = self.state.selected_row
+        self._sync_selection_from_table_cursor()
+        if self.state.selected_row != prev_row:
+            self._refresh_hero()  # v4 NEW
+
     def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
         if event.data_table.id != "component-table":
             return
