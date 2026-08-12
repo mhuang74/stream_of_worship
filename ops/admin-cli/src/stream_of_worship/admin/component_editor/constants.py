@@ -67,6 +67,21 @@ DATA_TABLE_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("energy_level", "*Energy", True),
 )
 
+# Compact column set for the v2 top-panel read-only DataTable.
+# Numerical columns only (no dates, no long text, no enum fields).
+# (field_key, header_label) — drives the top panel's table setup + refresh.
+COMPACT_TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("occurrence_index", "Occ"),
+    ("bpm", "BPM"),
+    ("key", "Key"),
+    ("start_time", "Start"),
+    ("end_time", "End"),
+    ("confidence", "Conf"),
+    ("backbeat_strength", "Backbeat"),
+    ("groove_density", "Groove"),
+    ("energy_level", "Energy"),
+)
+
 # Float editor input attributes
 GROOVE_DENSITY_MIN = 0.0
 GROOVE_DENSITY_MAX = 2.0  # no DB CHECK; admin guard only

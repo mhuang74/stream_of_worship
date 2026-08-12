@@ -175,8 +175,8 @@ async def test_cycle_theme_next_changes_value(tmp_path):
     app.cache_dir = tmp_path
     async with app.run_test(size=(120, 24)) as pilot:
         await pilot.pause()
-        # Directly set the selected column to theme
-        state.selected_column_key = "theme"
+        # v2: editing happens in the detail panel — activate it and focus "theme"
+        app.screen._active_panel = "details"
         state.selected_row = 0
         await pilot.pause()
         # Call the action directly (avoids key binding resolution issues)
@@ -192,7 +192,7 @@ async def test_cycle_theme_prev_changes_value(tmp_path):
     app.cache_dir = tmp_path
     async with app.run_test(size=(120, 24)) as pilot:
         await pilot.pause()
-        state.selected_column_key = "theme"
+        app.screen._active_panel = "details"
         state.selected_row = 0
         await pilot.pause()
         app.screen.action_cycle_field_prev()
@@ -488,13 +488,17 @@ async def test_quit_without_dirty_exits():
 async def test_edit_numeric_opens_overlay(tmp_path):
     app, state = _make_app()
     app.cache_dir = tmp_path
-    async with app.run_test(size=(120, 24)) as pilot:
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
-        state.selected_column_key = "groove_density"
+        # v2: editing happens in the detail panel — activate it and focus
+        # groove_density (index 2 in EDITABLE_FIELDS).
+        app.screen._active_panel = "details"
         state.selected_row = 0
+        detail_panel = app.screen.query_one("#detail-panel")
+        detail_panel._focus_idx = 2  # groove_density
         await pilot.pause()
-        # Mock _cell_screen_region since headless tests have no real rendering
-        app.screen._cell_screen_region = MagicMock(return_value=(0, 0, 10))
+        # Mock the line offset so the field is "in view" in headless mode.
+        detail_panel.get_editable_field_line_offset = MagicMock(return_value=0)
         app.screen.action_edit_numeric()
         await pilot.pause()
         await pilot.pause()
