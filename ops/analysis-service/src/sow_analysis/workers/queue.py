@@ -926,14 +926,13 @@ class JobQueue:
             return
 
         try:
-            with step_timer("R2 client initialization", logger):
-                if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
-                    self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
 
-                if not self.r2_client:
-                    raise RuntimeError(
-                        "R2 client not configured; cannot download audio for component analysis"
-                    )
+            if not self.r2_client:
+                raise RuntimeError(
+                    "R2 client not configured; cannot download audio for component analysis"
+                )
 
             import tempfile
 
