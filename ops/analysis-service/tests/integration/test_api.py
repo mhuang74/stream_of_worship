@@ -293,6 +293,75 @@ class TestJobsEndpoints:
 
         assert response.status_code == 200
 
+    def test_submit_component_analysis_with_all_components(self, client, mock_job_queue):
+        """Test submitting component analysis with all_components option.
+
+        Verifies the request is accepted (200) and the option round-trips
+        into the dispatched job's options.
+        """
+        captured_requests = []
+
+        original_submit = mock_job_queue.submit
+
+        async def capturing_submit(job_type, request):
+            captured_requests.append((job_type, request))
+            return await original_submit(job_type, request)
+
+        mock_job_queue.submit = capturing_submit
+
+        response = client.post(
+            "/api/v1/jobs/component-analysis",
+            json={
+                "audio_url": "s3://bucket/hash/audio.mp3",
+                "content_hash": "abc123",
+                "song_id": "song-1",
+                "options": {
+                    "all_components": True,
+                    "classify_theme": True,
+                    "classify_vocal_posture": True,
+                },
+            },
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job_abc123"
+        assert data["status"] == "queued"
+        # Verify the option round-tripped into the dispatched job's request.
+        assert len(captured_requests) == 1
+        job_type, request = captured_requests[0]
+        assert job_type == JobType.COMPONENT_ANALYSIS
+        assert request.options.all_components is True
+
+    def test_submit_component_analysis_all_components_defaults_false(
+        self, client, mock_job_queue
+    ):
+        """Test component analysis without all_components defaults to False."""
+        captured_requests = []
+
+        original_submit = mock_job_queue.submit
+
+        async def capturing_submit(job_type, request):
+            captured_requests.append((job_type, request))
+            return await original_submit(job_type, request)
+
+        mock_job_queue.submit = capturing_submit
+
+        response = client.post(
+            "/api/v1/jobs/component-analysis",
+            json={
+                "audio_url": "s3://bucket/hash/audio.mp3",
+                "content_hash": "abc123",
+            },
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        assert len(captured_requests) == 1
+        _, request = captured_requests[0]
+        assert request.options.all_components is False
+
 
 class TestAdminEndpoints:
     """Test admin API endpoints (cancel, clear-queue)."""

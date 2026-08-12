@@ -163,6 +163,22 @@ _CHORUS_KEYWORDS = (
 )
 
 
+# v6: components whose roles are transition-relevant. Only these get
+# audio-metadata + LLM fields populated by default. The --all-components
+# flag overrides this.
+ESSENTIAL_ROLES = frozenset({"entry", "exit", "loop_target", "entry_exit"})
+
+
+def _is_essential(component: "ComponentInstance") -> bool:
+    """Return True if the component's role is transition-essential.
+
+    Essential roles: entry, exit, loop_target, entry_exit. Only these
+    components get audio-metadata + LLM fields populated by default
+    (unless ``all_components=True`` overrides).
+    """
+    return component.role in ESSENTIAL_ROLES
+
+
 @dataclass
 class ComponentInstance:
     """An identified song component with computed features.
@@ -1274,6 +1290,7 @@ async def extract_components(
     use_stems: bool = False,
     snap_to_downbeat: bool = False,
     energy_aware_roles: bool = False,
+    all_components: bool = False,
 ) -> tuple[list[ComponentInstance], str]:
     """Extract song components using hybrid strategy (v5 enhancements).
 
@@ -1283,6 +1300,13 @@ async def extract_components(
       - `snap_to_downbeat`: If True, use downbeats for edit-point snapping.
       - `energy_aware_roles`: If True, run _assign_roles_by_energy after
         identification to reassign entry/exit roles based on energy cues.
+
+    v6 additions:
+      - `all_components`: If False (default), only essential-role components
+        (entry/exit/loop_target/entry_exit) get per-component audio-metadata
+        features computed; non-essential rows are kept in the result list
+        with NULL audio fields. If True, all components get features
+        (legacy behavior).
 
     Note: `analyze_audio_fast()` does NOT return beats/downbeats and is never
     called from this function. Downbeats are expected from the caller (queue.py
@@ -1391,10 +1415,16 @@ async def extract_components(
 
             features_start = time.time()
             last_heartbeat = time.time()
+            computed_count = 0
+            skipped_count = 0
             for i, component in enumerate(components, 1):
+                if not all_components and not _is_essential(component):
+                    skipped_count += 1
+                    continue
                 compute_component_features(
                     gf, component, beats=beats, downbeats=downbeats
                 )
+                computed_count += 1
                 now = time.time()
                 if (
                     now - last_heartbeat
@@ -1403,12 +1433,15 @@ async def extract_components(
                     elapsed = now - features_start
                     logger.info(
                         f"Feature computation heartbeat: {i}/{len(components)} "
-                        f"components done ({elapsed:.1f}s elapsed)"
+                        f"({computed_count} computed, {skipped_count} skipped, "
+                        f"{elapsed:.1f}s elapsed)"
                     )
                     last_heartbeat = now
             logger.info(
                 f"Per-component feature computation completed in "
-                f"{time.time() - features_start:.2f}s ({len(components)} components)"
+                f"{time.time() - features_start:.2f}s "
+                f"({computed_count} computed, {skipped_count} skipped, "
+                f"{len(components)} total)"
             )
         except Exception as e:
             logger.warning(f"Feature computation failed: {e}")

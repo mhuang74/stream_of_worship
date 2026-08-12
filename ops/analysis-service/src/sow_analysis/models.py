@@ -90,6 +90,10 @@ class ComponentAnalysisOptions(BaseModel):
     # `skip_beat_cache` invalidates beat_grid.json reads only.
     # Fresh detection still WRITES the beat cache.
     skip_beat_cache: bool = False
+    # v6: populate audio-metadata + LLM fields for ALL components.
+    # Default False: only essential roles (entry/exit/loop_target/entry_exit)
+    # get audio + LLM; non-essential rows are kept but with NULL fields.
+    all_components: bool = False
 
 
 class LrcOptions(BaseModel):

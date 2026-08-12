@@ -1008,6 +1008,7 @@ class JobQueue:
                         use_stems=request.options.use_stems,
                         snap_to_downbeat=request.options.snap_to_downbeat,
                         energy_aware_roles=request.options.energy_aware_roles,
+                        all_components=request.options.all_components,
                     )
 
                 # v5: LLM theme/posture classification.
@@ -1023,6 +1024,7 @@ class JobQueue:
                             components = await classifier.classify_components(
                                 components,
                                 lrc_content=request.lrc_content,
+                                all_components=request.options.all_components,
                             )
                         except Exception as e:
                             logger.warning(f"LLM classification failed: {e}")

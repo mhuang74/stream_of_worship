@@ -579,6 +579,7 @@ class AnalysisClient:
         classify_theme: bool = False,
         classify_vocal_posture: bool = False,
         skip_beat_cache: bool = False,
+        all_components: bool = False,
     ) -> JobInfo:
         """Submit a component analysis job to the analysis service.
 
@@ -596,6 +597,10 @@ class AnalysisClient:
         worker (fresh madmom detection still writes the cache). Orthogonal to
         ``force``.
 
+        v6 — passes ``all_components`` to populate audio-metadata + LLM fields
+        for ALL detected components (default: only essential roles
+        entry/exit/loop_target/entry_exit get audio + LLM).
+
         Args:
             audio_url: R2 URL of the audio file.
             content_hash: SHA-256 hash of the audio content.
@@ -611,6 +616,8 @@ class AnalysisClient:
             classify_theme: LLM theme classification (12 Chinese themes).
             classify_vocal_posture: LLM vocal posture classification.
             skip_beat_cache: Bypass cached beat grid; re-run madmom detection.
+            all_components: Populate audio + LLM metadata for ALL detected
+                components (default: only essential roles).
 
         Returns:
             JobInfo for the submitted job.
@@ -634,6 +641,7 @@ class AnalysisClient:
                 "classify_theme": classify_theme,
                 "classify_vocal_posture": classify_vocal_posture,
                 "skip_beat_cache": skip_beat_cache,
+                "all_components": all_components,
             },
         }
 

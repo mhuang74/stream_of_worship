@@ -1,6 +1,7 @@
 """LLM-based theme and vocal posture classification for song components."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -10,7 +11,7 @@ from typing import Optional
 from openai import OpenAI
 
 from ..config import settings
-from .components import ComponentInstance
+from .components import ESSENTIAL_ROLES, ComponentInstance
 from .llm_rate_limit import call_llm_with_retry
 from .lrc_parser import parse_lrc
 
@@ -132,6 +133,32 @@ def _extract_lyrics_for_component(
     ]
 
 
+def _lyric_hash(lyrics_lines: Optional[list[str]]) -> str:
+    """Normalized content hash for lyric deduplication.
+
+    Lowercases, collapses whitespace, and strips each line before hashing.
+    Returns a stable hex digest; empty/None input returns a fixed sentinel
+    so all empty-lyric components collapse to one representative LLM call.
+    """
+    if not lyrics_lines:
+        return "EMPTY"
+    normalized = " ".join(
+        " ".join(line.lower().split()) for line in lyrics_lines if line.strip()
+    )
+    if not normalized:
+        return "EMPTY"
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _is_essential(component: ComponentInstance) -> bool:
+    """Return True if the component's role is transition-essential.
+
+    Mirrors components._is_essential; defined locally to keep the
+    classifier decoupled from the components module's internals.
+    """
+    return component.role in ESSENTIAL_ROLES
+
+
 # Decisiveness indicator regex: word-boundary "or", "either", "possibly", "maybe"
 _DECISIVENESS_PATTERN = re.compile(
     r"\b(or|either|possibly|maybe)\b", re.IGNORECASE
@@ -171,38 +198,115 @@ class ThemeClassifier:
         self,
         components: list[ComponentInstance],
         lrc_content: Optional[str] = None,
+        all_components: bool = False,
     ) -> list[ComponentInstance]:
         """Classify multiple components in parallel via asyncio.gather.
+
+        v6 selective + dedup strategy:
+          1. Select candidates: if ``all_components`` is False (default),
+             only essential-role components (entry/exit/loop_target/entry_exit)
+             are classified; non-essential rows are skipped (their LLM fields
+             stay None).
+          2. Pre-extract per-candidate lyrics via _extract_lyrics_for_component.
+          3. Group candidates by lyric-content hash (normalized: lowercased +
+             whitespace collapsed + stripped). Each group has one
+             representative that gets an LLM call; duplicates copy the
+             representative's result.
+          4. Run asyncio.gather over representative classifications.
+          5. Copy fields from each representative to its duplicates.
 
         Args:
             components: List of ComponentInstance objects to classify.
             lrc_content: Optional LRC text for per-component lyrics extraction.
+            all_components: If True, classify ALL components (ignore
+                essential-only filtering). Default False.
 
         Returns:
             The same list with theme/vocal_posture populated.
         """
         total = len(components)
-        logger.info(f"LLM classification: {total} components to classify")
 
-        tasks = []
+        # 1. Select candidates.
+        candidates: list[tuple[int, ComponentInstance]] = []
+        skipped: list[tuple[int, ComponentInstance]] = []
         for i, comp in enumerate(components, 1):
-            lyrics_lines = None
-            if lrc_content and comp.start_time is not None and comp.end_time is not None:
+            if all_components or _is_essential(comp):
+                candidates.append((i, comp))
+            else:
+                skipped.append((i, comp))
+
+        logger.info(
+            f"LLM classification: {len(candidates)} to classify, "
+            f"{len(skipped)} skipped (essential-only), {total} total"
+        )
+        for i, comp in skipped:
+            logger.info(
+                f"LLM classification: skipped component {i}/{total} "
+                f"(occurrence={comp.occurrence_index}, type={comp.component_type}, "
+                f"role={comp.role})"
+            )
+
+        if not candidates:
+            return components
+
+        # 2. Pre-extract lyrics + group by lyric hash.
+        groups: dict[
+            str, list[tuple[int, ComponentInstance, Optional[list[str]]]]
+        ] = {}
+        for i, comp in candidates:
+            lyrics_lines: Optional[list[str]] = None
+            if (
+                lrc_content
+                and comp.start_time is not None
+                and comp.end_time is not None
+            ):
                 lyrics_lines = _extract_lyrics_for_component(
                     lrc_content, comp.start_time, comp.end_time
                 )
-            tasks.append(
-                self._classify_component_with_logging(i, total, comp, lyrics_lines)
+            h = _lyric_hash(lyrics_lines)
+            groups.setdefault(h, []).append((i, comp, lyrics_lines))
+
+        # 3. Classify one representative per group.
+        rep_tasks = []
+        rep_index: dict[str, tuple[int, ComponentInstance]] = {}
+        for h, members in groups.items():
+            rep_i, rep_comp, rep_lyrics = members[0]
+            rep_index[h] = (rep_i, rep_comp)
+            rep_tasks.append(
+                self._classify_component_with_logging(rep_i, total, rep_comp, rep_lyrics)
             )
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info(
+            f"LLM classification: {len(rep_tasks)} unique lyric groups "
+            f"(deduped from {len(candidates)} candidates)"
+        )
 
-        # Log any exceptions that gather captured (safety net).
+        results = await asyncio.gather(*rep_tasks, return_exceptions=True)
         for i, result in enumerate(results, 1):
             if isinstance(result, Exception):
                 logger.warning(
-                    f"LLM classification: component {i}/{total} failed: {result}"
+                    f"LLM classification: representative {i} failed: {result}"
                 )
+
+        # 4. Copy representative result to duplicates.
+        for h, members in groups.items():
+            if len(members) <= 1:
+                continue
+            _, rep_comp, _ = members[0]
+            rep_i = rep_index[h][0]
+            for j, dup_comp, _ in members[1:]:
+                dup_comp.theme = rep_comp.theme
+                dup_comp.vocal_posture = rep_comp.vocal_posture
+                dup_comp.theme_confidence = rep_comp.theme_confidence
+                dup_comp.vocal_posture_confidence = rep_comp.vocal_posture_confidence
+                dup_comp.theme_reasoning = rep_comp.theme_reasoning
+                dup_comp.posture_reasoning = rep_comp.posture_reasoning
+                logger.info(
+                    f"LLM classification: dedup hit — component {j}/{total} "
+                    f"copied from component {rep_i}/{total} "
+                    f"(lyric_hash={h})"
+                )
+
         return components
 
     async def _classify_component_with_logging(

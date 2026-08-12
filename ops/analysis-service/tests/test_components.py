@@ -683,6 +683,102 @@ class TestExtractComponents:
             assert cached["hash_prefix"] == "abc123"
             assert cached["component_source"] == "allin1_sections"
 
+    @pytest.mark.asyncio
+    async def test_extract_components_skips_non_essential_features(self):
+        """all_components=False → only essential-role components get features."""
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "audio.mp3"
+            audio_path.write_text("dummy")
+            cache_manager = CacheManager(Path(tmp))
+
+            # 4 components: 2 essential (entry, exit), 2 non-essential (none).
+            # Use sections that produce multiple choruses + a verse.
+            sections = [
+                {"label": "verse", "start": 0.0, "end": 20.0},
+                {"label": "chorus", "start": 20.0, "end": 40.0},
+                {"label": "verse", "start": 40.0, "end": 60.0},
+                {"label": "chorus", "start": 60.0, "end": 80.0},
+                {"label": "chorus", "start": 80.0, "end": 100.0},
+            ]
+
+            mock_gf = _make_mock_global_features(sr=22050, duration=100.0)
+            with (
+                patch(
+                    "sow_analysis.workers.components._precompute_global_features"
+                ) as mock_precompute,
+                patch(
+                    "sow_analysis.workers.components.compute_component_features"
+                ) as mock_compute,
+            ):
+                mock_precompute.return_value = mock_gf
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash="abc123",
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    sections=sections,
+                    all_components=False,
+                )
+
+            assert source == "allin1_sections"
+            # All components appear in the result list.
+            assert len(components) >= 3
+            # compute_component_features was called only for essential-role
+            # components (entry/exit/loop_target/entry_exit).
+            called_roles = [
+                call.args[1].role for call in mock_compute.call_args_list
+            ]
+            essential_roles = {"entry", "exit", "loop_target", "entry_exit"}
+            for role in called_roles:
+                assert role in essential_roles, (
+                    f"compute_component_features called on non-essential role: {role}"
+                )
+            # Non-essential components retain None audio fields.
+            for comp in components:
+                if comp.role not in essential_roles:
+                    assert comp.bpm is None
+                    assert comp.key is None
+                    assert comp.groove_density is None
+
+    @pytest.mark.asyncio
+    async def test_extract_components_all_components_populates_all(self):
+        """all_components=True → all components get compute_component_features."""
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "audio.mp3"
+            audio_path.write_text("dummy")
+            cache_manager = CacheManager(Path(tmp))
+
+            sections = [
+                {"label": "verse", "start": 0.0, "end": 20.0},
+                {"label": "chorus", "start": 20.0, "end": 40.0},
+                {"label": "verse", "start": 40.0, "end": 60.0},
+                {"label": "chorus", "start": 60.0, "end": 80.0},
+                {"label": "chorus", "start": 80.0, "end": 100.0},
+            ]
+
+            mock_gf = _make_mock_global_features(sr=22050, duration=100.0)
+            with (
+                patch(
+                    "sow_analysis.workers.components._precompute_global_features"
+                ) as mock_precompute,
+                patch(
+                    "sow_analysis.workers.components.compute_component_features"
+                ) as mock_compute,
+            ):
+                mock_precompute.return_value = mock_gf
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash="abc123",
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    sections=sections,
+                    all_components=True,
+                )
+
+            assert source == "allin1_sections"
+            # compute_component_features was called for ALL components.
+            assert mock_compute.call_count == len(components)
+
 
 class TestSerializeDeserialize:
     """Tests for _serialize_components."""
