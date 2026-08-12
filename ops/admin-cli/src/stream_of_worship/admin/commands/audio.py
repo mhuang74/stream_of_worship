@@ -4593,6 +4593,7 @@ def review_components(
                 audio_duration=recording.duration_seconds,
                 entry_component=entry,
                 exit_component=exit_comp,
+                song=song,
             )
         )
 
