@@ -564,6 +564,50 @@ class R2Client:
         body = response["Body"].read().decode("utf-8")
         return json.loads(body)
 
+    def download_component_result(self, hash_prefix: str) -> Optional[dict]:
+        """Download and parse ``{hash_prefix}/components.json`` from R2.
+
+        Args:
+            hash_prefix: 12-character hash prefix.
+
+        Returns:
+            The parsed dict (current schema_version = 2) or None if the
+            object does not exist.
+
+        Raises:
+            ClientError: On non-404 failures.
+            json.JSONDecodeError: On a corrupt payload.
+        """
+        s3_key = f"{hash_prefix}/components.json"
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=s3_key)
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+        body = response["Body"].read().decode("utf-8")
+        return json.loads(body)
+
+    def upload_component_result(self, hash_prefix: str, payload: dict) -> str:
+        """Upload (overwrite) ``{hash_prefix}/components.json`` with ``payload``.
+
+        ``payload`` must already include ``schema_version``, ``content_hash``,
+        ``hash_prefix``, ``component_source``, and a ``components`` list. The
+        caller is responsible for merging edited fields into the existing
+        payload before calling this method.
+
+        Args:
+            hash_prefix: 12-character hash prefix.
+            payload: Fully-formed components.json dict.
+
+        Returns:
+            S3-style URL of the uploaded object.
+        """
+        s3_key = f"{hash_prefix}/components.json"
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        return self.upload_bytes(s3_key, data, content_type="application/json")
+
     @staticmethod
     def parse_s3_url(s3_url: str) -> tuple[str, str]:
         """Parse S3 URL into bucket and key.
@@ -774,9 +818,7 @@ class R2Client:
                 return None
             raise
 
-    def upload_fileobj(
-        self, fileobj, s3_key: str, extra_args: Optional[dict] = None
-    ) -> str:
+    def upload_fileobj(self, fileobj, s3_key: str, extra_args: Optional[dict] = None) -> str:
         """Upload a file-like object to R2 with optional metadata/content headers.
 
         Args:
@@ -790,6 +832,7 @@ class R2Client:
             S3-style URL of the uploaded object
         """
         from boto3.s3.transfer import TransferConfig
+
         self._client.upload_fileobj(
             Fileobj=fileobj,
             Bucket=self.bucket,

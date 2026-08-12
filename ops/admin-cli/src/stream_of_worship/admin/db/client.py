@@ -8,7 +8,7 @@ import logging
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Generator, Optional
+from typing import Any, Generator, Optional
 
 import psycopg
 import psycopg.errors
@@ -31,6 +31,12 @@ from stream_of_worship.db.helpers import to_str
 logger = logging.getLogger("sow_admin.db")
 
 _VALID_VISIBILITY_STATUSES = {"published", "review", "hold"}
+
+# Whitelist of song_components columns that the Component Metadata editor TUI
+# is allowed to UPDATE. Enforced by update_song_component_fields[_txn].
+ALLOWED_COMPONENT_FIELDS: frozenset[str] = frozenset(
+    {"theme", "vocal_posture", "groove_density", "energy_level"}
+)
 
 
 class DatabaseClient:
@@ -2056,9 +2062,7 @@ class DatabaseClient:
         )
         return [SongComponent.from_row(tuple(row)) for row in cursor.fetchall()]
 
-    def get_song_components_by_role(
-        self, song_id: str, role: str
-    ) -> list[SongComponent]:
+    def get_song_components_by_role(self, song_id: str, role: str) -> list[SongComponent]:
         """Return component rows matching a role (e.g., 'entry', 'exit').
 
         Args:
@@ -2076,9 +2080,7 @@ class DatabaseClient:
         )
         return [SongComponent.from_row(tuple(row)) for row in cursor.fetchall()]
 
-    def get_song_components_by_type(
-        self, song_id: str, component_type: str
-    ) -> list[SongComponent]:
+    def get_song_components_by_type(self, song_id: str, component_type: str) -> list[SongComponent]:
         """Return component rows of a given type (e.g., 'chorus').
 
         Args:
@@ -2116,3 +2118,66 @@ class DatabaseClient:
         entry = entry_rows[0] if entry_rows else None
         exit_comp = exit_rows[0] if exit_rows else None
         return (entry, exit_comp)
+
+    def update_song_component_fields(
+        self,
+        component_id: int,
+        fields: dict[str, float | str | None],
+    ) -> bool:
+        """Targeted UPDATE of editable metadata fields on a song_components row.
+
+        Only the 4 user-editable fields may be passed:
+            theme, vocal_posture, groove_density, energy_level
+        Any other key raises ValueError. The ``updated_at`` column is bumped by
+        the existing BEFORE UPDATE trigger (``trg_song_components_updated_at``).
+
+        Args:
+            component_id: song_components.id (NOT NULL — edits target a persisted row).
+            fields: Dict of {column_name: new_value}. May be a subset.
+
+        Returns:
+            True if a row was updated; False if no row matched component_id.
+
+        Raises:
+            ValueError: If ``fields`` contains an unsupported column name.
+        """
+        with self.transaction() as conn:
+            return self.update_song_component_fields_txn(conn, component_id, fields)
+
+    def update_song_component_fields_txn(
+        self,
+        conn: "psycopg.Connection",
+        component_id: int,
+        fields: dict[str, float | str | None],
+    ) -> bool:
+        """Targeted UPDATE on a song_components row using a caller-supplied connection.
+
+        Validates the editable-field whitelist; intended for use inside a
+        ``DatabaseClient.transaction()`` block so multiple per-component UPDATEs
+        commit atomically.
+
+        Args:
+            conn: A psycopg connection with an active transaction (typically
+                obtained via ``with self.db_client.transaction() as conn:``).
+            component_id: song_components.id (NOT NULL).
+            fields: Dict of {column_name: new_value}. May be a subset.
+
+        Returns:
+            True if a row was updated; False if no row matched component_id.
+
+        Raises:
+            ValueError: If ``fields`` contains an unsupported column name.
+        """
+        invalid = set(fields) - ALLOWED_COMPONENT_FIELDS
+        if invalid:
+            raise ValueError(f"Cannot edit non-editable fields: {sorted(invalid)}")
+        if not fields:
+            return False
+        set_clause = ", ".join(f"{col} = %s" for col in fields)
+        params: list[Any] = list(fields.values()) + [component_id]
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE song_components SET {set_clause} WHERE id = %s",
+            params,
+        )
+        return cursor.rowcount > 0
