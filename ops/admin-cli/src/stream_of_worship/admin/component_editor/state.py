@@ -6,13 +6,9 @@ undo / redo state, and autosave snapshot helpers.
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any
 
 from stream_of_worship.admin.db.models import Song, SongComponent
-
-if TYPE_CHECKING:
-    from stream_of_worship.admin.component_editor.lrc_fetch import LRCFetch
-    from stream_of_worship.admin.services.lrc_parser import LRCParsedContent
 
 _MAX_UNDO = 100
 
@@ -67,12 +63,6 @@ class ComponentEditorState:
     _redo_stacks: dict[str, list[ComponentUndoEntry]] = field(default_factory=dict)
     selected_row: int = 0  # 0 = entry, 1 = exit
     selected_column_key: str = "role"
-
-    # LRC fetch + parsed content per song (v2 lyrics panel).
-    lrc_fetches: dict[str, "LRCFetch"] = field(default_factory=dict)
-    lrc_parsed: dict[str, Optional["LRCParsedContent"]] = field(default_factory=dict)
-    lrc_prefetch_in_progress: bool = False
-    lrc_fetch_error: str | None = None
 
     @property
     def current(self) -> SongSession:
@@ -156,3 +146,10 @@ class ComponentEditorState:
             )
         )
         self.current.working[(role, field_name)] = value
+
+    def get_selected_component(self) -> SongComponent | None:
+        """Return the SongComponent that the currently-highlighted table row
+        points at (entry if selected_row == 0 else exit).
+        """
+        role = "entry" if self.selected_row == 0 else "exit"
+        return self.current.component_for_role(role)
