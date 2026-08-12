@@ -21,6 +21,7 @@ from typing import Optional
 import librosa
 import numpy as np
 
+from ..config import settings
 from ..storage.cache import COMPONENT_SCHEMA_VERSION, CacheManager
 from ..storage.r2 import R2Client
 from .lrc_parser import parse_lrc
@@ -1322,10 +1323,22 @@ async def extract_components(
                 )
 
             features_start = time.time()
-            for component in components:
+            last_heartbeat = time.time()
+            for i, component in enumerate(components, 1):
                 compute_component_features(
                     gf, component, beats=beats, downbeats=downbeats
                 )
+                now = time.time()
+                if (
+                    now - last_heartbeat
+                    >= settings.SOW_STEP_HEARTBEAT_INTERVAL_SECONDS
+                ):
+                    elapsed = now - features_start
+                    logger.info(
+                        f"Feature computation heartbeat: {i}/{len(components)} "
+                        f"components done ({elapsed:.1f}s elapsed)"
+                    )
+                    last_heartbeat = now
             logger.info(
                 f"Per-component feature computation completed in "
                 f"{time.time() - features_start:.2f}s ({len(components)} components)"

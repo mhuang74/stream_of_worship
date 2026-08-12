@@ -148,6 +148,17 @@ class Settings(BaseSettings):
     # after acquiring the LLM semaphore slot, so it paces active requests without
     # blocking idle jobs. Set to 0 to disable.
 
+    SOW_LLM_CLASSIFICATION_TIMEOUT_SECONDS: float = 60.0
+    # Per-request timeout for the OpenAI client used by ThemeClassifier.
+    # This is the SDK-level HTTP timeout (connect + read). The
+    # call_llm_with_retry() budget (SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS=1200s)
+    # is the overall wall-clock ceiling across all retries.
+
+    SOW_STEP_HEARTBEAT_INTERVAL_SECONDS: float = 30.0
+    # Default interval for step_timer heartbeats. A step logs a "still running"
+    # line every this many seconds when it explicitly calls heartbeat(). Set to 0
+    # to disable. Individual steps may override via the heartbeat_interval param.
+
     # Embedding Provider Configuration (OpenAI-compatible API)
     # Separate from SOW_LLM_* so chat and embedding can use different providers.
     SOW_EMBEDDING_API_KEY: str = ""
