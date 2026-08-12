@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from sow_analysis.storage.cache import CacheManager
+from sow_analysis.storage.cache import BEAT_GRID_SCHEMA_VERSION, CacheManager
 from sow_analysis.workers.lrc import WhisperPhrase
 
 
@@ -269,6 +269,75 @@ class TestFastAnalyzeCache:
             assert cached is not None
             assert cached["tempo_bpm"] == 68.0
             assert versioned_file.exists()
+
+
+class TestBeatGridCache:
+    """Tests for beat-grid caching (beat_grid.json)."""
+
+    def _make_payload(self, content_hash: str = "a" * 64) -> dict:
+        return {
+            "schema_version": BEAT_GRID_SCHEMA_VERSION,
+            "source": "madmom",
+            "content_hash": content_hash,
+            "hash_prefix": content_hash[:12],
+            "beats": [[0.464, 1], [0.928, 2], [1.392, 3], [1.856, 4], [2.320, 1]],
+            "downbeats": [0.464, 2.320],
+            "detected_at": "2026-08-12T12:34:56.789000+00:00",
+            "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+        }
+
+    def test_save_and_get_beat_grid(self):
+        """Round-trip save → get returns the payload."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "a" * 64
+            payload = self._make_payload(content_hash)
+
+            cache_file = cache_manager.save_beat_grid(content_hash, payload)
+            assert cache_file.exists()
+            assert cache_file.name.endswith("_beat_grid.json")
+
+            cached = cache_manager.get_beat_grid(content_hash)
+            assert cached is not None
+            assert cached["source"] == "madmom"
+            assert cached["downbeats"] == [0.464, 2.320]
+            assert cached["schema_version"] == BEAT_GRID_SCHEMA_VERSION
+
+    def test_get_returns_none_before_save(self):
+        """Cache miss returns None."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            assert cache_manager.get_beat_grid("b" * 64) is None
+
+    def test_schema_version_mismatch_treated_as_miss(self):
+        """Payload with schema_version=99 is treated as a miss."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "c" * 64
+            hash_prefix = content_hash[:32]
+            cache_file = cache_dir / f"{hash_prefix}_beat_grid.json"
+            cache_file.write_text(json.dumps({"schema_version": 99, "source": "madmom"}))
+
+            assert cache_manager.get_beat_grid(content_hash) is None
+
+    def test_corrupt_json_returns_none(self):
+        """Corrupt JSON on disk returns None."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            cache_manager = CacheManager(cache_dir)
+
+            content_hash = "d" * 64
+            hash_prefix = content_hash[:32]
+            cache_file = cache_dir / f"{hash_prefix}_beat_grid.json"
+            cache_file.write_text("{invalid json")
+
+            assert cache_manager.get_beat_grid(content_hash) is None
 
 
 if __name__ == "__main__":

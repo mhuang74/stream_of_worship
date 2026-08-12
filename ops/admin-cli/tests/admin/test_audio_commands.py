@@ -2479,3 +2479,108 @@ region = "auto"
         assert "No recording found" in result.output
 
         _drop_all_tables(make_test_provider)
+
+
+class TestSubmitComponentAnalysisJobSkipBeatCache:
+    """Helper-level tests for --skip-beat-cache flag threading.
+
+    Verifies that ``_submit_component_analysis_job`` forwards ``skip_beat_cache``
+    to ``client.submit_component_analysis``, and that the batch-mode invocation
+    sites pass the command's flag value.
+    """
+
+    def _make_recording(self) -> Recording:
+        return Recording(
+            content_hash="a" * 64,
+            hash_prefix="a" * 12,
+            original_filename="test.mp3",
+            file_size_bytes=1024,
+            imported_at="2026-01-01T00:00:00Z",
+            r2_audio_url="s3://bucket/test.mp3",
+            analysis_status="completed",
+            lrc_status="pending",
+        )
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
+    def test_skip_beat_cache_forwarded_to_client(
+        self, mock_config_load, mock_client_cls
+    ):
+        """_submit_component_analysis_job(skip_beat_cache=True) forwards to submit."""
+        from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
+
+        mock_config = MagicMock()
+        mock_config.analysis_url = "http://localhost:8000"
+        mock_config_load.return_value = mock_config
+
+        mock_client = MagicMock()
+        mock_client.get_cached_component_result.return_value = None
+        mock_client.submit_component_analysis.return_value = JobInfo(
+            job_id="job-1", status="queued", job_type="component_analysis"
+        )
+        mock_client.wait_for_completion.return_value = MagicMock(
+            status="completed",
+            result=MagicMock(components=[], component_source="none"),
+        )
+        mock_client_cls.return_value = mock_client
+
+        db_client = MagicMock()
+        console = MagicMock()
+        recording = self._make_recording()
+
+        _submit_component_analysis_job(
+            recording,
+            "song_001",
+            "http://localhost:8000",
+            db_client,
+            console,
+            force=True,
+            wait=True,
+            snap_to_downbeat=True,
+            skip_beat_cache=True,
+        )
+
+        # Verify skip_beat_cache=True was forwarded.
+        call_kwargs = mock_client.submit_component_analysis.call_args.kwargs
+        assert call_kwargs["skip_beat_cache"] is True
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
+    def test_default_skip_beat_cache_is_false(
+        self, mock_config_load, mock_client_cls
+    ):
+        """_submit_component_analysis_job default forwards skip_beat_cache=False."""
+        from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
+
+        mock_config = MagicMock()
+        mock_config.analysis_url = "http://localhost:8000"
+        mock_config_load.return_value = mock_config
+
+        mock_client = MagicMock()
+        mock_client.get_cached_component_result.return_value = None
+        mock_client.submit_component_analysis.return_value = JobInfo(
+            job_id="job-1", status="queued", job_type="component_analysis"
+        )
+        mock_client.wait_for_completion.return_value = MagicMock(
+            status="completed",
+            result=MagicMock(components=[], component_source="none"),
+        )
+        mock_client_cls.return_value = mock_client
+
+        db_client = MagicMock()
+        console = MagicMock()
+        recording = self._make_recording()
+
+        _submit_component_analysis_job(
+            recording,
+            "song_001",
+            "http://localhost:8000",
+            db_client,
+            console,
+            force=True,
+            wait=True,
+            snap_to_downbeat=True,
+        )
+
+        call_kwargs = mock_client.submit_component_analysis.call_args.kwargs
+        assert call_kwargs["skip_beat_cache"] is False

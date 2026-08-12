@@ -15,6 +15,7 @@ import re
 import string
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -22,7 +23,7 @@ import librosa
 import numpy as np
 
 from ..config import settings
-from ..storage.cache import COMPONENT_SCHEMA_VERSION, CacheManager
+from ..storage.cache import BEAT_GRID_SCHEMA_VERSION, COMPONENT_SCHEMA_VERSION, CacheManager
 from ..storage.r2 import R2Client
 from .lrc_parser import parse_lrc
 
@@ -33,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 def _detect_downbeats_madmom(
     audio_path: Path,
-) -> Optional[list[float]]:
-    """Detect downbeats using madmom's two-stage pipeline.
+) -> Optional[dict]:
+    """Detect beats + downbeats via madmom's two-stage pipeline.
 
     madmom API (correct usage):
       1. RNNDownBeatProcessor() takes a FILE PATH (not numpy array),
@@ -50,7 +51,10 @@ def _detect_downbeats_madmom(
         audio_path: Path to audio file.
 
     Returns:
-        Sorted list of downbeat timestamps, or None if detection fails.
+        A partial beat-grid payload (source/beats/downbeats/detected_at/
+        madmom_params). Identity fields (schema_version/content_hash/
+        hash_prefix) are stamped by get_or_detect_beat_grid, which knows the
+        content hash. None if detection fails.
     """
     try:
         from madmom.features.downbeats import (
@@ -65,14 +69,81 @@ def _detect_downbeats_madmom(
             beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
             fps=100,               # must match RNNDownBeatProcessor's internal fps
         )
-        beats = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
+        grid = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
 
         # Downbeats are where beat_in_bar == 1
-        downbeat_times = beats[beats[:, 1] == 1][:, 0]
-        return sorted(downbeat_times.tolist())
+        downbeat_times = grid[grid[:, 1] == 1][:, 0]
+        return {
+            "source": "madmom",
+            "beats": grid.tolist(),
+            "downbeats": sorted(downbeat_times.tolist()),
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+            "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+        }
     except Exception as e:
         logger.warning(f"madmom downbeat detection failed: {e}")
         return None
+
+
+async def get_or_detect_beat_grid(
+    audio_path: Path,
+    content_hash: str,
+    cache_manager: CacheManager,
+    r2_client: Optional[R2Client],
+    skip_beat_cache: bool = False,
+) -> Optional[dict]:
+    """Return the cached beat grid, detecting + caching on miss.
+
+    Read order (skipped entirely when skip_beat_cache=True):
+      1. Local cache ({hash32}_beat_grid.json)
+      2. R2 ({hash12}/beat_grid.json) — on hit, backfill local cache
+
+    On miss: run _detect_downbeats_madmom in an executor, stamp identity
+    fields, persist local (atomic) + R2 (best-effort; failure logs a warning).
+    Returns the payload dict or None if detection fails.
+
+    Args:
+        audio_path: Path to the audio file.
+        content_hash: Full SHA-256 content hash.
+        cache_manager: Local cache manager.
+        r2_client: Optional R2 client for remote cache.
+        skip_beat_cache: If True, bypass cache reads (detection still writes).
+
+    Returns:
+        Beat-grid payload dict or None if detection fails.
+    """
+    hash_prefix = content_hash[:12]
+
+    if not skip_beat_cache:
+        cached = cache_manager.get_beat_grid(content_hash)
+        if cached is not None:
+            logger.info(f"Beat grid cache hit (local): {content_hash[:16]}...")
+            return cached
+        if r2_client is not None:
+            r2_cached = await r2_client.download_beat_grid(hash_prefix)
+            if r2_cached is not None:
+                logger.info(f"Beat grid cache hit (R2): {content_hash[:16]}...")
+                cache_manager.save_beat_grid(content_hash, r2_cached)
+                return r2_cached
+
+    loop = asyncio.get_event_loop()
+    detected = await loop.run_in_executor(None, _detect_downbeats_madmom, audio_path)
+    if detected is None:
+        return None
+
+    detected["content_hash"] = content_hash
+    detected["hash_prefix"] = hash_prefix
+    detected["schema_version"] = BEAT_GRID_SCHEMA_VERSION
+
+    cache_manager.save_beat_grid(content_hash, detected)
+
+    if r2_client is not None:
+        try:
+            await r2_client.upload_beat_grid(hash_prefix, detected)
+        except Exception as e:
+            logger.warning(f"Failed to upload beat_grid.json to R2: {e}")
+
+    return detected
 
 
 # Lyrical content cues that nudge chorus identification.
@@ -1213,10 +1284,11 @@ async def extract_components(
       - `energy_aware_roles`: If True, run _assign_roles_by_energy after
         identification to reassign entry/exit roles based on energy cues.
 
-    Note: `analyze_audio_fast()` does NOT return beats/downbeats. When the
-    tier-2 lyrics path runs and beats are missing, the caller (queue.py)
-    should run madmom downbeat detection BEFORE calling this function to
-    populate the downbeats parameter.
+    Note: `analyze_audio_fast()` does NOT return beats/downbeats and is never
+    called from this function. Downbeats are expected from the caller (queue.py
+    populates them via the beat-grid cache when snap_to_downbeat is set); the
+    tier-2 lyrics path additionally reads the beat-grid cache directly as
+    defense-in-depth.
 
     Returns (components, source) where source is one of:
     'allin1_sections', 'lyrics_repetition', 'none'.
@@ -1273,21 +1345,15 @@ async def extract_components(
             source = "allin1_sections"
 
     if not components and lrc_content:
-        # Tier-2: if beats missing, run analyze_audio_fast inline.
-        inline_fast_ran = False
+        # v6: prefer the beat-grid cache. The old inline analyze_audio_fast call
+        # never returned beats/downbeats (analyzer.py:545–553); dropping it only
+        # forfeits its fast-cache warm-up side effect (accepted — see Risks).
         if not beats and not downbeats:
-            try:
-                from .analyzer import analyze_audio_fast
-
-                logger.info("Running inline fast_analyze for component beats...")
-                fast_result = await analyze_audio_fast(
-                    audio_path, cache_manager, content_hash
-                )
-                beats = fast_result.get("beats")
-                downbeats = fast_result.get("downbeats")
-                inline_fast_ran = True
-            except Exception as e:
-                logger.warning(f"Inline fast_analyze failed: {e}")
+            cached_grid = cache_manager.get_beat_grid(content_hash)
+            if cached_grid is not None:
+                downbeats = cached_grid.get("downbeats")
+                # The full grid (cached_grid["beats"]) is not consumed by
+                # identify_from_lyrics_repetition, which takes flat timestamps.
 
         # Use pre-computed duration (eliminates redundant librosa.load).
         song_total_duration = gf.duration if gf is not None else None
@@ -1306,8 +1372,9 @@ async def extract_components(
         )
         if components:
             source = "lyrics_repetition"
-            # v3: if inline fast_analyze failed and we have no beats, lower confidence.
-            if not beats and not inline_fast_ran:
+            # v6: lower confidence when no downbeats are available (madmom
+            # failure or cache miss). The old inline_fast_ran flag is gone.
+            if not downbeats:
                 for c in components:
                     c.confidence = 0.5
 

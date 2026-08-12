@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 import boto3
 from botocore.exceptions import ClientError
 
-from .cache import COMPONENT_SCHEMA_VERSION
+from .cache import BEAT_GRID_SCHEMA_VERSION, COMPONENT_SCHEMA_VERSION
 
 # Legacy stem name mappings for backward compatibility
 STEM_LEGACY_NAMES = {
@@ -542,6 +542,73 @@ class R2Client:
                 None, self.s3.download_file, self.bucket, key, str(tmp_path)
             )
             return tmp_path.read_text(encoding="utf-8")
+        finally:
+            try:
+                os.unlink(str(tmp_path))
+            except OSError:
+                pass
+
+    async def upload_beat_grid(self, hash_prefix: str, payload: dict) -> str:
+        """Upload beat_grid.json to R2 at {hash_prefix}/beat_grid.json.
+
+        The ``payload`` dict MUST include ``schema_version``.
+
+        Args:
+            hash_prefix: Content hash prefix for the path (12 chars).
+            payload: Beat-grid payload dictionary.
+
+        Returns:
+            s3://bucket/{hash_prefix}/beat_grid.json URL.
+        """
+        key = f"{hash_prefix}/beat_grid.json"
+        loop = asyncio.get_event_loop()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(payload, f)
+            tmp = f.name
+
+        try:
+            await loop.run_in_executor(None, self.s3.upload_file, tmp, self.bucket, key)
+        finally:
+            os.unlink(tmp)
+
+        return f"s3://{self.bucket}/{key}"
+
+    async def download_beat_grid(self, hash_prefix: str) -> Optional[dict]:
+        """Download beat_grid.json from R2 and return as dict.
+
+        Returns None if not found, corrupt, OR schema_version mismatches the
+        current BEAT_GRID_SCHEMA_VERSION.
+
+        Args:
+            hash_prefix: Content hash prefix for the path (12 chars).
+
+        Returns:
+            Parsed beat-grid dict or None.
+        """
+        key = f"{hash_prefix}/beat_grid.json"
+        s3_url = f"s3://{self.bucket}/{key}"
+
+        exists = await self.check_exists(s3_url)
+        if not exists:
+            return None
+
+        loop = asyncio.get_event_loop()
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            tmp_path = Path(f.name)
+
+        try:
+            await loop.run_in_executor(
+                None, self.s3.download_file, self.bucket, key, str(tmp_path)
+            )
+            try:
+                payload = json.loads(tmp_path.read_text())
+            except (json.JSONDecodeError, IOError):
+                return None
+            if payload.get("schema_version") != BEAT_GRID_SCHEMA_VERSION:
+                return None
+            return payload
         finally:
             try:
                 os.unlink(str(tmp_path))

@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from botocore.exceptions import ClientError
+
+from sow_analysis.storage.cache import BEAT_GRID_SCHEMA_VERSION
 from sow_analysis.storage.r2 import R2Client, parse_s3_url
 
 
@@ -270,3 +272,99 @@ class TestR2Client:
         mock_boto3.delete_object.assert_called_once_with(
             Bucket="my-bucket", Key="abc123/lyrics.backup.1000.lrc"
         )
+
+
+class TestBeatGridR2:
+    """Tests for beat_grid.json R2 upload/download."""
+
+    @pytest.fixture(autouse=True)
+    def mock_env(self):
+        """Set up mock environment variables."""
+        with patch.dict(
+            os.environ,
+            {
+                "SOW_R2_ACCESS_KEY_ID": "test-access-key",
+                "SOW_R2_SECRET_ACCESS_KEY": "test-secret-key",
+            },
+        ):
+            yield
+
+    @pytest.fixture
+    def mock_boto3(self):
+        """Create mock boto3 client."""
+        with patch("sow_analysis.storage.r2.boto3") as mock:
+            mock_client = MagicMock()
+            mock.client.return_value = mock_client
+            yield mock_client
+
+    @pytest.mark.asyncio
+    async def test_upload_download_beat_grid_round_trip(self, mock_boto3):
+        """Upload then download beat_grid.json returns the same payload."""
+        payload = {
+            "schema_version": BEAT_GRID_SCHEMA_VERSION,
+            "source": "madmom",
+            "content_hash": "a" * 64,
+            "hash_prefix": "a" * 12,
+            "beats": [[0.464, 1], [0.928, 2]],
+            "downbeats": [0.464],
+            "detected_at": "2026-08-12T12:00:00+00:00",
+            "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+        }
+
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        # Upload writes to a temp file then calls s3.upload_file.
+        # Capture the temp file content by intercepting upload_file.
+        uploaded_content = {}
+
+        def capture_upload(local_path, bucket, key):
+            with open(local_path) as f:
+                uploaded_content["json"] = f.read()
+
+        mock_boto3.upload_file.side_effect = capture_upload
+
+        url = await client.upload_beat_grid("abc123def456", payload)
+        assert url == "s3://my-bucket/abc123def456/beat_grid.json"
+
+        # Now simulate download: check_exists returns True, download_file writes the captured content.
+        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+        mock_boto3.upload_file.side_effect = None
+
+        def mock_download(bucket, key, filepath):
+            Path(filepath).write_text(uploaded_content["json"])
+
+        mock_boto3.download_file.side_effect = mock_download
+
+        result = await client.download_beat_grid("abc123def456")
+        assert result is not None
+        assert result["schema_version"] == BEAT_GRID_SCHEMA_VERSION
+        assert result["source"] == "madmom"
+        assert result["downbeats"] == [0.464]
+
+    @pytest.mark.asyncio
+    async def test_download_beat_grid_schema_mismatch_returns_none(self, mock_boto3):
+        """Download with schema_version mismatch returns None."""
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+
+        stale_payload = json.dumps({"schema_version": 99, "source": "madmom"})
+
+        def mock_download(bucket, key, filepath):
+            Path(filepath).write_text(stale_payload)
+
+        mock_boto3.download_file.side_effect = mock_download
+
+        result = await client.download_beat_grid("abc123def456")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_download_beat_grid_missing_returns_none(self, mock_boto3):
+        """Download when object doesn't exist returns None."""
+        mock_boto3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404"}}, "HeadObject"
+        )
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        result = await client.download_beat_grid("abc123def456")
+        assert result is None

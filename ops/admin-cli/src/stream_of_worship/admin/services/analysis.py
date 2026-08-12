@@ -578,6 +578,7 @@ class AnalysisClient:
         use_stems: bool = False,
         classify_theme: bool = False,
         classify_vocal_posture: bool = False,
+        skip_beat_cache: bool = False,
     ) -> JobInfo:
         """Submit a component analysis job to the analysis service.
 
@@ -590,6 +591,10 @@ class AnalysisClient:
 
         v5 — passes new options for downbeat snapping, energy-aware roles,
         stem features, and LLM theme/posture classification.
+
+        v6 — passes ``skip_beat_cache`` to bypass beat-grid cache reads on the
+        worker (fresh madmom detection still writes the cache). Orthogonal to
+        ``force``.
 
         Args:
             audio_url: R2 URL of the audio file.
@@ -605,6 +610,7 @@ class AnalysisClient:
             use_stems: Use Demucs stems for feature extraction.
             classify_theme: LLM theme classification (12 Chinese themes).
             classify_vocal_posture: LLM vocal posture classification.
+            skip_beat_cache: Bypass cached beat grid; re-run madmom detection.
 
         Returns:
             JobInfo for the submitted job.
@@ -627,6 +633,7 @@ class AnalysisClient:
                 "use_stems": use_stems,
                 "classify_theme": classify_theme,
                 "classify_vocal_posture": classify_vocal_posture,
+                "skip_beat_cache": skip_beat_cache,
             },
         }
 

@@ -555,3 +555,100 @@ class TestJobInfo:
         )
         assert job.result is not None
         assert job.result.tempo_bpm == 128.5
+
+
+class TestSubmitComponentAnalysis:
+    """Tests for AnalysisClient.submit_component_analysis payload coverage."""
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_default_skip_beat_cache_is_false(self, mock_post, api_key_env):
+        """Default submit_component_analysis sends options.skip_beat_cache == False."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "component_analysis",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_component_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+        )
+
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["options"]["skip_beat_cache"] is False
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_skip_beat_cache_true_forwarded(self, mock_post, api_key_env):
+        """submit_component_analysis(skip_beat_cache=True) sends options.skip_beat_cache == True."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "component_analysis",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_component_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            skip_beat_cache=True,
+        )
+
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["options"]["skip_beat_cache"] is True
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_full_payload_shape(self, mock_post, api_key_env):
+        """All expected fields are present in the payload."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "component_analysis",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_component_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            song_id="song_001",
+            sections=[{"label": "chorus", "start": 0.0, "end": 30.0}],
+            beats=[0.0, 1.0],
+            downbeats=[0.0, 4.0],
+            lrc_content="[00:00.00]Line",
+            force=True,
+            snap_to_downbeat=True,
+            energy_aware_roles=True,
+            use_stems=True,
+            classify_theme=True,
+            classify_vocal_posture=True,
+            skip_beat_cache=True,
+        )
+
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["audio_url"] == "s3://bucket/audio.mp3"
+        assert payload["content_hash"] == "abc123"
+        assert payload["song_id"] == "song_001"
+        assert payload["sections"] == [{"label": "chorus", "start": 0.0, "end": 30.0}]
+        assert payload["beats"] == [0.0, 1.0]
+        assert payload["downbeats"] == [0.0, 4.0]
+        assert payload["lrc_content"] == "[00:00.00]Line"
+        opts = payload["options"]
+        assert opts["force"] is True
+        assert opts["snap_to_downbeat"] is True
+        assert opts["energy_aware_roles"] is True
+        assert opts["use_stems"] is True
+        assert opts["classify_theme"] is True
+        assert opts["classify_vocal_posture"] is True
+        assert opts["skip_beat_cache"] is True

@@ -1953,6 +1953,8 @@ def _submit_component_analysis_job(
     use_stems: bool = False,
     classify_theme: bool = False,
     classify_vocal_posture: bool = False,
+    # v6 options
+    skip_beat_cache: bool = False,
 ) -> Optional[list[SongComponent]]:
     """Submit component analysis, wait for completion, persist results.
 
@@ -1977,6 +1979,7 @@ def _submit_component_analysis_job(
         use_stems: Use Demucs stems for feature extraction.
         classify_theme: LLM theme classification (12 Chinese themes).
         classify_vocal_posture: LLM vocal posture classification.
+        skip_beat_cache: Bypass cached beat grid; re-run madmom detection.
 
     Returns:
         Persisted SongComponent list, or None on failure.
@@ -2054,6 +2057,7 @@ def _submit_component_analysis_job(
             use_stems=use_stems,
             classify_theme=classify_theme,
             classify_vocal_posture=classify_vocal_posture,
+            skip_beat_cache=skip_beat_cache,
         )
     except AnalysisServiceError as e:
         console.print(f"[red]Failed to submit component analysis: {e}[/red]")
@@ -2179,6 +2183,14 @@ def components_recording(
         "--compute-all-fields",
         help="Shortcut: enable snap-to-downbeat, energy-roles, classify-theme, classify-posture",
     ),
+    skip_beat_cache: bool = typer.Option(
+        False,
+        "--skip-beat-cache",
+        help=(
+            "Bypass cached beat grid; re-run madmom detection (still writes the "
+            "fresh result to cache). Orthogonal to --force."
+        ),
+    ),
     format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -2195,6 +2207,12 @@ def components_recording(
     Use --compute-all-fields as a shortcut to enable snap-to-downbeat,
     energy-roles, classify-theme, and classify-posture at once. --use-stems
     is not included in the shortcut but can be combined with it.
+
+    --skip-beat-cache bypasses the cached beat grid and re-runs madmom detection
+    (the fresh result is still written to cache). Unlike --force (which re-runs
+    component extraction), this affects only beat detection. Combine both to
+    re-run everything from scratch. Neither flag is implied by
+    --compute-all-fields.
 
     Use --format json for machine-readable output (JSON arrays to stdout;
     progress messages go to stderr).
@@ -2263,6 +2281,7 @@ def components_recording(
                         use_stems=use_stems,
                         classify_theme=classify_theme,
                         classify_vocal_posture=classify_posture,
+                        skip_beat_cache=skip_beat_cache,
                     )
                     results.append({"song_id": sid, "status": "submitted"})
                 except Exception as e:
@@ -2276,6 +2295,7 @@ def components_recording(
                     use_stems=use_stems,
                     classify_theme=classify_theme,
                     classify_vocal_posture=classify_posture,
+                    skip_beat_cache=skip_beat_cache,
                 )
                 if result is None:
                     results.append(
@@ -2335,6 +2355,7 @@ def components_recording(
         use_stems=use_stems,
         classify_theme=classify_theme,
         classify_vocal_posture=classify_posture,
+        skip_beat_cache=skip_beat_cache,
     )
 
     if no_wait:

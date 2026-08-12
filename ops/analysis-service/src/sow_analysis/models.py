@@ -85,6 +85,11 @@ class ComponentAnalysisOptions(BaseModel):
     classify_theme: bool = False
     # v5: LLM vocal posture classification (3 categories)
     classify_vocal_posture: bool = False
+    # v6: bypass READING the cached beat grid (re-detect + overwrite).
+    # Orthogonal to `force`: `force` invalidates components.json;
+    # `skip_beat_cache` invalidates beat_grid.json reads only.
+    # Fresh detection still WRITES the beat cache.
+    skip_beat_cache: bool = False
 
 
 class LrcOptions(BaseModel):
@@ -191,9 +196,10 @@ class ComponentAnalysisJobRequest(BaseModel):
     Callers SHOULD pass cached ``sections``, ``beats``, ``downbeats``, and
     ``lrc_content`` from the DB/R2 to avoid re-computation.
 
-    v3: If ``beats``/``downbeats`` are absent (tier-2 only), the worker will
-    run analyze_audio_fast() inline to obtain them. Pass them when available
-    to skip that step.
+    v6: If ``downbeats`` are absent and ``options.snap_to_downbeat`` is set, the
+    worker resolves them via the beat-grid cache (``{hash12}/beat_grid.json``),
+    running madmom detection only on cache miss. ``analyze_audio_fast`` is never
+    run inline for beats — it does not produce them.
     """
 
     audio_url: str
