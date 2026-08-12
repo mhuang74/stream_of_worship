@@ -717,3 +717,28 @@ async def test_d4_hero_shows_full_reasoning():
         content = hero.content
         text = content.plain if hasattr(content, "plain") else str(content)
         assert "This is a very long reasoning text" in text
+
+
+@pytest.mark.asyncio
+async def test_d2_hero_updates_on_arrow_key_navigation():
+    """D2 regression: pressing the down cursor key moves the highlighted row to
+    EXIT and the Hero panel reflects the newly selected component.
+
+    Because the table uses cursor_type='cell', Textual posts CellHighlighted
+    (not RowHighlighted) on arrow-key navigation. The screen must listen for it
+    to keep the Hero panel in sync.
+    """
+    app, state = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one("#component-table", DataTable)
+        table.focus()
+        await pilot.pause()
+        assert state.selected_row == 0
+        await pilot.press("down")
+        await pilot.pause()
+        assert state.selected_row == 1
+        hero = app.screen.query_one("ComponentHeroPanel")
+        content = hero.content
+        text = content.plain if hasattr(content, "plain") else str(content)
+        assert "EXIT" in text
