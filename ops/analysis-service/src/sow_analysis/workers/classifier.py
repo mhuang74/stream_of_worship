@@ -4,12 +4,14 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Optional
 
 from openai import OpenAI
 
 from ..config import settings
 from .components import ComponentInstance
+from .llm_rate_limit import call_llm_with_retry
 from .lrc_parser import parse_lrc
 
 logger = logging.getLogger(__name__)
@@ -160,11 +162,10 @@ class ThemeClassifier:
         self._client = OpenAI(
             api_key=settings.SOW_LLM_API_KEY,
             base_url=settings.SOW_LLM_BASE_URL,
+            timeout=settings.SOW_LLM_CLASSIFICATION_TIMEOUT_SECONDS,
+            max_retries=0,  # retries handled by call_llm_with_retry
         )
         self._model = settings.SOW_LLM_MODEL
-        # Reuse the module-level LLM semaphore if available.
-        self._llm_semaphore = _get_llm_semaphore()
-        self._llm_min_interval = settings.SOW_LLM_MIN_INTERVAL_SECONDS
 
     async def classify_components(
         self,
@@ -180,17 +181,56 @@ class ThemeClassifier:
         Returns:
             The same list with theme/vocal_posture populated.
         """
+        total = len(components)
+        logger.info(f"LLM classification: {total} components to classify")
+
         tasks = []
-        for comp in components:
+        for i, comp in enumerate(components, 1):
             lyrics_lines = None
             if lrc_content and comp.start_time is not None and comp.end_time is not None:
                 lyrics_lines = _extract_lyrics_for_component(
                     lrc_content, comp.start_time, comp.end_time
                 )
-            tasks.append(self.classify_component(comp, lyrics_lines))
+            tasks.append(
+                self._classify_component_with_logging(i, total, comp, lyrics_lines)
+            )
 
-        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Log any exceptions that gather captured (safety net).
+        for i, result in enumerate(results, 1):
+            if isinstance(result, Exception):
+                logger.warning(
+                    f"LLM classification: component {i}/{total} failed: {result}"
+                )
         return components
+
+    async def _classify_component_with_logging(
+        self,
+        idx: int,
+        total: int,
+        component: ComponentInstance,
+        lyrics_lines: Optional[list[str]],
+    ) -> None:
+        """Classify one component with start/completed/failed progress logging."""
+        comp_label = (
+            f"component {idx}/{total} (occurrence={component.occurrence_index}, "
+            f"type={component.component_type})"
+        )
+        logger.info(f"LLM classification: starting {comp_label}")
+        start = time.time()
+        try:
+            await self.classify_component(component, lyrics_lines)
+            elapsed = time.time() - start
+            logger.info(
+                f"LLM classification: completed {comp_label} ({elapsed:.2f}s, "
+                f"theme={component.theme}, posture={component.vocal_posture})"
+            )
+        except Exception as e:
+            elapsed = time.time() - start
+            logger.warning(
+                f"LLM classification: failed {comp_label} ({elapsed:.2f}s): {e}"
+            )
 
     async def classify_component(
         self,
@@ -226,7 +266,10 @@ class ThemeClassifier:
     ) -> None:
         """Classify via LLM API call, with heuristic cross-check.
 
-        Uses the shared LLM semaphore and min_interval throttle.
+        Uses the shared ``call_llm_with_retry`` utility which handles semaphore
+        management, min-interval pacing, 429/5xx retry with backoff, and budget
+        enforcement. A single re-call is attempted if the API returns 200 but
+        unparseable JSON.
 
         Posture adjustment scheme:
           - Heuristic agrees with LLM -> +0.05 (capped at 0.95)
@@ -241,41 +284,85 @@ class ThemeClassifier:
         """
         prompt = self._build_prompt(component, lyrics_text)
 
-        async with self._llm_semaphore:
-            # Min interval throttle (same pattern as lrc.py).
-            if self._llm_min_interval > 0:
-                await asyncio.sleep(self._llm_min_interval)
+        try:
+            parsed = await call_llm_with_retry(
+                lambda: self._do_classify_call(component, prompt),
+                description=(
+                    f"theme/posture classification (comp {component.occurrence_index})"
+                ),
+            )
+            self._apply_llm_result(component, parsed, heuristic_posture)
 
-            try:
-                response = await asyncio.to_thread(
-                    self._client.chat.completions.create,
-                    model=self._model,
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
-                    max_tokens=300,
+            # Retry once on JSON parse failure (API returned 200 but unparseable).
+            if component.theme is None or component.vocal_posture is None:
+                parsed = await call_llm_with_retry(
+                    lambda: self._do_classify_call(component, prompt),
+                    description=(
+                        f"theme/posture classification retry "
+                        f"(comp {component.occurrence_index})"
+                    ),
                 )
-                result = response.choices[0].message.content
-                parsed = self._parse_llm_json(result)
+                self._apply_llm_result(component, parsed, heuristic_posture)
 
-                # Populate from LLM.
-                component.theme = parsed.get("theme")
-                component.theme_confidence = parsed.get("theme_confidence", 0.7)
-                component.theme_reasoning = parsed.get("theme_reasoning", "")
-                component.vocal_posture = parsed.get("vocal_posture")
-                component.vocal_posture_confidence = parsed.get(
-                    "vocal_posture_confidence", 0.7
-                )
-                component.posture_reasoning = parsed.get("posture_reasoning", "")
+        except Exception as e:
+            logger.warning(f"LLM classification failed for component: {e}")
 
-                # Heuristic cross-check.
-                self._apply_heuristic_adjustment(component, heuristic_posture)
+    def _do_classify_call(self, component: ComponentInstance, prompt: str) -> dict:
+        """Synchronous OpenAI classification call, run in an executor.
 
-                # Retry on parse failure.
-                if component.theme is None or component.vocal_posture is None:
-                    await self._retry_llm_call(component, lyrics_text, heuristic_posture)
+        Returns the parsed JSON dict. Logs diagnostics before returning.
+        """
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=300,
+        )
+        self._log_llm_diagnostics(response, component)
+        result = response.choices[0].message.content
+        return self._parse_llm_json(result)
 
-            except Exception as e:
-                logger.warning(f"LLM classification failed for component: {e}")
+    def _apply_llm_result(
+        self,
+        component: ComponentInstance,
+        parsed: dict,
+        heuristic_posture: Optional[str],
+    ) -> None:
+        """Populate component fields from a parsed LLM response and cross-check."""
+        component.theme = parsed.get("theme")
+        component.theme_confidence = parsed.get("theme_confidence", 0.7)
+        component.theme_reasoning = parsed.get("theme_reasoning", "")
+        component.vocal_posture = parsed.get("vocal_posture")
+        component.vocal_posture_confidence = parsed.get(
+            "vocal_posture_confidence", 0.7
+        )
+        component.posture_reasoning = parsed.get("posture_reasoning", "")
+
+        # Heuristic cross-check.
+        self._apply_heuristic_adjustment(component, heuristic_posture)
+
+    def _log_llm_diagnostics(self, response, component) -> None:
+        """Log diagnostic details for an LLM API call at DEBUG level.
+
+        Logs: model, token usage (prompt/completion/total), response length,
+        finish_reason, and component identifier. At INFO level, the per-component
+        progress log from classify_components provides visibility during normal
+        operation.
+        """
+        usage = getattr(response, "usage", None)
+        model = getattr(response, "model", self._model)
+        finish_reason = getattr(response.choices[0], "finish_reason", "unknown")
+        content_len = len(response.choices[0].message.content or "")
+
+        prompt_tokens = getattr(usage, "prompt_tokens", "?") if usage else "?"
+        completion_tokens = getattr(usage, "completion_tokens", "?") if usage else "?"
+        total_tokens = getattr(usage, "total_tokens", "?") if usage else "?"
+
+        logger.debug(
+            f"LLM response: model={model}, tokens={prompt_tokens}/{completion_tokens}/"
+            f"{total_tokens} (prompt/completion/total), content_len={content_len}, "
+            f"finish={finish_reason}, component={component.occurrence_index}"
+        )
 
     def _parse_llm_json(self, text: str) -> dict:
         """Parse LLM JSON response with basic error handling."""
@@ -343,43 +430,6 @@ class ThemeClassifier:
                     0.0, component.vocal_posture_confidence - 0.1
                 )
 
-    async def _retry_llm_call(
-        self,
-        component: ComponentInstance,
-        lyrics_text: str,
-        heuristic_posture: Optional[str] = None,
-    ) -> None:
-        """Retry LLM call on JSON parse failure. Re-runs heuristic cross-check."""
-        async with self._llm_semaphore:
-            if self._llm_min_interval > 0:
-                await asyncio.sleep(self._llm_min_interval)
-            try:
-                prompt = self._build_prompt(component, lyrics_text)
-                response = await asyncio.to_thread(
-                    self._client.chat.completions.create,
-                    model=self._model,
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
-                    max_tokens=300,
-                )
-                result = response.choices[0].message.content
-                parsed = self._parse_llm_json(result)
-
-                # Parse ALL fields (not just theme/posture).
-                component.theme = parsed.get("theme")
-                component.theme_confidence = parsed.get("theme_confidence", 0.7)
-                component.theme_reasoning = parsed.get("theme_reasoning", "")
-                component.vocal_posture = parsed.get("vocal_posture")
-                component.vocal_posture_confidence = parsed.get(
-                    "vocal_posture_confidence", 0.7
-                )
-                component.posture_reasoning = parsed.get("posture_reasoning", "")
-
-                # Re-run heuristic cross-check on retry.
-                self._apply_heuristic_adjustment(component, heuristic_posture)
-            except Exception as e:
-                logger.warning(f"LLM retry failed: {e}")
-
     def _build_prompt(
         self,
         component: ComponentInstance,
@@ -433,39 +483,3 @@ Response: {{"theme": "讚美", "theme_confidence": 0.80, "theme_reasoning": "Cal
 
 Return ONLY valid JSON matching the schema above. No markdown, no explanation.
 """
-
-
-def _get_llm_semaphore():
-    """Get the shared LLM semaphore (same instance as LRC/embedding jobs).
-
-    Reuses the module-level semaphore from llm_rate_limit.py, ensuring
-    consistent throttling across all LLM consumers.
-
-    The semaphore in llm_rate_limit.py is lazily initialized on first
-    _acquire_llm_slot() call. We trigger initialization by calling
-    _acquire_llm_slot() then _release_llm_slot() once, then return
-    the now-initialized _llm_semaphore.
-    """
-    try:
-        from . import llm_rate_limit
-
-        # Trigger lazy initialization if not yet done.
-        if llm_rate_limit._llm_semaphore is None:
-            # Force initialization by calling _acquire_llm_slot synchronously.
-            # This creates the semaphore if SOW_LLM_MAX_CONCURRENT > 0.
-            # We can't await here (not in async context at init time),
-            # so we replicate the initialization logic.
-            max_concurrent = settings.SOW_LLM_MAX_CONCURRENT
-            if max_concurrent > 0:
-                llm_rate_limit._llm_semaphore = asyncio.Semaphore(max_concurrent)
-            else:
-                llm_rate_limit._llm_semaphore = None  # disabled
-
-        if llm_rate_limit._llm_semaphore is not None:
-            return llm_rate_limit._llm_semaphore
-    except ImportError:
-        pass
-
-    # Fallback: create a local semaphore (less ideal — no shared throttling).
-    max_concurrent = max(1, settings.SOW_LLM_MAX_CONCURRENT)
-    return asyncio.Semaphore(max_concurrent)

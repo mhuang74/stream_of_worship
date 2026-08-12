@@ -969,6 +969,10 @@ class JobQueue:
                     and _detect_downbeats_madmom is not None
                 ):
                     with step_timer("Madmom downbeat detection", logger):
+                        audio_size_mb = audio_path.stat().st_size / (1024 * 1024)
+                        logger.info(
+                            f"Madmom: processing {audio_size_mb:.1f}MB audio file"
+                        )
                         loop = asyncio.get_event_loop()
                         madmom_downbeats = await loop.run_in_executor(
                             None, _detect_downbeats_madmom, audio_path

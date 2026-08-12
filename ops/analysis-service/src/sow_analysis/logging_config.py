@@ -101,6 +101,12 @@ def configure_logging(
         # Other potentially noisy libraries
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("botocore").setLevel(logging.WARNING)
+        # OpenAI SDK uses httpx internally; its INFO logs ("HTTP Request: POST ...")
+        # are noisy and lack model/token/latency detail. We log our own diagnostics
+        # in classifier.py (_log_llm_diagnostics) and llm_rate_limit.py (retry warnings).
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("openai").setLevel(logging.WARNING)
 
 
 def set_job_id(job_id: str | None) -> None:
