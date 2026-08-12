@@ -4513,6 +4513,115 @@ def edit_lrc(
     playback.stop()
 
 
+@app.command("review-components")
+def review_components(
+    song_ids: List[str] = typer.Argument(
+        ..., help="One or more song IDs whose entry/exit Chorus metadata to review"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+) -> None:
+    """Launch a Textual TUI to view / review / compare / edit component metadata.
+
+    Loads the entry and exit Chorus component rows for each song (as produced by
+    the Component Analysis job), downloads the song's audio for playback, and
+    opens an interactive editor mirroring ``audio edit-lrc`` hotkeys.
+    """
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    cache_dir = get_cache_dir()
+
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    from stream_of_worship.admin.component_editor.state import SongSession
+
+    sessions: list[SongSession] = []
+    for song_id in song_ids:
+        song = db_client.get_song(song_id)
+        if not song:
+            console.print(
+                f"[yellow]No song found for id: {song_id}; skipping.[/yellow]"
+            )
+            continue
+        recording = db_client.get_recording_by_song_id(song_id)
+        if not recording:
+            console.print(
+                f"[yellow]No recording found for song: {song_id}; skipping.[/yellow]"
+            )
+            continue
+        entry, exit_comp = db_client.get_song_components_entry_exit(song_id)
+        if entry is None and exit_comp is None:
+            console.print(
+                f"[yellow]No component analysis run for {song_id}; "
+                f"run `sow-admin audio components {song_id}` first. Skipping.[/yellow]"
+            )
+            continue
+
+        # Ensure audio cached under {cache_dir}/{hash_prefix}/audio/audio.mp3
+        audio_cache_dir = cache_dir / recording.hash_prefix / "audio"
+        audio_cache_dir.mkdir(parents=True, exist_ok=True)
+        audio_path = audio_cache_dir / "audio.mp3"
+        if not audio_path.exists():
+            try:
+                r2_client.download_audio(recording.hash_prefix, audio_path)
+            except Exception as e:
+                console.print(
+                    f"[yellow]Failed to download audio for {song_id}: {e}; skipping.[/yellow]"
+                )
+                continue
+
+        sessions.append(
+            SongSession(
+                song_id=song_id,
+                song_title=song.title,
+                hash_prefix=recording.hash_prefix,
+                audio_path=str(audio_path),
+                audio_duration=recording.duration_seconds,
+                entry_component=entry,
+                exit_component=exit_comp,
+            )
+        )
+
+    if not sessions:
+        console.print("[red]No valid songs with component analysis to review.[/red]")
+        raise typer.Exit(1)
+
+    console.print(
+        f"[cyan]Launching Component Metadata editor for {len(sessions)} song(s)...[/cyan]"
+    )
+
+    from stream_of_worship.admin.component_editor.app import ComponentEditorApp
+    from stream_of_worship.admin.component_editor.state import ComponentEditorState
+    from stream_of_worship.admin.services.playback import PlaybackService
+
+    editor_state = ComponentEditorState(sessions=sessions)
+    playback = PlaybackService()
+    app = ComponentEditorApp(
+        editor_state=editor_state,
+        playback_service=playback,
+        cache_dir=cache_dir,
+        r2_client=r2_client,
+        db_client=db_client,
+    )
+    app.run()
+
+    playback.stop()
+
+
 def _build_fresh_editor_state(
     transcribed_content: Optional[str],
     song: Optional[Song],

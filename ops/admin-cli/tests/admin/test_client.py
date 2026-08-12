@@ -684,3 +684,133 @@ class TestDatabaseClientIntegration:
         """Test DatabaseClient works as a context manager."""
         with admin_client as client:
             assert client is admin_client
+
+
+@pytest.mark.integration
+class TestUpdateSongComponentFields:
+    """Integration tests for update_song_component_fields[_txn]."""
+
+    def _seed_song_and_components(self, client: DatabaseClient) -> int:
+        """Seed a song + recording + 2 song_components rows; return entry component_id."""
+        from stream_of_worship.admin.db.models import Recording, Song, SongComponent
+
+        song = Song(
+            id="song_comp_001",
+            title="Component Test Song",
+            source_url="http://test",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        client.insert_song(song)
+
+        recording = Recording(
+            content_hash="c" * 64,
+            hash_prefix="cccccccccccc",
+            song_id=song.id,
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at="2024-01-01T00:00:00",
+        )
+        client.insert_recording(recording)
+
+        entry = SongComponent(
+            song_id=song.id,
+            content_hash=recording.content_hash,
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=10.0,
+            end_time=20.0,
+            theme="讚美",
+            vocal_posture="To God",
+            groove_density=0.5,
+            energy_level=-18.0,
+        )
+        exit_comp = SongComponent(
+            song_id=song.id,
+            content_hash=recording.content_hash,
+            component_type="chorus",
+            occurrence_index=1,
+            role="exit",
+            start_time=30.0,
+            end_time=40.0,
+            theme="感恩",
+            vocal_posture="About God",
+            groove_density=0.6,
+            energy_level=-16.0,
+        )
+        client.upsert_song_components(song.id, recording.content_hash, [entry, exit_comp])
+
+        entry_row, exit_row = client.get_song_components_entry_exit(song.id)
+        assert entry_row is not None
+        assert entry_row.id is not None
+        return entry_row.id
+
+    def test_update_theme(self, admin_client):
+        """update_song_component_fields updates the theme field."""
+        component_id = self._seed_song_and_components(admin_client)
+        ok = admin_client.update_song_component_fields(component_id, {"theme": "敬拜"})
+        assert ok is True
+        entry, _ = admin_client.get_song_components_entry_exit("song_comp_001")
+        assert entry.theme == "敬拜"
+
+    def test_update_multiple_fields(self, admin_client):
+        """update_song_component_fields updates multiple fields at once."""
+        component_id = self._seed_song_and_components(admin_client)
+        ok = admin_client.update_song_component_fields(
+            component_id,
+            {"theme": "信心", "vocal_posture": "To Congregation", "groove_density": 1.2},
+        )
+        assert ok is True
+        entry, _ = admin_client.get_song_components_entry_exit("song_comp_001")
+        assert entry.theme == "信心"
+        assert entry.vocal_posture == "To Congregation"
+        assert abs(entry.groove_density - 1.2) < 0.001
+
+    def test_rejects_unknown_field(self, admin_client):
+        """update_song_component_fields rejects non-editable fields."""
+        component_id = self._seed_song_and_components(admin_client)
+        with pytest.raises(ValueError, match="Cannot edit non-editable fields"):
+            admin_client.update_song_component_fields(component_id, {"bpm": 120.0})
+
+    def test_wrong_id_returns_false(self, admin_client):
+        """update_song_component_fields returns False for non-existent component_id."""
+        self._seed_song_and_components(admin_client)
+        ok = admin_client.update_song_component_fields(99999, {"theme": "敬拜"})
+        assert ok is False
+
+    def test_empty_fields_returns_false(self, admin_client):
+        """update_song_component_fields returns False for empty fields dict."""
+        component_id = self._seed_song_and_components(admin_client)
+        ok = admin_client.update_song_component_fields(component_id, {})
+        assert ok is False
+
+    def test_txn_variant_same_validation(self, admin_client):
+        """update_song_component_fields_txn rejects unknown fields."""
+        component_id = self._seed_song_and_components(admin_client)
+        with pytest.raises(ValueError, match="Cannot edit non-editable fields"):
+            with admin_client.transaction() as conn:
+                admin_client.update_song_component_fields_txn(conn, component_id, {"key": "C"})
+
+    def test_txn_variant_commits_in_caller_transaction(self, admin_client):
+        """update_song_component_fields_txn commits within the caller's transaction."""
+        component_id = self._seed_song_and_components(admin_client)
+        with admin_client.transaction() as conn:
+            ok = admin_client.update_song_component_fields_txn(
+                conn, component_id, {"theme": "祈禱"}
+            )
+            assert ok is True
+        entry, _ = admin_client.get_song_components_entry_exit("song_comp_001")
+        assert entry.theme == "祈禱"
+
+    def test_txn_variant_rolled_back_if_caller_raises(self, admin_client):
+        """If the caller raises after the UPDATE, the transaction rolls back."""
+        component_id = self._seed_song_and_components(admin_client)
+        try:
+            with admin_client.transaction() as conn:
+                admin_client.update_song_component_fields_txn(conn, component_id, {"theme": "復興"})
+                raise RuntimeError("simulated caller error")
+        except RuntimeError:
+            pass
+        # The theme should NOT have been updated
+        entry, _ = admin_client.get_song_components_entry_exit("song_comp_001")
+        assert entry.theme == "讚美"
