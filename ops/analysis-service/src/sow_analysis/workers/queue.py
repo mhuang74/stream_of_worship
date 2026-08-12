@@ -99,11 +99,17 @@ except ImportError:
 
 # Optional component extraction imports - require librosa
 try:
-    from .components import ComponentInstance, extract_components, _detect_downbeats_madmom
+    from .components import (
+        ComponentInstance,
+        extract_components,
+        _detect_downbeats_madmom,
+        get_or_detect_beat_grid,
+    )
 except ImportError:
     extract_components = None
     ComponentInstance = None
     _detect_downbeats_madmom = None
+    get_or_detect_beat_grid = None
 
 # Optional LRC imports - require whisper and openai
 try:
@@ -960,27 +966,32 @@ class JobQueue:
                         {"label": s.label, "start": s.start, "end": s.end} for s in request.sections
                     ]
 
-                # v5: If snap_to_downbeat requested but downbeats not provided, run madmom.
+                # v6: Downbeats come from the beat-grid cache (or madmom detection on miss).
+                # The beat grid is a pure function of audio bytes, cached separately from
+                # components.json, so this consults the cache even when options.force is set.
+                # Detection scope is unchanged: only when snap_to_downbeat is requested.
                 downbeats = request.downbeats
                 if (
                     request.options.snap_to_downbeat
                     and not downbeats
-                    and _detect_downbeats_madmom is not None
+                    and get_or_detect_beat_grid is not None
                 ):
-                    with step_timer("Madmom downbeat detection", logger):
+                    with step_timer("Beat grid lookup / madmom detection", logger):
                         audio_size_mb = audio_path.stat().st_size / (1024 * 1024)
-                        logger.info(
-                            f"Madmom: processing {audio_size_mb:.1f}MB audio file"
+                        logger.info(f"Beat grid: processing {audio_size_mb:.1f}MB audio file")
+                        beat_grid = await get_or_detect_beat_grid(
+                            audio_path=audio_path,
+                            content_hash=request.content_hash,
+                            cache_manager=self.cache_manager,
+                            r2_client=self.r2_client,
+                            skip_beat_cache=request.options.skip_beat_cache,
                         )
-                        loop = asyncio.get_event_loop()
-                        madmom_downbeats = await loop.run_in_executor(
-                            None, _detect_downbeats_madmom, audio_path
-                        )
-                    if madmom_downbeats:
-                        downbeats = madmom_downbeats
+                    if beat_grid and beat_grid.get("downbeats"):
+                        downbeats = beat_grid["downbeats"]
                     else:
                         logger.warning(
-                            "madmom downbeat detection returned None; using beat snapping only"
+                            "No downbeats available (cache miss + detection failed); "
+                            "using beat snapping only"
                         )
 
                 with step_timer("Component extraction", logger):

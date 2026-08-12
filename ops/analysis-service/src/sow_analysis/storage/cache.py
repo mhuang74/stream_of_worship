@@ -14,6 +14,10 @@ from ..config import settings
 # mismatched version are treated as cache misses and recomputed.
 COMPONENT_SCHEMA_VERSION = 2
 
+# Bump when the beat_grid.json payload shape changes. Cached payloads with a
+# mismatched version are treated as cache misses and re-detected.
+BEAT_GRID_SCHEMA_VERSION = 1
+
 
 class CacheManager:
     """Manages local disk cache for analysis results and stems."""
@@ -346,4 +350,55 @@ class CacheManager:
         hash_prefix = self._get_hash_prefix(content_hash)
         cache_file = self.cache_dir / f"{hash_prefix}_components.json"
         cache_file.write_text(json.dumps(result, indent=2))
+        return cache_file
+
+    def get_beat_grid(self, content_hash: str) -> Optional[dict]:
+        """Local beat-grid cache lookup.
+
+        Checks for ``{hash_prefix}_beat_grid.json`` in the local cache directory.
+        Returns None on miss, corrupt JSON, OR schema_version mismatch.
+
+        Args:
+            content_hash: Full SHA-256 content hash.
+
+        Returns:
+            Cached beat-grid payload dict or None.
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        cache_file = self.cache_dir / f"{hash_prefix}_beat_grid.json"
+        if cache_file.exists():
+            try:
+                payload = json.loads(cache_file.read_text())
+            except (json.JSONDecodeError, IOError):
+                return None
+            if payload.get("schema_version") != BEAT_GRID_SCHEMA_VERSION:
+                return None
+            return payload
+        return None
+
+    def save_beat_grid(self, content_hash: str, payload: dict) -> Path:
+        """Save beat grid atomically (temp file + os.replace).
+
+        Stores as ``{hash_prefix}_beat_grid.json`` in the local cache directory.
+        The ``payload`` dict MUST include ``schema_version=BEAT_GRID_SCHEMA_VERSION``.
+
+        Args:
+            content_hash: Full SHA-256 content hash.
+            payload: Beat-grid payload dictionary.
+
+        Returns:
+            Path to saved cache file.
+        """
+        hash_prefix = self._get_hash_prefix(content_hash)
+        cache_file = self.cache_dir / f"{hash_prefix}_beat_grid.json"
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=str(cache_file.parent),
+            prefix=f".{cache_file.stem}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp.write(json.dumps(payload, indent=2))
+            tmp_path = Path(tmp.name)
+        os.replace(str(tmp_path), str(cache_file))
         return cache_file

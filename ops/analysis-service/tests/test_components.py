@@ -4,13 +4,17 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import librosa
 import numpy as np
 import pytest
 
-from sow_analysis.storage.cache import COMPONENT_SCHEMA_VERSION, CacheManager
+from sow_analysis.storage.cache import (
+    BEAT_GRID_SCHEMA_VERSION,
+    COMPONENT_SCHEMA_VERSION,
+    CacheManager,
+)
 from sow_analysis.workers.components import (
     ComponentInstance,
     GlobalFeatures,
@@ -21,6 +25,7 @@ from sow_analysis.workers.components import (
     _snap_to_beat,
     compute_component_features,
     extract_components,
+    get_or_detect_beat_grid,
     identify_from_allin1_sections,
     identify_from_lyrics_repetition,
 )
@@ -527,12 +532,9 @@ class TestExtractComponents:
 """
 
             mock_gf = _make_mock_global_features(sr=22050, duration=20.0)
-            with (
-                patch("sow_analysis.workers.components.analyze_audio_fast", create=True),
-                patch(
-                    "sow_analysis.workers.components._precompute_global_features"
-                ) as mock_precompute,
-            ):
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features"
+            ) as mock_precompute:
                 mock_precompute.return_value = mock_gf
                 components, source = await extract_components(
                     audio_path=audio_path,
@@ -954,3 +956,312 @@ class TestPerformanceRegression:
         assert source == "lyrics_repetition"
         assert len(components) > 0
         assert elapsed < 30.0, f"extract_components took {elapsed:.2f}s (>30s threshold)"
+
+
+class TestGetOrDetectBeatGrid:
+    """Tests for the get_or_detect_beat_grid helper."""
+
+    def _make_payload(self, content_hash: str = "a" * 64) -> dict:
+        return {
+            "schema_version": BEAT_GRID_SCHEMA_VERSION,
+            "source": "madmom",
+            "content_hash": content_hash,
+            "hash_prefix": content_hash[:12],
+            "beats": [[0.464, 1], [0.928, 2], [1.392, 3], [1.856, 4], [2.320, 1]],
+            "downbeats": [0.464, 2.320],
+            "detected_at": "2026-08-12T12:34:56.789000+00:00",
+            "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+        }
+
+    @pytest.mark.asyncio
+    async def test_helper_local_hit_short_circuits(self):
+        """Pre-seeded local cache returns immediately; detection not called."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "a" * 64
+            payload = self._make_payload(content_hash)
+            cache_manager.save_beat_grid(content_hash, payload)
+
+            audio_path = Path(tmp) / "audio.mp3"
+
+            def _fail_if_called(*args, **kwargs):
+                raise AssertionError("detection should not run on cache hit")
+
+            with patch(
+                "sow_analysis.workers.components._detect_downbeats_madmom",
+                side_effect=_fail_if_called,
+            ):
+                result = await get_or_detect_beat_grid(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                )
+
+            assert result is not None
+            assert result["downbeats"] == [0.464, 2.320]
+
+    @pytest.mark.asyncio
+    async def test_helper_r2_hit_backfills_local(self):
+        """Empty local + R2 hit → backfills local cache."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "b" * 64
+            payload = self._make_payload(content_hash)
+            audio_path = Path(tmp) / "audio.mp3"
+
+            r2_mock = MagicMock()
+            r2_mock.download_beat_grid = AsyncMock(return_value=payload)
+            r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
+
+            def _fail_if_called(*args, **kwargs):
+                raise AssertionError("detection should not run on R2 hit")
+
+            with patch(
+                "sow_analysis.workers.components._detect_downbeats_madmom",
+                side_effect=_fail_if_called,
+            ):
+                result = await get_or_detect_beat_grid(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=r2_mock,
+                )
+
+            assert result is not None
+            # Local cache should now be populated (backfill).
+            assert cache_manager.get_beat_grid(content_hash) is not None
+
+    @pytest.mark.asyncio
+    async def test_helper_miss_detects_and_persists(self):
+        """Cache miss → detection runs; local + R2 written."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "c" * 64
+            audio_path = Path(tmp) / "audio.mp3"
+
+            detected_payload = {
+                "source": "madmom",
+                "beats": [[0.5, 1]],
+                "downbeats": [0.5],
+                "detected_at": "2026-08-12T12:00:00+00:00",
+                "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+            }
+
+            r2_mock = MagicMock()
+            r2_mock.download_beat_grid = AsyncMock(return_value=None)
+            r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
+
+            with patch(
+                "sow_analysis.workers.components._detect_downbeats_madmom",
+                return_value=detected_payload,
+            ):
+                result = await get_or_detect_beat_grid(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=r2_mock,
+                )
+
+            assert result is not None
+            assert result["schema_version"] == BEAT_GRID_SCHEMA_VERSION
+            assert result["content_hash"] == content_hash
+            assert result["hash_prefix"] == content_hash[:12]
+            assert result["source"] == "madmom"
+            # Local cache written.
+            cached = cache_manager.get_beat_grid(content_hash)
+            assert cached is not None
+            assert cached["content_hash"] == content_hash
+            # R2 upload attempted.
+            r2_mock.upload_beat_grid.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_helper_skip_beat_cache_runs_detection_and_overwrites(self):
+        """skip_beat_cache=True bypasses reads; detection overwrites cache."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "d" * 64
+            old_payload = self._make_payload(content_hash)
+            old_payload["downbeats"] = [0.111]
+            cache_manager.save_beat_grid(content_hash, old_payload)
+
+            audio_path = Path(tmp) / "audio.mp3"
+            new_detected = {
+                "source": "madmom",
+                "beats": [[1.0, 1]],
+                "downbeats": [1.0],
+                "detected_at": "2026-08-12T13:00:00+00:00",
+                "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+            }
+
+            r2_mock = MagicMock()
+            r2_mock.download_beat_grid = AsyncMock(return_value=None)
+            r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
+
+            with patch(
+                "sow_analysis.workers.components._detect_downbeats_madmom",
+                return_value=new_detected,
+            ):
+                result = await get_or_detect_beat_grid(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=r2_mock,
+                    skip_beat_cache=True,
+                )
+
+            assert result is not None
+            assert result["downbeats"] == [1.0]
+            # Cache overwritten with new content.
+            cached = cache_manager.get_beat_grid(content_hash)
+            assert cached is not None
+            assert cached["downbeats"] == [1.0]
+            # R2 download should NOT have been called (skip reads).
+            r2_mock.download_beat_grid.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_helper_detection_failure_returns_none_no_write(self):
+        """Detection returns None → helper returns None; no local file created."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "e" * 64
+            audio_path = Path(tmp) / "audio.mp3"
+
+            r2_mock = MagicMock()
+            r2_mock.download_beat_grid = AsyncMock(return_value=None)
+            r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
+
+            with patch(
+                "sow_analysis.workers.components._detect_downbeats_madmom",
+                return_value=None,
+            ):
+                result = await get_or_detect_beat_grid(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=r2_mock,
+                )
+
+            assert result is None
+            assert cache_manager.get_beat_grid(content_hash) is None
+            r2_mock.upload_beat_grid.assert_not_called()
+
+
+class TestTier2BeatGridCacheReuse:
+    """Tests for the tier-2 lyrics path reading the beat-grid cache."""
+
+    @pytest.mark.asyncio
+    async def test_tier2_uses_cached_beat_grid(self):
+        """Tier-2 lyrics path reads beat-grid cache for downbeats."""
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "audio.mp3"
+            audio_path.write_text("dummy")
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "tier2_001"
+
+            # Seed beat-grid cache.
+            grid_payload = {
+                "schema_version": BEAT_GRID_SCHEMA_VERSION,
+                "source": "madmom",
+                "content_hash": content_hash,
+                "hash_prefix": content_hash[:12],
+                "beats": [[0.0, 1], [1.0, 2], [2.0, 3], [3.0, 4], [4.0, 1]],
+                "downbeats": [0.0, 4.0, 8.0, 12.0],
+                "detected_at": "2026-08-12T12:00:00+00:00",
+                "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
+            }
+            cache_manager.save_beat_grid(content_hash, grid_payload)
+
+            lrc_content = """[00:00.00]讚美主
+[00:05.00]哈利路亞
+[00:10.00]讚美主
+[00:15.00]哈利路亞
+"""
+
+            # Make gf None so feature computation is skipped (preserves confidence).
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features",
+                side_effect=RuntimeError("simulated failure"),
+            ):
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    lrc_content=lrc_content,
+                )
+
+            assert source == "lyrics_repetition"
+            assert len(components) > 0
+            # Confidence should NOT be lowered to 0.5 because downbeats are available
+            # from the beat-grid cache.
+            for c in components:
+                assert c.confidence == 0.7
+
+    @pytest.mark.asyncio
+    async def test_tier2_confidence_zero_without_downbeats(self):
+        """Tier-2 with no cached grid → confidence lowered to 0.5."""
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "audio.mp3"
+            audio_path.write_text("dummy")
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "tier2_002"
+
+            lrc_content = """[00:00.00]讚美主
+[00:05.00]哈利路亞
+[00:10.00]讚美主
+[00:15.00]哈利路亞
+"""
+
+            # Make gf None so feature computation (which overwrites confidence) is skipped.
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features",
+                side_effect=RuntimeError("simulated failure"),
+            ):
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    lrc_content=lrc_content,
+                )
+
+            assert source == "lyrics_repetition"
+            assert len(components) > 0
+            for c in components:
+                assert c.confidence == 0.5
+
+    @pytest.mark.asyncio
+    async def test_tier2_confidence_unchanged_with_downbeats(self):
+        """Tier-2 with downbeats passed directly → confidence NOT lowered."""
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "audio.mp3"
+            audio_path.write_text("dummy")
+            cache_manager = CacheManager(Path(tmp))
+            content_hash = "tier2_003"
+
+            lrc_content = """[00:00.00]讚美主
+[00:05.00]哈利路亞
+[00:10.00]讚美主
+[00:15.00]哈利路亞
+"""
+
+            # Make gf None so feature computation (which overwrites confidence) is skipped.
+            with patch(
+                "sow_analysis.workers.components._precompute_global_features",
+                side_effect=RuntimeError("simulated failure"),
+            ):
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash=content_hash,
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    lrc_content=lrc_content,
+                    downbeats=[0.0, 4.0, 8.0, 12.0],
+                )
+
+            assert source == "lyrics_repetition"
+            assert len(components) > 0
+            # identify_from_lyrics_repetition sets confidence=0.7; not lowered to 0.5.
+            for c in components:
+                assert c.confidence == 0.7
