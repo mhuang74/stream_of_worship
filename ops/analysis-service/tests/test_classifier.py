@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pytest
 
 from sow_analysis.config import settings
-from sow_analysis.workers.classifier import ThemeClassifier, _lyric_hash
+from sow_analysis.workers.classifier import ThemeClassifier, _lyric_hash, has_cached_llm_fields
 from sow_analysis.workers.components import ComponentInstance
 
 
@@ -353,3 +353,126 @@ def test_get_llm_semaphore_removed():
     assert not hasattr(mod, "_get_llm_semaphore")
     assert not hasattr(ThemeClassifier, "_retry_llm_call")
     assert not hasattr(ThemeClassifier, "_llm_semaphore")
+
+
+def test_has_cached_llm_fields_all_populated():
+    """Returns True when all essential components have theme + posture set."""
+    components = [
+        ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=0,
+            end_time=10,
+            theme="讚美",
+            vocal_posture="To God",
+            theme_confidence=0.9,
+            vocal_posture_confidence=0.9,
+        ),
+    ]
+    assert has_cached_llm_fields(
+        components, classify_theme=True, classify_vocal_posture=True
+    )
+
+
+def test_has_cached_llm_fields_missing_theme():
+    """Returns False when a candidate component has theme=None."""
+    components = [
+        ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=0,
+            end_time=10,
+            theme=None,
+            vocal_posture="To God",
+        ),
+    ]
+    assert not has_cached_llm_fields(
+        components, classify_theme=True, classify_vocal_posture=True
+    )
+
+
+def test_has_cached_llm_fields_skips_non_essential():
+    """Non-essential components are ignored (essential-only mode)."""
+    components = [
+        ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=0,
+            end_time=10,
+            theme="讚美",
+            vocal_posture="To God",
+        ),
+        ComponentInstance(
+            component_type="verse",
+            occurrence_index=1,
+            role="none",
+            start_time=10,
+            end_time=20,
+            theme=None,
+            vocal_posture=None,
+        ),
+    ]
+    assert has_cached_llm_fields(
+        components,
+        classify_theme=True,
+        classify_vocal_posture=True,
+        all_components=False,
+    )
+
+
+def test_has_cached_llm_fields_all_components_mode():
+    """all_components=True requires ALL components to have fields."""
+    components = [
+        ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=0,
+            end_time=10,
+            theme="讚美",
+            vocal_posture="To God",
+        ),
+        ComponentInstance(
+            component_type="verse",
+            occurrence_index=1,
+            role="none",
+            start_time=10,
+            end_time=20,
+            theme=None,
+            vocal_posture=None,
+        ),
+    ]
+    assert not has_cached_llm_fields(
+        components,
+        classify_theme=True,
+        classify_vocal_posture=True,
+        all_components=True,
+    )
+
+
+def test_has_cached_llm_fields_theme_only():
+    """When classify_vocal_posture=False, missing posture is OK."""
+    components = [
+        ComponentInstance(
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=0,
+            end_time=10,
+            theme="讚美",
+            vocal_posture=None,
+        ),
+    ]
+    assert has_cached_llm_fields(
+        components, classify_theme=True, classify_vocal_posture=False
+    )
+
+
+def test_has_cached_llm_fields_empty():
+    """Empty component list returns True (nothing to classify)."""
+    assert has_cached_llm_fields(
+        [], classify_theme=True, classify_vocal_posture=True
+    )

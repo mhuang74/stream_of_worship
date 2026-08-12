@@ -154,9 +154,32 @@ def _is_essential(component: ComponentInstance) -> bool:
     """Return True if the component's role is transition-essential.
 
     Mirrors components._is_essential; defined locally to keep the
-    classifier decoupled from the components module's internals.
+    classifier module decoupled from the components module's internals.
     """
     return component.role in ESSENTIAL_ROLES
+
+
+def has_cached_llm_fields(
+    components: list[ComponentInstance],
+    classify_theme: bool,
+    classify_vocal_posture: bool,
+    all_components: bool = False,
+) -> bool:
+    """Check whether components already carry LLM classification results.
+
+    Returns True only if every component that would be a classification
+    candidate (per all_components / essential-only rules) already has
+    the requested LLM fields (theme and/or vocal_posture) populated.
+    """
+    for comp in components:
+        is_candidate = all_components or _is_essential(comp)
+        if not is_candidate:
+            continue
+        if classify_theme and comp.theme is None:
+            return False
+        if classify_vocal_posture and comp.vocal_posture is None:
+            return False
+    return True
 
 
 # Decisiveness indicator regex: word-boundary "or", "either", "possibly", "maybe"

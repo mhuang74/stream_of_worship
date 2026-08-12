@@ -1017,17 +1017,52 @@ class JobQueue:
                     or request.options.classify_vocal_posture
                 ):
                     with step_timer("LLM theme/posture classification", logger):
-                        try:
-                            from .classifier import ThemeClassifier
+                        from .classifier import has_cached_llm_fields
 
-                            classifier = ThemeClassifier()
-                            components = await classifier.classify_components(
+                        if (
+                            not request.options.force
+                            and has_cached_llm_fields(
                                 components,
-                                lrc_content=request.lrc_content,
+                                classify_theme=request.options.classify_theme,
+                                classify_vocal_posture=request.options.classify_vocal_posture,
                                 all_components=request.options.all_components,
                             )
-                        except Exception as e:
-                            logger.warning(f"LLM classification failed: {e}")
+                        ):
+                            logger.info(
+                                "LLM classification skipped — cached results found in components.json"
+                            )
+                        else:
+                            try:
+                                from .classifier import ThemeClassifier
+
+                                classifier = ThemeClassifier()
+                                components = await classifier.classify_components(
+                                    components,
+                                    lrc_content=request.lrc_content,
+                                    all_components=request.options.all_components,
+                                )
+                            except Exception as e:
+                                logger.warning(f"LLM classification failed: {e}")
+
+                            # Re-persist components.json with LLM results now populated.
+                            try:
+                                from .components import _serialize_components
+
+                                hash_prefix = request.content_hash[:12]
+                                payload = _serialize_components(
+                                    components, request.content_hash, hash_prefix, source
+                                )
+                                self.cache_manager.save_component_result(
+                                    request.content_hash, payload
+                                )
+                                if self.r2_client is not None:
+                                    await self.r2_client.upload_component_result(
+                                        hash_prefix, payload
+                                    )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to re-persist components.json after LLM: {e}"
+                                )
 
                 with step_timer("Result conversion", logger):
                     component_results = [
