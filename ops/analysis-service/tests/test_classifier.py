@@ -86,10 +86,50 @@ def test_classify_components_logs_per_component(classifier, caplog):
     assert any("2 to classify" in m and "2 total" in m for m in messages)
     assert any("starting component 1/2" in m for m in messages)
     assert any("starting component 2/2" in m for m in messages)
+    assert any("lyric_hash=" in m for m in messages)
+    assert any("lyrics=" in m for m in messages)
     assert any("completed component 1/2" in m and "theme=讚美" in m for m in messages)
     assert any("completed component 2/2" in m for m in messages)
     assert components[0].theme == "讚美"
     assert components[1].vocal_posture == "To God"
+
+
+def test_truncate_lyrics():
+    from sow_analysis.workers.classifier import _truncate_lyrics
+
+    assert _truncate_lyrics(None) == "<empty>"
+    assert _truncate_lyrics([]) == "<empty>"
+    assert _truncate_lyrics([""]) == "<empty>"
+    # Short text: no truncation.
+    assert _truncate_lyrics(["讚美主"]) == "讚美主"
+    # Long text: truncated with ellipsis.
+    long = "X" * 100
+    result = _truncate_lyrics([long])
+    assert result.endswith("...")
+    assert len(result) == 60 + 3  # 60 chars + "..."
+    # Multiple lines joined with spaces.
+    assert _truncate_lyrics(["讚美", "主"]) == "讚美 主"
+
+
+def test_classify_components_logs_include_lyric_hash(classifier, caplog):
+    """The completed log line includes lyric_hash for traceability."""
+    caplog.set_level(logging.INFO, logger="sow_analysis.workers.classifier")
+    components = [_make_component(1, "chorus", start=0.0, end=5.0, role="entry")]
+    lrc_content = "[00:00.00]讚美主\n"
+
+    async def fake_call(sync_fn, *, description, loop=None):
+        return _parsed_result()
+
+    with patch("sow_analysis.workers.classifier.call_llm_with_retry", new=fake_call):
+        asyncio.run(
+            classifier.classify_components(
+                components, lrc_content=lrc_content, all_components=False
+            )
+        )
+
+    messages = [r.message for r in caplog.records]
+    # Both starting and completed lines must carry lyric_hash.
+    assert any("lyric_hash=" in m and "completed" in m for m in messages)
 
 
 def test_classify_components_skips_non_essential(classifier, caplog):
