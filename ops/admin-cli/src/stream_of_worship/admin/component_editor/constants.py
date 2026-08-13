@@ -46,7 +46,7 @@ VOCAL_POSTURE_VALUES: tuple[str, ...] = (
 )
 
 # Mirror of sow_analysis.storage.cache.COMPONENT_SCHEMA_VERSION
-COMPONENT_SCHEMA_VERSION = 2
+COMPONENT_SCHEMA_VERSION = 3
 
 # =============================================================================
 # v4: Column order for the DataTable (left -> right). Three visual clusters:

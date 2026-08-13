@@ -265,6 +265,10 @@ class ComponentInstance:
     # v5: LLM reasoning fields
     theme_reasoning: Optional[str] = None
     posture_reasoning: Optional[str] = None
+    # v6: LLM whole-song segmentation (Design C) fields
+    section_label: Optional[str] = None
+    lyrics_excerpt: Optional[str] = None
+    llm_rationale: Optional[str] = None
 
 
 @dataclass
@@ -1350,6 +1354,7 @@ async def extract_components(
     snap_to_downbeat: bool = False,
     energy_aware_roles: bool = False,
     all_components: bool = False,
+    use_llm_segmentation: bool = False,
 ) -> tuple[list[ComponentInstance], str]:
     """Extract song components using hybrid strategy (v5 enhancements).
 
@@ -1428,38 +1433,67 @@ async def extract_components(
             source = "allin1_sections"
 
     if not components and lrc_content:
-        # v6: prefer the beat-grid cache. The old inline analyze_audio_fast call
-        # never returned beats/downbeats (analyzer.py:545–553); dropping it only
-        # forfeits its fast-cache warm-up side effect (accepted — see Risks).
-        if not beats and not downbeats:
-            cached_grid = cache_manager.get_beat_grid(content_hash)
-            if cached_grid is not None:
-                downbeats = cached_grid.get("downbeats")
-                # The full grid (cached_grid["beats"]) is not consumed by
-                # identify_from_lyrics_repetition, which takes flat timestamps.
-
-        # Use pre-computed duration (eliminates redundant librosa.load).
-        song_total_duration = gf.duration if gf is not None else None
-
-        identify_start = time.time()
-        components = identify_from_lyrics_repetition(
-            lrc_content,
-            beats=beats,
-            downbeats=downbeats,
-            song_total_duration=song_total_duration,
-            snap_to_downbeat=snap_to_downbeat,
+        # v6: LLM whole-song segmentation — opt-in per job or globally via env.
+        _use_llm = (
+            use_llm_segmentation
+            or settings.SOW_COMPONENTS_USE_LLM_SEGMENTATION
         )
-        logger.info(
-            f"Component identification completed in "
-            f"{time.time() - identify_start:.2f}s ({len(components)} components)"
-        )
-        if components:
-            source = "lyrics_repetition"
-            # v6: lower confidence when no downbeats are available (madmom
-            # failure or cache miss). The old inline_fast_ran flag is gone.
-            if not downbeats:
-                for c in components:
-                    c.confidence = 0.5
+        if _use_llm and settings.SOW_LLM_API_KEY:
+            try:
+                from .section_segmenter import segment_song
+
+                seg_start = time.time()
+                components = await segment_song(
+                    lrc_content,
+                    song_title=None,
+                    duration=gf.duration if gf is not None else None,
+                    beats=beats,
+                    downbeats=downbeats,
+                    snap_to_downbeat=snap_to_downbeat,
+                )
+                logger.info(
+                    f"LLM segmentation completed in {time.time() - seg_start:.2f}s "
+                    f"({len(components)} components)"
+                )
+                if components:
+                    source = "llm_segmentation"
+            except Exception as e:
+                logger.warning("LLM segmentation failed, falling back: %s", e)
+                components = []
+
+        if not components:
+            # v6: prefer the beat-grid cache. The old inline analyze_audio_fast call
+            # never returned beats/downbeats (analyzer.py:545–553); dropping it only
+            # forfeits its fast-cache warm-up side effect (accepted — see Risks).
+            if not beats and not downbeats:
+                cached_grid = cache_manager.get_beat_grid(content_hash)
+                if cached_grid is not None:
+                    downbeats = cached_grid.get("downbeats")
+                    # The full grid (cached_grid["beats"]) is not consumed by
+                    # identify_from_lyrics_repetition, which takes flat timestamps.
+
+            # Use pre-computed duration (eliminates redundant librosa.load).
+            song_total_duration = gf.duration if gf is not None else None
+
+            identify_start = time.time()
+            components = identify_from_lyrics_repetition(
+                lrc_content,
+                beats=beats,
+                downbeats=downbeats,
+                song_total_duration=song_total_duration,
+                snap_to_downbeat=snap_to_downbeat,
+            )
+            logger.info(
+                f"Component identification completed in "
+                f"{time.time() - identify_start:.2f}s ({len(components)} components)"
+            )
+            if components:
+                source = "lyrics_repetition"
+                # v6: lower confidence when no downbeats are available (madmom
+                # failure or cache miss). The old inline_fast_ran flag is gone.
+                if not downbeats:
+                    for c in components:
+                        c.confidence = 0.5
 
     if not components:
         return ([], "none")
@@ -1557,6 +1591,10 @@ def _serialize_components(
                 # v5: reasoning
                 "theme_reasoning": c.theme_reasoning,
                 "posture_reasoning": c.posture_reasoning,
+                # v6: LLM segmentation
+                "section_label": c.section_label,
+                "lyrics_excerpt": c.lyrics_excerpt,
+                "llm_rationale": c.llm_rationale,
             }
             for c in components
         ],
@@ -1594,6 +1632,10 @@ def _deserialize_components(payload: dict) -> list[ComponentInstance]:
                 # v5: reasoning
                 theme_reasoning=c.get("theme_reasoning"),
                 posture_reasoning=c.get("posture_reasoning"),
+                # v6: LLM segmentation
+                section_label=c.get("section_label"),
+                lyrics_excerpt=c.get("lyrics_excerpt"),
+                llm_rationale=c.get("llm_rationale"),
                 source=payload.get("component_source", ""),
             )
         )

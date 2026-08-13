@@ -154,6 +154,41 @@ class Settings(BaseSettings):
     # call_llm_with_retry() budget (SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS=1200s)
     # is the overall wall-clock ceiling across all retries.
 
+    # v6: LLM whole-song segmentation (Design C) gate + tuning.
+    SOW_COMPONENTS_USE_LLM_SEGMENTATION: bool = False
+    # Master switch for the LLM segmentation identification path. Off by
+    # default; when off (or when SOW_LLM_API_KEY is unset, or the LLM call
+    # or JSON validation fails), extract_components falls back to the
+    # existing lyrics-repetition path at the 0.286 baseline.
+
+    SOW_LLM_SEGMENTATION_MODEL: Optional[str] = None
+    # Optional override model for the segmentation LLM call. Defaults to
+    # SOW_LLM_MODEL when None/empty. May be pointed at a stronger model
+    # (e.g. gpt-4o) for accurate Chinese lyric structure segmentation
+    # without changing the theme classifier's model.
+
+    SOW_LLM_SEGMENTATION_TIMEOUT_SECONDS: float = 60.0
+    # Per-request SDK-level HTTP timeout for the segmentation OpenAI client
+    # (mirrors SOW_LLM_CLASSIFICATION_TIMEOUT_SECONDS). call_llm_with_retry's
+    # budget is the overall wall-clock ceiling.
+
+    SOW_LLM_SEGMENTATION_SANITY_CHECK: bool = False
+    # Opt-in 2nd/3rd LLM call that presents the validated section list back
+    # to the LLM for a yes/no sanity check. Default off. Enable only if the
+    # measured IoU on the 3 fixtures is below target.
+
+    SOW_LLM_SEGMENTATION_MAX_TOKENS: int = 2048
+    # Maximum tokens for the segmentation LLM call. The whole-song LRC +
+    # few-shot examples consume a large token budget; 2048 accommodates
+    # ~100-line songs safely. Increase for very long LRCs.
+
+    @field_validator("SOW_LLM_SEGMENTATION_MODEL", mode="before")
+    @classmethod
+    def _empty_str_to_none_segmentation(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     SOW_STEP_HEARTBEAT_INTERVAL_SECONDS: float = 30.0
     # Default interval for step_timer heartbeats. A step logs a "still running"
     # line every this many seconds when it explicitly calls heartbeat(). Set to 0
