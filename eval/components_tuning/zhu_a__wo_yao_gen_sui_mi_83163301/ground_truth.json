@@ -1,0 +1,26 @@
+{
+  "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+  "hash12": "dbd506660aa3",
+  "lrc_file": "lrc.lrc",
+  "expected_chorus_occurrences": [
+    {
+      "occurrence_index": 1,
+      "line_start": 5,
+      "line_end": 12,
+      "role": "entry"
+    },
+    {
+      "occurrence_index": 3,
+      "line_start": 26,
+      "line_end": 33,
+      "role": "exit"
+    }
+  ],
+  "expected_verse": {
+    "occurrence_index": 1,
+    "line_start": 1,
+    "line_end": 4,
+    "role": "loop_target"
+  },
+  "false_positive_avoid": []
+}

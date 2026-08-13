@@ -1,0 +1,5 @@
+review/
+
+# The root .gitignore ignores *.lrc, but the LRC fixtures are committed
+# source (the operator pastes the canonical R2 lyrics here). Re-include them.
+!**/lrc.lrc

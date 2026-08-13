@@ -169,6 +169,47 @@ _CHORUS_KEYWORDS = (
 ESSENTIAL_ROLES = frozenset({"entry", "exit", "loop_target", "entry_exit"})
 
 
+@dataclass(frozen=True)
+class LyricsRepetitionWeights:
+    """Multi-cue scoring weights for identify_from_lyrics_repetition.
+
+    Each field corresponds to a knob in the multi-cue scoring formula
+    (components.py:924-937). See individual field docs for semantics.
+    """
+
+    # Multiplier on (min(repeat_count, cap) * window_size). Together with
+    # repeat_count_cap, tunes how aggressively repetition is rewarded.
+    repetition_multiplier: float = 1.0
+    # Caps repeat_count before multiplication (tunes diminishing returns).
+    repeat_count_cap: int = 4
+    # position_weight assigned when the first occurrence is past the
+    # early-intro threshold (i.e., likely a real chorus, not an intro tag).
+    position_weight_late: float = 1.0
+    # position_weight assigned when the first occurrence is within the
+    # early-intro threshold (penalty for verses-as-chorus false positives).
+    position_weight_early: float = 0.8
+    # Threshold (fraction of song_total_duration) below which position is
+    # considered "early". 0.1 means "first 10% of the song".
+    position_early_fraction: float = 0.1
+    # Fallback for position_weight_early when song_total_duration is None:
+    # occurrences starting before this many seconds are "early".
+    position_early_seconds: float = 10.0
+    # length_weight when the window size falls in the "preferred" range.
+    length_weight_preferred: float = 1.0
+    # length_weight when the window size falls outside the preferred range.
+    length_weight_other: float = 1.0
+    # Preferred window-size range (inclusive both ends).
+    length_preferred_min: int = 4
+    length_preferred_max: int = 8
+    # content_weight boost when any _CHORUS_KEYWORDS appears in the joined text.
+    content_weight_keyword_present: float = 1.0
+    # content_weight baseline when no keyword appears.
+    content_weight_keyword_absent: float = 1.0
+
+
+DEFAULT_WEIGHTS = LyricsRepetitionWeights()
+
+
 def _is_essential(component: "ComponentInstance") -> bool:
     """Return True if the component's role is transition-essential.
 
@@ -816,6 +857,7 @@ def identify_from_lyrics_repetition(
     downbeats: Optional[list[float]] = None,
     song_total_duration: Optional[float] = None,
     snap_to_downbeat: bool = False,
+    weights: LyricsRepetitionWeights = DEFAULT_WEIGHTS,
 ) -> list[ComponentInstance]:
     """Identify chorus via repeated-line-group clustering on LRC lines.
 
@@ -920,17 +962,34 @@ def identify_from_lyrics_repetition(
         occurrence_times = [lines[idx].time_seconds for idx in all_starts]
         joined_text = " ".join(sig_list[root])
 
-        # v3 multi-cue scoring.
-        repetition_score = min(repeat_count, 4) * w
+        # v3 multi-cue scoring, parametrized via `weights`.
+        repetition_score = (
+            weights.repetition_multiplier
+            * min(repeat_count, weights.repeat_count_cap)
+            * w
+        )
         if song_total_duration and song_total_duration > 0:
-            position_weight = 1.0 if occurrence_times[0] > 0.1 * song_total_duration else 0.4
+            early_threshold = weights.position_early_fraction * song_total_duration
+            position_weight = (
+                weights.position_weight_late
+                if occurrence_times[0] > early_threshold
+                else weights.position_weight_early
+            )
         else:
-            position_weight = 1.0 if occurrence_times[0] > 10.0 else 0.4
-        length_weight = 1.0 if 4 <= w <= 8 else 0.6
+            position_weight = (
+                weights.position_weight_late
+                if occurrence_times[0] > weights.position_early_seconds
+                else weights.position_weight_early
+            )
+        length_weight = (
+            weights.length_weight_preferred
+            if weights.length_preferred_min <= w <= weights.length_preferred_max
+            else weights.length_weight_other
+        )
         content_weight = (
-            1.4
+            weights.content_weight_keyword_present
             if any(kw in joined_text.lower() for kw in _CHORUS_KEYWORDS)
-            else 1.0
+            else weights.content_weight_keyword_absent
         )
         final_score = (
             repetition_score * position_weight * length_weight * content_weight

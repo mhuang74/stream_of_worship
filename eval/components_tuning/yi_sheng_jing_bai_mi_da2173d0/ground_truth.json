@@ -1,0 +1,26 @@
+{
+  "song_id": "yi_sheng_jing_bai_mi_da2173d0",
+  "hash12": "cf8d0dde06f0",
+  "lrc_file": "lrc.lrc",
+  "expected_chorus_occurrences": [
+    {
+      "occurrence_index": 1,
+      "line_start": 18,
+      "line_end": 21,
+      "role": "entry"
+    },
+    {
+      "occurrence_index": 2,
+      "line_start": 27,
+      "line_end": 30,
+      "role": "exit"
+    }
+  ],
+  "expected_verse": {
+    "occurrence_index": 3,
+    "line_start": 14,
+    "line_end": 17,
+    "role": "loop_target"
+  },
+  "false_positive_avoid": []
+}

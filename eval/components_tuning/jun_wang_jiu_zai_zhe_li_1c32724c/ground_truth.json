@@ -1,0 +1,26 @@
+{
+  "song_id": "jun_wang_jiu_zai_zhe_li_1c32724c",
+  "hash12": "8a4663283a5c",
+  "lrc_file": "lrc.lrc",
+  "expected_chorus_occurrences": [
+    {
+      "occurrence_index": 1,
+      "line_start": 5,
+      "line_end": 8,
+      "role": "entry"
+    },
+    {
+      "occurrence_index": 6,
+      "line_start": 45,
+      "line_end": 48,
+      "role": "exit"
+    }
+  ],
+  "expected_verse": {
+    "occurrence_index": 1,
+    "line_start": 3,
+    "line_end": 4,
+    "role": "loop_target"
+  },
+  "false_positive_avoid": []
+}
