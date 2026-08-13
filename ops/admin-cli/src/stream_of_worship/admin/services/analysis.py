@@ -4,12 +4,22 @@ Provides AnalysisClient for communicating with the FastAPI analysis service
 over HTTP. Handles authentication, job submission, polling, and result parsing.
 """
 
+import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import requests
+from botocore.exceptions import ClientError
+
+if TYPE_CHECKING:
+    from stream_of_worship.admin.services.r2 import R2Client
+
+# Keep in sync with analysis-service's
+# sow_analysis.storage.cache.COMPONENT_SCHEMA_VERSION.
+# Bump together when the worker bumps its version.
+COMPONENT_SCHEMA_VERSION = 2
 
 
 class AnalysisServiceError(Exception):
@@ -125,6 +135,41 @@ class JobInfo:
     result: Optional[Union[AnalysisResult, EmbeddingResult]] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+def _cached_components_have_llm_fields(
+    components: list[dict],
+    classify_theme: bool,
+    classify_vocal_posture: bool,
+    all_components: bool = False,
+) -> bool:
+    """Check whether cached component dicts carry the requested LLM fields.
+
+    Mirrors analysis-service's has_cached_llm_fields() (classifier.py:162-182)
+    but operates on raw dicts from R2 components.json rather than
+    ComponentInstance objects.
+
+    Args:
+        components: List of component dicts from cached components.json.
+        classify_theme: Whether theme classification was requested.
+        classify_vocal_posture: Whether vocal posture classification was requested.
+        all_components: If True, require ALL components to have LLM fields.
+            If False, only check essential-role components (entry/exit/
+            loop_target/entry_exit).
+
+    Returns:
+        True if all relevant components have the requested LLM fields populated.
+    """
+    essential_roles = {"entry", "exit", "loop_target", "entry_exit"}
+    for comp in components:
+        is_candidate = all_components or comp.get("role", "none") in essential_roles
+        if not is_candidate:
+            continue
+        if classify_theme and not comp.get("theme"):
+            return False
+        if classify_vocal_posture and not comp.get("vocal_posture"):
+            return False
+    return True
 
 
 class AnalysisClient:
@@ -675,53 +720,45 @@ class AnalysisClient:
                 )
             raise AnalysisServiceError(f"Component analysis submission failed: {e}")
 
-    def get_cached_component_result(self, hash_prefix: str) -> Optional[dict]:
-        """Check if a component result is already cached in R2.
-
-        Returns the parsed components.json from {hash_prefix}/components.json,
-        or None if not found OR if its schema_version is stale (v3).
+    def get_cached_component_result(
+        self,
+        hash_prefix: str,
+        r2_client: Optional["R2Client"] = None,
+    ) -> Optional[dict]:
+        """Return parsed {hash_prefix}/components.json from R2, or None.
 
         Args:
             hash_prefix: 12-character content hash prefix.
+            r2_client: Pre-constructed admin R2Client. Required; raises
+                ValueError if None. The previous env-var fallback was removed
+                to surface misconfiguration loudly.
 
         Returns:
-            Parsed components.json dict, or None.
+            Parsed components.json dict whose ``schema_version`` equals
+            COMPONENT_SCHEMA_VERSION, or None if:
+              - no object exists at {hash_prefix}/components.json (404/NoSuchKey),
+              - the payload is corrupt JSON,
+              - schema_version is missing or doesn't match COMPONENT_SCHEMA_VERSION.
+
+        Raises:
+            ValueError: If r2_client is None.
         """
-        # Delegate to the admin R2Client which has download_analysis_json.
-        # This method is a convenience wrapper; the caller should pass an
-        # R2Client-aware path. Here we use a lightweight boto3 call.
-        import os
-
-        import boto3
-        from botocore.exceptions import ClientError
-
-        bucket = os.environ.get("SOW_R2_BUCKET", "sow-audio")
-        endpoint_url = os.environ.get("SOW_R2_ENDPOINT_URL", "")
-        access_key = os.environ.get("SOW_R2_ACCESS_KEY_ID", "")
-        secret_key = os.environ.get("SOW_R2_SECRET_ACCESS_KEY", "")
-
-        if not access_key or not secret_key or not endpoint_url:
-            return None
-
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-        )
-        s3_key = f"{hash_prefix}/components.json"
+        if r2_client is None:
+            raise ValueError(
+                "get_cached_component_result requires an admin R2Client "
+                "(constructed from config). The env-var path was removed."
+            )
         try:
-            resp = s3.get_object(Bucket=bucket, Key=s3_key)
-            import json
-
-            payload = json.loads(resp["Body"].read().decode("utf-8"))
-            if payload.get("schema_version") != 1:
-                return None
-            return payload
+            payload = r2_client.download_component_result(hash_prefix)
         except ClientError:
             return None
-        except (json.JSONDecodeError, IOError):
+        except json.JSONDecodeError:
             return None
+        if payload is None:
+            return None
+        if payload.get("schema_version") != COMPONENT_SCHEMA_VERSION:
+            return None
+        return payload
 
     def get_job(self, job_id: str) -> JobInfo:
         """Get information about a job.

@@ -39,6 +39,7 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
     AnalysisServiceError,
     JobInfo,
+    _cached_components_have_llm_fields,
 )
 from stream_of_worship.admin.services.ffprobe import is_ffprobe_available, probe_duration
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
@@ -949,6 +950,7 @@ def import_youtube_audio_for_song(
             analysis_url=config.analysis_url,
             db_client=db_client,
             console=console,
+            config=config,
             force=False,
             wait=False,
             snap_to_downbeat=False,
@@ -1879,6 +1881,7 @@ def analyze_recording(
                     analysis_url=config.analysis_url,
                     db_client=db_client,
                     console=console,
+                    config=config,
                     force=False,
                     wait=True,
                 )
@@ -1945,6 +1948,7 @@ def _submit_component_analysis_job(
     analysis_url: str,
     db_client: DatabaseClient,
     console: Console,
+    config: AdminConfig,
     force: bool = False,
     wait: bool = True,
     # v5 options
@@ -2021,22 +2025,45 @@ def _submit_component_analysis_job(
 
     # Check R2 for cached components.json (unless force).
     if not force:
+        cached = None
         try:
+            r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
             client = AnalysisClient(analysis_url, timeout=300)
-            cached = client.get_cached_component_result(recording.hash_prefix)
-            if cached is not None:
+            cached = client.get_cached_component_result(
+                recording.hash_prefix, r2_client=r2_client
+            )
+        except ValueError as e:
+            # Misconfigured R2 creds — surface loudly. Do NOT fall through to a
+            # job submission that nobody asked to gate on cache.
+            console.print(f"[red]R2 cache check skipped: {e}[/red]")
+        except Exception:  # noqa: S110 - network error: fall through to submit.
+            pass
+
+        if cached is not None:
+            cached_components = cached.get("components", [])
+            cache_valid = _cached_components_have_llm_fields(
+                cached_components,
+                classify_theme=classify_theme,
+                classify_vocal_posture=classify_vocal_posture,
+                all_components=all_components,
+            )
+            if cache_valid:
                 console.print(
                     f"[green]Cached component result found in R2 "
-                    f"(schema_version={cached.get('schema_version', '?')})[/green]"
+                    f"(schema_version={cached.get('schema_version')})[/green]"
                 )
                 components = _parse_component_results(
-                    cached.get("components", []), song_id, recording.content_hash
+                    cached_components, song_id, recording.content_hash
                 )
-                if components:
-                    db_client.upsert_song_components(song_id, recording.content_hash, components)
+                if components:  # guard against empty = no-op upsert wipe
+                    db_client.upsert_song_components(
+                        song_id, recording.content_hash, components
+                    )
                 return components
-        except Exception:  # noqa: S110 - Fall through to job submission.
-            pass  # Fall through to job submission.
+            console.print(
+                "[yellow]Cached components.json lacks requested LLM fields; "
+                "submitting new job to compute them.[/yellow]"
+            )
 
     # Submit the job.
     try:
@@ -2070,6 +2097,16 @@ def _submit_component_analysis_job(
     console.print(f"[green]Component analysis submitted (job: {job.job_id})[/green]")
 
     if not wait:
+        recovery_hint = (
+            f"  sow-admin audio sync-components {song_id}"
+            if song_id
+            else "  sow-admin audio sync-components --stdin < song_ids.txt"
+        )
+        console.print(
+            "[yellow]Job submitted in fire-and-forget mode. "
+            "song_components DB table will NOT be updated until you run:[/yellow]\n"
+            + recovery_hint
+        )
         return None
 
     # Poll for completion.
@@ -2295,7 +2332,7 @@ def components_recording(
                 try:
                     _submit_component_analysis_job(
                         recording, sid, config.analysis_url, db_client, out_console,
-                        force=force, wait=False,
+                        config=config, force=force, wait=False,
                         snap_to_downbeat=snap_to_downbeat,
                         energy_aware_roles=energy_roles,
                         use_stems=use_stems,
@@ -2310,7 +2347,7 @@ def components_recording(
             else:
                 result = _submit_component_analysis_job(
                     recording, sid, config.analysis_url, db_client, out_console,
-                    force=force, wait=True,
+                    config=config, force=force, wait=True,
                     snap_to_downbeat=snap_to_downbeat,
                     energy_aware_roles=energy_roles,
                     use_stems=use_stems,
@@ -2371,7 +2408,7 @@ def components_recording(
 
     result = _submit_component_analysis_job(
         recording, song_id, config.analysis_url, db_client, out_console,
-        force=force, wait=not no_wait,
+        config=config, force=force, wait=not no_wait,
         snap_to_downbeat=snap_to_downbeat,
         energy_aware_roles=energy_roles,
         use_stems=use_stems,
@@ -2400,6 +2437,201 @@ def components_recording(
             _render_components_table(result, console, title=f"Components: {song_id}")
         else:
             console.print(f"[yellow]No components extracted for {song_id}.[/yellow]")
+
+
+def _sync_components_from_r2(
+    recording: Recording,
+    song_id: str,
+    config: AdminConfig,
+    db_client: DatabaseClient,
+    console: Console,
+    dry_run: bool = False,
+    yes: bool = False,
+) -> Optional[list[SongComponent]]:
+    """Fetch components.json from R2 and upsert into song_components.
+
+    Returns:
+      - list[SongComponent]: the (intended or persisted) component rows.
+      - None: no R2 cache, schema_version stale, or shrink refused.
+
+    In dry_run mode, returns the would-be components list but writes nothing.
+    An empty components list is returned as [] (not None) so callers can
+    distinguish "no cache" from "cache exists but is empty"; the upsert is
+    never invoked with an empty list (would wipe existing rows).
+    """
+    r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+    analysis_client = AnalysisClient(config.analysis_url, timeout=300)
+
+    cached = analysis_client.get_cached_component_result(
+        recording.hash_prefix, r2_client=r2_client
+    )
+    if cached is None:
+        console.print(
+            f"[red]No schema_version=2 components.json in R2 for "
+            f"{recording.hash_prefix}.[/red]\n"
+            f"Run: sow-admin audio components {song_id} --compute-all-fields --force"
+        )
+        return None
+
+    cached_components = cached.get("components", [])
+    has_llm = _cached_components_have_llm_fields(
+        cached_components, classify_theme=True, classify_vocal_posture=True
+    )
+    components = _parse_component_results(
+        cached_components, song_id, recording.content_hash
+    )
+
+    existing = db_client.get_song_components(song_id)
+    console.print(
+        f"[green]R2 cache found[/green] "
+        f"({len(cached_components)} components, schema_version="
+        f"{cached.get('schema_version')}, LLM={'present' if has_llm else 'absent'}); "
+        f"DB now has {len(existing)} rows."
+    )
+
+    if dry_run:
+        if components and len(components) < len(existing):
+            console.print(
+                f"[yellow]DRY-RUN: would shrink {song_id} "
+                f"{len(existing)} -> {len(components)} rows; "
+                f"supply --yes when running for real.[/yellow]"
+            )
+        else:
+            console.print(f"[cyan]DRY-RUN: would upsert {len(components)} rows.[/cyan]")
+        return components
+
+    if components and len(components) < len(existing) and not yes:
+        console.print(
+            f"[red]Refusing to shrink {song_id} "
+            f"{len(existing)} -> {len(components)} rows. "
+            f"Pass --yes to override (upsert is DELETE+INSERT).[/red]"
+        )
+        return None
+
+    if components:  # never call upsert with [] - would wipe existing rows
+        db_client.upsert_song_components(song_id, recording.content_hash, components)
+    console.print(f"[green]Synced {len(components)} component(s) R2 -> DB.[/green]")
+    return components
+
+
+@app.command("sync-components")
+def sync_components(
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to sync components for"),
+    stdin: bool = typer.Option(False, "--stdin", help="Batch: read song IDs from stdin"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would change without writing to DB"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes",
+        help="Confirm destructive sync when new row count < existing (applies globally, including --stdin batch)",
+    ),
+    format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Sync component results from R2 cache to the song_components DB table.
+
+    Fetches {hash_prefix}/components.json from R2 (must be schema_version=2)
+    and upserts the component rows (including LLM theme/posture) into the DB.
+
+    This command is read-from-R2 + write-to-DB only. It does NOT submit any
+    analysis-service jobs. If no schema_version=2 cache exists for a song,
+    run `sow-admin audio components <song> --compute-all-fields --force` first.
+
+    Safety:
+      - --dry-run: report delta vs existing rows, write nothing.
+      - If new row count < existing row count, the sync is refused unless
+        --yes is passed. (Upsert is DELETE-then-INSERT; shrinkage would drop
+        rows.)  In --stdin batch mode, --yes applies globally — review with
+        --dry-run first.
+
+    Exit codes:
+      0 — synced (or dry-run reported)
+      1 — error: no recording, no R2 cache, schema_version stale,
+          or shrink refused (use --yes to override).
+    """
+    _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
+
+    if not song_id and not stdin:
+        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if song_id and stdin:
+        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    if stdin:
+        raw = sys.stdin.read().splitlines()
+        song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
+        if not song_ids:
+            console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
+            raise typer.Exit(1)
+
+        results: list[dict] = []
+        for sid in song_ids:
+            recording = db_client.get_recording_by_song_id(sid)
+            if not recording:
+                results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
+                continue
+            try:
+                result = _sync_components_from_r2(
+                    recording, sid, config, db_client, console,
+                    dry_run=dry_run, yes=yes,
+                )
+                if result is None:
+                    results.append({"song_id": sid, "status": "failed", "error": "No cache / stale / shrink refused"})
+                else:
+                    results.append({"song_id": sid, "status": "synced", "components": len(result)})
+            except Exception as e:
+                results.append({"song_id": sid, "status": "failed", "error": str(e)})
+
+        if format_ == "json":
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+        else:
+            succeeded_count = sum(1 for r in results if r["status"] != "failed")
+            failed_count = sum(1 for r in results if r["status"] == "failed")
+            console.print(
+                f"\n[bold]Summary:[/bold] {succeeded_count} synced, {failed_count} failed"
+            )
+            for r in results:
+                if r["status"] == "failed":
+                    console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
+
+        if any(r["status"] == "failed" for r in results):
+            raise typer.Exit(1)
+        return
+
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        result = _sync_components_from_r2(
+            recording, song_id, config, db_client, console,
+            dry_run=dry_run, yes=yes,
+        )
+    except Exception as e:
+        console.print(f"[red]Sync failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    if result is None:
+        raise typer.Exit(1)
+
+    if format_ == "json":
+        print(json.dumps([c.to_dict() for c in result], ensure_ascii=False, indent=2))
+    else:
+        console.print(f"[green]Synced {len(result)} component(s) for {song_id}.[/green]")
 
 
 @app.command("lrc")
