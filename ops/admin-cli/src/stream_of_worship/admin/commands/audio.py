@@ -26,7 +26,6 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.rule import Rule
-from rich.syntax import Syntax
 from rich.table import Table
 
 from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
@@ -4124,11 +4123,7 @@ def _display_lrc(
 
         # Display based on mode
         if raw:
-            # Raw mode: display with syntax highlighting
-            syntax = Syntax(content, "lrc", theme="monokai", line_numbers=True)
-            console.print(
-                Panel.fit(syntax, title=f"LRC Content: {song.title}", border_style="cyan")
-            )
+            console.print(content, end="")
         elif no_timestamps:
             # No timestamps mode: parse and display text only
             try:
@@ -4236,11 +4231,11 @@ def view_lrc(
 
     # Process each song ID
     for idx, sid in enumerate(song_ids):
-        # Add separator between songs (but not before first)
-        if idx > 0:
-            console.print()
-            console.print(Rule(style="dim"))
-            console.print()
+        if not raw:
+            if idx > 0:
+                console.print()
+                console.print(Rule(style="dim"))
+                console.print()
 
         # Get recording
         recording = db_client.get_recording_by_song_id(sid)
