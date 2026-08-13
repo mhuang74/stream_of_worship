@@ -1009,6 +1009,7 @@ class JobQueue:
                         snap_to_downbeat=request.options.snap_to_downbeat,
                         energy_aware_roles=request.options.energy_aware_roles,
                         all_components=request.options.all_components,
+                        use_llm_segmentation=request.options.use_llm_segmentation,
                     )
 
                 # v5: LLM theme/posture classification.
@@ -1089,6 +1090,9 @@ class JobQueue:
                             vocal_posture_confidence=c.vocal_posture_confidence,
                             theme_reasoning=c.theme_reasoning,
                             posture_reasoning=c.posture_reasoning,
+                            section_label=c.section_label,
+                            lyrics_excerpt=c.lyrics_excerpt,
+                            llm_rationale=c.llm_rationale,
                             source=c.source,
                         )
                         for c in components

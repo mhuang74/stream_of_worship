@@ -94,6 +94,13 @@ class ComponentAnalysisOptions(BaseModel):
     # Default False: only essential roles (entry/exit/loop_target/entry_exit)
     # get audio + LLM; non-essential rows are kept but with NULL fields.
     all_components: bool = False
+    # v6: use LLM whole-song segmentation (Design C) for identification.
+    # Operator sets this to A/B test the LLM path against the
+    # lyrics-repetition fallback per song, independent of the
+    # SOW_COMPONENTS_USE_LLM_SEGMENTATION env flag (which remains
+    # the global default gate). The job option is one-way OR — it can
+    # enable per-job but cannot disable when the env flag is on.
+    use_llm_segmentation: bool = False
 
 
 class LrcOptions(BaseModel):
@@ -244,7 +251,11 @@ class ComponentResult(BaseModel):
     # v5: LLM reasoning fields (for debugging and audit)
     theme_reasoning: Optional[str] = None
     posture_reasoning: Optional[str] = None
-    source: str = ""  # 'allin1_sections' | 'lyrics_repetition' | 'none'
+    # v6: LLM segmentation fields
+    section_label: Optional[str] = None
+    lyrics_excerpt: Optional[str] = None
+    llm_rationale: Optional[str] = None
+    source: str = ""  # 'allin1_sections' | 'lyrics_repetition' | 'llm_segmentation' | 'none'
 
 
 class JobResult(BaseModel):

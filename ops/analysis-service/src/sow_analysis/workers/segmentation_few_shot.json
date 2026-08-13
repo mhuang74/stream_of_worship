@@ -1,0 +1,12 @@
+[
+  {
+    "source_song_id": "__CHANGE_ME__",
+    "input": "1  [00:10.00] 主 祢的愛激勵我心\n2  [00:25.00] 我願一生跟隨祢\n3  [00:40.00] 哈利路亞 哈利路亞\n4  [00:55.00] 祢聖名配得讚美\n5  [01:20.00] 主 祢的愛激勵我心\n6  [01:35.00] 我願一生跟隨祢\n7  [01:50.00] 哈利路亞 哈利路亞\n8  [02:05.00] 祢聖名配得讚美\n",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 2, "confidence": 0.9, "rationale": "first verse"},
+      {"label": "chorus", "line_start": 3, "line_end": 4, "confidence": 0.95, "rationale": "repeated refrain"},
+      {"label": "verse", "line_start": 5, "line_end": 6, "confidence": 0.9, "rationale": "verse repeated"},
+      {"label": "chorus", "line_start": 7, "line_end": 8, "confidence": 0.95, "rationale": "refrain repeated"}
+    ]
+  }
+]
