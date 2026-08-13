@@ -304,3 +304,6 @@ delivery/render-worker/secrets/
 .dex/
 .vercel/
 .env*
+
+# The LLM segmentation tuning loop's committed env documentation (safe to commit).
+!ops/analysis-service/.env.segmentation-tuning.example

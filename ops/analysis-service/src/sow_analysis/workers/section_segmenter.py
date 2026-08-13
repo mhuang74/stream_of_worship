@@ -44,6 +44,30 @@ _VALID_LABELS = {
 }
 
 
+@dataclass(frozen=True)
+class ValidatorWeights:
+    """Tunable multipliers for _validate_chorus_repetition and
+    _map_sections_to_components. Each field corresponds to a knob whose
+    default reproduces the current hardcoded literal exactly.
+    """
+    # Multiplied into a non-repeated chorus's confidence (musically valid
+    # but should score lower than a repeating chorus, e.g. an outro chorus).
+    nonrepeated_multiplier: float = 0.60
+    # Multiplied into confidence after trimming an over-merged chorus's
+    # line_end down to the last line whose text repeats elsewhere.
+    trimmed_multiplier: float = 0.90
+    # Added (then clamped to [0, 1]) when the section already ends on a
+    # repeating line — i.e. the LLM's boundary was confirmed correct.
+    confirmed_bonus: float = 0.05
+    # Multiplied into every emitted ComponentInstance.confidence in the
+    # mapper. Mirrors the framing that LLM-derived confidences carry a
+    # small discount relative to direct audio analysis.
+    mapping_confidence_multiplier: float = 0.95
+
+
+DEFAULT_VALIDATOR_WEIGHTS = ValidatorWeights()
+
+
 @dataclass
 class Section:
     label: str
@@ -92,16 +116,21 @@ def _build_segmentation_prompt(
     song_title: Optional[str],
     duration: Optional[float],
     few_shot_examples: list[dict],
+    system_prompt_override: Optional[str] = None,
 ) -> list[dict]:
     numbered, _n_lines = _render_numbered_lrc(lrc_content)
     system = (
-        "You are a Chinese worship-music structure analyst. Given a numbered LRC "
-        "lyric file, segment the song into labeled sections and return a JSON object "
-        "with a single key 'sections'. Each section has: label (one of intro, verse, "
-        "prechorus, chorus, bridge, outro, instrumental), line_start (1-based, "
-        "inclusive), line_end (1-based, inclusive), confidence (0.0-1.0), and a short "
-        "rationale. Sections must be non-overlapping, cover every non-blank line in "
-        "order, and be sorted by line_start. Respond with JSON only."
+        system_prompt_override
+        if system_prompt_override is not None
+        else (
+            "You are a Chinese worship-music structure analyst. Given a numbered LRC "
+            "lyric file, segment the song into labeled sections and return a JSON object "
+            "with a single key 'sections'. Each section has: label (one of intro, verse, "
+            "prechorus, chorus, bridge, outro, instrumental), line_start (1-based, "
+            "inclusive), line_end (1-based, inclusive), confidence (0.0-1.0), and a short "
+            "rationale. Sections must be non-overlapping, cover every non-blank line in "
+            "order, and be sorted by line_start. Respond with JSON only."
+        )
     )
     user_parts: list[str] = []
     if song_title:
@@ -171,6 +200,7 @@ def _map_sections_to_components(
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
     snap_to_downbeat: bool = False,
+    weights: ValidatorWeights = DEFAULT_VALIDATOR_WEIGHTS,
 ) -> list[ComponentInstance]:
     if not sections:
         return []
@@ -212,7 +242,7 @@ def _map_sections_to_components(
     n_choruses = len(chorus_sections)
     for i, sec in enumerate(chorus_sections):
         start, end = _sec_time(sec)
-        conf = sec.confidence * 0.95
+        conf = sec.confidence * weights.mapping_confidence_multiplier
         excerpt = _lyrics_excerpt(sec)
         if n_choruses == 1:
             components.append(
@@ -277,7 +307,7 @@ def _map_sections_to_components(
                 role="loop_target",
                 start_time=start,
                 end_time=end,
-                confidence=verse_before.confidence * 0.95,
+                confidence=verse_before.confidence * weights.mapping_confidence_multiplier,
                 source="llm_segmentation",
                 section_label="verse",
                 lyrics_excerpt=_lyrics_excerpt(verse_before),
@@ -322,7 +352,9 @@ def _load_few_shot_examples() -> list[dict]:
 
 
 def _validate_chorus_repetition(
-    sections: list[Section], lrc_content: str
+    sections: list[Section],
+    lrc_content: str,
+    weights: ValidatorWeights = DEFAULT_VALIDATOR_WEIGHTS,
 ) -> list[Section]:
     """Deterministic repetition cross-check for chorus sections.
 
@@ -386,7 +418,7 @@ def _validate_chorus_repetition(
 
         if not any_repeats:
             # Non-repeated chorus — keep but lower confidence.
-            new_conf = sec.confidence * 0.60
+            new_conf = sec.confidence * weights.nonrepeated_multiplier
             result.append(
                 Section(
                     label=sec.label,
@@ -399,7 +431,7 @@ def _validate_chorus_repetition(
         elif last_repeating_line_0 is not None and last_repeating_line_0 < sec_end_0:
             # Trim: the last repeating line is before the current end.
             new_line_end = last_repeating_line_0 + 1  # back to 1-based
-            new_conf = sec.confidence * 0.90
+            new_conf = sec.confidence * weights.trimmed_multiplier
             result.append(
                 Section(
                     label=sec.label,
@@ -411,7 +443,7 @@ def _validate_chorus_repetition(
             )
         else:
             # Confirmed unchanged — the section already ends on a repeating line.
-            new_conf = min(1.0, sec.confidence + 0.05)
+            new_conf = min(1.0, sec.confidence + weights.confirmed_bonus)
             result.append(
                 Section(
                     label=sec.label,
@@ -548,12 +580,21 @@ async def segment_song(
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
     snap_to_downbeat: bool = False,
+    # v1 tuning-loop overrides — defaults reproduce current behavior bit-for-bit.
+    few_shot_override: Optional[list[dict]] = None,
+    system_prompt_override: Optional[str] = None,
+    validator_weights: ValidatorWeights = DEFAULT_VALIDATOR_WEIGHTS,
 ) -> list[ComponentInstance]:
     client = _build_client()
     model = _segmentation_model()
-    few_shot = _load_few_shot_examples()
+    few_shot = (
+        few_shot_override
+        if few_shot_override is not None
+        else _load_few_shot_examples()
+    )
     messages = _build_segmentation_prompt(
-        lrc_content, song_title, duration, few_shot
+        lrc_content, song_title, duration, few_shot,
+        system_prompt_override=system_prompt_override,
     )
 
     def _call() -> str:
@@ -571,7 +612,9 @@ async def segment_song(
     sections = _parse_segmenter_json(text, n_lines)
     if sections is None:
         return []
-    sections = _validate_chorus_repetition(sections, lrc_content)
+    sections = _validate_chorus_repetition(
+        sections, lrc_content, weights=validator_weights,
+    )
     if settings.SOW_LLM_SEGMENTATION_SANITY_CHECK:
         checked = await _sanity_check_llm(sections, lrc_content, client, model)
         if checked is None:
@@ -579,7 +622,9 @@ async def segment_song(
                 client, model, lrc_content, song_title, duration, few_shot, sections
             )
             if corrected is not None:
-                sections = _validate_chorus_repetition(corrected, lrc_content)
+                sections = _validate_chorus_repetition(
+                    corrected, lrc_content, weights=validator_weights,
+                )
     lines = list(parse_lrc(lrc_content).lines)
     return _map_sections_to_components(
         sections,
@@ -587,4 +632,5 @@ async def segment_song(
         beats=beats,
         downbeats=downbeats,
         snap_to_downbeat=snap_to_downbeat,
+        weights=validator_weights,
     )

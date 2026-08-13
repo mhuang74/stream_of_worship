@@ -96,8 +96,8 @@ def _iou(a_start, a_end, b_start, b_end) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def _dump_review_slices(song_id, lrc_content, components) -> Path:
-    out_dir = REVIEW_DIR / song_id
+def _dump_review_slices(song_id, lrc_content, components, review_dir=REVIEW_DIR) -> Path:
+    out_dir = review_dir / song_id
     out_dir.mkdir(parents=True, exist_ok=True)
     # Wipe previous slices for this song.
     for old in out_dir.glob("component_*.txt"):
@@ -130,16 +130,15 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, v))
 
 
-def _score_song(lrc_content, ground_truth, weights, song_total_duration=None) -> dict:
-    # Use the LRC file's last-line timestamp as song_total_duration (or None
-    # if the LRC has < 2 lines).
-    raw = _parse_raw_lines(lrc_content)
-    if song_total_duration is None:
-        song_total_duration = raw[-1].time_seconds if len(raw) >= 2 else None
+def _score_components(components, ground_truth, raw) -> dict:
+    """Pure scorer: partition `components` into choruses/verses, compute
+    per-component IoU + role bonus/penalty + false-positive penalty against
+    `ground_truth`. `raw` is the unfiltered raw LRC line list (raw_indices).
 
-    components = identify_from_lyrics_repetition(
-        lrc_content, song_total_duration=song_total_duration, weights=weights
-    )
+    Returns the same dict shape as the original `_score_song`. Caller is
+    responsible for producing `components` via whichever identification
+    path (lyrics-repetition OR LLM) it wishes to score.
+    """
     # Ground truth only specifies ESSENTIAL components (entry/exit chorus,
     # loop_target verse). Filter predicted components to essential roles
     # before comparison so non-essential rows (role="none") don't count as
@@ -258,6 +257,19 @@ def _score_song(lrc_content, ground_truth, weights, song_total_duration=None) ->
         "n_expected_choruses": n_expected_choruses,
         "n_predicted_verses": len(verses),
     }
+
+
+def _score_song(lrc_content, ground_truth, weights, song_total_duration=None) -> dict:
+    # Use the LRC file's last-line timestamp as song_total_duration (or None
+    # if the LRC has < 2 lines).
+    raw = _parse_raw_lines(lrc_content)
+    if song_total_duration is None:
+        song_total_duration = raw[-1].time_seconds if len(raw) >= 2 else None
+
+    components = identify_from_lyrics_repetition(
+        lrc_content, song_total_duration=song_total_duration, weights=weights
+    )
+    return _score_components(components, ground_truth, raw)
 
 
 def score_all(weights: LyricsRepetitionWeights = DEFAULT_WEIGHTS):

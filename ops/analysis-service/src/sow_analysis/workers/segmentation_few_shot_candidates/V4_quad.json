@@ -30,5 +30,15 @@
       {"label": "instrumental", "line_start": 8, "line_end": 11, "confidence": 0.8, "rationale": "repeated chant, no new lyric"},
       {"label": "verse", "line_start": 12, "line_end": 15, "confidence": 0.9, "rationale": "closing verse"}
     ]
+  },
+  {
+    "source_song_id": "wo_yao_chang_chang_xi_le_fe95805b",
+    "input": "1  [00:10.00] 疲乏的祂賜能力 軟弱的祂加力量\n2  [00:25.00] 那等候耶和華的必重新得力\n3  [00:40.00] 就必如鷹展翅上騰\n4  [00:55.00] 奔跑卻不困倦\n5  [01:10.00] 行走卻不疲乏\n6  [01:30.00] 大山可以挪開 小山可以遷移\n7  [01:45.00] 主的慈愛永不離 這是祂與我的約定\n8  [02:00.00] 我帶著信心倚靠我主\n9  [02:15.00] 經歷祂的救贖\n10  [02:30.00] 奔向祂的道路\n11  [02:50.00] 常常喜樂 我要常常喜樂\n12  [03:05.00] 應當一無掛慮\n13  [03:20.00] 凡事藉著禱告 祈求 和感謝\n14  [03:35.00] 神所賜那出人意外的平安\n15  [03:50.00] 必在基督耶穌裡保守我的一切\n16  [04:10.00] 常常喜樂 我要常常喜樂\n17  [04:25.00] 應當一無掛慮\n18  [04:40.00] 凡事藉著禱告 祈求 和感謝\n19  [04:55.00] 神所賜那出人意外的平安\n20  [05:10.00] 必在基督耶穌裡保守我的一切\n",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 5, "confidence": 0.9, "rationale": "first verse"},
+      {"label": "verse", "line_start": 6, "line_end": 10, "confidence": 0.9, "rationale": "second verse"},
+      {"label": "chorus", "line_start": 11, "line_end": 15, "confidence": 0.95, "rationale": "repeated refrain, hook line plus continuation lines"},
+      {"label": "chorus", "line_start": 16, "line_end": 20, "confidence": 0.95, "rationale": "repeated refrain"}
+    ]
   }
 ]

@@ -1,0 +1,11 @@
+[
+  {
+    "source_song_id": "xiang_wo_de_shen_xian_shang_gan_xie_ec1d7b3c",
+    "input": "1  [00:10.00] 今天早晨 我要歌頌\n2  [00:25.00] 祢的力量 祢的慈愛\n3  [00:40.00] 就是現在 我要獻上\n4  [00:55.00] 我的感謝要被世界聽到\n5  [01:15.00] 喔喔喔喔 哈利路亞\n6  [01:30.00] 向我的神獻上感謝\n7  [01:45.00] 喔喔喔喔 哈利路亞\n8  [02:00.00] 向我的神獻上讚美\n9  [02:20.00] 我的力量啊 我要歌頌祢\n10  [02:35.00] 感恩與讚美 是我爭戰武器\n11  [02:50.00] 我的力量啊 我要歌頌祢\n12  [03:05.00] 感恩與讚美 是我爭戰武器\n",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 4, "confidence": 0.9, "rationale": "opening verse, narrative"},
+      {"label": "chorus", "line_start": 5, "line_end": 8, "confidence": 0.95, "rationale": "repeated refrain with 哈利路亞"},
+      {"label": "verse", "line_start": 9, "line_end": 12, "confidence": 0.9, "rationale": "second verse, different lyric"}
+    ]
+  }
+]

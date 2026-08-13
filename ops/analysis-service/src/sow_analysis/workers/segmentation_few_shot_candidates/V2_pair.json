@@ -1,0 +1,24 @@
+[
+  {
+    "source_song_id": "wo_de_ye_su_4c27d159",
+    "input": "1  [00:10.00] 我的耶穌 是我生命的主\n2  [00:25.00] 我的依靠 隨時幫助\n3  [00:40.00] 我的耶穌 最信任的朋友\n4  [00:55.00] 耶穌 我真需要祢\n5  [01:15.00] 當我不知未來會在哪裡\n6  [01:30.00] 閉上眼睛 放下憂慮\n7  [01:45.00] 邀請耶穌陪伴著我前行\n8  [02:00.00] 盼望從心中升起\n9  [02:20.00] 耶穌 耶穌 我需要祢\n10  [02:35.00] 耶穌 耶穌 我渴慕祢\n11  [02:50.00] 耶穌 耶穌 我需要祢\n12  [03:05.00] 祢與我同坐席 傾聽我心意 我的耶穌\n13  [03:25.00] 耶穌 耶穌 我敬拜祢\n14  [03:40.00] 耶穌 耶穌 我讚美祢\n15  [03:55.00] 耶穌 耶穌 我敬拜祢\n16  [04:10.00] 我來到祢面前 更靠近祢心 我的耶穌\n17  [04:30.00] 耶穌 耶穌 我好愛祢\n18  [04:45.00] 耶穌 耶穌 我好愛祢\n19  [05:00.00] 耶穌 耶穌 我好愛祢\n20  [05:15.00] 在祢的懷抱裡 更貼近祢心 我的耶穌\n",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 4, "confidence": 0.9, "rationale": "first verse"},
+      {"label": "verse", "line_start": 5, "line_end": 8, "confidence": 0.9, "rationale": "second verse"},
+      {"label": "chorus", "line_start": 9, "line_end": 12, "confidence": 0.95, "rationale": "repeated refrain 我需要祢"},
+      {"label": "chorus", "line_start": 13, "line_end": 16, "confidence": 0.95, "rationale": "repeated refrain 我敬拜祢"},
+      {"label": "chorus", "line_start": 17, "line_end": 20, "confidence": 0.95, "rationale": "repeated refrain 我好愛祢"}
+    ]
+  },
+  {
+    "source_song_id": "cang_shen_zhi_chu_39437ec0",
+    "input": "1  [00:10.00] 我抬頭仰望 幫助我的神\n2  [00:25.00] 在患難之中 大水四起\n3  [00:40.00] 祢提拔我 到安穩之地\n4  [01:00.00] 我抬頭仰望 幫助我的神\n5  [01:15.00] 過死蔭幽谷 疲憊之處\n6  [01:30.00] 祢引領我 到安歇之處\n7  [01:50.00] 主祢是我藏身之處\n8  [02:05.00] 護庇我 藏我在翅膀蔭下\n9  [02:20.00] 主 祢同在是我得救的樂歌\n10  [02:35.00] 環繞我 堅定我 隱藏我\n11  [02:55.00] 當行的路 祢與我同行\n12  [03:10.00] 縱然前方 仇敵埋伏\n13  [03:25.00] 主祢是我 藏身之處\n14  [03:45.00] 我倚靠祢 定睛在祢\n15  [04:00.00] 大水四起 堅定不移\n16  [04:15.00] 必有恩惠慈愛 四面環繞\n17  [04:30.00] 義人都因祢的 應許歡欣\n",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 3, "confidence": 0.9, "rationale": "first verse"},
+      {"label": "verse", "line_start": 4, "line_end": 6, "confidence": 0.9, "rationale": "second verse"},
+      {"label": "chorus", "line_start": 7, "line_end": 10, "confidence": 0.95, "rationale": "repeated refrain 藏身之處"},
+      {"label": "verse", "line_start": 11, "line_end": 13, "confidence": 0.9, "rationale": "third verse"},
+      {"label": "verse", "line_start": 14, "line_end": 17, "confidence": 0.9, "rationale": "fourth verse"}
+    ]
+  }
+]

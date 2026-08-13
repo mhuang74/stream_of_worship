@@ -1,4 +1,9 @@
 review/
+review_llm/
+
+# Keep the committed tuning report; ignore transient sibling files.
+reports/*
+!reports/llm_tuning_report.md
 
 # The root .gitignore ignores *.lrc, but the LRC fixtures are committed
 # source (the operator pastes the canonical R2 lyrics here). Re-include them.
