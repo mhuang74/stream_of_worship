@@ -1010,6 +1010,7 @@ class JobQueue:
                         energy_aware_roles=request.options.energy_aware_roles,
                         all_components=request.options.all_components,
                         use_llm_segmentation=request.options.use_llm_segmentation,
+                        segmentation_mode=request.options.segmentation_mode,
                     )
 
                 # v5: LLM theme/posture classification.
@@ -1101,6 +1102,7 @@ class JobQueue:
                 job.result = JobResult(
                     components=component_results if component_results else None,
                     component_source=source,
+                    segmentation_mode_resolved=request.options.segmentation_mode,
                 )
 
                 job.status = JobStatus.COMPLETED

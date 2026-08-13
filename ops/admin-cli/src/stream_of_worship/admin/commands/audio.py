@@ -73,6 +73,7 @@ KEY_REVIEW_CAVEAT = (
 )
 
 COMPONENTS_FORMAT_VALUES = {"table", "json"}
+SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1"}
 
 
 def _validate_choice(value: str, choices: set[str], name: str) -> None:
@@ -1959,6 +1960,7 @@ def _submit_component_analysis_job(
     # v6 options
     skip_beat_cache: bool = False,
     all_components: bool = False,
+    segmentation_mode: Optional[str] = None,
 ) -> Optional[list[SongComponent]]:
     """Submit component analysis, wait for completion, persist results.
 
@@ -1986,6 +1988,11 @@ def _submit_component_analysis_job(
         skip_beat_cache: Bypass cached beat grid; re-run madmom detection.
         all_components: Populate audio + LLM metadata for ALL detected
             components (default: only essential roles).
+        segmentation_mode: mutually-exclusive identification source; one of
+            "llm", "repetition", "allin1". The caller MUST also pass
+            force=True (validated in the typer command). When set, the worker
+            runs ONLY that source and returns [] if unavailable — no fallback
+            chain.
 
     Returns:
         Persisted SongComponent list, or None on failure.
@@ -2021,6 +2028,28 @@ def _submit_component_analysis_job(
             lrc_content = r2.download_lrc_content(recording.hash_prefix)
         except Exception as e:
             console.print(f"[yellow]Could not fetch LRC from R2: {e}[/yellow]")
+
+    # Preflight: segmentation_mode requires its data source to be present.
+    if segmentation_mode == "llm" and not lrc_content:
+        console.print(
+            f"[red]Cannot use --segmentation-mode llm: recording {song_id} has no LRC "
+            f"(lrc_status != 'completed'). Run "
+            f"`sow-admin audio analyze lrc {song_id}` first.[/red]"
+        )
+        return None
+    if segmentation_mode == "repetition" and not lrc_content:
+        console.print(
+            f"[red]Cannot use --segmentation-mode repetition: recording {song_id} "
+            f"has no LRC.[/red]"
+        )
+        return None
+    if segmentation_mode == "allin1" and not sections:
+        console.print(
+            f"[red]Cannot use --segmentation-mode allin1: recording {song_id} has no "
+            f"cached allin1 sections. Run "
+            f"`sow-admin audio analyze --analysis-tier full {song_id}` first.[/red]"
+        )
+        return None
 
     # Check R2 for cached components.json (unless force).
     if not force:
@@ -2088,6 +2117,7 @@ def _submit_component_analysis_job(
             classify_vocal_posture=classify_vocal_posture,
             skip_beat_cache=skip_beat_cache,
             all_components=all_components,
+            segmentation_mode=segmentation_mode,
         )
     except AnalysisServiceError as e:
         console.print(f"[red]Failed to submit component analysis: {e}[/red]")
@@ -2123,6 +2153,21 @@ def _submit_component_analysis_job(
     if final_job.status == "failed":
         error_msg = final_job.error_message or "Unknown error"
         console.print(f"[red]Component analysis failed: {error_msg}[/red]")
+        return None
+
+    # Echo verification: detect backend version-skew. If the backend is OLD
+    # and silently dropped the segmentation_mode field, the echoed value will
+    # be None (or differ from the request). Refuse to persist in that case.
+    resolved = (
+        final_job.result.segmentation_mode_resolved if final_job.result else None
+    )
+    if segmentation_mode is not None and resolved != segmentation_mode:
+        console.print(
+            f"[red]WARNING: requested segmentation_mode={segmentation_mode!r} "
+            f"but backend echoed {resolved!r}. The analysis-service backend may "
+            f"be outdated (does not support segmentation_mode). Result will "
+            f"NOT be persisted.[/red]"
+        )
         return None
 
     if not final_job.result or not final_job.result.components:
@@ -2240,6 +2285,17 @@ def components_recording(
             "(default: only essential roles entry/exit/loop_target/entry_exit)."
         ),
     ),
+    segmentation_mode: Optional[str] = typer.Option(
+        None,
+        "--segmentation-mode",
+        help=(
+            "Force a mutually-exclusive component identification source: "
+            "llm | repetition | allin1. Default (omitted) uses current "
+            "best-available priority. REQUIRES --force (validated). "
+            "llm/repetition require LRC; allin1 requires cached sections "
+            "from a prior `audio analyze --analysis-tier full` run."
+        ),
+    ),
     format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -2288,8 +2344,23 @@ def components_recording(
     # Validate --format option.
     _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
 
+    # Validate --segmentation-mode option.
+    if segmentation_mode is not None:
+        _validate_choice(
+            segmentation_mode, SEGMENTATION_MODE_VALUES, "--segmentation-mode"
+        )
+
     # In JSON mode, route all progress/error messages to stderr.
     out_console = progress_console if format_ == "json" else console
+
+    # --segmentation-mode requires --force.
+    if segmentation_mode is not None and not force:
+        out_console.print(
+            "[red]--segmentation-mode requires --force. Without --force, "
+            "cached components.json is returned without consulting the mode "
+            "(silent no-op). Re-run with --force.[/red]"
+        )
+        raise typer.Exit(code=2)
 
     if not song_id and not stdin:
         out_console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
@@ -2309,6 +2380,16 @@ def components_recording(
 
     # Batch mode via stdin.
     if stdin:
+        if segmentation_mode is not None:
+            out_console.print(
+                f"[yellow]╔══════════════════════════════════════════════════════════════════╗\n"
+                f"║ --segmentation-mode={segmentation_mode} ACTIVE — NO-FALLBACK CONTRACT{' ' * (28 - len(segmentation_mode))}║\n"
+                f"║ Each song runs ONLY the '{segmentation_mode}' source. Empty [] results are{' ' * (3 if len(segmentation_mode) == 3 else 2)}║\n"
+                f"║ EXPECTED when the source is unavailable (no LRC, unset API key,{' ' * 1}║\n"
+                f"║ LLM error, invalid JSON). There is NO fallback to allin1 or{' ' * 3}║\n"
+                f"║ lyrics-repetition. Do NOT interpret [] as \"song has no components.\"║\n"
+                f"╚══════════════════════════════════════════════════════════════════╝[/yellow]"
+            )
         raw = sys.stdin.read().splitlines()
         song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
         if not song_ids:
@@ -2342,6 +2423,7 @@ def components_recording(
                         classify_vocal_posture=classify_posture,
                         skip_beat_cache=skip_beat_cache,
                         all_components=all_components,
+                        segmentation_mode=segmentation_mode,
                     )
                     results.append({"song_id": sid, "status": "submitted"})
                 except Exception as e:
@@ -2357,6 +2439,7 @@ def components_recording(
                     classify_vocal_posture=classify_posture,
                     skip_beat_cache=skip_beat_cache,
                     all_components=all_components,
+                    segmentation_mode=segmentation_mode,
                 )
                 if result is None:
                     results.append(
@@ -2418,6 +2501,7 @@ def components_recording(
         classify_vocal_posture=classify_posture,
         skip_beat_cache=skip_beat_cache,
         all_components=all_components,
+        segmentation_mode=segmentation_mode,
     )
 
     if no_wait:

@@ -652,3 +652,94 @@ class TestSubmitComponentAnalysis:
         assert opts["classify_theme"] is True
         assert opts["classify_vocal_posture"] is True
         assert opts["skip_beat_cache"] is True
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_segmentation_mode_omitted_by_default(self, mock_post, api_key_env):
+        """When segmentation_mode is not passed, it should NOT be in the payload."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "component_analysis",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_component_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+        )
+
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        opts = payload["options"]
+        assert "segmentation_mode" not in opts or opts["segmentation_mode"] is None
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_segmentation_mode_forwarded(self, mock_post, api_key_env):
+        """segmentation_mode='llm' is forwarded in options."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "queued",
+            "job_type": "component_analysis",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_component_analysis(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            segmentation_mode="llm",
+        )
+
+        call_args = mock_post.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["options"]["segmentation_mode"] == "llm"
+
+    @patch("stream_of_worship.admin.services.analysis.requests.get")
+    def test_segmentation_mode_resolved_parsed_from_result(self, mock_get, api_key_env):
+        """segmentation_mode_resolved echo field is parsed from job result."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "completed",
+            "job_type": "component_analysis",
+            "progress": 1.0,
+            "result": {
+                "duration_seconds": 180.0,
+                "components": [],
+                "segmentation_mode_resolved": "repetition",
+            },
+        }
+        mock_get.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        job = client.get_job("job-123")
+
+        assert job.result is not None
+        assert job.result.segmentation_mode_resolved == "repetition"
+
+    @patch("stream_of_worship.admin.services.analysis.requests.get")
+    def test_segmentation_mode_resolved_defaults_none(self, mock_get, api_key_env):
+        """segmentation_mode_resolved defaults to None when not echoed."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "completed",
+            "job_type": "component_analysis",
+            "progress": 1.0,
+            "result": {
+                "duration_seconds": 180.0,
+                "components": [],
+            },
+        }
+        mock_get.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        job = client.get_job("job-123")
+
+        assert job.result is not None
+        assert job.result.segmentation_mode_resolved is None

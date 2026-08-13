@@ -1355,6 +1355,7 @@ async def extract_components(
     energy_aware_roles: bool = False,
     all_components: bool = False,
     use_llm_segmentation: bool = False,
+    segmentation_mode: Optional[str] = None,
 ) -> tuple[list[ComponentInstance], str]:
     """Extract song components using hybrid strategy (v5 enhancements).
 
@@ -1425,18 +1426,31 @@ async def extract_components(
     components: list[ComponentInstance] = []
     source = "none"
 
-    if sections:
+    # Beat-grid cache defense-in-depth: applies to ALL modes, not just None,
+    # so that `repetition` is apples-to-apples with the default-mode repetition
+    # fallback. `allin1` does not consume beats/downbeats so the read is a
+    # benign no-op cost there.
+    if not beats and not downbeats:
+        cached_grid = cache_manager.get_beat_grid(content_hash)
+        if cached_grid is not None:
+            downbeats = cached_grid.get("downbeats")
+
+    if segmentation_mode in (None, "allin1") and sections:
         components = identify_from_allin1_sections(
             sections, snap_to_downbeat=snap_to_downbeat, downbeats=downbeats
         )
         if components:
             source = "allin1_sections"
+        elif segmentation_mode == "allin1":
+            logger.warning(
+                "segmentation_mode='allin1' requested but no sections available; "
+                "returning empty"
+            )
 
-    if not components and lrc_content:
-        # v6: LLM whole-song segmentation — opt-in per job or globally via env.
-        _use_llm = (
-            use_llm_segmentation
-            or settings.SOW_COMPONENTS_USE_LLM_SEGMENTATION
+    if not components and lrc_content and segmentation_mode in (None, "llm"):
+        _use_llm = (segmentation_mode == "llm") or (
+            segmentation_mode is None
+            and (use_llm_segmentation or settings.SOW_COMPONENTS_USE_LLM_SEGMENTATION)
         )
         if _use_llm and settings.SOW_LLM_API_KEY:
             try:
@@ -1458,21 +1472,15 @@ async def extract_components(
                 if components:
                     source = "llm_segmentation"
             except Exception as e:
-                logger.warning("LLM segmentation failed, falling back: %s", e)
+                logger.warning("LLM segmentation failed: %s", e)
                 components = []
+        elif segmentation_mode == "llm":
+            logger.warning(
+                "segmentation_mode='llm' requested but SOW_LLM_API_KEY is unset; "
+                "returning empty"
+            )
 
-        if not components:
-            # v6: prefer the beat-grid cache. The old inline analyze_audio_fast call
-            # never returned beats/downbeats (analyzer.py:545–553); dropping it only
-            # forfeits its fast-cache warm-up side effect (accepted — see Risks).
-            if not beats and not downbeats:
-                cached_grid = cache_manager.get_beat_grid(content_hash)
-                if cached_grid is not None:
-                    downbeats = cached_grid.get("downbeats")
-                    # The full grid (cached_grid["beats"]) is not consumed by
-                    # identify_from_lyrics_repetition, which takes flat timestamps.
-
-            # Use pre-computed duration (eliminates redundant librosa.load).
+        if not components and segmentation_mode is None:
             song_total_duration = gf.duration if gf is not None else None
 
             identify_start = time.time()
@@ -1489,11 +1497,40 @@ async def extract_components(
             )
             if components:
                 source = "lyrics_repetition"
-                # v6: lower confidence when no downbeats are available (madmom
-                # failure or cache miss). The old inline_fast_ran flag is gone.
                 if not downbeats:
                     for c in components:
                         c.confidence = 0.5
+
+    if segmentation_mode == "llm" and not components and not lrc_content:
+        logger.warning(
+            "segmentation_mode='llm' requested but lrc_content is None; "
+            "returning empty (CLI preflight should normally prevent this path)"
+        )
+
+    if segmentation_mode == "repetition" and lrc_content:
+        song_total_duration = gf.duration if gf is not None else None
+        identify_start = time.time()
+        components = identify_from_lyrics_repetition(
+            lrc_content,
+            beats=beats,
+            downbeats=downbeats,
+            song_total_duration=song_total_duration,
+            snap_to_downbeat=snap_to_downbeat,
+        )
+        logger.info(
+            f"Component identification (repetition mode) completed in "
+            f"{time.time() - identify_start:.2f}s ({len(components)} components)"
+        )
+        if components:
+            source = "lyrics_repetition"
+            if not downbeats:
+                for c in components:
+                    c.confidence = 0.5
+        else:
+            logger.warning(
+                "segmentation_mode='repetition' requested but no lyrics-repetition "
+                "components found; returning empty"
+            )
 
     if not components:
         return ([], "none")
