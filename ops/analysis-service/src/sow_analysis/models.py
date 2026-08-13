@@ -101,6 +101,12 @@ class ComponentAnalysisOptions(BaseModel):
     # the global default gate). The job option is one-way OR — it can
     # enable per-job but cannot disable when the env flag is on.
     use_llm_segmentation: bool = False
+    # v7: mutually-exclusive identification source override. When set
+    # (one of "llm", "repetition", "allin1") the worker runs ONLY that
+    # source and returns [] if unavailable — no fallback chain. Takes
+    # precedence over use_llm_segmentation and the env gate. None
+    # (default) preserves the current best-available priority.
+    segmentation_mode: Optional[Literal["llm", "repetition", "allin1"]] = None
 
 
 class LrcOptions(BaseModel):
@@ -294,6 +300,9 @@ class JobResult(BaseModel):
     # Component analysis results
     components: Optional[List[ComponentResult]] = None
     component_source: Optional[str] = None
+    # v7: echo of the resolved segmentation_mode the worker applied, for
+    # CLI-side version-skew detection (old backends drop the field → None).
+    segmentation_mode_resolved: Optional[Literal["llm", "repetition", "allin1"]] = None
 
 
 class JobResponse(BaseModel):

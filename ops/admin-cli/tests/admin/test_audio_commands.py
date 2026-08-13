@@ -3308,6 +3308,338 @@ class TestSubmitComponentAnalysisJobSkipBeatCache:
         assert call_kwargs["skip_beat_cache"] is False
 
 
+class TestSegmentationModeFlag:
+    """CLI-level tests for --segmentation-mode flag (v7 spec)."""
+
+    def test_segmentation_mode_without_force_exits_2(self):
+        """--segmentation-mode without --force → exit code 2."""
+        result = runner.invoke(
+            app,
+            ["audio", "components", "song_001", "--segmentation-mode", "llm"],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 2
+        assert "--segmentation-mode requires --force" in result.output
+
+    def test_segmentation_mode_invalid_value_rejected(self):
+        """Invalid --segmentation-mode value → validation error."""
+        result = runner.invoke(
+            app,
+            [
+                "audio", "components", "song_001",
+                "--segmentation-mode", "invalid",
+                "--force",
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code != 0
+        assert "must be one of" in result.output
+
+    def test_segmentation_mode_forwarded_to_helper(self):
+        """--segmentation-mode llm --force → forwarded to _submit_component_analysis_job."""
+        captured = {}
+
+        def fake_submit(*args, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        fake_recording = MagicMock()
+        fake_recording.r2_audio_url = "https://example.com/audio.mp3"
+        fake_recording.has_full_analysis = True
+        fake_recording.has_lrc = True
+
+        fake_db_client = MagicMock()
+        fake_db_client.get_recording_by_song_id.return_value = fake_recording
+
+        fake_config = MagicMock()
+        fake_config.analysis_url = "https://analysis.example"
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db_client,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._submit_component_analysis_job",
+                side_effect=fake_submit,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio", "components", "song_001",
+                    "--segmentation-mode", "llm",
+                    "--force",
+                ],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0
+        assert captured.get("segmentation_mode") == "llm"
+
+    def test_segmentation_mode_none_by_default(self):
+        """Without --segmentation-mode, helper receives segmentation_mode=None."""
+        captured = {}
+
+        def fake_submit(*args, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        fake_recording = MagicMock()
+        fake_recording.r2_audio_url = "https://example.com/audio.mp3"
+        fake_recording.has_full_analysis = True
+        fake_recording.has_lrc = True
+
+        fake_db_client = MagicMock()
+        fake_db_client.get_recording_by_song_id.return_value = fake_recording
+
+        fake_config = MagicMock()
+        fake_config.analysis_url = "https://analysis.example"
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db_client,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._submit_component_analysis_job",
+                side_effect=fake_submit,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "components", "song_001", "--force"],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0
+        assert captured.get("segmentation_mode") is None
+
+
+class TestSegmentationModeEchoVerification:
+    """Helper-level tests for echo verification in _submit_component_analysis_job."""
+
+    def _make_recording(self) -> Recording:
+        return Recording(
+            content_hash="a" * 64,
+            hash_prefix="a" * 12,
+            original_filename="test.mp3",
+            file_size_bytes=1024,
+            imported_at="2026-01-01T00:00:00Z",
+            r2_audio_url="s3://bucket/test.mp3",
+            analysis_status="completed",
+            lrc_status="completed",
+        )
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
+    def test_echo_mismatch_returns_none(self, mock_config_load, mock_client_cls, mock_r2_cls):
+        """Echo mismatch (resolved != requested) → returns None, does NOT persist."""
+        from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
+
+        mock_config = MagicMock()
+        mock_config.analysis_url = "http://localhost:8000"
+        mock_config_load.return_value = mock_config
+
+        mock_r2 = MagicMock()
+        mock_r2.download_lrc_content.return_value = "[00:00.00]test line"
+        mock_r2_cls.return_value = mock_r2
+
+        mock_client = MagicMock()
+        mock_client.get_cached_component_result.return_value = None
+        mock_client.submit_component_analysis.return_value = JobInfo(
+            job_id="job-1", status="queued", job_type="component_analysis"
+        )
+        # Backend echoed None (old backend that doesn't support segmentation_mode)
+        mock_client.wait_for_completion.return_value = MagicMock(
+            status="completed",
+            result=MagicMock(
+                components=[MagicMock()],
+                component_source="llm_segmentation",
+                segmentation_mode_resolved=None,
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        db_client = MagicMock()
+        console = MagicMock()
+        recording = self._make_recording()
+
+        result = _submit_component_analysis_job(
+            recording,
+            "song_001",
+            "http://localhost:8000",
+            db_client,
+            console,
+            config=mock_config,
+            force=True,
+            wait=True,
+            segmentation_mode="llm",
+        )
+
+        assert result is None
+        # Verify warning was printed
+        print_calls = [str(call) for call in console.print.call_args_list]
+        assert any("WARNING" in c for c in print_calls)
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
+    def test_echo_match_proceeds(self, mock_config_load, mock_client_cls, mock_r2_cls):
+        """Echo match (resolved == requested) → proceeds normally."""
+        from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
+
+        mock_config = MagicMock()
+        mock_config.analysis_url = "http://localhost:8000"
+        mock_config_load.return_value = mock_config
+
+        mock_r2 = MagicMock()
+        mock_r2.download_lrc_content.return_value = "[00:00.00]test line"
+        mock_r2_cls.return_value = mock_r2
+
+        mock_component = MagicMock()
+        mock_component.to_dict.return_value = {"type": "chorus"}
+
+        mock_client = MagicMock()
+        mock_client.get_cached_component_result.return_value = None
+        mock_client.submit_component_analysis.return_value = JobInfo(
+            job_id="job-1", status="queued", job_type="component_analysis"
+        )
+        mock_client.wait_for_completion.return_value = MagicMock(
+            status="completed",
+            result=MagicMock(
+                components=[mock_component],
+                component_source="llm_segmentation",
+                segmentation_mode_resolved="llm",
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        db_client = MagicMock()
+        console = MagicMock()
+        recording = self._make_recording()
+
+        result = _submit_component_analysis_job(
+            recording,
+            "song_001",
+            "http://localhost:8000",
+            db_client,
+            console,
+            config=mock_config,
+            force=True,
+            wait=True,
+            segmentation_mode="llm",
+        )
+
+        assert result is not None
+        assert len(result) == 1
+
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
+    def test_no_segmentation_mode_skips_echo_check(self, mock_config_load, mock_client_cls, mock_r2_cls):
+        """When segmentation_mode=None, echo check is skipped entirely."""
+        from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
+
+        mock_config = MagicMock()
+        mock_config.analysis_url = "http://localhost:8000"
+        mock_config_load.return_value = mock_config
+
+        mock_r2 = MagicMock()
+        mock_r2.download_lrc_content.return_value = "[00:00.00]test line"
+        mock_r2_cls.return_value = mock_r2
+
+        mock_component = MagicMock()
+        mock_component.to_dict.return_value = {"type": "chorus"}
+
+        mock_client = MagicMock()
+        mock_client.get_cached_component_result.return_value = None
+        mock_client.submit_component_analysis.return_value = JobInfo(
+            job_id="job-1", status="queued", job_type="component_analysis"
+        )
+        # Even with resolved=None, should proceed because segmentation_mode=None
+        mock_client.wait_for_completion.return_value = MagicMock(
+            status="completed",
+            result=MagicMock(
+                components=[mock_component],
+                component_source="allin1_sections",
+                segmentation_mode_resolved=None,
+            ),
+        )
+        mock_client_cls.return_value = mock_client
+
+        db_client = MagicMock()
+        console = MagicMock()
+        recording = self._make_recording()
+
+        result = _submit_component_analysis_job(
+            recording,
+            "song_001",
+            "http://localhost:8000",
+            db_client,
+            console,
+            config=mock_config,
+            force=True,
+            wait=True,
+        )
+
+        assert result is not None
+
+
+class TestSegmentationModeBatchBanner:
+    """Batch banner printed when --stdin + --segmentation-mode both set."""
+
+    def test_batch_banner_printed(self):
+        """--stdin + --segmentation-mode → banner printed to stderr."""
+        fake_recording = MagicMock()
+        fake_recording.r2_audio_url = "https://example.com/audio.mp3"
+        fake_recording.has_full_analysis = True
+        fake_recording.has_lrc = True
+
+        fake_db_client = MagicMock()
+        fake_db_client.get_recording_by_song_id.return_value = fake_recording
+
+        fake_config = MagicMock()
+        fake_config.analysis_url = "https://analysis.example"
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db_client,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._submit_component_analysis_job",
+                return_value=[],
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio", "components", "--stdin",
+                    "--segmentation-mode", "repetition",
+                    "--force",
+                ],
+                input="song_001\n",
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0
+        assert "NO-FALLBACK CONTRACT" in result.output
+
+
 class TestReviewComponentsCommand:
     """Tests for 'audio review-components' command."""
 

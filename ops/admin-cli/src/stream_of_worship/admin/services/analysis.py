@@ -74,6 +74,7 @@ class AnalysisResult:
     instrumental_url: Optional[str] = None
     components: Optional[List[Dict[str, Any]]] = None
     component_source: Optional[str] = None
+    segmentation_mode_resolved: Optional[str] = None
 
 
 @dataclass
@@ -625,6 +626,7 @@ class AnalysisClient:
         classify_vocal_posture: bool = False,
         skip_beat_cache: bool = False,
         all_components: bool = False,
+        segmentation_mode: Optional[str] = None,
     ) -> JobInfo:
         """Submit a component analysis job to the analysis service.
 
@@ -663,6 +665,11 @@ class AnalysisClient:
             skip_beat_cache: Bypass cached beat grid; re-run madmom detection.
             all_components: Populate audio + LLM metadata for ALL detected
                 components (default: only essential roles).
+            segmentation_mode: optional mutually-exclusive identification source
+                for the worker ("llm", "repetition", "allin1"); when set it
+                overrides the worker's best-available priority and any
+                use_llm_segmentation option. None (default) preserves current
+                priority.
 
         Returns:
             JobInfo for the submitted job.
@@ -687,6 +694,7 @@ class AnalysisClient:
                 "classify_vocal_posture": classify_vocal_posture,
                 "skip_beat_cache": skip_beat_cache,
                 "all_components": all_components,
+                "segmentation_mode": segmentation_mode,
             },
         }
 
@@ -1045,6 +1053,7 @@ class AnalysisClient:
                     instrumental_url=result_data.get("instrumental_url"),
                     components=result_data.get("components"),
                     component_source=result_data.get("component_source"),
+                    segmentation_mode_resolved=result_data.get("segmentation_mode_resolved"),
                 )
 
         return JobInfo(
