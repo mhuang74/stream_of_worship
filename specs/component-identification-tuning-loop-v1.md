@@ -7,7 +7,7 @@
 ## Locked decisions (user-confirmed)
 
 1. **LRC source for fixtures** — LRC text is pasted into committed fixture files under `eval/components_tuning/<song_id>/lrc.lrc`. The user fetches the LRC from R2 once (`{hash12}/lyrics.lrc`) and pastes it; tests then read the committed file. No runtime R2 dependency. The fetch step itself lives outside this plan (operator runs `sow-admin audio ...` or `aws s3 cp` to obtain the LRC).
-2. **Ground-truth format** — Each song's `ground_truth.json` uses 1-based LRC line indices (indexing into the parsed non-empty lines that `identify_from_lyrics_repetition` itself operates on — see "Line indexing convention" below). Roles (`entry` / `exit` / `loop_target`) are specified per expected occurrence.
+2. **Ground-truth format** — Each song's `ground_truth.json` uses 1-based LRC line indices into the **raw, unfiltered** LRC file — every physical line counts as a slot, **including blank/empty metadata lines**, matching exactly what a user sees when opening the file (see "Line indexing convention" below). Both `line_start` and `line_end` are **INCLUSIVE**. Roles (`entry` / `exit` / `loop_target`) are specified per expected occurrence.
 3. **Verification scope** — All chorus occurrences (not just occurrence 1), entry/exit role assignment, and a "no false-positive verses-as-chorus" check (penalize the algorithm if it returns a chorus whose time range overlaps a deliberately-listed non-chorus section by more than a threshold).
 4. **Scoring metric** — Time-range IoU between expected and predicted. Total per song is the mean IoU across all expected components; grand total across 3 songs is the mean of per-song means. Continuous [0.0, 1.0].
 5. **Lyrics-slice dump** — The test harness writes one `.txt` per predicted component into `eval/components_tuning/review/<song_id>/` on every run. No new CLI command. The directory is git-ignored (it is review output, not committed source).
@@ -16,27 +16,29 @@
 
 ## Line indexing convention
 
-`identify_from_lyrics_repetition` parses the LRC and immediately filters to non-empty lines (`components.py:857`: `lines = [ln for ln in lrc_file.lines if ln.text and ln.text.strip()]`). The ground-truth `line_start` / `line_end` indices are **1-BASED** positions into this filtered list — the first non-empty LRC line has index 1. The scorer converts 1-based indices to 0-based internally before deriving time ranges.
+`identify_from_lyrics_repetition` internally filters the LRC to non-empty lines (`components.py:857`: `lines = [ln for ln in lrc_file.lines if ln.text and ln.text.strip()]`), but the ground-truth `line_start` / `line_end` indices do NOT use that filtered view. Instead they are **1-BASED line numbers into the raw LRC file as displayed to the user** — one slot per physical line, **including blank / empty metadata lines** (e.g. `[02:03.55]` with no lyric text still occupies its own index). Keeping indices in raw-file space guarantees the ground truth stays consistent with what the operator sees when opening the file in an editor.
 
-Indices are half-open: `line_start` is inclusive, `line_end` is exclusive. E.g. `[5, 9)` means lines 5,6,7,8 (1-based) = 0-based indices 4,5,6,7.
+Both endpoints are **INCLUSIVE**: `[line_start, line_end]` covers lines `line_start, line_start+1, ..., line_end`. E.g. `[5, 8]` means lines 5, 6, 7, 8.
 
-The scorer re-parses the LRC the same way and uses these indices to derive expected time ranges:
+The scorer derives expected time ranges from the raw (unfiltered) parsed lines:
 
 ```
-# Convert 1-based -> 0-based for internal use.
-zero_start = line_start - 1
-zero_end   = line_end - 1   # still exclusive
+# 1-based raw LRC line numbers; both ends INCLUSIVE.
+zero_start = line_start - 1   # 0-based index of the first line
+zero_end   = line_end - 1     # 0-based index of the LAST line (inclusive)
 
-expected_start_time = filtered_lines[zero_start].time_seconds
-# end_time mirrors identify_from_lyrics_repetition (lines 971-982):
-if zero_end < len(filtered_lines):
-    expected_end_time = filtered_lines[zero_end].time_seconds
+expected_start_time = raw_lines[zero_start].time_seconds
+# end_time mirrors identify_from_lyrics_repetition (lines 971-982): the
+# interval ends at the start of the line AFTER the block (0-based index
+# `line_end`), or is estimated when the block runs to the end of the file.
+if line_end < len(raw_lines):
+    expected_end_time = raw_lines[line_end].time_seconds
 else:
     # estimate via average line duration in the block
     ...
 ```
 
-For consistency with how the algorithm itself computes `end_time`, the scorer helper `_expected_time_range(parsed_lines, line_start, line_end)` converts 1-based -> 0-based internally, then mirrors `identify_from_lyrics_repetition`'s end-time derivation (lines 971–982). Expected and predicted ranges are thus comparable on identical semantics.
+For consistency with how the algorithm itself computes `end_time`, the scorer helper `_expected_time_range(raw_lines, line_start, line_end)` indexes the **unfiltered** raw line list, reads both endpoints as **inclusive**, and mirrors `identify_from_lyrics_repetition`'s end-time derivation (lines 971–982). Expected and predicted ranges are thus comparable on identical semantics.
 
 ## Critical files
 
@@ -184,7 +186,7 @@ eval/components_tuning/
   "song_id": "jun_wang_jiu_zai_zhe_li_1c32724c",
   "hash12": "8a4663283a5c",
   "lrc_file": "lrc.lrc",
-  "note": "Line indices are 1-BASED: the first non-empty LRC line is index 1. line_end is EXCLUSIVE (half-open [line_start, line_end)).",
+  "note": "Line indices are 1-BASED RAW LRC line numbers (every physical line counts, blanks included). Both line_start and line_end are INCLUSIVE: [line_start, line_end] covers lines line_start..line_end.",
   "expected_chorus_occurrences": [
     {
       "occurrence_index": 1,
@@ -216,7 +218,7 @@ eval/components_tuning/
 ```
 
 Schema semantics:
-- `line_start` / `line_end` are 1-BASED indices into the **parsed, filtered (non-empty) line list** that `identify_from_lyrics_repetition` produces from `parse_lrc(lrc_content)`. The first non-empty LRC line has index 1. `line_end` is **exclusive** (half-open range `[line_start, line_end)`).
+- `line_start` / `line_end` are 1-BASED **raw** LRC line numbers (every physical line counts, **including blank/empty metadata lines**, so indices match what the user sees in the file). The first LRC line has index 1. Both endpoints are **INCLUSIVE**: the range covers lines `line_start .. line_end`.
 - `expected_chorus_occurrences` — every chorus occurrence the operator has manually verified in the song. The scorer maps each to a predicted chorus component by best-IoU and averages.
 - `expected_verse` — the verse section that should be returned as `component_type="verse"`, `role="loop_target"`. Set to `null` if the song has no verse-before-chorus (in which case the scorer skips verse scoring for that song).
 - `false_positive_avoid` — sections that should NOT be detected as chorus. For each, the scorer searches predicted chorus components for an IoU above `FP_PENALTY_IOU_THRESHOLD = 0.3` with any expected-false-positive range, and subtracts a penalty from the song's score (see "Scoring formula"). Set to `[]` if no false-positive check is needed.
@@ -293,37 +295,38 @@ def _load_fixture(song_id: str) -> tuple[str, dict]:
     return lrc_content, gt
 ```
 
-**Helper: `_parse_filtered_lines(lrc_content)` → `list[LRCLine]`** — same non-empty filter the algorithm uses; assert `line_start < line_end <= len(lines)` for every expected range.
+**Helper: `_parse_raw_lines(lrc_content)` → `list[LRCLine]`** — parses the **unfiltered** raw LRC lines (blanks included), matching the ground-truth indexing convention; assert `1 <= line_start <= line_end <= len(lines)` for every expected (inclusive) range.
 
 ```python
-def _parse_filtered_lines(lrc_content: str) -> list:
+def _parse_raw_lines(lrc_content: str) -> list:
     lrc_file = parse_lrc(lrc_content)
-    return [ln for ln in lrc_file.lines if ln.text and ln.text.strip()]
+    return list(lrc_file.lines)   # NO non-empty filtering — raw lines, blanks included
 ```
 
-**Helper: `_expected_time_range(lines, line_start, line_end)` → `(start_t, end_t)`** — mirrors the algorithm's `end_time` derivation (see "Line indexing convention").
+**Helper: `_expected_time_range(lines, line_start, line_end)` → `(start_t, end_t)`** — mirrors the algorithm's `end_time` derivation (see "Line indexing convention"). Reads BOTH `line_start` and `line_end` as 1-based **INCLUSIVE** indices into the raw line list.
 
 ```python
 def _expected_time_range(lines, line_start: int, line_end: int) -> tuple[float, float]:
-    # Convert 1-based ground-truth indices to 0-based internal indices.
-    zero_start = line_start - 1
-    zero_end = line_end - 1   # still exclusive
+    # 1-based INCLUSIVE [line_start, line_end] -> 0-based internal indices.
+    if line_start > line_end:
+        line_start, line_end = line_end, line_start   # normalize ordering
     n = len(lines)
-    assert 0 <= zero_start < zero_end <= n, (
-        f"Bad 1-based line range [{line_start}, {line_end}) for {n}-line LRC"
+    assert 1 <= line_start <= line_end <= n, (
+        f"Bad 1-based inclusive line range [{line_start}, {line_end}] for {n}-line LRC"
     )
-    start_t = lines[zero_start].time_seconds
-    # Mirror identify_from_lyrics_repetition's end-time derivation:
-    if zero_end < n:
-        end_t = lines[zero_end].time_seconds
+    start_t = lines[line_start - 1].time_seconds
+    # Mirror identify_from_lyrics_repetition's end-time derivation: the end
+    # is the start of the line AFTER the block (0-based index `line_end`).
+    if line_end < n:
+        end_t = lines[line_end].time_seconds
     else:
         # Estimate via average line duration in the block.
         durations = [
             lines[k + 1].time_seconds - lines[k].time_seconds
-            for k in range(zero_start, min(zero_end, n - 1))
+            for k in range(line_start - 1, min(line_end, n - 1))
         ]
         avg = (sum(durations) / len(durations)) if durations else 4.0
-        end_t = lines[min(zero_end - 1, n - 1)].time_seconds + avg
+        end_t = lines[min(line_end - 1, n - 1)].time_seconds + avg
     return start_t, end_t
 ```
 
@@ -426,22 +429,22 @@ def score_all(weights: LyricsRepetitionWeights = DEFAULT_WEIGHTS):
 def test_fixture_completeness(song_id):
     """FAIL fast if any fixture is still a stub or missing LRC."""
     lrc, gt = _load_fixture(song_id)
-    filtered = _parse_filtered_lines(lrc)
-    assert len(filtered) >= 4, f"{song_id}: LRC has too few non-empty lines"
+    filtered = _parse_raw_lines(lrc)
+    assert len(filtered) >= 4, f"{song_id}: LRC has too few lines"
     # Validate every line range is in-bounds.
     for occ in gt["expected_chorus_occurrences"]:
-        assert 1 <= occ["line_start"] < occ["line_end"] <= len(filtered) + 1, (
+        assert 1 <= occ["line_start"] <= occ["line_end"] <= len(filtered), (
             f"{song_id}: chorus occ {occ['occurrence_index']} "
-            f"range [{occ['line_start']},{occ['line_end']}) OOB"
+            f"range [{occ['line_start']},{occ['line_end']}] OOB"
         )
     if gt.get("expected_verse"):
         v = gt["expected_verse"]
-        assert 1 <= v["line_start"] < v["line_end"] <= len(filtered) + 1, (
-            f"{song_id}: verse range [{v['line_start']},{v['line_end']}) OOB"
+        assert 1 <= v["line_start"] <= v["line_end"] <= len(filtered), (
+            f"{song_id}: verse range [{v['line_start']},{v['line_end']}] OOB"
         )
     for fp in gt.get("false_positive_avoid", []):
-        assert 1 <= fp["line_start"] < fp["line_end"] <= len(filtered) + 1, (
-            f"{song_id}: fp range [{fp['line_start']},{fp['line_end']}) OOB"
+        assert 1 <= fp["line_start"] <= fp["line_end"] <= len(filtered), (
+            f"{song_id}: fp range [{fp['line_start']},{fp['line_end']}] OOB"
         )
 
 
@@ -551,7 +554,7 @@ Where:
 1. **Fetch LRC** for each of the 3 songs from R2 (`{hash12}/lyrics.lrc`), paste verbatim into the three `lrc.lrc` fixture files.
 2. **Run `identify_from_lyrics_repetition` once per song** (via the test harness with DEFAULT_WEIGHTS) and inspect `tests/fixtures/components_tuning/review/<song_id>/component_*.txt` slices. These are the lyrics the algorithm believes each component covers — reviewed side-by-side with the LRC timestamps.
 3. **Manually verify** chorus and verse 1 (and ideally every chorus occurrence) for each song. Fill the `ground_truth.json` files:
-   - For each chorus occurrence, set `occurrence_index`, `line_start`, `line_end` (half-open, 1-based into filtered lines), and `role` (`entry` / `exit` / `entry_exit` for single-chorus songs).
+   - For each chorus occurrence, set `occurrence_index`, `line_start`, `line_end` (1-based RAW LRC line numbers, both INCLUSIVE), and `role` (`entry` / `exit` / `entry_exit` for single-chorus songs).
    - Set `expected_verse` similarly, or `null` if the song starts directly with a chorus.
    - Populate `false_positive_avoid` with any section that looks like a verse repeating but might tempt the algorithm into calling it a chorus.
 4. **Baseline run:** `cd ops/analysis-service && uv run --extra dev pytest tests/test_components_tuning.py -v -s`. Record the `GRAND TOTAL = ...` number.
