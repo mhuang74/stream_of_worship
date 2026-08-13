@@ -18,7 +18,9 @@ from sow_analysis.storage.cache import CacheManager
 from sow_analysis.workers.components import ComponentInstance, extract_components
 from sow_analysis.workers.lrc_parser import parse_lrc
 from sow_analysis.workers.section_segmenter import (
+    DEFAULT_VALIDATOR_WEIGHTS,
     Section,
+    _build_segmentation_prompt,
     _load_few_shot_examples,
     _map_sections_to_components,
     _parse_segmenter_json,
@@ -354,6 +356,64 @@ class TestValidateChorusRepetition:
         # Line 3 (讚美主) repeats at line 6, so confirmed unchanged
         assert first_chorus.line_end == 3
         assert abs(first_chorus.confidence - min(1.0, 0.90 + 0.05)) < 0.01
+
+
+# ── Tuning-loop override parity (defaults are bit-identical) ────────────────
+
+
+class TestTuningOverrideParity:
+    """The three v1 tuning-loop kwargs must default to current behavior.
+
+    Passing the explicit default values (few_shot_override=None,
+    system_prompt_override=None, validator_weights=DEFAULT_VALIDATOR_WEIGHTS)
+    must produce byte-identical output to calling without them.
+    """
+
+    def test_validator_weights_defaults_match_literals(self):
+        w = DEFAULT_VALIDATOR_WEIGHTS
+        assert w.nonrepeated_multiplier == 0.60
+        assert w.trimmed_multiplier == 0.90
+        assert w.confirmed_bonus == 0.05
+        assert w.mapping_confidence_multiplier == 0.95
+
+    def test_validate_chorus_repetition_parity(self):
+        lrc = """[00:10.00]verse one
+[00:20.00]哈利路亞
+[00:30.00]讚美主
+[00:40.00]verse two
+[00:50.00]哈利路亞
+[00:60.00]讚美主
+"""
+        sections = [
+            Section(label="verse", line_start=1, line_end=1, confidence=0.9),
+            Section(label="chorus", line_start=2, line_end=3, confidence=0.90),
+            Section(label="verse", line_start=4, line_end=4, confidence=0.9),
+            Section(label="chorus", line_start=5, line_end=6, confidence=0.90),
+        ]
+        default = _validate_chorus_repetition(sections, lrc)
+        explicit = _validate_chorus_repetition(
+            sections, lrc, weights=DEFAULT_VALIDATOR_WEIGHTS
+        )
+        assert default == explicit
+
+    def test_map_sections_to_components_parity(self):
+        lines = list(parse_lrc(_LRC_SIMPLE).lines)
+        sections = [
+            Section(label="verse", line_start=1, line_end=2, confidence=0.9),
+            Section(label="chorus", line_start=3, line_end=4, confidence=0.95),
+        ]
+        default = _map_sections_to_components(sections, lines)
+        explicit = _map_sections_to_components(
+            sections, lines, weights=DEFAULT_VALIDATOR_WEIGHTS
+        )
+        assert default == explicit
+
+    def test_build_segmentation_prompt_parity(self):
+        default = _build_segmentation_prompt(_LRC_SIMPLE, None, None, [])
+        explicit = _build_segmentation_prompt(
+            _LRC_SIMPLE, None, None, [], system_prompt_override=None
+        )
+        assert default == explicit
 
 
 # ── Integration tests (extract_components fallback) ─────────────────────────
