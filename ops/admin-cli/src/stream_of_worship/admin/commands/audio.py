@@ -2223,7 +2223,7 @@ def components_recording(
         False,
         "--compute-all-fields",
         help="Shortcut: enable snap-to-downbeat, energy-roles, classify-theme, "
-        "classify-posture, and all-components",
+        "and classify-posture. Does NOT imply --all-components.",
     ),
     skip_beat_cache: bool = typer.Option(
         False,
@@ -2255,9 +2255,11 @@ def components_recording(
     schema_version, returns it directly (unless --force is specified).
 
     Use --compute-all-fields as a shortcut to enable snap-to-downbeat,
-    energy-roles, classify-theme, classify-posture, and all-components at once.
+    energy-roles, classify-theme, and classify-posture at once.
     --use-stems is not included in the shortcut but can be combined with it.
-    --compute-all-fields also implies --all-components.
+    --compute-all-fields does NOT imply --all-components; essential-only
+    filtering (entry/exit/loop_target/entry_exit) still applies. Pass
+    --all-components explicitly to populate all components (backfill/debug).
 
     --skip-beat-cache bypasses the cached beat grid and re-runs madmom detection
     (the fresh result is still written to cache). Unlike --force (which re-runs
@@ -2275,13 +2277,14 @@ def components_recording(
 
     Batch mode: pass --stdin to read song IDs from stdin (one per line).
     """
-    # Flag override: --compute-all-fields enables all advanced flags.
+    # Flag override: --compute-all-fields enables advanced feature flags.
+    # NOTE: does NOT set all_components — essential-only filtering still
+    # applies by default. Pass --all-components explicitly to backfill all.
     if compute_all_fields:
         snap_to_downbeat = True
         energy_roles = True
         classify_theme = True
         classify_posture = True
-        all_components = True
 
     # Validate --format option.
     _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")

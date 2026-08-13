@@ -3439,3 +3439,50 @@ class TestReviewComponentsCommand:
             )
         assert result.exit_code == 0
         assert mock_app_cls.return_value.run.called
+
+
+def test_compute_all_fields_does_not_set_all_components():
+    """--compute-all-fields must NOT set all_components in the payload options."""
+    captured = {}
+
+    def fake_submit(*args, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    fake_recording = MagicMock()
+    fake_recording.r2_audio_url = "https://example.com/audio.mp3"
+    fake_recording.has_full_analysis = True
+    fake_recording.has_lrc = True
+
+    fake_db_client = MagicMock()
+    fake_db_client.get_recording_by_song_id.return_value = fake_recording
+
+    fake_config = MagicMock()
+    fake_config.analysis_url = "https://analysis.example"
+
+    with (
+        patch(
+            "stream_of_worship.admin.commands.audio.get_db_client",
+            return_value=fake_db_client,
+        ),
+        patch(
+            "stream_of_worship.admin.commands.audio.AdminConfig.load",
+            return_value=fake_config,
+        ),
+        patch(
+            "stream_of_worship.admin.commands.audio._submit_component_analysis_job",
+            side_effect=fake_submit,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            ["audio", "components", "song_001", "--compute-all-fields"],
+            env=WIDE_ENV,
+        )
+
+    assert result.exit_code == 0
+    assert captured["all_components"] is False
+    assert captured["classify_theme"] is True
+    assert captured["classify_vocal_posture"] is True
+    assert captured["snap_to_downbeat"] is True
+    assert captured["energy_aware_roles"] is True

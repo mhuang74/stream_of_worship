@@ -150,6 +150,22 @@ def _lyric_hash(lyrics_lines: Optional[list[str]]) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
+def _truncate_lyrics(lyrics_lines: Optional[list[str]], max_len: int = 60) -> str:
+    """Return a truncated single-line preview of lyric lines for logging.
+
+    Joins lines with a space, truncates to ``max_len`` chars with an
+    ellipsis. Returns ``"<empty>"`` for None/empty input.
+    """
+    if not lyrics_lines:
+        return "<empty>"
+    text = " ".join(line.strip() for line in lyrics_lines if line.strip())
+    if not text:
+        return "<empty>"
+    if len(text) > max_len:
+        return text[:max_len] + "..."
+    return text
+
+
 def _is_essential(component: ComponentInstance) -> bool:
     """Return True if the component's role is transition-essential.
 
@@ -296,7 +312,9 @@ class ThemeClassifier:
             rep_i, rep_comp, rep_lyrics = members[0]
             rep_index[h] = (rep_i, rep_comp)
             rep_tasks.append(
-                self._classify_component_with_logging(rep_i, total, rep_comp, rep_lyrics)
+                self._classify_component_with_logging(
+                    rep_i, total, rep_comp, rep_lyrics, h
+                )
             )
 
         logger.info(
@@ -338,11 +356,14 @@ class ThemeClassifier:
         total: int,
         component: ComponentInstance,
         lyrics_lines: Optional[list[str]],
+        lyric_hash: str = "",
     ) -> None:
         """Classify one component with start/completed/failed progress logging."""
+        lyrics_preview = _truncate_lyrics(lyrics_lines)
         comp_label = (
             f"component {idx}/{total} (occurrence={component.occurrence_index}, "
-            f"type={component.component_type})"
+            f"type={component.component_type}, lyric_hash={lyric_hash}, "
+            f"lyrics={lyrics_preview})"
         )
         logger.info(f"LLM classification: starting {comp_label}")
         start = time.time()
