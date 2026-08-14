@@ -746,11 +746,13 @@ def _backfill_lyrics_for_song(
     db_client: DatabaseClient,
     console: Console,
     url: Optional[str] = None,
+    use_llm: bool = True,
 ) -> bool:
     """Backfill structured lyrics from YouTube for an existing recording.
 
     Fetches the YouTube video description via ``extract_video_metadata()``,
-    parses it with ``parse_structured_lyrics()``, and persists the result
+    parses it with ``parse_structured_lyrics_smart()`` (LLM cleanup by default,
+    or heuristic-only when ``use_llm=False``), and persists the result
     via ``update_recording_structured_lyrics()``. Does NOT download audio
     or touch R2.
 
@@ -792,11 +794,24 @@ def _backfill_lyrics_for_song(
         console.print(f"[red]Failed to fetch video metadata: {e}[/red]")
         raise typer.Exit(1)
 
-    structured_raw = metadata.description
-    structured_json = parse_structured_lyrics(metadata.description)
-    structured_json_str = (
-        json.dumps(structured_json, ensure_ascii=False) if structured_json else None
-    )
+    try:
+        structured_raw = metadata.description
+        structured_json = parse_structured_lyrics_smart(
+            metadata.description, use_llm=use_llm
+        )
+        structured_json_str = (
+            json.dumps(structured_json, ensure_ascii=False) if structured_json else None
+        )
+    except RuntimeError as e:
+        if use_llm:
+            console.print(f"[red]LLM lyrics extraction failed: {e}[/red]")
+            console.print(
+                "[dim]Use --no-llm to fall back to the regex heuristic only.[/dim]"
+            )
+            raise typer.Exit(1)
+        structured_raw = metadata.description
+        structured_json = None
+        structured_json_str = None
 
     db_client.update_recording_structured_lyrics(
         hash_prefix=recording.hash_prefix,
@@ -968,10 +983,18 @@ def import_youtube_audio_for_song(
     try:
         metadata = extract_video_metadata(search_or_url)
         structured_raw = metadata.description
-        structured_json = parse_structured_lyrics(metadata.description)
+        structured_json = parse_structured_lyrics_smart(
+            metadata.description, use_llm=use_llm
+        )
         if structured_json:
             structured_json_str = json.dumps(structured_json, ensure_ascii=False)
     except RuntimeError as e:
+        if use_llm:
+            console.print(f"[red]LLM lyrics extraction failed: {e}[/red]")
+            console.print(
+                "[dim]Use --no-llm to fall back to the regex heuristic only.[/dim]"
+            )
+            raise typer.Exit(1)
         console.print(
             f"[yellow]Could not fetch video metadata for structured lyrics: {e}[/yellow]"
         )
@@ -1094,6 +1117,7 @@ def _backfill_lyrics_batch(
     console: Console,
     url: Optional[str] = None,
     skip_confirm: bool = False,
+    use_llm: bool = True,
 ) -> None:
     """Backfill structured lyrics from YouTube for multiple songs from stdin.
 
@@ -1126,6 +1150,7 @@ def _backfill_lyrics_batch(
                 db_client=db_client,
                 console=console,
                 url=url,
+                use_llm=use_llm,
             )
             if ok:
                 success += 1
@@ -1153,6 +1178,7 @@ def _download_audio_batch(
     analyze: bool,
     lrc: bool,
     components: bool,
+    use_llm: bool = True,
 ) -> None:
     """Download audio from YouTube for multiple songs read from stdin.
 
@@ -1278,6 +1304,7 @@ def _download_audio_batch(
                 analyze=analyze,
                 lrc=lrc,
                 components=components,
+                use_llm=use_llm,
             )
             success += 1
             console.print(f"[green]✓ Downloaded: {sid} ({song.title})[/green]")
@@ -1326,6 +1353,16 @@ def download_audio(
         False,
         "--backfill-lyrics",
         help="Only fetch structured lyrics from YouTube for an existing recording (no audio download)",
+    ),
+    use_llm: bool = typer.Option(
+        True,
+        "--llm/--no-llm",
+        help=(
+            "Use LLM to extract/cleanup structured lyrics (default: on). "
+            "--no-llm falls back to the regex heuristic only. When LLM is "
+            "enabled but SOW_LLM_API_KEY/SOW_LLM_MODEL are unset, the command "
+            "exits non-zero."
+        ),
     ),
     stdin: bool = typer.Option(
         False, "--stdin", help="Read song IDs from stdin (one per line) for batch download"
@@ -1396,6 +1433,7 @@ def download_audio(
                 db_client=db_client,
                 console=console,
                 skip_confirm=skip_confirm,
+                use_llm=use_llm,
             )
             return
 
@@ -1404,6 +1442,7 @@ def download_audio(
             db_client=db_client,
             console=console,
             url=url,
+            use_llm=use_llm,
         )
         return
 
@@ -1432,6 +1471,7 @@ def download_audio(
             analyze=analyze,
             lrc=lrc,
             components=components,
+            use_llm=use_llm,
         )
         return
 
@@ -1459,6 +1499,7 @@ def download_audio(
         analyze=analyze,
         lrc=lrc,
         components=components,
+        use_llm=use_llm,
     )
 
 
@@ -5719,6 +5760,14 @@ def batch(
     backfill_lyrics: bool = typer.Option(
         False, "--backfill-lyrics", help="Backfill structured lyrics from YouTube for existing recordings"
     ),
+    use_llm: bool = typer.Option(
+        True,
+        "--llm/--no-llm",
+        help=(
+            "Use LLM to extract/cleanup structured lyrics (default: on). "
+            "--no-llm falls back to the regex heuristic only."
+        ),
+    ),
     all_steps: bool = typer.Option(False, "--all-steps", help="Run all steps in order"),
     analysis_tier: str = typer.Option(
         "fast", "--analysis-tier", help="Analysis tier: fast (default) or full"
@@ -5980,6 +6029,7 @@ def batch(
                     db_client=db_client,
                     console=console,
                     url=recording.youtube_url,
+                    use_llm=use_llm,
                 )
                 backfill_results[sid]["backfill_lyrics"] = "completed"
             except typer.Exit:

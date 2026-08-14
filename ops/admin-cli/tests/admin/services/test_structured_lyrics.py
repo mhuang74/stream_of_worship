@@ -1,9 +1,21 @@
 """Unit tests for structured-lyrics parser and flattener."""
 
+import json
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from stream_of_worship.admin.services.structured_lyrics import (
+    StructuredLyricsResult,
+    StructuredLyricsSection,
+    extract_structured_lyrics_with_llm,
     flatten_structured_lyrics,
     parse_structured_lyrics,
+    parse_structured_lyrics_smart,
 )
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 WORKED_EXAMPLE = """[Verse]
 親愛耶穌　祢真愛我
@@ -182,3 +194,202 @@ class TestFlattenStructuredLyrics:
 
         flattened = flatten_structured_lyrics(parsed)
         assert not flattened.endswith("\n")
+
+
+class TestStructuredLyricsModels:
+    """Tests for Pydantic models and .to_dict() round-trip."""
+
+    def test_section_to_dict(self):
+        """StructuredLyricsSection.to_dict() matches the existing dict shape."""
+        section = StructuredLyricsSection(
+            label="verse",
+            raw_label="Verse",
+            lines=["Line 1", "Line 2"],
+        )
+        d = section.to_dict()
+        assert d == {"label": "verse", "raw_label": "Verse", "lines": ["Line 1", "Line 2"]}
+
+    def test_result_to_dict(self):
+        """StructuredLyricsResult.to_dict() matches the existing dict shape."""
+        result = StructuredLyricsResult(
+            sections=[
+                StructuredLyricsSection(label="chorus", raw_label="Chorus", lines=["Line A"]),
+            ],
+            preamble_lines=["Intro line"],
+        )
+        d = result.to_dict()
+        assert d == {
+            "sections": [
+                {"label": "chorus", "raw_label": "Chorus", "lines": ["Line A"]},
+            ],
+            "preamble_lines": ["Intro line"],
+        }
+
+    def test_to_dict_matches_parse_structured_lyrics_shape(self):
+        """to_dict() output is structurally identical to parse_structured_lyrics output."""
+        parsed = parse_structured_lyrics(WORKED_EXAMPLE)
+        assert parsed is not None
+
+        result = StructuredLyricsResult(
+            sections=[
+                StructuredLyricsSection(
+                    label=s["label"], raw_label=s["raw_label"], lines=s["lines"]
+                )
+                for s in parsed["sections"]
+            ],
+            preamble_lines=parsed["preamble_lines"],
+        )
+        assert result.to_dict() == parsed
+
+    def test_empty_result_to_dict(self):
+        """Empty StructuredLyricsResult.to_dict() produces empty lists."""
+        result = StructuredLyricsResult()
+        assert result.to_dict() == {"sections": [], "preamble_lines": []}
+
+
+class TestExtractStructuredLyricsWithLLM:
+    """Tests for extract_structured_lyrics_with_llm with mocked LLM."""
+
+    def test_empty_description_returns_none(self):
+        """Empty/None description returns None without calling LLM."""
+        assert extract_structured_lyrics_with_llm("") is None
+        assert extract_structured_lyrics_with_llm(None) is None
+
+    def test_llm_drops_mid_section_promo(self):
+        """LLM cleanup drops a promo line that appears mid-section."""
+        description = "[Verse]\n" "親愛耶穌　祢真愛我\n" "訂閱我們的頻道！\n" "毫無保留　我敬拜祢\n"
+        expected = StructuredLyricsResult(
+            sections=[
+                StructuredLyricsSection(
+                    label="verse",
+                    raw_label="Verse",
+                    lines=["親愛耶穌　祢真愛我", "毫無保留　我敬拜祢"],
+                ),
+            ],
+            preamble_lines=[],
+        )
+
+        fake_chat = MagicMock()
+        fake_structured = MagicMock()
+        fake_structured.invoke.return_value = expected
+        fake_chat.with_structured_output.return_value = fake_structured
+
+        with patch(
+            "stream_of_worship.admin.services.structured_lyrics.build_chat_model_for_lyrics",
+            return_value=fake_chat,
+        ):
+            result = extract_structured_lyrics_with_llm(description)
+
+        assert result is not None
+        assert len(result.sections) == 1
+        assert result.sections[0].lines == ["親愛耶穌　祢真愛我", "毫無保留　我敬拜祢"]
+        assert "訂閱我們的頻道！" not in result.sections[0].lines
+
+    def test_llm_failure_propagates(self):
+        """LLM call failure (e.g. ValueError) propagates to caller."""
+        description = "[Verse]\nLine 1"
+
+        fake_chat = MagicMock()
+        fake_structured = MagicMock()
+        fake_structured.invoke.side_effect = ValueError("malformed JSON")
+        fake_chat.with_structured_output.return_value = fake_structured
+
+        with (
+            patch(
+                "stream_of_worship.admin.services.structured_lyrics.build_chat_model_for_lyrics",
+                return_value=fake_chat,
+            ),
+            pytest.raises(ValueError, match="malformed JSON"),
+        ):
+            extract_structured_lyrics_with_llm(description)
+
+    def test_llm_receives_heuristic_hint(self):
+        """The heuristic parse result is passed to the LLM as a hint."""
+        description = "[Verse]\nLine 1\n[Chorus]\nLine 2"
+
+        fake_chat = MagicMock()
+        fake_structured = MagicMock()
+        fake_structured.invoke.return_value = StructuredLyricsResult()
+        fake_chat.with_structured_output.return_value = fake_structured
+
+        with patch(
+            "stream_of_worship.admin.services.structured_lyrics.build_chat_model_for_lyrics",
+            return_value=fake_chat,
+        ):
+            extract_structured_lyrics_with_llm(description)
+
+        fake_structured.invoke.assert_called_once()
+        prompt = fake_structured.invoke.call_args[0][0]
+        assert "candidate parse" in prompt
+        assert "verse" in prompt
+
+
+class TestParseStructuredLyricsSmart:
+    """Tests for the smart orchestration entrypoint."""
+
+    def test_use_llm_false_returns_heuristic_dict(self):
+        """use_llm=False returns the heuristic dict unchanged."""
+        result = parse_structured_lyrics_smart(WORKED_EXAMPLE, use_llm=False)
+        expected = parse_structured_lyrics(WORKED_EXAMPLE)
+        assert result == expected
+
+    def test_use_llm_false_empty_returns_none(self):
+        """use_llm=False with empty description returns None."""
+        assert parse_structured_lyrics_smart("", use_llm=False) is None
+        assert parse_structured_lyrics_smart(None, use_llm=False) is None
+
+    def test_use_llm_true_with_env_unset_raises_runtime_error(self, monkeypatch):
+        """use_llm=True with SOW_LLM_API_KEY/SOW_LLM_MODEL unset raises RuntimeError."""
+        monkeypatch.delenv("SOW_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("SOW_LLM_MODEL", raising=False)
+        with pytest.raises(RuntimeError, match="SOW_LLM_API_KEY"):
+            parse_structured_lyrics_smart(WORKED_EXAMPLE, use_llm=True)
+
+    def test_use_llm_true_empty_returns_none(self, monkeypatch):
+        """use_llm=True with empty description returns None without calling LLM."""
+        assert parse_structured_lyrics_smart("", use_llm=True) is None
+        assert parse_structured_lyrics_smart(None, use_llm=True) is None
+
+    def test_use_llm_true_returns_llm_dict(self):
+        """use_llm=True returns the LLM-cleaned dict via to_dict()."""
+        expected = StructuredLyricsResult(
+            sections=[
+                StructuredLyricsSection(label="verse", raw_label="Verse", lines=["Line 1"]),
+            ],
+            preamble_lines=[],
+        )
+        fake_chat = MagicMock()
+        fake_structured = MagicMock()
+        fake_structured.invoke.return_value = expected
+        fake_chat.with_structured_output.return_value = fake_structured
+
+        with patch(
+            "stream_of_worship.admin.services.structured_lyrics.build_chat_model_for_lyrics",
+            return_value=fake_chat,
+        ):
+            result = parse_structured_lyrics_smart(WORKED_EXAMPLE, use_llm=True)
+
+        assert result is not None
+        assert result == expected.to_dict()
+
+
+class TestFixtureFiles:
+    """Tests that verify committed fixture files are valid."""
+
+    def test_description_fixture_exists(self):
+        """The description fixture file exists and is non-empty."""
+        path = FIXTURES_DIR / "_XgP0p-S4S8_description.txt"
+        assert path.exists()
+        assert path.read_text(encoding="utf-8").strip() != ""
+
+    def test_expected_json_fixture_valid(self):
+        """The expected JSON fixture is valid and has the right shape."""
+        path = FIXTURES_DIR / "_XgP0p-S4S8_expected.json"
+        assert path.exists()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert "sections" in data
+        assert "preamble_lines" in data
+        assert len(data["sections"]) == 3
+        assert data["sections"][0]["label"] == "verse"
+        assert data["sections"][1]["label"] == "pre-chorus"
+        assert data["sections"][2]["label"] == "chorus"

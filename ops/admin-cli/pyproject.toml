@@ -38,6 +38,10 @@ admin = [
     "miniaudio>=1.59",
     "textual>=0.44.0",
     "numpy>=1.24.0",
+    "langchain-openai>=0.2.0",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.2.2",
 ]
 constructor = [
     "langgraph>=0.2.50",
